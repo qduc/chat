@@ -1,0 +1,13 @@
+node_modules
+npm-debug.log
+Dockerfile*
+.dockerignore
+.next/cache
+.next/standalone
+.next/static
+.env
+.env.local
+.env.*
+!*.env.example
+dist
+coverage
