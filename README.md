@@ -1,6 +1,6 @@
 # ChatForge (working title)
 
-One-liner: A full-stack AI chat app (React + Node) that talks to an OpenAI-compatible endpoint.
+A full-stack AI chat app (React + Node) that talks to an OpenAI-compatible endpoint.
 
 ## Current Status
 - [x] Bootstrap repo
@@ -12,11 +12,11 @@ One-liner: A full-stack AI chat app (React + Node) that talks to an OpenAI-compa
 - [ ] Auth & per-user limits
 
 ## Quick Links
-- [Overview](./OVERVIEW.md)
-- [Progress log](./PROGRESS.md)
-- [Tech stack](./TECH-STACK.md)
-- [API specs](./API-SPECS.md)
-- [Security & privacy](./SECURITY.md)
+- [Overview](docs/OVERVIEW.md)
+- [Progress log](docs/PROGRESS.md)
+- [Tech stack](docs/TECH-STACK.md)
+- [API specs](docs/API-SPECS.md)
+- [Security & privacy](docs/SECURITY.md)
 
 ## Run It
 ### Option 1: Local (Node)
