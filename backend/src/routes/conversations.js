@@ -7,7 +7,9 @@ import {
   getConversationById,
   countConversationsBySession,
   listConversations,
-  getMessagesPage
+  getMessagesPage,
+  softDeleteConversation,
+  listConversationsIncludingDeleted
 } from '../db/index.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -24,8 +26,11 @@ conversationsRouter.get('/v1/conversations', (req, res) => {
     const sessionId = req.sessionId;
     if (!sessionId) return res.status(400).json({ error: 'bad_request', message: 'Missing session id' });
     getDb();
-    const { cursor, limit } = req.query || {};
-    const result = listConversations({ sessionId, cursor, limit });
+    const { cursor, limit, include_deleted } = req.query || {};
+    const includeDeleted = String(include_deleted) === '1' || String(include_deleted).toLowerCase() === 'true';
+    const result = includeDeleted
+      ? listConversationsIncludingDeleted({ sessionId, cursor, limit, includeDeleted: true })
+      : listConversations({ sessionId, cursor, limit });
     return res.json(result);
   } catch (e) {
     console.error('[conversations] list error', e);
@@ -82,6 +87,22 @@ conversationsRouter.get('/v1/conversations/:id', (req, res) => {
     return res.json({ ...convo, messages: page.messages, next_after_seq: page.next_after_seq });
   } catch (e) {
     console.error('[conversations] get error', e);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+// DELETE /v1/conversations/:id (soft delete)
+conversationsRouter.delete('/v1/conversations/:id', (req, res) => {
+  if (!config.persistence.enabled) return notImplemented(res);
+  try {
+    const sessionId = req.sessionId;
+    if (!sessionId) return res.status(400).json({ error: 'bad_request', message: 'Missing session id' });
+    getDb();
+    const ok = softDeleteConversation({ id: req.params.id, sessionId });
+    if (!ok) return res.status(404).json({ error: 'not_found' });
+    return res.status(204).end();
+  } catch (e) {
+    console.error('[conversations] delete error', e);
     return res.status(500).json({ error: 'internal_error' });
   }
 });

@@ -12,6 +12,7 @@ Sprints overview:
 - Sprint 1: Foundations (persistence off by default)
 - Sprint 2: Streaming persistence and read paths
 - Sprint 3: Retention, deletion, and polish
+- Sprint 4: Frontend integration
 
 ---
 
@@ -127,6 +128,52 @@ Estimate:
 Risks & mitigations:
 - Retention deletes active data: use indexed queries with clear cutoffs; add dry-run and small batch deletes.
 - Background worker reliability: idempotent operations and safe retries.
+
+---
+
+Sprint 4 — Frontend integration
+Objectives:
+- Bootstrap session on first load by ensuring a stable client identifier; prefer header if already present.
+- Gracefully handle the persistence feature flag; the UI must function without history when disabled.
+- Wire conversation lifecycle into the chat UI: create, select, and use conversation_id for subsequent turns.
+- Provide a basic history experience with listing, viewing, pagination, and deletion.
+- Align streaming updates so the assistant’s streaming message reconciles into the correct entry.
+
+Scope:
+- Session bootstrap utility: generate/persist a UUID cookie when missing; prefer an existing header when available.
+- Feature flag handling: detect 501 responses from history endpoints and hide/disable history UI accordingly.
+- Conversation lifecycle:
+  - Create conversation on new chat and store id in client state.
+  - Propagate conversation_id on chat requests (body or header).
+  - Optional: persist user turns via a messages endpoint; otherwise rely on backend auto-persist.
+- History UI (basic):
+  - Conversations list (newest-first) with cursor/limit pagination.
+  - Conversation view that fetches messages with pagination (?after_seq=&limit=).
+  - Delete action to soft delete a conversation and update the list.
+- Streaming UI:
+  - Reconcile streaming deltas into a single assistant message entry and finalize on completion.
+
+Deliverables:
+- Session bootstrap helper and API client updates to carry the session/conversation identifiers.
+- Minimal history UI: list panel and conversation detail with pagination.
+- Delete conversation UI and wiring.
+- Error and empty states for uninitialized, deleted, and retention-removed conversations.
+- Brief developer notes on enabling/disabling the history UI via the feature flag.
+
+Acceptance criteria:
+- A session identifier exists before any history request; chat requests consistently include the conversation_id once created.
+- New chats create a conversation and all subsequent turns use that same id.
+- Listing and viewing a conversation works with pagination without duplicates or gaps.
+- Deleting a conversation removes it from the default list and prevents further writes.
+- With persistence disabled, the app hides history UI and core chat continues to work.
+
+Estimate:
+- 0.5–1.0 week.
+
+Risks & mitigations:
+- Backend/Frontend drift: document API shapes and add defensive parsing; feature detection based on status codes.
+- Streaming reconciliation bugs: unit-test message reducers; guard against duplicate deltas and out-of-order updates.
+- Long-thread performance: paginate aggressively; consider virtualized rendering for large lists.
 
 ---
 

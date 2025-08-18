@@ -200,3 +200,62 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
   const next_after_seq = messages.length === limit ? messages[messages.length - 1].seq : null;
   return { messages, next_after_seq };
 }
+
+// --- Sprint 3 ---
+export function softDeleteConversation({ id, sessionId }) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const info = db.prepare(
+    `UPDATE conversations SET deleted_at=@now, updated_at=@now WHERE id=@id AND session_id=@sessionId AND deleted_at IS NULL`
+  ).run({ id, sessionId, now });
+  return info.changes > 0;
+}
+
+export function listConversationsIncludingDeleted({ sessionId, cursor, limit, includeDeleted = false }) {
+  const db = getDb();
+  limit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  let sql = `SELECT id, title, model, created_at, deleted_at FROM conversations
+             WHERE session_id=@sessionId`;
+  if (!includeDeleted) sql += ` AND deleted_at IS NULL`;
+  const params = { sessionId };
+  if (cursor) {
+    sql += ` AND datetime(created_at) < datetime(@cursor)`;
+    params.cursor = cursor;
+  }
+  sql += ` ORDER BY datetime(created_at) DESC, id DESC LIMIT @limit`;
+  params.limit = limit;
+  const items = db.prepare(sql).all(params).map(r => ({ id: r.id, title: r.title, model: r.model, created_at: r.created_at }));
+  const next_cursor = items.length === limit ? items[items.length - 1].created_at : null;
+  return { items, next_cursor };
+}
+
+export function retentionSweep({ days }) {
+  const db = getDb();
+  if (!db) return { deleted: 0 };
+  // cutoff timestamp
+  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  // Delete in small batches for safety
+  const selectStmt = db.prepare(
+    `SELECT id FROM conversations
+     WHERE datetime(created_at) < datetime(@cutoff)
+       AND (json_extract(metadata,'$.pinned') IS NULL OR json_extract(metadata,'$.pinned') = 0)
+     LIMIT 500`
+  );
+  const deleteMessages = db.prepare(`DELETE FROM messages WHERE conversation_id=@id`);
+  const deleteConversation = db.prepare(`DELETE FROM conversations WHERE id=@id`);
+  let total = 0;
+  while (true) {
+    const rows = selectStmt.all({ cutoff });
+    if (!rows.length) break;
+    const tx = db.transaction((ids) => {
+      for (const r of ids) {
+        deleteMessages.run({ id: r.id });
+        deleteConversation.run({ id: r.id });
+      }
+    });
+    tx(rows);
+    total += rows.length;
+    if (rows.length < 500) break;
+  }
+  return { deleted: total };
+}

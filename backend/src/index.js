@@ -25,6 +25,31 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'internal_server_error' });
 });
 
+// Retention worker (Sprint 3)
+import { getDb, retentionSweep } from './db/index.js';
+
+if (config.persistence.enabled) {
+  try {
+    // Initialize DB once
+    getDb();
+    const intervalMs = 60 * 60 * 1000; // hourly
+    setInterval(() => {
+      try {
+        const days = config.persistence.retentionDays;
+        const result = retentionSweep({ days });
+        if (result.deleted) {
+          console.log(`[retention] deleted ${result.deleted} conversations older than ${days} days`);
+        }
+      } catch (e) {
+        console.error('[retention] sweep error', e);
+      }
+    }, intervalMs);
+    console.log(`[retention] worker started (every ${Math.round(intervalMs/1000)}s, days=${config.persistence.retentionDays})`);
+  } catch (e) {
+    console.error('[retention] init error', e);
+  }
+}
+
 app.listen(config.port, () => {
   console.log(`[server] listening on :${config.port}`);
 });
