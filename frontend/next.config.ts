@@ -8,6 +8,9 @@ const BACKEND_ORIGIN = fromEnv && /^https?:\/\//.test(fromEnv)
   : 'http://localhost:3001';
 
 const nextConfig: NextConfig = {
+  // Important for SSE passthrough via rewrites: gzip compression can buffer streams.
+  // Disabling ensures chunks flush to the browser as they arrive.
+  compress: false,
   async rewrites() {
     return [
       {

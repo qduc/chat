@@ -1,4 +1,7 @@
 @import "tailwindcss";
+/* Syntax highlighting themes (light and dark) - Using modern atom-one themes */
+@import "highlight.js/styles/atom-one-light.css";
+@import "highlight.js/styles/atom-one-dark.css" (prefers-color-scheme: dark);
 
 :root {
   --background: #ffffff;
@@ -70,4 +73,44 @@ body {
 *:focus-visible {
   outline: 2px solid rgb(59 130 246);
   outline-offset: 2px;
+}
+
+/* Enhanced markdown styles */
+.md-code {
+  font-family: 'SF Mono', Monaco, 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
+  line-height: 1.5;
+}
+
+/* Better syntax highlighting integration */
+.hljs {
+  background: transparent !important;
+}
+
+/* Task list styling */
+input[type="checkbox"][disabled] {
+  margin-right: 0.5rem;
+  transform: scale(1.1);
+}
+
+/* Strikethrough styling */
+del {
+  text-decoration-color: rgb(156 163 175);
+  text-decoration-thickness: 2px;
+}
+
+/* Better link hover effects */
+.md-link:hover {
+  text-decoration-thickness: 2px;
+}
+
+/* Code block copy button area */
+.md-pre {
+  position: relative;
+}
+
+/* Responsive text sizing */
+@media (max-width: 640px) {
+  .md-h1 { font-size: 1.5rem; }
+  .md-h2 { font-size: 1.25rem; }
+  .md-h3 { font-size: 1.125rem; }
 }

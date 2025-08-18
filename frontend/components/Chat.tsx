@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Markdown from './Markdown';
 import type { ChatMessage, ConversationsList, ConversationMeta, Role } from '../lib/chat';
 import { sendChat, createConversation, listConversationsApi, getConversationApi, deleteConversationApi } from '../lib/chat';
 
@@ -277,8 +278,10 @@ export function Chat() {
                     </div>
                   )}
                   <div className={`group relative max-w-[75%] ${isUser ? 'order-first' : ''}`}>
-                    <div className={`whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${isUser ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white' : 'bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50'}`}>
-                      {m.content || (m.role === 'assistant' && pending.streaming ? (
+                    <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${isUser ? 'bg-gradient-to-br from-blue-500 to-blue-600 text-white' : 'bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50'}`}>
+                      {m.content ? (
+                        <Markdown text={m.content} />
+                      ) : (m.role === 'assistant' && pending.streaming ? (
                         <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
                           <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '0ms' }} />
                           <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -320,7 +323,7 @@ export function Chat() {
         </main>
         <form className="border-t border-slate-200/60 dark:border-neutral-800/60 bg-white/80 dark:bg-neutral-950/80 backdrop-blur-md supports-[backdrop-filter]:bg-white/70 dark:supports-[backdrop-filter]:bg-neutral-950/70" onSubmit={e => { e.preventDefault(); handleSend(); }}>
           <div className="mx-auto max-w-4xl px-6 py-4">
-            <div className="relative rounded-2xl bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 shadow-lg focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-400 dark:focus-within:border-blue-500 transition-all duration-200">
+            <div className="relative rounded-2xl bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 shadow-lg transition-all duration-200">
               <textarea
                 ref={inputRef}
                 className="w-full resize-none bg-transparent border-0 outline-none p-4 text-sm placeholder-slate-500 dark:placeholder-slate-400 text-slate-800 dark:text-slate-200"

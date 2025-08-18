@@ -45,7 +45,11 @@ export async function sendChat(options: SendChatOptions): Promise<string> {
 
   const res = await fetch(`${apiBase}/v1/chat/completions`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      // Hint to proxies/browsers that we expect an SSE stream
+      'Accept': 'text/event-stream'
+    },
     body,
     signal,
   });
