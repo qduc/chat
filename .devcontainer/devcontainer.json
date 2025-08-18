@@ -37,7 +37,9 @@
         "esbenp.prettier-vscode",
         "ms-azuretools.vscode-docker",
         "mhutchie.git-graph",
-        "yoavbls.pretty-ts-errors"
+        "yoavbls.pretty-ts-errors",
+        "bradlc.vscode-tailwindcss",
+        "ms-vscode.vscode-json"
       ]
     }
   }

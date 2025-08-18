@@ -4,7 +4,7 @@ services:
     image: mcr.microsoft.com/devcontainers/javascript-node:20
     container_name: chat-workspace
     volumes:
-      - ..:/workspace:cached
+      - .:/workspace:cached
     working_dir: /workspace
     # Share network with app so ports can be reached
     networks:

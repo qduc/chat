@@ -9,7 +9,8 @@ cd "$REPO_ROOT"
 if [ ! -f backend/.env ]; then
   if [ -f backend/.env.example ]; then
     cp backend/.env.example backend/.env
-    echo "Created backend/.env from example. Remember to set OPENAI_API_KEY, etc."
+    echo "Created backend/.env from example. Remember to set OPENAI_API_KEY."
+    echo "Note: ALLOWED_ORIGIN is set for devcontainer (port 3003)."
   else
     echo "Warning: backend/.env.example not found; create backend/.env manually." >&2
   fi
@@ -19,6 +20,7 @@ fi
 if [ ! -f frontend/.env.local ] && [ -f frontend/.env.example ]; then
   cp frontend/.env.example frontend/.env.local
   echo "Created frontend/.env.local from example."
+  echo "Note: BACKEND_ORIGIN is set for devcontainer (port 4001)."
 fi
 
 # 3) Install deps (faster on subsequent runs because of volume caches)
