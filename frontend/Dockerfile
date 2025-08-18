@@ -7,7 +7,9 @@ RUN npm ci
 FROM node:20-alpine AS build
 WORKDIR /app
 ARG NEXT_PUBLIC_API_BASE
+ARG BACKEND_ORIGIN
 ENV NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE}
+ENV BACKEND_ORIGIN=${BACKEND_ORIGIN}
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN npm run build

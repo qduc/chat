@@ -17,12 +17,13 @@ This project uses [`next/font`](https://nextjs.org/docs/app/building-your-applic
 
 ## Chat Development Notes
 
-The frontend calls the backend (default `http://localhost:3001`) at `/v1/chat/completions` with `stream: true` and incrementally renders tokens.
+The frontend calls its own proxy under `/api/v1/chat/completions` and Next.js rewrites forward those requests to the backend. This avoids CORS and lets you keep a single origin for the browser.
 
-Configure backend base URL with an env var:
+Configure env for local dev (optional; defaults shown):
 
 ```bash
-echo "NEXT_PUBLIC_API_BASE=http://localhost:3001" > .env.local
+echo "NEXT_PUBLIC_API_BASE=/api" > .env.local
+echo "BACKEND_ORIGIN=http://localhost:3001" >> .env.local
 ```
 
 ## Learn More
@@ -36,7 +37,7 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 
 ## Run with Docker
 
-1. (Optional) create `.env.local` or use build arg for API base (already defaults to backend service name inside compose):
+1. (Optional) create `.env.local` or use build args. By default, the app calls `/api` and rewrites to `http://backend:3001` inside Compose:
 	```bash
 	cp .env.example .env.local
 	```
@@ -46,9 +47,12 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 	```
 3. Visit http://localhost:3000
 
-The Docker build inlines `NEXT_PUBLIC_API_BASE` at build time (defaults to `http://backend:3001`). Override with:
+The Docker build inlines both `NEXT_PUBLIC_API_BASE` (default `/api`) and `BACKEND_ORIGIN` (default `http://backend:3001`). Override with:
 ```bash
-docker compose build --build-arg NEXT_PUBLIC_API_BASE=http://localhost:3001 frontend
+docker compose build \
+	--build-arg NEXT_PUBLIC_API_BASE=/api \
+	--build-arg BACKEND_ORIGIN=http://localhost:3001 \
+	frontend
 ```
 
-For production deployment outside compose, push the built image and set `NEXT_PUBLIC_API_BASE` during build.
+For production deployment outside compose, set `BACKEND_ORIGIN` to your backend URL so the proxy forwards correctly.

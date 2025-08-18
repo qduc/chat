@@ -14,9 +14,15 @@ services:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_API_BASE: http://backend:3001
+        # Expose for build-time env if any code reads it (not required for proxy)
+        NEXT_PUBLIC_API_BASE: /api
+        # Provide backend origin for Next.js rewrites at build time
+        BACKEND_ORIGIN: http://backend:3001
     environment:
-      - NEXT_PUBLIC_API_BASE=http://backend:3001
+      # Default frontend calls to the local proxy path
+      - NEXT_PUBLIC_API_BASE=/api
+      # Ensure Next.js rewrites forward to the backend service
+      - BACKEND_ORIGIN=http://backend:3001
     depends_on:
       - backend
     ports:

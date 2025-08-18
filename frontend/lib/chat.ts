@@ -10,14 +10,16 @@ export interface ChatMessage {
 }
 
 export interface SendChatOptions {
-  apiBase?: string; // override base
+  apiBase?: string; // override base; when omitted, uses frontend proxy
   messages: { role: Role; content: string }[];
   model?: string;
   signal?: AbortSignal;
   onToken?: (token: string) => void; // called for each delta
 }
 
-const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3001';
+// Default to calling the frontend's local proxy under /api.
+// This will be rewritten to the backend by Next.js rewrites.
+const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE || '/api';
 
 interface OpenAIStreamChunkChoiceDelta {
   role?: Role;
