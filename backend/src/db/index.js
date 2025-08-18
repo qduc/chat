@@ -69,7 +69,8 @@ export function getDb() {
       throw new Error('[db] PERSIST_TRANSCRIPTS=true but DB_URL is empty');
     }
     if (!url.startsWith('file:')) {
-      throw new Error('[db] Only SQLite (file:...) is supported in Sprint 1.');
+      // Keep sprint note but allow SQLite only for now.
+      throw new Error('[db] Only SQLite (file:...) is supported currently.');
     }
     const filePath = url.replace(/^file:/, '');
     ensureDir(filePath);
@@ -104,4 +105,98 @@ export function getConversationById({ id, sessionId }) {
     `SELECT id, title, model, created_at FROM conversations
      WHERE id=@id AND session_id=@session_id AND deleted_at IS NULL`
   ).get({ id, session_id: sessionId });
+}
+
+// --- Sprint 2 helpers ---
+export function countConversationsBySession(sessionId) {
+  const db = getDb();
+  const row = db.prepare(
+    `SELECT COUNT(1) as c FROM conversations WHERE session_id=@sessionId AND deleted_at IS NULL`
+  ).get({ sessionId });
+  return row?.c || 0;
+}
+
+export function listConversations({ sessionId, cursor, limit }) {
+  const db = getDb();
+  limit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  let sql = `SELECT id, title, model, created_at FROM conversations
+             WHERE session_id=@sessionId AND deleted_at IS NULL`;
+  const params = { sessionId };
+  if (cursor) {
+    sql += ` AND datetime(created_at) < datetime(@cursor)`;
+    params.cursor = cursor;
+  }
+  sql += ` ORDER BY datetime(created_at) DESC, id DESC LIMIT @limit`;
+  params.limit = limit;
+  const items = db.prepare(sql).all(params);
+  const next_cursor = items.length === limit ? items[items.length - 1].created_at : null;
+  return { items, next_cursor };
+}
+
+export function countMessagesByConversation(conversationId) {
+  const db = getDb();
+  const row = db.prepare(
+    `SELECT COUNT(1) as c FROM messages WHERE conversation_id=@conversationId`
+  ).get({ conversationId });
+  return row?.c || 0;
+}
+
+export function getNextSeq(conversationId) {
+  const db = getDb();
+  const row = db.prepare(
+    `SELECT COALESCE(MAX(seq), 0) + 1 as nextSeq FROM messages WHERE conversation_id=@conversationId`
+  ).get({ conversationId });
+  return row?.nextSeq || 1;
+}
+
+export function insertUserMessage({ conversationId, content, seq }) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const info = db.prepare(
+    `INSERT INTO messages (conversation_id, role, status, content, seq, created_at, updated_at)
+     VALUES (@conversationId, 'user', 'final', @content, @seq, @now, @now)`
+  ).run({ conversationId, content: content || '', seq, now });
+  return { id: info.lastInsertRowid, seq };
+}
+
+export function createAssistantDraft({ conversationId, seq }) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const info = db.prepare(
+    `INSERT INTO messages (conversation_id, role, status, content, seq, created_at, updated_at)
+     VALUES (@conversationId, 'assistant', 'streaming', '', @seq, @now, @now)`
+  ).run({ conversationId, seq, now });
+  return { id: info.lastInsertRowid, seq };
+}
+
+export function appendAssistantContent({ messageId, delta }) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE messages SET content = COALESCE(content,'') || @delta, updated_at=@now WHERE id=@messageId`
+  ).run({ messageId, delta: delta || '', now });
+}
+
+export function finalizeAssistantMessage({ messageId, finishReason = null, status = 'final' }) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE messages SET status=@status, finish_reason=@finishReason, updated_at=@now WHERE id=@messageId`
+  ).run({ messageId, finishReason, status, now });
+}
+
+export function markAssistantError({ messageId }) {
+  finalizeAssistantMessage({ messageId, finishReason: 'error', status: 'error' });
+}
+
+export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
+  const db = getDb();
+  limit = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  const messages = db.prepare(
+    `SELECT id, seq, role, status, content, created_at
+     FROM messages WHERE conversation_id=@conversationId AND seq > @afterSeq
+     ORDER BY seq ASC LIMIT @limit`
+  ).all({ conversationId, afterSeq, limit });
+  const next_after_seq = messages.length === limit ? messages[messages.length - 1].seq : null;
+  return { messages, next_after_seq };
 }
