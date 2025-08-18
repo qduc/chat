@@ -1,0 +1,18 @@
+{
+  // Helpful tasks when developing inside the dev container
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Backend: dev",
+      "type": "shell",
+      "command": "npm --prefix backend run dev",
+      "problemMatcher": []
+    },
+    {
+      "label": "Frontend: dev",
+      "type": "shell",
+      "command": "npm --prefix frontend run dev",
+      "problemMatcher": []
+    }
+  ]
+}

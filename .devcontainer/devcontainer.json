@@ -1,0 +1,44 @@
+{
+  "name": "chat dev",
+  "dockerComposeFile": [
+    "../docker-compose.dev.yml",
+    "./docker-compose.devcontainer.yml"
+  ],
+  "service": "workspace",
+  "workspaceFolder": "/workspace",
+  "runServices": ["postgres", "backend", "frontend", "workspace"],
+  "shutdownAction": "stopCompose",
+  "features": {
+    "ghcr.io/devcontainers/features/common-utils:2": {
+      "installZsh": true,
+      "username": "node"
+    },
+    "ghcr.io/devcontainers/features/git:1": {}
+  },
+  "forwardPorts": [3003, 4001],
+  "portsAttributes": {
+  "3003": { "label": "frontend", "onAutoForward": "openBrowser" },
+  "4001": { "label": "backend", "onAutoForward": "notify" }
+  },
+  "postCreateCommand": "bash .devcontainer/init.sh",
+  "postStartCommand": "bash .devcontainer/postCreate.sh",
+  "remoteUser": "node",
+  "customizations": {
+    "vscode": {
+      "settings": {
+        "terminal.integrated.defaultProfile.linux": "zsh",
+        "files.exclude": {
+          "**/.next": true,
+          "**/node_modules": true
+        }
+      },
+      "extensions": [
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        "ms-azuretools.vscode-docker",
+        "mhutchie.git-graph",
+        "yoavbls.pretty-ts-errors"
+      ]
+    }
+  }
+}

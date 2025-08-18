@@ -1,0 +1,22 @@
+version: "3.9"
+services:
+  workspace:
+    image: mcr.microsoft.com/devcontainers/javascript-node:20
+    container_name: chat-workspace
+    volumes:
+      - ..:/workspace:cached
+    working_dir: /workspace
+    # Share network with app so ports can be reached
+    networks:
+      - app
+    depends_on:
+      - backend
+      - frontend
+      - postgres
+    # Keep container alive; VS Code server attaches here
+    command: /bin/sh -c "sleep infinity"
+    # Provide a non-root user (node) to match devcontainer.json remoteUser
+    user: node
+
+networks:
+  app: {}
