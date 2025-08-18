@@ -12,6 +12,7 @@ Usage: $(basename "$0") {up|down|build|logs|ps} [args...]
 Commands:
   up     Bring up services (passes remaining args through to docker compose up)
   down   Stop and remove services
+  restart Restart services
   build  Build services
   logs   Follow logs (passes remaining args through to docker compose logs)
   ps     Show service status
@@ -35,6 +36,9 @@ case "$cmd" in
     ;;
   down)
     "${DC[@]}" down "$@"
+    ;;
+  restart)
+    "${DC[@]}" restart "$@"
     ;;
   build)
     "${DC[@]}" build "$@"

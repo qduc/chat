@@ -1,4 +1,18 @@
-## Backend Dockerfile (production)
+## Backend Dockerfile (production + dev)
+
+# --- Dev stage: optimized for live development ---
+FROM node:20-alpine AS dev
+WORKDIR /app
+ENV NODE_ENV=development
+COPY package*.json ./
+RUN npm install
+# Copy source for dev (mounted again via volume in compose)
+COPY src ./src
+COPY .env.example ./
+EXPOSE 3001
+CMD ["npm", "run", "dev"]
+
+# --- Prod stage: lean runtime image (default/final) ---
 FROM node:20-alpine AS base
 WORKDIR /app
 
