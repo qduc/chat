@@ -16,6 +16,7 @@ A full-stack AI chat app (React + Node) that talks to an OpenAI-compatible endpo
 - [Progress log](docs/PROGRESS.md)
 - [Tech stack](docs/TECH-STACK.md)
 - [API specs](docs/API-SPECS.md)
+- [Conversation history spec](docs/CONVERSATIONS-SPEC.md)
 - [Security & privacy](docs/SECURITY.md)
 
 ## Run It

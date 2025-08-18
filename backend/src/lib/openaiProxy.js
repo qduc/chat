@@ -2,7 +2,10 @@ import fetch from 'node-fetch';
 import { config } from '../env.js';
 
 export async function proxyChatCompletion(req, res) {
-  const body = req.body || {};
+  const bodyIn = req.body || {};
+  // Clone and strip non-upstream fields
+  const body = { ...bodyIn };
+  delete body.conversation_id;
   if (!body.model) body.model = config.defaultModel;
   const stream = !!body.stream;
 

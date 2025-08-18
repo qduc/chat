@@ -16,6 +16,12 @@ for (const key of required) {
   }
 }
 
+const bool = (v, def=false) => {
+  if (v === undefined) return def;
+  const s = String(v).trim().toLowerCase();
+  return s === '1' || s === 'true' || s === 'yes' || s === 'on';
+};
+
 export const config = {
   openaiBaseUrl: process.env.OPENAI_BASE_URL,
   openaiApiKey: process.env.OPENAI_API_KEY,
@@ -25,5 +31,12 @@ export const config = {
     windowSec: Number(process.env.RATE_LIMIT_WINDOW_SEC) || 60,
     max: Number(process.env.RATE_LIMIT_MAX) || 50,
   },
-  allowedOrigin: process.env.ALLOWED_ORIGIN || 'http://localhost:3000'
+  allowedOrigin: process.env.ALLOWED_ORIGIN || 'http://localhost:3000',
+  persistence: {
+    enabled: bool(process.env.PERSIST_TRANSCRIPTS, false),
+    dbUrl: process.env.DB_URL || '',
+    maxConversationsPerSession: Number(process.env.MAX_CONVERSATIONS_PER_SESSION) || 100,
+    maxMessagesPerConversation: Number(process.env.MAX_MESSAGES_PER_CONVERSATION) || 1000,
+    historyBatchFlushMs: Number(process.env.HISTORY_BATCH_FLUSH_MS) || 250,
+  }
 };
