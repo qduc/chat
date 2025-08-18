@@ -22,4 +22,4 @@ Proxies directly to the configured OpenAI-compatible endpoint.
 - Provider routing (multiple upstreams)
 
 ## GET /healthz
-- Returns `{ status: "ok", uptime, provider: "openai-compatible" }`
+- Returns `{ status: "ok", uptime, provider: "openai-compatible" }` and `model` (current default model from env)

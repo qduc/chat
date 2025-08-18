@@ -1,10 +1,11 @@
 # Tech Stack
 
 ## Frontend
-- Next.js (App Router), React 19
-- State: Local React state (TanStack Query not yet added)
-- UI: Tailwind CSS v4 (no shadcn yet)
-- Streaming: fetch + ReadableStream manual SSE parse
+- Next.js (App Router) — project `frontend/package.json` lists `next@15.x`.
+- React: `react@19.x` as listed in `frontend/package.json`.
+- State: Local React state (TanStack Query not yet added).
+- UI: Tailwind CSS (project uses Tailwind v4 in dev deps).
+- Streaming: `fetch` + ReadableStream manual SSE parse (implemented in `frontend/lib/chat.ts`).
 
 ## Backend
 - Node 20 + Express (JS, ESM)
@@ -18,11 +19,11 @@
 - Logging: morgan (pino later); metrics planned (Prometheus)
 
 ### Container Notes
-- Backend image: Node 20 alpine, prod deps only
-- Frontend image: multi-stage; build arg `NEXT_PUBLIC_API_BASE`
-- Secrets: only backend receives provider key via env file (not baked)
+- Backend image: Node 20 alpine, prod deps only (`backend/Dockerfile`).
+- Frontend image: multi-stage; build args `NEXT_PUBLIC_API_BASE` and `BACKEND_ORIGIN` are supported (`frontend/Dockerfile`).
+- Secrets: only backend receives provider key via env file (do not bake keys into images).
 
 ## LLM Providers (OpenAI-compatible)
-- OPENAI_BASE_URL: `https://api.openai.com/v1` (or: OpenRouter, vLLM, llamafile, etc.)
-- Models: `gpt-4.1-mini` (cheap/dev), `gpt-4.1` (prod), swap freely via env
-- Why compatibility: standard payloads, minimal vendor lock at API level
+- `OPENAI_BASE_URL` defaults to `https://api.openai.com/v1` in `backend/.env.example` but can point to any OpenAI-compatible provider.
+- Default model is `gpt-4.1-mini` (see `backend/.env.example` / `DEFAULT_MODEL`).
+- Why compatibility: standard payloads, minimal vendor lock at API level.
