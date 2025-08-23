@@ -33,14 +33,16 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
             </a>
           ),
           code: (p) => {
-            const { inline, className: cls, children, ...props } = p as any;
-            // Keep classes provided by rehype-highlight (e.g., 'hljs', 'language-xyz', token spans)
+            const { inline, className: cls, children } = p as any;
+            // Consider it a block only if explicitly non-inline OR language-* class is present
+            const hasLanguage = /\blanguage-/.test(cls || "");
+            const isInline = inline ?? !hasLanguage;
+            // Keep classes provided by rehype-highlight for blocks only (e.g., 'hljs', 'language-xyz')
             const className = ["md-code", cls].filter(Boolean).join(" ");
-            if (inline) {
+            if (isInline) {
               return (
                 <code
                   className="md-inline-code px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-neutral-800 text-[0.9em] font-mono border border-slate-200 dark:border-neutral-700"
-                  {...props}
                 >
                   {children}
                 </code>
