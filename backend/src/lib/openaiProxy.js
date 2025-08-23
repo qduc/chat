@@ -13,17 +13,27 @@ import {
   markAssistantError
 } from '../db/index.js';
 
-export async function proxyChatCompletion(req, res) {
+export async function proxyOpenAIRequest(req, res) {
   const bodyIn = req.body || {};
 
   // Pull optional conversation_id from body or header
   const conversationId = bodyIn.conversation_id || req.header('x-conversation-id');
 
+  // Determine which API to use
+  const useResponsesAPI = !bodyIn.disable_responses_api && config.openaiBaseUrl.includes('openai.com');
+  
   // Clone and strip non-upstream fields
   const body = { ...bodyIn };
   delete body.conversation_id;
+  delete body.disable_responses_api;
   if (!body.model) body.model = config.defaultModel;
   const stream = !!body.stream;
+  
+  // Convert Chat Completions format to Responses API format if needed
+  if (useResponsesAPI && body.messages) {
+    body.input = body.messages;
+    delete body.messages;
+  }
 
   // Optional persistence setup
   let persist = false;
@@ -70,7 +80,9 @@ export async function proxyChatCompletion(req, res) {
       }
     }
 
-    const url = `${config.openaiBaseUrl}/chat/completions`;
+    const url = useResponsesAPI 
+      ? `${config.openaiBaseUrl}/responses` 
+      : `${config.openaiBaseUrl}/chat/completions`;
     const headers = {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${config.openaiApiKey}`
@@ -84,12 +96,47 @@ export async function proxyChatCompletion(req, res) {
 
     if (!stream || upstream.headers.get('content-type')?.includes('application/json')) {
       const json = await upstream.json();
-      // If non-streaming and persistence was set up, finalize assistant with full content if present
-      if (persist && assistantMessageId && json?.choices?.[0]?.message?.content) {
-        appendAssistantContent({ messageId: assistantMessageId, delta: json.choices[0].message.content });
-        finalizeAssistantMessage({ messageId: assistantMessageId, finishReason: json?.choices?.[0]?.finish_reason || null });
+      
+      // Handle different response formats and convert if needed
+      let content = null;
+      let finishReason = null;
+      let responseToSend = json;
+      
+      if (useResponsesAPI && json?.output?.[0]?.content?.[0]?.text) {
+        // Responses API format - extract content
+        content = json.output[0].content[0].text;
+        finishReason = json.status === 'completed' ? 'stop' : null;
+        
+        // Convert to Chat Completions format for /v1/chat/completions endpoint
+        if (req.path === '/v1/chat/completions') {
+          responseToSend = {
+            id: json.id,
+            object: "chat.completion",
+            created: json.created_at,
+            model: json.model,
+            choices: [{
+              index: 0,
+              message: {
+                role: "assistant",
+                content: content
+              },
+              finish_reason: finishReason
+            }],
+            usage: json.usage
+          };
+        }
+      } else if (json?.choices?.[0]?.message?.content) {
+        // Chat Completions API format
+        content = json.choices[0].message.content;
+        finishReason = json.choices[0].finish_reason;
       }
-      res.status(upstream.status).json(json);
+      
+      // If non-streaming and persistence was set up, finalize assistant with full content if present
+      if (persist && assistantMessageId && content) {
+        appendAssistantContent({ messageId: assistantMessageId, delta: content });
+        finalizeAssistantMessage({ messageId: assistantMessageId, finishReason: finishReason || null });
+      }
+      res.status(upstream.status).json(responseToSend);
       return;
     }
 
@@ -122,38 +169,116 @@ export async function proxyChatCompletion(req, res) {
     upstream.body.on('data', chunk => {
       try {
         const s = String(chunk);
-        // passthrough immediately and flush to the client so tokens render
-        // incrementally instead of being buffered until the stream ends
-        res.write(chunk);
-        if (typeof res.flush === 'function') res.flush();
-
-        if (!persist) return;
-
-        let data = leftover + s;
-        const parts = data.split(/\n\n/); // events typically separated by blank line
-        leftover = parts.pop() || '';
-        for (const part of parts) {
-          const lines = part.split('\n');
-          for (const line of lines) {
-            const m = line.match(/^data:\s*(.*)$/);
-            if (!m) continue;
-            const payload = m[1];
-            if (payload === '[DONE]') {
-              finished = true;
-              break;
+        
+        // Handle stream format conversion if needed
+        if (useResponsesAPI && req.path === '/v1/chat/completions') {
+          // Convert Responses API streaming to Chat Completions format
+          let data = leftover + s;
+          const parts = data.split(/\n\n/);
+          leftover = parts.pop() || '';
+          
+          for (const part of parts) {
+            const lines = part.split('\n');
+            for (const line of lines) {
+              const dataMatch = line.match(/^data:\s*(.*)$/);
+              
+              if (dataMatch) {
+                const payload = dataMatch[1];
+                if (payload === '[DONE]') {
+                  res.write('data: [DONE]\n\n');
+                  finished = true;
+                  break;
+                }
+                
+                try {
+                  const obj = JSON.parse(payload);
+                  
+                  // Convert Responses API events to Chat Completions format
+                  if (obj.type === 'response.output_text.delta' && obj.delta) {
+                    const chatCompletionChunk = {
+                      id: obj.item_id,
+                      object: "chat.completion.chunk",
+                      created: Math.floor(Date.now() / 1000),
+                      model: "gpt-3.5-turbo",
+                      choices: [{
+                        index: 0,
+                        delta: { content: obj.delta },
+                        finish_reason: null
+                      }]
+                    };
+                    res.write(`data: ${JSON.stringify(chatCompletionChunk)}\n\n`);
+                    
+                    // Handle persistence
+                    if (persist && obj.delta) {
+                      buffer += obj.delta;
+                      if (buffer.length >= sizeThreshold) doFlush();
+                    }
+                  } else if (obj.type === 'response.completed') {
+                    const chatCompletionChunk = {
+                      id: obj.response.id,
+                      object: "chat.completion.chunk",
+                      created: Math.floor(Date.now() / 1000),
+                      model: obj.response.model,
+                      choices: [{
+                        index: 0,
+                        delta: {},
+                        finish_reason: "stop"
+                      }]
+                    };
+                    res.write(`data: ${JSON.stringify(chatCompletionChunk)}\n\n`);
+                    lastFinishReason = 'stop';
+                  }
+                } catch (e) {
+                  // not JSON; ignore
+                }
+              }
             }
-            try {
-              const obj = JSON.parse(payload);
-              const choice = obj?.choices?.[0];
-              if (choice?.delta?.content) {
-                buffer += choice.delta.content;
-                if (buffer.length >= sizeThreshold) doFlush();
+          }
+          if (typeof res.flush === 'function') res.flush();
+        } else {
+          // Direct passthrough for native format or Chat Completions API
+          res.write(chunk);
+          if (typeof res.flush === 'function') res.flush();
+          
+          if (!persist) return;
+          
+          let data = leftover + s;
+          const parts = data.split(/\n\n/);
+          leftover = parts.pop() || '';
+          for (const part of parts) {
+            const lines = part.split('\n');
+            for (const line of lines) {
+              const m = line.match(/^data:\s*(.*)$/);
+              if (!m) continue;
+              const payload = m[1];
+              if (payload === '[DONE]') {
+                finished = true;
+                break;
               }
-              if (choice?.finish_reason) {
-                lastFinishReason = choice.finish_reason;
+              try {
+                const obj = JSON.parse(payload);
+                
+                // Handle persistence for different formats
+                let deltaContent = null;
+                let finishReason = null;
+                
+                if (useResponsesAPI && obj.type === 'response.output_text.delta') {
+                  deltaContent = obj.delta;
+                } else if (obj?.choices?.[0]?.delta?.content) {
+                  deltaContent = obj.choices[0].delta.content;
+                  finishReason = obj.choices[0].finish_reason;
+                }
+                
+                if (deltaContent) {
+                  buffer += deltaContent;
+                  if (buffer.length >= sizeThreshold) doFlush();
+                }
+                if (finishReason) {
+                  lastFinishReason = finishReason;
+                }
+              } catch (e) {
+                // not JSON; ignore
               }
-            } catch (e) {
-              // not JSON; ignore
             }
           }
         }

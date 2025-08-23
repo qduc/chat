@@ -1,4 +1,4 @@
-// Simple streaming chat client for OpenAI-compatible /v1/chat/completions
+// Simple streaming chat client for OpenAI Responses API with Chat Completions fallback
 // Parses Server-Sent Events style stream and aggregates delta content.
 
 export type Role = 'user' | 'assistant' | 'system';
@@ -16,12 +16,14 @@ export interface SendChatOptions {
   signal?: AbortSignal;
   onToken?: (token: string) => void; // called for each delta
   conversationId?: string; // Sprint 4: pass conversation id
+  useResponsesAPI?: boolean; // whether to use new Responses API (default: true)
 }
 
 // Default to calling the frontend's local proxy under /api.
 // This will be rewritten to the backend by Next.js rewrites.
 const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE || '/api';
 
+// Chat Completions API streaming format
 interface OpenAIStreamChunkChoiceDelta {
   role?: Role;
   content?: string;
@@ -34,8 +36,24 @@ interface OpenAIStreamChunk {
   choices?: OpenAIStreamChunkChoice[];
 }
 
+// Responses API streaming format
+interface ResponsesAPIStreamChunk {
+  type?: string;
+  delta?: string;
+  item_id?: string;
+  response?: {
+    id: string;
+    model: string;
+    output: Array<{
+      content: Array<{
+        text: string;
+      }>;
+    }>;
+  };
+}
+
 export async function sendChat(options: SendChatOptions): Promise<string> {
-  const { apiBase = defaultApiBase, messages, model, signal, onToken, conversationId } = options;
+  const { apiBase = defaultApiBase, messages, model, signal, onToken, conversationId, useResponsesAPI = true } = options;
   const body = JSON.stringify({
     model,
     messages,
@@ -43,7 +61,9 @@ export async function sendChat(options: SendChatOptions): Promise<string> {
     conversation_id: conversationId,
   });
 
-  const res = await fetch(`${apiBase}/v1/chat/completions`, {
+  // Use Responses API by default, fallback to Chat Completions if disabled
+  const endpoint = useResponsesAPI ? '/v1/responses' : '/v1/chat/completions';
+  const res = await fetch(`${apiBase}${endpoint}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -84,9 +104,22 @@ export async function sendChat(options: SendChatOptions): Promise<string> {
           return assistant;
         }
         try {
-          const json: OpenAIStreamChunk = JSON.parse(data);
-          const delta = json.choices?.[0]?.delta;
-          const token = delta?.content || '';
+          const json = JSON.parse(data);
+          let token = '';
+          
+          if (useResponsesAPI) {
+            // Parse Responses API streaming format
+            const responsesChunk = json as ResponsesAPIStreamChunk;
+            if (responsesChunk.type === 'response.output_text.delta' && responsesChunk.delta) {
+              token = responsesChunk.delta;
+            }
+          } else {
+            // Parse Chat Completions API streaming format
+            const chatChunk = json as OpenAIStreamChunk;
+            const delta = chatChunk.choices?.[0]?.delta;
+            token = delta?.content || '';
+          }
+          
           if (token) {
             assistant += token;
             onToken?.(token);

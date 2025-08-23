@@ -6,11 +6,14 @@ declare const test: any;
 import type { Role } from '../lib/chat';
 
 describe('sendChat', () => {
-  test.todo('POSTs to /v1/chat/completions with stream=true and aggregates tokens');
-  test.todo('invokes onToken for each streamed delta');
+  test.todo('POSTs to /v1/responses by default with stream=true and aggregates tokens');
+  test.todo('POSTs to /v1/chat/completions when useResponsesAPI=false');
+  test.todo('invokes onToken for each streamed delta (both API formats)');
   test.todo('throws on non-OK responses with message from JSON');
   test.todo('supports AbortController to stop streaming');
   test.todo('includes conversation_id when provided');
+  test.todo('parses Responses API streaming format correctly');
+  test.todo('parses Chat Completions API streaming format correctly');
 });
 
 describe('createConversation', () => {
