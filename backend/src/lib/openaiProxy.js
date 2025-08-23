@@ -98,6 +98,10 @@ export async function proxyChatCompletion(req, res) {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
+    // Ensure headers are sent immediately so the client can start processing
+    // the event stream as soon as chunks arrive. Some proxies/browsers may
+    // buffer the response if headers are not flushed explicitly.
+    if (typeof res.flushHeaders === 'function') res.flushHeaders();
 
     const doFlush = () => {
       if (!persist || !assistantMessageId) return;
@@ -118,8 +122,10 @@ export async function proxyChatCompletion(req, res) {
     upstream.body.on('data', chunk => {
       try {
         const s = String(chunk);
-        // passthrough immediately
+        // passthrough immediately and flush to the client so tokens render
+        // incrementally instead of being buffered until the stream ends
         res.write(chunk);
+        if (typeof res.flush === 'function') res.flush();
 
         if (!persist) return;
 
