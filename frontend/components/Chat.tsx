@@ -20,6 +20,7 @@ export function Chat() {
   const [convos, setConvos] = useState<ConversationMeta[]>([]);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingConvos, setLoadingConvos] = useState<boolean>(false);
+  const [previousResponseId, setPreviousResponseId] = useState<string | null>(null);
   const assistantRef = useRef<string>('');
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -50,23 +51,28 @@ export function Chat() {
     setMessages(m => [...m, assistantMsg]);
     setPending({ streaming: true, abort });
     try {
-      await sendChat({
+      const result = await sendChat({
         messages: [...messages, userMsg].map(m => ({ role: m.role as Role, content: m.content })),
         model,
         signal: abort.signal,
         conversationId: conversationId || undefined,
+        previousResponseId: previousResponseId || undefined,
         onToken: (t) => {
           assistantRef.current += t;
           setMessages(curr => curr.map(msg => msg.id === assistantMsg.id ? { ...msg, content: assistantRef.current } : msg));
         }
       });
+      // Store the response ID for the next request
+      if (result.responseId) {
+        setPreviousResponseId(result.responseId);
+      }
     } catch (e:any) {
       setPending(p => ({ ...p, error: e.message }));
       setMessages(curr => curr.map(msg => msg.id === assistantMsg.id ? { ...msg, content: msg.content + `\n[error: ${e.message}]` } : msg));
     } finally {
       setPending({ streaming: false });
     }
-  }, [input, pending.streaming, messages, model, conversationId]);
+  }, [input, pending.streaming, messages, model, conversationId, previousResponseId]);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -83,6 +89,7 @@ export function Chat() {
     setPending({ streaming: false });
     assistantRef.current = '';
     setInput('');
+    setPreviousResponseId(null); // Reset response ID for new conversation
     if (historyEnabled) {
       try {
         const convo = await createConversation(undefined, { model });
@@ -129,6 +136,7 @@ export function Chat() {
     setMessages([]);
     assistantRef.current = '';
     setPending({ streaming: false });
+    setPreviousResponseId(null); // Reset response ID when switching conversations
     try {
       const data = await getConversationApi(undefined, id, { limit: 200 });
       const msgs: ChatMessage[] = data.messages.map(m => ({ id: String(m.id), role: m.role as Role, content: m.content || '' }));

@@ -17,6 +17,7 @@ export interface SendChatOptions {
   onToken?: (token: string) => void; // called for each delta
   conversationId?: string; // Sprint 4: pass conversation id
   useResponsesAPI?: boolean; // whether to use new Responses API (default: true)
+  previousResponseId?: string; // for Responses API conversation continuity
 }
 
 // Default to calling the frontend's local proxy under /api.
@@ -52,13 +53,14 @@ interface ResponsesAPIStreamChunk {
   };
 }
 
-export async function sendChat(options: SendChatOptions): Promise<string> {
-  const { apiBase = defaultApiBase, messages, model, signal, onToken, conversationId, useResponsesAPI = true } = options;
+export async function sendChat(options: SendChatOptions): Promise<{ content: string; responseId?: string }> {
+  const { apiBase = defaultApiBase, messages, model, signal, onToken, conversationId, useResponsesAPI = true, previousResponseId } = options;
   const body = JSON.stringify({
     model,
     messages,
     stream: true,
     conversation_id: conversationId,
+    ...(useResponsesAPI && previousResponseId && { previous_response_id: previousResponseId }),
   });
 
   // Use Responses API by default, fallback to Chat Completions if disabled
@@ -88,6 +90,7 @@ export async function sendChat(options: SendChatOptions): Promise<string> {
   const decoder = new TextDecoder('utf-8');
   let assistant = '';
   let buffer = '';
+  let responseId: string | undefined;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -101,7 +104,7 @@ export async function sendChat(options: SendChatOptions): Promise<string> {
       if (line.startsWith('data:')) {
         const data = line.slice(5).trim();
         if (data === '[DONE]') {
-          return assistant;
+          return { content: assistant, responseId };
         }
         try {
           const json = JSON.parse(data);
@@ -112,6 +115,10 @@ export async function sendChat(options: SendChatOptions): Promise<string> {
             const responsesChunk = json as ResponsesAPIStreamChunk;
             if (responsesChunk.type === 'response.output_text.delta' && responsesChunk.delta) {
               token = responsesChunk.delta;
+            }
+            // Capture response ID from completed response
+            if (responsesChunk.type === 'response.completed' && responsesChunk.response?.id) {
+              responseId = responsesChunk.response.id;
             }
           } else {
             // Parse Chat Completions API streaming format
@@ -130,7 +137,7 @@ export async function sendChat(options: SendChatOptions): Promise<string> {
       }
     }
   }
-  return assistant;
+  return { content: assistant, responseId };
 }
 
 // --- Sprint 4: History API helpers ---

@@ -18,6 +18,9 @@ export async function proxyOpenAIRequest(req, res) {
 
   // Pull optional conversation_id from body or header
   const conversationId = bodyIn.conversation_id || req.header('x-conversation-id');
+  
+  // Pull optional previous_response_id for Responses API conversation continuity
+  const previousResponseId = bodyIn.previous_response_id || req.header('x-previous-response-id');
 
   // Determine which API to use
   const useResponsesAPI = !bodyIn.disable_responses_api && config.openaiBaseUrl.includes('openai.com');
@@ -26,13 +29,21 @@ export async function proxyOpenAIRequest(req, res) {
   const body = { ...bodyIn };
   delete body.conversation_id;
   delete body.disable_responses_api;
+  delete body.previous_response_id;
   if (!body.model) body.model = config.defaultModel;
   const stream = !!body.stream;
   
   // Convert Chat Completions format to Responses API format if needed
   if (useResponsesAPI && body.messages) {
-    body.input = body.messages;
+    // For Responses API, only send the latest user message to reduce token usage
+    const lastUserMessage = [...body.messages].reverse().find(m => m && m.role === 'user');
+    body.input = lastUserMessage ? [lastUserMessage] : [];
     delete body.messages;
+    
+    // Add previous_response_id for conversation continuity if provided
+    if (previousResponseId) {
+      body.previous_response_id = previousResponseId;
+    }
   }
 
   // Optional persistence setup
