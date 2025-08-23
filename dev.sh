@@ -7,19 +7,23 @@ DC=(docker compose -f "$COMPOSE_FILE")
 
 usage(){
   cat <<EOF
-Usage: $(basename "$0") {up|down|build|logs|ps} [args...]
+Usage: $(basename "$0") {up|down|build|logs|ps|exec} [args...]
 
 Commands:
-  up     Bring up services (passes remaining args through to docker compose up)
-  down   Stop and remove services
+  up      Bring up services (passes remaining args through to docker compose up)
+  down    Stop and remove services
   restart Restart services
-  build  Build services
-  logs   Follow logs (passes remaining args through to docker compose logs)
-  ps     Show service status
+  build   Build services
+  logs    Follow logs (passes remaining args through to docker compose logs)
+  ps      Show service status
+  exec    Execute commands in containers (requires service name)
 
 Examples:
   $(basename "$0") up --build
   $(basename "$0") logs -f frontend
+  $(basename "$0") exec backend npm test
+  $(basename "$0") exec frontend npm run build
+  $(basename "$0") exec backend sh -c "ls -la"
 EOF
 }
 
@@ -48,6 +52,16 @@ case "$cmd" in
     ;;
   ps)
     "${DC[@]}" ps "$@"
+    ;;
+  exec)
+    # Add -T flag to disable TTY allocation for non-interactive environments (CI, AI tools)
+    if [ -t 0 ] && [ -t 1 ]; then
+      # Interactive terminal detected
+      "${DC[@]}" exec "$@"
+    else
+      # Non-interactive environment (CI, AI tools, etc.)
+      "${DC[@]}" exec -T "$@"
+    fi
     ;;
   ""|-h|--help)
     usage
