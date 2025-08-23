@@ -7,7 +7,7 @@ const required = [
   'PORT',
   'RATE_LIMIT_WINDOW_SEC',
   'RATE_LIMIT_MAX',
-  'ALLOWED_ORIGIN'
+  'ALLOWED_ORIGIN',
 ];
 
 for (const key of required) {
@@ -16,7 +16,7 @@ for (const key of required) {
   }
 }
 
-const bool = (v, def=false) => {
+const bool = (v, def = false) => {
   if (v === undefined) return def;
   const s = String(v).trim().toLowerCase();
   return s === '1' || s === 'true' || s === 'yes' || s === 'on';
@@ -35,9 +35,11 @@ export const config = {
   persistence: {
     enabled: bool(process.env.PERSIST_TRANSCRIPTS, false),
     dbUrl: process.env.DB_URL || '',
-    maxConversationsPerSession: Number(process.env.MAX_CONVERSATIONS_PER_SESSION) || 100,
-    maxMessagesPerConversation: Number(process.env.MAX_MESSAGES_PER_CONVERSATION) || 1000,
+    maxConversationsPerSession:
+      Number(process.env.MAX_CONVERSATIONS_PER_SESSION) || 100,
+    maxMessagesPerConversation:
+      Number(process.env.MAX_MESSAGES_PER_CONVERSATION) || 1000,
     historyBatchFlushMs: Number(process.env.HISTORY_BATCH_FLUSH_MS) || 250,
     retentionDays: Number(process.env.RETENTION_DAYS) || 30,
-  }
+  },
 };

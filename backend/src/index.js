@@ -38,13 +38,17 @@ if (config.persistence.enabled) {
         const days = config.persistence.retentionDays;
         const result = retentionSweep({ days });
         if (result.deleted) {
-          console.log(`[retention] deleted ${result.deleted} conversations older than ${days} days`);
+          console.log(
+            `[retention] deleted ${result.deleted} conversations older than ${days} days`
+          );
         }
       } catch (e) {
         console.error('[retention] sweep error', e);
       }
     }, intervalMs);
-    console.log(`[retention] worker started (every ${Math.round(intervalMs/1000)}s, days=${config.persistence.retentionDays})`);
+    console.log(
+      `[retention] worker started (every ${Math.round(intervalMs / 1000)}s, days=${config.persistence.retentionDays})`
+    );
   } catch (e) {
     console.error('[retention] init error', e);
   }

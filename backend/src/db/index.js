@@ -87,7 +87,12 @@ export function upsertSession(sessionId, meta = {}) {
     `INSERT INTO sessions (id, user_id, created_at, last_seen_at, user_agent, ip_hash)
      VALUES (@id, NULL, @now, @now, @ua, @ip)
      ON CONFLICT(id) DO UPDATE SET last_seen_at=@now`
-  ).run({ id: sessionId, now, ua: meta.userAgent || null, ip: meta.ipHash || null });
+  ).run({
+    id: sessionId,
+    now,
+    ua: meta.userAgent || null,
+    ip: meta.ipHash || null,
+  });
 }
 
 export function createConversation({ id, sessionId, title, model }) {
@@ -96,23 +101,33 @@ export function createConversation({ id, sessionId, title, model }) {
   db.prepare(
     `INSERT INTO conversations (id, session_id, user_id, title, model, metadata, created_at, updated_at)
      VALUES (@id, @session_id, NULL, @title, @model, '{}', @now, @now)`
-  ).run({ id, session_id: sessionId, title: title || null, model: model || null, now });
+  ).run({
+    id,
+    session_id: sessionId,
+    title: title || null,
+    model: model || null,
+    now,
+  });
 }
 
 export function getConversationById({ id, sessionId }) {
   const db = getDb();
-  return db.prepare(
-    `SELECT id, title, model, created_at FROM conversations
+  return db
+    .prepare(
+      `SELECT id, title, model, created_at FROM conversations
      WHERE id=@id AND session_id=@session_id AND deleted_at IS NULL`
-  ).get({ id, session_id: sessionId });
+    )
+    .get({ id, session_id: sessionId });
 }
 
 // --- Sprint 2 helpers ---
 export function countConversationsBySession(sessionId) {
   const db = getDb();
-  const row = db.prepare(
-    `SELECT COUNT(1) as c FROM conversations WHERE session_id=@sessionId AND deleted_at IS NULL`
-  ).get({ sessionId });
+  const row = db
+    .prepare(
+      `SELECT COUNT(1) as c FROM conversations WHERE session_id=@sessionId AND deleted_at IS NULL`
+    )
+    .get({ sessionId });
   return row?.c || 0;
 }
 
@@ -129,43 +144,52 @@ export function listConversations({ sessionId, cursor, limit }) {
   sql += ` ORDER BY datetime(created_at) DESC, id DESC LIMIT @limit`;
   params.limit = limit;
   const items = db.prepare(sql).all(params);
-  const next_cursor = items.length === limit ? items[items.length - 1].created_at : null;
+  const next_cursor =
+    items.length === limit ? items[items.length - 1].created_at : null;
   return { items, next_cursor };
 }
 
 export function countMessagesByConversation(conversationId) {
   const db = getDb();
-  const row = db.prepare(
-    `SELECT COUNT(1) as c FROM messages WHERE conversation_id=@conversationId`
-  ).get({ conversationId });
+  const row = db
+    .prepare(
+      `SELECT COUNT(1) as c FROM messages WHERE conversation_id=@conversationId`
+    )
+    .get({ conversationId });
   return row?.c || 0;
 }
 
 export function getNextSeq(conversationId) {
   const db = getDb();
-  const row = db.prepare(
-    `SELECT COALESCE(MAX(seq), 0) + 1 as nextSeq FROM messages WHERE conversation_id=@conversationId`
-  ).get({ conversationId });
+  const row = db
+    .prepare(
+      `SELECT COALESCE(MAX(seq), 0) + 1 as nextSeq FROM messages WHERE conversation_id=@conversationId`
+    )
+    .get({ conversationId });
   return row?.nextSeq || 1;
 }
 
 export function insertUserMessage({ conversationId, content, seq }) {
   const db = getDb();
   const now = new Date().toISOString();
-  const info = db.prepare(
-    `INSERT INTO messages (conversation_id, role, status, content, seq, created_at, updated_at)
+  const info = db
+    .prepare(
+      `INSERT INTO messages (conversation_id, role, status, content, seq, created_at, updated_at)
      VALUES (@conversationId, 'user', 'final', @content, @seq, @now, @now)`
-  ).run({ conversationId, content: content || '', seq, now });
+    )
+    .run({ conversationId, content: content || '', seq, now });
   return { id: info.lastInsertRowid, seq };
 }
 
 export function createAssistantDraft({ conversationId, seq }) {
   const db = getDb();
   const now = new Date().toISOString();
-  const info = db.prepare(
-    `INSERT INTO messages (conversation_id, role, status, content, seq, created_at, updated_at)
+  const info = db
+    .prepare(
+      `INSERT INTO messages (conversation_id, role, status, content, seq, created_at, updated_at)
      VALUES (@conversationId, 'assistant', 'streaming', '', @seq, @now, @now)`
-  ).run({ conversationId, seq, now });
+    )
+    .run({ conversationId, seq, now });
   return { id: info.lastInsertRowid, seq };
 }
 
@@ -177,7 +201,11 @@ export function appendAssistantContent({ messageId, delta }) {
   ).run({ messageId, delta: delta || '', now });
 }
 
-export function finalizeAssistantMessage({ messageId, finishReason = null, status = 'final' }) {
+export function finalizeAssistantMessage({
+  messageId,
+  finishReason = null,
+  status = 'final',
+}) {
   const db = getDb();
   const now = new Date().toISOString();
   db.prepare(
@@ -186,18 +214,25 @@ export function finalizeAssistantMessage({ messageId, finishReason = null, statu
 }
 
 export function markAssistantError({ messageId }) {
-  finalizeAssistantMessage({ messageId, finishReason: 'error', status: 'error' });
+  finalizeAssistantMessage({
+    messageId,
+    finishReason: 'error',
+    status: 'error',
+  });
 }
 
 export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
   const db = getDb();
   limit = Math.min(Math.max(Number(limit) || 50, 1), 200);
-  const messages = db.prepare(
-    `SELECT id, seq, role, status, content, created_at
+  const messages = db
+    .prepare(
+      `SELECT id, seq, role, status, content, created_at
      FROM messages WHERE conversation_id=@conversationId AND seq > @afterSeq
      ORDER BY seq ASC LIMIT @limit`
-  ).all({ conversationId, afterSeq, limit });
-  const next_after_seq = messages.length === limit ? messages[messages.length - 1].seq : null;
+    )
+    .all({ conversationId, afterSeq, limit });
+  const next_after_seq =
+    messages.length === limit ? messages[messages.length - 1].seq : null;
   return { messages, next_after_seq };
 }
 
@@ -205,13 +240,20 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
 export function softDeleteConversation({ id, sessionId }) {
   const db = getDb();
   const now = new Date().toISOString();
-  const info = db.prepare(
-    `UPDATE conversations SET deleted_at=@now, updated_at=@now WHERE id=@id AND session_id=@sessionId AND deleted_at IS NULL`
-  ).run({ id, sessionId, now });
+  const info = db
+    .prepare(
+      `UPDATE conversations SET deleted_at=@now, updated_at=@now WHERE id=@id AND session_id=@sessionId AND deleted_at IS NULL`
+    )
+    .run({ id, sessionId, now });
   return info.changes > 0;
 }
 
-export function listConversationsIncludingDeleted({ sessionId, cursor, limit, includeDeleted = false }) {
+export function listConversationsIncludingDeleted({
+  sessionId,
+  cursor,
+  limit,
+  includeDeleted = false,
+}) {
   const db = getDb();
   limit = Math.min(Math.max(Number(limit) || 20, 1), 100);
   let sql = `SELECT id, title, model, created_at, deleted_at FROM conversations
@@ -224,8 +266,17 @@ export function listConversationsIncludingDeleted({ sessionId, cursor, limit, in
   }
   sql += ` ORDER BY datetime(created_at) DESC, id DESC LIMIT @limit`;
   params.limit = limit;
-  const items = db.prepare(sql).all(params).map(r => ({ id: r.id, title: r.title, model: r.model, created_at: r.created_at }));
-  const next_cursor = items.length === limit ? items[items.length - 1].created_at : null;
+  const items = db
+    .prepare(sql)
+    .all(params)
+    .map((r) => ({
+      id: r.id,
+      title: r.title,
+      model: r.model,
+      created_at: r.created_at,
+    }));
+  const next_cursor =
+    items.length === limit ? items[items.length - 1].created_at : null;
   return { items, next_cursor };
 }
 
@@ -233,7 +284,9 @@ export function retentionSweep({ days }) {
   const db = getDb();
   if (!db) return { deleted: 0 };
   // cutoff timestamp
-  const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const cutoff = new Date(
+    Date.now() - days * 24 * 60 * 60 * 1000
+  ).toISOString();
   // Delete in small batches for safety
   const selectStmt = db.prepare(
     `SELECT id FROM conversations
@@ -241,8 +294,12 @@ export function retentionSweep({ days }) {
        AND (json_extract(metadata,'$.pinned') IS NULL OR json_extract(metadata,'$.pinned') = 0)
      LIMIT 500`
   );
-  const deleteMessages = db.prepare(`DELETE FROM messages WHERE conversation_id=@id`);
-  const deleteConversation = db.prepare(`DELETE FROM conversations WHERE id=@id`);
+  const deleteMessages = db.prepare(
+    `DELETE FROM messages WHERE conversation_id=@id`
+  );
+  const deleteConversation = db.prepare(
+    `DELETE FROM conversations WHERE id=@id`
+  );
   let total = 0;
   while (true) {
     const rows = selectStmt.all({ cutoff });

@@ -9,7 +9,9 @@ describe('POST /v1/chat/completions (proxy)', () => {
 
   // Persistence-aware behavior (observable via side effects in responses / limits)
   test.todo('enforces max messages per conversation with 429');
-  test.todo('accepts optional conversation_id in body/header and continues streaming');
+  test.todo(
+    'accepts optional conversation_id in body/header and continues streaming'
+  );
 
   // Connection lifecycle
   test.todo('closes stream when client aborts');

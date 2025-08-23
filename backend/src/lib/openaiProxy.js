@@ -10,21 +10,25 @@ import {
   createAssistantDraft,
   appendAssistantContent,
   finalizeAssistantMessage,
-  markAssistantError
+  markAssistantError,
 } from '../db/index.js';
 
 export async function proxyOpenAIRequest(req, res) {
   const bodyIn = req.body || {};
 
   // Pull optional conversation_id from body or header
-  const conversationId = bodyIn.conversation_id || req.header('x-conversation-id');
-  
+  const conversationId =
+    bodyIn.conversation_id || req.header('x-conversation-id');
+
   // Pull optional previous_response_id for Responses API conversation continuity
-  const previousResponseId = bodyIn.previous_response_id || req.header('x-previous-response-id');
+  const previousResponseId =
+    bodyIn.previous_response_id || req.header('x-previous-response-id');
 
   // Determine which API to use
-  const useResponsesAPI = !bodyIn.disable_responses_api && config.openaiBaseUrl.includes('openai.com');
-  
+  const useResponsesAPI =
+    !bodyIn.disable_responses_api &&
+    config.openaiBaseUrl.includes('openai.com');
+
   // Clone and strip non-upstream fields
   const body = { ...bodyIn };
   delete body.conversation_id;
@@ -32,14 +36,16 @@ export async function proxyOpenAIRequest(req, res) {
   delete body.previous_response_id;
   if (!body.model) body.model = config.defaultModel;
   const stream = !!body.stream;
-  
+
   // Convert Chat Completions format to Responses API format if needed
   if (useResponsesAPI && body.messages) {
     // For Responses API, only send the latest user message to reduce token usage
-    const lastUserMessage = [...body.messages].reverse().find(m => m && m.role === 'user');
+    const lastUserMessage = [...body.messages]
+      .reverse()
+      .find((m) => m && m.role === 'user');
     body.input = lastUserMessage ? [lastUserMessage] : [];
     delete body.messages;
-    
+
     // Add previous_response_id for conversation continuity if provided
     if (previousResponseId) {
       body.previous_response_id = previousResponseId;
@@ -71,7 +77,12 @@ export async function proxyOpenAIRequest(req, res) {
         // Enforce message limit
         const cnt = countMessagesByConversation(conversationId);
         if (cnt >= config.persistence.maxMessagesPerConversation) {
-          return res.status(429).json({ error: 'limit_exceeded', message: 'Max messages per conversation reached' });
+          return res
+            .status(429)
+            .json({
+              error: 'limit_exceeded',
+              message: 'Max messages per conversation reached',
+            });
         }
 
         // Determine next seq for user and assistant
@@ -79,61 +90,75 @@ export async function proxyOpenAIRequest(req, res) {
 
         // Persist user message if available
         const msgs = Array.isArray(bodyIn.messages) ? bodyIn.messages : [];
-        const lastUser = [...msgs].reverse().find(m => m && m.role === 'user' && typeof m.content === 'string');
+        const lastUser = [...msgs]
+          .reverse()
+          .find((m) => m && m.role === 'user' && typeof m.content === 'string');
         if (lastUser) {
-          insertUserMessage({ conversationId, content: lastUser.content, seq: userSeq });
+          insertUserMessage({
+            conversationId,
+            content: lastUser.content,
+            seq: userSeq,
+          });
         }
         // Assistant seq right after
         const assistantSeq = userSeq + 1;
-        const draft = createAssistantDraft({ conversationId, seq: assistantSeq });
+        const draft = createAssistantDraft({
+          conversationId,
+          seq: assistantSeq,
+        });
         assistantMessageId = draft.id;
         persist = true;
       }
     }
 
-    const url = useResponsesAPI 
-      ? `${config.openaiBaseUrl}/responses` 
+    const url = useResponsesAPI
+      ? `${config.openaiBaseUrl}/responses`
       : `${config.openaiBaseUrl}/chat/completions`;
     const headers = {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${config.openaiApiKey}`
+      Authorization: `Bearer ${config.openaiApiKey}`,
     };
 
     const upstream = await fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify(body)
+      body: JSON.stringify(body),
     });
 
-    if (!stream || upstream.headers.get('content-type')?.includes('application/json')) {
+    if (
+      !stream ||
+      upstream.headers.get('content-type')?.includes('application/json')
+    ) {
       const json = await upstream.json();
-      
+
       // Handle different response formats and convert if needed
       let content = null;
       let finishReason = null;
       let responseToSend = json;
-      
+
       if (useResponsesAPI && json?.output?.[0]?.content?.[0]?.text) {
         // Responses API format - extract content
         content = json.output[0].content[0].text;
         finishReason = json.status === 'completed' ? 'stop' : null;
-        
+
         // Convert to Chat Completions format for /v1/chat/completions endpoint
         if (req.path === '/v1/chat/completions') {
           responseToSend = {
             id: json.id,
-            object: "chat.completion",
+            object: 'chat.completion',
             created: json.created_at,
             model: json.model,
-            choices: [{
-              index: 0,
-              message: {
-                role: "assistant",
-                content: content
+            choices: [
+              {
+                index: 0,
+                message: {
+                  role: 'assistant',
+                  content: content,
+                },
+                finish_reason: finishReason,
               },
-              finish_reason: finishReason
-            }],
-            usage: json.usage
+            ],
+            usage: json.usage,
           };
         }
       } else if (json?.choices?.[0]?.message?.content) {
@@ -141,11 +166,17 @@ export async function proxyOpenAIRequest(req, res) {
         content = json.choices[0].message.content;
         finishReason = json.choices[0].finish_reason;
       }
-      
+
       // If non-streaming and persistence was set up, finalize assistant with full content if present
       if (persist && assistantMessageId && content) {
-        appendAssistantContent({ messageId: assistantMessageId, delta: content });
-        finalizeAssistantMessage({ messageId: assistantMessageId, finishReason: finishReason || null });
+        appendAssistantContent({
+          messageId: assistantMessageId,
+          delta: content,
+        });
+        finalizeAssistantMessage({
+          messageId: assistantMessageId,
+          finishReason: finishReason || null,
+        });
       }
       res.status(upstream.status).json(responseToSend);
       return;
@@ -171,28 +202,32 @@ export async function proxyOpenAIRequest(req, res) {
 
     if (persist) {
       flushTimer = setInterval(() => {
-        try { doFlush(); } catch (e) { console.error('[persist] flush error', e); }
+        try {
+          doFlush();
+        } catch (e) {
+          console.error('[persist] flush error', e);
+        }
       }, flushMs);
     }
 
     let leftover = '';
 
-    upstream.body.on('data', chunk => {
+    upstream.body.on('data', (chunk) => {
       try {
         const s = String(chunk);
-        
+
         // Handle stream format conversion if needed
         if (useResponsesAPI && req.path === '/v1/chat/completions') {
           // Convert Responses API streaming to Chat Completions format
           let data = leftover + s;
           const parts = data.split(/\n\n/);
           leftover = parts.pop() || '';
-          
+
           for (const part of parts) {
             const lines = part.split('\n');
             for (const line of lines) {
               const dataMatch = line.match(/^data:\s*(.*)$/);
-              
+
               if (dataMatch) {
                 const payload = dataMatch[1];
                 if (payload === '[DONE]') {
@@ -200,25 +235,29 @@ export async function proxyOpenAIRequest(req, res) {
                   finished = true;
                   break;
                 }
-                
+
                 try {
                   const obj = JSON.parse(payload);
-                  
+
                   // Convert Responses API events to Chat Completions format
                   if (obj.type === 'response.output_text.delta' && obj.delta) {
                     const chatCompletionChunk = {
                       id: obj.item_id,
-                      object: "chat.completion.chunk",
+                      object: 'chat.completion.chunk',
                       created: Math.floor(Date.now() / 1000),
-                      model: "gpt-3.5-turbo",
-                      choices: [{
-                        index: 0,
-                        delta: { content: obj.delta },
-                        finish_reason: null
-                      }]
+                      model: 'gpt-3.5-turbo',
+                      choices: [
+                        {
+                          index: 0,
+                          delta: { content: obj.delta },
+                          finish_reason: null,
+                        },
+                      ],
                     };
-                    res.write(`data: ${JSON.stringify(chatCompletionChunk)}\n\n`);
-                    
+                    res.write(
+                      `data: ${JSON.stringify(chatCompletionChunk)}\n\n`
+                    );
+
                     // Handle persistence
                     if (persist && obj.delta) {
                       buffer += obj.delta;
@@ -227,16 +266,20 @@ export async function proxyOpenAIRequest(req, res) {
                   } else if (obj.type === 'response.completed') {
                     const chatCompletionChunk = {
                       id: obj.response.id,
-                      object: "chat.completion.chunk",
+                      object: 'chat.completion.chunk',
                       created: Math.floor(Date.now() / 1000),
                       model: obj.response.model,
-                      choices: [{
-                        index: 0,
-                        delta: {},
-                        finish_reason: "stop"
-                      }]
+                      choices: [
+                        {
+                          index: 0,
+                          delta: {},
+                          finish_reason: 'stop',
+                        },
+                      ],
                     };
-                    res.write(`data: ${JSON.stringify(chatCompletionChunk)}\n\n`);
+                    res.write(
+                      `data: ${JSON.stringify(chatCompletionChunk)}\n\n`
+                    );
                     lastFinishReason = 'stop';
                   }
                 } catch (e) {
@@ -250,9 +293,9 @@ export async function proxyOpenAIRequest(req, res) {
           // Direct passthrough for native format or Chat Completions API
           res.write(chunk);
           if (typeof res.flush === 'function') res.flush();
-          
+
           if (!persist) return;
-          
+
           let data = leftover + s;
           const parts = data.split(/\n\n/);
           leftover = parts.pop() || '';
@@ -268,18 +311,21 @@ export async function proxyOpenAIRequest(req, res) {
               }
               try {
                 const obj = JSON.parse(payload);
-                
+
                 // Handle persistence for different formats
                 let deltaContent = null;
                 let finishReason = null;
-                
-                if (useResponsesAPI && obj.type === 'response.output_text.delta') {
+
+                if (
+                  useResponsesAPI &&
+                  obj.type === 'response.output_text.delta'
+                ) {
                   deltaContent = obj.delta;
                 } else if (obj?.choices?.[0]?.delta?.content) {
                   deltaContent = obj.choices[0].delta.content;
                   finishReason = obj.choices[0].finish_reason;
                 }
-                
+
                 if (deltaContent) {
                   buffer += deltaContent;
                   if (buffer.length >= sizeThreshold) doFlush();
@@ -302,7 +348,11 @@ export async function proxyOpenAIRequest(req, res) {
       try {
         if (persist && assistantMessageId) {
           doFlush();
-          finalizeAssistantMessage({ messageId: assistantMessageId, finishReason: lastFinishReason || null, status: 'final' });
+          finalizeAssistantMessage({
+            messageId: assistantMessageId,
+            finishReason: lastFinishReason || null,
+            status: 'final',
+          });
           if (flushTimer) clearInterval(flushTimer);
         }
       } catch (e) {
@@ -311,7 +361,7 @@ export async function proxyOpenAIRequest(req, res) {
       res.end();
     });
 
-    upstream.body.on('error', err => {
+    upstream.body.on('error', (err) => {
       console.error('Upstream stream error', err);
       try {
         if (persist && assistantMessageId) {
@@ -319,7 +369,9 @@ export async function proxyOpenAIRequest(req, res) {
           markAssistantError({ messageId: assistantMessageId });
           if (flushTimer) clearInterval(flushTimer);
         }
-      } catch {}
+      } catch {
+        // Client disconnected; ignore
+      }
       res.end();
     });
 
@@ -332,7 +384,9 @@ export async function proxyOpenAIRequest(req, res) {
           markAssistantError({ messageId: assistantMessageId });
           if (flushTimer) clearInterval(flushTimer);
         }
-      } catch {}
+      } catch {
+        // Client disconnected; ignore
+      }
     });
   } catch (e) {
     console.error('[proxy] error', e);
@@ -341,7 +395,9 @@ export async function proxyOpenAIRequest(req, res) {
       if (persist && assistantMessageId) {
         markAssistantError({ messageId: assistantMessageId });
       }
-    } catch {}
+    } catch {
+        // Client disconnected; ignore
+      }
     res.status(500).json({ error: 'upstream_error', message: e.message });
   }
 }

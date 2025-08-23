@@ -1,6 +1,6 @@
 // Tests for health endpoint observable behaviors
 
-import test from 'node:test';
+
 import assert from 'node:assert/strict';
 import express from 'express';
 import { healthRouter } from '../src/routes/health.js';
@@ -49,7 +49,10 @@ test('includes service metadata: provider, model, uptime', async () => {
     assert.ok(body.model, 'model is present');
     assert.equal(body.model, config.defaultModel);
 
-    assert.ok(typeof body.uptime === 'number' && !Number.isNaN(body.uptime), 'uptime is a number');
+    assert.ok(
+      typeof body.uptime === 'number' && !Number.isNaN(body.uptime),
+      'uptime is a number'
+    );
   });
 });
 
