@@ -80,6 +80,20 @@ export function getDb() {
   return db;
 }
 
+// Test helper to reset database cache
+// IMPORTANT: Call this function in tests after changing config.persistence.enabled
+// to avoid the common issue where getDb() returns cached null values
+// Example usage in tests:
+//   config.persistence.enabled = true;
+//   resetDbCache(); // Reset cache after config change
+//   const db = getDb(); // Now properly returns database instance
+export function resetDbCache() {
+  if (db) {
+    db.close();
+  }
+  db = null;
+}
+
 export function upsertSession(sessionId, meta = {}) {
   const db = getDb();
   const now = new Date().toISOString();
@@ -131,6 +145,8 @@ export function countConversationsBySession(sessionId) {
   return row?.c || 0;
 }
 
+// Pagination with look-ahead approach to accurately detect last page
+// We fetch limit+1 records to determine if there are more pages
 export function listConversations({ sessionId, cursor, limit }) {
   const db = getDb();
   limit = Math.min(Math.max(Number(limit) || 20, 1), 100);
@@ -142,10 +158,10 @@ export function listConversations({ sessionId, cursor, limit }) {
     params.cursor = cursor;
   }
   sql += ` ORDER BY datetime(created_at) DESC, id DESC LIMIT @limit`;
-  params.limit = limit;
-  const items = db.prepare(sql).all(params);
-  const next_cursor =
-    items.length === limit ? items[items.length - 1].created_at : null;
+  params.limit = limit + 1; // Fetch one extra to detect if there are more
+  const allItems = db.prepare(sql).all(params);
+  const items = allItems.slice(0, limit); // Take only the requested limit
+  const next_cursor = allItems.length > limit ? items[items.length - 1].created_at : null;
   return { items, next_cursor };
 }
 
@@ -265,8 +281,8 @@ export function listConversationsIncludingDeleted({
     params.cursor = cursor;
   }
   sql += ` ORDER BY datetime(created_at) DESC, id DESC LIMIT @limit`;
-  params.limit = limit;
-  const items = db
+  params.limit = limit + 1; // Fetch one extra to detect if there are more
+  const allItems = db
     .prepare(sql)
     .all(params)
     .map((r) => ({
@@ -275,8 +291,8 @@ export function listConversationsIncludingDeleted({
       model: r.model,
       created_at: r.created_at,
     }));
-  const next_cursor =
-    items.length === limit ? items[items.length - 1].created_at : null;
+  const items = allItems.slice(0, limit); // Take only the requested limit
+  const next_cursor = allItems.length > limit ? items[items.length - 1].created_at : null;
   return { items, next_cursor };
 }
 
