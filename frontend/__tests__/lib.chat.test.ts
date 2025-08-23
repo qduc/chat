@@ -14,6 +14,8 @@ describe('sendChat', () => {
   test.todo('includes conversation_id when provided');
   test.todo('parses Responses API streaming format correctly');
   test.todo('parses Chat Completions API streaming format correctly');
+  test.todo('returns responseId when Responses API emits response.completed with response.id');
+  test.todo('sets Accept header to text/event-stream for streaming requests');
 });
 
 describe('createConversation', () => {

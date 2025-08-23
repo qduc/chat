@@ -22,6 +22,13 @@ describe('<Chat />', () => {
 
 	// Error state
 	test.todo('shows error banner when sendChat fails');
+
+	// Responses API conversation continuity
+	test.todo('resets previousResponseId when starting a new chat');
+	test.todo('resets previousResponseId when switching conversations');
+
+	// History list coherence
+	test.todo('prepends newly created conversation to history list after New Chat');
 });
 
 export {};

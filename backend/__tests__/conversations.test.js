@@ -15,6 +15,8 @@ describe('Conversations API', () => {
     );
     test.todo('supports include_deleted flag when enabled');
     test.todo('returns 501 when persistence is disabled');
+    test.todo('returns empty items and next_cursor=null when no conversations exist');
+    test.todo('excludes deleted conversations by default; include_deleted=1 returns them');
   });
 
   describe('GET /v1/conversations/:id', () => {

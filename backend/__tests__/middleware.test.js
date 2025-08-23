@@ -3,6 +3,7 @@
 describe('rateLimit middleware', () => {
   test.todo('allows requests under the limit and sets rate headers');
   test.todo('blocks when exceeding limit with 429 and Retry-After header');
+  test.todo('sets X-RateLimit-Limit and X-RateLimit-Remaining headers accurately');
 });
 
 describe('sessionResolver middleware', () => {
