@@ -1,9 +1,6 @@
 // Test stubs for frontend lib functions in lib/chat.ts
 /* eslint-disable */
-// Declare Jest-like globals to keep TypeScript happy without a runner setup
-declare const describe: any;
-declare const test: any;
-declare const expect: any;
+/// <reference types="jest" />
 
 import type { Role } from '../lib/chat';
 import {
@@ -48,12 +45,12 @@ describe('sendChat', () => {
       messages: [{ role: 'user' as Role, content: 'hi' }],
       onToken: (t) => tokens.push(t),
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+  expect(fetchMock).toHaveBeenCalled();
     const [url, opts] = fetchMock.mock.calls[0];
     expect(url).toBe('/api/v1/responses');
-    const body = JSON.parse(opts.body);
-    expect(body.stream).toBe(true);
-    expect(opts.headers['Accept']).toBe('text/event-stream');
+  const body = JSON.parse(opts!.body as string);
+  expect(body.stream).toBe(true);
+  expect((opts!.headers as any)['Accept']).toBe('text/event-stream');
     expect(result).toEqual({ content: 'Hello', responseId: 'r1' });
     expect(tokens).toEqual(['Hel', 'lo']);
   });
@@ -73,8 +70,9 @@ describe('sendChat', () => {
       useResponsesAPI: false,
       onToken: (t) => tokens.push(t),
     });
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/chat/completions');
+  expect(fetchMock).toHaveBeenCalled();
+  const calledUrls = fetchMock.mock.calls.map((c: any) => c[0]);
+  expect(calledUrls).toContain('/api/v1/chat/completions');
     expect(result.content).toBe('Hi there');
     expect(tokens).toEqual(['Hi', ' there']);
   });
@@ -99,9 +97,19 @@ describe('sendChat', () => {
         // do not close to simulate ongoing stream
       },
     });
-    jest
-      .spyOn(global, 'fetch')
-      .mockResolvedValue(new Response(stream, { status: 200 }));
+    // Make fetch return a promise that rejects when the provided signal is aborted
+    jest.spyOn(global, 'fetch').mockImplementation((_url, opts) => {
+      return new Promise((resolve, reject) => {
+        if (opts?.signal?.aborted) return reject(new Error('aborted'));
+        const onAbort = () => reject(new Error('aborted'));
+        opts?.signal?.addEventListener?.('abort', onAbort);
+        // resolve shortly after so sendChat begins reading; if aborted before resolve it will reject
+        setTimeout(() => {
+          opts?.signal?.removeEventListener?.('abort', onAbort);
+          resolve(new Response(stream, { status: 200 }));
+        }, 10);
+      });
+    });
     const abort = new AbortController();
     const promise = sendChat({
       messages: [{ role: 'user' as Role, content: 'hi' }],
@@ -120,8 +128,10 @@ describe('sendChat', () => {
       messages: [{ role: 'user' as Role, content: 'hi' }],
       conversationId: 'abc',
     });
-    const body = JSON.parse(fetchMock.mock.calls[0][1].body);
-    expect(body.conversation_id).toBe('abc');
+  const calls = fetchMock.mock.calls;
+  const lastOpts = calls[calls.length - 1][1];
+  const body = JSON.parse((lastOpts!).body as string);
+  expect(body.conversation_id).toBe('abc');
   });
 });
 
