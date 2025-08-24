@@ -1,3 +1,6 @@
+
+## Related docs
+- Tool calling design: see `docs/TOOL-CALLING-PLAN.md` for how we’ll add OpenAI-style function/custom tools, streaming behavior, and persistence.
 # Overview
 
 ## Vision

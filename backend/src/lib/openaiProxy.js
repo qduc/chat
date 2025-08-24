@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 import { config } from '../env.js';
+import { tools as toolRegistry } from './tools.js';
 import {
   getDb,
   upsertSession,
@@ -25,9 +26,13 @@ export async function proxyOpenAIRequest(req, res) {
     bodyIn.previous_response_id || req.header('x-previous-response-id');
 
   // Determine which API to use
-  const useResponsesAPI =
+  let useResponsesAPI =
     !bodyIn.disable_responses_api &&
     config.openaiBaseUrl.includes('openai.com');
+
+  // If tools are present, force Chat Completions path for MVP (server orchestration)
+  const hasTools = Array.isArray(bodyIn.tools) && bodyIn.tools.length > 0;
+  if (hasTools) useResponsesAPI = false;
 
   // Clone and strip non-upstream fields
   const body = { ...bodyIn };
@@ -37,7 +42,7 @@ export async function proxyOpenAIRequest(req, res) {
   if (!body.model) body.model = config.defaultModel;
   const stream = !!body.stream;
 
-  // Convert Chat Completions format to Responses API format if needed
+  // Convert Chat Completions format to Responses API format if needed (no tools in MVP)
   if (useResponsesAPI && body.messages) {
     // For Responses API, only send the latest user message to reduce token usage
     const lastUserMessage = [...body.messages]
@@ -66,6 +71,67 @@ export async function proxyOpenAIRequest(req, res) {
   const flushMs = config.persistence.historyBatchFlushMs;
 
   try {
+    // Helper to execute a single tool call (MVP: local registry only)
+    async function executeToolCall(call) {
+      const name = call?.function?.name;
+      const argsStr = call?.function?.arguments || '{}';
+      const tool = toolRegistry[name];
+      if (!tool) throw new Error(`unknown_tool: ${name}`);
+      let args;
+      try {
+        args = JSON.parse(argsStr || '{}');
+      } catch (e) {
+        throw new Error('invalid_arguments_json');
+      }
+      const validated = tool.validate ? tool.validate(args) : args;
+      const output = await tool.handler(validated);
+      return { name, output };
+    }
+
+    // Orchestrated, non-streaming flow when tools are present
+    if (hasTools && !stream) {
+      // First turn
+      const url1 = `${config.openaiBaseUrl}/chat/completions`;
+      const headers = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.openaiApiKey}`,
+      };
+      const body1 = { ...body, stream: false };
+      const r1 = await fetch(url1, { method: 'POST', headers, body: JSON.stringify(body1) });
+      const j1 = await r1.json();
+
+      const msg1 = j1?.choices?.[0]?.message;
+      const toolCalls = msg1?.tool_calls || [];
+      if (!toolCalls.length) {
+        // No tool calls; behave like regular non-streaming path
+        return res.status(r1.status).json(j1);
+      }
+
+      // Execute tools and build follow-up messages
+      const toolResults = [];
+      for (const tc of toolCalls) {
+        const { output } = await executeToolCall(tc);
+        toolResults.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          content: typeof output === 'string' ? output : JSON.stringify(output),
+        });
+      }
+
+      const messagesFollowUp = [...(bodyIn.messages || []), msg1, ...toolResults];
+      const body2 = { model: body.model, messages: messagesFollowUp, stream: false, tools: body.tools, tool_choice: body.tool_choice };
+      const r2 = await fetch(url1, { method: 'POST', headers, body: JSON.stringify(body2) });
+      const j2 = await r2.json();
+
+      // Persistence for final content
+      let finalContent = j2?.choices?.[0]?.message?.content;
+      let finalFinish = j2?.choices?.[0]?.finish_reason || null;
+      if (persist && assistantMessageId && finalContent) {
+        appendAssistantContent({ messageId: assistantMessageId, delta: finalContent });
+        finalizeAssistantMessage({ messageId: assistantMessageId, finishReason: finalFinish });
+      }
+      return res.status(r2.status).json(j2);
+    }
     if (config.persistence.enabled && conversationId && sessionId) {
       // Ensure DB session row
       getDb();
@@ -182,7 +248,7 @@ export async function proxyOpenAIRequest(req, res) {
       return;
     }
 
-    // Stream (SSE) passthrough
+    // Stream (SSE) passthrough or orchestration
     res.status(200);
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -211,6 +277,145 @@ export async function proxyOpenAIRequest(req, res) {
     }
 
     let leftover = '';
+
+    // If tools are present, orchestrate with a non-stream first turn, then stream the second turn
+    if (hasTools) {
+      try {
+        // First non-streaming call to collect tool calls
+        const url1 = `${config.openaiBaseUrl}/chat/completions`;
+        const headers = {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${config.openaiApiKey}`,
+        };
+        const body1 = { ...body, stream: false };
+        const r1 = await fetch(url1, { method: 'POST', headers, body: JSON.stringify(body1) });
+        const j1 = await r1.json();
+        const msg1 = j1?.choices?.[0]?.message;
+        const toolCalls = msg1?.tool_calls || [];
+
+        if (!toolCalls.length && msg1?.content) {
+          // No tool calls; synthesize minimal SSE stream for the text content
+          const chunk = {
+            id: j1.id,
+            object: 'chat.completion.chunk',
+            created: Math.floor(Date.now() / 1000),
+            model: j1.model,
+            choices: [{ index: 0, delta: { content: msg1.content }, finish_reason: null }],
+          };
+          res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+          // Finish chunk
+          const doneChunk = {
+            id: j1.id,
+            object: 'chat.completion.chunk',
+            created: Math.floor(Date.now() / 1000),
+            model: j1.model,
+            choices: [{ index: 0, delta: {}, finish_reason: j1?.choices?.[0]?.finish_reason || 'stop' }],
+          };
+          res.write(`data: ${JSON.stringify(doneChunk)}\n\n`);
+          res.write('data: [DONE]\n\n');
+          if (persist && assistantMessageId && msg1.content) {
+            buffer += msg1.content;
+            doFlush();
+            finalizeAssistantMessage({ messageId: assistantMessageId, finishReason: j1?.choices?.[0]?.finish_reason || 'stop', status: 'final' });
+          }
+          return res.end();
+        }
+
+        // Execute tools
+        const toolResults = [];
+        for (const tc of toolCalls) {
+          const { output } = await executeToolCall(tc);
+          toolResults.push({
+            role: 'tool',
+            tool_call_id: tc.id,
+            content: typeof output === 'string' ? output : JSON.stringify(output),
+          });
+        }
+
+        // Second streaming turn
+        const messagesFollowUp = [...(bodyIn.messages || []), msg1, ...toolResults];
+        const body2 = { model: body.model, messages: messagesFollowUp, stream: true, tools: body.tools, tool_choice: body.tool_choice };
+        const r2 = await fetch(url1, { method: 'POST', headers, body: JSON.stringify(body2) });
+
+        r2.body.on('data', (chunk) => {
+          try {
+            res.write(chunk);
+            if (typeof res.flush === 'function') res.flush();
+            if (!persist) return;
+            const s = String(chunk);
+            let data = leftover + s;
+            const parts = data.split(/\n\n/);
+            leftover = parts.pop() || '';
+            for (const part of parts) {
+              const lines = part.split('\n');
+              for (const line of lines) {
+                const m = line.match(/^data:\s*(.*)$/);
+                if (!m) continue;
+                const payload = m[1];
+                if (payload === '[DONE]') {
+                  finished = true;
+                  break;
+                }
+                try {
+                  const obj = JSON.parse(payload);
+                  const delta = obj?.choices?.[0]?.delta?.content;
+                  if (delta) {
+                    buffer += delta;
+                    if (buffer.length >= sizeThreshold) doFlush();
+                  }
+                  const fr = obj?.choices?.[0]?.finish_reason;
+                  if (fr) lastFinishReason = fr;
+                } catch {}
+              }
+            }
+          } catch (e) {
+            console.error('[orchestrate stream data] error', e);
+          }
+        });
+
+        r2.body.on('end', () => {
+          try {
+            if (persist && assistantMessageId) {
+              doFlush();
+              finalizeAssistantMessage({ messageId: assistantMessageId, finishReason: lastFinishReason || 'stop', status: 'final' });
+              if (flushTimer) clearInterval(flushTimer);
+            }
+          } catch (e) {
+            console.error('[persist] finalize error', e);
+          }
+          return res.end();
+        });
+
+        r2.body.on('error', (err) => {
+          console.error('Upstream stream error (2nd turn)', err);
+          try {
+            if (persist && assistantMessageId) {
+              doFlush();
+              markAssistantError({ messageId: assistantMessageId });
+              if (flushTimer) clearInterval(flushTimer);
+            }
+          } catch {}
+          return res.end();
+        });
+
+        // Also handle client abort
+        req.on('close', () => {
+          if (res.writableEnded) return;
+          try {
+            if (persist && assistantMessageId) {
+              doFlush();
+              markAssistantError({ messageId: assistantMessageId });
+              if (flushTimer) clearInterval(flushTimer);
+            }
+          } catch {}
+        });
+        return; // Orchestrated path handled
+      } catch (e) {
+        console.error('[orchestrate] error', e);
+        res.write('data: [DONE]\n\n');
+        return res.end();
+      }
+    }
 
     upstream.body.on('data', (chunk) => {
       try {
