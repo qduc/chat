@@ -28,9 +28,10 @@ export interface SendChatOptions {
   shouldStream?: boolean; // alias for stream to avoid env collisions
 }
 
-// Default to calling the frontend's local proxy under /api.
-// This will be rewritten to the backend by Next.js rewrites.
-const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE || '/api';
+// API base URL - can be direct backend URL or proxy path
+// Direct backend: http://localhost:3001 (for development)
+// Proxy path: /api (legacy Next.js proxy - deprecated)
+const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3001';
 
 // Chat Completions API streaming format
 interface OpenAIStreamChunkChoiceDelta {

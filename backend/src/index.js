@@ -10,7 +10,13 @@ import { conversationsRouter } from './routes/conversations.js';
 
 const app = express();
 
-app.use(cors({ origin: config.allowedOrigin, credentials: false }));
+// Enhanced CORS for direct API calls
+app.use(cors({ 
+  origin: config.allowedOrigin, 
+  credentials: false,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Accept', 'Authorization']
+}));
 app.use(express.json({ limit: '1mb' }));
 app.use(morgan('dev'));
 app.use(rateLimit);
