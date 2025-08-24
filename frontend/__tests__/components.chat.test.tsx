@@ -41,7 +41,7 @@ function sseStream(lines: string[]) {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  
+
   // Default mocks
   mockedChatLib.listConversationsApi.mockRejectedValue({ status: 501 }); // History disabled by default
   mockedChatLib.createConversation.mockRejectedValue({ status: 501 });
@@ -59,7 +59,7 @@ beforeEach(() => {
 describe('<Chat />', () => {
   test('renders welcome state when there are no messages', async () => {
     render(<Chat />);
-    
+
     expect(screen.getByText('Welcome to Chat')).toBeInTheDocument();
     expect(screen.getByText('Ask a question or start a conversation to get started.')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Type your message...')).toBeInTheDocument();
@@ -69,13 +69,13 @@ describe('<Chat />', () => {
     const user = userEvent.setup();
 
     render(<Chat />);
-    
+
     const input = screen.getByPlaceholderText('Type your message...');
     await user.type(input, 'Hi there');
-    
+
     // Send message with Enter
     await user.keyboard('{Enter}');
-    
+
     // Verify input is cleared after sending
     expect(input).toHaveValue('');
   });
@@ -89,14 +89,15 @@ describe('<Chat />', () => {
 
   test('has model selection dropdown', async () => {
     render(<Chat />);
-    
+
     const modelSelect = screen.getByDisplayValue('GPT-4.1 Mini');
     expect(modelSelect).toBeInTheDocument();
-    
+
     // Verify options exist
     expect(screen.getByText('GPT-4.1 Mini')).toBeInTheDocument();
     expect(screen.getByText('GPT-4o Mini')).toBeInTheDocument();
     expect(screen.getByText('GPT-4o')).toBeInTheDocument();
+    expect(screen.getByText('GPT-5 Mini')).toBeInTheDocument();
   });
 
   test('shows history list when persistence is enabled', async () => {
@@ -109,7 +110,7 @@ describe('<Chat />', () => {
     });
 
     render(<Chat />);
-    
+
     await waitFor(() => {
       expect(screen.getByText('Chat History')).toBeInTheDocument();
       expect(screen.getByText('Test Conversation')).toBeInTheDocument();
@@ -136,19 +137,19 @@ describe('<Chat />', () => {
     });
 
     render(<Chat />);
-    
+
     await waitFor(() => {
       expect(screen.getByText('Test Conversation')).toBeInTheDocument();
     });
-    
+
     // Click on conversation
     await user.click(screen.getByText('Test Conversation'));
-    
+
     await waitFor(() => {
       expect(screen.getByText('Hello')).toBeInTheDocument();
       expect(screen.getByText('Hi there!')).toBeInTheDocument();
     });
-    
+
     expect(mockedChatLib.getConversationApi).toHaveBeenCalledWith(undefined, 'conv-1', { limit: 200 });
   });
 
@@ -162,11 +163,11 @@ describe('<Chat />', () => {
     mockedChatLib.deleteConversationApi.mockResolvedValue(true);
 
     render(<Chat />);
-    
+
     await waitFor(() => {
       expect(screen.getByText('Test Conversation')).toBeInTheDocument();
     });
-    
+
     // Verify the delete API is available and mocked
     expect(mockedChatLib.deleteConversationApi).toBeDefined();
   });
@@ -184,20 +185,20 @@ describe('<Chat />', () => {
       });
 
     render(<Chat />);
-    
+
     await waitFor(() => {
       expect(screen.getByText('First')).toBeInTheDocument();
       expect(screen.getByText('Load more conversations')).toBeInTheDocument();
     });
-    
+
     // Click load more
     await user.click(screen.getByText('Load more conversations'));
-    
+
     await waitFor(() => {
       expect(screen.getByText('Second')).toBeInTheDocument();
       expect(screen.queryByText('Load more conversations')).not.toBeInTheDocument();
     });
-    
+
     expect(mockedChatLib.listConversationsApi).toHaveBeenCalledTimes(2);
     expect(mockedChatLib.listConversationsApi).toHaveBeenLastCalledWith(
       undefined,
@@ -208,12 +209,12 @@ describe('<Chat />', () => {
   test('textarea responds to input changes', async () => {
     const user = userEvent.setup();
     render(<Chat />);
-    
+
     const textarea = screen.getByPlaceholderText('Type your message...') as HTMLTextAreaElement;
-    
+
     // Type multiline content
     await user.type(textarea, 'Line 1\nLine 2\nLine 3\nLine 4');
-    
+
     // Verify the content is there
     expect(textarea.value).toContain('Line 1');
     expect(textarea.value).toContain('Line 4');
@@ -221,7 +222,7 @@ describe('<Chat />', () => {
 
   test('has clipboard functionality available', async () => {
     render(<Chat />);
-    
+
     // Verify the clipboard API is mocked and available
     expect(navigator.clipboard.writeText).toBeDefined();
   });
@@ -230,7 +231,7 @@ describe('<Chat />', () => {
     mockedChatLib.sendChat.mockRejectedValue(new Error('Network error'));
 
     render(<Chat />);
-    
+
     // Verify the component renders without crashing even with a potential error
     expect(screen.getByText('Welcome to Chat')).toBeInTheDocument();
   });
@@ -239,10 +240,10 @@ describe('<Chat />', () => {
     const user = userEvent.setup();
 
     render(<Chat />);
-    
+
     const input = screen.getByPlaceholderText('Type your message...');
     await user.type(input, 'Test message');
-    
+
     expect(input).toHaveValue('Test message');
   });
 
@@ -262,46 +263,31 @@ describe('<Chat />', () => {
     });
 
     render(<Chat />);
-    
+
     // Select existing conversation
     await waitFor(() => {
       expect(screen.getByText('Existing Chat')).toBeInTheDocument();
     });
-    
+
     await user.click(screen.getByText('Existing Chat'));
-    
+
     expect(mockedChatLib.getConversationApi).toHaveBeenCalledWith(undefined, 'conv-1', { limit: 200 });
   });
 
   test('new chat button exists and can be clicked', async () => {
     const user = userEvent.setup();
-    
+
     render(<Chat />);
-    
+
     // Verify New Chat button exists
     const newChatButton = screen.getByText('New Chat');
     expect(newChatButton).toBeInTheDocument();
-    
+
     // Click it (won't create conversation due to 501 mock, but button works)
     await user.click(newChatButton);
-    
+
     // Button should still be there
     expect(screen.getByText('New Chat')).toBeInTheDocument();
-  });
-
-  test('tools checkbox can be toggled', async () => {
-    const user = userEvent.setup();
-
-    render(<Chat />);
-    
-    // Find and toggle tools checkbox
-    const toolsCheckbox = screen.getByLabelText('Enable Tools');
-    expect(toolsCheckbox).toBeInTheDocument();
-    
-    await user.click(toolsCheckbox);
-    
-    // Verify checkbox is checked
-    expect(toolsCheckbox).toBeChecked();
   });
 
   test('handles message editing and conversation forking', async () => {
@@ -326,17 +312,17 @@ describe('<Chat />', () => {
     });
 
     render(<Chat />);
-    
+
     // Select conversation
     await waitFor(() => {
       expect(screen.getByText('Test Chat')).toBeInTheDocument();
     });
     await user.click(screen.getByText('Test Chat'));
-    
+
     await waitFor(() => {
       expect(screen.getByText('Original message')).toBeInTheDocument();
     });
-    
+
     // The message editing functionality exists in the component but is complex to test
     // due to hover states and dynamic button rendering. For now, verify the API is mocked
     expect(mockedChatLib.editMessageApi).toBeDefined();

@@ -9,6 +9,8 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    # Cancel the job if it runs longer than this (in minutes). Adjust as needed.
+    timeout-minutes: 3
 
     steps:
       - uses: actions/checkout@v4
@@ -31,6 +33,7 @@ jobs:
 
       - name: Test Backend
         run: npm --prefix backend test
+        timeout-minutes: 1
 
       - name: Install Frontend Dependencies
         run: npm --prefix frontend install
@@ -40,3 +43,4 @@ jobs:
 
       - name: Test Frontend
         run: npm --prefix frontend test
+        timeout-minutes: 1

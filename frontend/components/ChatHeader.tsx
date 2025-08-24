@@ -1,9 +1,11 @@
 interface ChatHeaderProps {
   model: string;
   useTools: boolean;
+  shouldStream: boolean;
   isStreaming: boolean;
   onModelChange: (model: string) => void;
   onUseToolsChange: (useTools: boolean) => void;
+  onShouldStreamChange: (val: boolean) => void;
   onNewChat: () => void;
   onStop: () => void;
 }
@@ -11,9 +13,11 @@ interface ChatHeaderProps {
 export function ChatHeader({
   model,
   useTools,
+  shouldStream,
   isStreaming,
   onModelChange,
   onUseToolsChange,
+  onShouldStreamChange,
   onNewChat,
   onStop
 }: ChatHeaderProps) {
@@ -36,6 +40,7 @@ export function ChatHeader({
               value={model}
               onChange={e => onModelChange(e.target.value)}
             >
+              <option value="gpt-5-mini">GPT-5 Mini</option>
               <option value="gpt-4.1-mini">GPT-4.1 Mini</option>
               <option value="gpt-4o-mini">GPT-4o Mini</option>
               <option value="gpt-4o">GPT-4o</option>
@@ -49,6 +54,15 @@ export function ChatHeader({
               onChange={e => onUseToolsChange(e.target.checked)}
             />
             Enable Tools
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 select-none">
+            <input
+              type="checkbox"
+              className="rounded border-slate-300 dark:border-neutral-700 text-blue-600 focus:ring-blue-500"
+              checked={shouldStream}
+              onChange={e => onShouldStreamChange(e.target.checked)}
+            />
+            Stream Responses
           </label>
         </div>
         <div className="ml-auto flex items-center gap-3">

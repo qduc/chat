@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { ChatMessage } from '../lib/chat';
-import { editMessageApi, getConversationApi } from '../lib/chat';
+import { editMessageApi } from '../lib/chat';
 
 export interface UseMessageEditingReturn {
   editingMessageId: string | null;
@@ -9,10 +9,9 @@ export interface UseMessageEditingReturn {
   handleEditMessage: (messageId: string, content: string) => void;
   handleCancelEdit: () => void;
   handleSaveEdit: (
-    conversationId: string,
-    onConversationSwitch: (newConversationId: string) => void,
+    conversationId: string | null,
     onMessagesUpdate: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
-    onConversationAdd: (conversation: { id: string; title: string; model: string; created_at: string }) => void
+    onAfterSave: (baseMessages: ChatMessage[], newConversationId?: string) => Promise<void> | void
   ) => Promise<void>;
 }
 
@@ -31,38 +30,71 @@ export function useMessageEditing(): UseMessageEditingReturn {
   }, []);
 
   const handleSaveEdit = useCallback(async (
-    conversationId: string,
-    onConversationSwitch: (newConversationId: string) => void,
+    conversationId: string | null,
     onMessagesUpdate: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
-    onConversationAdd: (conversation: { id: string; title: string; model: string; created_at: string }) => void
+    onAfterSave: (baseMessages: ChatMessage[], newConversationId?: string) => Promise<void> | void
   ) => {
-    if (!editingMessageId || !conversationId || !editingContent.trim()) return;
-    
-    try {
-      const result = await editMessageApi(undefined, conversationId, editingMessageId, editingContent.trim());
-      
-      // Update the message in the current conversation
-      onMessagesUpdate(prev => prev.map(m => 
-        m.id === editingMessageId ? { ...m, content: editingContent.trim() } : m
-      ));
-      
-      // Switch to the new forked conversation
-      onConversationSwitch(result.new_conversation_id);
-      
-      // Add the new conversation to the list at the top
-      const newConvo = await getConversationApi(undefined, result.new_conversation_id, { limit: 1 });
-      onConversationAdd({ 
-        id: result.new_conversation_id, 
-        title: newConvo.title || 'Edited conversation', 
-        model: newConvo.model || 'gpt-4o', 
-        created_at: newConvo.created_at 
-      });
-      
-      setEditingMessageId(null);
-      setEditingContent('');
-    } catch (e: any) {
-      console.error('Failed to edit message:', e);
+    if (!editingMessageId || !editingContent.trim()) return;
+
+    const messageId = editingMessageId;
+    const newContent = editingContent.trim();
+
+    // Optimistically exit edit mode and update message immediately
+    let oldContent = '';
+    onMessagesUpdate(prev => {
+      const target = prev.find(m => m.id === messageId);
+      oldContent = target?.content || '';
+      return prev.map(m => m.id === messageId ? { ...m, content: newContent } : m);
+    });
+    setEditingMessageId(null);
+    setEditingContent('');
+
+    // If we have a saved conversation, persist the edit and then fork/trim server-side
+    if (conversationId) {
+      try {
+        const result = await editMessageApi(undefined, conversationId, messageId, newContent);
+        const newId = result?.new_conversation_id;
+        // Clear all messages after the edited one locally (server also trims)
+        let baseMessages: ChatMessage[] = [];
+        onMessagesUpdate(prev => {
+          const idx = prev.findIndex(m => m.id === messageId);
+          if (idx === -1) { baseMessages = prev; return prev; }
+          baseMessages = prev.slice(0, idx + 1);
+          return baseMessages;
+        });
+        // Allow caller to trigger regeneration with the base messages
+        await onAfterSave(baseMessages, newId);
+      } catch (e: any) {
+        // If history/edit endpoint is not available, fallback to local behavior
+        if (e?.status === 501) {
+          let baseMessages: ChatMessage[] = [];
+          onMessagesUpdate(prev => {
+            const idx = prev.findIndex(m => m.id === messageId);
+            if (idx === -1) { baseMessages = prev; return prev; }
+            baseMessages = prev.slice(0, idx + 1);
+            return baseMessages;
+          });
+          await onAfterSave(baseMessages);
+        } else {
+          // Revert optimistic update and restore edit state
+          onMessagesUpdate(prev => prev.map(m => m.id === messageId ? { ...m, content: oldContent } : m));
+          setEditingMessageId(messageId);
+          setEditingContent(newContent);
+          console.error('Failed to edit message:', e);
+        }
+      }
+      return;
     }
+
+    // Unsaved (ephemeral) conversation: trim locally and regenerate without persistence
+    let baseMessages: ChatMessage[] = [];
+    onMessagesUpdate(prev => {
+      const idx = prev.findIndex(m => m.id === messageId);
+      if (idx === -1) { baseMessages = prev; return prev; }
+      baseMessages = prev.slice(0, idx + 1);
+      return baseMessages;
+    });
+    await onAfterSave(baseMessages);
   }, [editingMessageId, editingContent]);
 
   return {

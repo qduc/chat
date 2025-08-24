@@ -13,7 +13,9 @@ interface MessageListProps {
   onEditMessage: (messageId: string, content: string) => void;
   onCancelEdit: () => void;
   onSaveEdit: () => void;
+  onApplyLocalEdit: () => void;
   onEditingContentChange: (content: string) => void;
+  onRetryLastAssistant: () => void;
 }
 
 // Helper function to split messages with tool calls into separate messages
@@ -33,10 +35,23 @@ export function MessageList({
   onEditMessage,
   onCancelEdit,
   onSaveEdit,
-  onEditingContentChange
+  onApplyLocalEdit,
+  onEditingContentChange,
+  onRetryLastAssistant
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const editingTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [collapsedToolOutputs, setCollapsedToolOutputs] = useState<Record<string, boolean>>({});
+
+  // Resize the editing textarea to fit its content
+  const resizeEditingTextarea = () => {
+    const ta = editingTextareaRef.current;
+    if (!ta) return;
+    // Reset height to allow shrinking, then set to scrollHeight to fit content
+    ta.style.height = 'auto';
+    // Use scrollHeight + 2px to avoid clipping in some browsers
+    ta.style.height = `${ta.scrollHeight + 2}px`;
+  };
 
   const scrollToBottom = () => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -44,7 +59,12 @@ export function MessageList({
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages.length, pending.streaming]);
+  }, [messages.length, pending.streaming, pending.abort]);
+
+  // When editing content changes (including on initial edit open), resize the textarea
+  useEffect(() => {
+    resizeEditingTextarea();
+  }, [editingContent, editingMessageId]);
 
   // Split messages with tool calls into separate messages
   const processedMessages = splitMessagesWithToolCalls(messages);
@@ -63,9 +83,13 @@ export function MessageList({
             <div className="text-slate-600 dark:text-slate-400">Ask a question or start a conversation to get started.</div>
           </div>
         )}
-        {processedMessages.map((m) => {
+        {processedMessages.map((m, idx) => {
           const isUser = m.role === 'user';
           const isEditing = editingMessageId === m.id;
+          const editTextareaClass = isUser
+            ? 'w-full min-h-[100px] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm bg-slate-100 text-black dark:bg-slate-700 dark:text-white border border-slate-200/50 dark:border-neutral-700/50 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical'
+            : 'w-full min-h-[100px] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical';
+          const isLastAssistant = !isUser && idx === processedMessages.length - 1;
           return (
             <div key={m.id} className={`flex gap-4 ${isUser ? 'justify-end' : 'justify-start'}`}>
               {!isUser && (
@@ -79,19 +103,33 @@ export function MessageList({
                 {isEditing ? (
                   <div className="space-y-2">
                     <textarea
-                      value={editingContent}
-                      onChange={(e) => onEditingContentChange(e.target.value)}
-                      className="w-full min-h-[100px] rounded-xl px-4 py-3 text-sm bg-slate-50 dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical"
-                      placeholder="Edit your message..."
+                            ref={editingTextareaRef}
+                            value={editingContent}
+                            onChange={(e) => onEditingContentChange(e.target.value)}
+                            onInput={resizeEditingTextarea}
+                            className={editTextareaClass}
+                            placeholder="Edit your message..."
+                            // hide native scrollbar - we'll size the textarea to fit
+                            style={{ overflow: 'hidden' }}
                     />
                     <div className="flex gap-2">
                       <button
                         onClick={onSaveEdit}
-                        disabled={!editingContent.trim()}
+                        disabled={!editingContent.trim() || !conversationId || (editingMessageId ? editingMessageId.includes('-') : false)}
+                        title={!conversationId ? 'Save & Fork requires a saved conversation' : (editingMessageId && editingMessageId.includes('-') ? 'Only messages from saved history can be edited' : undefined)}
                         className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                       >
-                        Save & Fork
+                        Save
                       </button>
+                      {(!conversationId || (editingMessageId ? editingMessageId.includes('-') : false)) && (
+                        <button
+                          onClick={onApplyLocalEdit}
+                          disabled={!editingContent.trim()}
+                          className="px-3 py-1.5 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                          Apply Edit
+                        </button>
+                      )}
                       <button
                         onClick={onCancelEdit}
                         className="px-3 py-1.5 text-xs rounded-lg bg-slate-200 hover:bg-slate-300 dark:bg-neutral-700 dark:hover:bg-neutral-600 text-slate-700 dark:text-slate-300 transition-colors"
@@ -223,7 +261,7 @@ export function MessageList({
                       {/* Assistant content or typing indicator */}
                       {m.content ? (
                         <Markdown text={m.content} />
-                      ) : (m.role === 'assistant' && pending.streaming ? (
+                      ) : (m.role === 'assistant' && (pending.streaming || pending.abort) ? (
                         <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
                           <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '0ms' }} />
                           <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '150ms' }} />
@@ -232,17 +270,29 @@ export function MessageList({
                       ) : null)}
                     </div>
                     {!isUser && m.content && (
-                      <button
-                        type="button"
-                        onClick={() => onCopy(m.content)}
-                        className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 text-xs px-2 py-1 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400 transition-all duration-200 shadow-sm"
-                      >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => onCopy(m.content)}
+                          className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 text-xs px-2 py-1 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400 transition-all duration-200 shadow-sm"
+                        >
+                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                          </svg>
+                        </button>
+                        {isLastAssistant && (
+                          <button
+                            type="button"
+                            disabled={pending.streaming}
+                            onClick={onRetryLastAssistant}
+                            className="absolute -bottom-2 -right-2 opacity-0 group-hover:opacity-100 text-xs px-2 py-1 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400 transition-all duration-200 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                          >
+                            Retry
+                          </button>
+                        )}
+                      </>
                     )}
-                    {isUser && m.content && conversationId && !m.id.includes('-') && (
+                    {isUser && m.content && (
                       <button
                         type="button"
                         onClick={() => onEditMessage(m.id, m.content)}

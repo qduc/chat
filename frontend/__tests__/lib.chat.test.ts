@@ -55,6 +55,54 @@ describe('sendChat', () => {
     expect(tokens).toEqual(['Hel', 'lo']);
   });
 
+  test('supports non-stream JSON via Responses API (stream=false)', async () => {
+    const json = {
+      id: 'resp_123',
+      model: 'gpt-x',
+      output: [
+        { content: [{ text: 'Hello JSON' }] }
+      ],
+      status: 'completed'
+    };
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify(json), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+
+    const result = await sendChat({
+      messages: [{ role: 'user' as Role, content: 'hi' }],
+      shouldStream: false,
+    });
+
+    expect(fetchMock).toHaveBeenCalled();
+    const [, opts] = fetchMock.mock.calls[0];
+    expect(result).toEqual({ content: 'Hello JSON', responseId: 'resp_123' });
+  });
+
+  test('supports non-stream JSON via Chat Completions when tools provided', async () => {
+    const json = {
+      id: 'chatcmpl_123',
+      object: 'chat.completion',
+      choices: [
+        { index: 0, message: { role: 'assistant', content: 'Hi non-stream' }, finish_reason: 'stop' }
+      ]
+    };
+    const fetchMock = jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify(json), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+
+    const result = await sendChat({
+      messages: [{ role: 'user' as Role, content: 'hi' }],
+      shouldStream: false,
+      useResponsesAPI: false,
+      tools: [{ type: 'function', function: { name: 'noop', parameters: { type: 'object' } } }],
+      tool_choice: 'auto',
+    });
+
+    expect(fetchMock).toHaveBeenCalled();
+    const [, opts] = fetchMock.mock.calls[0];
+    expect(result).toEqual({ content: 'Hi non-stream', responseId: 'chatcmpl_123' });
+  });
+
   test('POSTs to /v1/chat/completions when useResponsesAPI=false', async () => {
     const lines = [
       'data: {"choices":[{"delta":{"content":"Hi"}}]}\n\n',

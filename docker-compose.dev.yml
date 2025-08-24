@@ -13,6 +13,8 @@ services:
       - "4001:3001"
     environment:
       - NODE_ENV=development
+      # Allow CORS from dev frontend port  
+      - ALLOWED_ORIGIN=http://localhost:3003
       # Optional: stabilize file watching inside container
       - CHOKIDAR_USEPOLLING=1
       # Persistence / DB (dev defaults)
@@ -20,11 +22,6 @@ services:
       # is provided for future work, but persistence is disabled by default here to
       # avoid runtime errors. To enable persistence with SQLite, set
       # PERSIST_TRANSCRIPTS=1 and DB_URL=file:./backend/data/dev.db (see docs).
-      - PERSIST_TRANSCRIPTS=0
-      - RETENTION_DAYS=30
-      - HISTORY_BATCH_FLUSH_MS=250
-      - MAX_CONVERSATIONS_PER_SESSION=100
-      - MAX_MESSAGES_PER_CONVERSATION=1000
     restart: unless-stopped
     networks:
       - app
@@ -35,12 +32,11 @@ services:
       context: ./frontend
       target: dev
       args:
-        # Not required for dev stage build, but documented for clarity
-        BACKEND_ORIGIN: http://backend:3001
+        # Direct API calls to mapped backend port (browser -> host -> container)
+        NEXT_PUBLIC_API_BASE: http://localhost:4001
     environment:
-      # Frontend calls `/api` and rewrites to the backend container
-      - NEXT_PUBLIC_API_BASE=/api
-      - BACKEND_ORIGIN=http://backend:3001
+      # Direct API calls to mapped backend port (browser -> host -> container)  
+      - NEXT_PUBLIC_API_BASE=http://localhost:4001
       - NODE_ENV=development
       # Improve file watching on macOS/WSL
       - CHOKIDAR_USEPOLLING=1

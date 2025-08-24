@@ -2,6 +2,24 @@
 const config = {
   testEnvironment: 'node',
   transform: {}, // Needed for ESM
+  
+  // Improve test isolation and worker cleanup
+  maxWorkers: 1, // Run tests serially to prevent port conflicts and resource leaks
+  forceExit: true, // Force exit after tests complete to prevent hanging workers
+  detectOpenHandles: false, // Let tests handle their own cleanup
+  
+  // Timeout configuration
+  testTimeout: 10000, // 10 second timeout for individual tests
+  
+  // Setup and teardown
+  setupFilesAfterEnv: [],
+  
+  // Verbose output for debugging
+  verbose: false,
+  
+  // Clear mocks between tests
+  clearMocks: true,
+  restoreMocks: true,
 };
 
 export default config;
