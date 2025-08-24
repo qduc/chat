@@ -21,6 +21,7 @@ export function Chat() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingConvos, setLoadingConvos] = useState<boolean>(false);
   const [previousResponseId, setPreviousResponseId] = useState<string | null>(null);
+  const [useTools, setUseTools] = useState<boolean>(false);
   const assistantRef = useRef<string>('');
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -57,6 +58,21 @@ export function Chat() {
         signal: abort.signal,
         conversationId: conversationId || undefined,
         previousResponseId: previousResponseId || undefined,
+        // If tools are enabled, force Chat Completions and include get_time tool
+        useResponsesAPI: !useTools,
+        ...(useTools ? {
+          tools: [
+            {
+              type: 'function',
+              function: {
+                name: 'get_time',
+                description: 'Get the current local time of the server',
+                parameters: { type: 'object', properties: {}, additionalProperties: false },
+              }
+            }
+          ],
+          tool_choice: 'auto'
+        } : {}),
         onToken: (t) => {
           assistantRef.current += t;
           setMessages(curr => curr.map(msg => msg.id === assistantMsg.id ? { ...msg, content: assistantRef.current } : msg));
@@ -242,6 +258,10 @@ export function Chat() {
                   <option value="gpt-4o">GPT-4o</option>
                 </select>
               </div>
+              <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 select-none">
+                <input type="checkbox" className="rounded border-slate-300 dark:border-neutral-700 text-blue-600 focus:ring-blue-500" checked={useTools} onChange={e => setUseTools(e.target.checked)} />
+                Enable get_time tool
+              </label>
             </div>
             <div className="ml-auto flex items-center gap-3">
               <button type="button" onClick={handleNewChat} className="flex items-center gap-2 text-sm px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-300 transition-all duration-200 hover:shadow-sm">
