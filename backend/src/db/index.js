@@ -280,6 +280,77 @@ export function listConversationsIncludingDeleted({
   return { items, next_cursor };
 }
 
+// --- Sprint 5: Message Editing & Conversation Forking ---
+export function updateMessageContent({ messageId, conversationId, sessionId, content }) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  
+  // First verify the message belongs to the conversation and session
+  const message = db.prepare(
+    `SELECT m.id, m.conversation_id, m.role, m.seq
+     FROM messages m
+     JOIN conversations c ON m.conversation_id = c.id
+     WHERE m.id = @messageId AND c.id = @conversationId AND c.session_id = @sessionId AND c.deleted_at IS NULL`
+  ).get({ messageId, conversationId, sessionId });
+  
+  if (!message) return null;
+  
+  // Update the message content
+  db.prepare(
+    `UPDATE messages SET content = @content, updated_at = @now WHERE id = @messageId`
+  ).run({ messageId, content, now });
+  
+  return message;
+}
+
+export function forkConversationFromMessage({ originalConversationId, sessionId, messageSeq, title, model }) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  
+  // Create new conversation
+  const { v4: uuidv4 } = require('uuid');
+  const newConversationId = uuidv4();
+  db.prepare(
+    `INSERT INTO conversations (id, session_id, user_id, title, model, metadata, created_at, updated_at)
+     VALUES (@id, @session_id, NULL, @title, @model, '{}', @now, @now)`
+  ).run({
+    id: newConversationId,
+    session_id: sessionId,
+    title: title || null,
+    model: model || null,
+    now,
+  });
+  
+  // Copy messages up to and including the specified sequence
+  db.prepare(
+    `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, tokens_in, tokens_out, finish_reason, tool_calls, function_call, created_at, updated_at)
+     SELECT @newConversationId, role, status, content, content_json, seq, tokens_in, tokens_out, finish_reason, tool_calls, function_call, @now, @now
+     FROM messages
+     WHERE conversation_id = @originalConversationId AND seq <= @messageSeq
+     ORDER BY seq`
+  ).run({ newConversationId, originalConversationId, messageSeq, now });
+  
+  return newConversationId;
+}
+
+export function deleteMessagesAfterSeq({ conversationId, sessionId, afterSeq }) {
+  const db = getDb();
+  
+  // Verify conversation belongs to session
+  const conversation = db.prepare(
+    `SELECT id FROM conversations WHERE id = @conversationId AND session_id = @sessionId AND deleted_at IS NULL`
+  ).get({ conversationId, sessionId });
+  
+  if (!conversation) return false;
+  
+  // Delete messages after the specified sequence
+  const result = db.prepare(
+    `DELETE FROM messages WHERE conversation_id = @conversationId AND seq > @afterSeq`
+  ).run({ conversationId, afterSeq });
+  
+  return result.changes > 0;
+}
+
 export function retentionSweep({ days }) {
   const db = getDb();
   if (!db) return { deleted: 0 };

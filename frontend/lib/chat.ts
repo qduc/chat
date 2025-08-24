@@ -191,3 +191,12 @@ export async function deleteConversationApi(apiBase = defaultApiBase, id: string
   await handleJSON(res);
   return true;
 }
+
+export async function editMessageApi(apiBase = defaultApiBase, conversationId: string, messageId: string, content: string) {
+  const res = await fetch(`${apiBase}/v1/conversations/${conversationId}/messages/${messageId}/edit`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
+  return handleJSON(res) as Promise<{ message: { id: string; seq: number; content: string }; new_conversation_id: string }>;
+}
