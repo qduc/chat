@@ -142,3 +142,6 @@ if (typeof global.Response === 'undefined') {
 	}
 	global.Response = ResponsePolyfill;
 }
+
+// Mock scrollIntoView as it's not available in jsdom
+Element.prototype.scrollIntoView = jest.fn();
