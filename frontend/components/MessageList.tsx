@@ -40,7 +40,7 @@ export function MessageList({
 
   return (
     <main className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-neutral-700 scrollbar-track-transparent">
-      <div className="mx-auto max-w-4xl px-6 py-6 space-y-6">
+      <div className="mx-auto max-w-4xl px-6 py-6 pb-32 space-y-6">
         {messages.length === 0 && (
           <div className="rounded-2xl border border-dashed border-slate-300 dark:border-neutral-700 bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-neutral-900/80 dark:to-neutral-800/80 p-8 text-center backdrop-blur-sm shadow-sm">
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-slate-200 dark:bg-neutral-800 flex items-center justify-center shadow-lg">

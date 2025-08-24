@@ -29,11 +29,11 @@ export function MessageInput({ input, pending, onInputChange, onSend }: MessageI
 
   return (
     <form 
-      className="border-t border-slate-200/60 dark:border-neutral-800/60 bg-white/80 dark:bg-neutral-950/80 backdrop-blur-md supports-[backdrop-filter]:bg-white/70 dark:supports-[backdrop-filter]:bg-neutral-950/70" 
+      className="" 
       onSubmit={e => { e.preventDefault(); onSend(); }}
     >
-      <div className="mx-auto max-w-4xl px-6 py-4">
-        <div className="relative rounded-2xl bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 shadow-lg transition-all duration-200">
+      <div className="px-2">
+        <div className="relative rounded-2xl bg-white/95 dark:bg-neutral-900/95 border border-slate-200 dark:border-neutral-700 shadow-xl backdrop-blur-lg transition-all duration-200">
           <textarea
             ref={inputRef}
             className="w-full resize-none bg-transparent border-0 outline-none p-4 text-sm placeholder-slate-500 dark:placeholder-slate-400 text-slate-800 dark:text-slate-200"

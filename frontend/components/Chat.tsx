@@ -109,7 +109,7 @@ function ChatInner() {
           onRefresh={conversations.refreshConversations}
         />
       )}
-      <div className="flex flex-col flex-1">
+      <div className="flex flex-col flex-1 relative">
         <ChatHeader
           model={model}
           useTools={useTools}
@@ -131,12 +131,14 @@ function ChatInner() {
           onSaveEdit={handleSaveEdit}
           onEditingContentChange={messageEditing.setEditingContent}
         />
-        <MessageInput
-          input={input}
-          pending={chatStream.pending}
-          onInputChange={setInput}
-          onSend={handleSend}
-        />
+        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-2xl px-4">
+          <MessageInput
+            input={input}
+            pending={chatStream.pending}
+            onInputChange={setInput}
+            onSend={handleSend}
+          />
+        </div>
       </div>
     </div>
   );
