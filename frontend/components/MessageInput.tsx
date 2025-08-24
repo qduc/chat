@@ -28,8 +28,8 @@ export function MessageInput({ input, pending, onInputChange, onSend }: MessageI
   };
 
   return (
-    <form 
-      className="" 
+    <form
+      className=""
       onSubmit={e => { e.preventDefault(); onSend(); }}
     >
       <div className="px-2">
@@ -52,7 +52,7 @@ export function MessageInput({ input, pending, onInputChange, onSend }: MessageI
             </div>
             <button
               type="submit"
-              disabled={!input.trim() || pending.streaming}
+              disabled={!input.trim()}
               className="flex items-center gap-2 px-4 py-2 text-sm rounded-xl bg-slate-800 hover:bg-slate-700 dark:bg-slate-600 dark:hover:bg-slate-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg disabled:hover:shadow-md transform hover:scale-[1.02] disabled:hover:scale-100"
             >
               {pending.streaming ? (

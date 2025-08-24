@@ -12,16 +12,16 @@ import { createConversation, getConversationApi } from '../lib/chat';
 import type { Role } from '../lib/chat';
 
 function ChatInner() {
-  const { 
-    conversationId, 
-    setConversationId, 
-    model, 
-    setModel, 
-    useTools, 
+  const {
+    conversationId,
+    setConversationId,
+    model,
+    setModel,
+    useTools,
     setUseTools
   } = useChatContext();
   const [input, setInput] = useState('');
-  
+
   const conversations = useConversations();
   const chatStream = useChatStream();
   const messageEditing = useMessageEditing();
@@ -37,16 +37,16 @@ function ChatInner() {
     chatStream.clearMessages();
     setInput('');
     messageEditing.handleCancelEdit();
-    
+
     if (conversations.historyEnabled) {
       try {
         const convo = await createConversation(undefined, { model });
         setConversationId(convo.id);
-        conversations.addConversation({ 
-          id: convo.id, 
-          title: convo.title || 'New chat', 
-          model: convo.model, 
-          created_at: convo.created_at 
+        conversations.addConversation({
+          id: convo.id,
+          title: convo.title || 'New chat',
+          model: convo.model,
+          created_at: convo.created_at
         });
       } catch (e: any) {
         if (e.status === 501) conversations.setHistoryEnabled(false);
@@ -61,13 +61,13 @@ function ChatInner() {
     setConversationId(id);
     chatStream.clearMessages();
     messageEditing.handleCancelEdit();
-    
+
     try {
       const data = await getConversationApi(undefined, id, { limit: 200 });
-      const msgs = data.messages.map(m => ({ 
-        id: String(m.id), 
-        role: m.role as Role, 
-        content: m.content || '' 
+      const msgs = data.messages.map(m => ({
+        id: String(m.id),
+        role: m.role as Role,
+        content: m.content || ''
       }));
       chatStream.setMessages(msgs);
     } catch (e: any) {
@@ -89,9 +89,12 @@ function ChatInner() {
     setInput('');
   }, [input, chatStream, conversationId, model, useTools]);
 
-  const handleSaveEdit = useCallback(async () => {
+  const handleSaveEdit = useCallback(() => {
     if (!conversationId) return;
-    await messageEditing.handleSaveEdit(
+    // Fire-and-forget: `useMessageEditing` applies optimistic updates and will
+    // reconcile or revert when the network call completes. Avoid awaiting here
+    // so the UI doesn't block.
+    void messageEditing.handleSaveEdit(
       conversationId,
       (newConversationId) => {
         setConversationId(newConversationId);
@@ -101,6 +104,32 @@ function ChatInner() {
       conversations.addConversation
     );
   }, [conversationId, messageEditing, setConversationId, chatStream, conversations]);
+
+  const handleApplyLocalEdit = useCallback(async () => {
+    const id = messageEditing.editingMessageId;
+    const content = messageEditing.editingContent.trim();
+    if (!id || !content) return;
+    if (chatStream.pending.streaming) chatStream.stopStreaming();
+
+    // Compute trimmed messages with the edit applied from the latest snapshot
+    const prev = chatStream.messages;
+    const idx = prev.findIndex(m => m.id === id);
+    if (idx === -1) return;
+    const updatedUser = { ...prev[idx], content } as { id: string; role: Role; content: string };
+    const baseMessages = [...prev.slice(0, idx), updatedUser] as { id: string; role: Role; content: string }[];
+
+    // Apply the trimmed messages
+    chatStream.setMessages(baseMessages as any);
+    // Reset previous response link to avoid stale continuation
+    chatStream.setPreviousResponseId(null);
+
+    // Regenerate using computed baseMessages (ensure last is user)
+    if (baseMessages.length && baseMessages[baseMessages.length - 1].role === 'user') {
+      await chatStream.generateFromHistory(model, useTools, baseMessages as any);
+    }
+
+    messageEditing.handleCancelEdit();
+  }, [chatStream, messageEditing, model, useTools]);
 
   return (
     <div className="flex h-dvh max-h-dvh bg-gradient-to-br from-slate-50 via-white to-slate-100/40 dark:from-neutral-950 dark:via-neutral-950 dark:to-neutral-900/20">
@@ -136,6 +165,7 @@ function ChatInner() {
           onEditMessage={messageEditing.handleEditMessage}
           onCancelEdit={messageEditing.handleCancelEdit}
           onSaveEdit={handleSaveEdit}
+          onApplyLocalEdit={handleApplyLocalEdit}
           onEditingContentChange={messageEditing.setEditingContent}
         />
         <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-2xl px-4">
