@@ -18,6 +18,7 @@ export interface SendChatOptions {
   model?: string;
   signal?: AbortSignal;
   onEvent?: (event: any) => void; // called for each event
+  onToken?: (token: string) => void; // called for each text delta token
   conversationId?: string; // Sprint 4: pass conversation id
   useResponsesAPI?: boolean; // whether to use new Responses API (default: true)
   previousResponseId?: string; // for Responses API conversation continuity
@@ -34,6 +35,7 @@ interface OpenAIStreamChunkChoiceDelta {
   role?: Role;
   content?: string;
   tool_calls?: any[];
+  tool_output?: any; // Custom field for our iterative orchestration
 }
 
 interface OpenAIStreamChunkChoice {
@@ -52,8 +54,8 @@ interface ResponsesAPIStreamChunk {
   response?: {
     id: string;
     model: string;
-    output: Array<{ 
-      content: Array<{ 
+    output: Array<{
+      content: Array<{
         text: string;
       }>;
     }>;
@@ -61,24 +63,26 @@ interface ResponsesAPIStreamChunk {
 }
 
 export async function sendChat(options: SendChatOptions): Promise<{ content: string; responseId?: string }> {
-  const { apiBase = defaultApiBase, messages, model, signal, onEvent, conversationId, useResponsesAPI = true, previousResponseId, tools, tool_choice } = options;
+  const { apiBase = defaultApiBase, messages, model, signal, onEvent, onToken, conversationId, useResponsesAPI, previousResponseId, tools, tool_choice } = options;
+  // Decide which API to use. If tools/tool_choice are provided, force Chat Completions.
+  const useResponses = useResponsesAPI !== undefined ? useResponsesAPI : !(Array.isArray(tools) && tools.length > 0 || tool_choice !== undefined);
   const bodyObj: any = {
     model,
     messages,
     stream: true,
     conversation_id: conversationId,
-    ...(useResponsesAPI && previousResponseId && { previous_response_id: previousResponseId }),
+    ...(useResponses && previousResponseId && { previous_response_id: previousResponseId }),
   };
-  // Only attach tools when not using Responses API (we use Chat Completions for tools in MVP)
-  if (!useResponsesAPI && Array.isArray(tools) && tools.length > 0) {
+  // Only attach tools when not using Responses API (we use Chat Completions for tools)
+  if (!useResponses && Array.isArray(tools) && tools.length > 0) {
     bodyObj.tools = tools;
     if (tool_choice !== undefined) bodyObj.tool_choice = tool_choice;
   }
   const body = JSON.stringify(bodyObj);
 
   // Use Responses API by default, fallback to Chat Completions if disabled
-  const endpoint = useResponsesAPI ? '/v1/responses' : '/v1/chat/completions';
-  const res = await fetch(`${apiBase}${endpoint}`, {
+  const endpoint = useResponses ? '/v1/responses' : '/v1/chat/completions';
+  const fetchInit: RequestInit = {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -86,8 +90,9 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
       'Accept': 'text/event-stream'
     },
     body,
-    signal,
-  });
+  };
+  if (signal) fetchInit.signal = signal;
+  const res = await fetch(`${apiBase}${endpoint}`, fetchInit);
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
     try {
@@ -122,11 +127,12 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
         try {
           const json = JSON.parse(data);
 
-          if (useResponsesAPI) {
+          if (useResponses) {
             // Handle "Responses API" stream format
             const chunk = json as any;
             if (chunk.type === 'response.output_text.delta' && chunk.delta) {
               assistant += chunk.delta;
+              onToken?.(chunk.delta);
               onEvent?.({ type: 'text', value: chunk.delta });
             } else if (chunk.type === 'response.output_item.done' && chunk.item?.content?.[0]?.text) {
               // This handles the final message content when streaming is done.
@@ -143,6 +149,7 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
             const delta = chunk.choices?.[0]?.delta;
             if (delta?.content) {
               assistant += delta.content;
+              onToken?.(delta.content);
               onEvent?.({ type: 'text', value: delta.content });
             } else if (delta?.tool_calls) {
               onEvent?.({ type: 'tool_call', value: delta.tool_calls[0] });

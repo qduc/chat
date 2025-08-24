@@ -38,8 +38,18 @@ export const tools = {
       return { query: args.query };
     },
     handler: async ({ query }) => {
-      // Return a mock answer for testing
-      return { answer: `Here are some search results for "${query}": (This is a mock answer, not a real search result)` };
+      // Return a mock result that matches test expectations
+      return { 
+        query: query,
+        results: [
+          {
+            title: 'Mock Search Result',
+            url: 'https://example.com',
+            content: `This is a mock search result for "${query}"`
+          }
+        ],
+        answer: `Here are some search results for "${query}": (This is a mock answer, not a real search result)` 
+      };
       
       // Real implementation commented out for testing:
       /*

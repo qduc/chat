@@ -6,6 +6,7 @@ import {
   handleStreamingWithTools,
   handleRegularStreaming,
 } from './streamingHandler.js';
+import { handleIterativeOrchestration } from './iterativeOrchestrator.js';
 import {
   setupPersistence,
   setupPersistenceTimer,
@@ -35,6 +36,9 @@ export async function proxyOpenAIRequest(req, res) {
   // If tools are present, force Chat Completions path for MVP (server orchestration)
   const hasTools = Array.isArray(bodyIn.tools) && bodyIn.tools.length > 0;
   if (hasTools) useResponsesAPI = false;
+
+  // Default to iterative orchestration when tools are present
+  const useIterativeOrchestration = hasTools; // Always use iterative mode with tools
 
   // Clone and strip non-upstream fields
   const body = { ...bodyIn };
@@ -194,21 +198,39 @@ export async function proxyOpenAIRequest(req, res) {
 
     // Handle streaming with tool orchestration
     if (hasTools) {
-      return await handleStreamingWithTools({
-        body,
-        bodyIn,
-        config,
-        res,
-        req,
-        persist,
-        assistantMessageId,
-        appendAssistantContent,
-        finalizeAssistantMessage,
-        markAssistantError,
-        buffer,
-        flushedOnce,
-        sizeThreshold,
-      });
+      if (useIterativeOrchestration) {
+        return await handleIterativeOrchestration({
+          body,
+          bodyIn,
+          config,
+          res,
+          req,
+          persist,
+          assistantMessageId,
+          appendAssistantContent,
+          finalizeAssistantMessage,
+          markAssistantError,
+          buffer,
+          flushedOnce,
+          sizeThreshold,
+        });
+      } else {
+        return await handleStreamingWithTools({
+          body,
+          bodyIn,
+          config,
+          res,
+          req,
+          persist,
+          assistantMessageId,
+          appendAssistantContent,
+          finalizeAssistantMessage,
+          markAssistantError,
+          buffer,
+          flushedOnce,
+          sizeThreshold,
+        });
+      }
     }
 
     // Handle regular streaming (non-tool orchestration)

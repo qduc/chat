@@ -648,4 +648,281 @@ describe('Request shaping', () => {
       assert.ok(body.choices); // Since we're using chat completions backend
     });
   });
+
+  // Iterative Orchestration Integration Tests
+  describe.skip('Iterative Tool Orchestration', () => {
+    test('automatically uses iterative orchestration when tools are present', async () => {
+      // Mock upstream to return tool calls first, then final response
+      const upstream = new MockUpstream();
+      let callCount = 0;
+      upstream.app.post('/v1/chat/completions', (req, res) => {
+        callCount++;
+        
+        if (callCount === 1) {
+          // First call: return tool calls
+          res.json({
+            id: 'chat_123',
+            object: 'chat.completion',
+            created: Math.floor(Date.now() / 1000),
+            model: 'gpt-3.5-turbo',
+            choices: [{
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: 'Let me get the current time.',
+                tool_calls: [{
+                  id: 'call_123',
+                  type: 'function',
+                  function: {
+                    name: 'get_time',
+                    arguments: '{}'
+                  }
+                }]
+              },
+              finish_reason: null
+            }]
+          });
+        } else {
+          // Second call: return final response
+          res.json({
+            id: 'chat_124',
+            object: 'chat.completion',
+            created: Math.floor(Date.now() / 1000),
+            model: 'gpt-3.5-turbo',
+            choices: [{
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: 'The current time is available in the tool results above.',
+                tool_calls: null
+              },
+              finish_reason: 'stop'
+            }]
+          });
+        }
+      });
+
+      await upstream.start();
+      
+      try {
+        const app = makeApp();
+        
+        // Override config to point to our mock upstream
+        const originalBaseUrl = config.openaiBaseUrl;
+        config.openaiBaseUrl = `http://127.0.0.1:${upstream.port}/v1`;
+        
+        try {
+          await withServer(app, async (port) => {
+            const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                messages: [{ role: 'user', content: 'What time is it?' }],
+                tools: [{
+                  type: 'function',
+                  function: {
+                    name: 'get_time',
+                    description: 'Get the current time',
+                    parameters: { type: 'object', properties: {} }
+                  }
+                }],
+                stream: true
+              }),
+            });
+            
+            assert.equal(res.status, 200);
+            assert.equal(res.headers.get('content-type'), 'text/event-stream');
+            
+            // Read the streaming response
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let streamData = '';
+            
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              streamData += decoder.decode(value, { stream: true });
+            }
+            
+            // Parse streaming events and check for tool call events
+            const events = [];
+            const lines = streamData.split('\n');
+            for (const line of lines) {
+              if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+                try {
+                  const data = JSON.parse(line.slice(6));
+                  events.push(data);
+                } catch (e) {
+                  // Skip invalid JSON
+                }
+              }
+            }
+            
+            // Should contain tool call events and tool output events
+            const hasToolCalls = events.some(e => e.choices?.[0]?.delta?.tool_calls);
+            const hasToolOutput = events.some(e => e.choices?.[0]?.delta?.tool_output);
+            
+            assert(hasToolCalls, 'Should contain tool call events');
+            assert(hasToolOutput, 'Should contain tool output events');
+            assert(streamData.includes('[DONE]'), 'Should end with DONE marker');
+            
+            // Should have made multiple calls to upstream (iterative behavior)
+            assert(callCount >= 2, 'Should make multiple calls to upstream for iterative orchestration');
+          });
+        } finally {
+          config.openaiBaseUrl = originalBaseUrl;
+        }
+      } finally {
+        await upstream.stop();
+      }
+    });
+
+    test('handles tool execution within iterative orchestration', async () => {
+      const upstream = new MockUpstream();
+      upstream.app.post('/v1/chat/completions', (req, res) => {
+        // Always return a tool call for get_time
+        res.json({
+          id: 'chat_tool',
+          object: 'chat.completion',
+          created: Math.floor(Date.now() / 1000),
+          model: 'gpt-3.5-turbo',
+          choices: [{
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: null,
+              tool_calls: [{
+                id: 'call_time',
+                type: 'function',
+                function: {
+                  name: 'get_time',
+                  arguments: '{}'
+                }
+              }]
+            },
+            finish_reason: null
+          }]
+        });
+      });
+
+      await upstream.start();
+      
+      try {
+        const app = makeApp();
+        const originalBaseUrl = config.openaiBaseUrl;
+        config.openaiBaseUrl = `http://127.0.0.1:${upstream.port}/v1`;
+        
+        try {
+          await withServer(app, async (port) => {
+            const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                messages: [{ role: 'user', content: 'Get time' }],
+                tools: [{
+                  type: 'function',
+                  function: {
+                    name: 'get_time',
+                    description: 'Get current time',
+                    parameters: { type: 'object', properties: {} }
+                  }
+                }],
+                stream: true
+              }),
+            });
+            
+            assert.equal(res.status, 200);
+            
+            const reader = res.body.getReader();
+            const decoder = new TextDecoder();
+            let streamData = '';
+            
+            while (true) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              streamData += decoder.decode(value, { stream: true });
+            }
+            
+            // Parse events to verify tool execution
+            const events = streamData
+              .split('\n')
+              .filter(line => line.startsWith('data: ') && !line.includes('[DONE]'))
+              .map(line => {
+                try {
+                  return JSON.parse(line.slice(6));
+                } catch {
+                  return null;
+                }
+              })
+              .filter(Boolean);
+            
+            // Should have tool output with actual time data
+            const toolOutputEvents = events.filter(e => e.choices?.[0]?.delta?.tool_output);
+            assert(toolOutputEvents.length > 0, 'Should have tool output events');
+            
+            const timeOutput = toolOutputEvents.find(e => 
+              e.choices[0].delta.tool_output.output?.iso ||
+              (typeof e.choices[0].delta.tool_output.output === 'object' && 
+               e.choices[0].delta.tool_output.output.iso)
+            );
+            assert(timeOutput, 'Should have actual time data in tool output');
+          });
+        } finally {
+          config.openaiBaseUrl = originalBaseUrl;
+        }
+      } finally {
+        await upstream.stop();
+      }
+    });
+
+    test('falls back gracefully when no tools provided', async () => {
+      const app = makeApp();
+      await withServer(app, async (port) => {
+        const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            messages: [{ role: 'user', content: 'Hello' }],
+            // No tools provided
+            stream: true
+          }),
+        });
+        
+        assert.equal(res.status, 200);
+        
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let streamData = '';
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          streamData += decoder.decode(value, { stream: true });
+        }
+        
+        // Parse events to check for tool-related content
+        const events = [];
+        const lines = streamData.split('\n');
+        for (const line of lines) {
+          if (line.startsWith('data: ') && line !== 'data: [DONE]') {
+            try {
+              const data = JSON.parse(line.slice(6));
+              events.push(data);
+            } catch (e) {
+              // Skip invalid JSON
+            }
+          }
+        }
+        
+        // Should use regular streaming (not iterative orchestration)
+        const hasToolCalls = events.some(e => e.choices?.[0]?.delta?.tool_calls);
+        const hasToolOutput = events.some(e => e.choices?.[0]?.delta?.tool_output);
+        const hasContent = events.some(e => e.choices?.[0]?.delta?.content?.includes('Hello world'));
+        
+        assert(!hasToolCalls, 'Should not have tool call events');
+        assert(!hasToolOutput, 'Should not have tool output events');
+        assert(hasContent, 'Should have regular chat response');
+      });
+    });
+  });
 });

@@ -295,7 +295,7 @@ describe('<Chat />', () => {
     render(<Chat />);
     
     // Find and toggle tools checkbox
-    const toolsCheckbox = screen.getByLabelText('Enable get_time tool');
+    const toolsCheckbox = screen.getByLabelText('Enable Tools');
     expect(toolsCheckbox).toBeInTheDocument();
     
     await user.click(toolsCheckbox);

@@ -55,6 +55,7 @@ export function useChatStream(): UseChatStreamReturn {
   const [pending, setPending] = useState<PendingState>({ streaming: false });
   const [previousResponseId, setPreviousResponseId] = useState<string | null>(null);
   const assistantMsgRef = useRef<ChatMessage | null>(null);
+  const inFlightRef = useRef<boolean>(false);
 
   const sendMessage = useCallback(async (
     input: string,
@@ -62,7 +63,10 @@ export function useChatStream(): UseChatStreamReturn {
     model: string,
     useTools: boolean
   ) => {
-    if (!input.trim() || pending.streaming) return;
+  if (!input.trim()) return;
+  // Prevent concurrent requests immediately (don't rely solely on state batching)
+  if (inFlightRef.current) return;
+  inFlightRef.current = true;
 
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: input.trim() };
     setMessages(m => [...m, userMsg]);
@@ -71,7 +75,7 @@ export function useChatStream(): UseChatStreamReturn {
     const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
     assistantMsgRef.current = assistantMsg;
     setMessages(m => [...m, assistantMsg]);
-    setPending({ streaming: true, abort });
+  setPending(prev => ({ ...prev, streaming: true, abort }));
 
     try {
       const result = await sendChat({
@@ -96,7 +100,7 @@ export function useChatStream(): UseChatStreamReturn {
             msg.content = event.value; // Replace content with the final version
           } else if (event.type === 'tool_output') {
             if (!msg.tool_outputs) msg.tool_outputs = [] as any;
-            msg.tool_outputs.push(event.value);
+            msg.tool_outputs!.push(event.value);
           }
           setMessages(curr => curr.map(m => m.id === msg.id ? { ...msg } : m));
         }
@@ -105,10 +109,11 @@ export function useChatStream(): UseChatStreamReturn {
         setPreviousResponseId(result.responseId);
       }
     } catch (e: any) {
-      setPending(p => ({ ...p, error: e.message }));
+      setPending(p => ({ ...p, error: e?.message || String(e) }));
       setMessages(curr => curr.map(msg => msg.id === assistantMsg.id ? { ...msg, content: msg.content + `\n[error: ${e.message}]` } : msg));
     } finally {
-      setPending({ streaming: false });
+      setPending(p => ({ ...p, streaming: false, abort: undefined }));
+      inFlightRef.current = false;
     }
   }, [messages, previousResponseId, pending.streaming]);
 
