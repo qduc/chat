@@ -40,6 +40,9 @@ export const tools = {
     handler: async ({ query }) => {
       // Return a mock answer for testing
       return { answer: `Here are some search results for "${query}": (This is a mock answer, not a real search result)` };
+      
+      // Real implementation commented out for testing:
+      /*
       const apiKey = process.env.TAVILY_API_KEY;
       if (!apiKey) {
         throw new Error('TAVILY_API_KEY environment variable is not set');
@@ -89,6 +92,7 @@ export const tools = {
         console.error('Error performing web search with Tavily:', error);
         throw new Error('Failed to fetch search results from Tavily');
       }
+      */
     },
   },
 };
