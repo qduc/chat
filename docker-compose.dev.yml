@@ -7,8 +7,7 @@ services:
     env_file:
       - ./backend/.env
     volumes:
-      - ./backend/src:/app/src:cached
-      - ./backend/.env:/app/.env:ro
+      - ./backend:/app:cached
       - /app/node_modules
     ports:
       - "4001:3001"
