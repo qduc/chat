@@ -26,6 +26,8 @@ export interface SendChatOptions {
   tool_choice?: any; // optional tool_choice
   stream?: boolean; // whether to stream response (default: true)
   shouldStream?: boolean; // alias for stream to avoid env collisions
+  reasoningEffort?: string;
+  verbosity?: string;
 }
 
 // API base URL - can be direct backend URL or proxy path
@@ -66,7 +68,7 @@ interface ResponsesAPIStreamChunk {
 }
 
 export async function sendChat(options: SendChatOptions): Promise<{ content: string; responseId?: string }> {
-  const { apiBase = defaultApiBase, messages, model, signal, onEvent, onToken, conversationId, useResponsesAPI, previousResponseId, tools, tool_choice } = options;
+  const { apiBase = defaultApiBase, messages, model, signal, onEvent, onToken, conversationId, useResponsesAPI, previousResponseId, tools, tool_choice, reasoningEffort, verbosity } = options;
   const streamFlag = options.shouldStream !== undefined
     ? !!options.shouldStream
     : (options.stream === undefined ? true : !!options.stream);
@@ -77,6 +79,8 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
     messages,
     stream: streamFlag,
     conversation_id: conversationId,
+    reasoning_effort: reasoningEffort,
+    verbosity: verbosity,
     ...(useResponses && previousResponseId && { previous_response_id: previousResponseId }),
   };
   // Only attach tools when not using Responses API (we use Chat Completions for tools)
@@ -111,6 +115,21 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
   // Non-streaming: parse JSON and return content immediately
   if (!streamFlag) {
     const json = await res.json();
+    
+    // Process tool_events if present (for non-streaming tool orchestration)
+    if (json.tool_events && Array.isArray(json.tool_events)) {
+      for (const event of json.tool_events) {
+        if (event.type === 'text') {
+          onEvent?.({ type: 'text', value: event.value });
+          onToken?.(event.value);
+        } else if (event.type === 'tool_call') {
+          onEvent?.({ type: 'tool_call', value: event.value });
+        } else if (event.type === 'tool_output') {
+          onEvent?.({ type: 'tool_output', value: event.value });
+        }
+      }
+    }
+    
     if (useResponses) {
       // Responses API non-stream JSON
       const content = json?.output?.[0]?.content?.[0]?.text ?? '';

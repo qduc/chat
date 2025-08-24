@@ -1,14 +1,13 @@
-// Tests for iterative tool orchestration
+// Tests for unified tool orchestration
 
 import assert from 'node:assert/strict';
-import express from 'express';
 import { jest } from '@jest/globals';
 
 // Mock node-fetch before importing modules that use it
 const mockFetch = jest.fn();
 jest.mock('node-fetch', () => mockFetch);
 
-import { handleIterativeOrchestration } from '../src/lib/iterativeOrchestrator.js';
+import { handleUnifiedToolOrchestration } from '../src/lib/unifiedToolOrchestrator.js';
 import { tools as toolRegistry } from '../src/lib/tools.js';
 
 // Mock response object for testing
@@ -101,7 +100,7 @@ describe('Iterative Orchestration', () => {
     mockFetch.mockReset();
   });
 
-  describe.skip('handleIterativeOrchestration', () => {
+  describe.skip('handleUnifiedToolOrchestration', () => {
     it('should handle single tool call followed by final response', async () => {
       // Mock AI responses: first with tool call, then final response
       const aiResponses = [
@@ -156,7 +155,7 @@ describe('Iterative Orchestration', () => {
         sizeThreshold: 512
       };
 
-      await handleIterativeOrchestration({
+      await handleUnifiedToolOrchestration({
         body,
         bodyIn,
         config: mockConfig,
@@ -252,7 +251,7 @@ describe('Iterative Orchestration', () => {
         sizeThreshold: 512
       };
 
-      await handleIterativeOrchestration({
+      await handleUnifiedToolOrchestration({
         body,
         bodyIn,
         config: mockConfig,
@@ -327,7 +326,7 @@ describe('Iterative Orchestration', () => {
         sizeThreshold: 512
       };
 
-      await handleIterativeOrchestration({
+      await handleUnifiedToolOrchestration({
         body,
         bodyIn,
         config: mockConfig,
@@ -397,7 +396,7 @@ describe('Iterative Orchestration', () => {
         sizeThreshold: 512
       };
 
-      await handleIterativeOrchestration({
+      await handleUnifiedToolOrchestration({
         body,
         bodyIn,
         config: mockConfig,
@@ -460,7 +459,7 @@ describe('Iterative Orchestration', () => {
       };
 
       // Start the orchestration
-      const orchestrationPromise = handleIterativeOrchestration({
+      const orchestrationPromise = handleUnifiedToolOrchestration({
         body,
         bodyIn,
         config: mockConfig,

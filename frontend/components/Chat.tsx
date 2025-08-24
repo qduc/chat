@@ -21,6 +21,8 @@ function ChatInner() {
     setUseTools,
     shouldStream,
     setShouldStream,
+    reasoningEffort,
+    verbosity,
   } = useChatContext();
   const [input, setInput] = useState('');
 
@@ -44,8 +46,8 @@ function ChatInner() {
     const base = msgs.slice(0, -1);
     chatStream.setMessages(base);
     chatStream.setPreviousResponseId(null);
-    await chatStream.regenerateFromBase(base, conversationId, model, useTools, shouldStream);
-  }, [chatStream, conversationId, model, useTools, shouldStream]);
+    await chatStream.regenerateFromBase(base, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity);
+  }, [chatStream, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity]);
 
   const handleNewChat = useCallback(async () => {
     if (chatStream.pending.streaming) chatStream.stopStreaming();
@@ -103,8 +105,8 @@ function ChatInner() {
     if (!trimmed) return;
     // Clear input immediately for a more responsive feel
     setInput('');
-    await chatStream.sendMessage(trimmed, conversationId, model, useTools, shouldStream);
-  }, [input, chatStream, conversationId, model, useTools, shouldStream]);
+    await chatStream.sendMessage(trimmed, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity);
+  }, [input, chatStream, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity]);
 
   const handleSaveEdit = useCallback(() => {
     if (chatStream.pending.streaming) {
@@ -123,10 +125,10 @@ function ChatInner() {
         if (newConversationId) {
           setConversationId(newConversationId);
         }
-        await chatStream.regenerateFromBase(base, targetConvoId, model, useTools, shouldStream);
+        await chatStream.regenerateFromBase(base, targetConvoId, model, useTools, shouldStream, reasoningEffort, verbosity);
       }
     );
-  }, [conversationId, messageEditing, chatStream, model, useTools, shouldStream, setConversationId]);
+  }, [conversationId, messageEditing, chatStream, model, useTools, shouldStream, setConversationId, reasoningEffort, verbosity]);
 
   const handleApplyLocalEdit = useCallback(async () => {
     const id = messageEditing.editingMessageId;
@@ -148,11 +150,11 @@ function ChatInner() {
 
     // Regenerate using computed baseMessages (ensure last is user)
     if (baseMessages.length && baseMessages[baseMessages.length - 1].role === 'user') {
-      await chatStream.generateFromHistory(model, useTools, baseMessages as any);
+      await chatStream.generateFromHistory(model, useTools, reasoningEffort, verbosity, baseMessages as any);
     }
 
     messageEditing.handleCancelEdit();
-  }, [chatStream, messageEditing, model, useTools]);
+  }, [chatStream, messageEditing, model, useTools, reasoningEffort, verbosity]);
 
   return (
     <div className="flex h-dvh max-h-dvh bg-gradient-to-br from-slate-50 via-white to-slate-100/40 dark:from-neutral-950 dark:via-neutral-950 dark:to-neutral-900/20">
