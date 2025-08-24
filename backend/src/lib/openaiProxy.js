@@ -321,10 +321,35 @@ export async function proxyOpenAIRequest(req, res) {
           return res.end();
         }
 
+        // Send tool call events to frontend for UI display
+        for (const tc of toolCalls) {
+          const toolCallChunk = {
+            id: j1.id,
+            object: 'chat.completion.chunk',
+            created: Math.floor(Date.now() / 1000),
+            model: j1.model,
+            choices: [{ index: 0, delta: { tool_calls: [tc] }, finish_reason: null }],
+          };
+          res.write(`data: ${JSON.stringify(toolCallChunk)}\n\n`);
+          if (typeof res.flush === 'function') res.flush();
+        }
+
         // Execute tools
         const toolResults = [];
         for (const tc of toolCalls) {
           const { output } = await executeToolCall(tc);
+          
+          // Send tool output event to frontend for UI display
+          const toolOutputChunk = {
+            id: j1.id,
+            object: 'chat.completion.chunk',
+            created: Math.floor(Date.now() / 1000),
+            model: j1.model,
+            choices: [{ index: 0, delta: { tool_output: { tool_call_id: tc.id, name: tc.function?.name, output: output } }, finish_reason: null }],
+          };
+          res.write(`data: ${JSON.stringify(toolOutputChunk)}\n\n`);
+          if (typeof res.flush === 'function') res.flush();
+          
           toolResults.push({
             role: 'tool',
             tool_call_id: tc.id,

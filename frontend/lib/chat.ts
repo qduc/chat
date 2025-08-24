@@ -9,6 +9,7 @@ export interface ChatMessage {
   content: string;
   tool_calls?: any[]; // Array of tool calls
   tool_call_id?: string; // ID of the tool call
+  tool_outputs?: Array<{ tool_call_id?: string; name?: string; output: any }>; // tool outputs matched by call id or name
 }
 
 export interface SendChatOptions {
@@ -145,6 +146,8 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
               onEvent?.({ type: 'text', value: delta.content });
             } else if (delta?.tool_calls) {
               onEvent?.({ type: 'tool_call', value: delta.tool_calls[0] });
+            } else if (delta?.tool_output) {
+              onEvent?.({ type: 'tool_output', value: delta.tool_output });
             }
           }
         } catch (e) {

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Markdown from './Markdown';
 import type { ChatMessage } from '../lib/chat';
 import type { PendingState } from '../hooks/useChatStream';
@@ -16,6 +16,13 @@ interface MessageListProps {
   onEditingContentChange: (content: string) => void;
 }
 
+// Helper function to split messages with tool calls into separate messages
+function splitMessagesWithToolCalls(messages: ChatMessage[]): ChatMessage[] {
+  // Keep original message shape and avoid splitting tool calls into separate messages.
+  // We render tool calls and any tool outputs inside the same assistant bubble below.
+  return messages;
+}
+
 export function MessageList({
   messages,
   pending,
@@ -29,14 +36,18 @@ export function MessageList({
   onEditingContentChange
 }: MessageListProps) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const [collapsedToolOutputs, setCollapsedToolOutputs] = useState<Record<string, boolean>>({});
 
   const scrollToBottom = () => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
-  
+
   useEffect(() => {
     scrollToBottom();
   }, [messages.length, pending.streaming]);
+
+  // Split messages with tool calls into separate messages
+  const processedMessages = splitMessagesWithToolCalls(messages);
 
   return (
     <main className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-neutral-700 scrollbar-track-transparent">
@@ -52,7 +63,7 @@ export function MessageList({
             <div className="text-slate-600 dark:text-slate-400">Ask a question or start a conversation to get started.</div>
           </div>
         )}
-        {messages.map((m) => {
+        {processedMessages.map((m) => {
           const isUser = m.role === 'user';
           const isEditing = editingMessageId === m.id;
           return (
@@ -91,24 +102,112 @@ export function MessageList({
                   </div>
                 ) : (
                   <>
-                    <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${isUser ? 'bg-slate-100 text-black dark:bg-slate-700 dark:text-white' : 'bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50'}`}>
-                      {m.role === 'assistant' && m.tool_calls ? (
-                        <div className="space-y-2">
-                          {m.tool_calls.map((toolCall, index) => (
-                            <div key={index} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-neutral-800/50 border border-slate-200 dark:border-neutral-700/50">
-                              <span className="w-5 h-5 flex items-center justify-center">
-                                <svg className="w-4 h-4 text-slate-500 dark:text-slate-400 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h5M20 20v-5h-5" />
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8v0a8 8 0 018 8v0a8 8 0 01-8 8v0a8 8 0 01-8-8v0z" />
-                                </svg>
-                              </span>
-                              <span className="font-mono text-xs text-slate-600 dark:text-slate-300">
-                                {toolCall.function.name}({toolCall.function.arguments})
-                              </span>
+                    {/* Render any tool calls (and their outputs) first, then the content in the same bubble */}
+                    {m.role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.length > 0 && (
+                      <div className="space-y-2">
+                        {m.tool_calls.map((toolCall, index) => {
+                          const toolName = toolCall.function?.name;
+                          let parsedArgs = {};
+                          try {
+                            parsedArgs = typeof toolCall.function?.arguments === 'string'
+                              ? JSON.parse(toolCall.function.arguments)
+                              : toolCall.function?.arguments || {};
+                          } catch (e) {
+                            parsedArgs = {};
+                          }
+
+                          const getToolIcon = (name: string) => {
+                            switch (name) {
+                              case 'get_time':
+                                return (
+                                  <svg className="w-4 h-4 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                                  </svg>
+                                );
+                              case 'web_search':
+                                return (
+                                  <svg className="w-4 h-4 text-green-500 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                  </svg>
+                                );
+                              default:
+                                return (
+                                  <svg className="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                                  </svg>
+                                );
+                            }
+                          };
+
+                          // Match outputs for this tool call if any
+                          const outputs = Array.isArray(m.tool_outputs)
+                            ? m.tool_outputs.filter((o) => {
+                                if (!o) return false;
+                                if (o.tool_call_id && toolCall.id) return o.tool_call_id === toolCall.id;
+                                if (o.name && toolName) return o.name === toolName;
+                                return false;
+                              })
+                            : [];
+
+                          const toggleKey = `${m.id}-${toolCall.id ?? index}`;
+                          const isCollapsed = collapsedToolOutputs[toggleKey] ?? true;
+
+                          return (
+                            <div key={index} className="space-y-2">
+                              <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-neutral-800/50 dark:to-neutral-700/30 border border-slate-200 dark:border-neutral-700/50 shadow-sm">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-6 h-6 flex items-center justify-center rounded-full bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-600 shadow-sm">
+                                      {getToolIcon(toolName)}
+                                    </div>
+                                    <span className="font-medium text-sm text-slate-700 dark:text-slate-300 capitalize">
+                                      {toolName?.replace('_', ' ')}
+                                    </span>
+                                  </div>
+                              </div>
+
+                              {outputs.length > 0 && (
+                                <div className="px-4">
+                                  <div className="flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+                                    <div>{outputs.length} result{outputs.length > 1 ? 's' : ''}</div>
+                                    <button
+                                      aria-expanded={!isCollapsed}
+                                      onClick={() => setCollapsedToolOutputs((s) => ({ ...s, [toggleKey]: !isCollapsed }))}
+                                      className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-300"
+                                    >
+                                      {isCollapsed ? 'Show' : 'Hide'}
+                                    </button>
+                                  </div>
+
+                                  {!isCollapsed && (
+                                    <div className="mt-2 space-y-2">
+                                      {outputs.map((out, outIdx) => {
+                                        const raw = out.output ?? out;
+                                        let formatted = '';
+                                        if (typeof raw === 'string') formatted = raw;
+                                        else {
+                                          try { formatted = JSON.stringify(raw, null, 2); } catch { formatted = String(raw); }
+                                        }
+                                        return (
+                                          <div key={outIdx} className="mt-1 rounded-md bg-slate-50 dark:bg-neutral-800 border border-slate-200/50 dark:border-neutral-700/30 p-3 text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap">
+                                            {formatted}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
                             </div>
-                          ))}
-                        </div>
-                      ) : m.content ? (
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {/* Handle content (if any) */}
+                    <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${isUser ? 'bg-slate-100 text-black dark:bg-slate-700 dark:text-white' : 'bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50'}`}>
+                      {/* Assistant content or typing indicator */}
+                      {m.content ? (
                         <Markdown text={m.content} />
                       ) : (m.role === 'assistant' && pending.streaming ? (
                         <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
@@ -119,9 +218,9 @@ export function MessageList({
                       ) : null)}
                     </div>
                     {!isUser && m.content && (
-                      <button 
-                        type="button" 
-                        onClick={() => onCopy(m.content)} 
+                      <button
+                        type="button"
+                        onClick={() => onCopy(m.content)}
                         className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 text-xs px-2 py-1 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400 transition-all duration-200 shadow-sm"
                       >
                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -129,7 +228,7 @@ export function MessageList({
                         </svg>
                       </button>
                     )}
-                    {isUser && m.content && conversationId && (
+                    {isUser && m.content && conversationId && !m.id.includes('-') && (
                       <button
                         type="button"
                         onClick={() => onEditMessage(m.id, m.content)}

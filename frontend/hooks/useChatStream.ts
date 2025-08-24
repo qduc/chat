@@ -92,9 +92,11 @@ export function useChatStream(): UseChatStreamReturn {
           } else if (event.type === 'tool_call') {
             if (!msg.tool_calls) msg.tool_calls = [];
             msg.tool_calls.push(event.value);
-            msg.content = 'Calling tools...'; // Placeholder content
           } else if (event.type === 'final') {
             msg.content = event.value; // Replace content with the final version
+          } else if (event.type === 'tool_output') {
+            if (!msg.tool_outputs) msg.tool_outputs = [] as any;
+            msg.tool_outputs.push(event.value);
           }
           setMessages(curr => curr.map(m => m.id === msg.id ? { ...msg } : m));
         }
