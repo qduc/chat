@@ -365,7 +365,9 @@ export async function proxyOpenAIRequest(req, res) {
                   }
                   const fr = obj?.choices?.[0]?.finish_reason;
                   if (fr) lastFinishReason = fr;
-                } catch {}
+                } catch {
+                  // Ignore JSON parsing errors
+                }
               }
             }
           } catch (e) {
@@ -394,7 +396,9 @@ export async function proxyOpenAIRequest(req, res) {
               markAssistantError({ messageId: assistantMessageId });
               if (flushTimer) clearInterval(flushTimer);
             }
-          } catch {}
+          } catch {
+            // Ignore errors
+          }
           return res.end();
         });
 
@@ -407,7 +411,9 @@ export async function proxyOpenAIRequest(req, res) {
               markAssistantError({ messageId: assistantMessageId });
               if (flushTimer) clearInterval(flushTimer);
             }
-          } catch {}
+          } catch {
+            // Ignore errors
+          }
         });
         return; // Orchestrated path handled
       } catch (e) {
