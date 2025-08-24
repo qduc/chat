@@ -38,21 +38,6 @@ export const tools = {
       return { query: args.query };
     },
     handler: async ({ query }) => {
-      // Return a mock result that matches test expectations
-      return { 
-        query: query,
-        results: [
-          {
-            title: 'Mock Search Result',
-            url: 'https://example.com',
-            content: `This is a mock search result for "${query}"`
-          }
-        ],
-        answer: `Here are some search results for "${query}": (This is a mock answer, not a real search result)` 
-      };
-      
-      // Real implementation commented out for testing:
-      /*
       const apiKey = process.env.TAVILY_API_KEY;
       if (!apiKey) {
         throw new Error('TAVILY_API_KEY environment variable is not set');
@@ -69,8 +54,8 @@ export const tools = {
           body: JSON.stringify({
             api_key: apiKey,
             query: query,
-            search_depth: 'advanced', // Use advanced for more comprehensive results
-            include_answer: true,      // Get a direct answer for the query
+            search_depth: 'basic', // Use advanced for more comprehensive results
+            include_answer: 'basic',      // Get a direct answer for the query
             max_results: 5,            // Get a few top results
           }),
         });
@@ -102,7 +87,6 @@ export const tools = {
         console.error('Error performing web search with Tavily:', error);
         throw new Error('Failed to fetch search results from Tavily');
       }
-      */
     },
   },
 };
