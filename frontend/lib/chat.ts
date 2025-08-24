@@ -18,6 +18,8 @@ export interface SendChatOptions {
   conversationId?: string; // Sprint 4: pass conversation id
   useResponsesAPI?: boolean; // whether to use new Responses API (default: true)
   previousResponseId?: string; // for Responses API conversation continuity
+  tools?: any[]; // optional OpenAI tool specifications (Chat Completions only for now)
+  tool_choice?: any; // optional tool_choice
 }
 
 // Default to calling the frontend's local proxy under /api.
@@ -54,14 +56,20 @@ interface ResponsesAPIStreamChunk {
 }
 
 export async function sendChat(options: SendChatOptions): Promise<{ content: string; responseId?: string }> {
-  const { apiBase = defaultApiBase, messages, model, signal, onToken, conversationId, useResponsesAPI = true, previousResponseId } = options;
-  const body = JSON.stringify({
+  const { apiBase = defaultApiBase, messages, model, signal, onToken, conversationId, useResponsesAPI = true, previousResponseId, tools, tool_choice } = options;
+  const bodyObj: any = {
     model,
     messages,
     stream: true,
     conversation_id: conversationId,
     ...(useResponsesAPI && previousResponseId && { previous_response_id: previousResponseId }),
-  });
+  };
+  // Only attach tools when not using Responses API (we use Chat Completions for tools in MVP)
+  if (!useResponsesAPI && Array.isArray(tools) && tools.length > 0) {
+    bodyObj.tools = tools;
+    if (tool_choice !== undefined) bodyObj.tool_choice = tool_choice;
+  }
+  const body = JSON.stringify(bodyObj);
 
   // Use Responses API by default, fallback to Chat Completions if disabled
   const endpoint = useResponsesAPI ? '/v1/responses' : '/v1/chat/completions';
@@ -109,7 +117,7 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
         try {
           const json = JSON.parse(data);
           let token = '';
-          
+
           if (useResponsesAPI) {
             // Parse Responses API streaming format
             const responsesChunk = json as ResponsesAPIStreamChunk;
@@ -126,7 +134,7 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
             const delta = chatChunk.choices?.[0]?.delta;
             token = delta?.content || '';
           }
-          
+
           if (token) {
             assistant += token;
             onToken?.(token);
@@ -182,4 +190,13 @@ export async function deleteConversationApi(apiBase = defaultApiBase, id: string
   if (res.status === 204) return true;
   await handleJSON(res);
   return true;
+}
+
+export async function editMessageApi(apiBase = defaultApiBase, conversationId: string, messageId: string, content: string) {
+  const res = await fetch(`${apiBase}/v1/conversations/${conversationId}/messages/${messageId}/edit`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content }),
+  });
+  return handleJSON(res) as Promise<{ message: { id: string; seq: number; content: string }; new_conversation_id: string }>;
 }

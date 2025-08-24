@@ -10,6 +10,9 @@ import {
   getMessagesPage,
   softDeleteConversation,
   listConversationsIncludingDeleted,
+  updateMessageContent,
+  forkConversationFromMessage,
+  deleteMessagesAfterSeq,
 } from '../db/index.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -143,6 +146,73 @@ conversationsRouter.delete('/v1/conversations/:id', (req, res) => {
     return res.status(204).end();
   } catch (e) {
     console.error('[conversations] delete error', e);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+// PUT /v1/conversations/:id/messages/:messageId/edit (edit message and fork conversation)
+conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, res) => {
+  if (!config.persistence.enabled) return notImplemented(res);
+  try {
+    const sessionId = req.sessionId;
+    if (!sessionId)
+      return res
+        .status(400)
+        .json({ error: 'bad_request', message: 'Missing session id' });
+
+    const { content } = req.body || {};
+    if (!content || typeof content !== 'string') {
+      return res
+        .status(400)
+        .json({ error: 'bad_request', message: 'Message content is required' });
+    }
+
+    getDb();
+    
+    // Update the message content
+    const message = updateMessageContent({
+      messageId: req.params.messageId,
+      conversationId: req.params.id,
+      sessionId,
+      content: content.trim(),
+    });
+    
+    if (!message) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+
+    // Get conversation details for forking
+    const conversation = getConversationById({ id: req.params.id, sessionId });
+    if (!conversation) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+
+    // Fork conversation from the edited message
+    const newConversationId = forkConversationFromMessage({
+      originalConversationId: req.params.id,
+      sessionId,
+      messageSeq: message.seq,
+      title: conversation.title,
+      model: conversation.model,
+    });
+
+    // Delete messages after the edited message in the original conversation
+    deleteMessagesAfterSeq({
+      conversationId: req.params.id,
+      sessionId,
+      afterSeq: message.seq,
+    });
+
+    return res.json({
+      message: {
+        id: message.id,
+        seq: message.seq,
+        content,
+      },
+      new_conversation_id: newConversationId,
+    });
+  } catch (e) {
+    console.error('[conversations] edit message error', e);
     return res.status(500).json({ error: 'internal_error' });
   }
 });

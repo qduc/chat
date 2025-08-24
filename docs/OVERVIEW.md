@@ -1,30 +1,54 @@
+
+## Related docs
+- Tool calling design: see `docs/TOOL-CALLING-PLAN.md` for how we’ll add OpenAI-style function/custom tools, streaming behavior, and persistence.
 # Overview
 
 ## Vision
 Zero-friction chat UI with pluggable models via an OpenAI-compatible API.
 
 ## Scope
-- Frontend (MVP in progress): Next.js/React chat UI with streaming (done), basic history (pending), attachments (phase 2).
-- Backend: Node/Express proxy with rate-limit (MVP in-memory done), provider routing (single provider now), auth (future phase).
+- Frontend: Next.js/React chat UI with streaming (✅ done), Markdown rendering (✅ done), model selection UI (✅ done), basic history (pending), attachments (future phase).
+- Backend: Node/Express OpenAI-compatible proxy with rate-limit (✅ in-memory done), Responses API support (✅ done), testing infrastructure (✅ done), provider routing (single provider), auth (future phase).
 
 ## Milestones & Status
-1. MVP (text-only, one model, no auth, streaming) – IN PROGRESS (UI + streaming working)
-2. Multi-model routing + system prompts – NOT STARTED (model selector UI present, backend static)
-3. Auth + usage limits (per-user) – NOT STARTED (IP limit only)
-4. File uploads + tool calls (function calling) – NOT STARTED
-5. Observability + billing hooks – NOT STARTED
+1. MVP (text-only, streaming, OpenAI-compatible) – ✅ COMPLETE
+2. Testing & Development Infrastructure – ✅ COMPLETE (Jest, ESLint, Docker dev environment)
+3. Conversation Persistence (SQLite/Postgres) – 🚧 IN PROGRESS
+4. Multi-model routing + system prompts – ⏳ PLANNED (model selector UI ready, backend static)
+5. Auth + usage limits (per-user) – ⏳ PLANNED (IP limit only currently)
+6. File uploads + tool calls (function calling) – ⏳ PLANNED
+7. Observability + billing hooks – ⏳ PLANNED
 
-## Architecture (draft)
+## Architecture (current)
 ```mermaid
 flowchart LR
-UI[Frontend\nNext.js] -- SSE/Fetch --> API[Backend\nExpress]
-API -- OpenAI schema --> LLM[(Provider\nOpenAI-compatible)]
-subgraph Storage
-DB[(Postgres)]:::db
-KV[(Redis)]:::cache
+UI[Frontend\nNext.js + React] -- SSE/Fetch --> API[Backend\nExpress + ESM]
+API -- OpenAI-compatible --> LLM[(Provider\nOpenAI/Compatible)]
+subgraph Storage[Storage Layer]
+DB[(SQLite\nBetter-SQLite3)]:::db
+MEM[In-Memory\nRate Limits]:::cache
 end
-API <-- sessions --> DB
-API <-- rate limits --> KV
+API <-- conversations --> DB
+API <-- rate limits --> MEM
+subgraph Features[Current Features]
+STREAM[SSE Streaming]:::feature
+TEST[Jest Testing]:::feature
+MD[Markdown + Syntax]:::feature
+API_RESP[Responses API]:::feature
+end
+UI -.-> STREAM
+API -.-> TEST
+UI -.-> MD
+API -.-> API_RESP
 classDef db fill:#eef,stroke:#99f;
 classDef cache fill:#efe,stroke:#9f9;
+classDef feature fill:#fef,stroke:#f9f;
 ```
+
+**Current Implementation:**
+- Frontend: Next.js 15 + React 19 with Tailwind CSS
+- Backend: Node.js 20 + Express with ESM modules
+- Database: SQLite with better-sqlite3 (Postgres planned)
+- Rate Limiting: In-memory per-IP (Redis planned)
+- Testing: Jest for both frontend and backend
+- Development: Docker Compose with hot reload

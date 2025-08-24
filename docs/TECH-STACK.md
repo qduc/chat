@@ -1,29 +1,55 @@
 # Tech Stack
 
 ## Frontend
-- Next.js (App Router) — project `frontend/package.json` lists `next@15.x`.
-- React: `react@19.x` as listed in `frontend/package.json`.
-- State: Local React state (TanStack Query not yet added).
-- UI: Tailwind CSS (project uses Tailwind v4 in dev deps).
-- Streaming: `fetch` + ReadableStream manual SSE parse (implemented in `frontend/lib/chat.ts`).
+- **Next.js 15** (App Router) with Turbopack for development
+- **React 19** with modern features
+- **TypeScript 5.9** for type safety
+- **Tailwind CSS 4** for styling
+- **State Management**: Local React state (TanStack Query not yet added)
+- **Markdown**: `react-markdown` with `rehype-highlight` for syntax highlighting
+- **Streaming**: `fetch` + ReadableStream manual SSE parsing (in `frontend/lib/chat.ts`)
+- **Testing**: Jest + Testing Library with jsdom environment
 
 ## Backend
-- Node 20 + Express (JS, ESM)
-- SSE passthrough for /v1/chat/completions (done)
-- Rate limiting: in-memory (Redis planned)
-- Auth: none (JWT/API key phase 3)
+- **Node.js 20** + **Express 5** (ES Modules)
+- **Database**: SQLite with `better-sqlite3` (Postgres planned)
+- **UUID Generation**: `uuid` for session/conversation IDs
+- **HTTP Client**: `node-fetch` for upstream API calls
+- **Logging**: `morgan` (structured logging with pino planned)
+- **CORS**: `cors` middleware for cross-origin requests
+- **Rate Limiting**: In-memory per-IP (Redis planned for production)
+- **Testing**: Jest with ES modules support
+- **Code Quality**: ESLint + Prettier
 
-## Infra (MVP)
-- Dockerized (frontend + backend via `docker-compose.yml`)
-- Future: Postgres (sessions/transcripts), Redis (rate limit)
-- Logging: morgan (pino later); metrics planned (Prometheus)
+## APIs & Protocols
+- **OpenAI-Compatible**: Full compatibility with OpenAI Chat Completions API
+- **Responses API**: Extended support with conversation continuity
+- **SSE Streaming**: Server-Sent Events for real-time chat responses
+- **Auth**: None currently (JWT/API key authentication planned)
 
-### Container Notes
-- Backend image: Node 20 alpine, prod deps only (`backend/Dockerfile`).
-- Frontend image: multi-stage; build args `NEXT_PUBLIC_API_BASE` and `BACKEND_ORIGIN` are supported (`frontend/Dockerfile`).
-- Secrets: only backend receives provider key via env file (do not bake keys into images).
+## Infrastructure & Deployment
 
-## LLM Providers (OpenAI-compatible)
-- `OPENAI_BASE_URL` defaults to `https://api.openai.com/v1` in `backend/.env.example` but can point to any OpenAI-compatible provider.
-- Default model is `gpt-4.1-mini` (see `backend/.env.example` / `DEFAULT_MODEL`).
-- Why compatibility: standard payloads, minimal vendor lock at API level.
+### Containerization
+- **Docker**: Multi-stage builds for optimized images
+- **Development**: `docker-compose.dev.yml` with hot reload and dev dependencies
+- **Production**: `docker-compose.yml` with minimal production images
+- **Backend Image**: Node 20 Alpine with production dependencies only
+- **Frontend Image**: Multi-stage build with configurable `NEXT_PUBLIC_API_BASE`
+
+### Environment Configuration
+- **Secrets Management**: Environment files (`.env`) - never baked into images
+- **Development**: Local `.env` files with examples provided
+- **Production**: External secret management (planned)
+
+## LLM Provider Integration
+
+### OpenAI Compatibility
+- **Base URL**: Configurable `OPENAI_BASE_URL` (defaults to `https://api.openai.com/v1`)
+- **Default Model**: `gpt-4.1-mini` (configurable via `DEFAULT_MODEL`)
+- **API Key**: Server-side injection of `Authorization` header
+- **Provider Flexibility**: Any OpenAI-compatible endpoint supported
+
+### Benefits
+- **Standard Payloads**: Consistent request/response formats
+- **Vendor Flexibility**: Easy provider switching
+- **Minimal Lock-in**: Standard OpenAI schema reduces dependencies
