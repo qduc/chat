@@ -45,6 +45,15 @@ beforeEach(() => {
   // Default mocks
   mockedChatLib.listConversationsApi.mockRejectedValue({ status: 501 }); // History disabled by default
   mockedChatLib.createConversation.mockRejectedValue({ status: 501 });
+  mockedChatLib.sendChat.mockResolvedValue({ responseId: 'test-response-id' });
+  mockedChatLib.getConversationApi.mockResolvedValue({
+    id: 'test-conv',
+    title: 'Test Conversation',
+    model: 'gpt-4o',
+    created_at: '2023-01-01',
+    messages: [],
+    next_after_seq: null,
+  });
 });
 
 describe('<Chat />', () => {
