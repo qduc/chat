@@ -2,6 +2,32 @@ import { useState, useCallback, useRef } from 'react';
 import type { ChatMessage, Role } from '../lib/chat';
 import { sendChat } from '../lib/chat';
 
+// Define the tools available to the model.
+const availableTools = {
+  get_time: {
+    type: 'function',
+    function: {
+      name: 'get_time',
+      description: 'Get the current local time of the server',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+    }
+  },
+  web_search: {
+    type: 'function',
+    function: {
+      name: 'web_search',
+      description: 'Perform a web search for a given query',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'The search query' }
+        },
+        required: ['query']
+      }
+    }
+  }
+};
+
 export interface PendingState {
   abort?: AbortController;
   streaming: boolean;
@@ -13,9 +39,9 @@ export interface UseChatStreamReturn {
   pending: PendingState;
   previousResponseId: string | null;
   sendMessage: (
-    input: string, 
-    conversationId: string | null, 
-    model: string, 
+    input: string,
+    conversationId: string | null,
+    model: string,
     useTools: boolean
   ) => Promise<void>;
   stopStreaming: () => void;
@@ -28,25 +54,25 @@ export function useChatStream(): UseChatStreamReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pending, setPending] = useState<PendingState>({ streaming: false });
   const [previousResponseId, setPreviousResponseId] = useState<string | null>(null);
-  const assistantRef = useRef<string>('');
+  const assistantMsgRef = useRef<ChatMessage | null>(null);
 
   const sendMessage = useCallback(async (
-    input: string, 
-    conversationId: string | null, 
-    model: string, 
+    input: string,
+    conversationId: string | null,
+    model: string,
     useTools: boolean
   ) => {
     if (!input.trim() || pending.streaming) return;
-    
+
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: input.trim() };
     setMessages(m => [...m, userMsg]);
 
     const abort = new AbortController();
-    assistantRef.current = '';
     const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
+    assistantMsgRef.current = assistantMsg;
     setMessages(m => [...m, assistantMsg]);
     setPending({ streaming: true, abort });
-    
+
     try {
       const result = await sendChat({
         messages: [...messages, userMsg].map(m => ({ role: m.role as Role, content: m.content })),
@@ -54,27 +80,25 @@ export function useChatStream(): UseChatStreamReturn {
         signal: abort.signal,
         conversationId: conversationId || undefined,
         previousResponseId: previousResponseId || undefined,
-        // If tools are enabled, force Chat Completions and include get_time tool
         useResponsesAPI: !useTools,
         ...(useTools ? {
-          tools: [
-            {
-              type: 'function',
-              function: {
-                name: 'get_time',
-                description: 'Get the current local time of the server',
-                parameters: { type: 'object', properties: {}, additionalProperties: false },
-              }
-            }
-          ],
+          tools: Object.values(availableTools),
           tool_choice: 'auto'
         } : {}),
-        onToken: (t) => {
-          assistantRef.current += t;
-          setMessages(curr => curr.map(msg => msg.id === assistantMsg.id ? { ...msg, content: assistantRef.current } : msg));
+        onEvent: (event) => {
+          const msg = assistantMsgRef.current!;
+          if (event.type === 'text') {
+            msg.content += event.value;
+          } else if (event.type === 'tool_call') {
+            if (!msg.tool_calls) msg.tool_calls = [];
+            msg.tool_calls.push(event.value);
+            msg.content = 'Calling tools...'; // Placeholder content
+          } else if (event.type === 'final') {
+            msg.content = event.value; // Replace content with the final version
+          }
+          setMessages(curr => curr.map(m => m.id === msg.id ? { ...msg } : m));
         }
       });
-      // Store the response ID for the next request
       if (result.responseId) {
         setPreviousResponseId(result.responseId);
       }
@@ -92,7 +116,7 @@ export function useChatStream(): UseChatStreamReturn {
 
   const clearMessages = useCallback(() => {
     setMessages([]);
-    assistantRef.current = '';
+    assistantMsgRef.current = null;
     setPending({ streaming: false });
     setPreviousResponseId(null);
   }, []);

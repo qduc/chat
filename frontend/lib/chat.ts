@@ -7,6 +7,8 @@ export interface ChatMessage {
   id: string;
   role: Role;
   content: string;
+  tool_calls?: any[]; // Array of tool calls
+  tool_call_id?: string; // ID of the tool call
 }
 
 export interface SendChatOptions {
@@ -14,7 +16,7 @@ export interface SendChatOptions {
   messages: { role: Role; content: string }[];
   model?: string;
   signal?: AbortSignal;
-  onToken?: (token: string) => void; // called for each delta
+  onEvent?: (event: any) => void; // called for each event
   conversationId?: string; // Sprint 4: pass conversation id
   useResponsesAPI?: boolean; // whether to use new Responses API (default: true)
   previousResponseId?: string; // for Responses API conversation continuity
@@ -30,7 +32,9 @@ const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE || '/api';
 interface OpenAIStreamChunkChoiceDelta {
   role?: Role;
   content?: string;
+  tool_calls?: any[];
 }
+
 interface OpenAIStreamChunkChoice {
   delta?: OpenAIStreamChunkChoiceDelta;
   finish_reason?: string | null;
@@ -47,8 +51,8 @@ interface ResponsesAPIStreamChunk {
   response?: {
     id: string;
     model: string;
-    output: Array<{
-      content: Array<{
+    output: Array<{ 
+      content: Array<{ 
         text: string;
       }>;
     }>;
@@ -56,7 +60,7 @@ interface ResponsesAPIStreamChunk {
 }
 
 export async function sendChat(options: SendChatOptions): Promise<{ content: string; responseId?: string }> {
-  const { apiBase = defaultApiBase, messages, model, signal, onToken, conversationId, useResponsesAPI = true, previousResponseId, tools, tool_choice } = options;
+  const { apiBase = defaultApiBase, messages, model, signal, onEvent, conversationId, useResponsesAPI = true, previousResponseId, tools, tool_choice } = options;
   const bodyObj: any = {
     model,
     messages,
@@ -116,28 +120,32 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
         }
         try {
           const json = JSON.parse(data);
-          let token = '';
 
           if (useResponsesAPI) {
-            // Parse Responses API streaming format
-            const responsesChunk = json as ResponsesAPIStreamChunk;
-            if (responsesChunk.type === 'response.output_text.delta' && responsesChunk.delta) {
-              token = responsesChunk.delta;
+            // Handle "Responses API" stream format
+            const chunk = json as any;
+            if (chunk.type === 'response.output_text.delta' && chunk.delta) {
+              assistant += chunk.delta;
+              onEvent?.({ type: 'text', value: chunk.delta });
+            } else if (chunk.type === 'response.output_item.done' && chunk.item?.content?.[0]?.text) {
+              // This handles the final message content when streaming is done.
+              const finalText = chunk.item.content[0].text;
+              assistant = finalText; // Replace assistant content with the final version.
+              onEvent?.({ type: 'final', value: finalText });
             }
-            // Capture response ID from completed response
-            if (responsesChunk.type === 'response.completed' && responsesChunk.response?.id) {
-              responseId = responsesChunk.response.id;
+            if (chunk.type === 'response.completed' && chunk.response?.id) {
+              responseId = chunk.response.id;
             }
           } else {
-            // Parse Chat Completions API streaming format
-            const chatChunk = json as OpenAIStreamChunk;
-            const delta = chatChunk.choices?.[0]?.delta;
-            token = delta?.content || '';
-          }
-
-          if (token) {
-            assistant += token;
-            onToken?.(token);
+            // Handle "Chat Completions API" stream format (for tools)
+            const chunk = json as OpenAIStreamChunk;
+            const delta = chunk.choices?.[0]?.delta;
+            if (delta?.content) {
+              assistant += delta.content;
+              onEvent?.({ type: 'text', value: delta.content });
+            } else if (delta?.tool_calls) {
+              onEvent?.({ type: 'tool_call', value: delta.tool_calls[0] });
+            }
           }
         } catch (e) {
           // ignore malformed lines

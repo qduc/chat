@@ -48,7 +48,7 @@ export function ChatHeader({
               checked={useTools} 
               onChange={e => onUseToolsChange(e.target.checked)} 
             />
-            Enable get_time tool
+            Enable Tools
           </label>
         </div>
         <div className="ml-auto flex items-center gap-3">

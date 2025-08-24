@@ -92,7 +92,23 @@ export function MessageList({
                 ) : (
                   <>
                     <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${isUser ? 'bg-slate-100 text-black dark:bg-slate-700 dark:text-white' : 'bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50'}`}>
-                      {m.content ? (
+                      {m.role === 'assistant' && m.tool_calls ? (
+                        <div className="space-y-2">
+                          {m.tool_calls.map((toolCall, index) => (
+                            <div key={index} className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-50 dark:bg-neutral-800/50 border border-slate-200 dark:border-neutral-700/50">
+                              <span className="w-5 h-5 flex items-center justify-center">
+                                <svg className="w-4 h-4 text-slate-500 dark:text-slate-400 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h5M20 20v-5h-5" />
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 12a8 8 0 018-8v0a8 8 0 018 8v0a8 8 0 01-8 8v0a8 8 0 01-8-8v0z" />
+                                </svg>
+                              </span>
+                              <span className="font-mono text-xs text-slate-600 dark:text-slate-300">
+                                {toolCall.function.name}({toolCall.function.arguments})
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : m.content ? (
                         <Markdown text={m.content} />
                       ) : (m.role === 'assistant' && pending.streaming ? (
                         <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
