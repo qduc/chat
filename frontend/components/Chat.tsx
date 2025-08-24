@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import Markdown from './Markdown';
 import type { ChatMessage, ConversationsList, ConversationMeta, Role } from '../lib/chat';
-import { sendChat, createConversation, listConversationsApi, getConversationApi, deleteConversationApi } from '../lib/chat';
+import { sendChat, createConversation, listConversationsApi, getConversationApi, deleteConversationApi, editMessageApi } from '../lib/chat';
 
 interface PendingState {
   abort?: AbortController;
@@ -22,6 +22,8 @@ export function Chat() {
   const [loadingConvos, setLoadingConvos] = useState<boolean>(false);
   const [previousResponseId, setPreviousResponseId] = useState<string | null>(null);
   const [useTools, setUseTools] = useState<boolean>(false);
+  const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+  const [editingContent, setEditingContent] = useState<string>('');
   const assistantRef = useRef<string>('');
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -88,7 +90,7 @@ export function Chat() {
     } finally {
       setPending({ streaming: false });
     }
-  }, [input, pending.streaming, messages, model, conversationId, previousResponseId]);
+  }, [input, pending.streaming, messages, model, conversationId, previousResponseId, useTools]);
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -106,6 +108,8 @@ export function Chat() {
     assistantRef.current = '';
     setInput('');
     setPreviousResponseId(null); // Reset response ID for new conversation
+    setEditingMessageId(null); // Clear any active editing
+    setEditingContent('');
     if (historyEnabled) {
       try {
         const convo = await createConversation(undefined, { model });
@@ -118,7 +122,7 @@ export function Chat() {
     } else {
       setConversationId(null);
     }
-  }, [pending.streaming, historyEnabled, model]);
+  }, [pending, historyEnabled, model]);
 
   const handleCopy = useCallback(async (text: string) => {
     try {
@@ -153,6 +157,8 @@ export function Chat() {
     assistantRef.current = '';
     setPending({ streaming: false });
     setPreviousResponseId(null); // Reset response ID when switching conversations
+    setEditingMessageId(null); // Clear any active editing
+    setEditingContent('');
     try {
       const data = await getConversationApi(undefined, id, { limit: 200 });
       const msgs: ChatMessage[] = data.messages.map(m => ({ id: String(m.id), role: m.role as Role, content: m.content || '' }));
@@ -160,7 +166,7 @@ export function Chat() {
     } catch (e: any) {
       // ignore
     }
-  }, [pending.streaming]);
+  }, [pending]);
 
   const loadMoreConversations = useCallback(async () => {
     if (!nextCursor || loadingConvos) return;
@@ -188,6 +194,47 @@ export function Chat() {
       // ignore
     }
   }, [conversationId]);
+
+  const handleEditMessage = useCallback((messageId: string, content: string) => {
+    setEditingMessageId(messageId);
+    setEditingContent(content);
+  }, []);
+
+  const handleCancelEdit = useCallback(() => {
+    setEditingMessageId(null);
+    setEditingContent('');
+  }, []);
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!editingMessageId || !conversationId || !editingContent.trim()) return;
+    
+    try {
+      const result = await editMessageApi(undefined, conversationId, editingMessageId, editingContent.trim());
+      
+      // Update the message in the current conversation
+      setMessages(prev => prev.map(m => 
+        m.id === editingMessageId ? { ...m, content: editingContent.trim() } : m
+      ));
+      
+      // Switch to the new forked conversation
+      setConversationId(result.new_conversation_id);
+      setPreviousResponseId(null); // Reset response ID for new conversation
+      
+      // Add the new conversation to the list at the top
+      const newConvo = await getConversationApi(undefined, result.new_conversation_id, { limit: 1 });
+      setConvos(prev => [{ 
+        id: result.new_conversation_id, 
+        title: newConvo.title || 'Edited conversation', 
+        model: newConvo.model, 
+        created_at: newConvo.created_at 
+      }, ...prev]);
+      
+      setEditingMessageId(null);
+      setEditingContent('');
+    } catch (e: any) {
+      console.error('Failed to edit message:', e);
+    }
+  }, [editingMessageId, conversationId, editingContent]);
 
   return (
   <div className="flex h-dvh max-h-dvh bg-gradient-to-br from-slate-50 via-white to-slate-100/40 dark:from-neutral-950 dark:via-neutral-950 dark:to-neutral-900/20">
@@ -296,6 +343,7 @@ export function Chat() {
             )}
             {messages.map((m) => {
               const isUser = m.role === 'user';
+              const isEditing = editingMessageId === m.id;
               return (
                 <div key={m.id} className={`flex gap-4 ${isUser ? 'justify-end' : 'justify-start'}`}>
                   {!isUser && (
@@ -306,23 +354,62 @@ export function Chat() {
                     </div>
                   )}
                   <div className={`group relative max-w-[75%] ${isUser ? 'order-first' : ''}`}>
+                    {isEditing ? (
+                      <div className="space-y-2">
+                        <textarea
+                          value={editingContent}
+                          onChange={(e) => setEditingContent(e.target.value)}
+                          className="w-full min-h-[100px] rounded-xl px-4 py-3 text-sm bg-slate-50 dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical"
+                          placeholder="Edit your message..."
+                        />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={handleSaveEdit}
+                            disabled={!editingContent.trim()}
+                            className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                          >
+                            Save & Fork
+                          </button>
+                          <button
+                            onClick={handleCancelEdit}
+                            className="px-3 py-1.5 text-xs rounded-lg bg-slate-200 hover:bg-slate-300 dark:bg-neutral-700 dark:hover:bg-neutral-600 text-slate-700 dark:text-slate-300 transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
                         <div className={`rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm ${isUser ? 'bg-slate-100 text-black dark:bg-slate-700 dark:text-white' : 'bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50'}`}>
-                      {m.content ? (
-                        <Markdown text={m.content} />
-                      ) : (m.role === 'assistant' && pending.streaming ? (
-                        <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
-                          <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '0ms' }} />
-                          <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '150ms' }} />
-                          <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '300ms' }} />
-                        </span>
-                      ) : null)}
-                    </div>
-                    {!isUser && m.content && (
-                      <button type="button" onClick={() => handleCopy(m.content)} className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 text-xs px-2 py-1 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400 transition-all duration-200 shadow-sm">
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                        </svg>
-                      </button>
+                          {m.content ? (
+                            <Markdown text={m.content} />
+                          ) : (m.role === 'assistant' && pending.streaming ? (
+                            <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                              <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '0ms' }} />
+                              <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '150ms' }} />
+                              <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '300ms' }} />
+                            </span>
+                          ) : null)}
+                        </div>
+                        {!isUser && m.content && (
+                          <button type="button" onClick={() => handleCopy(m.content)} className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 text-xs px-2 py-1 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400 transition-all duration-200 shadow-sm">
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                            </svg>
+                          </button>
+                        )}
+                        {isUser && m.content && conversationId && (
+                          <button
+                            type="button"
+                            onClick={() => handleEditMessage(m.id, m.content)}
+                            className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 text-xs px-2 py-1 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400 transition-all duration-200 shadow-sm"
+                          >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                            </svg>
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                   {isUser && (
