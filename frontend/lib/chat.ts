@@ -7,6 +7,9 @@ export interface ChatMessage {
   id: string;
   role: Role;
   content: string;
+  tool_calls?: any[]; // Array of tool calls
+  tool_call_id?: string; // ID of the tool call
+  tool_outputs?: Array<{ tool_call_id?: string; name?: string; output: any }>; // tool outputs matched by call id or name
 }
 
 export interface SendChatOptions {
@@ -14,7 +17,8 @@ export interface SendChatOptions {
   messages: { role: Role; content: string }[];
   model?: string;
   signal?: AbortSignal;
-  onToken?: (token: string) => void; // called for each delta
+  onEvent?: (event: any) => void; // called for each event
+  onToken?: (token: string) => void; // called for each text delta token
   conversationId?: string; // Sprint 4: pass conversation id
   useResponsesAPI?: boolean; // whether to use new Responses API (default: true)
   previousResponseId?: string; // for Responses API conversation continuity
@@ -30,7 +34,10 @@ const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE || '/api';
 interface OpenAIStreamChunkChoiceDelta {
   role?: Role;
   content?: string;
+  tool_calls?: any[];
+  tool_output?: any; // Custom field for our iterative orchestration
 }
+
 interface OpenAIStreamChunkChoice {
   delta?: OpenAIStreamChunkChoiceDelta;
   finish_reason?: string | null;
@@ -56,24 +63,26 @@ interface ResponsesAPIStreamChunk {
 }
 
 export async function sendChat(options: SendChatOptions): Promise<{ content: string; responseId?: string }> {
-  const { apiBase = defaultApiBase, messages, model, signal, onToken, conversationId, useResponsesAPI = true, previousResponseId, tools, tool_choice } = options;
+  const { apiBase = defaultApiBase, messages, model, signal, onEvent, onToken, conversationId, useResponsesAPI, previousResponseId, tools, tool_choice } = options;
+  // Decide which API to use. If tools/tool_choice are provided, force Chat Completions.
+  const useResponses = useResponsesAPI !== undefined ? useResponsesAPI : !(Array.isArray(tools) && tools.length > 0 || tool_choice !== undefined);
   const bodyObj: any = {
     model,
     messages,
     stream: true,
     conversation_id: conversationId,
-    ...(useResponsesAPI && previousResponseId && { previous_response_id: previousResponseId }),
+    ...(useResponses && previousResponseId && { previous_response_id: previousResponseId }),
   };
-  // Only attach tools when not using Responses API (we use Chat Completions for tools in MVP)
-  if (!useResponsesAPI && Array.isArray(tools) && tools.length > 0) {
+  // Only attach tools when not using Responses API (we use Chat Completions for tools)
+  if (!useResponses && Array.isArray(tools) && tools.length > 0) {
     bodyObj.tools = tools;
     if (tool_choice !== undefined) bodyObj.tool_choice = tool_choice;
   }
   const body = JSON.stringify(bodyObj);
 
   // Use Responses API by default, fallback to Chat Completions if disabled
-  const endpoint = useResponsesAPI ? '/v1/responses' : '/v1/chat/completions';
-  const res = await fetch(`${apiBase}${endpoint}`, {
+  const endpoint = useResponses ? '/v1/responses' : '/v1/chat/completions';
+  const fetchInit: RequestInit = {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -81,8 +90,9 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
       'Accept': 'text/event-stream'
     },
     body,
-    signal,
-  });
+  };
+  if (signal) fetchInit.signal = signal;
+  const res = await fetch(`${apiBase}${endpoint}`, fetchInit);
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
     try {
@@ -116,28 +126,36 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
         }
         try {
           const json = JSON.parse(data);
-          let token = '';
 
-          if (useResponsesAPI) {
-            // Parse Responses API streaming format
-            const responsesChunk = json as ResponsesAPIStreamChunk;
-            if (responsesChunk.type === 'response.output_text.delta' && responsesChunk.delta) {
-              token = responsesChunk.delta;
+          if (useResponses) {
+            // Handle "Responses API" stream format
+            const chunk = json as any;
+            if (chunk.type === 'response.output_text.delta' && chunk.delta) {
+              assistant += chunk.delta;
+              onToken?.(chunk.delta);
+              onEvent?.({ type: 'text', value: chunk.delta });
+            } else if (chunk.type === 'response.output_item.done' && chunk.item?.content?.[0]?.text) {
+              // This handles the final message content when streaming is done.
+              const finalText = chunk.item.content[0].text;
+              assistant = finalText; // Replace assistant content with the final version.
+              onEvent?.({ type: 'final', value: finalText });
             }
-            // Capture response ID from completed response
-            if (responsesChunk.type === 'response.completed' && responsesChunk.response?.id) {
-              responseId = responsesChunk.response.id;
+            if (chunk.type === 'response.completed' && chunk.response?.id) {
+              responseId = chunk.response.id;
             }
           } else {
-            // Parse Chat Completions API streaming format
-            const chatChunk = json as OpenAIStreamChunk;
-            const delta = chatChunk.choices?.[0]?.delta;
-            token = delta?.content || '';
-          }
-
-          if (token) {
-            assistant += token;
-            onToken?.(token);
+            // Handle "Chat Completions API" stream format (for tools)
+            const chunk = json as OpenAIStreamChunk;
+            const delta = chunk.choices?.[0]?.delta;
+            if (delta?.content) {
+              assistant += delta.content;
+              onToken?.(delta.content);
+              onEvent?.({ type: 'text', value: delta.content });
+            } else if (delta?.tool_calls) {
+              onEvent?.({ type: 'tool_call', value: delta.tool_calls[0] });
+            } else if (delta?.tool_output) {
+              onEvent?.({ type: 'tool_output', value: delta.tool_output });
+            }
           }
         } catch (e) {
           // ignore malformed lines

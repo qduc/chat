@@ -12,7 +12,14 @@ import { createConversation, getConversationApi } from '../lib/chat';
 import type { Role } from '../lib/chat';
 
 function ChatInner() {
-  const { conversationId, setConversationId, model, setModel, useTools, setUseTools } = useChatContext();
+  const { 
+    conversationId, 
+    setConversationId, 
+    model, 
+    setModel, 
+    useTools, 
+    setUseTools
+  } = useChatContext();
   const [input, setInput] = useState('');
   
   const conversations = useConversations();

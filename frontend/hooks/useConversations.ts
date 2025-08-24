@@ -65,7 +65,11 @@ export function useConversations(): UseConversationsReturn {
 
   // Load initial conversations to detect history support
   useEffect(() => {
-    refreshConversations();
+    // Defer to next tick to avoid React act warnings in tests when updating state during mount
+    const t = setTimeout(() => {
+      refreshConversations();
+    }, 0);
+    return () => clearTimeout(t);
   }, [refreshConversations]);
 
   return {

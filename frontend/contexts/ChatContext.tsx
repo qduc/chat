@@ -26,7 +26,7 @@ interface ChatProviderProps {
 export function ChatProvider({ children }: ChatProviderProps) {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [model, setModel] = useState<string>('gpt-4.1-mini');
-  const [useTools, setUseTools] = useState<boolean>(false);
+  const [useTools, setUseTools] = useState<boolean>(true);
 
   const value = {
     conversationId,
