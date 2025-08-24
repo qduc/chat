@@ -138,10 +138,10 @@ export function useChatStream(): UseChatStreamReturn {
     } catch (e: any) {
       setPending(p => ({ ...p, error: e?.message || String(e) }));
       setMessages(curr => curr.map(msg => msg.id === assistantMsg.id ? { ...msg, content: msg.content + `\n[error: ${e.message}]` } : msg));
-    }).finally(() => {
+    } finally {
       // Clear streaming/abort when finished
       setPending(p => ({ ...p, streaming: false, abort: undefined }));
-    });
+    }
 
     // Return immediately — caller shouldn't wait for network to finish to keep UI snappy
     return;
@@ -301,6 +301,7 @@ export function useChatStream(): UseChatStreamReturn {
     sendMessage,
     regenerateFromBase,
     regenerateFromCurrent,
+    generateFromHistory,
     stopStreaming,
     clearMessages,
     setMessages,
