@@ -168,6 +168,14 @@ beforeEach(() => {
   }
 });
 
+afterEach(async () => {
+  // Clean up any database connections
+  if (config.persistence.enabled) {
+    const { resetDbCache } = await import('../src/db/index.js');
+    resetDbCache();
+  }
+});
+
 describe('POST /v1/chat/completions (proxy)', () => {
   test('proxies non-streaming requests and returns upstream JSON', async () => {
     const app = makeApp();

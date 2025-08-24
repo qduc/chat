@@ -29,6 +29,11 @@ beforeEach(() => {
   upsertSession(sessionId);
 });
 
+afterAll(() => {
+  // Properly close database connections to prevent process leaks
+  resetDbCache();
+});
+
 describe('DB helpers', () => {
   describe('listConversations', () => {
     test('orders by created_at DESC and paginates with next_cursor', async () => {

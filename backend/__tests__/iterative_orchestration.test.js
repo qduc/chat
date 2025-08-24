@@ -481,24 +481,54 @@ describe('Iterative Orchestration', () => {
     }, 15000);
   });
 
-  describe('Tool Integration', () => {
-    it('should correctly execute get_time tool', async () => {
-      const result = await toolRegistry.get_time.handler({});
-      
-      assert(result.iso, 'Should return ISO timestamp');
-      assert(result.human, 'Should return human readable time');
-      assert(result.timezone, 'Should return timezone info');
-      assert(new Date(result.iso), 'ISO timestamp should be valid date');
+describe('Tool Integration', () => {
+  beforeAll(() => {
+    // Mock TAVILY_API_KEY for web_search tests
+    process.env.TAVILY_API_KEY = 'test-api-key';
+  });
+
+  afterAll(() => {
+    // Clean up environment variable
+    delete process.env.TAVILY_API_KEY;
+  });
+
+  it('should correctly execute get_time tool', async () => {
+    const result = await toolRegistry.get_time.handler({});
+    
+    assert(result.iso, 'Should return ISO timestamp');
+    assert(result.human, 'Should return human readable time');
+    assert(result.timezone, 'Should return timezone info');
+    assert(new Date(result.iso), 'ISO timestamp should be valid date');
+  });
+
+  it('should correctly execute web_search tool', async () => {
+    // Mock global fetch for this test (since the tools.js uses global fetch, not node-fetch)
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        query: 'test query',
+        answer: 'Test answer from search',
+        results: [
+          {
+            title: 'Test Result 1',
+            content: 'This is test content',
+            url: 'https://example.com/1'
+          }
+        ]
+      })
     });
 
-    it('should correctly execute web_search tool', async () => {
+    try {
       const result = await toolRegistry.web_search.handler({ query: 'test query' });
       
-      assert(result.query === 'test query', 'Should return the search query');
-      assert(Array.isArray(result.results), 'Should return results array');
-      assert(result.results.length > 0, 'Should return at least one result');
-      assert(result.results[0].title, 'Result should have title');
-      assert(result.results[0].url, 'Result should have URL');
-    });
+      assert(typeof result === 'string', 'Should return string result');
+      assert(result.includes('Test answer'), 'Should contain search answer');
+      assert(result.includes('Test Result 1'), 'Should contain search results');
+    } finally {
+      // Restore original fetch
+      globalThis.fetch = originalFetch;
+    }
   });
+});
 });

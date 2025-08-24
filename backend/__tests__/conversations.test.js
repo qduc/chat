@@ -56,6 +56,11 @@ beforeEach(() => {
   }
 });
 
+afterAll(() => {
+  // Properly close database connections to prevent process leaks
+  resetDbCache();
+});
+
 // --- POST /v1/conversations ---
 describe('POST /v1/conversations', () => {
   test('creates a new conversation and returns 201 with id, title, model, created_at', async () => {

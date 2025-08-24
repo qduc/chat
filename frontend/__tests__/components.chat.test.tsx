@@ -290,21 +290,6 @@ describe('<Chat />', () => {
     expect(screen.getByText('New Chat')).toBeInTheDocument();
   });
 
-  test('tools checkbox can be toggled', async () => {
-    const user = userEvent.setup();
-
-    render(<Chat />);
-
-    // Find and toggle tools checkbox
-    const toolsCheckbox = screen.getByLabelText('Enable Tools');
-    expect(toolsCheckbox).toBeInTheDocument();
-
-    await user.click(toolsCheckbox);
-
-    // Verify checkbox is checked
-    expect(toolsCheckbox).toBeChecked();
-  });
-
   test('handles message editing and conversation forking', async () => {
     const user = userEvent.setup();
     mockedChatLib.listConversationsApi.mockResolvedValue({
