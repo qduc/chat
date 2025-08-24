@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import type { ChatMessage } from '../lib/chat';
-import { editMessageApi, getConversationApi } from '../lib/chat';
+import { editMessageApi } from '../lib/chat';
 
 export interface UseMessageEditingReturn {
   editingMessageId: string | null;
@@ -9,10 +9,9 @@ export interface UseMessageEditingReturn {
   handleEditMessage: (messageId: string, content: string) => void;
   handleCancelEdit: () => void;
   handleSaveEdit: (
-    conversationId: string,
-    onConversationSwitch: (newConversationId: string) => void,
+    conversationId: string | null,
     onMessagesUpdate: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
-    onConversationAdd: (conversation: { id: string; title: string; model: string; created_at: string }) => void
+    onAfterSave: (baseMessages: ChatMessage[], newConversationId?: string) => Promise<void> | void
   ) => Promise<void>;
 }
 
@@ -31,61 +30,71 @@ export function useMessageEditing(): UseMessageEditingReturn {
   }, []);
 
   const handleSaveEdit = useCallback(async (
-    conversationId: string,
-    onConversationSwitch: (newConversationId: string) => void,
+    conversationId: string | null,
     onMessagesUpdate: React.Dispatch<React.SetStateAction<ChatMessage[]>>,
-    onConversationAdd: (conversation: { id: string; title: string; model: string; created_at: string }) => void
+    onAfterSave: (baseMessages: ChatMessage[], newConversationId?: string) => Promise<void> | void
   ) => {
-    if (!editingMessageId || !conversationId || !editingContent.trim()) return;
-    // Keep local copies so we can restore if the API call fails
+    if (!editingMessageId || !editingContent.trim()) return;
+
     const messageId = editingMessageId;
     const newContent = editingContent.trim();
-    let prevSnapshot: ChatMessage[] = [];
 
-    // Optimistically update the message immediately for snappy UI
+    // Optimistically exit edit mode and update message immediately
+    let oldContent = '';
     onMessagesUpdate(prev => {
-      prevSnapshot = prev.slice();
+      const target = prev.find(m => m.id === messageId);
+      oldContent = target?.content || '';
       return prev.map(m => m.id === messageId ? { ...m, content: newContent } : m);
     });
-
-    // Clear editing UI immediately (optimistic)
     setEditingMessageId(null);
     setEditingContent('');
 
-    // Optimistically switch to a temporary forked conversation so the UI feels immediate
-    const tempConvoId = `pending-fork-${crypto.randomUUID()}`;
-    onConversationSwitch(tempConvoId);
-    onConversationAdd({ id: tempConvoId, title: 'Edited (saving...)', model: 'gpt-4o', created_at: new Date().toISOString() });
-
-    try {
-      const result = await editMessageApi(undefined, conversationId, messageId, newContent);
-
-      // Switch to the real new forked conversation
-      onConversationSwitch(result.new_conversation_id);
-
-      // Fetch the full new conversation messages and replace local messages to stay consistent
+    // If we have a saved conversation, persist the edit and then fork/trim server-side
+    if (conversationId) {
       try {
-        const newConvo = await getConversationApi(undefined, result.new_conversation_id, { limit: 200 });
-        const msgs = newConvo.messages.map(m => ({ id: String(m.id), role: m.role as any, content: m.content || '' }));
-        onMessagesUpdate(() => msgs as ChatMessage[]);
-        onConversationAdd({
-          id: result.new_conversation_id,
-          title: newConvo.title || 'Edited conversation',
-          model: newConvo.model || 'gpt-4o',
-          created_at: newConvo.created_at
+        const result = await editMessageApi(undefined, conversationId, messageId, newContent);
+        const newId = result?.new_conversation_id;
+        // Clear all messages after the edited one locally (server also trims)
+        let baseMessages: ChatMessage[] = [];
+        onMessagesUpdate(prev => {
+          const idx = prev.findIndex(m => m.id === messageId);
+          if (idx === -1) { baseMessages = prev; return prev; }
+          baseMessages = prev.slice(0, idx + 1);
+          return baseMessages;
         });
-      } catch (e) {
-        // If fetching the forked conversation fails, keep optimistic update and still add conversation metadata
-        onConversationAdd({ id: result.new_conversation_id, title: 'Edited conversation', model: 'gpt-4o', created_at: new Date().toISOString() });
+        // Allow caller to trigger regeneration with the base messages
+        await onAfterSave(baseMessages, newId);
+      } catch (e: any) {
+        // If history/edit endpoint is not available, fallback to local behavior
+        if (e?.status === 501) {
+          let baseMessages: ChatMessage[] = [];
+          onMessagesUpdate(prev => {
+            const idx = prev.findIndex(m => m.id === messageId);
+            if (idx === -1) { baseMessages = prev; return prev; }
+            baseMessages = prev.slice(0, idx + 1);
+            return baseMessages;
+          });
+          await onAfterSave(baseMessages);
+        } else {
+          // Revert optimistic update and restore edit state
+          onMessagesUpdate(prev => prev.map(m => m.id === messageId ? { ...m, content: oldContent } : m));
+          setEditingMessageId(messageId);
+          setEditingContent(newContent);
+          console.error('Failed to edit message:', e);
+        }
       }
-    } catch (e: any) {
-      // Revert optimistic update on error and restore editing UI so user can retry; also switch back to original conversation
-      console.error('Failed to edit message:', e);
-      onMessagesUpdate(() => prevSnapshot);
-      onConversationSwitch(conversationId);
-      setEditingMessageId(messageId);
-      setEditingContent(newContent);
+      return;
     }
+
+    // Unsaved (ephemeral) conversation: trim locally and regenerate without persistence
+    let baseMessages: ChatMessage[] = [];
+    onMessagesUpdate(prev => {
+      const idx = prev.findIndex(m => m.id === messageId);
+      if (idx === -1) { baseMessages = prev; return prev; }
+      baseMessages = prev.slice(0, idx + 1);
+      return baseMessages;
+    });
+    await onAfterSave(baseMessages);
   }, [editingMessageId, editingContent]);
 
   return {

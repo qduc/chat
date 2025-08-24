@@ -18,7 +18,9 @@ function ChatInner() {
     model,
     setModel,
     useTools,
-    setUseTools
+    setUseTools,
+    shouldStream,
+    setShouldStream,
   } = useChatContext();
   const [input, setInput] = useState('');
 
@@ -31,6 +33,19 @@ function ChatInner() {
       await navigator.clipboard.writeText(text);
     } catch (_) {}
   }, []);
+
+  const handleRetryLastAssistant = useCallback(async () => {
+    if (chatStream.pending.streaming) return;
+    const msgs = chatStream.messages;
+    if (msgs.length === 0) return;
+    const last = msgs[msgs.length - 1];
+    if (last.role !== 'assistant') return;
+    // Remove the last assistant message and regenerate the reply
+    const base = msgs.slice(0, -1);
+    chatStream.setMessages(base);
+    chatStream.setPreviousResponseId(null);
+    await chatStream.regenerateFromBase(base, conversationId, model, useTools, shouldStream);
+  }, [chatStream, conversationId, model, useTools, shouldStream]);
 
   const handleNewChat = useCallback(async () => {
     if (chatStream.pending.streaming) chatStream.stopStreaming();
@@ -84,26 +99,34 @@ function ChatInner() {
   }, [conversations, conversationId, setConversationId, chatStream]);
 
   const handleSend = useCallback(async () => {
-    if (!input.trim()) return;
-    await chatStream.sendMessage(input.trim(), conversationId, model, useTools);
+    const trimmed = input.trim();
+    if (!trimmed) return;
+    // Clear input immediately for a more responsive feel
     setInput('');
-  }, [input, chatStream, conversationId, model, useTools]);
+    await chatStream.sendMessage(trimmed, conversationId, model, useTools, shouldStream);
+  }, [input, chatStream, conversationId, model, useTools, shouldStream]);
 
   const handleSaveEdit = useCallback(() => {
-    if (!conversationId) return;
+    if (chatStream.pending.streaming) {
+      chatStream.stopStreaming();
+    }
     // Fire-and-forget: `useMessageEditing` applies optimistic updates and will
     // reconcile or revert when the network call completes. Avoid awaiting here
     // so the UI doesn't block.
     void messageEditing.handleSaveEdit(
       conversationId,
-      (newConversationId) => {
-        setConversationId(newConversationId);
-        chatStream.setPreviousResponseId(null);
-      },
       chatStream.setMessages,
-      conversations.addConversation
+      async (base, newConversationId) => {
+        // Reset streaming context and regenerate assistant reply from provided base messages
+        chatStream.setPreviousResponseId(null);
+        const targetConvoId = newConversationId ?? conversationId;
+        if (newConversationId) {
+          setConversationId(newConversationId);
+        }
+        await chatStream.regenerateFromBase(base, targetConvoId, model, useTools, shouldStream);
+      }
     );
-  }, [conversationId, messageEditing, setConversationId, chatStream, conversations]);
+  }, [conversationId, messageEditing, chatStream, model, useTools, shouldStream, setConversationId]);
 
   const handleApplyLocalEdit = useCallback(async () => {
     const id = messageEditing.editingMessageId;
@@ -149,9 +172,11 @@ function ChatInner() {
         <ChatHeader
           model={model}
           useTools={useTools}
+          shouldStream={shouldStream}
           isStreaming={chatStream.pending.streaming}
           onModelChange={setModel}
           onUseToolsChange={setUseTools}
+          onShouldStreamChange={setShouldStream}
           onNewChat={handleNewChat}
           onStop={chatStream.stopStreaming}
         />
@@ -167,6 +192,7 @@ function ChatInner() {
           onSaveEdit={handleSaveEdit}
           onApplyLocalEdit={handleApplyLocalEdit}
           onEditingContentChange={messageEditing.setEditingContent}
+          onRetryLastAssistant={handleRetryLastAssistant}
         />
         <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-2xl px-4">
           <MessageInput

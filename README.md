@@ -6,7 +6,7 @@ A full-stack AI chat app (React + Node) that talks to an OpenAI-compatible endpo
 - [x] Bootstrap repo
 - [x] Backend proxy with streaming (OpenAI-compatible)
 - [x] Rate limiting (in-memory per-IP)
-- [x] Basic chat UI (streaming, model select, abort)
+- [x] Basic chat UI (streaming toggle, model select, abort)
 - [x] Responses API with conversation continuity
 - [x] Testing infrastructure (Jest for backend & frontend)
 - [x] Markdown rendering with syntax highlighting

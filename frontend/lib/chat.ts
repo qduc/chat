@@ -24,6 +24,8 @@ export interface SendChatOptions {
   previousResponseId?: string; // for Responses API conversation continuity
   tools?: any[]; // optional OpenAI tool specifications (Chat Completions only for now)
   tool_choice?: any; // optional tool_choice
+  stream?: boolean; // whether to stream response (default: true)
+  shouldStream?: boolean; // alias for stream to avoid env collisions
 }
 
 // Default to calling the frontend's local proxy under /api.
@@ -64,12 +66,15 @@ interface ResponsesAPIStreamChunk {
 
 export async function sendChat(options: SendChatOptions): Promise<{ content: string; responseId?: string }> {
   const { apiBase = defaultApiBase, messages, model, signal, onEvent, onToken, conversationId, useResponsesAPI, previousResponseId, tools, tool_choice } = options;
+  const streamFlag = options.shouldStream !== undefined
+    ? !!options.shouldStream
+    : (options.stream === undefined ? true : !!options.stream);
   // Decide which API to use. If tools/tool_choice are provided, force Chat Completions.
   const useResponses = useResponsesAPI !== undefined ? useResponsesAPI : !(Array.isArray(tools) && tools.length > 0 || tool_choice !== undefined);
   const bodyObj: any = {
     model,
     messages,
-    stream: true,
+    stream: streamFlag,
     conversation_id: conversationId,
     ...(useResponses && previousResponseId && { previous_response_id: previousResponseId }),
   };
@@ -86,8 +91,8 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      // Hint to proxies/browsers that we expect an SSE stream
-      'Accept': 'text/event-stream'
+      // Hint to proxies/browsers that we expect an SSE stream (only for streaming)
+      ...(streamFlag ? { 'Accept': 'text/event-stream' } : {}),
     },
     body,
   };
@@ -100,6 +105,22 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
       msg += `: ${j.error || j.message || JSON.stringify(j)}`;
     } catch (_) {}
     throw new Error(msg);
+  }
+
+  // Non-streaming: parse JSON and return content immediately
+  if (!streamFlag) {
+    const json = await res.json();
+    if (useResponses) {
+      // Responses API non-stream JSON
+      const content = json?.output?.[0]?.content?.[0]?.text ?? '';
+      const responseId = json?.id;
+      return { content, responseId };
+    } else {
+      // Chat Completions API non-stream JSON
+      const content = json?.choices?.[0]?.message?.content ?? '';
+      const responseId = json?.id;
+      return { content, responseId };
+    }
   }
 
   if (!res.body) throw new Error('No response body');

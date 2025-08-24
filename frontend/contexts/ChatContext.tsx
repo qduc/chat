@@ -7,6 +7,8 @@ interface ChatContextType {
   setModel: (model: string) => void;
   useTools: boolean;
   setUseTools: (useTools: boolean) => void;
+  shouldStream: boolean;
+  setShouldStream: (val: boolean) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -27,6 +29,7 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [model, setModel] = useState<string>('gpt-4.1-mini');
   const [useTools, setUseTools] = useState<boolean>(true);
+  const [shouldStream, setShouldStream] = useState<boolean>(true);
 
   const value = {
     conversationId,
@@ -34,7 +37,9 @@ export function ChatProvider({ children }: ChatProviderProps) {
     model,
     setModel,
     useTools,
-    setUseTools
+    setUseTools,
+    shouldStream,
+    setShouldStream,
   };
 
   return (

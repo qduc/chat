@@ -42,7 +42,21 @@ export interface UseChatStreamReturn {
     input: string,
     conversationId: string | null,
     model: string,
-    useTools: boolean
+    useTools: boolean,
+    shouldStream: boolean
+  ) => Promise<void>;
+  regenerateFromCurrent: (
+    conversationId: string | null,
+    model: string,
+    useTools: boolean,
+    shouldStream: boolean
+  ) => Promise<void>;
+  regenerateFromBase: (
+    baseMessages: ChatMessage[],
+    conversationId: string | null,
+    model: string,
+    useTools: boolean,
+    shouldStream: boolean
   ) => Promise<void>;
   generateFromHistory: (
     model: string,
@@ -66,7 +80,8 @@ export function useChatStream(): UseChatStreamReturn {
     input: string,
     conversationId: string | null,
     model: string,
-    useTools: boolean
+    useTools: boolean,
+    shouldStream: boolean
   ) => {
   if (!input.trim()) return;
   // Allow multiple concurrent requests; UI is updated optimistically immediately.
@@ -82,41 +97,45 @@ export function useChatStream(): UseChatStreamReturn {
   // until we actually receive data from the server — this keeps the input responsive.
   setPending(prev => ({ ...prev, abort }));
 
-    // Fire the network request in background and return immediately so UI stays responsive.
-    const network = sendChat({
-      messages: [...messages, userMsg].map(m => ({ role: m.role as Role, content: m.content })),
-      model,
-      signal: abort.signal,
-      conversationId: conversationId || undefined,
-      previousResponseId: previousResponseId || undefined,
-      useResponsesAPI: !useTools,
-      ...(useTools ? {
-        tools: Object.values(availableTools),
-        tool_choice: 'auto'
-      } : {}),
-      onEvent: (event) => {
-        // Mark streaming active when we receive the first event so UI can show typing state
-        setPending(p => (p.streaming ? p : { ...p, streaming: true }));
-        const msg = assistantMsgRef.current!;
-        if (event.type === 'text') {
-          msg.content += event.value;
-        } else if (event.type === 'tool_call') {
-          if (!msg.tool_calls) msg.tool_calls = [];
-          msg.tool_calls.push(event.value);
-        } else if (event.type === 'final') {
-          msg.content = event.value; // Replace content with the final version
-        } else if (event.type === 'tool_output') {
-          if (!msg.tool_outputs) msg.tool_outputs = [] as any;
-          msg.tool_outputs!.push(event.value);
+    try {
+      const result = await sendChat({
+        messages: [...messages, userMsg].map(m => ({ role: m.role as Role, content: m.content })),
+        model,
+        signal: abort.signal,
+        conversationId: conversationId || undefined,
+        previousResponseId: previousResponseId || undefined,
+        useResponsesAPI: !useTools,
+        shouldStream,
+        ...(useTools ? {
+          tools: Object.values(availableTools),
+          tool_choice: 'auto'
+        } : {}),
+        onEvent: (event) => {
+          const msg = assistantMsgRef.current!;
+          if (event.type === 'text') {
+            msg.content += event.value;
+          } else if (event.type === 'tool_call') {
+            if (!msg.tool_calls) msg.tool_calls = [];
+            msg.tool_calls.push(event.value);
+          } else if (event.type === 'final') {
+            msg.content = event.value; // Replace content with the final version
+          } else if (event.type === 'tool_output') {
+            if (!msg.tool_outputs) msg.tool_outputs = [] as any;
+            msg.tool_outputs!.push(event.value);
+          }
+          setMessages(curr => curr.map(m => m.id === msg.id ? { ...msg } : m));
         }
+      });
+      // For non-streaming, update the assistant message content from the result
+      if (!shouldStream) {
+        const msg = assistantMsgRef.current!;
+        msg.content = result.content || msg.content;
         setMessages(curr => curr.map(m => m.id === msg.id ? { ...msg } : m));
       }
-    });
-
-    // Handle background resolution/rejection to reconcile state
-    network.then(result => {
-      if (result.responseId) setPreviousResponseId(result.responseId);
-    }).catch((e: any) => {
+      if (result.responseId) {
+        setPreviousResponseId(result.responseId);
+      }
+    } catch (e: any) {
       setPending(p => ({ ...p, error: e?.message || String(e) }));
       setMessages(curr => curr.map(msg => msg.id === assistantMsg.id ? { ...msg, content: msg.content + `\n[error: ${e.message}]` } : msg));
     }).finally(() => {
@@ -184,8 +203,88 @@ export function useChatStream(): UseChatStreamReturn {
     return;
   }, [messages]);
 
+  const regenerateFromBase = useCallback(async (
+    baseMessages: ChatMessage[],
+    conversationId: string | null,
+    model: string,
+    useTools: boolean,
+    shouldStream: boolean
+  ) => {
+    // Must have at least one user message to respond to
+    if (baseMessages.length === 0) return;
+    const last = baseMessages[baseMessages.length - 1];
+    if (last.role !== 'user') return;
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+
+    const abort = new AbortController();
+    const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
+    assistantMsgRef.current = assistantMsg;
+    setMessages(() => [...baseMessages, assistantMsg]);
+    setPending(prev => ({ ...prev, streaming: true, abort }));
+
+    try {
+      const result = await sendChat({
+        messages: baseMessages.map(m => ({ role: m.role as Role, content: m.content })),
+        model,
+        signal: abort.signal,
+        conversationId: conversationId || undefined,
+        previousResponseId: previousResponseId || undefined,
+        useResponsesAPI: !useTools,
+        shouldStream,
+        ...(useTools ? {
+          tools: Object.values(availableTools),
+          tool_choice: 'auto'
+        } : {}),
+        onEvent: (event) => {
+          const msg = assistantMsgRef.current!;
+          if (event.type === 'text') {
+            msg.content += event.value;
+          } else if (event.type === 'tool_call') {
+            if (!msg.tool_calls) msg.tool_calls = [];
+            msg.tool_calls.push(event.value);
+          } else if (event.type === 'final') {
+            msg.content = event.value;
+          } else if (event.type === 'tool_output') {
+            if (!msg.tool_outputs) msg.tool_outputs = [] as any;
+            msg.tool_outputs!.push(event.value);
+          }
+          setMessages(curr => curr.map(m => m.id === msg.id ? { ...msg } : m));
+        }
+      });
+      if (!shouldStream) {
+        const msg = assistantMsgRef.current!;
+        msg.content = result.content || msg.content;
+        setMessages(curr => curr.map(m => m.id === msg.id ? { ...msg } : m));
+      }
+      if (result.responseId) {
+        setPreviousResponseId(result.responseId);
+      }
+    } catch (e: any) {
+      setPending(p => ({ ...p, error: e?.message || String(e) }));
+      setMessages(curr => curr.map(msg => msg.id === assistantMsg.id ? { ...msg, content: msg.content + `\n[error: ${e.message}]` } : msg));
+    } finally {
+      setPending(p => ({ ...p, streaming: false, abort: undefined }));
+      inFlightRef.current = false;
+    }
+  }, [previousResponseId]);
+
+  const regenerateFromCurrent = useCallback(async (
+    conversationId: string | null,
+    model: string,
+    useTools: boolean,
+    shouldStream: boolean
+  ) => {
+    const base = messages;
+    await regenerateFromBase(base, conversationId, model, useTools, shouldStream);
+  }, [messages, regenerateFromBase]);
+
   const stopStreaming = useCallback(() => {
-    pending.abort?.abort();
+    // Abort the current stream and immediately clear in-flight state
+    try { pending.abort?.abort(); } catch {}
+    // Ensure callers can immediately start a new request (e.g., after editing)
+    inFlightRef.current = false;
+    setPending(p => ({ ...p, streaming: false, abort: undefined }));
   }, [pending.abort]);
 
   const clearMessages = useCallback(() => {
@@ -200,7 +299,8 @@ export function useChatStream(): UseChatStreamReturn {
     pending,
     previousResponseId,
     sendMessage,
-    generateFromHistory,
+    regenerateFromBase,
+    regenerateFromCurrent,
     stopStreaming,
     clearMessages,
     setMessages,
