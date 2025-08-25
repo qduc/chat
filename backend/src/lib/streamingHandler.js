@@ -264,70 +264,129 @@ export async function handleStreamingWithTools({
   let lastFinishReason = null;
 
   try {
-    // First non-streaming call to collect tool calls
+    // First streaming call to collect tool calls (dispatch tools early)
     const body1 = { 
       ...body, 
-      stream: false,
+      stream: true,
       tools: generateOpenAIToolSpecs() // Use backend registry as source of truth
     };
     const r1 = await createOpenAIRequest(config, body1);
-    const j1 = await r1.json();
-    const msg1 = j1?.choices?.[0]?.message;
-    const toolCalls = msg1?.tool_calls || [];
+    
+    // Stream upstream chunks directly and collect tool calls
+    let leftover1 = '';
+    const toolCallMap = new Map(); // index -> { id, type, function: { name, arguments } }
 
-    if (!toolCalls.length && msg1?.content) {
-      // No tool calls; synthesize minimal SSE stream for the text content
-      const chunk = createChatCompletionChunk(j1.id, j1.model, { content: msg1.content });
-      res.write(`data: ${JSON.stringify(chunk)}\n\n`);
-      
-      // Finish chunk
-      const doneChunk = createChatCompletionChunk(
-        j1.id, 
-        j1.model, 
-        {}, 
-        j1?.choices?.[0]?.finish_reason || 'stop'
-      );
-      res.write(`data: ${JSON.stringify(doneChunk)}\n\n`);
-      res.write('data: [DONE]\n\n');
-      
-      if (persist && assistantMessageId && msg1.content) {
-        buffer.value += msg1.content;
+    await new Promise((resolve, reject) => {
+      r1.body.on('data', (chunk) => {
+        try {
+          leftover1 = parseSSEStream(
+            chunk,
+            leftover1,
+            (obj) => {
+              // Forward upstream chunk to client
+              writeAndFlush(res, `data: ${JSON.stringify(obj)}\n\n`);
+
+              const choice = obj?.choices?.[0];
+              const delta = choice?.delta || {};
+
+              // Accumulate tool call deltas
+              if (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) {
+                for (const tcDelta of delta.tool_calls) {
+                  const idx = tcDelta.index ?? 0;
+                  const existing = toolCallMap.get(idx) || {
+                    id: tcDelta.id,
+                    type: 'function',
+                    function: { name: '', arguments: '' },
+                  };
+                  if (tcDelta.id && !existing.id) existing.id = tcDelta.id;
+                  if (tcDelta.function?.name) existing.function.name = tcDelta.function.name;
+                  if (tcDelta.function?.arguments) existing.function.arguments += tcDelta.function.arguments;
+                  toolCallMap.set(idx, existing);
+                }
+              }
+
+              // Persistence for content
+              if (persist && typeof delta.content === 'string' && delta.content.length > 0) {
+                buffer.value += delta.content;
+                if (buffer.value.length >= sizeThreshold) doFlush();
+              }
+            },
+            () => resolve(),
+            () => { /* ignore parse errors */ }
+          );
+        } catch (e) {
+          reject(e);
+        }
+      });
+
+      r1.body.on('error', reject);
+    });
+
+    // End of first turn parsing
+
+    const toolCalls = Array.from(toolCallMap.values());
+    const msg1 = { role: 'assistant', tool_calls: toolCalls };
+
+    if (!toolCalls.length) {
+      // No tools declared: upstream first turn already streamed, just close SSE
+      writeAndFlush(res, 'data: [DONE]\n\n');
+      if (persist && assistantMessageId) {
         doFlush();
-        finalizeAssistantMessage({
-          messageId: assistantMessageId,
-          finishReason: j1?.choices?.[0]?.finish_reason || 'stop',
-          status: 'final',
-        });
+        finalizeAssistantMessage({ messageId: assistantMessageId, finishReason: 'stop', status: 'final' });
       }
       return res.end();
     }
 
-    // Send tool call events to frontend for UI display
-    for (const tc of toolCalls) {
-      const toolCallChunk = createChatCompletionChunk(j1.id, j1.model, { tool_calls: [tc] });
-      writeAndFlush(res, `data: ${JSON.stringify(toolCallChunk)}\n\n`);
-    }
+    // Tool calls already streamed above; do not re-emit
 
-    // Execute tools
+    // Wait for tools with timeout (gating policy)
+    const TOOL_TIMEOUT = 10000; // 10 seconds
     const toolResults = [];
-    for (const tc of toolCalls) {
-      const { output } = await executeToolCall(tc);
-      
-      // Send tool output event to frontend for UI display
-      const toolOutputChunk = createChatCompletionChunk(j1.id, j1.model, {
-        tool_output: {
+    const toolPromises = toolCalls.map(tc => (
+      executeToolCall(tc).then(({ output }) => {
+        const toolOutputChunk = createChatCompletionChunk('temp', body.model, {
+          tool_output: {
+            tool_call_id: tc.id,
+            name: tc.function?.name,
+            output: output,
+          },
+        });
+        writeAndFlush(res, `data: ${JSON.stringify(toolOutputChunk)}\n\n`);
+        return {
+          role: 'tool',
           tool_call_id: tc.id,
-          name: tc.function?.name,
-          output: output,
-        },
-      });
-      writeAndFlush(res, `data: ${JSON.stringify(toolOutputChunk)}\n\n`);
+          content: typeof output === 'string' ? output : JSON.stringify(output),
+        };
+      })
+    ));
+    
+    try {
+      const timeoutPromise = new Promise((_, reject) => 
+        setTimeout(() => reject(new Error('Tool timeout')), TOOL_TIMEOUT)
+      );
       
-      toolResults.push({
-        role: 'tool',
-        tool_call_id: tc.id,
-        content: typeof output === 'string' ? output : JSON.stringify(output),
-      });
+      const toolOutputs = await Promise.race([
+        Promise.allSettled(toolPromises),
+        timeoutPromise
+      ]);
+      
+      // Collect successful tool results
+      for (const result of toolOutputs) {
+        if (result.status === 'fulfilled') {
+          toolResults.push(result.value);
+        }
+      }
+    } catch (error) {
+      console.warn('[tools] Timeout or error, proceeding with available results:', error.message);
+      // Continue with whatever tool results we have so far
+      for (const promise of toolPromises) {
+        try {
+          const result = await Promise.race([promise, Promise.resolve(null)]);
+          if (result) toolResults.push(result);
+        } catch {
+          // Skip failed tools
+        }
+      }
     }
 
     // Second streaming turn
@@ -439,7 +498,7 @@ export async function handleRegularStreaming({
             if (dataMatch) {
               const payload = dataMatch[1];
               if (payload === '[DONE]') {
-                res.write('data: [DONE]\n\n');
+                writeAndFlush(res, 'data: [DONE]\n\n');
                 finished = true;
                 break;
               }
@@ -454,7 +513,8 @@ export async function handleRegularStreaming({
                     'gpt-3.5-turbo',
                     { content: obj.delta }
                   );
-                  res.write(
+                  writeAndFlush(
+                    res,
                     `data: ${JSON.stringify(chatCompletionChunk)}\n\n`
                   );
 
@@ -470,7 +530,8 @@ export async function handleRegularStreaming({
                     {},
                     'stop'
                   );
-                  res.write(
+                  writeAndFlush(
+                    res,
                     `data: ${JSON.stringify(chatCompletionChunk)}\n\n`
                   );
                   lastFinishReason = 'stop';
@@ -481,7 +542,6 @@ export async function handleRegularStreaming({
             }
           }
         }
-        if (typeof res.flush === 'function') res.flush();
       } else {
         // Direct passthrough for native format or Chat Completions API
         writeAndFlush(res, chunk);
