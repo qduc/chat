@@ -318,6 +318,49 @@ export function useChatState() {
     // Handle tool calls, tool outputs if needed
   }, []);
 
+  // Helpers to remove duplicate sendChat setup and error handling
+  const buildSendChatConfig = useCallback(
+    (messages: ChatMessage[], signal: AbortSignal) => ({
+      messages: messages.map(m => ({ role: m.role as Role, content: m.content })),
+      model: state.model,
+      signal,
+      conversationId: state.conversationId || undefined,
+      previousResponseId: state.previousResponseId || undefined,
+      useResponsesAPI: !state.useTools,
+      shouldStream: state.shouldStream,
+      reasoningEffort: state.reasoningEffort,
+      verbosity: state.verbosity,
+      ...(state.useTools
+        ? {
+            tools: Object.values(availableTools),
+            tool_choice: 'auto',
+          }
+        : {}),
+      onEvent: handleStreamEvent,
+    }),
+    [state, handleStreamEvent]
+  );
+
+  const runSend = useCallback(
+    async (config: Parameters<typeof sendChat>[0]) => {
+      try {
+        const result = await sendChat(config);
+        dispatch({
+          type: 'STREAM_COMPLETE',
+          payload: { responseId: result.responseId },
+        });
+      } catch (e: any) {
+        dispatch({
+          type: 'STREAM_ERROR',
+          payload: e?.message || String(e),
+        });
+      } finally {
+        inFlightRef.current = false;
+      }
+    },
+    []
+  );
+
   // Actions
   const actions = {
     // UI Actions
@@ -361,37 +404,9 @@ export function useChatState() {
         payload: { abort, userMessage: userMsg, assistantMessage: assistantMsg } 
       });
 
-      try {
-        const result = await sendChat({
-          messages: [...state.messages, userMsg].map(m => ({ role: m.role as Role, content: m.content })),
-          model: state.model,
-          signal: abort.signal,
-          conversationId: state.conversationId || undefined,
-          previousResponseId: state.previousResponseId || undefined,
-          useResponsesAPI: !state.useTools,
-          shouldStream: state.shouldStream,
-          reasoningEffort: state.reasoningEffort,
-          verbosity: state.verbosity,
-          ...(state.useTools ? {
-            tools: Object.values(availableTools),
-            tool_choice: 'auto'
-          } : {}),
-          onEvent: handleStreamEvent
-        });
-
-        dispatch({ 
-          type: 'STREAM_COMPLETE', 
-          payload: { responseId: result.responseId } 
-        });
-      } catch (e: any) {
-        dispatch({ 
-          type: 'STREAM_ERROR', 
-          payload: e?.message || String(e) 
-        });
-      } finally {
-        inFlightRef.current = false;
-      }
-    }, [state, handleStreamEvent]),
+      const config = buildSendChatConfig([...state.messages, userMsg], abort.signal);
+      await runSend(config);
+    }, [state, handleStreamEvent, buildSendChatConfig, runSend]),
 
     regenerate: useCallback(async (baseMessages: ChatMessage[]) => {
       if (state.status === 'streaming' || inFlightRef.current) return;
@@ -406,37 +421,9 @@ export function useChatState() {
         payload: { abort, baseMessages, assistantMessage: assistantMsg }
       });
 
-      try {
-        const result = await sendChat({
-          messages: baseMessages.map(m => ({ role: m.role as Role, content: m.content })),
-          model: state.model,
-          signal: abort.signal,
-          conversationId: state.conversationId || undefined,
-          previousResponseId: state.previousResponseId || undefined,
-          useResponsesAPI: !state.useTools,
-          shouldStream: state.shouldStream,
-          reasoningEffort: state.reasoningEffort,
-          verbosity: state.verbosity,
-          ...(state.useTools ? {
-            tools: Object.values(availableTools),
-            tool_choice: 'auto'
-          } : {}),
-          onEvent: handleStreamEvent
-        });
-
-        dispatch({
-          type: 'STREAM_COMPLETE',
-          payload: { responseId: result.responseId }
-        });
-      } catch (e: any) {
-        dispatch({
-          type: 'STREAM_ERROR',
-          payload: e?.message || String(e)
-        });
-      } finally {
-        inFlightRef.current = false;
-      }
-    }, [state, handleStreamEvent]),
+      const config = buildSendChatConfig(baseMessages, abort.signal);
+      await runSend(config);
+    }, [state, handleStreamEvent, buildSendChatConfig, runSend]),
 
     stopStreaming: useCallback(() => {
       try { state.abort?.abort(); } catch {}
