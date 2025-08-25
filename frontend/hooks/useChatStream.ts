@@ -43,25 +43,29 @@ export interface UseChatStreamReturn {
     conversationId: string | null,
     model: string,
     useTools: boolean,
-    shouldStream: boolean
+    shouldStream: boolean,
+    researchMode?: boolean
   ) => Promise<void>;
   regenerateFromCurrent: (
     conversationId: string | null,
     model: string,
     useTools: boolean,
-    shouldStream: boolean
+    shouldStream: boolean,
+    researchMode?: boolean
   ) => Promise<void>;
   regenerateFromBase: (
     baseMessages: ChatMessage[],
     conversationId: string | null,
     model: string,
     useTools: boolean,
-    shouldStream: boolean
+    shouldStream: boolean,
+    researchMode?: boolean
   ) => Promise<void>;
   generateFromHistory: (
     model: string,
     useTools: boolean,
-    messagesOverride?: ChatMessage[]
+    messagesOverride?: ChatMessage[],
+    researchMode?: boolean
   ) => Promise<void>;
   stopStreaming: () => void;
   clearMessages: () => void;
@@ -81,7 +85,8 @@ export function useChatStream(): UseChatStreamReturn {
     conversationId: string | null,
     model: string,
     useTools: boolean,
-    shouldStream: boolean
+    shouldStream: boolean,
+    researchMode?: boolean
   ) => {
   if (!input.trim()) return;
   // Allow multiple concurrent requests; UI is updated optimistically immediately.
@@ -108,7 +113,8 @@ export function useChatStream(): UseChatStreamReturn {
         shouldStream,
         ...(useTools ? {
           tools: Object.values(availableTools),
-          tool_choice: 'auto'
+          tool_choice: 'auto',
+          ...(researchMode && { research_mode: true })
         } : {}),
         onEvent: (event) => {
           const msg = assistantMsgRef.current!;
@@ -150,7 +156,8 @@ export function useChatStream(): UseChatStreamReturn {
   const generateFromHistory = useCallback(async (
     model: string,
     useTools: boolean,
-    messagesOverride?: ChatMessage[]
+    messagesOverride?: ChatMessage[],
+    researchMode?: boolean
   ) => {
     // Only proceed if there is a user message to respond to
     const history = messagesOverride ?? messages;
@@ -171,7 +178,8 @@ export function useChatStream(): UseChatStreamReturn {
       useResponsesAPI: !useTools,
       ...(useTools ? {
         tools: Object.values(availableTools),
-        tool_choice: 'auto'
+        tool_choice: 'auto',
+        ...(researchMode && { research_mode: true })
       } : {}),
       onEvent: (event) => {
         const msg = assistantMsgRef.current!;
@@ -208,7 +216,8 @@ export function useChatStream(): UseChatStreamReturn {
     conversationId: string | null,
     model: string,
     useTools: boolean,
-    shouldStream: boolean
+    shouldStream: boolean,
+    researchMode?: boolean
   ) => {
     // Must have at least one user message to respond to
     if (baseMessages.length === 0) return;
@@ -234,7 +243,8 @@ export function useChatStream(): UseChatStreamReturn {
         shouldStream,
         ...(useTools ? {
           tools: Object.values(availableTools),
-          tool_choice: 'auto'
+          tool_choice: 'auto',
+          ...(researchMode && { research_mode: true })
         } : {}),
         onEvent: (event) => {
           const msg = assistantMsgRef.current!;
@@ -273,10 +283,11 @@ export function useChatStream(): UseChatStreamReturn {
     conversationId: string | null,
     model: string,
     useTools: boolean,
-    shouldStream: boolean
+    shouldStream: boolean,
+    researchMode?: boolean
   ) => {
     const base = messages;
-    await regenerateFromBase(base, conversationId, model, useTools, shouldStream);
+    await regenerateFromBase(base, conversationId, model, useTools, shouldStream, researchMode);
   }, [messages, regenerateFromBase]);
 
   const stopStreaming = useCallback(() => {

@@ -2,10 +2,12 @@ interface ChatHeaderProps {
   model: string;
   useTools: boolean;
   shouldStream: boolean;
+  researchMode: boolean;
   isStreaming: boolean;
   onModelChange: (model: string) => void;
   onUseToolsChange: (useTools: boolean) => void;
   onShouldStreamChange: (val: boolean) => void;
+  onResearchModeChange: (val: boolean) => void;
   onNewChat: () => void;
   onStop: () => void;
 }
@@ -14,10 +16,12 @@ export function ChatHeader({
   model,
   useTools,
   shouldStream,
+  researchMode,
   isStreaming,
   onModelChange,
   onUseToolsChange,
   onShouldStreamChange,
+  onResearchModeChange,
   onNewChat,
   onStop
 }: ChatHeaderProps) {
@@ -63,6 +67,16 @@ export function ChatHeader({
               onChange={e => onShouldStreamChange(e.target.checked)}
             />
             Stream Responses
+          </label>
+          <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 select-none">
+            <input
+              type="checkbox"
+              className="rounded border-slate-300 dark:border-neutral-700 text-orange-600 focus:ring-orange-500"
+              checked={researchMode}
+              onChange={e => onResearchModeChange(e.target.checked)}
+              disabled={!useTools}
+            />
+            <span className={useTools ? "" : "opacity-50"}>Research Mode</span>
           </label>
         </div>
         <div className="ml-auto flex items-center gap-3">

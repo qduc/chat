@@ -26,6 +26,7 @@ export interface SendChatOptions {
   tool_choice?: any; // optional tool_choice
   stream?: boolean; // whether to stream response (default: true)
   shouldStream?: boolean; // alias for stream to avoid env collisions
+  research_mode?: boolean; // enable multi-step research mode with iterative tool usage
 }
 
 // API base URL - can be direct backend URL or proxy path
@@ -66,7 +67,7 @@ interface ResponsesAPIStreamChunk {
 }
 
 export async function sendChat(options: SendChatOptions): Promise<{ content: string; responseId?: string }> {
-  const { apiBase = defaultApiBase, messages, model, signal, onEvent, onToken, conversationId, useResponsesAPI, previousResponseId, tools, tool_choice } = options;
+  const { apiBase = defaultApiBase, messages, model, signal, onEvent, onToken, conversationId, useResponsesAPI, previousResponseId, tools, tool_choice, research_mode } = options;
   const streamFlag = options.shouldStream !== undefined
     ? !!options.shouldStream
     : (options.stream === undefined ? true : !!options.stream);
@@ -78,6 +79,7 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
     stream: streamFlag,
     conversation_id: conversationId,
     ...(useResponses && previousResponseId && { previous_response_id: previousResponseId }),
+    ...(research_mode && { research_mode: true }),
   };
   // Only attach tools when not using Responses API (we use Chat Completions for tools)
   if (!useResponses && Array.isArray(tools) && tools.length > 0) {

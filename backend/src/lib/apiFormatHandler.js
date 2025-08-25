@@ -3,10 +3,13 @@ export function determineApiFormat(bodyIn, config) {
   
   // If tools are present, force Chat Completions path for MVP (server orchestration)
   if (hasTools) {
+    // Check if user explicitly requests research mode (iterative orchestration)
+    const useResearchMode = bodyIn.research_mode === true;
+    
     return {
       useResponsesAPI: false,
       hasTools: true,
-      useIterativeOrchestration: true
+      useIterativeOrchestration: useResearchMode
     };
   }
   
@@ -28,6 +31,7 @@ export function prepareRequestBody(bodyIn, apiFormat, config) {
   delete body.conversation_id;
   delete body.disable_responses_api;
   delete body.previous_response_id;
+  delete body.research_mode;
   
   if (!body.model) body.model = config.defaultModel;
   
