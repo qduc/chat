@@ -25,9 +25,7 @@ export function ChatV2() {
     
     // Remove the last assistant message and regenerate
     const base = state.messages.slice(0, -1);
-    // TODO: Implement regenerateFromBase in actions
-    // For now, just remove the message and let user send again
-    actions.setMessages(base);
+    actions.regenerate(base);
   }, [state.messages, state.status, actions]);
 
   const handleApplyLocalEdit = useCallback(async () => {
@@ -48,9 +46,11 @@ export function ChatV2() {
     
     actions.setMessages(baseMessages);
     actions.cancelEdit();
-    
+
     // If last message is user message, could trigger regeneration here
-    // For now, user will need to manually send
+    if (baseMessages.length && baseMessages[baseMessages.length - 1].role === 'user') {
+      actions.regenerate(baseMessages);
+    }
   }, [state.editingMessageId, state.editingContent, state.messages, state.status, actions]);
 
   return (

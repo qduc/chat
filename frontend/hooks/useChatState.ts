@@ -47,6 +47,7 @@ export type ChatAction =
   | { type: 'SET_VERBOSITY'; payload: string }
   | { type: 'SET_CONVERSATION_ID'; payload: string | null }
   | { type: 'START_STREAMING'; payload: { abort: AbortController; userMessage: ChatMessage; assistantMessage: ChatMessage } }
+  | { type: 'REGENERATE_START'; payload: { abort: AbortController; baseMessages: ChatMessage[]; assistantMessage: ChatMessage } }
   | { type: 'STREAM_TOKEN'; payload: { messageId: string; token: string } }
   | { type: 'STREAM_COMPLETE'; payload: { responseId?: string } }
   | { type: 'STREAM_ERROR'; payload: string }
@@ -115,6 +116,16 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         status: 'streaming',
         input: '', // Clear input immediately
         messages: [...state.messages, action.payload.userMessage, action.payload.assistantMessage],
+        abort: action.payload.abort,
+        error: null,
+      };
+    
+    case 'REGENERATE_START':
+      return {
+        ...state,
+        status: 'streaming',
+        input: '',
+        messages: [...action.payload.baseMessages, action.payload.assistantMessage],
         abort: action.payload.abort,
         error: null,
       };
@@ -376,6 +387,51 @@ export function useChatState() {
         dispatch({ 
           type: 'STREAM_ERROR', 
           payload: e?.message || String(e) 
+        });
+      } finally {
+        inFlightRef.current = false;
+      }
+    }, [state, handleStreamEvent]),
+
+    regenerate: useCallback(async (baseMessages: ChatMessage[]) => {
+      if (state.status === 'streaming' || inFlightRef.current) return;
+
+      inFlightRef.current = true;
+      const abort = new AbortController();
+      const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
+      assistantMsgRef.current = assistantMsg;
+
+      dispatch({
+        type: 'REGENERATE_START',
+        payload: { abort, baseMessages, assistantMessage: assistantMsg }
+      });
+
+      try {
+        const result = await sendChat({
+          messages: baseMessages.map(m => ({ role: m.role as Role, content: m.content })),
+          model: state.model,
+          signal: abort.signal,
+          conversationId: state.conversationId || undefined,
+          previousResponseId: state.previousResponseId || undefined,
+          useResponsesAPI: !state.useTools,
+          shouldStream: state.shouldStream,
+          reasoningEffort: state.reasoningEffort,
+          verbosity: state.verbosity,
+          ...(state.useTools ? {
+            tools: Object.values(availableTools),
+            tool_choice: 'auto'
+          } : {}),
+          onEvent: handleStreamEvent
+        });
+
+        dispatch({
+          type: 'STREAM_COMPLETE',
+          payload: { responseId: result.responseId }
+        });
+      } catch (e: any) {
+        dispatch({
+          type: 'STREAM_ERROR',
+          payload: e?.message || String(e)
         });
       } finally {
         inFlightRef.current = false;

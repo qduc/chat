@@ -214,7 +214,11 @@ function ChatInner() {
 export function Chat() {
   // Feature flag to enable v2 implementation
   if (isFeatureEnabled('CHAT_V2')) {
-    return <ChatV2 />;
+    return (
+        <ChatProvider>
+            <ChatV2 />
+        </ChatProvider>
+    );
   }
 
   // Default to v1 implementation
