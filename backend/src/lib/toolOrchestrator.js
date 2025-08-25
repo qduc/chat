@@ -1,12 +1,13 @@
 import fetch from 'node-fetch';
 import { tools as toolRegistry, generateOpenAIToolSpecs } from './tools.js';
+import { createChatCompletionChunk, writeAndFlush } from './streamUtils.js';
 
 /**
  * Execute a single tool call from the local registry
  * @param {Object} call - Tool call object with function name and arguments
  * @returns {Promise<{name: string, output: any}>} Tool execution result
  */
-async function executeToolCall(call) {
+export async function executeToolCall(call) {
   const name = call?.function?.name;
   const argsStr = call?.function?.arguments || '{}';
   const tool = toolRegistry[name];
@@ -25,6 +26,69 @@ async function executeToolCall(call) {
   const validated = tool.validate ? tool.validate(args) : args;
   const output = await tool.handler(validated);
   return { name, output };
+}
+
+/**
+ * Execute tool calls in parallel with timeout and stream tool_output chunks
+ * Mirrors the logic from streamingHandler.js (timeout, parallelism, result collection)
+ * @param {Object} params
+ * @param {Array} params.toolCalls - Array of tool call objects
+ * @param {Object} params.body - Original body containing model
+ * @param {Object} params.res - Express response for streaming
+ * @returns {Promise<Array>} Array of tool result messages for follow-up turn
+ */
+export async function executeToolsWithTimeout({ toolCalls, body, res }) {
+  const TOOL_TIMEOUT = 10000; // 10 seconds
+  const toolResults = [];
+
+  const toolPromises = toolCalls.map(tc => (
+    executeToolCall(tc).then(({ output }) => {
+      const toolOutputChunk = createChatCompletionChunk('temp', body.model, {
+        tool_output: {
+          tool_call_id: tc.id,
+          name: tc.function?.name,
+          output: output,
+        },
+      });
+      writeAndFlush(res, `data: ${JSON.stringify(toolOutputChunk)}\n\n`);
+      return {
+        role: 'tool',
+        tool_call_id: tc.id,
+        content: typeof output === 'string' ? output : JSON.stringify(output),
+      };
+    })
+  ));
+
+  try {
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Tool timeout')), TOOL_TIMEOUT)
+    );
+
+    const toolOutputs = await Promise.race([
+      Promise.allSettled(toolPromises),
+      timeoutPromise,
+    ]);
+
+    // Collect successful tool results
+    for (const result of toolOutputs) {
+      if (result.status === 'fulfilled') {
+        toolResults.push(result.value);
+      }
+    }
+  } catch (error) {
+    console.warn('[tools] Timeout or error, proceeding with available results:', error.message);
+    // Continue with whatever tool results we have so far
+    for (const promise of toolPromises) {
+      try {
+        const result = await Promise.race([promise, Promise.resolve(null)]);
+        if (result) toolResults.push(result);
+      } catch {
+        // Skip failed tools
+      }
+    }
+  }
+
+  return toolResults;
 }
 
 /**

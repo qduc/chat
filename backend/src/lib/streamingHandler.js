@@ -1,5 +1,13 @@
-import fetch from 'node-fetch';
-import { tools as toolRegistry, generateOpenAIToolSpecs } from './tools.js';
+import { generateOpenAIToolSpecs } from './tools.js';
+import { parseSSEStream } from './sseParser.js';
+import {
+  createChatCompletionChunk,
+  createOpenAIRequest,
+  writeAndFlush,
+  createFlushFunction,
+} from './streamUtils.js';
+import { executeToolsWithTimeout } from './toolOrchestrator.js';
+export { setupStreamingHeaders } from './streamUtils.js';
 
 /**
  * Parse SSE stream chunks and extract data payloads
@@ -10,35 +18,7 @@ import { tools as toolRegistry, generateOpenAIToolSpecs } from './tools.js';
  * @param {Function} onError - Optional callback for JSON parsing errors
  * @returns {string} New leftover data for next chunk
  */
-function parseSSEStream(chunk, leftover, onDataChunk, onDone, onError) {
-  const s = String(chunk);
-  let data = leftover + s;
-  const parts = data.split(/\n\n/);
-  const newLeftover = parts.pop() || '';
-  
-  for (const part of parts) {
-    const lines = part.split('\n');
-    for (const line of lines) {
-      const m = line.match(/^data:\s*(.*)$/);
-      if (!m) continue;
-      
-      const payload = m[1];
-      if (payload === '[DONE]') {
-        onDone();
-        break;
-      }
-      
-      try {
-        const obj = JSON.parse(payload);
-        onDataChunk(obj);
-      } catch (e) {
-        if (onError) onError(e, payload);
-      }
-    }
-  }
-  
-  return newLeftover;
-}
+// parseSSEStream moved to ./sseParser.js
 
 /**
  * Set up common stream event handlers for upstream response and client request
@@ -114,19 +94,7 @@ function setupStreamEventHandlers({
  * @param {string|null} finishReason - Finish reason or null
  * @returns {Object} Chat completion chunk object
  */
-function createChatCompletionChunk(id, model, delta, finishReason = null) {
-  return {
-    id,
-    object: 'chat.completion.chunk',
-    created: Math.floor(Date.now() / 1000),
-    model,
-    choices: [{
-      index: 0,
-      delta,
-      finish_reason: finishReason,
-    }],
-  };
-}
+// createChatCompletionChunk moved to ./streamUtils.js
 
 /**
  * Create an OpenAI API request
@@ -134,73 +102,22 @@ function createChatCompletionChunk(id, model, delta, finishReason = null) {
  * @param {Object} requestBody - Request body to send
  * @returns {Promise<Response>} Fetch response promise
  */
-async function createOpenAIRequest(config, requestBody) {
-  const url = `${config.openaiBaseUrl}/chat/completions`;
-  const headers = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${config.openaiApiKey}`,
-  };
-  
-  return fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(requestBody),
-  });
-}
+// createOpenAIRequest moved to ./streamUtils.js
 
 /**
  * Write data to response and flush if possible
  * @param {Object} res - Express response object
  * @param {string|Buffer} data - Data to write
  */
-function writeAndFlush(res, data) {
-  res.write(data);
-  if (typeof res.flush === 'function') res.flush();
-}
+// writeAndFlush moved to ./streamUtils.js
 
-/**
- * Execute a single tool call from the local registry
- * @param {Object} call - Tool call object with function name and arguments
- * @returns {Promise<{name: string, output: any}>} Tool execution result
- */
-async function executeToolCall(call) {
-  const name = call?.function?.name;
-  const argsStr = call?.function?.arguments || '{}';
-  const tool = toolRegistry[name];
-  
-  if (!tool) {
-    throw new Error(`unknown_tool: ${name}`);
-  }
-  
-  let args;
-  try {
-    args = JSON.parse(argsStr || '{}');
-  } catch (e) {
-    throw new Error('invalid_arguments_json');
-  }
-  
-  const validated = tool.validate ? tool.validate(args) : args;
-  const output = await tool.handler(validated);
-  return { name, output };
-}
+// executeToolCall extracted to ./toolOrchestrator.js
 
 /**
  * Set up streaming response headers
  * @param {Object} res - Express response object
  */
-export function setupStreamingHeaders(res) {
-  res.status(200);
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  
-  // Ensure headers are sent immediately so the client can start processing
-  // the event stream as soon as chunks arrive. Some proxies/browsers may
-  // buffer the response if headers are not flushed explicitly.
-  if (typeof res.flushHeaders === 'function') {
-    res.flushHeaders();
-  }
-}
+// setupStreamingHeaders moved to ./streamUtils.js (re-exported)
 
 /**
  * Create a flush function for persistence
@@ -211,25 +128,7 @@ export function setupStreamingHeaders(res) {
  * @param {Function} params.appendAssistantContent - Persistence function
  * @returns {Function} Flush function
  */
-export function createFlushFunction({
-  persist,
-  assistantMessageId,
-  buffer,
-  appendAssistantContent,
-  flushedOnce,
-}) {
-  return () => {
-    if (!persist || !assistantMessageId) return;
-    if (buffer.value.length === 0) return;
-    
-    appendAssistantContent({
-      messageId: assistantMessageId,
-      delta: buffer.value,
-    });
-    buffer.value = '';
-    flushedOnce.value = true;
-  };
-}
+// createFlushFunction moved to ./streamUtils.js
 
 /**
  * Handle streaming with tool orchestration
@@ -339,55 +238,8 @@ export async function handleStreamingWithTools({
 
     // Tool calls already streamed above; do not re-emit
 
-    // Wait for tools with timeout (gating policy)
-    const TOOL_TIMEOUT = 10000; // 10 seconds
-    const toolResults = [];
-    const toolPromises = toolCalls.map(tc => (
-      executeToolCall(tc).then(({ output }) => {
-        const toolOutputChunk = createChatCompletionChunk('temp', body.model, {
-          tool_output: {
-            tool_call_id: tc.id,
-            name: tc.function?.name,
-            output: output,
-          },
-        });
-        writeAndFlush(res, `data: ${JSON.stringify(toolOutputChunk)}\n\n`);
-        return {
-          role: 'tool',
-          tool_call_id: tc.id,
-          content: typeof output === 'string' ? output : JSON.stringify(output),
-        };
-      })
-    ));
-    
-    try {
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Tool timeout')), TOOL_TIMEOUT)
-      );
-      
-      const toolOutputs = await Promise.race([
-        Promise.allSettled(toolPromises),
-        timeoutPromise
-      ]);
-      
-      // Collect successful tool results
-      for (const result of toolOutputs) {
-        if (result.status === 'fulfilled') {
-          toolResults.push(result.value);
-        }
-      }
-    } catch (error) {
-      console.warn('[tools] Timeout or error, proceeding with available results:', error.message);
-      // Continue with whatever tool results we have so far
-      for (const promise of toolPromises) {
-        try {
-          const result = await Promise.race([promise, Promise.resolve(null)]);
-          if (result) toolResults.push(result);
-        } catch {
-          // Skip failed tools
-        }
-      }
-    }
+    // Execute tools with timeout and stream tool outputs
+    const toolResults = await executeToolsWithTimeout({ toolCalls, body, res });
 
     // Second streaming turn
     const messagesFollowUp = [...(bodyIn.messages || []), msg1, ...toolResults];
