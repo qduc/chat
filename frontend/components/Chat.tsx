@@ -10,6 +10,8 @@ import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
 import { createConversation, getConversationApi } from '../lib/chat';
 import type { Role } from '../lib/chat';
+import { ChatV2 } from './ChatV2';
+import { isFeatureEnabled } from '../lib/featureFlags';
 
 function ChatInner() {
   const {
@@ -210,6 +212,12 @@ function ChatInner() {
 }
 
 export function Chat() {
+  // Feature flag to enable v2 implementation
+  if (isFeatureEnabled('CHAT_V2')) {
+    return <ChatV2 />;
+  }
+
+  // Default to v1 implementation
   return (
     <ChatProvider>
       <ChatInner />

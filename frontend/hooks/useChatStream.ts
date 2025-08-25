@@ -84,6 +84,30 @@ export function useChatStream(): UseChatStreamReturn {
   const assistantMsgRef = useRef<ChatMessage | null>(null);
   const inFlightRef = useRef<boolean>(false);
 
+  const handleStreamEvent = useCallback((event: any) => {
+    const assistantId = assistantMsgRef.current!.id;
+    setMessages(curr => curr.map(m => {
+      if (m.id !== assistantId) return m;
+      
+      if (event.type === 'text') {
+        return { ...m, content: m.content + event.value };
+      } else if (event.type === 'tool_call') {
+        return { 
+          ...m, 
+          tool_calls: [...(m.tool_calls || []), event.value]
+        };
+      } else if (event.type === 'final') {
+        return { ...m, content: event.value };
+      } else if (event.type === 'tool_output') {
+        return { 
+          ...m, 
+          tool_outputs: [...(m.tool_outputs || []), event.value]
+        };
+      }
+      return m;
+    }));
+  }, []);
+
   const sendMessage = useCallback(async (
     input: string,
     conversationId: string | null,
@@ -93,8 +117,9 @@ export function useChatStream(): UseChatStreamReturn {
     reasoningEffort: string,
     verbosity: string
   ) => {
-  if (!input.trim()) return;
-  // Allow multiple concurrent requests; UI is updated optimistically immediately.
+    if (!input.trim()) return;
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
 
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: input.trim() };
     setMessages(m => [...m, userMsg]);
@@ -122,21 +147,7 @@ export function useChatStream(): UseChatStreamReturn {
           tools: Object.values(availableTools),
           tool_choice: 'auto'
         } : {}),
-        onEvent: (event) => {
-          const msg = assistantMsgRef.current!;
-          if (event.type === 'text') {
-            msg.content += event.value;
-          } else if (event.type === 'tool_call') {
-            if (!msg.tool_calls) msg.tool_calls = [];
-            msg.tool_calls.push(event.value);
-          } else if (event.type === 'final') {
-            msg.content = event.value; // Replace content with the final version
-          } else if (event.type === 'tool_output') {
-            if (!msg.tool_outputs) msg.tool_outputs = [] as any;
-            msg.tool_outputs!.push(event.value);
-          }
-          setMessages(curr => curr.map(m => m.id === msg.id ? { ...msg } : m));
-        }
+        onEvent: handleStreamEvent
       });
       // For non-streaming, update the assistant message content from the result
       if (!shouldStream) {
@@ -153,6 +164,7 @@ export function useChatStream(): UseChatStreamReturn {
     } finally {
       // Clear streaming/abort when finished
       setPending(p => ({ ...p, streaming: false, abort: undefined }));
+      inFlightRef.current = false;
     }
 
     // Return immediately — caller shouldn't wait for network to finish to keep UI snappy
@@ -169,7 +181,8 @@ export function useChatStream(): UseChatStreamReturn {
     // Only proceed if there is a user message to respond to
     const history = messagesOverride ?? messages;
     if (!history.length || history[history.length - 1].role !== 'user') return;
-    // Allow concurrent regenerations; UI is updated optimistically.
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     const abort = new AbortController();
     const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
     assistantMsgRef.current = assistantMsg;
@@ -189,21 +202,7 @@ export function useChatStream(): UseChatStreamReturn {
         tools: Object.values(availableTools),
         tool_choice: 'auto'
       } : {}),
-      onEvent: (event) => {
-        const msg = assistantMsgRef.current!;
-        if (event.type === 'text') {
-          msg.content += event.value;
-        } else if (event.type === 'tool_call') {
-          if (!msg.tool_calls) msg.tool_calls = [];
-          msg.tool_calls.push(event.value);
-        } else if (event.type === 'final') {
-          msg.content = event.value;
-        } else if (event.type === 'tool_output') {
-          if (!msg.tool_outputs) msg.tool_outputs = [] as any;
-          msg.tool_outputs!.push(event.value);
-        }
-        setMessages(curr => curr.map(m => m.id === msg.id ? { ...msg } : m));
-      }
+      onEvent: handleStreamEvent
     });
 
     network.then(result => {
@@ -256,21 +255,7 @@ export function useChatStream(): UseChatStreamReturn {
           tools: Object.values(availableTools),
           tool_choice: 'auto'
         } : {}),
-        onEvent: (event) => {
-          const msg = assistantMsgRef.current!;
-          if (event.type === 'text') {
-            msg.content += event.value;
-          } else if (event.type === 'tool_call') {
-            if (!msg.tool_calls) msg.tool_calls = [];
-            msg.tool_calls.push(event.value);
-          } else if (event.type === 'final') {
-            msg.content = event.value;
-          } else if (event.type === 'tool_output') {
-            if (!msg.tool_outputs) msg.tool_outputs = [] as any;
-            msg.tool_outputs!.push(event.value);
-          }
-          setMessages(curr => curr.map(m => m.id === msg.id ? { ...msg } : m));
-        }
+        onEvent: handleStreamEvent
       });
       if (!shouldStream) {
         const msg = assistantMsgRef.current!;
