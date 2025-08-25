@@ -1,122 +1,61 @@
 import fetch from 'node-fetch';
 import { config } from '../env.js';
-import { handleToolOrchestration } from './toolOrchestrator.js';
-import {
-  setupStreamingHeaders,
-  handleStreamingWithTools,
-  handleRegularStreaming,
-} from './streamingHandler.js';
-import { handleIterativeOrchestration } from './iterativeOrchestrator.js';
-import {
-  setupPersistence,
-  setupPersistenceTimer,
-  handleNonStreamingPersistence,
-  cleanupPersistenceTimer,
-  appendAssistantContent,
-  finalizeAssistantMessage,
-  markAssistantError,
-} from './persistenceHandler.js';
+import { determineApiFormat, prepareRequestBody, buildUpstreamUrl, createHeaders } from './apiFormatHandler.js';
+import { PersistenceManager } from './persistenceManager.js';
+import { isStreamingResponse, handleNonStreamingResponse, setupStreaming } from './responseHandler.js';
+import { routeToolOrchestration } from './orchestrationRouter.js';
+import { handleRegularStreaming } from './streamingHandler.js';
 
 export async function proxyOpenAIRequest(req, res) {
   const bodyIn = req.body || {};
-
-  // Pull optional conversation_id from body or header
-  const conversationId =
-    bodyIn.conversation_id || req.header('x-conversation-id');
-
-  // Pull optional previous_response_id for Responses API conversation continuity
-  const previousResponseId =
-    bodyIn.previous_response_id || req.header('x-previous-response-id');
-
-  // Determine which API to use
-  let useResponsesAPI =
-    !bodyIn.disable_responses_api &&
-    config.openaiBaseUrl.includes('openai.com');
-
-  // If tools are present, force Chat Completions path for MVP (server orchestration)
-  const hasTools = Array.isArray(bodyIn.tools) && bodyIn.tools.length > 0;
-  if (hasTools) useResponsesAPI = false;
-
-  // Default to iterative orchestration when tools are present
-  const useIterativeOrchestration = hasTools; // Always use iterative mode with tools
-
-  // Clone and strip non-upstream fields
-  const body = { ...bodyIn };
-  delete body.conversation_id;
-  delete body.disable_responses_api;
-  delete body.previous_response_id;
-  if (!body.model) body.model = config.defaultModel;
-  const stream = !!body.stream;
-
-  // Convert Chat Completions format to Responses API format if needed (no tools in MVP)
-  if (useResponsesAPI && body.messages) {
-    // For Responses API, only send the latest user message to reduce token usage
-    const lastUserMessage = [...body.messages]
-      .reverse()
-      .find((m) => m && m.role === 'user');
-    body.input = lastUserMessage ? [lastUserMessage] : [];
-    delete body.messages;
-
-    // Add previous_response_id for conversation continuity if provided
-    if (previousResponseId) {
-      body.previous_response_id = previousResponseId;
-    }
-  }
-
-  // Persistence state
-  let persist = false;
-  let assistantMessageId = null;
+  const conversationId = bodyIn.conversation_id || req.header('x-conversation-id');
   const sessionId = req.sessionId;
-  const buffer = { value: '' };
-  const flushedOnce = { value: false };
-  let flushTimer = null;
-
-  const sizeThreshold = 512;
-  const flushMs = config.persistence.historyBatchFlushMs;
-
+  
+  // Determine API format and prepare request
+  const apiFormat = determineApiFormat(bodyIn, config);
+  const body = prepareRequestBody(bodyIn, apiFormat, config);
+  const stream = !!body.stream;
+  
+  // Initialize persistence manager
+  const persistenceManager = new PersistenceManager(config);
+  
   try {
-    // Setup persistence if enabled
+    // Setup persistence
     try {
-      const persistenceResult = await setupPersistence({
-        config,
+      await persistenceManager.initialize({
         conversationId,
         sessionId,
         req,
         res,
         bodyIn,
       });
-      persist = persistenceResult.persist;
-      assistantMessageId = persistenceResult.assistantMessageId;
     } catch (error) {
       if (error.message === 'Message limit exceeded') {
-        return; // Response already sent
+        return; // Response already sent by persistence handler
       }
       throw error;
     }
 
-    // Handle tool orchestration for non-streaming requests
-    if (hasTools && !stream) {
-      return await handleToolOrchestration({
-        body,
-        bodyIn,
-        config,
-        res,
-        persist,
-        assistantMessageId,
-        appendAssistantContent,
-        finalizeAssistantMessage,
-      });
+    // Route tool orchestration if needed
+    const toolResult = await routeToolOrchestration({
+      apiFormat,
+      body,
+      bodyIn,
+      config,
+      res,
+      req,
+      stream,
+      persistenceContext: persistenceManager.getStreamingContext(),
+    });
+    
+    if (toolResult !== null) {
+      return toolResult; // Tool orchestration handled the request
     }
 
     // Make upstream request
-    const url = useResponsesAPI
-      ? `${config.openaiBaseUrl}/responses`
-      : `${config.openaiBaseUrl}/chat/completions`;
-    const headers = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.openaiApiKey}`,
-    };
-
+    const url = buildUpstreamUrl(apiFormat.useResponsesAPI, config);
+    const headers = createHeaders(config);
+    
     const upstream = await fetch(url, {
       method: 'POST',
       headers,
@@ -124,142 +63,38 @@ export async function proxyOpenAIRequest(req, res) {
     });
 
     // Handle non-streaming responses
-    if (
-      !stream ||
-      upstream.headers.get('content-type')?.includes('application/json')
-    ) {
-      const json = await upstream.json();
-
-      // Handle different response formats and convert if needed
-      let content = null;
-      let finishReason = null;
-      let responseToSend = json;
-
-      if (useResponsesAPI && json?.output?.[0]?.content?.[0]?.text) {
-        // Responses API format - extract content
-        content = json.output[0].content[0].text;
-        finishReason = json.status === 'completed' ? 'stop' : null;
-
-        // Convert to Chat Completions format for /v1/chat/completions endpoint
-        if (req.path === '/v1/chat/completions') {
-          responseToSend = {
-            id: json.id,
-            object: 'chat.completion',
-            created: json.created_at,
-            model: json.model,
-            choices: [
-              {
-                index: 0,
-                message: {
-                  role: 'assistant',
-                  content: content,
-                },
-                finish_reason: finishReason,
-              },
-            ],
-            usage: json.usage,
-          };
-        }
-      } else if (json?.choices?.[0]?.message?.content) {
-        // Chat Completions API format
-        content = json.choices[0].message.content;
-        finishReason = json.choices[0].finish_reason;
-      }
-
-      // Handle persistence for non-streaming responses
-      handleNonStreamingPersistence({
-        persist,
-        assistantMessageId,
-        content,
-        finishReason,
-      });
-
-      return res.status(upstream.status).json(responseToSend);
+    if (!isStreamingResponse(upstream, stream)) {
+      const result = await handleNonStreamingResponse(
+        upstream, 
+        req, 
+        apiFormat.useResponsesAPI, 
+        persistenceManager
+      );
+      return res.status(result.status).json(result.response);
     }
 
-    // Setup streaming headers
-    setupStreamingHeaders(res);
-
-    // Setup persistence timer
-    flushTimer = setupPersistenceTimer({
-      persist,
-      flushMs,
-      doFlush: () => {
-        if (!persist || !assistantMessageId) return;
-        if (buffer.value.length === 0) return;
-        appendAssistantContent({
-          messageId: assistantMessageId,
-          delta: buffer.value,
-        });
-        buffer.value = '';
-        flushedOnce.value = true;
-      },
-    });
-
-    // Handle streaming with tool orchestration
-    if (hasTools) {
-      if (useIterativeOrchestration) {
-        return await handleIterativeOrchestration({
-          body,
-          bodyIn,
-          config,
-          res,
-          req,
-          persist,
-          assistantMessageId,
-          appendAssistantContent,
-          finalizeAssistantMessage,
-          markAssistantError,
-          buffer,
-          flushedOnce,
-          sizeThreshold,
-        });
-      } else {
-        return await handleStreamingWithTools({
-          body,
-          bodyIn,
-          config,
-          res,
-          req,
-          persist,
-          assistantMessageId,
-          appendAssistantContent,
-          finalizeAssistantMessage,
-          markAssistantError,
-          buffer,
-          flushedOnce,
-          sizeThreshold,
-        });
-      }
-    }
-
-    // Handle regular streaming (non-tool orchestration)
+    // Handle streaming responses
+    setupStreaming(res);
+    persistenceManager.setupStreamingTimer();
+    
+    const streamingContext = persistenceManager.getStreamingContext();
+    
     return await handleRegularStreaming({
       upstream,
       res,
       req,
-      persist,
-      assistantMessageId,
-      appendAssistantContent,
-      finalizeAssistantMessage,
-      markAssistantError,
-      buffer,
-      flushedOnce,
-      sizeThreshold,
-      useResponsesAPI,
+      ...streamingContext,
+      useResponsesAPI: apiFormat.useResponsesAPI,
     });
-  } catch (e) {
-    console.error('[proxy] error', e);
-    // Cleanup persistence timer on error
-    cleanupPersistenceTimer(flushTimer);
-    // On synchronous error finalize as error
-    try {
-      if (persist && assistantMessageId) {
-        markAssistantError({ messageId: assistantMessageId });
-      }
-    } catch {
-      // Client disconnected; ignore
-    }
-    res.status(500).json({ error: 'upstream_error', message: e.message });
+    
+  } catch (error) {
+    console.error('[proxy] error', error);
+    persistenceManager.markError();
+    res.status(500).json({ 
+      error: 'upstream_error', 
+      message: error.message 
+    });
+  } finally {
+    persistenceManager.cleanup();
   }
 }
