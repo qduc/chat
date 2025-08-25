@@ -242,3 +242,27 @@ export async function editMessageApi(apiBase = defaultApiBase, conversationId: s
   });
   return handleJSON(res) as Promise<{ message: { id: string; seq: number; content: string }; new_conversation_id: string }>;
 }
+
+// --- Tool specifications API ---
+export interface ToolSpec {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: 'object';
+      properties: Record<string, any>;
+      required: string[];
+    };
+  };
+}
+
+export interface ToolsResponse {
+  tools: ToolSpec[];
+  available_tools: string[];
+}
+
+export async function getToolSpecs(apiBase = defaultApiBase): Promise<ToolsResponse> {
+  const res = await fetch(`${apiBase}/v1/tools`, { method: 'GET' });
+  return handleJSON(res) as Promise<ToolsResponse>;
+}

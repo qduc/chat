@@ -1,5 +1,5 @@
 import fetch from 'node-fetch';
-import { tools as toolRegistry } from './tools.js';
+import { tools as toolRegistry, generateOpenAIToolSpecs } from './tools.js';
 
 /**
  * Parse SSE stream chunks and extract data payloads
@@ -265,7 +265,11 @@ export async function handleStreamingWithTools({
 
   try {
     // First non-streaming call to collect tool calls
-    const body1 = { ...body, stream: false };
+    const body1 = { 
+      ...body, 
+      stream: false,
+      tools: generateOpenAIToolSpecs() // Use backend registry as source of truth
+    };
     const r1 = await createOpenAIRequest(config, body1);
     const j1 = await r1.json();
     const msg1 = j1?.choices?.[0]?.message;
@@ -332,7 +336,7 @@ export async function handleStreamingWithTools({
       model: body.model,
       messages: messagesFollowUp,
       stream: true,
-      tools: body.tools,
+      tools: generateOpenAIToolSpecs(), // Use backend registry as source of truth
       tool_choice: body.tool_choice,
     };
     const r2 = await createOpenAIRequest(config, body2);

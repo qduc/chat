@@ -1,32 +1,6 @@
-import { useState, useCallback, useRef } from 'react';
-import type { ChatMessage, Role } from '../lib/chat';
-import { sendChat } from '../lib/chat';
-
-// Define the tools available to the model.
-const availableTools = {
-  get_time: {
-    type: 'function',
-    function: {
-      name: 'get_time',
-      description: 'Get the current local time of the server',
-      parameters: { type: 'object', properties: {}, additionalProperties: false },
-    }
-  },
-  web_search: {
-    type: 'function',
-    function: {
-      name: 'web_search',
-      description: 'Perform a web search for a given query',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'The search query' }
-        },
-        required: ['query']
-      }
-    }
-  }
-};
+import { useState, useCallback, useRef, useEffect } from 'react';
+import type { ChatMessage, Role, ToolSpec } from '../lib/chat';
+import { sendChat, getToolSpecs } from '../lib/chat';
 
 export interface PendingState {
   abort?: AbortController;
@@ -77,8 +51,25 @@ export function useChatStream(): UseChatStreamReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pending, setPending] = useState<PendingState>({ streaming: false });
   const [previousResponseId, setPreviousResponseId] = useState<string | null>(null);
+  const [availableTools, setAvailableTools] = useState<ToolSpec[] | null>(null);
   const assistantMsgRef = useRef<ChatMessage | null>(null);
   const inFlightRef = useRef<boolean>(false);
+  const toolsPromiseRef = useRef<Promise<ToolSpec[]>>();
+
+  // Fetch tool specifications from backend on mount
+  useEffect(() => {
+    const toolsPromise = getToolSpecs()
+      .then(response => {
+        setAvailableTools(response.tools);
+        return response.tools;
+      })
+      .catch(error => {
+        console.error('Failed to fetch tool specs:', error);
+        setAvailableTools([]);
+        return [];
+      });
+    toolsPromiseRef.current = toolsPromise;
+  }, []);
 
   const sendMessage = useCallback(async (
     input: string,
@@ -103,6 +94,9 @@ export function useChatStream(): UseChatStreamReturn {
   setPending(prev => ({ ...prev, abort }));
 
     try {
+      // Ensure tools are loaded if needed
+      const tools = useTools ? (availableTools ?? await toolsPromiseRef.current?.catch(() => [])) : undefined;
+      
       const result = await sendChat({
         messages: [...messages, userMsg].map(m => ({ role: m.role as Role, content: m.content })),
         model,
@@ -112,7 +106,7 @@ export function useChatStream(): UseChatStreamReturn {
         useResponsesAPI: !useTools,
         shouldStream,
         ...(useTools ? {
-          tools: Object.values(availableTools),
+          tools: tools || [],
           tool_choice: 'auto',
           ...(researchMode && { research_mode: true })
         } : {}),
@@ -151,7 +145,7 @@ export function useChatStream(): UseChatStreamReturn {
 
     // Return immediately — caller shouldn't wait for network to finish to keep UI snappy
     return;
-  }, [messages, previousResponseId, pending.streaming]);
+  }, [messages, previousResponseId, availableTools, toolsPromiseRef]);
 
   const generateFromHistory = useCallback(async (
     model: string,
@@ -169,6 +163,9 @@ export function useChatStream(): UseChatStreamReturn {
     setMessages(m => [...m, assistantMsg]);
     setPending(prev => ({ ...prev, streaming: true, abort }));
 
+    // Ensure tools are loaded if needed
+    const tools = useTools ? (availableTools ?? await toolsPromiseRef.current?.catch(() => [])) : undefined;
+
     // Start network operation in background so we don't block the caller/UI.
     const network = sendChat({
       messages: history.map(m => ({ role: m.role as Role, content: m.content })),
@@ -177,7 +174,7 @@ export function useChatStream(): UseChatStreamReturn {
       // No conversationId / previousResponseId for local, unsaved edits
       useResponsesAPI: !useTools,
       ...(useTools ? {
-        tools: Object.values(availableTools),
+        tools: tools || [],
         tool_choice: 'auto',
         ...(researchMode && { research_mode: true })
       } : {}),
@@ -209,7 +206,7 @@ export function useChatStream(): UseChatStreamReturn {
     });
 
     return;
-  }, [messages]);
+  }, [messages, availableTools, toolsPromiseRef]);
 
   const regenerateFromBase = useCallback(async (
     baseMessages: ChatMessage[],
@@ -233,6 +230,9 @@ export function useChatStream(): UseChatStreamReturn {
     setPending(prev => ({ ...prev, streaming: true, abort }));
 
     try {
+      // Ensure tools are loaded if needed
+      const tools = useTools ? (availableTools ?? await toolsPromiseRef.current?.catch(() => [])) : undefined;
+
       const result = await sendChat({
         messages: baseMessages.map(m => ({ role: m.role as Role, content: m.content })),
         model,
@@ -242,7 +242,7 @@ export function useChatStream(): UseChatStreamReturn {
         useResponsesAPI: !useTools,
         shouldStream,
         ...(useTools ? {
-          tools: Object.values(availableTools),
+          tools: tools || [],
           tool_choice: 'auto',
           ...(researchMode && { research_mode: true })
         } : {}),
@@ -277,7 +277,7 @@ export function useChatStream(): UseChatStreamReturn {
       setPending(p => ({ ...p, streaming: false, abort: undefined }));
       inFlightRef.current = false;
     }
-  }, [previousResponseId]);
+  }, [previousResponseId, availableTools, toolsPromiseRef]);
 
   const regenerateFromCurrent = useCallback(async (
     conversationId: string | null,

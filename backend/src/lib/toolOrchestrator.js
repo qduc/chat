@@ -1,5 +1,5 @@
 import fetch from 'node-fetch';
-import { tools as toolRegistry } from './tools.js';
+import { tools as toolRegistry, generateOpenAIToolSpecs } from './tools.js';
 
 /**
  * Execute a single tool call from the local registry
@@ -56,7 +56,11 @@ export async function handleToolOrchestration({
   };
 
   // First turn: get tool calls (non-streaming)
-  const body1 = { ...body, stream: false };
+  const body1 = { 
+    ...body, 
+    stream: false,
+    tools: generateOpenAIToolSpecs(), // Use backend registry as source of truth
+  };
   const r1 = await fetch(url, {
     method: 'POST',
     headers,
@@ -89,7 +93,7 @@ export async function handleToolOrchestration({
     model: body.model,
     messages: messagesFollowUp,
     stream: false,
-    tools: body.tools,
+    tools: generateOpenAIToolSpecs(), // Use backend registry as source of truth
     tool_choice: body.tool_choice,
   };
   

@@ -1,8 +1,14 @@
 // Tests for frontend iterative orchestration functionality
 
-import { sendChat } from '../lib/chat';
+import { sendChat, getToolSpecs } from '../lib/chat';
 import { renderHook, act } from '@testing-library/react';
 import { useChatStream } from '../hooks/useChatStream';
+
+// Mock the tool specs API
+jest.mock('../lib/chat', () => ({
+  ...jest.requireActual('../lib/chat'),
+  getToolSpecs: jest.fn()
+}));
 
 // Mock fetch for testing
 const mockFetch = (responses: Response[]) => {
@@ -33,9 +39,39 @@ const createMockStream = (chunks: string[]) => {
 
 describe('Frontend Iterative Orchestration', () => {
   let originalFetch: typeof global.fetch;
+  const mockGetToolSpecs = getToolSpecs as jest.MockedFunction<typeof getToolSpecs>;
 
   beforeEach(() => {
     originalFetch = global.fetch;
+    
+    // Mock tool specs response
+    mockGetToolSpecs.mockResolvedValue({
+      tools: [
+        {
+          type: 'function',
+          function: {
+            name: 'get_time',
+            description: 'Get time',
+            parameters: { type: 'object', properties: {} }
+          }
+        },
+        {
+          type: 'function',
+          function: {
+            name: 'web_search',
+            description: 'Perform a web search',
+            parameters: {
+              type: 'object',
+              properties: {
+                query: { type: 'string', description: 'The search query' }
+              },
+              required: ['query']
+            }
+          }
+        }
+      ],
+      available_tools: ['get_time', 'web_search']
+    });
   });
 
   afterEach(() => {

@@ -46,6 +46,7 @@ beforeEach(() => {
   mockedChatLib.listConversationsApi.mockRejectedValue({ status: 501 }); // History disabled by default
   mockedChatLib.createConversation.mockRejectedValue({ status: 501 });
   mockedChatLib.sendChat.mockResolvedValue({ responseId: 'test-response-id' });
+  mockedChatLib.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] });
   mockedChatLib.getConversationApi.mockResolvedValue({
     id: 'test-conv',
     title: 'Test Conversation',
@@ -124,6 +125,7 @@ describe('<Chat />', () => {
       items: [{ id: 'conv-1', title: 'Test Conversation', model: 'gpt-4o', created_at: '2023-01-01' }],
       next_cursor: null,
     });
+    mockedChatLib.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] });
     mockedChatLib.getConversationApi.mockResolvedValue({
       id: 'conv-1',
       title: 'Test Conversation',
@@ -253,6 +255,7 @@ describe('<Chat />', () => {
       items: [{ id: 'conv-1', title: 'Existing Chat', model: 'gpt-4o', created_at: '2023-01-01' }],
       next_cursor: null,
     });
+    mockedChatLib.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] });
     mockedChatLib.getConversationApi.mockResolvedValue({
       id: 'conv-1',
       title: 'Existing Chat',
@@ -296,6 +299,7 @@ describe('<Chat />', () => {
       items: [{ id: 'conv-1', title: 'Test Chat', model: 'gpt-4o', created_at: '2023-01-01' }],
       next_cursor: null,
     });
+    mockedChatLib.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] });
     mockedChatLib.getConversationApi.mockResolvedValue({
       id: 'conv-1',
       title: 'Test Chat',

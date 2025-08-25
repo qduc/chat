@@ -1,5 +1,5 @@
 import fetch from 'node-fetch';
-import { tools as toolRegistry } from './tools.js';
+import { tools as toolRegistry, generateOpenAIToolSpecs } from './tools.js';
 
 /**
  * Iterative tool orchestration with thinking and dynamic tool execution
@@ -135,7 +135,7 @@ export async function handleIterativeOrchestration({
         conversationHistory, 
         config,
         body,
-        body.tools // Pass tools so AI can decide when to use them
+        generateOpenAIToolSpecs() // Use backend registry as source of truth
       );
       
       if (!aiResponse) {
