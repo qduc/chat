@@ -1,12 +1,10 @@
 import fetch from 'node-fetch';
 import { config } from '../env.js';
-import { handleToolOrchestration } from './toolOrchestrator.js';
+import { handleUnifiedToolOrchestration } from './unifiedToolOrchestrator.js';
 import {
   setupStreamingHeaders,
-  handleStreamingWithTools,
   handleRegularStreaming,
 } from './streamingHandler.js';
-import { handleIterativeOrchestration } from './iterativeOrchestrator.js';
 import {
   setupPersistence,
   setupPersistenceTimer,
@@ -37,14 +35,39 @@ export async function proxyOpenAIRequest(req, res) {
   const hasTools = Array.isArray(bodyIn.tools) && bodyIn.tools.length > 0;
   if (hasTools) useResponsesAPI = false;
 
-  // Default to iterative orchestration when tools are present
-  const useIterativeOrchestration = hasTools; // Always use iterative mode with tools
 
   // Clone and strip non-upstream fields
   const body = { ...bodyIn };
   delete body.conversation_id;
   delete body.disable_responses_api;
   delete body.previous_response_id;
+
+  // Validate and handle reasoning_effort
+  if (body.reasoning_effort) {
+    const allowedEfforts = ['minimal', 'low', 'medium', 'high'];
+    if (!allowedEfforts.includes(body.reasoning_effort)) {
+      return res.status(400).json({
+        error: 'invalid_request_error',
+        message: `Invalid reasoning_effort. Must be one of ${allowedEfforts.join(
+          ', '
+        )}`,
+      });
+    }
+  }
+
+  // Validate and handle verbosity
+  if (body.verbosity) {
+    const allowedVerbosity = ['low', 'medium', 'high'];
+    if (!allowedVerbosity.includes(body.verbosity)) {
+      return res.status(400).json({
+        error: 'invalid_request_error',
+        message: `Invalid verbosity. Must be one of ${allowedVerbosity.join(
+          ', '
+        )}`,
+      });
+    }
+  }
+  
   if (!body.model) body.model = config.defaultModel;
   const stream = !!body.stream;
 
@@ -94,17 +117,22 @@ export async function proxyOpenAIRequest(req, res) {
       throw error;
     }
 
-    // Handle tool orchestration for non-streaming requests
-    if (hasTools && !stream) {
-      return await handleToolOrchestration({
+    // Handle tool orchestration (unified for streaming and non-streaming)
+    if (hasTools) {
+      return await handleUnifiedToolOrchestration({
         body,
         bodyIn,
         config,
         res,
+        req,
         persist,
         assistantMessageId,
         appendAssistantContent,
         finalizeAssistantMessage,
+        markAssistantError,
+        buffer,
+        flushedOnce,
+        sizeThreshold,
       });
     }
 
@@ -196,42 +224,7 @@ export async function proxyOpenAIRequest(req, res) {
       },
     });
 
-    // Handle streaming with tool orchestration
-    if (hasTools) {
-      if (useIterativeOrchestration) {
-        return await handleIterativeOrchestration({
-          body,
-          bodyIn,
-          config,
-          res,
-          req,
-          persist,
-          assistantMessageId,
-          appendAssistantContent,
-          finalizeAssistantMessage,
-          markAssistantError,
-          buffer,
-          flushedOnce,
-          sizeThreshold,
-        });
-      } else {
-        return await handleStreamingWithTools({
-          body,
-          bodyIn,
-          config,
-          res,
-          req,
-          persist,
-          assistantMessageId,
-          appendAssistantContent,
-          finalizeAssistantMessage,
-          markAssistantError,
-          buffer,
-          flushedOnce,
-          sizeThreshold,
-        });
-      }
-    }
+    // Tool orchestration is already handled above before reaching this point
 
     // Handle regular streaming (non-tool orchestration)
     return await handleRegularStreaming({
