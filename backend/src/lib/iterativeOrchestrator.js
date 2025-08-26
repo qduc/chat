@@ -51,14 +51,16 @@ function streamEvent(res, event) {
     id: `iter_${Date.now()}`,
     object: 'chat.completion.chunk',
     created: Math.floor(Date.now() / 1000),
-    model: 'gpt-3.5-turbo',
+    model: config.defaultModel,
     choices: [{
       index: 0,
       delta: event,
       finish_reason: null,
     }],
   };
-  res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+  res.write(`data: ${JSON.stringify(chunk)}
+
+`);
   if (typeof res.flush === 'function') res.flush();
 }
 
@@ -73,7 +75,7 @@ async function callModel(messages, config, bodyParams, tools = null) {
   };
 
   const requestBody = {
-    model: bodyParams.model || config.defaultModel || 'gpt-3.5-turbo',
+    model: bodyParams.model || config.defaultModel,
     messages,
     stream: false,
     ...(tools && { tools, tool_choice: 'auto' })
@@ -134,7 +136,7 @@ export async function handleIterativeOrchestration({
 
       // Stream the model response for this iteration, buffering only tool calls
       const requestBody = {
-        model: body.model || config.defaultModel || 'gpt-3.5-turbo',
+        model: body.model || config.defaultModel,
         messages: conversationHistory,
         stream: true,
         tools: generateOpenAIToolSpecs(),
@@ -173,7 +175,9 @@ export async function handleIterativeOrchestration({
                   }
                 } else {
                   // Stream any non-tool delta chunk directly to the client
-                  writeAndFlush(res, `data: ${JSON.stringify(obj)}\n\n`);
+                  writeAndFlush(res, `data: ${JSON.stringify(obj)}
+
+`);
                   gotAnyNonToolDelta = true;
                 }
 
@@ -199,10 +203,12 @@ export async function handleIterativeOrchestration({
         // Emit a single consolidated tool_calls chunk (buffered deltas)
         const toolCallChunk = createChatCompletionChunk(
           bodyIn.id || 'chatcmpl-' + Date.now(),
-          body.model || config.defaultModel || 'gpt-3.5-turbo',
+          body.model || config.defaultModel,
           { tool_calls: toolCalls }
         );
-        writeAndFlush(res, `data: ${JSON.stringify(toolCallChunk)}\n\n`);
+        writeAndFlush(res, `data: ${JSON.stringify(toolCallChunk)}
+
+`);
 
         // Add assistant message with tool calls for the next iteration
         conversationHistory.push({ role: 'assistant', tool_calls: toolCalls });
@@ -265,14 +271,16 @@ export async function handleIterativeOrchestration({
       id: `iter_final_${Date.now()}`,
       object: 'chat.completion.chunk',
       created: Math.floor(Date.now() / 1000),
-      model: config.model || 'gpt-3.5-turbo',
+      model: config.model || config.defaultModel,
       choices: [{
         index: 0,
         delta: {},
         finish_reason: 'stop',
       }],
     };
-    res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
+    res.write(`data: ${JSON.stringify(finalChunk)}
+
+`);
     res.write('data: [DONE]\n\n');
 
     // Finalize persistence

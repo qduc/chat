@@ -114,10 +114,11 @@ describe('POST /v1/conversations', () => {
 describe('GET /v1/conversations', () => {
   test('lists conversations for current session with pagination (cursor, limit)', async () => {
     createConversation({ id: 'c1', sessionId, title: 'one' });
-    // IMPORTANT: SQLite timestamps need sufficient separation for cursor pagination
-    // 10ms is not enough - use 1000ms to guarantee different created_at values
-    await new Promise((r) => setTimeout(r, 1000)); // Ensure different timestamps
     createConversation({ id: 'c2', sessionId, title: 'two' });
+    // Make ordering deterministic without relying on wall-clock timing
+    const db = getDb();
+    db.prepare(`UPDATE conversations SET created_at = datetime('now', '-1 hour') WHERE id = 'c1'`).run();
+    db.prepare(`UPDATE conversations SET created_at = datetime('now') WHERE id = 'c2'`).run();
     const app = makeApp();
     await withServer(app, async (port) => {
       const first = await fetch(

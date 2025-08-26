@@ -137,7 +137,7 @@ export async function handleRegularStreaming({
                 if (obj.type === 'response.output_text.delta' && obj.delta) {
                   const chatCompletionChunk = createChatCompletionChunk(
                     obj.item_id,
-                    'gpt-3.5-turbo',
+                    config.defaultModel,
                     { content: obj.delta }
                   );
                   writeAndFlush(
