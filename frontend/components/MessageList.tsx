@@ -40,6 +40,9 @@ export function MessageList({
   onEditingContentChange,
   onRetryLastAssistant
 }: MessageListProps) {
+  // Debug logging
+  console.log('[MessageList] Rendering with messages:', messages);
+  console.log('[MessageList] Pending state:', pending);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const editingTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [collapsedToolOutputs, setCollapsedToolOutputs] = useState<Record<string, boolean>>({});
@@ -278,7 +281,9 @@ export function MessageList({
                           <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '150ms' }} />
                           <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '300ms' }} />
                         </span>
-                      ) : null)}
+                      ) : (m.role === 'assistant' && !m.content ? (
+                        <span className="text-slate-500 dark:text-slate-400 italic">No response content</span>
+                      ) : null))}
                     </div>
 
                     {/* Toolbar below the chat bubble (transparent) */}

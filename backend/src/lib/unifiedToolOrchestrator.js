@@ -58,7 +58,7 @@ async function callLLM(messages, config, bodyParams) {
   };
 
   const requestBody = {
-    model: llmResponse.model || config.defaultModel
+    model: bodyParams.model || config.defaultModel,
     messages,
     stream: bodyParams.stream || false,
     ...(bodyParams.tools && { tools: bodyParams.tools, tool_choice: bodyParams.tool_choice || 'auto' })
@@ -159,7 +159,7 @@ async function streamResponse(llmResponse, res, buffer, doFlush, sizeThreshold) 
       id: llmResponse.id || `unified_${Date.now()}`,
       object: 'chat.completion.chunk',
       created: Math.floor(Date.now() / 1000),
-      model: llmResponse.model || config.defaultModel
+      model: llmResponse.model || config.defaultModel,
       choices: [{
         index: 0,
         delta: {},
