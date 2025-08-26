@@ -32,38 +32,54 @@ export async function routeToolOrchestration({
 
   // Handle streaming tool orchestration
   setupStreamingHeaders(res);
-  
-  if (apiFormat.useIterativeOrchestration) {
-    return await handleIterativeOrchestration({
-      body,
-      bodyIn,
-      config,
-      res,
-      req,
-      persist: persistenceContext.persist,
-      assistantMessageId: persistenceContext.assistantMessageId,
-      appendAssistantContent: persistenceContext.appendAssistantContent,
-      finalizeAssistantMessage: persistenceContext.finalizeAssistantMessage,
-      markAssistantError: persistenceContext.markAssistantError,
-      buffer: persistenceContext.buffer,
-      flushedOnce: persistenceContext.flushedOnce,
-      sizeThreshold: persistenceContext.sizeThreshold,
-    });
-  } else {
-    return await handleStreamingWithTools({
-      body,
-      bodyIn,
-      config,
-      res,
-      req,
-      persist: persistenceContext.persist,
-      assistantMessageId: persistenceContext.assistantMessageId,
-      appendAssistantContent: persistenceContext.appendAssistantContent,
-      finalizeAssistantMessage: persistenceContext.finalizeAssistantMessage,
-      markAssistantError: persistenceContext.markAssistantError,
-      buffer: persistenceContext.buffer,
-      flushedOnce: persistenceContext.flushedOnce,
-      sizeThreshold: persistenceContext.sizeThreshold,
-    });
-  }
+
+  // if (apiFormat.useIterativeOrchestration) {
+  //   return await handleIterativeOrchestration({
+  //     body,
+  //     bodyIn,
+  //     config,
+  //     res,
+  //     req,
+  //     persist: persistenceContext.persist,
+  //     assistantMessageId: persistenceContext.assistantMessageId,
+  //     appendAssistantContent: persistenceContext.appendAssistantContent,
+  //     finalizeAssistantMessage: persistenceContext.finalizeAssistantMessage,
+  //     markAssistantError: persistenceContext.markAssistantError,
+  //     buffer: persistenceContext.buffer,
+  //     flushedOnce: persistenceContext.flushedOnce,
+  //     sizeThreshold: persistenceContext.sizeThreshold,
+  //   });
+  // } else {
+  //   return await handleStreamingWithTools({
+  //     body,
+  //     bodyIn,
+  //     config,
+  //     res,
+  //     req,
+  //     persist: persistenceContext.persist,
+  //     assistantMessageId: persistenceContext.assistantMessageId,
+  //     appendAssistantContent: persistenceContext.appendAssistantContent,
+  //     finalizeAssistantMessage: persistenceContext.finalizeAssistantMessage,
+  //     markAssistantError: persistenceContext.markAssistantError,
+  //     buffer: persistenceContext.buffer,
+  //     flushedOnce: persistenceContext.flushedOnce,
+  //     sizeThreshold: persistenceContext.sizeThreshold,
+  //   });
+  // }
+
+  return await handleIterativeOrchestration({
+    body,
+    bodyIn,
+    config,
+    res,
+    req,
+    persist: persistenceContext.persist,
+    assistantMessageId: persistenceContext.assistantMessageId,
+    appendAssistantContent: persistenceContext.appendAssistantContent,
+    finalizeAssistantMessage: persistenceContext.finalizeAssistantMessage,
+    markAssistantError: persistenceContext.markAssistantError,
+    buffer: persistenceContext.buffer,
+    flushedOnce: persistenceContext.flushedOnce,
+    sizeThreshold: persistenceContext.sizeThreshold,
+  });
 }
