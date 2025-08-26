@@ -1,33 +1,35 @@
 import express from 'express';
 import cors from 'cors';
-import morgan from 'morgan';
 import { config } from './env.js';
 import { rateLimit } from './middleware/rateLimit.js';
 import { sessionResolver } from './middleware/session.js';
 import { chatRouter } from './routes/chat.js';
 import { healthRouter } from './routes/health.js';
 import { conversationsRouter } from './routes/conversations.js';
+import { requestLogger, errorLogger } from './middleware/logger.js';
+import { logger } from './logger.js';
 
 const app = express();
 
 // Enhanced CORS for direct API calls
-app.use(cors({ 
-  origin: config.allowedOrigin, 
+app.use(cors({
+  origin: config.allowedOrigin,
   credentials: false,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Accept', 'Authorization']
 }));
 app.use(express.json({ limit: '1mb' }));
-app.use(morgan('dev'));
-app.use(rateLimit);
 app.use(sessionResolver);
+app.use(requestLogger);
+app.use(rateLimit);
 
 app.use(healthRouter);
 app.use(conversationsRouter);
 app.use(chatRouter);
 
+app.use(errorLogger);
 app.use((err, req, res, next) => {
-  console.error('Unhandled error', err);
+  logger.error({ msg: 'Unhandled error', err });
   res.status(500).json({ error: 'internal_server_error' });
 });
 
@@ -44,22 +46,24 @@ if (config.persistence.enabled) {
         const days = config.persistence.retentionDays;
         const result = retentionSweep({ days });
         if (result.deleted) {
-          console.log(
-            `[retention] deleted ${result.deleted} conversations older than ${days} days`
+          logger.info(
+            { msg: 'retention:deleted', deleted: result.deleted, days },
           );
         }
       } catch (e) {
-        console.error('[retention] sweep error', e);
+        logger.error({ msg: 'retention:sweep_error', err: e });
       }
     }, intervalMs);
-    console.log(
-      `[retention] worker started (every ${Math.round(intervalMs / 1000)}s, days=${config.persistence.retentionDays})`
-    );
+    logger.info({
+      msg: 'retention:started',
+      intervalSec: Math.round(intervalMs / 1000),
+      days: config.persistence.retentionDays,
+    });
   } catch (e) {
-    console.error('[retention] init error', e);
+    logger.error({ msg: 'retention:init_error', err: e });
   }
 }
 
 app.listen(config.port, () => {
-  console.log(`[server] listening on :${config.port}`);
+  logger.info({ msg: 'server:listening', port: config.port });
 });

@@ -192,35 +192,35 @@ export function MessageList({
                           const isCollapsed = collapsedToolOutputs[toggleKey] ?? true;
 
                           return (
-                            <div key={index} className="space-y-2">
-                              <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-neutral-800/50 dark:to-neutral-700/30 border border-slate-200 dark:border-neutral-700/50 shadow-sm">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-6 h-6 flex items-center justify-center rounded-full bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-600 shadow-sm">
-                                      {getToolIcon(toolName)}
-                                    </div>
-                                    <span className="font-medium text-sm text-slate-700 dark:text-slate-300 capitalize">
-                                      {toolName?.replace('_', ' ')}
-                                    </span>
-                                    {(() => {
-                                      try {
-                                        const txt = JSON.stringify(parsedArgs);
-                                        if (!txt || txt === '{}' || txt === 'null' || txt === 'undefined') return null;
-                                        const short = txt.length > 140 ? txt.slice(0, 137) + '...' : txt;
-                                        return (
-                                          <span className="ml-2 text-[11px] font-mono text-slate-600 dark:text-slate-400 bg-white/70 dark:bg-neutral-800/70 border border-slate-200/60 dark:border-neutral-700/60 px-2 py-0.5 rounded">
-                                            {short}
-                                          </span>
-                                        );
-                                      } catch {
-                                        return null;
-                                      }
-                                    })()}
+                            <div key={index} className="rounded-lg bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-neutral-800/50 dark:to-neutral-700/30 border border-slate-200 dark:border-neutral-700/50 shadow-sm mb-4">
+                              <div className="flex items-start gap-3 px-4 py-3">
+                                <div className="flex items-center gap-2">
+                                  <div className="w-6 h-6 flex items-center justify-center rounded-full bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-600 shadow-sm">
+                                    {getToolIcon(toolName)}
                                   </div>
+                                  <span className="font-medium text-sm text-slate-700 dark:text-slate-300 capitalize">
+                                    {toolName?.replace('_', ' ')}
+                                  </span>
+                                  {(() => {
+                                    try {
+                                      const txt = JSON.stringify(parsedArgs);
+                                      if (!txt || txt === '{}' || txt === 'null' || txt === 'undefined') return null;
+                                      const short = txt.length > 140 ? txt.slice(0, 137) + '...' : txt;
+                                      return (
+                                        <span className="ml-2 text-[11px] font-mono text-slate-600 dark:text-slate-400 bg-white/70 dark:bg-neutral-800/70 border border-slate-200/60 dark:border-neutral-700/60 px-2 py-0.5 rounded">
+                                          {short}
+                                        </span>
+                                      );
+                                    } catch {
+                                      return null;
+                                    }
+                                  })()}
+                                </div>
                               </div>
 
                               {outputs.length > 0 && (
-                                <div className="px-4">
-                                  <div className="flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+                                <div className="px-4 pb-3">
+                                  <div className="flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400 mb-2">
                                     <div>{outputs.length} result{outputs.length > 1 ? 's' : ''}</div>
                                     <button
                                       aria-expanded={!isCollapsed}
@@ -232,7 +232,7 @@ export function MessageList({
                                   </div>
 
                                   {!isCollapsed && (
-                                    <div className="mt-2 space-y-2">
+                                    <div className="space-y-2">
                                       {outputs.map((out, outIdx) => {
                                         const raw = out.output ?? out;
                                         let formatted = '';
@@ -241,7 +241,7 @@ export function MessageList({
                                           try { formatted = JSON.stringify(raw, null, 2); } catch { formatted = String(raw); }
                                         }
                                         return (
-                                          <div key={outIdx} className="mt-1 rounded-md bg-slate-50 dark:bg-neutral-800 border border-slate-200/50 dark:border-neutral-700/30 p-3 text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap">
+                                          <div key={outIdx} className="rounded-md bg-white/80 dark:bg-neutral-900/80 border border-slate-200/50 dark:border-neutral-700/30 p-3 text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap">
                                             {formatted}
                                           </div>
                                         );
