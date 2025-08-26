@@ -11,6 +11,10 @@ interface ChatContextType {
   setShouldStream: (val: boolean) => void;
   researchMode: boolean;
   setResearchMode: (val: boolean) => void;
+  reasoningEffort: string;
+  setReasoningEffort: (effort: string) => void;
+  verbosity: string;
+  setVerbosity: (verbosity: string) => void;
 }
 
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
@@ -33,6 +37,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const [useTools, setUseTools] = useState<boolean>(true);
   const [shouldStream, setShouldStream] = useState<boolean>(true);
   const [researchMode, setResearchMode] = useState<boolean>(false);
+  const [reasoningEffort, setReasoningEffort] = useState<string>('medium');
+  const [verbosity, setVerbosity] = useState<string>('medium');
 
   const value = {
     conversationId,
@@ -45,6 +51,10 @@ export function ChatProvider({ children }: ChatProviderProps) {
     setShouldStream,
     researchMode,
     setResearchMode,
+    reasoningEffort,
+    setReasoningEffort,
+    verbosity,
+    setVerbosity,
   };
 
   return (

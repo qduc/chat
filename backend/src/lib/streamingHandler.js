@@ -1,24 +1,10 @@
-import { generateOpenAIToolSpecs } from './tools.js';
 import { parseSSEStream } from './sseParser.js';
 import {
   createChatCompletionChunk,
-  createOpenAIRequest,
   writeAndFlush,
-  createFlushFunction,
 } from './streamUtils.js';
-import { executeToolsWithTimeout } from './toolOrchestrator.js';
-export { setupStreamingHeaders } from './streamUtils.js';
 
-/**
- * Parse SSE stream chunks and extract data payloads
- * @param {Buffer|string} chunk - Raw chunk data from stream
- * @param {string} leftover - Incomplete data from previous chunk
- * @param {Function} onDataChunk - Callback for parsed JSON objects
- * @param {Function} onDone - Callback when [DONE] is received
- * @param {Function} onError - Optional callback for JSON parsing errors
- * @returns {string} New leftover data for next chunk
- */
-// parseSSEStream moved to ./sseParser.js
+export { setupStreamingHeaders } from './streamUtils.js';
 
 /**
  * Set up common stream event handlers for upstream response and client request
@@ -87,229 +73,6 @@ function setupStreamEventHandlers({
 }
 
 /**
- * Create a standardized chat completion chunk object
- * @param {string} id - Completion ID
- * @param {string} model - Model name
- * @param {Object} delta - Delta content object
- * @param {string|null} finishReason - Finish reason or null
- * @returns {Object} Chat completion chunk object
- */
-// createChatCompletionChunk moved to ./streamUtils.js
-
-/**
- * Create an OpenAI API request
- * @param {Object} config - Configuration object
- * @param {Object} requestBody - Request body to send
- * @returns {Promise<Response>} Fetch response promise
- */
-// createOpenAIRequest moved to ./streamUtils.js
-
-/**
- * Write data to response and flush if possible
- * @param {Object} res - Express response object
- * @param {string|Buffer} data - Data to write
- */
-// writeAndFlush moved to ./streamUtils.js
-
-// executeToolCall extracted to ./toolOrchestrator.js
-
-/**
- * Set up streaming response headers
- * @param {Object} res - Express response object
- */
-// setupStreamingHeaders moved to ./streamUtils.js (re-exported)
-
-/**
- * Create a flush function for persistence
- * @param {Object} params - Flush parameters
- * @param {boolean} params.persist - Whether persistence is enabled
- * @param {string|null} params.assistantMessageId - Assistant message ID
- * @param {string} params.buffer - Content buffer (passed by reference)
- * @param {Function} params.appendAssistantContent - Persistence function
- * @returns {Function} Flush function
- */
-// createFlushFunction moved to ./streamUtils.js
-
-/**
- * Handle streaming with tool orchestration
- * Executes a 2-turn flow: first turn gets tool calls, second turn streams the response
- * @param {Object} params - Streaming parameters
- */
-export async function handleStreamingWithTools({
-  body,
-  bodyIn,
-  config,
-  res,
-  req,
-  persist,
-  assistantMessageId,
-  appendAssistantContent,
-  finalizeAssistantMessage,
-  markAssistantError,
-  buffer,
-  flushedOnce,
-  sizeThreshold,
-}) {
-  const doFlush = createFlushFunction({
-    persist,
-    assistantMessageId,
-    buffer,
-    appendAssistantContent,
-    flushedOnce,
-  });
-
-  let leftover = '';
-  let finished = false;
-  let lastFinishReason = null;
-
-  try {
-    // First streaming call to collect tool calls (dispatch tools early)
-    const body1 = {
-      ...body,
-      stream: true,
-      tools: generateOpenAIToolSpecs() // Use backend registry as source of truth
-    };
-    const r1 = await createOpenAIRequest(config, body1);
-
-    // Stream upstream chunks directly and collect tool calls
-    let leftover1 = '';
-    const toolCallMap = new Map(); // index -> { id, type, function: { name, arguments } }
-
-    await new Promise((resolve, reject) => {
-      r1.body.on('data', (chunk) => {
-        try {
-          leftover1 = parseSSEStream(
-            chunk,
-            leftover1,
-            (obj) => {
-              // If it is not a tool call delta, emit it as-is
-              // writeAndFlush(res, `data: ${JSON.stringify(obj)}\n\n`);
-
-              const choice = obj?.choices?.[0];
-              const delta = choice?.delta || {};
-
-              // Accumulate tool call deltas
-              if (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) {
-                for (const tcDelta of delta.tool_calls) {
-                  const idx = tcDelta.index ?? 0;
-                  const existing = toolCallMap.get(idx) || {
-                    id: tcDelta.id,
-                    type: 'function',
-                    function: { name: '', arguments: '' },
-                  };
-                  if (tcDelta.id && !existing.id) existing.id = tcDelta.id;
-                  if (tcDelta.function?.name) existing.function.name = tcDelta.function.name;
-                  if (tcDelta.function?.arguments) existing.function.arguments += tcDelta.function.arguments;
-                  toolCallMap.set(idx, existing);
-                }
-              } else {
-                writeAndFlush(res, `data: ${JSON.stringify(obj)}\n\n`);
-              }
-
-              // Persistence for content
-              if (persist && typeof delta.content === 'string' && delta.content.length > 0) {
-                buffer.value += delta.content;
-                if (buffer.value.length >= sizeThreshold) doFlush();
-              }
-            },
-            () => resolve(),
-            () => { /* ignore parse errors */ }
-          );
-        } catch (e) {
-          reject(e);
-        }
-      });
-
-      r1.body.on('error', reject);
-    });
-
-    // End of first turn parsing
-
-    const toolCalls = Array.from(toolCallMap.values());
-    const msg1 = { role: 'assistant', tool_calls: toolCalls };
-
-    if (!toolCalls.length) {
-      // No tools declared: upstream first turn already streamed, just close SSE
-      writeAndFlush(res, 'data: [DONE]\n\n');
-      if (persist && assistantMessageId) {
-        doFlush();
-        finalizeAssistantMessage({ messageId: assistantMessageId, finishReason: 'stop', status: 'final' });
-      }
-      return res.end();
-    }
-
-    // Emit tool call that was buffered to the client
-    const toolCallChunk = createChatCompletionChunk(
-      bodyIn.id || 'chatcmpl-' + Date.now(),
-      body.model,
-      { tool_calls: toolCalls }
-    );
-    writeAndFlush(res, `data: ${JSON.stringify(toolCallChunk)}\n\n`);
-
-    // Execute tools with timeout and stream tool outputs
-    const toolResults = await executeToolsWithTimeout({ toolCalls, body, res });
-
-    // Second streaming turn
-    const messagesFollowUp = [...(bodyIn.messages || []), msg1, ...toolResults];
-    const body2 = {
-      model: body.model,
-      messages: messagesFollowUp,
-      stream: true,
-      tools: generateOpenAIToolSpecs(), // Use backend registry as source of truth
-      tool_choice: body.tool_choice,
-    };
-    const r2 = await createOpenAIRequest(config, body2);
-
-    r2.body.on('data', (chunk) => {
-      try {
-        writeAndFlush(res, chunk);
-
-        if (!persist) return;
-
-        leftover = parseSSEStream(
-          chunk,
-          leftover,
-          (obj) => {
-            const delta = obj?.choices?.[0]?.delta?.content;
-            if (delta) {
-              buffer.value += delta;
-              if (buffer.value.length >= sizeThreshold) doFlush();
-            }
-            const fr = obj?.choices?.[0]?.finish_reason;
-            if (fr) lastFinishReason = fr;
-          },
-          () => {
-            finished = true;
-          },
-          (e, payload) => {
-            // Ignore JSON parsing errors for now
-          }
-        );
-      } catch (e) {
-        console.error('[orchestrate stream data] error', e);
-      }
-    });
-
-    setupStreamEventHandlers({
-      upstream: r2,
-      req,
-      res,
-      persist,
-      assistantMessageId,
-      doFlush,
-      finalizeAssistantMessage,
-      markAssistantError,
-      lastFinishReason,
-    });
-
-  } catch (e) {
-    console.error('[orchestrate] error', e);
-    res.write('data: [DONE]\n\n');
-    return res.end();
-  }
-}
-
-/**
  * Handle regular streaming (non-tool orchestration)
  * @param {Object} params - Streaming parameters
  */
@@ -327,13 +90,17 @@ export async function handleRegularStreaming({
   sizeThreshold,
   useResponsesAPI,
 }) {
-  const doFlush = createFlushFunction({
-    persist,
-    assistantMessageId,
-    buffer,
-    appendAssistantContent,
-    flushedOnce,
-  });
+  const doFlush = () => {
+    if (!persist || !assistantMessageId) return;
+    if (buffer.value.length === 0) return;
+    
+    appendAssistantContent({
+      messageId: assistantMessageId,
+      delta: buffer.value,
+    });
+    buffer.value = '';
+    flushedOnce.value = true;
+  };
 
   let leftover = '';
   let finished = false;

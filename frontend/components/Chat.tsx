@@ -10,6 +10,8 @@ import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
 import { createConversation, getConversationApi } from '../lib/chat';
 import type { Role } from '../lib/chat';
+import { ChatV2 } from './ChatV2';
+import { isFeatureEnabled } from '../lib/featureFlags';
 
 function ChatInner() {
   const {
@@ -23,6 +25,8 @@ function ChatInner() {
     setShouldStream,
     researchMode,
     setResearchMode,
+    reasoningEffort,
+    verbosity,
   } = useChatContext();
   const [input, setInput] = useState('');
 
@@ -46,8 +50,8 @@ function ChatInner() {
     const base = msgs.slice(0, -1);
     chatStream.setMessages(base);
     chatStream.setPreviousResponseId(null);
-    await chatStream.regenerateFromBase(base, conversationId, model, useTools, shouldStream, researchMode);
-  }, [chatStream, conversationId, model, useTools, shouldStream, researchMode]);
+    await chatStream.regenerateFromBase(base, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode);
+  }, [chatStream, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode]);
 
   const handleNewChat = useCallback(async () => {
     if (chatStream.pending.streaming) chatStream.stopStreaming();
@@ -105,8 +109,8 @@ function ChatInner() {
     if (!trimmed) return;
     // Clear input immediately for a more responsive feel
     setInput('');
-    await chatStream.sendMessage(trimmed, conversationId, model, useTools, shouldStream, researchMode);
-  }, [input, chatStream, conversationId, model, useTools, shouldStream, researchMode]);
+    await chatStream.sendMessage(trimmed, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode);
+  }, [input, chatStream, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode]);
 
   const handleSaveEdit = useCallback(() => {
     if (chatStream.pending.streaming) {
@@ -125,10 +129,10 @@ function ChatInner() {
         if (newConversationId) {
           setConversationId(newConversationId);
         }
-        await chatStream.regenerateFromBase(base, targetConvoId, model, useTools, shouldStream, researchMode);
+        await chatStream.regenerateFromBase(base, targetConvoId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode);
       }
     );
-  }, [conversationId, messageEditing, chatStream, model, useTools, shouldStream, researchMode, setConversationId]);
+  }, [conversationId, messageEditing, chatStream, model, useTools, shouldStream, setConversationId, reasoningEffort, verbosity, researchMode]);
 
   const handleApplyLocalEdit = useCallback(async () => {
     const id = messageEditing.editingMessageId;
@@ -150,11 +154,11 @@ function ChatInner() {
 
     // Regenerate using computed baseMessages (ensure last is user)
     if (baseMessages.length && baseMessages[baseMessages.length - 1].role === 'user') {
-      await chatStream.generateFromHistory(model, useTools, baseMessages as any, researchMode);
+      await chatStream.generateFromHistory(model, useTools, reasoningEffort, verbosity, baseMessages as any, researchMode);
     }
 
     messageEditing.handleCancelEdit();
-  }, [chatStream, messageEditing, model, useTools, researchMode]);
+  }, [chatStream, messageEditing, model, useTools, reasoningEffort, verbosity, researchMode]);
 
   return (
     <div className="flex h-dvh max-h-dvh bg-gradient-to-br from-slate-50 via-white to-slate-100/40 dark:from-neutral-950 dark:via-neutral-950 dark:to-neutral-900/20">
@@ -212,6 +216,16 @@ function ChatInner() {
 }
 
 export function Chat() {
+  // Feature flag to enable v2 implementation
+  if (isFeatureEnabled('CHAT_V2')) {
+    return (
+        <ChatProvider>
+            <ChatV2 />
+        </ChatProvider>
+    );
+  }
+
+  // Default to v1 implementation
   return (
     <ChatProvider>
       <ChatInner />

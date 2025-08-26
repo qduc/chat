@@ -18,6 +18,8 @@ export interface UseChatStreamReturn {
     model: string,
     useTools: boolean,
     shouldStream: boolean,
+    reasoningEffort: string,
+    verbosity: string,
     researchMode?: boolean
   ) => Promise<void>;
   regenerateFromCurrent: (
@@ -25,6 +27,8 @@ export interface UseChatStreamReturn {
     model: string,
     useTools: boolean,
     shouldStream: boolean,
+    reasoningEffort: string,
+    verbosity: string,
     researchMode?: boolean
   ) => Promise<void>;
   regenerateFromBase: (
@@ -33,11 +37,15 @@ export interface UseChatStreamReturn {
     model: string,
     useTools: boolean,
     shouldStream: boolean,
+    reasoningEffort: string,
+    verbosity: string,
     researchMode?: boolean
   ) => Promise<void>;
   generateFromHistory: (
     model: string,
     useTools: boolean,
+    reasoningEffort: string,
+    verbosity: string,
     messagesOverride?: ChatMessage[],
     researchMode?: boolean
   ) => Promise<void>;
@@ -71,16 +79,43 @@ export function useChatStream(): UseChatStreamReturn {
     toolsPromiseRef.current = toolsPromise;
   }, []);
 
+  const handleStreamEvent = useCallback((event: any) => {
+    const assistantId = assistantMsgRef.current!.id;
+    setMessages(curr => curr.map(m => {
+      if (m.id !== assistantId) return m;
+      
+      if (event.type === 'text') {
+        return { ...m, content: m.content + event.value };
+      } else if (event.type === 'tool_call') {
+        return { 
+          ...m, 
+          tool_calls: [...(m.tool_calls || []), event.value]
+        };
+      } else if (event.type === 'final') {
+        return { ...m, content: event.value };
+      } else if (event.type === 'tool_output') {
+        return { 
+          ...m, 
+          tool_outputs: [...(m.tool_outputs || []), event.value]
+        };
+      }
+      return m;
+    }));
+  }, []);
+
   const sendMessage = useCallback(async (
     input: string,
     conversationId: string | null,
     model: string,
     useTools: boolean,
     shouldStream: boolean,
+    reasoningEffort: string,
+    verbosity: string,
     researchMode?: boolean
   ) => {
-  if (!input.trim()) return;
-  // Allow multiple concurrent requests; UI is updated optimistically immediately.
+    if (!input.trim()) return;
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
 
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: input.trim() };
     setMessages(m => [...m, userMsg]);
@@ -105,26 +140,14 @@ export function useChatStream(): UseChatStreamReturn {
         previousResponseId: previousResponseId || undefined,
         useResponsesAPI: !useTools,
         shouldStream,
+        reasoningEffort,
+        verbosity,
         ...(useTools ? {
           tools: tools || [],
           tool_choice: 'auto',
           ...(researchMode && { research_mode: true })
         } : {}),
-        onEvent: (event) => {
-          const msg = assistantMsgRef.current!;
-          if (event.type === 'text') {
-            msg.content += event.value;
-          } else if (event.type === 'tool_call') {
-            if (!msg.tool_calls) msg.tool_calls = [];
-            msg.tool_calls.push(event.value);
-          } else if (event.type === 'final') {
-            msg.content = event.value; // Replace content with the final version
-          } else if (event.type === 'tool_output') {
-            if (!msg.tool_outputs) msg.tool_outputs = [] as any;
-            msg.tool_outputs!.push(event.value);
-          }
-          setMessages(curr => curr.map(m => m.id === msg.id ? { ...msg } : m));
-        }
+        onEvent: handleStreamEvent
       });
       // For non-streaming, update the assistant message content from the result
       if (!shouldStream) {
@@ -141,6 +164,7 @@ export function useChatStream(): UseChatStreamReturn {
     } finally {
       // Clear streaming/abort when finished
       setPending(p => ({ ...p, streaming: false, abort: undefined }));
+      inFlightRef.current = false;
     }
 
     // Return immediately — caller shouldn't wait for network to finish to keep UI snappy
@@ -150,13 +174,16 @@ export function useChatStream(): UseChatStreamReturn {
   const generateFromHistory = useCallback(async (
     model: string,
     useTools: boolean,
+    reasoningEffort: string,
+    verbosity: string,
     messagesOverride?: ChatMessage[],
     researchMode?: boolean
   ) => {
     // Only proceed if there is a user message to respond to
     const history = messagesOverride ?? messages;
     if (!history.length || history[history.length - 1].role !== 'user') return;
-    // Allow concurrent regenerations; UI is updated optimistically.
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
     const abort = new AbortController();
     const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
     assistantMsgRef.current = assistantMsg;
@@ -173,26 +200,14 @@ export function useChatStream(): UseChatStreamReturn {
       signal: abort.signal,
       // No conversationId / previousResponseId for local, unsaved edits
       useResponsesAPI: !useTools,
+      reasoningEffort,
+      verbosity,
       ...(useTools ? {
         tools: tools || [],
         tool_choice: 'auto',
         ...(researchMode && { research_mode: true })
       } : {}),
-      onEvent: (event) => {
-        const msg = assistantMsgRef.current!;
-        if (event.type === 'text') {
-          msg.content += event.value;
-        } else if (event.type === 'tool_call') {
-          if (!msg.tool_calls) msg.tool_calls = [];
-          msg.tool_calls.push(event.value);
-        } else if (event.type === 'final') {
-          msg.content = event.value;
-        } else if (event.type === 'tool_output') {
-          if (!msg.tool_outputs) msg.tool_outputs = [] as any;
-          msg.tool_outputs!.push(event.value);
-        }
-        setMessages(curr => curr.map(m => m.id === msg.id ? { ...msg } : m));
-      }
+      onEvent: handleStreamEvent
     });
 
     network.then(result => {
@@ -214,6 +229,8 @@ export function useChatStream(): UseChatStreamReturn {
     model: string,
     useTools: boolean,
     shouldStream: boolean,
+    reasoningEffort: string,
+    verbosity: string,
     researchMode?: boolean
   ) => {
     // Must have at least one user message to respond to
@@ -241,26 +258,14 @@ export function useChatStream(): UseChatStreamReturn {
         previousResponseId: previousResponseId || undefined,
         useResponsesAPI: !useTools,
         shouldStream,
+        reasoningEffort,
+        verbosity,
         ...(useTools ? {
           tools: tools || [],
           tool_choice: 'auto',
           ...(researchMode && { research_mode: true })
         } : {}),
-        onEvent: (event) => {
-          const msg = assistantMsgRef.current!;
-          if (event.type === 'text') {
-            msg.content += event.value;
-          } else if (event.type === 'tool_call') {
-            if (!msg.tool_calls) msg.tool_calls = [];
-            msg.tool_calls.push(event.value);
-          } else if (event.type === 'final') {
-            msg.content = event.value;
-          } else if (event.type === 'tool_output') {
-            if (!msg.tool_outputs) msg.tool_outputs = [] as any;
-            msg.tool_outputs!.push(event.value);
-          }
-          setMessages(curr => curr.map(m => m.id === msg.id ? { ...msg } : m));
-        }
+        onEvent: handleStreamEvent
       });
       if (!shouldStream) {
         const msg = assistantMsgRef.current!;
@@ -284,10 +289,12 @@ export function useChatStream(): UseChatStreamReturn {
     model: string,
     useTools: boolean,
     shouldStream: boolean,
+    reasoningEffort: string,
+    verbosity: string,
     researchMode?: boolean
   ) => {
     const base = messages;
-    await regenerateFromBase(base, conversationId, model, useTools, shouldStream, researchMode);
+    await regenerateFromBase(base, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode);
   }, [messages, regenerateFromBase]);
 
   const stopStreaming = useCallback(() => {
