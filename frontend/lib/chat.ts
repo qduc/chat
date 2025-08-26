@@ -117,7 +117,7 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
   // Non-streaming: parse JSON and return content immediately
   if (!streamFlag) {
     const json = await res.json();
-    
+
     // Process tool_events if present (for non-streaming tool orchestration)
     if (json.tool_events && Array.isArray(json.tool_events)) {
       for (const event of json.tool_events) {
@@ -131,7 +131,7 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
         }
       }
     }
-    
+
     if (useResponses) {
       // Responses API non-stream JSON
       const content = json?.output?.[0]?.content?.[0]?.text ?? '';
