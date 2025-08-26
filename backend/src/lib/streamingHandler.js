@@ -164,13 +164,13 @@ export async function handleStreamingWithTools({
 
   try {
     // First streaming call to collect tool calls (dispatch tools early)
-    const body1 = { 
-      ...body, 
+    const body1 = {
+      ...body,
       stream: true,
       tools: generateOpenAIToolSpecs() // Use backend registry as source of truth
     };
     const r1 = await createOpenAIRequest(config, body1);
-    
+
     // Stream upstream chunks directly and collect tool calls
     let leftover1 = '';
     const toolCallMap = new Map(); // index -> { id, type, function: { name, arguments } }
@@ -182,8 +182,8 @@ export async function handleStreamingWithTools({
             chunk,
             leftover1,
             (obj) => {
-              // Forward upstream chunk to client
-              writeAndFlush(res, `data: ${JSON.stringify(obj)}\n\n`);
+              // If it is not a tool call delta, emit it as-is
+              // writeAndFlush(res, `data: ${JSON.stringify(obj)}\n\n`);
 
               const choice = obj?.choices?.[0];
               const delta = choice?.delta || {};
@@ -202,6 +202,8 @@ export async function handleStreamingWithTools({
                   if (tcDelta.function?.arguments) existing.function.arguments += tcDelta.function.arguments;
                   toolCallMap.set(idx, existing);
                 }
+              } else {
+                writeAndFlush(res, `data: ${JSON.stringify(obj)}\n\n`);
               }
 
               // Persistence for content
@@ -236,7 +238,13 @@ export async function handleStreamingWithTools({
       return res.end();
     }
 
-    // Tool calls already streamed above; do not re-emit
+    // Emit tool call that was buffered to the client
+    const toolCallChunk = createChatCompletionChunk(
+      bodyIn.id || 'chatcmpl-' + Date.now(),
+      body.model,
+      { tool_calls: toolCalls }
+    );
+    writeAndFlush(res, `data: ${JSON.stringify(toolCallChunk)}\n\n`);
 
     // Execute tools with timeout and stream tool outputs
     const toolResults = await executeToolsWithTimeout({ toolCalls, body, res });
@@ -255,9 +263,9 @@ export async function handleStreamingWithTools({
     r2.body.on('data', (chunk) => {
       try {
         writeAndFlush(res, chunk);
-        
+
         if (!persist) return;
-        
+
         leftover = parseSSEStream(
           chunk,
           leftover,
