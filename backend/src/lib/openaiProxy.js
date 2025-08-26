@@ -101,6 +101,7 @@ export async function proxyOpenAIRequest(req, res) {
   try {
     // Setup persistence
     const persistenceResult = await setupPersistence({
+      config,
       conversationId,
       sessionId,
       req,

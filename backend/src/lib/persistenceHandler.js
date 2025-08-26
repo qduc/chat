@@ -30,7 +30,10 @@ export async function setupPersistence({
   res,
   bodyIn,
 }) {
-  if (!config.persistence.enabled || !conversationId || !sessionId) {
+  // Check if persistence is enabled - provide safe fallback if config is undefined
+  const persistenceEnabled = config?.persistence?.enabled || false;
+  
+  if (!persistenceEnabled || !conversationId || !sessionId) {
     return { persist: false, assistantMessageId: null };
   }
 
@@ -48,7 +51,8 @@ export async function setupPersistence({
 
   // Enforce message limit
   const cnt = countMessagesByConversation(conversationId);
-  if (cnt >= config.persistence.maxMessagesPerConversation) {
+  const maxMessages = config?.persistence?.maxMessagesPerConversation || 1000;
+  if (cnt >= maxMessages) {
     res.status(429).json({
       error: 'limit_exceeded',
       message: 'Max messages per conversation reached',
