@@ -3,20 +3,42 @@ import pino from 'pino';
 const level = process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug');
 const pretty = (process.env.LOG_PRETTY ?? '').toLowerCase() !== 'false' && process.env.NODE_ENV !== 'production';
 
-// Configure pino. Pretty transport only in non-production by default.
+// Configure pino to write to both stdout and file
 export const logger = pino({
   level,
-  transport: pretty
-    ? {
-        target: 'pino-pretty',
+  transport: {
+    targets: [
+      // Always write JSON logs to file for debugging
+      {
+        target: 'pino/file',
+        level,
         options: {
-          colorize: true,
-          translateTime: 'SYS:standard',
-          singleLine: false,
-          ignore: 'pid,hostname',
+          destination: './logs/app.log',
+          mkdir: true,
         },
-      }
-    : undefined,
+      },
+      // Pretty console output in development, plain JSON in production
+      pretty
+        ? {
+            target: 'pino-pretty',
+            level,
+            options: {
+              colorize: true,
+              translateTime: 'SYS:standard',
+              singleLine: false,
+              ignore: 'pid,hostname',
+              destination: 1, // stdout
+            },
+          }
+        : {
+            target: 'pino/file',
+            level,
+            options: {
+              destination: 1, // stdout
+            },
+          },
+    ],
+  },
   redact: {
     // Best-effort redactions for common sensitive fields
     paths: [

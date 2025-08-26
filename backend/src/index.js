@@ -36,7 +36,7 @@ app.use((err, req, res, next) => {
 // Retention worker (Sprint 3)
 import { getDb, retentionSweep } from './db/index.js';
 
-if (config.persistence.enabled) {
+if (config.persistence.enabled && process.env.NODE_ENV !== 'test') {
   try {
     // Initialize DB once
     getDb();
@@ -64,6 +64,8 @@ if (config.persistence.enabled) {
   }
 }
 
-app.listen(config.port, () => {
-  logger.info({ msg: 'server:listening', port: config.port });
-});
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(config.port, () => {
+    logger.info({ msg: 'server:listening', port: config.port });
+  });
+}

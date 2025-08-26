@@ -118,22 +118,54 @@ export function setupPersistenceTimer({ persist, flushMs, doFlush }) {
  * @param {string|null} params.content - Response content
  * @param {string|null} params.finishReason - Finish reason
  */
-export function handleNonStreamingPersistence({
+export async function handleNonStreamingPersistence({
+  upstream,
+  useResponsesAPI,
   persist,
   assistantMessageId,
-  content,
-  finishReason,
+  finalizeAssistantMessage,
+  markAssistantError,
 }) {
-  if (persist && assistantMessageId && content) {
-    appendAssistantContent({
-      messageId: assistantMessageId,
-      delta: content,
-    });
+  const body = await upstream.json();
+
+  if (!upstream.ok) {
+    if (persist && assistantMessageId) {
+      markAssistantError({ messageId: assistantMessageId });
+    }
+    return { status: upstream.status, response: body };
+  }
+
+  if (persist && assistantMessageId) {
+    let content = '';
+    let finishReason = null;
+
+    if (useResponsesAPI) {
+      // Responses API format
+      if (body.output && body.output[0] && body.output[0].content && body.output[0].content[0]) {
+        content = body.output[0].content[0].text;
+      }
+      finishReason = body.status;
+    } else {
+      // Chat Completions format
+      if (body.choices && body.choices[0] && body.choices[0].message) {
+        content = body.choices[0].message.content;
+      }
+      finishReason = body.choices && body.choices[0] ? body.choices[0].finish_reason : null;
+    }
+
+    if (content) {
+      appendAssistantContent({
+        messageId: assistantMessageId,
+        delta: content,
+      });
+    }
     finalizeAssistantMessage({
       messageId: assistantMessageId,
-      finishReason: finishReason || null,
+      finishReason: finishReason,
     });
   }
+
+  return { status: 200, response: body };
 }
 
 /**

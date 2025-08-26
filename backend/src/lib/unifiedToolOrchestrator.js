@@ -50,7 +50,7 @@ function streamEvent(res, event, model = 'gpt-3.5-turbo') {
  * Make a request to the AI model
  */
 async function callLLM(messages, config, bodyParams) {
-  const url = `${config.openaiBaseUrl}/chat/completions`;
+  const url = `${config.openaiBaseUrl}/v1/chat/completions`;
   const headers = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${config.openaiApiKey}`,
