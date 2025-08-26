@@ -1,6 +1,7 @@
 import fetch from 'node-fetch';
 import { config } from '../env.js';
 import { handleUnifiedToolOrchestration } from './unifiedToolOrchestrator.js';
+import { handleIterativeOrchestration } from './iterativeOrchestrator.js';
 import {
   setupStreamingHeaders,
   handleRegularStreaming,
@@ -86,6 +87,22 @@ export async function proxyOpenAIRequest(req, res) {
     }
   }
 
+  // Map compatibility fields for Responses API
+  if (useResponsesAPI) {
+    if (body.reasoning_effort) {
+      const modelName = String(body.model || '').toLowerCase();
+      const supportsReasoning =
+        modelName.includes('o4') || modelName.includes('o3') || modelName.includes('reasoning');
+      if (supportsReasoning) {
+        body.reasoning = { effort: body.reasoning_effort };
+      }
+      // Always remove the compatibility field to avoid upstream 400s
+      delete body.reasoning_effort;
+    }
+    // The Responses API may not recognize 'verbosity'; drop to avoid 400s
+    if (body.verbosity) delete body.verbosity;
+  }
+
   // Persistence state
   let persist = false;
   let assistantMessageId = null;
@@ -116,29 +133,51 @@ export async function proxyOpenAIRequest(req, res) {
     persist = persistenceResult?.persist || false;
     assistantMessageId = persistenceResult?.assistantMessageId || null;
 
-    // Handle tool orchestration (unified for streaming and non-streaming)
+    // Handle tool orchestration
     if (hasTools) {
-      return await handleUnifiedToolOrchestration({
-        body,
-        bodyIn,
-        config,
-        res,
-        req,
-        persist,
-        assistantMessageId,
-        appendAssistantContent,
-        finalizeAssistantMessage,
-        markAssistantError,
-        buffer,
-        flushedOnce,
-        sizeThreshold,
-      });
+      if (stream) {
+        // Prepare SSE response for streaming tool orchestration
+        setupStreamingHeaders(res);
+        // Stream text deltas; buffer tool_calls and emit consolidated call
+        return await handleIterativeOrchestration({
+          body,
+          bodyIn,
+          config,
+          res,
+          req,
+          persist,
+          assistantMessageId,
+          appendAssistantContent,
+          finalizeAssistantMessage,
+          markAssistantError,
+          buffer,
+          flushedOnce,
+          sizeThreshold,
+        });
+      } else {
+        // Non-streaming JSON with tool events
+        return await handleUnifiedToolOrchestration({
+          body,
+          bodyIn,
+          config,
+          res,
+          req,
+          persist,
+          assistantMessageId,
+          appendAssistantContent,
+          finalizeAssistantMessage,
+          markAssistantError,
+          buffer,
+          flushedOnce,
+          sizeThreshold,
+        });
+      }
     }
 
     // Make upstream request
-    const url = useResponsesAPI 
-      ? `${config.openaiBaseUrl}/v1/responses`
-      : `${config.openaiBaseUrl}/v1/chat/completions`;
+    // Build upstream URL resiliently whether base has trailing /v1 or not
+    const base = (config.openaiBaseUrl || '').replace(/\/v1\/?$/, '');
+    const url = `${base}/v1/${useResponsesAPI ? 'responses' : 'chat/completions'}`;
     const headers = {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${config.openaiApiKey}`,
