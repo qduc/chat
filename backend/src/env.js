@@ -23,7 +23,7 @@ const bool = (v, def = false) => {
 };
 
 export const config = {
-  openaiBaseUrl: process.env.OPENAI_BASE_URL,
+  openaiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
   openaiApiKey: process.env.OPENAI_API_KEY,
   defaultModel: process.env.DEFAULT_MODEL || 'gpt-4.1-mini',
   port: Number(process.env.PORT) || 3001,

@@ -1,4 +1,5 @@
 import { createContext, useContext, useState, ReactNode } from 'react';
+import type { QualityLevel } from '../components/ui/QualitySlider';
 
 interface ChatContextType {
   conversationId: string | null;
@@ -11,6 +12,9 @@ interface ChatContextType {
   setShouldStream: (val: boolean) => void;
   researchMode: boolean;
   setResearchMode: (val: boolean) => void;
+  qualityLevel: QualityLevel;
+  setQualityLevel: (level: QualityLevel) => void;
+  // Deprecated: kept for backward compatibility until all components are updated
   reasoningEffort: string;
   setReasoningEffort: (effort: string) => void;
   verbosity: string;
@@ -37,8 +41,29 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const [useTools, setUseTools] = useState<boolean>(true);
   const [shouldStream, setShouldStream] = useState<boolean>(true);
   const [researchMode, setResearchMode] = useState<boolean>(false);
-  const [reasoningEffort, setReasoningEffort] = useState<string>('medium');
-  const [verbosity, setVerbosity] = useState<string>('medium');
+  const [qualityLevel, setQualityLevel] = useState<QualityLevel>('balanced');
+  
+  // Derived values for backward compatibility
+  const getQualitySettings = (level: QualityLevel) => {
+    const settings = {
+      quick: { reasoningEffort: 'minimal', verbosity: 'low' },
+      balanced: { reasoningEffort: 'medium', verbosity: 'medium' },
+      thorough: { reasoningEffort: 'high', verbosity: 'high' }
+    };
+    return settings[level];
+  };
+  
+  const currentSettings = getQualitySettings(qualityLevel);
+  const [reasoningEffort, setReasoningEffort] = useState<string>(currentSettings.reasoningEffort);
+  const [verbosity, setVerbosity] = useState<string>(currentSettings.verbosity);
+
+  // Update derived values when quality level changes
+  const handleQualityChange = (level: QualityLevel) => {
+    setQualityLevel(level);
+    const settings = getQualitySettings(level);
+    setReasoningEffort(settings.reasoningEffort);
+    setVerbosity(settings.verbosity);
+  };
 
   const value = {
     conversationId,
@@ -51,6 +76,8 @@ export function ChatProvider({ children }: ChatProviderProps) {
     setShouldStream,
     researchMode,
     setResearchMode,
+    qualityLevel,
+    setQualityLevel: handleQualityChange,
     reasoningEffort,
     setReasoningEffort,
     verbosity,

@@ -7,38 +7,38 @@ export interface ChatState {
   // UI State
   status: 'idle' | 'streaming' | 'loading' | 'error';
   input: string;
-  
+
   // Chat State
   messages: ChatMessage[];
   conversationId: string | null;
   previousResponseId: string | null;
-  
+
   // Settings
   model: string;
   useTools: boolean;
   shouldStream: boolean;
   reasoningEffort: string;
   verbosity: string;
-  
+
   // Conversations
   conversations: ConversationMeta[];
   nextCursor: string | null;
   historyEnabled: boolean;
   loadingConversations: boolean;
-  
+
   // Message Editing
   editingMessageId: string | null;
   editingContent: string;
-  
+
   // Error handling
   error: string | null;
-  
+
   // Internal state
   abort?: AbortController;
 }
 
 // Action types
-export type ChatAction = 
+export type ChatAction =
   | { type: 'SET_INPUT'; payload: string }
   | { type: 'SET_MODEL'; payload: string }
   | { type: 'SET_USE_TOOLS'; payload: boolean }
@@ -49,6 +49,8 @@ export type ChatAction =
   | { type: 'START_STREAMING'; payload: { abort: AbortController; userMessage: ChatMessage; assistantMessage: ChatMessage } }
   | { type: 'REGENERATE_START'; payload: { abort: AbortController; baseMessages: ChatMessage[]; assistantMessage: ChatMessage } }
   | { type: 'STREAM_TOKEN'; payload: { messageId: string; token: string } }
+  | { type: 'STREAM_TOOL_CALL'; payload: { messageId: string; toolCall: any } }
+  | { type: 'STREAM_TOOL_OUTPUT'; payload: { messageId: string; toolOutput: any } }
   | { type: 'STREAM_COMPLETE'; payload: { responseId?: string } }
   | { type: 'STREAM_ERROR'; payload: string }
   | { type: 'STOP_STREAMING' }
@@ -91,25 +93,25 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
     case 'SET_INPUT':
       return { ...state, input: action.payload };
-    
+
     case 'SET_MODEL':
       return { ...state, model: action.payload };
-    
+
     case 'SET_USE_TOOLS':
       return { ...state, useTools: action.payload };
-    
+
     case 'SET_SHOULD_STREAM':
       return { ...state, shouldStream: action.payload };
-    
+
     case 'SET_REASONING_EFFORT':
       return { ...state, reasoningEffort: action.payload };
-    
+
     case 'SET_VERBOSITY':
       return { ...state, verbosity: action.payload };
-    
+
     case 'SET_CONVERSATION_ID':
       return { ...state, conversationId: action.payload };
-    
+
     case 'START_STREAMING':
       return {
         ...state,
@@ -119,7 +121,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         abort: action.payload.abort,
         error: null,
       };
-    
+
     case 'REGENERATE_START':
       return {
         ...state,
@@ -129,7 +131,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         abort: action.payload.abort,
         error: null,
       };
-    
+
     case 'STREAM_TOKEN':
       return {
         ...state,
@@ -139,7 +141,27 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
             : m
         ),
       };
-    
+
+    case 'STREAM_TOOL_CALL':
+      return {
+        ...state,
+        messages: state.messages.map(m =>
+          m.id === action.payload.messageId
+            ? { ...m, tool_calls: [...(m.tool_calls || []), action.payload.toolCall] }
+            : m
+        ),
+      };
+
+    case 'STREAM_TOOL_OUTPUT':
+      return {
+        ...state,
+        messages: state.messages.map(m =>
+          m.id === action.payload.messageId
+            ? { ...m, tool_outputs: [...(m.tool_outputs || []), action.payload.toolOutput] }
+            : m
+        ),
+      };
+
     case 'STREAM_COMPLETE':
       return {
         ...state,
@@ -147,7 +169,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         abort: undefined,
         previousResponseId: action.payload.responseId || state.previousResponseId,
       };
-    
+
     case 'STREAM_ERROR':
       return {
         ...state,
@@ -155,14 +177,14 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         error: action.payload,
         abort: undefined,
       };
-    
+
     case 'STOP_STREAMING':
       return {
         ...state,
         status: 'idle',
         abort: undefined,
       };
-    
+
     case 'CLEAR_MESSAGES':
       return {
         ...state,
@@ -170,55 +192,55 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         previousResponseId: null,
         error: null,
       };
-    
+
     case 'SET_MESSAGES':
       return { ...state, messages: action.payload };
-    
+
     case 'LOAD_CONVERSATIONS_START':
       return { ...state, loadingConversations: true };
-    
+
     case 'LOAD_CONVERSATIONS_SUCCESS':
       return {
         ...state,
         loadingConversations: false,
-        conversations: action.payload.replace 
-          ? action.payload.conversations 
+        conversations: action.payload.replace
+          ? action.payload.conversations
           : [...state.conversations, ...action.payload.conversations],
         nextCursor: action.payload.nextCursor,
       };
-    
+
     case 'LOAD_CONVERSATIONS_ERROR':
       return { ...state, loadingConversations: false };
-    
+
     case 'SET_HISTORY_ENABLED':
       return { ...state, historyEnabled: action.payload };
-    
+
     case 'ADD_CONVERSATION':
       return {
         ...state,
         conversations: [action.payload, ...state.conversations],
       };
-    
+
     case 'DELETE_CONVERSATION':
       return {
         ...state,
         conversations: state.conversations.filter(c => c.id !== action.payload),
         conversationId: state.conversationId === action.payload ? null : state.conversationId,
       };
-    
+
     case 'START_EDIT':
       return {
         ...state,
         editingMessageId: action.payload.messageId,
         editingContent: action.payload.content,
       };
-    
+
     case 'UPDATE_EDIT_CONTENT':
       return { ...state, editingContent: action.payload };
-    
+
     case 'CANCEL_EDIT':
       return { ...state, editingMessageId: null, editingContent: '' };
-    
+
     case 'SAVE_EDIT_SUCCESS':
       return {
         ...state,
@@ -227,10 +249,10 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         editingContent: '',
         previousResponseId: null, // Reset for regeneration
       };
-    
+
     case 'CLEAR_ERROR':
       return { ...state, error: null };
-    
+
     case 'NEW_CHAT':
       return {
         ...state,
@@ -242,7 +264,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         editingContent: '',
         error: null,
       };
-    
+
     default:
       return state;
   }
@@ -284,8 +306,8 @@ export function useChatState() {
     try {
       dispatch({ type: 'LOAD_CONVERSATIONS_START' });
       const list = await listConversationsApi(undefined, { limit: 20 });
-      dispatch({ 
-        type: 'LOAD_CONVERSATIONS_SUCCESS', 
+      dispatch({
+        type: 'LOAD_CONVERSATIONS_SUCCESS',
         payload: { conversations: list.items, nextCursor: list.next_cursor, replace: true }
       });
       dispatch({ type: 'SET_HISTORY_ENABLED', payload: true });
@@ -308,14 +330,17 @@ export function useChatState() {
   // Stream event handler
   const handleStreamEvent = useCallback((event: any) => {
     const assistantId = assistantMsgRef.current!.id;
-    
+
     if (event.type === 'text') {
       dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token: event.value } });
     } else if (event.type === 'final') {
       // For final events, we could update the entire content
       dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token: event.value } });
+    } else if (event.type === 'tool_call') {
+      dispatch({ type: 'STREAM_TOOL_CALL', payload: { messageId: assistantId, toolCall: event.value } });
+    } else if (event.type === 'tool_output') {
+      dispatch({ type: 'STREAM_TOOL_OUTPUT', payload: { messageId: assistantId, toolOutput: event.value } });
     }
-    // Handle tool calls, tool outputs if needed
   }, []);
 
   // Helpers to remove duplicate sendChat setup and error handling
@@ -392,16 +417,16 @@ export function useChatState() {
     sendMessage: useCallback(async () => {
       const input = state.input.trim();
       if (!input || state.status === 'streaming' || inFlightRef.current) return;
-      
+
       inFlightRef.current = true;
       const abort = new AbortController();
       const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: input };
       const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
       assistantMsgRef.current = assistantMsg;
 
-      dispatch({ 
-        type: 'START_STREAMING', 
-        payload: { abort, userMessage: userMsg, assistantMessage: assistantMsg } 
+      dispatch({
+        type: 'START_STREAMING',
+        payload: { abort, userMessage: userMsg, assistantMessage: assistantMsg }
       });
 
       const config = buildSendChatConfig([...state.messages, userMsg], abort.signal);
@@ -435,15 +460,15 @@ export function useChatState() {
       if (state.status === 'streaming') {
         actions.stopStreaming();
       }
-      
+
       dispatch({ type: 'NEW_CHAT' });
 
       if (state.historyEnabled) {
         try {
           const convo = await createConversation(undefined, { model: state.model });
           dispatch({ type: 'SET_CONVERSATION_ID', payload: convo.id });
-          dispatch({ 
-            type: 'ADD_CONVERSATION', 
+          dispatch({
+            type: 'ADD_CONVERSATION',
             payload: {
               id: convo.id,
               title: convo.title || 'New chat',
@@ -464,7 +489,7 @@ export function useChatState() {
       if (state.status === 'streaming') {
         actions.stopStreaming();
       }
-      
+
       dispatch({ type: 'SET_CONVERSATION_ID', payload: id });
       dispatch({ type: 'CLEAR_MESSAGES' });
       dispatch({ type: 'CANCEL_EDIT' });
@@ -484,12 +509,12 @@ export function useChatState() {
 
     loadMoreConversations: useCallback(async () => {
       if (!state.nextCursor || state.loadingConversations) return;
-      
+
       dispatch({ type: 'LOAD_CONVERSATIONS_START' });
       try {
         const list = await listConversationsApi(undefined, { cursor: state.nextCursor, limit: 20 });
-        dispatch({ 
-          type: 'LOAD_CONVERSATIONS_SUCCESS', 
+        dispatch({
+          type: 'LOAD_CONVERSATIONS_SUCCESS',
           payload: { conversations: list.items, nextCursor: list.next_cursor }
         });
       } catch (e: any) {
@@ -521,22 +546,22 @@ export function useChatState() {
 
     saveEdit: useCallback(async () => {
       if (!state.editingMessageId || !state.editingContent.trim()) return;
-      
+
       const messageId = state.editingMessageId;
       const newContent = state.editingContent.trim();
-      
+
       // Find base messages (up to and including edited message)
       const idx = state.messages.findIndex(m => m.id === messageId);
       if (idx === -1) return;
-      
+
       const baseMessages = [
         ...state.messages.slice(0, idx),
         { ...state.messages[idx], content: newContent }
       ];
 
-      dispatch({ 
-        type: 'SAVE_EDIT_SUCCESS', 
-        payload: { messageId, content: newContent, baseMessages } 
+      dispatch({
+        type: 'SAVE_EDIT_SUCCESS',
+        payload: { messageId, content: newContent, baseMessages }
       });
 
       // If last message is user message, regenerate response

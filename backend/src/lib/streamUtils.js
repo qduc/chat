@@ -29,7 +29,8 @@ export function createChatCompletionChunk(id, model, delta, finishReason = null)
  * @returns {Promise<Response>} Fetch response promise
  */
 export async function createOpenAIRequest(config, requestBody) {
-  const url = `${config.openaiBaseUrl}/chat/completions`;
+  const base = (config.openaiBaseUrl || '').replace(/\/v1\/?$/, '');
+  const url = `${base}/v1/chat/completions`;
   const headers = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${config.openaiApiKey}`,

@@ -176,17 +176,8 @@ function ChatInner() {
       )}
       <div className="flex flex-col flex-1 relative">
         <ChatHeader
-          model={model}
-          useTools={useTools}
-          shouldStream={shouldStream}
-          researchMode={researchMode}
           isStreaming={chatStream.pending.streaming}
-          onModelChange={setModel}
-          onUseToolsChange={setUseTools}
-          onShouldStreamChange={setShouldStream}
-          onResearchModeChange={setResearchMode}
           onNewChat={handleNewChat}
-          onStop={chatStream.stopStreaming}
         />
         <MessageList
           messages={chatStream.messages}
@@ -202,12 +193,21 @@ function ChatInner() {
           onEditingContentChange={messageEditing.setEditingContent}
           onRetryLastAssistant={handleRetryLastAssistant}
         />
-        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-2xl px-4">
+        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-4xl px-4">
           <MessageInput
             input={input}
             pending={chatStream.pending}
             onInputChange={setInput}
             onSend={handleSend}
+            onStop={chatStream.stopStreaming}
+            model={model}
+            useTools={useTools}
+            shouldStream={shouldStream}
+            researchMode={researchMode}
+            onModelChange={setModel}
+            onUseToolsChange={setUseTools}
+            onShouldStreamChange={setShouldStream}
+            onResearchModeChange={setResearchMode}
           />
         </div>
       </div>

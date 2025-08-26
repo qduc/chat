@@ -7,13 +7,12 @@ services:
     env_file:
       - ./backend/.env
     volumes:
-      - ./backend:/app:cached
-      - /app/node_modules
+      - ./backend:/app
     ports:
       - "4001:3001"
     environment:
       - NODE_ENV=development
-      # Allow CORS from dev frontend port  
+      # Allow CORS from dev frontend port
       - ALLOWED_ORIGIN=http://localhost:3003
       # Optional: stabilize file watching inside container
       - CHOKIDAR_USEPOLLING=1
@@ -35,15 +34,14 @@ services:
         # Direct API calls to mapped backend port (browser -> host -> container)
         NEXT_PUBLIC_API_BASE: http://localhost:4001
     environment:
-      # Direct API calls to mapped backend port (browser -> host -> container)  
+      # Direct API calls to mapped backend port (browser -> host -> container)
       - NEXT_PUBLIC_API_BASE=http://localhost:4001
       - NODE_ENV=development
       # Improve file watching on macOS/WSL
       - CHOKIDAR_USEPOLLING=1
       - WATCHPACK_POLLING=true
     volumes:
-      - ./frontend:/app:cached
-      - /app/node_modules
+      - ./frontend:/app
     depends_on:
       - backend
     ports:
