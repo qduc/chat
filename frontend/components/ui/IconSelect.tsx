@@ -37,16 +37,18 @@ export function IconSelect({
   const [isOpen, setIsOpen] = useState(false);
   const selectedOption = options.find(o => o.value === value);
 
-  const { refs, floatingStyles, context, x } = useFloating({
+  const { refs, floatingStyles, context, isPositioned } = useFloating({
     open: isOpen,
     onOpenChange: setIsOpen,
     strategy: 'fixed',
+    transform: false,
     middleware: [
       offset(4),
       flip(),
       shift({ padding: 8 })
     ],
-    whileElementsMounted: autoUpdate
+    whileElementsMounted: (reference, floating, update) =>
+      autoUpdate(reference, floating, update, { animationFrame: true })
   });
 
   const click = useClick(context);
@@ -86,12 +88,12 @@ export function IconSelect({
             ref={refs.setFloating}
             style={{
               ...floatingStyles,
-              width: 'max-content',
+              minWidth: '120px',
               maxHeight: '240px',
               overflowY: 'auto',
-              visibility: isOpen && x == null ? 'hidden' : undefined
+              visibility: isPositioned ? 'visible' : 'hidden'
             }}
-            className="py-1 bg-white dark:bg-neutral-900 rounded-lg shadow-lg backdrop-blur-lg z-[9999]"
+            className={`py-1 bg-white dark:bg-neutral-900 rounded-lg shadow-lg backdrop-blur-lg z-[9999] ${isPositioned ? 'transition-opacity duration-150' : 'transition-none'}`}
             {...getFloatingProps()}
           >
             {options.map((option) => (
@@ -100,7 +102,7 @@ export function IconSelect({
                 type="button"
                 role="option"
                 aria-selected={option.value === value}
-                className={`text-left px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors duration-150 whitespace-nowrap ${
+                className={`w-full block text-left px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-neutral-800 hover:text-slate-900 dark:hover:text-slate-100 transition-all duration-200 ${
                   option.value === value
                     ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
                     : 'text-slate-700 dark:text-slate-300'
