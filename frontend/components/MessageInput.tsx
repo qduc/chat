@@ -78,7 +78,7 @@ export function MessageInput({
             rows={1}
           />
           <div className="flex items-center justify-between px-4 pb-4">
-            <div className="flex items-center gap-4 text-xs overflow-x-auto scrollbar-hide">
+            <div className="flex items-center gap-4 text-xs scrollbar-hide">
               <div className="flex items-center">
                 <IconSelect
                   ariaLabel="Model"
