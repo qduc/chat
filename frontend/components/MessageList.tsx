@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bot, User as UserIcon, MessageSquareText, Clock, Search, Zap, Copy, Edit2, RefreshCw } from 'lucide-react';
+import { Bot, User as UserIcon, MessageSquareText, Clock, Search, Zap, Copy, Edit2, RefreshCw, AlertCircle } from 'lucide-react';
 import Markdown from './Markdown';
 import type { ChatMessage } from '../lib/chat';
 import type { PendingState } from '../hooks/useChatStream';
@@ -251,7 +251,7 @@ export function MessageList({
 
                     {/* Toolbar below the chat bubble (transparent) */}
                     {!isEditing && m.content && (
-                      <div className="mt-2 flex items-center gap-2 opacity-70 group-hover:opacity-100 transition-all text-xs justify-end">
+                      <div className="mt-1 flex items-center gap-2 opacity-70 group-hover:opacity-100 transition-all text-xs justify-end">
                         <button
                           type="button"
                           onClick={() => onCopy(m.content)}
@@ -300,9 +300,7 @@ export function MessageList({
         })}
         {pending.error && (
           <div className="flex items-start gap-3 text-sm text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-xl px-4 py-3 shadow-sm">
-            <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <div>
               <div className="font-medium mb-1">Error occurred</div>
               <div className="text-red-600 dark:text-red-400">{pending.error}</div>

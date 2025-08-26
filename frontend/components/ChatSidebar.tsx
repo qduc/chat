@@ -1,3 +1,4 @@
+import { Trash2, Loader2 } from 'lucide-react';
 import type { ConversationMeta } from '../lib/chat';
 
 interface ChatSidebarProps {
@@ -36,21 +37,19 @@ export function ChatSidebar({
         {conversations.map(c => (
           <div key={c.id} className={`group flex items-center gap-2 text-sm p-3 rounded-lg transition-all duration-200 hover:shadow-sm ${conversationId === c.id ? 'bg-slate-100 dark:bg-neutral-900/40 border border-slate-200/50 dark:border-neutral-700/50 shadow-sm' : 'bg-white/60 dark:bg-neutral-900/60 hover:bg-white/80 dark:hover:bg-neutral-900/80 border border-transparent'}`}>
             <div className="w-2 h-2 rounded-full bg-slate-300 dark:bg-slate-600 group-hover:bg-slate-500 dark:group-hover:bg-slate-400 transition-colors duration-200"></div>
-            <button 
-              className="flex-1 text-left truncate text-slate-700 dark:text-slate-300" 
-              onClick={() => onSelectConversation(c.id)} 
+            <button
+              className="flex-1 text-left truncate text-slate-700 dark:text-slate-300"
+              onClick={() => onSelectConversation(c.id)}
               title={c.title || c.id}
             >
               {c.title || 'Untitled conversation'}
             </button>
-            <button 
-              className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-all duration-200 p-1 hover:bg-slate-100 dark:hover:bg-neutral-900/30 rounded" 
-              title="Delete conversation" 
+            <button
+              className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 transition-all duration-200 p-1 hover:bg-slate-100 dark:hover:bg-neutral-900/30 rounded"
+              title="Delete conversation"
               onClick={() => onDeleteConversation(c.id)}
             >
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-              </svg>
+              <Trash2 className="w-3 h-3" />
             </button>
           </div>
         ))}
@@ -63,17 +62,14 @@ export function ChatSidebar({
       </div>
       <div className="mt-4 pt-4 border-t border-slate-200/60 dark:border-neutral-800/60">
         {nextCursor && (
-          <button 
-            className="w-full text-sm px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-300 transition-colors duration-200 disabled:opacity-50" 
-            onClick={onLoadMore} 
+          <button
+            className="w-full text-sm px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-300 transition-colors duration-200 disabled:opacity-50"
+            onClick={onLoadMore}
             disabled={loadingConversations}
           >
             {loadingConversations ? (
               <span className="flex items-center justify-center gap-2">
-                <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
+                <Loader2 className="w-4 h-4 animate-spin" />
                 Loading...
               </span>
             ) : 'Load more conversations'}
