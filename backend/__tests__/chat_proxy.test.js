@@ -100,7 +100,7 @@ class MockUpstream {
   }
 
   getUrl() {
-    return `http://127.0.0.1:${this.port}/v1`;
+    return `http://127.0.0.1:${this.port}`;
   }
 }
 
@@ -113,17 +113,14 @@ const makeApp = (useSession = true) => {
 };
 
 const withServer = async (app, fn) => {
-  return new Promise((resolve, reject) => {
-    const srv = app.listen(0, async () => {
-      const port = srv.address().port;
-      try {
-        const result = await fn(port);
-        srv.close(() => resolve(result));
-      } catch (err) {
-        srv.close(() => reject(err));
-      }
-    });
-  });
+  const srv = app.listen(0);
+  await new Promise(resolve => srv.on('listening', resolve));
+  const port = srv.address().port;
+  try {
+    return await fn(port);
+  } finally {
+    await new Promise(resolve => srv.close(resolve));
+  }
 };
 
 let mockUpstream;
@@ -149,6 +146,13 @@ beforeAll(async () => {
 afterAll(async () => {
   await mockUpstream.stop();
   
+  // Explicitly close the database connection
+  const { getDb } = await import('../src/db/index.js');
+  const db = getDb();
+  if (db) {
+    db.close();
+  }
+
   // Restore original config
   config.openaiBaseUrl = originalBaseUrl;
   config.openaiApiKey = originalApiKey;
@@ -269,22 +273,31 @@ describe('POST /v1/chat/completions (proxy)', () => {
     
     const app = makeApp();
     await withServer(app, async (port) => {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-session-id': sessionId
-        },
-        body: JSON.stringify({
-          messages: [{ role: 'user', content: 'Hello' }],
-          conversation_id: 'conv1',
-          stream: false
-        }),
-      });
+      // Suppress console.error for this specific test
+      const originalConsoleError = console.error;
+      console.error = () => {};
       
-      assert.equal(res.status, 429);
-      const body = await res.json();
-      assert.equal(body.error, 'limit_exceeded');
+      try {
+        const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'x-session-id': sessionId
+          },
+          body: JSON.stringify({
+            messages: [{ role: 'user', content: 'Hello' }],
+            conversation_id: 'conv1',
+            stream: false
+          }),
+        });
+        
+        assert.equal(res.status, 429);
+        const body = await res.json();
+        assert.equal(body.error, 'limit_exceeded');
+      } finally {
+        // Restore console.error
+        console.error = originalConsoleError;
+      }
     });
   });
 

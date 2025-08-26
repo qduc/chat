@@ -62,8 +62,18 @@ Simple in-memory per-IP. Replace with Redis for production scale.
 ## TODO
 
 - Replace in-memory rate limiter with Redis implementation
-- Add structured logging (pino)
 - Add request body redaction
 - Add tests
 - Add graceful shutdown
 - Add Docker healthcheck instruction
+
+## Logging
+
+Structured logging is enabled via pino.
+
+- LOG_LEVEL: trace|debug|info|warn|error|fatal (default: debug in dev, info in prod)
+- LOG_PRETTY: true|false (default: true in dev, false in prod)
+
+Each request is assigned an x-request-id (or honors incoming x-request-id) and logs request:start and request:end with duration, status, and sessionId (from sessionResolver).
+
+Sensitive fields like Authorization headers are redacted.

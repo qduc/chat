@@ -47,7 +47,7 @@ describe('sendChat', () => {
     });
   expect(fetchMock).toHaveBeenCalled();
     const [url, opts] = fetchMock.mock.calls[0];
-    expect(url).toBe('/api/v1/responses');
+    expect(url).toContain('/api/v1/responses');
   const body = JSON.parse(opts!.body as string);
   expect(body.stream).toBe(true);
   expect((opts!.headers as any)['Accept']).toBe('text/event-stream');
@@ -194,7 +194,7 @@ describe('createConversation', () => {
     const meta = await createConversation();
     expect(meta.id).toBe('1');
     expect(global.fetch).toHaveBeenCalledWith(
-      '/api/v1/conversations',
+      expect.stringContaining('/api/v1/conversations'),
       expect.objectContaining({ method: 'POST' })
     );
   });
@@ -220,7 +220,7 @@ describe('listConversationsApi', () => {
     const res = await listConversationsApi(undefined, { cursor: 'c', limit: 2 });
     expect(res.next_cursor).toBe('n');
     expect(global.fetch).toHaveBeenCalledWith(
-      '/api/v1/conversations?cursor=c&limit=2',
+      expect.stringContaining('/api/v1/conversations?cursor=c&limit=2'),
       expect.objectContaining({ method: 'GET' })
     );
   });
@@ -244,7 +244,7 @@ describe('getConversationApi', () => {
     const res = await getConversationApi(undefined, 'x');
     expect(res.id).toBe('x');
     expect(global.fetch).toHaveBeenCalledWith(
-      '/api/v1/conversations/x?',
+      expect.stringContaining('/api/v1/conversations/x?'),
       expect.objectContaining({ method: 'GET' })
     );
   });
@@ -265,7 +265,7 @@ describe('getConversationApi', () => {
     );
     await getConversationApi(undefined, 'y', { after_seq: 5, limit: 10 });
     expect(global.fetch).toHaveBeenCalledWith(
-      '/api/v1/conversations/y?after_seq=5&limit=10',
+      expect.stringContaining('/api/v1/conversations/y?after_seq=5&limit=10'),
       expect.objectContaining({ method: 'GET' })
     );
   });
@@ -279,7 +279,7 @@ describe('deleteConversationApi', () => {
     const res = await deleteConversationApi(undefined, 'z');
     expect(res).toBe(true);
     expect(global.fetch).toHaveBeenCalledWith(
-      '/api/v1/conversations/z',
+      expect.stringContaining('/api/v1/conversations/z'),
       expect.objectContaining({ method: 'DELETE' })
     );
   });

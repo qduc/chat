@@ -90,3 +90,48 @@ export const tools = {
     },
   },
 };
+
+/**
+ * Generate OpenAI-compatible tool specifications from internal tool registry
+ * @returns {Array} OpenAI tool specifications
+ */
+export function generateOpenAIToolSpecs() {
+  return [
+    {
+      type: 'function',
+      function: {
+        name: 'get_time',
+        description: 'Get the current time in ISO format with timezone information',
+        parameters: {
+          type: 'object',
+          properties: {}
+        }
+      }
+    },
+    {
+      type: 'function', 
+      function: {
+        name: 'web_search',
+        description: 'Perform a web search using Tavily API to get current information',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: {
+              type: 'string',
+              description: 'The search query to execute'
+            }
+          },
+          required: ['query']
+        }
+      }
+    }
+  ];
+}
+
+/**
+ * Get available tool names
+ * @returns {Array<string>} Available tool names
+ */
+export function getAvailableTools() {
+  return Object.keys(tools);
+}

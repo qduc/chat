@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { Bot, User as UserIcon, MessageSquareText, Clock, Search, Zap, Copy, Edit2, RefreshCw, AlertCircle } from 'lucide-react';
 import Markdown from './Markdown';
 import type { ChatMessage } from '../lib/chat';
 import type { PendingState } from '../hooks/useChatStream';
@@ -75,9 +76,7 @@ export function MessageList({
         {messages.length === 0 && (
           <div className="rounded-2xl border border-dashed border-slate-300 dark:border-neutral-700 bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-neutral-900/80 dark:to-neutral-800/80 p-8 text-center backdrop-blur-sm shadow-sm">
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-slate-200 dark:bg-neutral-800 flex items-center justify-center shadow-lg">
-              <svg className="w-8 h-8 text-slate-700 dark:text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-              </svg>
+              <MessageSquareText className="w-8 h-8 text-slate-700 dark:text-slate-200" />
             </div>
             <div className="font-semibold text-lg text-slate-800 dark:text-slate-200 mb-2">Welcome to Chat</div>
             <div className="text-slate-600 dark:text-slate-400">Ask a question or start a conversation to get started.</div>
@@ -94,9 +93,7 @@ export function MessageList({
             <div key={m.id} className={`flex gap-4 ${isUser ? 'justify-end' : 'justify-start'}`}>
               {!isUser && (
                 <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-neutral-800 flex items-center justify-center flex-shrink-0 shadow-sm">
-                  <svg className="w-4 h-4 text-slate-700 dark:text-slate-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-                  </svg>
+                  <Bot className="w-4 h-4 text-slate-700 dark:text-slate-200" />
                 </div>
               )}
               <div className={`group relative max-w-[75%] ${isUser ? 'order-first' : ''}`}>
@@ -157,24 +154,22 @@ export function MessageList({
                           const getToolIcon = (name: string) => {
                             switch (name) {
                               case 'get_time':
-                                return (
-                                  <svg className="w-4 h-4 text-blue-500 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                                  </svg>
-                                );
+                                return <Clock className="w-4 h-4 text-black dark:text-white" />;
                               case 'web_search':
-                                return (
-                                  <svg className="w-4 h-4 text-green-500 dark:text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                                  </svg>
-                                );
+                                return <Search className="w-4 h-4 text-black dark:text-white" />;
                               default:
-                                return (
-                                  <svg className="w-4 h-4 text-slate-500 dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                                  </svg>
-                                );
+                                return <Zap className="w-4 h-4 text-black dark:text-white" />;
+                            }
+                          };
+
+                          const getToolDisplayName = (name: string) => {
+                            switch (name) {
+                              case 'get_time':
+                                return 'Check Time';
+                              case 'web_search':
+                                return 'Search Web';
+                              default:
+                                return name;
                             }
                           };
 
@@ -192,47 +187,61 @@ export function MessageList({
                           const isCollapsed = collapsedToolOutputs[toggleKey] ?? true;
 
                           return (
-                            <div key={index} className="space-y-2">
-                              <div className="flex items-start gap-3 px-4 py-3 rounded-lg bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-neutral-800/50 dark:to-neutral-700/30 border border-slate-200 dark:border-neutral-700/50 shadow-sm">
-                                  <div className="flex items-center gap-2">
-                                    <div className="w-6 h-6 flex items-center justify-center rounded-full bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-600 shadow-sm">
-                                      {getToolIcon(toolName)}
-                                    </div>
-                                    <span className="font-medium text-sm text-slate-700 dark:text-slate-300 capitalize">
-                                      {toolName?.replace('_', ' ')}
+                            <div
+                              key={index}
+                              className="inline-block min-w-fit max-w-[75%] rounded-lg bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-neutral-800/50 dark:to-neutral-700/30 border border-slate-200 dark:border-neutral-700/50 shadow-sm mb-4 hover:shadow-md transition-shadow cursor-pointer"
+                              onClick={() => {
+                                // Only toggle if there are outputs to show
+                                if (!outputs || outputs.length === 0) return;
+                                setCollapsedToolOutputs((s) => ({ ...s, [toggleKey]: !isCollapsed }));
+                              }}
+                            >
+                              <div className="flex items-center gap-2 px-4 py-3">
+                                <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
+                                  {getToolIcon(toolName)}
+                                </div>
+                                <div className="flex flex-col min-w-0 flex-1">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="inline-block font-bold text-xs tracking-wide text-black dark:text-white truncate" title={getToolDisplayName(toolName)} style={{ fontWeight: '600' }}>
+                                      {getToolDisplayName(toolName)}
                                     </span>
-                                    {(() => {
-                                      try {
-                                        const txt = JSON.stringify(parsedArgs);
-                                        if (!txt || txt === '{}' || txt === 'null' || txt === 'undefined') return null;
-                                        const short = txt.length > 140 ? txt.slice(0, 137) + '...' : txt;
-                                        return (
-                                          <span className="ml-2 text-[11px] font-mono text-slate-600 dark:text-slate-400 bg-white/70 dark:bg-neutral-800/70 border border-slate-200/60 dark:border-neutral-700/60 px-2 py-0.5 rounded">
-                                            {short}
-                                          </span>
-                                        );
-                                      } catch {
-                                        return null;
-                                      }
-                                    })()}
+                                    {outputs.length > 0 && (
+                                      <svg
+                                        className={`w-4 h-4 text-slate-400 dark:text-slate-300 transition-transform flex-shrink-0 ${isCollapsed ? '' : 'rotate-180'}`}
+                                        xmlns="http://www.w3.org/2000/svg"
+                                        viewBox="0 0 24 24"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        strokeLinecap="round"
+                                        strokeLinejoin="round"
+                                        aria-hidden="true"
+                                      >
+                                        <path d="M6 9l6 6 6-6" />
+                                      </svg>
+                                    )}
                                   </div>
+                                  {(() => {
+                                    try {
+                                      const txt = JSON.stringify(parsedArgs);
+                                      if (!txt || txt === '{}' || txt === 'null' || txt === 'undefined') return null;
+                                      const short = txt.length > 140 ? txt.slice(0, 137) + '...' : txt;
+                                      return (
+                                        <span className="text-[11px] font-mono text-slate-600 dark:text-slate-400 bg-white/70 dark:bg-neutral-800/70 border border-slate-200/60 dark:border-neutral-700/60 px-2 py-0.5 rounded break-words" title={txt}>
+                                          {short}
+                                        </span>
+                                      );
+                                    } catch {
+                                      return null;
+                                    }
+                                  })()}
+                                </div>
                               </div>
 
                               {outputs.length > 0 && (
-                                <div className="px-4">
-                                  <div className="flex items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
-                                    <div>{outputs.length} result{outputs.length > 1 ? 's' : ''}</div>
-                                    <button
-                                      aria-expanded={!isCollapsed}
-                                      onClick={() => setCollapsedToolOutputs((s) => ({ ...s, [toggleKey]: !isCollapsed }))}
-                                      className="px-2 py-1 rounded-md bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-300"
-                                    >
-                                      {isCollapsed ? 'Show' : 'Hide'}
-                                    </button>
-                                  </div>
-
-                                  {!isCollapsed && (
-                                    <div className="mt-2 space-y-2">
+                                <div className="px-4 pb-3" onClick={(e) => e.stopPropagation()}>
+                                  {!isCollapsed ? (
+                                    <div className="space-y-2">
                                       {outputs.map((out, outIdx) => {
                                         const raw = out.output ?? out;
                                         let formatted = '';
@@ -241,12 +250,14 @@ export function MessageList({
                                           try { formatted = JSON.stringify(raw, null, 2); } catch { formatted = String(raw); }
                                         }
                                         return (
-                                          <div key={outIdx} className="mt-1 rounded-md bg-slate-50 dark:bg-neutral-800 border border-slate-200/50 dark:border-neutral-700/30 p-3 text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap">
+                                          <div key={outIdx} className="rounded-md bg-white/80 dark:bg-neutral-900/80 border border-slate-200/50 dark:border-neutral-700/30 p-3 text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap" onClick={(e) => e.stopPropagation()}>
                                             {formatted}
                                           </div>
                                         );
                                       })}
                                     </div>
+                                  ) : (
+                                    <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">Click to expand</div>
                                   )}
                                 </div>
                               )}
@@ -269,48 +280,51 @@ export function MessageList({
                         </span>
                       ) : null)}
                     </div>
-                    {!isUser && m.content && (
-                      <>
+
+                    {/* Toolbar below the chat bubble (transparent) */}
+                    {!isEditing && m.content && (
+                      <div className="mt-1 flex items-center gap-2 opacity-70 group-hover:opacity-100 transition-all text-xs justify-end">
                         <button
                           type="button"
                           onClick={() => onCopy(m.content)}
-                          className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 text-xs px-2 py-1 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400 transition-all duration-200 shadow-sm"
+                          title="Copy"
+                          className="p-2 rounded-md bg-white/60 dark:bg-neutral-800/50 hover:bg-white/90 dark:hover:bg-neutral-700/80 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
                         >
-                          <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                          </svg>
+                          <Copy className="w-3 h-3" aria-hidden="true" />
+                          <span className="sr-only">Copy</span>
                         </button>
-                        {isLastAssistant && (
+
+                        {isUser ? (
                           <button
                             type="button"
-                            disabled={pending.streaming}
-                            onClick={onRetryLastAssistant}
-                            className="absolute -bottom-2 -right-2 opacity-0 group-hover:opacity-100 text-xs px-2 py-1 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400 transition-all duration-200 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+                            onClick={() => onEditMessage(m.id, m.content)}
+                            title="Edit"
+                            className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
                           >
-                            Retry
+                            <Edit2 className="w-3 h-3" aria-hidden="true" />
+                            <span className="sr-only">Edit</span>
                           </button>
+                        ) : (
+                          (isLastAssistant && !pending.streaming) && (
+                            <button
+                              type="button"
+                              onClick={onRetryLastAssistant}
+                              title="Regenerate"
+                              className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+                            >
+                              <RefreshCw className="w-3 h-3" aria-hidden="true" />
+                              <span className="sr-only">Regenerate</span>
+                            </button>
+                          )
                         )}
-                      </>
-                    )}
-                    {isUser && m.content && (
-                      <button
-                        type="button"
-                        onClick={() => onEditMessage(m.id, m.content)}
-                        className="absolute -top-2 -right-2 opacity-0 group-hover:opacity-100 text-xs px-2 py-1 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400 transition-all duration-200 shadow-sm"
-                      >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                        </svg>
-                      </button>
+                      </div>
                     )}
                   </>
                 )}
               </div>
               {isUser && (
                 <div className="w-8 h-8 rounded-full bg-slate-800 dark:bg-slate-700 flex items-center justify-center flex-shrink-0 shadow-sm">
-                  <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                  </svg>
+                  <UserIcon className="w-4 h-4 text-white" />
                 </div>
               )}
             </div>
@@ -318,9 +332,7 @@ export function MessageList({
         })}
         {pending.error && (
           <div className="flex items-start gap-3 text-sm text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-xl px-4 py-3 shadow-sm">
-            <svg className="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <div>
               <div className="font-medium mb-1">Error occurred</div>
               <div className="text-red-600 dark:text-red-400">{pending.error}</div>

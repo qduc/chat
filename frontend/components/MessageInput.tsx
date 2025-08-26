@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { Zap, Send, Loader2 } from 'lucide-react';
 import type { PendingState } from '../hooks/useChatStream';
 
 interface MessageInputProps {
@@ -45,9 +46,7 @@ export function MessageInput({ input, pending, onInputChange, onSend }: MessageI
           />
           <div className="flex items-center justify-between px-4 pb-4">
             <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
-              </svg>
+              <Zap className="w-3 h-3" />
               <span>Enter to send • Shift+Enter for new line</span>
             </div>
             <button
@@ -57,17 +56,12 @@ export function MessageInput({ input, pending, onInputChange, onSend }: MessageI
             >
               {pending.streaming ? (
                 <>
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="m4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
+                  <Loader2 className="w-4 h-4 animate-spin" />
                   Sending...
                 </>
               ) : (
                 <>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                  </svg>
+                  <Send className="w-4 h-4" />
                   Send
                 </>
               )}

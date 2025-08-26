@@ -1,20 +1,75 @@
+import { parseSSEStream } from './sseParser.js';
+import {
+  createChatCompletionChunk,
+  writeAndFlush,
+} from './streamUtils.js';
+
+export { setupStreamingHeaders } from './streamUtils.js';
 
 /**
- * Set up streaming response headers
- * @param {Object} res - Express response object
+ * Set up common stream event handlers for upstream response and client request
+ * @param {Object} params - Handler setup parameters
+ * @param {Object} params.upstream - Upstream response object
+ * @param {Object} params.req - Express request object
+ * @param {Object} params.res - Express response object
+ * @param {boolean} params.persist - Whether persistence is enabled
+ * @param {string|null} params.assistantMessageId - Assistant message ID
+ * @param {Function} params.doFlush - Flush function for persistence
+ * @param {Function} params.finalizeAssistantMessage - Message finalization function
+ * @param {Function} params.markAssistantError - Error marking function
+ * @param {Object} params.lastFinishReason - Reference to finish reason variable
  */
-export function setupStreamingHeaders(res) {
-  res.status(200);
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  
-  // Ensure headers are sent immediately so the client can start processing
-  // the event stream as soon as chunks arrive. Some proxies/browsers may
-  // buffer the response if headers are not flushed explicitly.
-  if (typeof res.flushHeaders === 'function') {
-    res.flushHeaders();
-  }
+function setupStreamEventHandlers({
+  upstream,
+  req,
+  res,
+  persist,
+  assistantMessageId,
+  doFlush,
+  finalizeAssistantMessage,
+  markAssistantError,
+  lastFinishReason,
+}) {
+  upstream.body.on('end', () => {
+    try {
+      if (persist && assistantMessageId) {
+        doFlush();
+        finalizeAssistantMessage({
+          messageId: assistantMessageId,
+          finishReason: (typeof lastFinishReason === 'object' && lastFinishReason !== null ? lastFinishReason.value : lastFinishReason) || 'stop',
+          status: 'final',
+        });
+      }
+    } catch (e) {
+      console.error('[persist] finalize error', e);
+    }
+    return res.end();
+  });
+
+  upstream.body.on('error', (err) => {
+    console.error('Upstream stream error', err);
+    try {
+      if (persist && assistantMessageId) {
+        doFlush();
+        markAssistantError({ messageId: assistantMessageId });
+      }
+    } catch {
+      // Ignore errors
+    }
+    return res.end();
+  });
+
+  req.on('close', () => {
+    if (res.writableEnded) return;
+    try {
+      if (persist && assistantMessageId) {
+        doFlush();
+        markAssistantError({ messageId: assistantMessageId });
+      }
+    } catch {
+      // Ignore errors
+    }
+  });
 }
 
 /**
@@ -70,7 +125,7 @@ export async function handleRegularStreaming({
             if (dataMatch) {
               const payload = dataMatch[1];
               if (payload === '[DONE]') {
-                res.write('data: [DONE]\n\n');
+                writeAndFlush(res, 'data: [DONE]\n\n');
                 finished = true;
                 break;
               }
@@ -80,20 +135,13 @@ export async function handleRegularStreaming({
 
                 // Convert Responses API events to Chat Completions format
                 if (obj.type === 'response.output_text.delta' && obj.delta) {
-                  const chatCompletionChunk = {
-                    id: obj.item_id,
-                    object: 'chat.completion.chunk',
-                    created: Math.floor(Date.now() / 1000),
-                    model: 'gpt-3.5-turbo',
-                    choices: [
-                      {
-                        index: 0,
-                        delta: { content: obj.delta },
-                        finish_reason: null,
-                      },
-                    ],
-                  };
-                  res.write(
+                  const chatCompletionChunk = createChatCompletionChunk(
+                    obj.item_id,
+                    'gpt-3.5-turbo',
+                    { content: obj.delta }
+                  );
+                  writeAndFlush(
+                    res,
                     `data: ${JSON.stringify(chatCompletionChunk)}\n\n`
                   );
 
@@ -103,20 +151,14 @@ export async function handleRegularStreaming({
                     if (buffer.value.length >= sizeThreshold) doFlush();
                   }
                 } else if (obj.type === 'response.completed') {
-                  const chatCompletionChunk = {
-                    id: obj.response.id,
-                    object: 'chat.completion.chunk',
-                    created: Math.floor(Date.now() / 1000),
-                    model: obj.response.model,
-                    choices: [
-                      {
-                        index: 0,
-                        delta: {},
-                        finish_reason: 'stop',
-                      },
-                    ],
-                  };
-                  res.write(
+                  const chatCompletionChunk = createChatCompletionChunk(
+                    obj.response.id,
+                    obj.response.model,
+                    {},
+                    'stop'
+                  );
+                  writeAndFlush(
+                    res,
                     `data: ${JSON.stringify(chatCompletionChunk)}\n\n`
                   );
                   lastFinishReason = 'stop';
@@ -127,100 +169,60 @@ export async function handleRegularStreaming({
             }
           }
         }
-        if (typeof res.flush === 'function') res.flush();
       } else {
         // Direct passthrough for native format or Chat Completions API
-        res.write(chunk);
-        if (typeof res.flush === 'function') res.flush();
+        writeAndFlush(res, chunk);
 
         if (!persist) return;
 
-        let data = leftover + s;
-        const parts = data.split(/\n\n/);
-        leftover = parts.pop() || '';
-        for (const part of parts) {
-          const lines = part.split('\n');
-          for (const line of lines) {
-            const m = line.match(/^data:\s*(.*)$/);
-            if (!m) continue;
-            const payload = m[1];
-            if (payload === '[DONE]') {
-              finished = true;
-              break;
+        leftover = parseSSEStream(
+          chunk,
+          leftover,
+          (obj) => {
+            // Handle persistence for different formats
+            let deltaContent = null;
+            let finishReason = null;
+
+            if (
+              useResponsesAPI &&
+              obj.type === 'response.output_text.delta'
+            ) {
+              deltaContent = obj.delta;
+            } else if (obj?.choices?.[0]?.delta?.content) {
+              deltaContent = obj.choices[0].delta.content;
+              finishReason = obj.choices[0].finish_reason;
             }
-            try {
-              const obj = JSON.parse(payload);
 
-              // Handle persistence for different formats
-              let deltaContent = null;
-              let finishReason = null;
-
-              if (
-                useResponsesAPI &&
-                obj.type === 'response.output_text.delta'
-              ) {
-                deltaContent = obj.delta;
-              } else if (obj?.choices?.[0]?.delta?.content) {
-                deltaContent = obj.choices[0].delta.content;
-                finishReason = obj.choices[0].finish_reason;
-              }
-
-              if (deltaContent) {
-                buffer.value += deltaContent;
-                if (buffer.value.length >= sizeThreshold) doFlush();
-              }
-              if (finishReason) {
-                lastFinishReason = finishReason;
-              }
-            } catch (e) {
-              // not JSON; ignore
+            if (deltaContent) {
+              buffer.value += deltaContent;
+              if (buffer.value.length >= sizeThreshold) doFlush();
             }
+            if (finishReason) {
+              lastFinishReason = finishReason;
+            }
+          },
+          () => {
+            finished = true;
+          },
+          (e, payload) => {
+            // not JSON; ignore
           }
-        }
+        );
       }
     } catch (e) {
       console.error('[stream data] error', e);
     }
   });
 
-  upstream.body.on('end', () => {
-    try {
-      if (persist && assistantMessageId) {
-        doFlush();
-        finalizeAssistantMessage({
-          messageId: assistantMessageId,
-          finishReason: lastFinishReason || 'stop',
-          status: 'final',
-        });
-      }
-    } catch (e) {
-      console.error('[persist] finalize error', e);
-    }
-    return res.end();
-  });
-
-  upstream.body.on('error', (err) => {
-    console.error('Upstream stream error', err);
-    try {
-      if (persist && assistantMessageId) {
-        doFlush();
-        markAssistantError({ messageId: assistantMessageId });
-      }
-    } catch {
-      // Ignore errors
-    }
-    return res.end();
-  });
-
-  req.on('close', () => {
-    if (res.writableEnded) return;
-    try {
-      if (persist && assistantMessageId) {
-        doFlush();
-        markAssistantError({ messageId: assistantMessageId });
-      }
-    } catch {
-      // Ignore errors
-    }
+  setupStreamEventHandlers({
+    upstream,
+    req,
+    res,
+    persist,
+    assistantMessageId,
+    doFlush,
+    finalizeAssistantMessage,
+    markAssistantError,
+    lastFinishReason,
   });
 }

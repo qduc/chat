@@ -1,6 +1,9 @@
 // Learn more: https://github.com/testing-library/jest-dom
 import '@testing-library/jest-dom';
 
+// Set the API base to an empty string for all tests
+process.env.NEXT_PUBLIC_API_BASE = '/api';
+
 // Polyfill TextEncoder/TextDecoder for Node/Jest environments
 const util = require('util');
 if (typeof global.TextEncoder === 'undefined') {

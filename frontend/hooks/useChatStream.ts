@@ -1,32 +1,6 @@
-import { useState, useCallback, useRef } from 'react';
-import type { ChatMessage, Role } from '../lib/chat';
-import { sendChat } from '../lib/chat';
-
-// Define the tools available to the model.
-const availableTools = {
-  get_time: {
-    type: 'function',
-    function: {
-      name: 'get_time',
-      description: 'Get the current local time of the server',
-      parameters: { type: 'object', properties: {}, additionalProperties: false },
-    }
-  },
-  web_search: {
-    type: 'function',
-    function: {
-      name: 'web_search',
-      description: 'Perform a web search for a given query',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'The search query' }
-        },
-        required: ['query']
-      }
-    }
-  }
-};
+import { useState, useCallback, useRef, useEffect } from 'react';
+import type { ChatMessage, Role, ToolSpec } from '../lib/chat';
+import { sendChat, getToolSpecs } from '../lib/chat';
 
 export interface PendingState {
   abort?: AbortController;
@@ -45,7 +19,8 @@ export interface UseChatStreamReturn {
     useTools: boolean,
     shouldStream: boolean,
     reasoningEffort: string,
-    verbosity: string
+    verbosity: string,
+    researchMode?: boolean
   ) => Promise<void>;
   regenerateFromCurrent: (
     conversationId: string | null,
@@ -53,7 +28,8 @@ export interface UseChatStreamReturn {
     useTools: boolean,
     shouldStream: boolean,
     reasoningEffort: string,
-    verbosity: string
+    verbosity: string,
+    researchMode?: boolean
   ) => Promise<void>;
   regenerateFromBase: (
     baseMessages: ChatMessage[],
@@ -62,14 +38,16 @@ export interface UseChatStreamReturn {
     useTools: boolean,
     shouldStream: boolean,
     reasoningEffort: string,
-    verbosity: string
+    verbosity: string,
+    researchMode?: boolean
   ) => Promise<void>;
   generateFromHistory: (
     model: string,
     useTools: boolean,
     reasoningEffort: string,
     verbosity: string,
-    messagesOverride?: ChatMessage[]
+    messagesOverride?: ChatMessage[],
+    researchMode?: boolean
   ) => Promise<void>;
   stopStreaming: () => void;
   clearMessages: () => void;
@@ -81,8 +59,25 @@ export function useChatStream(): UseChatStreamReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [pending, setPending] = useState<PendingState>({ streaming: false });
   const [previousResponseId, setPreviousResponseId] = useState<string | null>(null);
+  const [availableTools, setAvailableTools] = useState<ToolSpec[] | null>(null);
   const assistantMsgRef = useRef<ChatMessage | null>(null);
   const inFlightRef = useRef<boolean>(false);
+  const toolsPromiseRef = useRef<Promise<ToolSpec[]>>();
+
+  // Fetch tool specifications from backend on mount
+  useEffect(() => {
+    const toolsPromise = getToolSpecs()
+      .then(response => {
+        setAvailableTools(response.tools);
+        return response.tools;
+      })
+      .catch(error => {
+        console.error('Failed to fetch tool specs:', error);
+        setAvailableTools([]);
+        return [];
+      });
+    toolsPromiseRef.current = toolsPromise;
+  }, []);
 
   const handleStreamEvent = useCallback((event: any) => {
     const assistantId = assistantMsgRef.current!.id;
@@ -115,7 +110,8 @@ export function useChatStream(): UseChatStreamReturn {
     useTools: boolean,
     shouldStream: boolean,
     reasoningEffort: string,
-    verbosity: string
+    verbosity: string,
+    researchMode?: boolean
   ) => {
     if (!input.trim()) return;
     if (inFlightRef.current) return;
@@ -133,6 +129,9 @@ export function useChatStream(): UseChatStreamReturn {
   setPending(prev => ({ ...prev, abort }));
 
     try {
+      // Ensure tools are loaded if needed
+      const tools = useTools ? (availableTools ?? await toolsPromiseRef.current?.catch(() => [])) : undefined;
+      
       const result = await sendChat({
         messages: [...messages, userMsg].map(m => ({ role: m.role as Role, content: m.content })),
         model,
@@ -144,8 +143,9 @@ export function useChatStream(): UseChatStreamReturn {
         reasoningEffort,
         verbosity,
         ...(useTools ? {
-          tools: Object.values(availableTools),
-          tool_choice: 'auto'
+          tools: tools || [],
+          tool_choice: 'auto',
+          ...(researchMode && { research_mode: true })
         } : {}),
         onEvent: handleStreamEvent
       });
@@ -169,14 +169,15 @@ export function useChatStream(): UseChatStreamReturn {
 
     // Return immediately — caller shouldn't wait for network to finish to keep UI snappy
     return;
-  }, [messages, previousResponseId, pending.streaming]);
+  }, [messages, previousResponseId, availableTools, toolsPromiseRef]);
 
   const generateFromHistory = useCallback(async (
     model: string,
     useTools: boolean,
     reasoningEffort: string,
     verbosity: string,
-    messagesOverride?: ChatMessage[]
+    messagesOverride?: ChatMessage[],
+    researchMode?: boolean
   ) => {
     // Only proceed if there is a user message to respond to
     const history = messagesOverride ?? messages;
@@ -189,6 +190,9 @@ export function useChatStream(): UseChatStreamReturn {
     setMessages(m => [...m, assistantMsg]);
     setPending(prev => ({ ...prev, streaming: true, abort }));
 
+    // Ensure tools are loaded if needed
+    const tools = useTools ? (availableTools ?? await toolsPromiseRef.current?.catch(() => [])) : undefined;
+
     // Start network operation in background so we don't block the caller/UI.
     const network = sendChat({
       messages: history.map(m => ({ role: m.role as Role, content: m.content })),
@@ -199,8 +203,9 @@ export function useChatStream(): UseChatStreamReturn {
       reasoningEffort,
       verbosity,
       ...(useTools ? {
-        tools: Object.values(availableTools),
-        tool_choice: 'auto'
+        tools: tools || [],
+        tool_choice: 'auto',
+        ...(researchMode && { research_mode: true })
       } : {}),
       onEvent: handleStreamEvent
     });
@@ -216,7 +221,7 @@ export function useChatStream(): UseChatStreamReturn {
     });
 
     return;
-  }, [messages]);
+  }, [messages, availableTools, toolsPromiseRef]);
 
   const regenerateFromBase = useCallback(async (
     baseMessages: ChatMessage[],
@@ -225,7 +230,8 @@ export function useChatStream(): UseChatStreamReturn {
     useTools: boolean,
     shouldStream: boolean,
     reasoningEffort: string,
-    verbosity: string
+    verbosity: string,
+    researchMode?: boolean
   ) => {
     // Must have at least one user message to respond to
     if (baseMessages.length === 0) return;
@@ -241,6 +247,9 @@ export function useChatStream(): UseChatStreamReturn {
     setPending(prev => ({ ...prev, streaming: true, abort }));
 
     try {
+      // Ensure tools are loaded if needed
+      const tools = useTools ? (availableTools ?? await toolsPromiseRef.current?.catch(() => [])) : undefined;
+
       const result = await sendChat({
         messages: baseMessages.map(m => ({ role: m.role as Role, content: m.content })),
         model,
@@ -252,8 +261,9 @@ export function useChatStream(): UseChatStreamReturn {
         reasoningEffort,
         verbosity,
         ...(useTools ? {
-          tools: Object.values(availableTools),
-          tool_choice: 'auto'
+          tools: tools || [],
+          tool_choice: 'auto',
+          ...(researchMode && { research_mode: true })
         } : {}),
         onEvent: handleStreamEvent
       });
@@ -272,7 +282,7 @@ export function useChatStream(): UseChatStreamReturn {
       setPending(p => ({ ...p, streaming: false, abort: undefined }));
       inFlightRef.current = false;
     }
-  }, [previousResponseId]);
+  }, [previousResponseId, availableTools, toolsPromiseRef]);
 
   const regenerateFromCurrent = useCallback(async (
     conversationId: string | null,
@@ -280,10 +290,11 @@ export function useChatStream(): UseChatStreamReturn {
     useTools: boolean,
     shouldStream: boolean,
     reasoningEffort: string,
-    verbosity: string
+    verbosity: string,
+    researchMode?: boolean
   ) => {
     const base = messages;
-    await regenerateFromBase(base, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity);
+    await regenerateFromBase(base, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode);
   }, [messages, regenerateFromBase]);
 
   const stopStreaming = useCallback(() => {

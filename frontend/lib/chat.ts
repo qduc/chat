@@ -26,6 +26,7 @@ export interface SendChatOptions {
   tool_choice?: any; // optional tool_choice
   stream?: boolean; // whether to stream response (default: true)
   shouldStream?: boolean; // alias for stream to avoid env collisions
+  research_mode?: boolean; // enable multi-step research mode with iterative tool usage
   reasoningEffort?: string;
   verbosity?: string;
 }
@@ -33,7 +34,7 @@ export interface SendChatOptions {
 // API base URL - can be direct backend URL or proxy path
 // Direct backend: http://localhost:3001 (for development)
 // Proxy path: /api (legacy Next.js proxy - deprecated)
-const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3001';
+const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
 
 // Chat Completions API streaming format
 interface OpenAIStreamChunkChoiceDelta {
@@ -68,7 +69,7 @@ interface ResponsesAPIStreamChunk {
 }
 
 export async function sendChat(options: SendChatOptions): Promise<{ content: string; responseId?: string }> {
-  const { apiBase = defaultApiBase, messages, model, signal, onEvent, onToken, conversationId, useResponsesAPI, previousResponseId, tools, tool_choice, reasoningEffort, verbosity } = options;
+  const { apiBase = defaultApiBase, messages, model, signal, onEvent, onToken, conversationId, useResponsesAPI, previousResponseId, tools, tool_choice, research_mode, reasoningEffort, verbosity } = options;
   const streamFlag = options.shouldStream !== undefined
     ? !!options.shouldStream
     : (options.stream === undefined ? true : !!options.stream);
@@ -82,6 +83,7 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
     reasoning_effort: reasoningEffort,
     verbosity: verbosity,
     ...(useResponses && previousResponseId && { previous_response_id: previousResponseId }),
+    ...(research_mode && { research_mode: true }),
   };
   // Only attach tools when not using Responses API (we use Chat Completions for tools)
   if (!useResponses && Array.isArray(tools) && tools.length > 0) {
@@ -258,4 +260,28 @@ export async function editMessageApi(apiBase = defaultApiBase, conversationId: s
     body: JSON.stringify({ content }),
   });
   return handleJSON(res) as Promise<{ message: { id: string; seq: number; content: string }; new_conversation_id: string }>;
+}
+
+// --- Tool specifications API ---
+export interface ToolSpec {
+  type: 'function';
+  function: {
+    name: string;
+    description: string;
+    parameters: {
+      type: 'object';
+      properties: Record<string, any>;
+      required: string[];
+    };
+  };
+}
+
+export interface ToolsResponse {
+  tools: ToolSpec[];
+  available_tools: string[];
+}
+
+export async function getToolSpecs(apiBase = defaultApiBase): Promise<ToolsResponse> {
+  const res = await fetch(`${apiBase}/v1/tools`, { method: 'GET' });
+  return handleJSON(res) as Promise<ToolsResponse>;
 }

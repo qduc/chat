@@ -90,32 +90,31 @@ export async function proxyOpenAIRequest(req, res) {
   let persist = false;
   let assistantMessageId = null;
   const sessionId = req.sessionId;
-  const buffer = { value: '' };
-  const flushedOnce = { value: false };
+  
+  // Setup persistence buffer variables for tool orchestration
+  let buffer = { value: '' };
+  let flushedOnce = { value: false };
+  const sizeThreshold = 100;
+  const flushMs = 1000;
   let flushTimer = null;
-
-  const sizeThreshold = 512;
-  const flushMs = config.persistence.historyBatchFlushMs;
-
+  
   try {
-    // Setup persistence if enabled
-    try {
-      const persistenceResult = await setupPersistence({
-        config,
-        conversationId,
-        sessionId,
-        req,
-        res,
-        bodyIn,
-      });
-      persist = persistenceResult.persist;
-      assistantMessageId = persistenceResult.assistantMessageId;
-    } catch (error) {
-      if (error.message === 'Message limit exceeded') {
-        return; // Response already sent
-      }
-      throw error;
+    // Setup persistence
+    const persistenceResult = await setupPersistence({
+      config,
+      conversationId,
+      sessionId,
+      req,
+      res,
+      bodyIn,
+    });
+    
+    if (persistenceResult?.messageLimitExceeded) {
+      return; // Response already sent
     }
+    
+    persist = persistenceResult?.persist || false;
+    assistantMessageId = persistenceResult?.assistantMessageId || null;
 
     // Handle tool orchestration (unified for streaming and non-streaming)
     if (hasTools) {
@@ -137,14 +136,14 @@ export async function proxyOpenAIRequest(req, res) {
     }
 
     // Make upstream request
-    const url = useResponsesAPI
-      ? `${config.openaiBaseUrl}/responses`
-      : `${config.openaiBaseUrl}/chat/completions`;
+    const url = useResponsesAPI 
+      ? `${config.openaiBaseUrl}/v1/responses`
+      : `${config.openaiBaseUrl}/v1/chat/completions`;
     const headers = {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${config.openaiApiKey}`,
     };
-
+    
     const upstream = await fetch(url, {
       method: 'POST',
       headers,
@@ -152,57 +151,17 @@ export async function proxyOpenAIRequest(req, res) {
     });
 
     // Handle non-streaming responses
-    if (
-      !stream ||
-      upstream.headers.get('content-type')?.includes('application/json')
-    ) {
-      const json = await upstream.json();
-
-      // Handle different response formats and convert if needed
-      let content = null;
-      let finishReason = null;
-      let responseToSend = json;
-
-      if (useResponsesAPI && json?.output?.[0]?.content?.[0]?.text) {
-        // Responses API format - extract content
-        content = json.output[0].content[0].text;
-        finishReason = json.status === 'completed' ? 'stop' : null;
-
-        // Convert to Chat Completions format for /v1/chat/completions endpoint
-        if (req.path === '/v1/chat/completions') {
-          responseToSend = {
-            id: json.id,
-            object: 'chat.completion',
-            created: json.created_at,
-            model: json.model,
-            choices: [
-              {
-                index: 0,
-                message: {
-                  role: 'assistant',
-                  content: content,
-                },
-                finish_reason: finishReason,
-              },
-            ],
-            usage: json.usage,
-          };
-        }
-      } else if (json?.choices?.[0]?.message?.content) {
-        // Chat Completions API format
-        content = json.choices[0].message.content;
-        finishReason = json.choices[0].finish_reason;
-      }
-
-      // Handle persistence for non-streaming responses
-      handleNonStreamingPersistence({
+    if (!upstream.ok || !stream) {
+      const result = await handleNonStreamingPersistence({
+        upstream,
+        req,
+        useResponsesAPI,
         persist,
         assistantMessageId,
-        content,
-        finishReason,
+        finalizeAssistantMessage,
+        markAssistantError,
       });
-
-      return res.status(upstream.status).json(responseToSend);
+      return res.status(result.status).json(result.response);
     }
 
     // Setup streaming headers
@@ -224,8 +183,6 @@ export async function proxyOpenAIRequest(req, res) {
       },
     });
 
-    // Tool orchestration is already handled above before reaching this point
-
     // Handle regular streaming (non-tool orchestration)
     return await handleRegularStreaming({
       upstream,
@@ -241,18 +198,17 @@ export async function proxyOpenAIRequest(req, res) {
       sizeThreshold,
       useResponsesAPI,
     });
-  } catch (e) {
-    console.error('[proxy] error', e);
-    // Cleanup persistence timer on error
-    cleanupPersistenceTimer(flushTimer);
-    // On synchronous error finalize as error
-    try {
-      if (persist && assistantMessageId) {
-        markAssistantError({ messageId: assistantMessageId });
-      }
-    } catch {
-      // Client disconnected; ignore
+    
+  } catch (error) {
+    console.error('[proxy] error', error);
+    if (persist && assistantMessageId) {
+      markAssistantError({ messageId: assistantMessageId });
     }
-    res.status(500).json({ error: 'upstream_error', message: e.message });
+    res.status(500).json({ 
+      error: 'upstream_error', 
+      message: error.message 
+    });
+  } finally {
+    cleanupPersistenceTimer(flushTimer);
   }
 }
