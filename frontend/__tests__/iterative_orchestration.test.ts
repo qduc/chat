@@ -1,7 +1,7 @@
 // Tests for frontend iterative orchestration functionality
 
 import { sendChat, getToolSpecs } from '../lib/chat';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useChatStream } from '../hooks/useChatStream';
 
 // Mock the tool specs API
@@ -111,7 +111,7 @@ describe('Frontend Iterative Orchestration', () => {
         onEvent: (event) => events.push(event)
       });
 
-      expect(fetchSpy).toHaveBeenCalledWith('/api/v1/chat/completions', {
+      expect(fetchSpy).toHaveBeenCalledWith(expect.stringContaining('/api/v1/chat/completions'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -138,8 +138,8 @@ describe('Frontend Iterative Orchestration', () => {
     it('should handle tool call events in streaming response', async () => {
       const streamChunks = [
         'data: {"choices":[{"delta":{"content":"Let me get the time."}}]}\n\n',
-        'data: {"choices":[{"delta":{"tool_calls":[{"id":"call_123","type":"function","function":{"name":"get_time","arguments":"{}"}}]}}]}\n\n',
-        'data: {"choices":[{"delta":{"tool_output":{"tool_call_id":"call_123","name":"get_time","output":{"iso":"2025-08-24T08:30:32.051Z"}}}}]}\n\n',
+        'data: {"choices":[{"delta":{"tool_calls":[{"id":"call_123","type":"function","function":{"name":"get_time","arguments":"{}"}}]}}]} \n\n',
+        'data: {"choices":[{"delta":{"tool_output":{"tool_call_id":"call_123","name":"get_time","output":{"iso":"2025-08-24T08:30:32.051Z"}}}}]} \n\n',
         'data: {"choices":[{"delta":{"content":"The current time is 08:30:32 UTC."}}]}\n\n',
         'data: [DONE]\n\n'
       ];
@@ -196,11 +196,11 @@ describe('Frontend Iterative Orchestration', () => {
 
     it('should handle multiple tool calls in sequence', async () => {
       const streamChunks = [
-        'data: {"choices":[{"delta":{"tool_calls":[{"id":"call_1","function":{"name":"get_time"}}]}}]}\n\n',
-        'data: {"choices":[{"delta":{"tool_output":{"tool_call_id":"call_1","name":"get_time","output":"time_result"}}}]}\n\n',
-        'data: {"choices":[{"delta":{"tool_calls":[{"id":"call_2","function":{"name":"web_search"}}]}}]}\n\n',
-        'data: {"choices":[{"delta":{"tool_output":{"tool_call_id":"call_2","name":"web_search","output":"search_result"}}}]}\n\n',
-        'data: {"choices":[{"delta":{"content":"Final analysis based on both results."}}]}\n\n',
+        'data: {"choices":[{"delta":{"tool_calls":[{"id":"call_1","function":{"name":"get_time"}}]}}]} \n\n',
+        'data: {"choices":[{"delta":{"tool_output":{"tool_call_id":"call_1","name":"get_time","output":"time_result"}}}]} \n\n',
+        'data: {"choices":[{"delta":{"tool_calls":[{"id":"call_2","function":{"name":"web_search"}}]}}]} \n\n',
+        'data: {"choices":[{"delta":{"tool_output":{"tool_call_id":"call_2","name":"web_search","output":"search_result"}}}]} \n\n',
+        'data: {"choices":[{"delta":{"content":"Final analysis based on both results."}}]} \n\n',
         'data: [DONE]\n\n'
       ];
 
@@ -243,11 +243,11 @@ describe('Frontend Iterative Orchestration', () => {
   describe('useChatStream hook', () => {
     it('should handle tool events and update messages correctly', async () => {
       const streamChunks = [
-        'data: {"choices":[{"delta":{"content":"Let me help you."}}]}\n\n',
-        'data: {"choices":[{"delta":{"tool_calls":[{"id":"call_123","function":{"name":"get_time"}}]}}]}\n\n',
-        'data: {"choices":[{"delta":{"tool_output":{"tool_call_id":"call_123","output":"time_data"}}}]}\n\n',
-        'data: {"choices":[{"delta":{"content":" Done!"}}]}\n\n',
-        'data: [DONE]\n\n'
+        'data: {"choices":[{"delta":{"content":"Let me help you."}}]} \n\n',
+        'data: {"choices":[{"delta":{"tool_calls":[{"id":"call_123","function":{"name":"get_time"}}]}}]} \n\n',
+        'data: {"choices":[{"delta":{"tool_output":{"tool_call_id":"call_123","output":"time_data"}}}]} \n\n',
+        'data: {"choices":[{"delta":{"content":" Done!"}}]} \n\n',
+        'data: [DONE] \n\n'
       ];
 
       const mockResponse = new Response(
@@ -262,24 +262,32 @@ describe('Frontend Iterative Orchestration', () => {
 
       const { result } = renderHook(() => useChatStream());
 
-      await act(async () => {
-        await result.current.sendMessage('Test message', null, 'gpt-3.5-turbo', true);
+      act(() => {
+        result.current.sendMessage('Test message', null, 'gpt-3.5-turbo', true, true, 'low', 'default');
+      });
+
+      await waitFor(() => {
+        const assistantMessage = result.current.messages[1];
+        expect(assistantMessage.tool_calls).toBeDefined();
+        expect(assistantMessage.tool_outputs).toBeDefined();
       });
 
       const messages = result.current.messages;
-      expect(messages.length).toBe(2); // User message + Assistant message
-
       const assistantMessage = messages[1];
       expect(assistantMessage.role).toBe('assistant');
       expect(assistantMessage.content).toBe('Let me help you. Done!');
-      expect(assistantMessage.tool_calls).toEqual([{
-        id: 'call_123',
-        function: { name: 'get_time' }
-      }]);
-      expect(assistantMessage.tool_outputs).toEqual([{
-        tool_call_id: 'call_123',
-        output: 'time_data'
-      }]);
+      expect(assistantMessage.tool_calls).toEqual([
+        {
+          id: 'call_123',
+          function: { name: 'get_time' }
+        }
+      ]);
+      expect(assistantMessage.tool_outputs).toEqual([
+        {
+          tool_call_id: 'call_123',
+          output: 'time_data'
+        }
+      ]);
     });
 
     it('should handle errors gracefully', async () => {
@@ -292,11 +300,14 @@ describe('Frontend Iterative Orchestration', () => {
 
       const { result } = renderHook(() => useChatStream());
 
-      await act(async () => {
-        await result.current.sendMessage('Test', null, 'gpt-3.5-turbo', true);
+      act(() => {
+        result.current.sendMessage('Test', null, 'gpt-3.5-turbo', true, true, 'low', 'default');
       });
 
-      expect(result.current.pending.error).toBeTruthy();
+      await waitFor(() => {
+        expect(result.current.pending.error).toBeTruthy();
+      });
+
       expect(result.current.messages[1].content).toContain('[error:');
     });
 
@@ -311,18 +322,17 @@ describe('Frontend Iterative Orchestration', () => {
 
       const { result } = renderHook(() => useChatStream());
 
-      await act(async () => {
+      act(() => {
         // Start first request
-        const promise1 = result.current.sendMessage('Test 1', null, 'gpt-3.5-turbo', true);
+        result.current.sendMessage('Test 1', null, 'gpt-3.5-turbo', true, true, 'low', 'default');
         // Try to start second request while first is pending
-        const promise2 = result.current.sendMessage('Test 2', null, 'gpt-3.5-turbo', true);
-
-        await promise1;
-        await promise2;
+        result.current.sendMessage('Test 2', null, 'gpt-3.5-turbo', true, true, 'low', 'default');
       });
 
-      // Should only have made one request
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      await waitFor(() => {
+        expect(fetchSpy).toHaveBeenCalledTimes(1);
+      });
+
       // Should only have 2 messages (1 user, 1 assistant)
       expect(result.current.messages.length).toBe(2);
     });

@@ -61,7 +61,9 @@ describe('<Chat />', () => {
   test('renders welcome state when there are no messages', async () => {
     render(<Chat />);
 
-    expect(screen.getByText('Welcome to Chat')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText('Welcome to Chat')).toBeInTheDocument();
+    });
     expect(screen.getByText('Ask a question or start a conversation to get started.')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Type your message...')).toBeInTheDocument();
   });
@@ -84,15 +86,19 @@ describe('<Chat />', () => {
   test('has input field and send button', async () => {
     render(<Chat />);
 
-    expect(screen.getByPlaceholderText('Type your message...')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByPlaceholderText('Type your message...')).toBeInTheDocument();
+    });
     expect(screen.getByText('Send')).toBeInTheDocument();
   });
 
   test('has model selection dropdown', async () => {
     render(<Chat />);
 
-    const modelSelect = screen.getByDisplayValue('GPT-4.1 Mini');
-    expect(modelSelect).toBeInTheDocument();
+    await waitFor(() => {
+      const modelSelect = screen.getByDisplayValue('GPT-4.1 Mini');
+      expect(modelSelect).toBeInTheDocument();
+    });
 
     // Verify options exist
     expect(screen.getByText('GPT-4.1 Mini')).toBeInTheDocument();
@@ -225,8 +231,10 @@ describe('<Chat />', () => {
   test('has clipboard functionality available', async () => {
     render(<Chat />);
 
-    // Verify the clipboard API is mocked and available
-    expect(navigator.clipboard.writeText).toBeDefined();
+    await waitFor(() => {
+      // Verify the clipboard API is mocked and available
+      expect(navigator.clipboard.writeText).toBeDefined();
+    });
   });
 
   test('handles errors when sendChat fails', async () => {
@@ -234,8 +242,10 @@ describe('<Chat />', () => {
 
     render(<Chat />);
 
-    // Verify the component renders without crashing even with a potential error
-    expect(screen.getByText('Welcome to Chat')).toBeInTheDocument();
+    await waitFor(() => {
+      // Verify the component renders without crashing even with a potential error
+      expect(screen.getByText('Welcome to Chat')).toBeInTheDocument();
+    });
   });
 
   test('can type in input field', async () => {
@@ -282,12 +292,14 @@ describe('<Chat />', () => {
 
     render(<Chat />);
 
-    // Verify New Chat button exists
-    const newChatButton = screen.getByText('New Chat');
-    expect(newChatButton).toBeInTheDocument();
+    await waitFor(() => {
+      // Verify New Chat button exists
+      const newChatButton = screen.getByText('New Chat');
+      expect(newChatButton).toBeInTheDocument();
+    });
 
     // Click it (won't create conversation due to 501 mock, but button works)
-    await user.click(newChatButton);
+    await user.click(screen.getByText('New Chat'));
 
     // Button should still be there
     expect(screen.getByText('New Chat')).toBeInTheDocument();
