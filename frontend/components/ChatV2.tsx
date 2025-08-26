@@ -19,10 +19,10 @@ export function ChatV2() {
   const handleRetryLastAssistant = useCallback(async () => {
     if (state.status === 'streaming') return;
     if (state.messages.length === 0) return;
-    
+
     const last = state.messages[state.messages.length - 1];
     if (last.role !== 'assistant') return;
-    
+
     // Remove the last assistant message and regenerate
     const base = state.messages.slice(0, -1);
     actions.regenerate(base);
@@ -36,14 +36,14 @@ export function ChatV2() {
 
     const messageId = state.editingMessageId;
     const content = state.editingContent.trim();
-    
+
     // Find the message and create base messages
     const idx = state.messages.findIndex(m => m.id === messageId);
     if (idx === -1) return;
-    
+
     const updatedMessage = { ...state.messages[idx], content };
     const baseMessages = [...state.messages.slice(0, idx), updatedMessage];
-    
+
     actions.setMessages(baseMessages);
     actions.cancelEdit();
 
@@ -69,20 +69,13 @@ export function ChatV2() {
       )}
       <div className="flex flex-col flex-1 relative">
         <ChatHeader
-          model={state.model}
-          useTools={state.useTools}
-          shouldStream={state.shouldStream}
           isStreaming={state.status === 'streaming'}
-          onModelChange={actions.setModel}
-          onUseToolsChange={actions.setUseTools}
-          onShouldStreamChange={actions.setShouldStream}
           onNewChat={actions.newChat}
-          onStop={actions.stopStreaming}
         />
         <MessageList
           messages={state.messages}
-          pending={{ 
-            streaming: state.status === 'streaming', 
+          pending={{
+            streaming: state.status === 'streaming',
             error: state.error,
             abort: state.abort
           }}
@@ -100,13 +93,22 @@ export function ChatV2() {
         <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-2xl px-4">
           <MessageInput
             input={state.input}
-            pending={{ 
-              streaming: state.status === 'streaming', 
+            pending={{
+              streaming: state.status === 'streaming',
               error: state.error,
               abort: state.abort
             }}
             onInputChange={actions.setInput}
             onSend={actions.sendMessage}
+            onStop={actions.stopStreaming}
+            model={state.model}
+            useTools={state.useTools}
+            shouldStream={state.shouldStream}
+            researchMode={false}
+            onModelChange={actions.setModel}
+            onUseToolsChange={actions.setUseTools}
+            onShouldStreamChange={actions.setShouldStream}
+            onResearchModeChange={() => {}}
           />
         </div>
       </div>
