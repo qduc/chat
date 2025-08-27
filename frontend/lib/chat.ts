@@ -104,7 +104,8 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
     body,
   };
   if (signal) fetchInit.signal = signal;
-  const res = await fetch(`${apiBase}${endpoint}`, fetchInit);
+  (fetchInit as any).credentials = 'include';
+    const res = await fetch(`${apiBase}${endpoint}`, fetchInit);
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
     try {
@@ -251,7 +252,7 @@ async function handleJSON(res: Response) {
 
 export async function createConversation(apiBase = defaultApiBase, init?: { title?: string; model?: string; }) {
   const res = await fetch(`${apiBase}/v1/conversations`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(init || {})
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(init || {}), credentials: 'include'
   });
   return handleJSON(res) as Promise<ConversationMeta>;
 }
@@ -260,7 +261,7 @@ export async function listConversationsApi(apiBase = defaultApiBase, params?: { 
   const qs = new URLSearchParams();
   if (params?.cursor) qs.set('cursor', params.cursor);
   if (params?.limit) qs.set('limit', String(params.limit));
-  const res = await fetch(`${apiBase}/v1/conversations?${qs.toString()}`, { method: 'GET' });
+  const res = await fetch(`${apiBase}/v1/conversations?${qs.toString()}`, { method: 'GET', credentials: 'include' });
   return handleJSON(res) as Promise<ConversationsList>;
 }
 
@@ -268,12 +269,12 @@ export async function getConversationApi(apiBase = defaultApiBase, id: string, p
   const qs = new URLSearchParams();
   if (params?.after_seq) qs.set('after_seq', String(params.after_seq));
   if (params?.limit) qs.set('limit', String(params.limit));
-  const res = await fetch(`${apiBase}/v1/conversations/${id}?${qs.toString()}`, { method: 'GET' });
+  const res = await fetch(`${apiBase}/v1/conversations/${id}?${qs.toString()}`, { method: 'GET', credentials: 'include' });
   return handleJSON(res) as Promise<{ id: string; title?: string; model?: string; created_at: string; messages: { id: number; seq: number; role: Role; status: string; content: string; created_at: string; }[]; next_after_seq: number | null; }>;
 }
 
 export async function deleteConversationApi(apiBase = defaultApiBase, id: string) {
-  const res = await fetch(`${apiBase}/v1/conversations/${id}`, { method: 'DELETE' });
+  const res = await fetch(`${apiBase}/v1/conversations/${id}`, { method: 'DELETE', credentials: 'include' });
   if (res.status === 204) return true;
   await handleJSON(res);
   return true;
@@ -284,6 +285,7 @@ export async function editMessageApi(apiBase = defaultApiBase, conversationId: s
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content }),
+    credentials: 'include'
   });
   return handleJSON(res) as Promise<{ message: { id: string; seq: number; content: string }; new_conversation_id: string }>;
 }
@@ -308,6 +310,6 @@ export interface ToolsResponse {
 }
 
 export async function getToolSpecs(apiBase = defaultApiBase): Promise<ToolsResponse> {
-  const res = await fetch(`${apiBase}/v1/tools`, { method: 'GET' });
+  const res = await fetch(`${apiBase}/v1/tools`, { method: 'GET', credentials: 'include' });
   return handleJSON(res) as Promise<ToolsResponse>;
 }

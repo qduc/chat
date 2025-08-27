@@ -14,9 +14,9 @@ const app = express();
 // Enhanced CORS for direct API calls
 app.use(cors({
   origin: config.allowedOrigin,
-  credentials: false,
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Accept', 'Authorization']
+  allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'x-session-id']
 }));
 app.use(express.json({ limit: '1mb' }));
 app.use(sessionResolver);
