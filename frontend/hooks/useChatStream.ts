@@ -134,8 +134,13 @@ export function useChatStream(): UseChatStreamReturn {
       // Ensure tools are loaded if needed
       const tools = useTools ? (availableTools ?? await toolsPromiseRef.current?.catch(() => [])) : undefined;
 
+      // Optimization: when a conversation exists and tools are disabled (Responses API),
+      // only send the latest user message; backend has full context persisted.
+      const shouldOptimize = !!conversationId && !useTools;
+      const outgoingForSend = shouldOptimize ? [userMsg] : [...messages, userMsg];
+
       const result = await sendChat({
-        messages: [...messages, userMsg].map(m => ({ role: m.role as Role, content: m.content })),
+        messages: outgoingForSend.map(m => ({ role: m.role as Role, content: m.content })),
         model,
         signal: abort.signal,
         conversationId: conversationId || undefined,
@@ -255,8 +260,14 @@ export function useChatStream(): UseChatStreamReturn {
       // Ensure tools are loaded if needed
       const tools = useTools ? (availableTools ?? await toolsPromiseRef.current?.catch(() => [])) : undefined;
 
+      // Optimization: when a conversation exists and tools are disabled, only send last user message
+      const shouldOptimizeBase = !!conversationId && !useTools;
+      const optimizedBase = shouldOptimizeBase
+        ? (() => { const lastUser = [...baseMessages].reverse().find(m => m.role === 'user'); return lastUser ? [lastUser] : []; })()
+        : baseMessages;
+
       const result = await sendChat({
-        messages: baseMessages.map(m => ({ role: m.role as Role, content: m.content })),
+        messages: optimizedBase.map(m => ({ role: m.role as Role, content: m.content })),
         model,
         signal: abort.signal,
         conversationId: conversationId || undefined,

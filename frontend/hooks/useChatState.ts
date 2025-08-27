@@ -345,24 +345,37 @@ export function useChatState() {
 
   // Helpers to remove duplicate sendChat setup and error handling
   const buildSendChatConfig = useCallback(
-    (messages: ChatMessage[], signal: AbortSignal) => ({
-      messages: messages.map(m => ({ role: m.role as Role, content: m.content })),
-      model: state.model,
-      signal,
-      conversationId: state.conversationId || undefined,
-      previousResponseId: state.previousResponseId || undefined,
-      useResponsesAPI: !state.useTools,
-      shouldStream: state.shouldStream,
-      reasoningEffort: state.reasoningEffort,
-      verbosity: state.verbosity,
-      ...(state.useTools
-        ? {
-            tools: Object.values(availableTools),
-            tool_choice: 'auto',
-          }
-        : {}),
-      onEvent: handleStreamEvent,
-    }),
+    (messages: ChatMessage[], signal: AbortSignal) => {
+      // Optimization: if a conversation already exists and tools are disabled
+      // (Responses API path), only send the latest user message. The backend
+      // has the rest of the context persisted and will continue the thread.
+      const shouldOptimize = !!state.conversationId && !state.useTools;
+      const outgoing = shouldOptimize
+        ? (() => {
+            const lastUser = [...messages].reverse().find(m => m.role === 'user');
+            return lastUser ? [lastUser] : [];
+          })()
+        : messages;
+
+      return ({
+        messages: outgoing.map(m => ({ role: m.role as Role, content: m.content })),
+        model: state.model,
+        signal,
+        conversationId: state.conversationId || undefined,
+        previousResponseId: state.previousResponseId || undefined,
+        useResponsesAPI: !state.useTools,
+        shouldStream: state.shouldStream,
+        reasoningEffort: state.reasoningEffort,
+        verbosity: state.verbosity,
+        ...(state.useTools
+          ? {
+              tools: Object.values(availableTools),
+              tool_choice: 'auto',
+            }
+          : {}),
+        onEvent: handleStreamEvent,
+      });
+    },
     [state, handleStreamEvent]
   );
 
