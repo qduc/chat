@@ -65,6 +65,7 @@ export function ChatV2() {
           onDeleteConversation={actions.deleteConversation}
           onLoadMore={actions.loadMoreConversations}
           onRefresh={actions.refreshConversations}
+          onNewChat={actions.newChat}
         />
       )}
       <div className="flex flex-col flex-1 relative">
@@ -76,7 +77,7 @@ export function ChatV2() {
           messages={state.messages}
           pending={{
             streaming: state.status === 'streaming',
-            error: state.error,
+            error: state.error ?? undefined,
             abort: state.abort
           }}
           conversationId={state.conversationId}
@@ -95,17 +96,15 @@ export function ChatV2() {
             input={state.input}
             pending={{
               streaming: state.status === 'streaming',
-              error: state.error,
+              error: state.error ?? undefined,
               abort: state.abort
             }}
             onInputChange={actions.setInput}
             onSend={actions.sendMessage}
             onStop={actions.stopStreaming}
-            model={state.model}
             useTools={state.useTools}
             shouldStream={state.shouldStream}
             researchMode={false}
-            onModelChange={actions.setModel}
             onUseToolsChange={actions.setUseTools}
             onShouldStreamChange={actions.setShouldStream}
             onResearchModeChange={() => {}}

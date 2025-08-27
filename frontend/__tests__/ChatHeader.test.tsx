@@ -2,10 +2,30 @@ import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { ChatHeader } from '../components/ChatHeader';
 import { ChatProvider } from '../contexts/ChatContext';
+import { ThemeProvider } from '../contexts/ThemeContext';
 
 function renderWithProvider(ui: React.ReactElement) {
-  return render(<ChatProvider>{ui}</ChatProvider>);
+  return render(
+    <ThemeProvider>
+      <ChatProvider>{ui}</ChatProvider>
+    </ThemeProvider>
+  );
 }
+
+// Provide a minimal matchMedia mock for JSDOM used in tests
+beforeAll(() => {
+  if (typeof window.matchMedia !== 'function') {
+    // @ts-ignore
+    window.matchMedia = (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false
+    });
+  }
+});
 
 describe('ChatHeader', () => {
   it('renders and interacts: model change, toggles, new chat and stop', () => {

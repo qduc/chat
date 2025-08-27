@@ -1,14 +1,16 @@
-import { MessageCircle, Sun, Moon } from 'lucide-react';
+import { Sun, Moon } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import IconSelect from './ui/IconSelect';
+import { useChatContext } from '../contexts/ChatContext';
 
 interface ChatHeaderProps {
   isStreaming: boolean;
+  onNewChat?: () => void;
 }
 
-export function ChatHeader({
-  isStreaming
-}: ChatHeaderProps) {
+export function ChatHeader({}: ChatHeaderProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
+  const { model, setModel } = useChatContext();
 
   const toggleTheme = () => {
     if (theme === 'dark') {
@@ -22,23 +24,35 @@ export function ChatHeader({
     <header className="sticky top-0 z-10 border-b border-slate-200/60 dark:border-neutral-800/60 bg-white/80 dark:bg-neutral-950/80 backdrop-blur-md supports-[backdrop-filter]:bg-white/70 dark:supports-[backdrop-filter]:bg-neutral-950/70 shadow-sm">
       <div className="mx-auto max-w-4xl px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-slate-200 dark:bg-neutral-800 flex items-center justify-center shadow-sm">
-            <MessageCircle className="w-4 h-4 text-slate-700 dark:text-slate-200" />
+          <div className="flex items-center gap-4">
+            <IconSelect
+              ariaLabel="Model"
+              value={model}
+              onChange={setModel}
+              className="text-lg py-1 px-2"
+              options={[
+                { value: 'gpt-5-mini', label: 'GPT-5 Mini' },
+                { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
+                { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+                { value: 'gpt-4o', label: 'GPT-4o' }
+              ]}
+            />
           </div>
-          <h1 className="font-semibold text-xl text-slate-800 dark:text-slate-200">Chat</h1>
         </div>
 
-        <button
-          onClick={toggleTheme}
-          className="w-9 h-9 rounded-lg bg-slate-200 dark:bg-neutral-800 hover:bg-slate-300 dark:hover:bg-neutral-700 flex items-center justify-center shadow-sm transition-colors"
-          title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} theme`}
-        >
-          {resolvedTheme === 'dark' ? (
-            <Sun className="w-4 h-4 text-slate-700 dark:text-slate-200" />
-          ) : (
-            <Moon className="w-4 h-4 text-slate-700 dark:text-slate-200" />
-          )}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={toggleTheme}
+            className="w-9 h-9 rounded-lg bg-slate-200 dark:bg-neutral-800 hover:bg-slate-300 dark:hover:bg-neutral-700 flex items-center justify-center shadow-sm transition-colors"
+            title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} theme`}
+          >
+            {resolvedTheme === 'dark' ? (
+              <Sun className="w-4 h-4 text-slate-700 dark:text-slate-200" />
+            ) : (
+              <Moon className="w-4 h-4 text-slate-700 dark:text-slate-200" />
+            )}
+          </button>
+        </div>
       </div>
     </header>
   );

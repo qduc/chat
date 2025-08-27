@@ -212,6 +212,7 @@ function ChatInner() {
       <div className="flex flex-col flex-1 relative">
         <ChatHeader
           isStreaming={chatStream.pending.streaming}
+          onNewChat={handleNewChat}
         />
         <MessageList
           messages={chatStream.messages}
@@ -234,11 +235,9 @@ function ChatInner() {
             onInputChange={setInput}
             onSend={handleSend}
             onStop={chatStream.stopStreaming}
-            model={model}
             useTools={useTools}
             shouldStream={shouldStream}
             researchMode={researchMode}
-            onModelChange={setModel}
             onUseToolsChange={setUseTools}
             onShouldStreamChange={setShouldStream}
             onResearchModeChange={setResearchMode}
