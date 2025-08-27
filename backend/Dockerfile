@@ -1,7 +1,7 @@
 ## Backend Dockerfile (production + dev)
 
 # --- Dev stage: optimized for live development ---
-FROM node:20-alpine AS dev
+FROM node:20-slim AS dev
 WORKDIR /app
 ENV NODE_ENV=development
 COPY package*.json ./
@@ -13,7 +13,7 @@ EXPOSE 3001
 CMD ["npm", "run", "dev"]
 
 # --- Prod stage: lean runtime image (default/final) ---
-FROM node:20-alpine AS base
+FROM node:20-slim AS base
 WORKDIR /app
 
 # Allow dev builds to install devDependencies by toggling INSTALL_PROD build-arg.

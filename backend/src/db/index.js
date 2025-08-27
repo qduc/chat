@@ -134,6 +134,14 @@ export function getConversationById({ id, sessionId }) {
     .get({ id, session_id: sessionId });
 }
 
+export function updateConversationTitle({ id, sessionId, title }) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE conversations SET title=@title, updated_at=@now WHERE id=@id AND session_id=@session_id`
+  ).run({ id, session_id: sessionId, title, now });
+}
+
 // --- Sprint 2 helpers ---
 export function countConversationsBySession(sessionId) {
   const db = getDb();
@@ -237,6 +245,30 @@ export function markAssistantError({ messageId }) {
   });
 }
 
+export function insertAssistantFinal({ conversationId, content, seq, finishReason = 'stop' }) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const info = db
+    .prepare(
+      `INSERT INTO messages (conversation_id, role, status, content, seq, finish_reason, created_at, updated_at)
+     VALUES (@conversationId, 'assistant', 'final', @content, @seq, @finishReason, @now, @now)`
+    )
+    .run({ conversationId, content: content || '', seq, finishReason, now });
+  return { id: info.lastInsertRowid, seq };
+}
+
+export function markAssistantErrorBySeq({ conversationId, seq }) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const info = db
+    .prepare(
+      `INSERT INTO messages (conversation_id, role, status, content, seq, finish_reason, created_at, updated_at)
+     VALUES (@conversationId, 'assistant', 'error', '', @seq, 'error', @now, @now)`
+    )
+    .run({ conversationId, seq, now });
+  return { id: info.lastInsertRowid, seq };
+}
+
 export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
   const db = getDb();
   limit = Math.min(Math.max(Number(limit) || 50, 1), 200);
@@ -300,7 +332,7 @@ export function listConversationsIncludingDeleted({
 export function updateMessageContent({ messageId, conversationId, sessionId, content }) {
   const db = getDb();
   const now = new Date().toISOString();
-  
+
   // First verify the message belongs to the conversation and session
   const message = db.prepare(
     `SELECT m.id, m.conversation_id, m.role, m.seq
@@ -308,21 +340,21 @@ export function updateMessageContent({ messageId, conversationId, sessionId, con
      JOIN conversations c ON m.conversation_id = c.id
      WHERE m.id = @messageId AND c.id = @conversationId AND c.session_id = @sessionId AND c.deleted_at IS NULL`
   ).get({ messageId, conversationId, sessionId });
-  
+
   if (!message) return null;
-  
+
   // Update the message content
   db.prepare(
     `UPDATE messages SET content = @content, updated_at = @now WHERE id = @messageId`
   ).run({ messageId, content, now });
-  
+
   return message;
 }
 
 export function forkConversationFromMessage({ originalConversationId, sessionId, messageSeq, title, model }) {
   const db = getDb();
   const now = new Date().toISOString();
-  
+
   // Create new conversation
   const { v4: uuidv4 } = require('uuid');
   const newConversationId = uuidv4();
@@ -336,7 +368,7 @@ export function forkConversationFromMessage({ originalConversationId, sessionId,
     model: model || null,
     now,
   });
-  
+
   // Copy messages up to and including the specified sequence
   db.prepare(
     `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, tokens_in, tokens_out, finish_reason, tool_calls, function_call, created_at, updated_at)
@@ -345,25 +377,25 @@ export function forkConversationFromMessage({ originalConversationId, sessionId,
      WHERE conversation_id = @originalConversationId AND seq <= @messageSeq
      ORDER BY seq`
   ).run({ newConversationId, originalConversationId, messageSeq, now });
-  
+
   return newConversationId;
 }
 
 export function deleteMessagesAfterSeq({ conversationId, sessionId, afterSeq }) {
   const db = getDb();
-  
+
   // Verify conversation belongs to session
   const conversation = db.prepare(
     `SELECT id FROM conversations WHERE id = @conversationId AND session_id = @sessionId AND deleted_at IS NULL`
   ).get({ conversationId, sessionId });
-  
+
   if (!conversation) return false;
-  
+
   // Delete messages after the specified sequence
   const result = db.prepare(
     `DELETE FROM messages WHERE conversation_id = @conversationId AND seq > @afterSeq`
   ).run({ conversationId, afterSeq });
-  
+
   return result.changes > 0;
 }
 

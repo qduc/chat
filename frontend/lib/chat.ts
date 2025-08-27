@@ -1,4 +1,4 @@
-// Simple streaming chat client for OpenAI Responses API with Chat Completions fallback
+// Simple streaming chat client for OpenAI Chat Completions API
 // Parses Server-Sent Events style stream and aggregates delta content.
 
 export type Role = 'user' | 'assistant' | 'system';
@@ -20,8 +20,7 @@ export interface SendChatOptions {
   onEvent?: (event: any) => void; // called for each event
   onToken?: (token: string) => void; // called for each text delta token
   conversationId?: string; // Sprint 4: pass conversation id
-  useResponsesAPI?: boolean; // whether to use new Responses API (default: true)
-  previousResponseId?: string; // for Responses API conversation continuity
+  // ...existing code...
   tools?: any[]; // optional OpenAI tool specifications (Chat Completions only for now)
   tool_choice?: any; // optional tool_choice
   stream?: boolean; // whether to stream response (default: true)
@@ -52,29 +51,13 @@ interface OpenAIStreamChunk {
   choices?: OpenAIStreamChunkChoice[];
 }
 
-// Responses API streaming format
-interface ResponsesAPIStreamChunk {
-  type?: string;
-  delta?: string;
-  item_id?: string;
-  response?: {
-    id: string;
-    model: string;
-    output: Array<{
-      content: Array<{
-        text: string;
-      }>;
-    }>;
-  };
-}
+// ...existing code...
 
-export async function sendChat(options: SendChatOptions): Promise<{ content: string; responseId?: string }> {
-  const { apiBase = defaultApiBase, messages, model, signal, onEvent, onToken, conversationId, useResponsesAPI, previousResponseId, tools, tool_choice, research_mode, reasoningEffort, verbosity } = options;
+export async function sendChat(options: SendChatOptions): Promise<{ content: string; responseId?: string; conversation?: ConversationMeta }> {
+  const { apiBase = defaultApiBase, messages, model, signal, onEvent, onToken, conversationId, tools, tool_choice, research_mode, reasoningEffort, verbosity } = options;
   const streamFlag = options.shouldStream !== undefined
     ? !!options.shouldStream
     : (options.stream === undefined ? true : !!options.stream);
-  // Decide which API to use. If tools/tool_choice are provided, force Chat Completions.
-  const useResponses = useResponsesAPI !== undefined ? useResponsesAPI : !(Array.isArray(tools) && tools.length > 0 || tool_choice !== undefined);
   const bodyObj: any = {
     model,
     messages,
@@ -82,28 +65,25 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
     conversation_id: conversationId,
     reasoning_effort: reasoningEffort,
     verbosity: verbosity,
-    ...(useResponses && previousResponseId && { previous_response_id: previousResponseId }),
     ...(research_mode && { research_mode: true }),
   };
-  // Only attach tools when not using Responses API (we use Chat Completions for tools)
-  if (!useResponses && Array.isArray(tools) && tools.length > 0) {
+  if (Array.isArray(tools) && tools.length > 0) {
     bodyObj.tools = tools;
     if (tool_choice !== undefined) bodyObj.tool_choice = tool_choice;
   }
   const body = JSON.stringify(bodyObj);
 
-  // Use Responses API by default, fallback to Chat Completions if disabled
-  const endpoint = useResponses ? '/v1/responses' : '/v1/chat/completions';
+  const endpoint = '/v1/chat/completions';
   const fetchInit: RequestInit = {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      // Hint to proxies/browsers that we expect an SSE stream (only for streaming)
       ...(streamFlag ? { 'Accept': 'text/event-stream' } : {}),
     },
     body,
   };
   if (signal) fetchInit.signal = signal;
+  (fetchInit as any).credentials = 'include';
   const res = await fetch(`${apiBase}${endpoint}`, fetchInit);
   if (!res.ok) {
     let msg = `HTTP ${res.status}`;
@@ -132,16 +112,26 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
       }
     }
 
-    if (useResponses) {
-      // Responses API non-stream JSON
-      const content = json?.output?.[0]?.content?.[0]?.text ?? '';
-      const responseId = json?.id;
-      return { content, responseId };
-    } else {
-      // Chat Completions API non-stream JSON
+    // Extract conversation metadata if present
+    const conversation = json._conversation ? {
+      id: json._conversation.id,
+      title: json._conversation.title,
+      model: json._conversation.model,
+      created_at: json._conversation.created_at,
+    } : undefined;
+
+    // Debug logging
+
+    // Only handle Chat Completions format
+    if (json?.choices && Array.isArray(json.choices)) {
       const content = json?.choices?.[0]?.message?.content ?? '';
       const responseId = json?.id;
-      return { content, responseId };
+      return { content, responseId, conversation };
+    } else {
+      // Fallback - try to extract content from any available field
+      const content = json?.content ?? json?.message?.content ?? '';
+      const responseId = json?.id;
+      return { content, responseId, conversation };
     }
   }
 
@@ -152,6 +142,7 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
   let assistant = '';
   let buffer = '';
   let responseId: string | undefined;
+  let conversation: ConversationMeta | undefined;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -165,40 +156,36 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
       if (line.startsWith('data:')) {
         const data = line.slice(5).trim();
         if (data === '[DONE]') {
-          return { content: assistant, responseId };
+          return { content: assistant, responseId, conversation };
         }
         try {
           const json = JSON.parse(data);
 
-          if (useResponses) {
-            // Handle "Responses API" stream format
-            const chunk = json as any;
-            if (chunk.type === 'response.output_text.delta' && chunk.delta) {
-              assistant += chunk.delta;
-              onToken?.(chunk.delta);
-              onEvent?.({ type: 'text', value: chunk.delta });
-            } else if (chunk.type === 'response.output_item.done' && chunk.item?.content?.[0]?.text) {
-              // This handles the final message content when streaming is done.
-              const finalText = chunk.item.content[0].text;
-              assistant = finalText; // Replace assistant content with the final version.
-              onEvent?.({ type: 'final', value: finalText });
+          // Handle conversation metadata
+          if (json._conversation) {
+            conversation = {
+              id: json._conversation.id,
+              title: json._conversation.title,
+              model: json._conversation.model,
+              created_at: json._conversation.created_at,
+            };
+            continue; // Skip processing this as content
+          }
+
+          // Only handle Chat Completions API stream format
+          const chunk = json as OpenAIStreamChunk;
+          const delta = chunk.choices?.[0]?.delta;
+          if (delta?.content) {
+            assistant += delta.content;
+            onToken?.(delta.content);
+            onEvent?.({ type: 'text', value: delta.content });
+          } else if (delta?.tool_calls) {
+            // Process all tool calls in the array, not just the first one
+            for (const toolCall of delta.tool_calls) {
+              onEvent?.({ type: 'tool_call', value: toolCall });
             }
-            if (chunk.type === 'response.completed' && chunk.response?.id) {
-              responseId = chunk.response.id;
-            }
-          } else {
-            // Handle "Chat Completions API" stream format (for tools)
-            const chunk = json as OpenAIStreamChunk;
-            const delta = chunk.choices?.[0]?.delta;
-            if (delta?.content) {
-              assistant += delta.content;
-              onToken?.(delta.content);
-              onEvent?.({ type: 'text', value: delta.content });
-            } else if (delta?.tool_calls) {
-              onEvent?.({ type: 'tool_call', value: delta.tool_calls[0] });
-            } else if (delta?.tool_output) {
-              onEvent?.({ type: 'tool_output', value: delta.tool_output });
-            }
+          } else if (delta?.tool_output) {
+            onEvent?.({ type: 'tool_output', value: delta.tool_output });
           }
         } catch (e) {
           // ignore malformed lines
@@ -206,7 +193,7 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
       }
     }
   }
-  return { content: assistant, responseId };
+  return { content: assistant, responseId, conversation };
 }
 
 // --- Sprint 4: History API helpers ---
@@ -225,7 +212,7 @@ async function handleJSON(res: Response) {
 
 export async function createConversation(apiBase = defaultApiBase, init?: { title?: string; model?: string; }) {
   const res = await fetch(`${apiBase}/v1/conversations`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(init || {})
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(init || {}), credentials: 'include'
   });
   return handleJSON(res) as Promise<ConversationMeta>;
 }
@@ -234,7 +221,7 @@ export async function listConversationsApi(apiBase = defaultApiBase, params?: { 
   const qs = new URLSearchParams();
   if (params?.cursor) qs.set('cursor', params.cursor);
   if (params?.limit) qs.set('limit', String(params.limit));
-  const res = await fetch(`${apiBase}/v1/conversations?${qs.toString()}`, { method: 'GET' });
+  const res = await fetch(`${apiBase}/v1/conversations?${qs.toString()}`, { method: 'GET', credentials: 'include' });
   return handleJSON(res) as Promise<ConversationsList>;
 }
 
@@ -242,12 +229,12 @@ export async function getConversationApi(apiBase = defaultApiBase, id: string, p
   const qs = new URLSearchParams();
   if (params?.after_seq) qs.set('after_seq', String(params.after_seq));
   if (params?.limit) qs.set('limit', String(params.limit));
-  const res = await fetch(`${apiBase}/v1/conversations/${id}?${qs.toString()}`, { method: 'GET' });
+  const res = await fetch(`${apiBase}/v1/conversations/${id}?${qs.toString()}`, { method: 'GET', credentials: 'include' });
   return handleJSON(res) as Promise<{ id: string; title?: string; model?: string; created_at: string; messages: { id: number; seq: number; role: Role; status: string; content: string; created_at: string; }[]; next_after_seq: number | null; }>;
 }
 
 export async function deleteConversationApi(apiBase = defaultApiBase, id: string) {
-  const res = await fetch(`${apiBase}/v1/conversations/${id}`, { method: 'DELETE' });
+  const res = await fetch(`${apiBase}/v1/conversations/${id}`, { method: 'DELETE', credentials: 'include' });
   if (res.status === 204) return true;
   await handleJSON(res);
   return true;
@@ -258,6 +245,7 @@ export async function editMessageApi(apiBase = defaultApiBase, conversationId: s
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ content }),
+    credentials: 'include'
   });
   return handleJSON(res) as Promise<{ message: { id: string; seq: number; content: string }; new_conversation_id: string }>;
 }
@@ -282,6 +270,6 @@ export interface ToolsResponse {
 }
 
 export async function getToolSpecs(apiBase = defaultApiBase): Promise<ToolsResponse> {
-  const res = await fetch(`${apiBase}/v1/tools`, { method: 'GET' });
+  const res = await fetch(`${apiBase}/v1/tools`, { method: 'GET', credentials: 'include' });
   return handleJSON(res) as Promise<ToolsResponse>;
 }

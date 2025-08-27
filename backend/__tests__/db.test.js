@@ -36,18 +36,23 @@ afterAll(() => {
 
 describe('DB helpers', () => {
   describe('listConversations', () => {
-    test('orders by created_at DESC and paginates with next_cursor', async () => {
+    test('orders by created_at DESC and paginates with next_cursor', () => {
+      // Create conversations with deterministic timestamps by manipulating created_at directly
       createConversation({ id: 'c1', sessionId, title: 'one' });
-      // IMPORTANT: SQLite timestamps need sufficient separation for cursor pagination
-      // 10ms is not enough - use 1000ms to guarantee different created_at values
-      await new Promise((r) => setTimeout(r, 1000)); // Ensure different timestamps
       createConversation({ id: 'c2', sessionId, title: 'two' });
+      
+      // Set explicit timestamps to ensure deterministic ordering (c2 newer than c1)
+      const db = getDb();
+      db.prepare(`UPDATE conversations SET created_at = datetime('now', '-1 hour') WHERE id = 'c1'`).run();
+      db.prepare(`UPDATE conversations SET created_at = datetime('now') WHERE id = 'c2'`).run();
 
+      // Test behavior: newest conversation appears first
       const page1 = listConversations({ sessionId, limit: 1 });
       assert.equal(page1.items.length, 1);
       assert.equal(page1.items[0].id, 'c2');
       assert.ok(page1.next_cursor);
 
+      // Test behavior: pagination continues with older conversation
       const page2 = listConversations({
         sessionId,
         cursor: page1.next_cursor,
@@ -58,12 +63,17 @@ describe('DB helpers', () => {
       assert.equal(page2.next_cursor, null);
     });
 
-    test('applies cursor filter (created_at < cursor) correctly', async () => {
+    test('applies cursor filter (created_at < cursor) correctly', () => {
+      // Create conversations with deterministic timestamps
       createConversation({ id: 'c1', sessionId });
-      // IMPORTANT: SQLite timestamps need sufficient separation for cursor pagination
-      await new Promise((r) => setTimeout(r, 1000)); // Ensure different timestamps
       createConversation({ id: 'c2', sessionId });
+      
+      // Set explicit timestamps to ensure deterministic ordering
+      const db = getDb();
+      db.prepare(`UPDATE conversations SET created_at = datetime('now', '-1 hour') WHERE id = 'c1'`).run();
+      db.prepare(`UPDATE conversations SET created_at = datetime('now') WHERE id = 'c2'`).run();
 
+      // Test behavior: cursor pagination filters correctly
       const firstPage = listConversations({ sessionId, limit: 1 });
       const secondPage = listConversations({
         sessionId,

@@ -1,6 +1,6 @@
 import React, { useReducer, useCallback, useRef } from 'react';
 import type { ChatMessage, Role, ConversationMeta } from '../lib/chat';
-import { sendChat, createConversation, getConversationApi, listConversationsApi, deleteConversationApi, editMessageApi } from '../lib/chat';
+import { sendChat, getConversationApi, listConversationsApi, deleteConversationApi, editMessageApi } from '../lib/chat';
 
 // Unified state structure
 export interface ChatState {
@@ -11,7 +11,7 @@ export interface ChatState {
   // Chat State
   messages: ChatMessage[];
   conversationId: string | null;
-  previousResponseId: string | null;
+  // ...existing code...
 
   // Settings
   model: string;
@@ -167,7 +167,6 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         status: 'idle',
         abort: undefined,
-        previousResponseId: action.payload.responseId || state.previousResponseId,
       };
 
     case 'STREAM_ERROR':
@@ -189,7 +188,6 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return {
         ...state,
         messages: [],
-        previousResponseId: null,
         error: null,
       };
 
@@ -247,7 +245,6 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         messages: action.payload.baseMessages,
         editingMessageId: null,
         editingContent: '',
-        previousResponseId: null, // Reset for regeneration
       };
 
     case 'CLEAR_ERROR':
@@ -345,24 +342,26 @@ export function useChatState() {
 
   // Helpers to remove duplicate sendChat setup and error handling
   const buildSendChatConfig = useCallback(
-    (messages: ChatMessage[], signal: AbortSignal) => ({
-      messages: messages.map(m => ({ role: m.role as Role, content: m.content })),
-      model: state.model,
-      signal,
-      conversationId: state.conversationId || undefined,
-      previousResponseId: state.previousResponseId || undefined,
-      useResponsesAPI: !state.useTools,
-      shouldStream: state.shouldStream,
-      reasoningEffort: state.reasoningEffort,
-      verbosity: state.verbosity,
-      ...(state.useTools
-        ? {
-            tools: Object.values(availableTools),
-            tool_choice: 'auto',
-          }
-        : {}),
-      onEvent: handleStreamEvent,
-    }),
+    (messages: ChatMessage[], signal: AbortSignal) => {
+      const outgoing = messages;
+
+      return ({
+        messages: outgoing.map(m => ({ role: m.role as Role, content: m.content })),
+        model: state.model,
+        signal,
+        conversationId: state.conversationId || undefined,
+        shouldStream: state.shouldStream,
+        reasoningEffort: state.reasoningEffort,
+        verbosity: state.verbosity,
+        ...(state.useTools
+          ? {
+              tools: Object.values(availableTools),
+              tool_choice: 'auto',
+            }
+          : {}),
+        onEvent: handleStreamEvent,
+      });
+    },
     [state, handleStreamEvent]
   );
 
@@ -370,6 +369,23 @@ export function useChatState() {
     async (config: Parameters<typeof sendChat>[0]) => {
       try {
         const result = await sendChat(config);
+        // For non-streaming requests, ensure the assistant message is populated
+        // since there are no incremental text events to update content.
+        if (config.shouldStream === false && result?.content) {
+          const assistantId = assistantMsgRef.current?.id;
+          if (assistantId) {
+            dispatch({
+              type: 'STREAM_TOKEN',
+              payload: { messageId: assistantId, token: result.content },
+            });
+          }
+        }
+        // If backend auto-created a conversation, set id and refresh history
+        if (result.conversation) {
+          dispatch({ type: 'SET_CONVERSATION_ID', payload: result.conversation.id });
+          // Refresh to reflect server ordering/title rather than optimistic add
+          void refreshConversations();
+        }
         dispatch({
           type: 'STREAM_COMPLETE',
           payload: { responseId: result.responseId },
@@ -383,7 +399,7 @@ export function useChatState() {
         inFlightRef.current = false;
       }
     },
-    []
+    [state.model, refreshConversations]
   );
 
   // Actions
@@ -461,28 +477,10 @@ export function useChatState() {
         actions.stopStreaming();
       }
 
+      // Align with v1 behavior: don't pre-create; first send will autocreate
+      // and the sidebar will refresh on `_conversation` signal.
       dispatch({ type: 'NEW_CHAT' });
-
-      if (state.historyEnabled) {
-        try {
-          const convo = await createConversation(undefined, { model: state.model });
-          dispatch({ type: 'SET_CONVERSATION_ID', payload: convo.id });
-          dispatch({
-            type: 'ADD_CONVERSATION',
-            payload: {
-              id: convo.id,
-              title: convo.title || 'New chat',
-              model: convo.model,
-              created_at: convo.created_at
-            }
-          });
-        } catch (e: any) {
-          if (e.status === 501) {
-            dispatch({ type: 'SET_HISTORY_ENABLED', payload: false });
-          }
-        }
-      }
-    }, [state.status, state.historyEnabled, state.model]),
+    }, [state.status]),
 
     // Conversation Actions
     selectConversation: useCallback(async (id: string) => {

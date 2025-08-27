@@ -6,15 +6,8 @@ import {
   setupStreamingHeaders,
   handleRegularStreaming,
 } from './streamingHandler.js';
-import {
-  setupPersistence,
-  setupPersistenceTimer,
-  handleNonStreamingPersistence,
-  cleanupPersistenceTimer,
-  appendAssistantContent,
-  finalizeAssistantMessage,
-  markAssistantError,
-} from './persistenceHandler.js';
+import { SimplifiedPersistence } from './simplifiedPersistence.js';
+import { addConversationMetadata } from './responseUtils.js';
 
 export async function proxyOpenAIRequest(req, res) {
   const bodyIn = req.body || {};
@@ -23,25 +16,13 @@ export async function proxyOpenAIRequest(req, res) {
   const conversationId =
     bodyIn.conversation_id || req.header('x-conversation-id');
 
-  // Pull optional previous_response_id for Responses API conversation continuity
-  const previousResponseId =
-    bodyIn.previous_response_id || req.header('x-previous-response-id');
-
-  // Determine which API to use
-  let useResponsesAPI =
-    !bodyIn.disable_responses_api &&
-    config.openaiBaseUrl.includes('openai.com');
-
-  // If tools are present, force Chat Completions path for MVP (server orchestration)
   const hasTools = Array.isArray(bodyIn.tools) && bodyIn.tools.length > 0;
-  if (hasTools) useResponsesAPI = false;
 
 
   // Clone and strip non-upstream fields
   const body = { ...bodyIn };
   delete body.conversation_id;
-  delete body.disable_responses_api;
-  delete body.previous_response_id;
+  // ...existing code...
 
   // Validate and handle reasoning_effort
   if (body.reasoning_effort) {
@@ -68,70 +49,27 @@ export async function proxyOpenAIRequest(req, res) {
       });
     }
   }
-  
+
   if (!body.model) body.model = config.defaultModel;
   const stream = !!body.stream;
 
-  // Convert Chat Completions format to Responses API format if needed (no tools in MVP)
-  if (useResponsesAPI && body.messages) {
-    // For Responses API, only send the latest user message to reduce token usage
-    const lastUserMessage = [...body.messages]
-      .reverse()
-      .find((m) => m && m.role === 'user');
-    body.input = lastUserMessage ? [lastUserMessage] : [];
-    delete body.messages;
+  // ...existing code...
 
-    // Add previous_response_id for conversation continuity if provided
-    if (previousResponseId) {
-      body.previous_response_id = previousResponseId;
-    }
-  }
+  // ...existing code...
 
-  // Map compatibility fields for Responses API
-  if (useResponsesAPI) {
-    if (body.reasoning_effort) {
-      const modelName = String(body.model || '').toLowerCase();
-      const supportsReasoning =
-        modelName.includes('o4') || modelName.includes('o3') || modelName.includes('reasoning');
-      if (supportsReasoning) {
-        body.reasoning = { effort: body.reasoning_effort };
-      }
-      // Always remove the compatibility field to avoid upstream 400s
-      delete body.reasoning_effort;
-    }
-    // The Responses API may not recognize 'verbosity'; drop to avoid 400s
-    if (body.verbosity) delete body.verbosity;
-  }
-
-  // Persistence state
-  let persist = false;
-  let assistantMessageId = null;
+  // Persistence setup
+  const persistence = new SimplifiedPersistence(config);
   const sessionId = req.sessionId;
-  
-  // Setup persistence buffer variables for tool orchestration
-  let buffer = { value: '' };
-  let flushedOnce = { value: false };
-  const sizeThreshold = 100;
-  const flushMs = 1000;
-  let flushTimer = null;
-  
+
   try {
     // Setup persistence
-    const persistenceResult = await setupPersistence({
-      config,
+    await persistence.initialize({
       conversationId,
       sessionId,
       req,
       res,
       bodyIn,
     });
-    
-    if (persistenceResult?.messageLimitExceeded) {
-      return; // Response already sent
-    }
-    
-    persist = persistenceResult?.persist || false;
-    assistantMessageId = persistenceResult?.assistantMessageId || null;
 
     // Handle tool orchestration
     if (hasTools) {
@@ -145,14 +83,7 @@ export async function proxyOpenAIRequest(req, res) {
           config,
           res,
           req,
-          persist,
-          assistantMessageId,
-          appendAssistantContent,
-          finalizeAssistantMessage,
-          markAssistantError,
-          buffer,
-          flushedOnce,
-          sizeThreshold,
+          persistence,
         });
       } else {
         // Non-streaming JSON with tool events
@@ -162,27 +93,20 @@ export async function proxyOpenAIRequest(req, res) {
           config,
           res,
           req,
-          persist,
-          assistantMessageId,
-          appendAssistantContent,
-          finalizeAssistantMessage,
-          markAssistantError,
-          buffer,
-          flushedOnce,
-          sizeThreshold,
+          persistence,
         });
       }
     }
 
-    // Make upstream request
-    // Build upstream URL resiliently whether base has trailing /v1 or not
-    const base = (config.openaiBaseUrl || '').replace(/\/v1\/?$/, '');
-    const url = `${base}/v1/${useResponsesAPI ? 'responses' : 'chat/completions'}`;
+  // Make upstream request
+  // Build upstream URL resiliently whether base has trailing /v1 or not
+  const base = (config.openaiBaseUrl || '').replace(/\/v1\/?$/, '');
+  const url = `${base}/v1/chat/completions`;
     const headers = {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${config.openaiApiKey}`,
     };
-    
+
     const upstream = await fetch(url, {
       method: 'POST',
       headers,
@@ -191,63 +115,63 @@ export async function proxyOpenAIRequest(req, res) {
 
     // Handle non-streaming responses
     if (!upstream.ok || !stream) {
-      const result = await handleNonStreamingPersistence({
-        upstream,
-        req,
-        useResponsesAPI,
-        persist,
-        assistantMessageId,
-        finalizeAssistantMessage,
-        markAssistantError,
-      });
-      return res.status(result.status).json(result.response);
+      const body = await upstream.json();
+
+      if (!upstream.ok) {
+        if (persistence.persist) {
+          persistence.markError();
+        }
+        return res.status(upstream.status).json(body);
+      }
+
+      // Extract content and finish reason from response
+      if (persistence.persist) {
+        let content = '';
+        let finishReason = null;
+
+        // Chat Completions format only
+        if (body.choices && body.choices[0] && body.choices[0].message) {
+          content = body.choices[0].message.content;
+        }
+        finishReason = body.choices && body.choices[0] ? body.choices[0].finish_reason : null;
+
+        if (content) {
+          persistence.appendContent(content);
+        }
+        persistence.recordAssistantFinal({ finishReason });
+      }
+
+      // Include conversation metadata in response if auto-created
+      const responseBody = { ...body };
+      addConversationMetadata(responseBody, persistence);
+
+      return res.status(200).json(responseBody);
     }
 
     // Setup streaming headers
     setupStreamingHeaders(res);
 
-    // Setup persistence timer
-    flushTimer = setupPersistenceTimer({
-      persist,
-      flushMs,
-      doFlush: () => {
-        if (!persist || !assistantMessageId) return;
-        if (buffer.value.length === 0) return;
-        appendAssistantContent({
-          messageId: assistantMessageId,
-          delta: buffer.value,
-        });
-        buffer.value = '';
-        flushedOnce.value = true;
-      },
-    });
-
     // Handle regular streaming (non-tool orchestration)
     return await handleRegularStreaming({
+      config,
       upstream,
       res,
       req,
-      persist,
-      assistantMessageId,
-      appendAssistantContent,
-      finalizeAssistantMessage,
-      markAssistantError,
-      buffer,
-      flushedOnce,
-      sizeThreshold,
-      useResponsesAPI,
+      persistence,
     });
-    
+
   } catch (error) {
     console.error('[proxy] error', error);
-    if (persist && assistantMessageId) {
-      markAssistantError({ messageId: assistantMessageId });
+    if (persistence && persistence.persist) {
+      persistence.markError();
     }
-    res.status(500).json({ 
-      error: 'upstream_error', 
-      message: error.message 
+    res.status(500).json({
+      error: 'upstream_error',
+      message: error.message
     });
   } finally {
-    cleanupPersistenceTimer(flushTimer);
+    if (persistence) {
+      persistence.cleanup();
+    }
   }
 }

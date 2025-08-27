@@ -20,7 +20,8 @@ export interface UseChatStreamReturn {
     shouldStream: boolean,
     reasoningEffort: string,
     verbosity: string,
-    researchMode?: boolean
+    researchMode?: boolean,
+    onConversationCreated?: (conversation: { id: string; title?: string | null; model?: string | null; created_at: string }) => void
   ) => Promise<void>;
   regenerateFromCurrent: (
     conversationId: string | null,
@@ -62,7 +63,7 @@ export function useChatStream(): UseChatStreamReturn {
   const [availableTools, setAvailableTools] = useState<ToolSpec[] | null>(null);
   const assistantMsgRef = useRef<ChatMessage | null>(null);
   const inFlightRef = useRef<boolean>(false);
-  const toolsPromiseRef = useRef<Promise<ToolSpec[]>>();
+  const toolsPromiseRef = useRef<Promise<ToolSpec[]> | undefined>(undefined);
 
   // Fetch tool specifications from backend on mount
   useEffect(() => {
@@ -83,19 +84,19 @@ export function useChatStream(): UseChatStreamReturn {
     const assistantId = assistantMsgRef.current!.id;
     setMessages(curr => curr.map(m => {
       if (m.id !== assistantId) return m;
-      
+
       if (event.type === 'text') {
         return { ...m, content: m.content + event.value };
       } else if (event.type === 'tool_call') {
-        return { 
-          ...m, 
+        return {
+          ...m,
           tool_calls: [...(m.tool_calls || []), event.value]
         };
       } else if (event.type === 'final') {
         return { ...m, content: event.value };
       } else if (event.type === 'tool_output') {
-        return { 
-          ...m, 
+        return {
+          ...m,
           tool_outputs: [...(m.tool_outputs || []), event.value]
         };
       }
@@ -111,7 +112,8 @@ export function useChatStream(): UseChatStreamReturn {
     shouldStream: boolean,
     reasoningEffort: string,
     verbosity: string,
-    researchMode?: boolean
+    researchMode?: boolean,
+    onConversationCreated?: (conversation: { id: string; title?: string | null; model?: string | null; created_at: string }) => void
   ) => {
     if (!input.trim()) return;
     if (inFlightRef.current) return;
@@ -126,19 +128,21 @@ export function useChatStream(): UseChatStreamReturn {
     setMessages(m => [...m, assistantMsg]);
   // Make abort available immediately so callers can stop; but don't mark streaming true
   // until we actually receive data from the server — this keeps the input responsive.
-  setPending(prev => ({ ...prev, abort }));
+  // Clear any previous error when starting a new send and expose the abort controller
+  setPending(prev => ({ ...prev, abort, error: undefined }));
 
     try {
       // Ensure tools are loaded if needed
       const tools = useTools ? (availableTools ?? await toolsPromiseRef.current?.catch(() => [])) : undefined;
-      
+
+      const outgoingForSend = [...messages, userMsg];
+
       const result = await sendChat({
-        messages: [...messages, userMsg].map(m => ({ role: m.role as Role, content: m.content })),
+        messages: outgoingForSend.map(m => ({ role: m.role as Role, content: m.content })),
         model,
         signal: abort.signal,
         conversationId: conversationId || undefined,
-        previousResponseId: previousResponseId || undefined,
-        useResponsesAPI: !useTools,
+  // ...existing code...
         shouldStream,
         reasoningEffort,
         verbosity,
@@ -152,11 +156,14 @@ export function useChatStream(): UseChatStreamReturn {
       // For non-streaming, update the assistant message content from the result
       if (!shouldStream) {
         const msg = assistantMsgRef.current!;
-        msg.content = result.content || msg.content;
-        setMessages(curr => curr.map(m => m.id === msg.id ? { ...msg } : m));
+        setMessages(curr => curr.map(m => m.id === msg.id ? { ...m, content: result.content || m.content } : m));
       }
       if (result.responseId) {
         setPreviousResponseId(result.responseId);
+      }
+      // Handle auto-created conversation
+      if (result.conversation && onConversationCreated) {
+        onConversationCreated(result.conversation);
       }
     } catch (e: any) {
       setPending(p => ({ ...p, error: e?.message || String(e) }));
@@ -188,7 +195,8 @@ export function useChatStream(): UseChatStreamReturn {
     const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
     assistantMsgRef.current = assistantMsg;
     setMessages(m => [...m, assistantMsg]);
-    setPending(prev => ({ ...prev, streaming: true, abort }));
+  // Clear any previous error when starting a new generation from history
+  setPending(prev => ({ ...prev, streaming: true, abort, error: undefined }));
 
     // Ensure tools are loaded if needed
     const tools = useTools ? (availableTools ?? await toolsPromiseRef.current?.catch(() => [])) : undefined;
@@ -198,8 +206,6 @@ export function useChatStream(): UseChatStreamReturn {
       messages: history.map(m => ({ role: m.role as Role, content: m.content })),
       model,
       signal: abort.signal,
-      // No conversationId / previousResponseId for local, unsaved edits
-      useResponsesAPI: !useTools,
       reasoningEffort,
       verbosity,
       ...(useTools ? {
@@ -244,7 +250,8 @@ export function useChatStream(): UseChatStreamReturn {
     const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
     assistantMsgRef.current = assistantMsg;
     setMessages(() => [...baseMessages, assistantMsg]);
-    setPending(prev => ({ ...prev, streaming: true, abort }));
+  // Clear any previous error when starting a regeneration
+  setPending(prev => ({ ...prev, streaming: true, abort, error: undefined }));
 
     try {
       // Ensure tools are loaded if needed
@@ -255,8 +262,7 @@ export function useChatStream(): UseChatStreamReturn {
         model,
         signal: abort.signal,
         conversationId: conversationId || undefined,
-        previousResponseId: previousResponseId || undefined,
-        useResponsesAPI: !useTools,
+  // ...existing code...
         shouldStream,
         reasoningEffort,
         verbosity,
@@ -302,13 +308,15 @@ export function useChatStream(): UseChatStreamReturn {
     try { pending.abort?.abort(); } catch {}
     // Ensure callers can immediately start a new request (e.g., after editing)
     inFlightRef.current = false;
-    setPending(p => ({ ...p, streaming: false, abort: undefined }));
+    // Also clear any previous error when stopping the stream
+    setPending(p => ({ ...p, streaming: false, abort: undefined, error: undefined }));
   }, [pending.abort]);
 
   const clearMessages = useCallback(() => {
     setMessages([]);
     assistantMsgRef.current = null;
-    setPending({ streaming: false });
+    // Clear pending state and any previous errors when clearing messages
+    setPending({ streaming: false, error: undefined });
     setPreviousResponseId(null);
   }, []);
 

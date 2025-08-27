@@ -5,6 +5,11 @@ services:
       context: ./backend
     env_file:
       - ./backend/.env
+    environment:
+      - PERSIST_TRANSCRIPTS=1
+      - DB_URL=file:/data/prod.db
+    volumes:
+      - db_data:/data
     ports:
       - "3001:3001"
     restart: unless-stopped
@@ -30,3 +35,7 @@ services:
 networks:
   app:
     driver: bridge
+
+volumes:
+  db_data:
+    driver: local

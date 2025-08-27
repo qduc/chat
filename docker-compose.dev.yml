@@ -8,6 +8,8 @@ services:
       - ./backend/.env
     volumes:
       - ./backend:/app
+      - /app/node_modules
+      - db_data:/data
     ports:
       - "4001:3001"
     environment:
@@ -17,15 +19,12 @@ services:
       # Optional: stabilize file watching inside container
       - CHOKIDAR_USEPOLLING=1
       # Persistence / DB (dev defaults)
-      # NOTE: The backend currently supports SQLite (file:...) only. Postgres service
-      # is provided for future work, but persistence is disabled by default here to
-      # avoid runtime errors. To enable persistence with SQLite, set
-      # PERSIST_TRANSCRIPTS=1 and DB_URL=file:./backend/data/dev.db (see docs).
+      # Use a named volume for SQLite database persistence
+      - PERSIST_TRANSCRIPTS=1
+      - DB_URL=file:/data/dev.db
     restart: unless-stopped
     networks:
       - app
-    depends_on:
-      - postgres
   frontend:
     build:
       context: ./frontend
@@ -42,24 +41,11 @@ services:
       - WATCHPACK_POLLING=true
     volumes:
       - ./frontend:/app
+      - /app/node_modules
     depends_on:
       - backend
     ports:
       - "3003:3000"
-    restart: unless-stopped
-    networks:
-      - app
-
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: chatforge
-    volumes:
-      - db_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     restart: unless-stopped
     networks:
       - app

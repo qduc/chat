@@ -1,5 +1,6 @@
 "use client";
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ChatProvider, useChatContext } from '../contexts/ChatContext';
 import { useConversations } from '../hooks/useConversations';
 import { useChatStream } from '../hooks/useChatStream';
@@ -33,6 +34,32 @@ function ChatInner() {
   const conversations = useConversations();
   const chatStream = useChatStream();
   const messageEditing = useMessageEditing();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Sync URL param with active conversation
+  useEffect(() => {
+    if (conversationId) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('conversationId', conversationId);
+      router.replace(`?${params.toString()}`);
+    } else {
+      // Remove param if no active conversation
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete('conversationId');
+      router.replace(`?${params.toString()}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId]);
+
+  // On mount, check for conversationId in URL and load that conversation
+  useEffect(() => {
+    const urlConvoId = searchParams.get('conversationId');
+    if (urlConvoId && urlConvoId !== conversationId) {
+      selectConversation(urlConvoId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleCopy = useCallback(async (text: string) => {
     try {
@@ -59,23 +86,14 @@ function ChatInner() {
     setInput('');
     messageEditing.handleCancelEdit();
 
-    if (conversations.historyEnabled) {
-      try {
-        const convo = await createConversation(undefined, { model });
-        setConversationId(convo.id);
-        conversations.addConversation({
-          id: convo.id,
-          title: convo.title || 'New chat',
-          model: convo.model,
-          created_at: convo.created_at
-        });
-      } catch (e: any) {
-        if (e.status === 501) conversations.setHistoryEnabled(false);
-      }
-    } else {
-      setConversationId(null);
-    }
-  }, [chatStream, conversations, model, setConversationId, messageEditing]);
+    // No longer need to explicitly create conversations - they'll be auto-created on first message
+    setConversationId(null);
+
+    // Remove conversationId param from URL
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('conversationId');
+    router.replace(`?${params.toString()}`);
+  }, [chatStream, setConversationId, messageEditing, router, searchParams]);
 
   const selectConversation = useCallback(async (id: string) => {
     if (chatStream.pending.streaming) chatStream.stopStreaming();
@@ -109,8 +127,24 @@ function ChatInner() {
     if (!trimmed) return;
     // Clear input immediately for a more responsive feel
     setInput('');
-    await chatStream.sendMessage(trimmed, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode);
-  }, [input, chatStream, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode]);
+
+    await chatStream.sendMessage(
+      trimmed,
+      conversationId,
+      model,
+      useTools,
+      shouldStream,
+      reasoningEffort,
+      verbosity,
+      researchMode,
+      // Handle auto-created conversation: set id and refresh history list
+      conversations.historyEnabled ? (conversation) => {
+        setConversationId(conversation.id);
+        // Ensure sidebar reflects server ordering/title by refetching
+        void conversations.refreshConversations();
+      } : undefined
+    );
+  }, [input, chatStream, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode, conversations, setConversationId]);
 
   const handleSaveEdit = useCallback(() => {
     if (chatStream.pending.streaming) {
@@ -172,12 +206,12 @@ function ChatInner() {
           onDeleteConversation={handleDeleteConversation}
           onLoadMore={conversations.loadMoreConversations}
           onRefresh={conversations.refreshConversations}
+          onNewChat={handleNewChat}
         />
       )}
       <div className="flex flex-col flex-1 relative">
         <ChatHeader
           isStreaming={chatStream.pending.streaming}
-          onNewChat={handleNewChat}
         />
         <MessageList
           messages={chatStream.messages}

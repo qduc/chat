@@ -40,9 +40,18 @@ export function MessageList({
   onEditingContentChange,
   onRetryLastAssistant
 }: MessageListProps) {
+  // Debug logging
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const editingTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [collapsedToolOutputs, setCollapsedToolOutputs] = useState<Record<string, boolean>>({});
+  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+
+  // Handle copy with tooltip feedback
+  const handleCopy = (messageId: string, text: string) => {
+    onCopy(text);
+    setCopiedMessageId(messageId);
+    setTimeout(() => setCopiedMessageId(null), 2000);
+  };
 
   // Resize the editing textarea to fit its content
   const resizeEditingTextarea = () => {
@@ -278,21 +287,31 @@ export function MessageList({
                           <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '150ms' }} />
                           <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '300ms' }} />
                         </span>
-                      ) : null)}
+                      ) : (m.role === 'assistant' && !m.content ? (
+                        <span className="text-slate-500 dark:text-slate-400 italic">No response content</span>
+                      ) : null))}
                     </div>
 
                     {/* Toolbar below the chat bubble (transparent) */}
                     {!isEditing && m.content && (
                       <div className="mt-1 flex items-center gap-2 opacity-70 group-hover:opacity-100 transition-all text-xs justify-end">
-                        <button
-                          type="button"
-                          onClick={() => onCopy(m.content)}
-                          title="Copy"
-                          className="p-2 rounded-md bg-white/60 dark:bg-neutral-800/50 hover:bg-white/90 dark:hover:bg-neutral-700/80 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
-                        >
-                          <Copy className="w-3 h-3" aria-hidden="true" />
-                          <span className="sr-only">Copy</span>
-                        </button>
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => handleCopy(m.id, m.content)}
+                            title="Copy"
+                            className="p-2 rounded-md bg-white/60 dark:bg-neutral-800/50 hover:bg-white/90 dark:hover:bg-neutral-700/80 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+                          >
+                            <Copy className="w-3 h-3" aria-hidden="true" />
+                            <span className="sr-only">Copy</span>
+                          </button>
+                          {copiedMessageId === m.id && (
+                            <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10 animate-fade-in">
+                              Copied
+                              <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-2 border-r-2 border-t-2 border-transparent border-t-slate-800 dark:border-t-slate-700"></div>
+                            </div>
+                          )}
+                        </div>
 
                         {isUser ? (
                           <button

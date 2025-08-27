@@ -27,6 +27,27 @@ Examples:
 EOF
 }
 
+test_backend() {
+    echo "Running backend tests..."
+    npm --prefix backend test
+}
+
+test_frontend() {
+    echo "Running frontend tests..."
+    npm --prefix frontend test
+}
+
+test_all() {
+    echo "Running all tests..."
+    test_backend
+    if [ $? -eq 0 ]; then
+        test_frontend
+    else
+        echo "Backend tests failed, skipping frontend tests"
+        exit 1
+    fi
+}
+
 if [ ! -f "$COMPOSE_FILE" ]; then
   echo "Error: compose file not found: $COMPOSE_FILE" >&2
   exit 1
@@ -66,6 +87,15 @@ case "$cmd" in
   ""|-h|--help)
     usage
     ;;
+  test)
+      test_all
+      ;;
+  test:backend)
+      test_backend
+      ;;
+  test:frontend)
+      test_frontend
+      ;;
   *)
     echo "Unknown command: $cmd" >&2
     usage

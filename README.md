@@ -1,6 +1,6 @@
-# ChatForge (working title)
+# ChatForge
 
-A full-stack AI chat app (React + Node) that talks to an OpenAI-compatible endpoint.
+A full-stack AI chat application with advanced tool orchestration and streaming support. Built with Next.js frontend and Node.js backend, featuring OpenAI-compatible API endpoints with server-side tool calling capabilities.
 
 ## Current Status
 - [x] Bootstrap repo
@@ -12,16 +12,38 @@ A full-stack AI chat app (React + Node) that talks to an OpenAI-compatible endpo
 - [x] Markdown rendering with syntax highlighting
 - [x] Development tooling (ESLint, Prettier)
 - [x] Docker development environment
+- [x] **Tool orchestration system** (server-side, up to 10 iterations)
+- [x] **Enhanced UI components** (quality controls, floating dropdowns)
+- [x] **Advanced streaming** (tool events, thinking support)
 - [ ] Conversation persistence (database)
 - [ ] System prompt / temperature controls
 - [ ] Auth & per-user limits
+
+## Key Features
+
+### 🤖 **Tool Orchestration**
+- Server-side tool calling with unified orchestrator
+- Iterative workflows with thinking support
+- Supports both streaming and non-streaming modes
+- Smart error handling and timeout management
+
+### 🎨 **Enhanced UI**
+- Quality slider for response control (quick/balanced/thorough)
+- Improved dropdown components with floating UI positioning
+- Responsive design with accessibility features
+- Real-time streaming with tool event display
+
+### 🔧 **Technical Features**
+- OpenAI-compatible API (Chat Completions + Responses)
+- Comprehensive test coverage (Jest)
+- ESLint/Prettier code quality tools
+- Docker development environment with hot reload
 
 ## Quick Links
 - [Overview](docs/OVERVIEW.md)
 - [Progress log](docs/PROGRESS.md)
 - [Tech stack](docs/TECH-STACK.md)
 - [API specs](docs/API-SPECS.md)
-- [Conversation history spec](docs/CONVERSATIONS-SPEC.md)
 - [Security & privacy](docs/SECURITY.md)
 
 ## Run It
@@ -67,12 +89,29 @@ Frontend on http://localhost:3000 with hot reload enabled.
 
 ## Development
 
+### Tool Development
+The application includes a server-side tool registry located in `backend/src/lib/tools.js`. To add new tools:
+
+1. Define your tool in the registry with validation schema
+2. Implement the handler function
+3. Tools are automatically available via the orchestration system
+
+Example:
+```javascript
+export const tools = {
+  get_weather: {
+    schema: z.object({ city: z.string().min(1) }).strict(),
+    handler: async ({ city }) => ({ tempC: 22, city }),
+  }
+};
+```
+
 ### Testing
 ```bash
 # Backend tests
 npm --prefix backend test
 
-# Frontend tests  
+# Frontend tests
 npm --prefix frontend test
 ```
 

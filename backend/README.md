@@ -35,6 +35,16 @@ PERSIST_TRANSCRIPTS=true
 DB_URL=file:./backend/data/dev.db
 ```
 
+### Persistence Behavior
+
+When `PERSIST_TRANSCRIPTS=true`, the server records conversation history with a simple, final-only strategy:
+
+- User messages: inserted immediately at request start (based on the last user message in the request).
+- Assistant messages: buffered in memory during streaming and inserted once at completion with the final content and finish reason. No per-token/delta writes.
+- Errors mid-stream: an assistant error row is inserted; no final row is written afterward.
+
+This reduces database write load and avoids timer-based flushes while preserving streaming to clients. Existing conversation routes and schema remain compatible.
+
 ## Run with Docker
 
 1. Create env file (not copied into image):

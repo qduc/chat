@@ -1,7 +1,9 @@
 import fetch from 'node-fetch';
 import { tools as toolRegistry, generateOpenAIToolSpecs } from './tools.js';
+import { getMessagesPage } from '../db/index.js';
 import { parseSSEStream } from './sseParser.js';
 import { createOpenAIRequest, writeAndFlush, createChatCompletionChunk } from './streamUtils.js';
+import { getConversationMetadata } from './responseUtils.js';
 
 /**
  * Iterative tool orchestration with thinking and dynamic tool execution
@@ -46,19 +48,21 @@ async function executeToolCall(call) {
 /**
  * Stream an event to the client
  */
-function streamEvent(res, event) {
+function streamEvent(res, event, model) {
   const chunk = {
     id: `iter_${Date.now()}`,
     object: 'chat.completion.chunk',
     created: Math.floor(Date.now() / 1000),
-    model: 'gpt-3.5-turbo',
+    model: model,
     choices: [{
       index: 0,
       delta: event,
       finish_reason: null,
     }],
   };
-  res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+  res.write(`data: ${JSON.stringify(chunk)}
+
+`);
   if (typeof res.flush === 'function') res.flush();
 }
 
@@ -73,7 +77,7 @@ async function callModel(messages, config, bodyParams, tools = null) {
   };
 
   const requestBody = {
-    model: bodyParams.model || config.defaultModel || 'gpt-3.5-turbo',
+    model: bodyParams.model || config.defaultModel,
     messages,
     stream: false,
     ...(tools && { tools, tool_choice: 'auto' })
@@ -98,32 +102,31 @@ export async function handleIterativeOrchestration({
   config,
   res,
   req,
-  persist,
-  assistantMessageId,
-  appendAssistantContent,
-  finalizeAssistantMessage,
-  markAssistantError,
-  buffer,
-  flushedOnce,
-  sizeThreshold,
+  persistence,
 }) {
-  const doFlush = () => {
-    if (!persist || !assistantMessageId) return;
-    if (buffer.value.length === 0) return;
-
-    appendAssistantContent({
-      messageId: assistantMessageId,
-      delta: buffer.value,
-    });
-    buffer.value = '';
-    flushedOnce.value = true;
-  };
-
   try {
-    // Initialize conversation with thinking prompt
+    // Build conversation history
+    let prior = [];
+    if (persistence && persistence.persist && persistence.conversationId) {
+      try {
+        // Load last N persisted messages to preserve context during tool runs
+        const page = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
+        prior = (page?.messages || [])
+          .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+          .map(m => ({ role: m.role, content: m.content }));
+      } catch (e) {
+        // Fallback to request body messages if DB fetch fails
+        prior = [...(bodyIn.messages || [])];
+      }
+    } else {
+      // No persistence, rely on request body
+      prior = [...(bodyIn.messages || [])];
+    }
+
+    // Initialize conversation with thinking prompt + prior context
     const conversationHistory = [
       { role: 'system', content: THINKING_PROMPT },
-      ...(bodyIn.messages || [])
+      ...prior,
     ];
 
     let iteration = 0;
@@ -134,7 +137,7 @@ export async function handleIterativeOrchestration({
 
       // Stream the model response for this iteration, buffering only tool calls
       const requestBody = {
-        model: body.model || config.defaultModel || 'gpt-3.5-turbo',
+        model: body.model || config.defaultModel,
         messages: conversationHistory,
         stream: true,
         tools: generateOpenAIToolSpecs(),
@@ -173,14 +176,15 @@ export async function handleIterativeOrchestration({
                   }
                 } else {
                   // Stream any non-tool delta chunk directly to the client
-                  writeAndFlush(res, `data: ${JSON.stringify(obj)}\n\n`);
+                  writeAndFlush(res, `data: ${JSON.stringify(obj)}
+
+`);
                   gotAnyNonToolDelta = true;
                 }
 
                 // Persist text content only
-                if (persist && typeof delta.content === 'string' && delta.content.length > 0) {
-                  buffer.value += delta.content;
-                  if (buffer.value.length >= sizeThreshold) doFlush();
+                if (persistence && persistence.persist && typeof delta.content === 'string' && delta.content.length > 0) {
+                  persistence.appendContent(delta.content);
                 }
               },
               () => resolve(),
@@ -199,10 +203,12 @@ export async function handleIterativeOrchestration({
         // Emit a single consolidated tool_calls chunk (buffered deltas)
         const toolCallChunk = createChatCompletionChunk(
           bodyIn.id || 'chatcmpl-' + Date.now(),
-          body.model || config.defaultModel || 'gpt-3.5-turbo',
+          body.model || config.defaultModel,
           { tool_calls: toolCalls }
         );
-        writeAndFlush(res, `data: ${JSON.stringify(toolCallChunk)}\n\n`);
+        writeAndFlush(res, `data: ${JSON.stringify(toolCallChunk)}
+
+`);
 
         // Add assistant message with tool calls for the next iteration
         conversationHistory.push({ role: 'assistant', tool_calls: toolCalls });
@@ -217,7 +223,7 @@ export async function handleIterativeOrchestration({
                 name,
                 output,
               },
-            });
+            }, body.model || config.defaultModel);
 
             conversationHistory.push({
               role: 'tool',
@@ -232,7 +238,7 @@ export async function handleIterativeOrchestration({
                 name: toolCall.function?.name,
                 output: errorMessage,
               },
-            });
+            }, body.model || config.defaultModel);
             conversationHistory.push({
               role: 'tool',
               tool_call_id: toolCall.id,
@@ -254,8 +260,10 @@ export async function handleIterativeOrchestration({
       // Safety check to prevent infinite loops
       if (iteration >= MAX_ITERATIONS) {
         const maxIterMsg = '\n\n[Maximum iterations reached]';
-        streamEvent(res, { content: maxIterMsg });
-        if (persist) buffer.value += maxIterMsg;
+        streamEvent(res, { content: maxIterMsg }, body.model || config.defaultModel);
+        if (persistence && persistence.persist) {
+          persistence.appendContent(maxIterMsg);
+        }
         isComplete = true;
       }
     }
@@ -265,24 +273,28 @@ export async function handleIterativeOrchestration({
       id: `iter_final_${Date.now()}`,
       object: 'chat.completion.chunk',
       created: Math.floor(Date.now() / 1000),
-      model: config.model || 'gpt-3.5-turbo',
+      model: config.model || config.defaultModel,
       choices: [{
         index: 0,
         delta: {},
         finish_reason: 'stop',
       }],
     };
-    res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
+    res.write(`data: ${JSON.stringify(finalChunk)}
+
+`);
+
+    // Include conversation metadata before [DONE] if auto-created
+    const conversationMeta = getConversationMetadata(persistence);
+    if (conversationMeta) {
+      res.write(`data: ${JSON.stringify(conversationMeta)}\n\n`);
+    }
+
     res.write('data: [DONE]\n\n');
 
     // Finalize persistence
-    if (persist && assistantMessageId) {
-      doFlush();
-      finalizeAssistantMessage({
-        messageId: assistantMessageId,
-        finishReason: 'stop',
-        status: 'final',
-      });
+    if (persistence && persistence.persist) {
+      persistence.recordAssistantFinal({ finishReason: 'stop' });
     }
 
     res.end();
@@ -292,12 +304,17 @@ export async function handleIterativeOrchestration({
 
     // Stream error to client
     const errorMsg = `[Error: ${error.message}]`;
-    streamEvent(res, { content: errorMsg });
+    streamEvent(res, { content: errorMsg }, body?.model || config.defaultModel);
 
-    if (persist && assistantMessageId) {
-      buffer.value += errorMsg;
-      doFlush();
-      markAssistantError({ messageId: assistantMessageId });
+    if (persistence && persistence.persist) {
+      persistence.appendContent(errorMsg);
+      persistence.markError();
+    }
+
+    // Include conversation metadata before [DONE] if auto-created
+    const conversationMeta = getConversationMetadata(persistence);
+    if (conversationMeta) {
+      res.write(`data: ${JSON.stringify(conversationMeta)}\n\n`);
     }
 
     res.write('data: [DONE]\n\n');

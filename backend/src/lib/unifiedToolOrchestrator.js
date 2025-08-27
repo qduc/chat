@@ -1,5 +1,8 @@
 import fetch from 'node-fetch';
 import { tools as toolRegistry } from './tools.js';
+import { getMessagesPage } from '../db/index.js';
+import { response } from 'express';
+import { addConversationMetadata, getConversationMetadata } from './responseUtils.js';
 
 /**
  * Execute a single tool call from the local registry
@@ -30,7 +33,7 @@ async function executeToolCall(call) {
 /**
  * Stream an event to the client
  */
-function streamEvent(res, event, model = 'gpt-3.5-turbo') {
+function streamEvent(res, event, model) {
   const chunk = {
     id: `unified_${Date.now()}`,
     object: 'chat.completion.chunk',
@@ -58,7 +61,7 @@ async function callLLM(messages, config, bodyParams) {
   };
 
   const requestBody = {
-    model: bodyParams.model || config.defaultModel || 'gpt-3.5-turbo',
+    model: bodyParams.model || config.defaultModel,
     messages,
     stream: bodyParams.stream || false,
     ...(bodyParams.tools && { tools: bodyParams.tools, tool_choice: bodyParams.tool_choice || 'auto' })
@@ -142,15 +145,14 @@ async function executeAllTools(toolCalls, streaming, res, model, collectedEvents
 /**
  * Stream a complete LLM response
  */
-async function streamResponse(llmResponse, res, buffer, doFlush, sizeThreshold) {
+async function streamResponse(llmResponse, res, persistence, model) {
   if (!llmResponse.body) {
     // Non-streaming response, convert to streaming format
     const message = llmResponse?.choices?.[0]?.message;
     if (message?.content) {
-      streamEvent(res, { content: message.content });
-      if (buffer && doFlush) {
-        buffer.value += message.content;
-        if (buffer.value.length >= sizeThreshold) doFlush();
+      streamEvent(res, { content: message.content }, llmResponse.model || model);
+      if (persistence && persistence.persist) {
+        persistence.appendContent(message.content);
       }
     }
 
@@ -159,7 +161,7 @@ async function streamResponse(llmResponse, res, buffer, doFlush, sizeThreshold) 
       id: llmResponse.id || `unified_${Date.now()}`,
       object: 'chat.completion.chunk',
       created: Math.floor(Date.now() / 1000),
-      model: llmResponse.model || 'gpt-3.5-turbo',
+      model: llmResponse.model || model,
       choices: [{
         index: 0,
         delta: {},
@@ -167,6 +169,18 @@ async function streamResponse(llmResponse, res, buffer, doFlush, sizeThreshold) 
       }],
     };
     res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
+    // Include conversation metadata if auto-created
+    if (persistence && persistence.persist && persistence.conversationMeta) {
+      const conversationEvent = {
+        _conversation: {
+          id: persistence.conversationId,
+          title: persistence.conversationMeta.title,
+          model: persistence.conversationMeta.model,
+          created_at: persistence.conversationMeta.created_at,
+        }
+      };
+      res.write(`data: ${JSON.stringify(conversationEvent)}\n\n`);
+    }
     res.write('data: [DONE]\n\n');
     return llmResponse?.choices?.[0]?.finish_reason || 'stop';
   }
@@ -180,8 +194,6 @@ async function streamResponse(llmResponse, res, buffer, doFlush, sizeThreshold) 
       try {
         res.write(chunk);
         if (typeof res.flush === 'function') res.flush();
-
-        if (!buffer || !doFlush) return;
 
         const s = String(chunk);
         let data = leftover + s;
@@ -204,8 +216,9 @@ async function streamResponse(llmResponse, res, buffer, doFlush, sizeThreshold) 
               const obj = JSON.parse(payload);
               const delta = obj?.choices?.[0]?.delta?.content;
               if (delta) {
-                buffer.value += delta;
-                if (buffer.value.length >= sizeThreshold) doFlush();
+                if (persistence && persistence.persist) {
+                  persistence.appendContent(delta);
+                }
               }
               const fr = obj?.choices?.[0]?.finish_reason;
               if (fr) lastFinishReason = fr;
@@ -253,28 +266,22 @@ export async function handleUnifiedToolOrchestration({
   config,
   res,
   req,
-  persist,
-  assistantMessageId,
-  appendAssistantContent,
-  finalizeAssistantMessage,
-  markAssistantError,
-  buffer,
-  flushedOnce,
-  sizeThreshold,
+  persistence,
 }) {
-  const doFlush = () => {
-    if (!persist || !assistantMessageId) return;
-    if (buffer.value.length === 0) return;
-
-    appendAssistantContent({
-      messageId: assistantMessageId,
-      delta: buffer.value,
-    });
-    buffer.value = '';
-    flushedOnce.value = true;
-  };
-
-  const messages = [...(bodyIn.messages || [])];
+  // Build initial messages from persisted history when available
+  let messages = [];
+  if (persistence && persistence.persist && persistence.conversationId) {
+    try {
+      const page = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
+      messages = (page?.messages || [])
+        .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+        .map(m => ({ role: m.role, content: m.content }));
+    } catch (_) {
+      messages = [...(bodyIn.messages || [])];
+    }
+  } else {
+    messages = [...(bodyIn.messages || [])];
+  }
   const requestedStreaming = body.stream !== false;
   const MAX_ITERATIONS = 10;
 
@@ -290,9 +297,8 @@ export async function handleUnifiedToolOrchestration({
     req.on('close', () => {
       if (res.writableEnded) return;
       try {
-        if (persist && assistantMessageId) {
-          doFlush();
-          markAssistantError({ messageId: assistantMessageId });
+        if (persistence && persistence.persist) {
+          persistence.markError();
         }
       } catch {
         // Ignore errors
@@ -311,28 +317,18 @@ export async function handleUnifiedToolOrchestration({
       if (!toolCalls.length) {
         // No tools needed - this is the final response
         if (requestedStreaming) {
-          const finishReason = await streamResponse(response, res, buffer, doFlush, sizeThreshold);
+          const finishReason = await streamResponse(response, res, persistence, body.model || config.defaultModel);
 
-          if (persist && assistantMessageId) {
-            doFlush();
-            finalizeAssistantMessage({
-              messageId: assistantMessageId,
-              finishReason,
-              status: 'final',
-            });
+          if (persistence && persistence.persist) {
+            persistence.recordAssistantFinal({ finishReason });
           }
 
           return res.end();
         } else {
           // Non-streaming response - add collected events to response
-          if (persist && assistantMessageId && message?.content) {
-            buffer.value += message.content;
-            doFlush();
-            finalizeAssistantMessage({
-              messageId: assistantMessageId,
-              finishReason: response?.choices?.[0]?.finish_reason || 'stop',
-              status: 'final',
-            });
+          if (persistence && persistence.persist && message?.content) {
+            persistence.appendContent(message.content);
+            persistence.recordAssistantFinal({ finishReason: response?.choices?.[0]?.finish_reason || 'stop' });
           }
 
           // Include collected events in the response
@@ -340,6 +336,9 @@ export async function handleUnifiedToolOrchestration({
             ...response,
             tool_events: collectedEvents
           };
+
+          // Include conversation metadata if auto-created
+          addConversationMetadata(responseWithEvents, persistence);
 
           return res.status(200).json(responseWithEvents);
         }
@@ -349,16 +348,15 @@ export async function handleUnifiedToolOrchestration({
       if (requestedStreaming) {
         // Stream any thinking content
         if (message.content) {
-          streamEvent(res, { content: message.content }, response.model);
-          if (persist) {
-            buffer.value += message.content;
-            if (buffer.value.length >= sizeThreshold) doFlush();
+          streamEvent(res, { content: message.content }, response.model || body.model || config.defaultModel);
+          if (persistence && persistence.persist) {
+            persistence.appendContent(message.content);
           }
         }
 
         // Stream tool calls
         for (const toolCall of toolCalls) {
-          streamEvent(res, { tool_calls: [toolCall] }, response.model);
+          streamEvent(res, { tool_calls: [toolCall] }, response.model || body.model || config.defaultModel);
         }
       } else {
         // For non-streaming, collect thinking content as event
@@ -367,9 +365,8 @@ export async function handleUnifiedToolOrchestration({
             type: 'text',
             value: message.content
           });
-          if (persist) {
-            buffer.value += message.content;
-            if (buffer.value.length >= sizeThreshold) doFlush();
+          if (persistence && persistence.persist) {
+            persistence.appendContent(message.content);
           }
         }
 
@@ -394,18 +391,12 @@ export async function handleUnifiedToolOrchestration({
     const finalResponse = await callLLM(messages, config, { ...body, stream: requestedStreaming });
 
     if (requestedStreaming) {
-      const finishReason = await streamResponse(finalResponse, res, buffer, doFlush, sizeThreshold);
+      const finishReason = await streamResponse(finalResponse, res, persistence, body.model || config.defaultModel);
       const maxIterMsg = '\n\n[Maximum iterations reached]';
-      streamEvent(res, { content: maxIterMsg });
-      if (persist) buffer.value += maxIterMsg;
-
-      if (persist && assistantMessageId) {
-        doFlush();
-        finalizeAssistantMessage({
-          messageId: assistantMessageId,
-          finishReason,
-          status: 'final',
-        });
+      streamEvent(res, { content: maxIterMsg }, body.model || config.defaultModel);
+      if (persistence && persistence.persist) {
+        persistence.appendContent(maxIterMsg);
+        persistence.recordAssistantFinal({ finishReason });
       }
 
       return res.end();
@@ -425,14 +416,9 @@ export async function handleUnifiedToolOrchestration({
         value: maxIterMsg
       });
 
-      if (persist && assistantMessageId && message?.content) {
-        buffer.value += message.content + maxIterMsg;
-        doFlush();
-        finalizeAssistantMessage({
-          messageId: assistantMessageId,
-          finishReason: finalResponse?.choices?.[0]?.finish_reason || 'stop',
-          status: 'final',
-        });
+      if (persistence && persistence.persist && message?.content) {
+        persistence.appendContent(message.content + maxIterMsg);
+        persistence.recordAssistantFinal({ finishReason: finalResponse?.choices?.[0]?.finish_reason || 'stop' });
       }
 
       // Include collected events in the response
@@ -440,6 +426,9 @@ export async function handleUnifiedToolOrchestration({
         ...finalResponse,
         tool_events: collectedEvents
       };
+
+      // Include conversation metadata if auto-created
+      addConversationMetadata(responseWithEvents, persistence);
 
       return res.status(200).json(responseWithEvents);
     }
@@ -449,19 +438,23 @@ export async function handleUnifiedToolOrchestration({
 
     if (requestedStreaming) {
       const errorMsg = `[Error: ${error.message}]`;
-      streamEvent(res, { content: errorMsg });
+      streamEvent(res, { content: errorMsg }, body?.model || config.defaultModel);
 
-      if (persist && assistantMessageId) {
-        buffer.value += errorMsg;
-        doFlush();
-        markAssistantError({ messageId: assistantMessageId });
+      if (persistence && persistence.persist) {
+        persistence.appendContent(errorMsg);
+        persistence.markError();
       }
 
+      // Include conversation metadata if auto-created
+      const conversationMeta = getConversationMetadata(persistence);
+      if (conversationMeta) {
+        res.write(`data: ${JSON.stringify(conversationMeta)}\n\n`);
+      }
       res.write('data: [DONE]\n\n');
       return res.end();
     } else {
-      if (persist && assistantMessageId) {
-        markAssistantError({ messageId: assistantMessageId });
+      if (persistence && persistence.persist) {
+        persistence.markError();
       }
 
       const errorMsg = `[Error: ${error.message}]`;
