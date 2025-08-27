@@ -3,6 +3,7 @@ import {
   createChatCompletionChunk,
   writeAndFlush,
 } from './streamUtils.js';
+import { config } from 'dotenv';
 
 export { setupStreamingHeaders } from './streamUtils.js';
 
@@ -146,6 +147,7 @@ export async function handleRegularStreaming({
       } else {
         // Direct passthrough for native format or Chat Completions API
         writeAndFlush(res, chunk);
+      }
 
       // Update persistence buffer if enabled
       if (!persistence || !persistence.persist) return;

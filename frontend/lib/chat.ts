@@ -133,33 +133,20 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
     }
 
     // Debug logging
-    console.log('[sendChat] Non-streaming response received:', JSON.stringify(json, null, 2));
-    console.log('[sendChat] useResponses flag:', useResponses);
-    console.log('[sendChat] Has choices:', !!json?.choices);
-    console.log('[sendChat] Has output:', !!json?.output);
 
     // Dynamically detect response format based on actual structure
     if (json?.choices && Array.isArray(json.choices)) {
-      console.log('[sendChat] Using Chat Completions format');
       const content = json?.choices?.[0]?.message?.content ?? '';
       const responseId = json?.id;
-      console.log('[sendChat] Extracted content:', content);
-      console.log('[sendChat] Extracted responseId:', responseId);
       return { content, responseId };
     } else if (json?.output && Array.isArray(json.output)) {
-      console.log('[sendChat] Using Responses API format');
       const content = json?.output?.[0]?.content?.[0]?.text ?? '';
       const responseId = json?.id;
-      console.log('[sendChat] Extracted content:', content);
-      console.log('[sendChat] Extracted responseId:', responseId);
       return { content, responseId };
     } else {
-      console.log('[sendChat] Using fallback format');
       // Fallback - try to extract content from any available field
       const content = json?.content ?? json?.message?.content ?? '';
       const responseId = json?.id;
-      console.log('[sendChat] Extracted content:', content);
-      console.log('[sendChat] Extracted responseId:', responseId);
       return { content, responseId };
     }
   }

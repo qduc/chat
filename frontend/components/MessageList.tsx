@@ -41,8 +41,6 @@ export function MessageList({
   onRetryLastAssistant
 }: MessageListProps) {
   // Debug logging
-  console.log('[MessageList] Rendering with messages:', messages);
-  console.log('[MessageList] Pending state:', pending);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const editingTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [collapsedToolOutputs, setCollapsedToolOutputs] = useState<Record<string, boolean>>({});
