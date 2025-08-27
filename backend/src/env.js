@@ -33,7 +33,7 @@ export const config = {
   },
   allowedOrigin: process.env.ALLOWED_ORIGIN || 'http://localhost:3000',
   persistence: {
-    enabled: bool(process.env.PERSIST_TRANSCRIPTS, false),
+    enabled: bool(process.env.PERSIST_TRANSCRIPTS, true),
     dbUrl: process.env.DB_URL || '',
     maxConversationsPerSession:
       Number(process.env.MAX_CONVERSATIONS_PER_SESSION) || 100,
