@@ -336,6 +336,16 @@ export async function handleUnifiedToolOrchestration({
             tool_events: collectedEvents
           };
 
+          // Include conversation metadata if auto-created
+          if (persistence && persistence.persist && persistence.conversationMeta) {
+            responseWithEvents._conversation = {
+              id: persistence.conversationId,
+              title: persistence.conversationMeta.title,
+              model: persistence.conversationMeta.model,
+              created_at: persistence.conversationMeta.created_at,
+            };
+          }
+
           return res.status(200).json(responseWithEvents);
         }
       }
