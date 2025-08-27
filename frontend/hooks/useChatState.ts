@@ -381,6 +381,20 @@ export function useChatState() {
             });
           }
         }
+        // If the backend auto-created a conversation, capture it in state
+        // so subsequent turns include conversation_id and append to history list.
+        if (result.conversation) {
+          dispatch({ type: 'SET_CONVERSATION_ID', payload: result.conversation.id });
+          dispatch({
+            type: 'ADD_CONVERSATION',
+            payload: {
+              id: result.conversation.id,
+              title: result.conversation.title || 'New chat',
+              model: result.conversation.model || state.model,
+              created_at: result.conversation.created_at,
+            },
+          });
+        }
         dispatch({
           type: 'STREAM_COMPLETE',
           payload: { responseId: result.responseId },
@@ -394,7 +408,7 @@ export function useChatState() {
         inFlightRef.current = false;
       }
     },
-    []
+    [state.model]
   );
 
   // Actions
