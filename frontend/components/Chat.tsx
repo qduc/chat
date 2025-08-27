@@ -1,5 +1,6 @@
 "use client";
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { ChatProvider, useChatContext } from '../contexts/ChatContext';
 import { useConversations } from '../hooks/useConversations';
 import { useChatStream } from '../hooks/useChatStream';
@@ -33,6 +34,32 @@ function ChatInner() {
   const conversations = useConversations();
   const chatStream = useChatStream();
   const messageEditing = useMessageEditing();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Sync URL param with active conversation
+  useEffect(() => {
+    if (conversationId) {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set('conversationId', conversationId);
+      router.replace(`?${params.toString()}`);
+    } else {
+      // Remove param if no active conversation
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete('conversationId');
+      router.replace(`?${params.toString()}`);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [conversationId]);
+
+  // On mount, check for conversationId in URL and load that conversation
+  useEffect(() => {
+    const urlConvoId = searchParams.get('conversationId');
+    if (urlConvoId && urlConvoId !== conversationId) {
+      selectConversation(urlConvoId);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleCopy = useCallback(async (text: string) => {
     try {
@@ -61,7 +88,12 @@ function ChatInner() {
 
     // No longer need to explicitly create conversations - they'll be auto-created on first message
     setConversationId(null);
-  }, [chatStream, setConversationId, messageEditing]);
+
+    // Remove conversationId param from URL
+    const params = new URLSearchParams(searchParams.toString());
+    params.delete('conversationId');
+    router.replace(`?${params.toString()}`);
+  }, [chatStream, setConversationId, messageEditing, router, searchParams]);
 
   const selectConversation = useCallback(async (id: string) => {
     if (chatStream.pending.streaming) chatStream.stopStreaming();
