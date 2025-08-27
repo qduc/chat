@@ -68,7 +68,7 @@ interface ResponsesAPIStreamChunk {
   };
 }
 
-export async function sendChat(options: SendChatOptions): Promise<{ content: string; responseId?: string }> {
+export async function sendChat(options: SendChatOptions): Promise<{ content: string; responseId?: string; conversation?: ConversationMeta }> {
   const { apiBase = defaultApiBase, messages, model, signal, onEvent, onToken, conversationId, useResponsesAPI, previousResponseId, tools, tool_choice, research_mode, reasoningEffort, verbosity } = options;
   const streamFlag = options.shouldStream !== undefined
     ? !!options.shouldStream
@@ -132,22 +132,30 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
       }
     }
 
+    // Extract conversation metadata if present
+    const conversation = json._conversation ? {
+      id: json._conversation.id,
+      title: json._conversation.title,
+      model: json._conversation.model,
+      created_at: json._conversation.created_at,
+    } : undefined;
+
     // Debug logging
 
     // Dynamically detect response format based on actual structure
     if (json?.choices && Array.isArray(json.choices)) {
       const content = json?.choices?.[0]?.message?.content ?? '';
       const responseId = json?.id;
-      return { content, responseId };
+      return { content, responseId, conversation };
     } else if (json?.output && Array.isArray(json.output)) {
       const content = json?.output?.[0]?.content?.[0]?.text ?? '';
       const responseId = json?.id;
-      return { content, responseId };
+      return { content, responseId, conversation };
     } else {
       // Fallback - try to extract content from any available field
       const content = json?.content ?? json?.message?.content ?? '';
       const responseId = json?.id;
-      return { content, responseId };
+      return { content, responseId, conversation };
     }
   }
 
@@ -158,6 +166,7 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
   let assistant = '';
   let buffer = '';
   let responseId: string | undefined;
+  let conversation: ConversationMeta | undefined;
 
   while (true) {
     const { done, value } = await reader.read();
@@ -171,10 +180,21 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
       if (line.startsWith('data:')) {
         const data = line.slice(5).trim();
         if (data === '[DONE]') {
-          return { content: assistant, responseId };
+          return { content: assistant, responseId, conversation };
         }
         try {
           const json = JSON.parse(data);
+
+          // Handle conversation metadata
+          if (json._conversation) {
+            conversation = {
+              id: json._conversation.id,
+              title: json._conversation.title,
+              model: json._conversation.model,
+              created_at: json._conversation.created_at,
+            };
+            continue; // Skip processing this as content
+          }
 
           if (useResponses) {
             // Handle "Responses API" stream format
@@ -212,7 +232,7 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
       }
     }
   }
-  return { content: assistant, responseId };
+  return { content: assistant, responseId, conversation };
 }
 
 // --- Sprint 4: History API helpers ---

@@ -271,6 +271,19 @@ export async function handleIterativeOrchestration({
       persistence.recordAssistantFinal({ finishReason: 'stop' });
     }
 
+    // Include conversation metadata if auto-created
+    if (persistence && persistence.persist && persistence.conversationMeta) {
+      const conversationEvent = {
+        _conversation: {
+          id: persistence.conversationId,
+          title: persistence.conversationMeta.title,
+          model: persistence.conversationMeta.model,
+          created_at: persistence.conversationMeta.created_at,
+        }
+      };
+      res.write(`data: ${JSON.stringify(conversationEvent)}\n\n`);
+    }
+
     res.end();
 
   } catch (error) {

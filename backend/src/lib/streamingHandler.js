@@ -2,6 +2,7 @@ import { parseSSEStream } from './sseParser.js';
 import {
   createChatCompletionChunk,
   writeAndFlush,
+  setupStreamingHeaders,
 } from './streamUtils.js';
 import { config } from 'dotenv';
 
@@ -30,6 +31,19 @@ function setupStreamEventHandlers({
     if (completed) return;
     completed = true;
     try {
+      // Include conversation metadata before finalizing if auto-created
+      if (persistence && persistence.persist && persistence.conversationMeta) {
+        const conversationEvent = {
+          _conversation: {
+            id: persistence.conversationId,
+            title: persistence.conversationMeta.title,
+            model: persistence.conversationMeta.model,
+            created_at: persistence.conversationMeta.created_at,
+          }
+        };
+        writeAndFlush(res, `data: ${JSON.stringify(conversationEvent)}\n\n`);
+      }
+
       if (persistence && persistence.persist) {
         const finishReason = (typeof lastFinishReason === 'object' && lastFinishReason !== null ? lastFinishReason.value : lastFinishReason) || 'stop';
         persistence.recordAssistantFinal({ finishReason });

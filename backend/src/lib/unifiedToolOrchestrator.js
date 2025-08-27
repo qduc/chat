@@ -8,7 +8,23 @@ import { tools as toolRegistry } from './tools.js';
  */
 async function executeToolCall(call) {
   const name = call?.function?.name;
-  const argsStr = call?.function?.arguments || '{}';
+  const argsStr = ca      // Include collected events in the response
+      const responseWithEvents = {
+        ...response,
+        tool_events: collectedEvents
+      };
+
+      // Include conversation metadata if auto-created
+      if (persistence && persistence.persist && persistence.conversationMeta) {
+        responseWithEvents._conversation = {
+          id: persistence.conversationId,
+          title: persistence.conversationMeta.title,
+          model: persistence.conversationMeta.model,
+          created_at: persistence.conversationMeta.created_at,
+        };
+      }
+
+      return res.status(200).json(responseWithEvents);ction?.arguments || '{}';
   const tool = toolRegistry[name];
 
   if (!tool) {
@@ -395,6 +411,16 @@ export async function handleUnifiedToolOrchestration({
         ...finalResponse,
         tool_events: collectedEvents
       };
+
+      // Include conversation metadata if auto-created
+      if (persistence && persistence.persist && persistence.conversationMeta) {
+        responseWithEvents._conversation = {
+          id: persistence.conversationId,
+          title: persistence.conversationMeta.title,
+          model: persistence.conversationMeta.model,
+          created_at: persistence.conversationMeta.created_at,
+        };
+      }
 
       return res.status(200).json(responseWithEvents);
     }

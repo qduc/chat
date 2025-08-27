@@ -187,7 +187,18 @@ export async function proxyOpenAIRequest(req, res) {
         persistence.recordAssistantFinal({ finishReason });
       }
 
-      return res.status(200).json(body);
+      // Include conversation metadata in response if auto-created
+      const responseBody = { ...body };
+      if (persistence.persist && persistence.conversationMeta) {
+        responseBody._conversation = {
+          id: persistence.conversationId,
+          title: persistence.conversationMeta.title,
+          model: persistence.conversationMeta.model,
+          created_at: persistence.conversationMeta.created_at,
+        };
+      }
+
+      return res.status(200).json(responseBody);
     }
 
     // Setup streaming headers

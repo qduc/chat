@@ -59,23 +59,9 @@ function ChatInner() {
     setInput('');
     messageEditing.handleCancelEdit();
 
-    if (conversations.historyEnabled) {
-      try {
-        const convo = await createConversation(undefined, { model });
-        setConversationId(convo.id);
-        conversations.addConversation({
-          id: convo.id,
-          title: convo.title || 'New chat',
-          model: convo.model,
-          created_at: convo.created_at
-        });
-      } catch (e: any) {
-        if (e.status === 501) conversations.setHistoryEnabled(false);
-      }
-    } else {
-      setConversationId(null);
-    }
-  }, [chatStream, conversations, model, setConversationId, messageEditing]);
+    // No longer need to explicitly create conversations - they'll be auto-created on first message
+    setConversationId(null);
+  }, [chatStream, setConversationId, messageEditing]);
 
   const selectConversation = useCallback(async (id: string) => {
     if (chatStream.pending.streaming) chatStream.stopStreaming();
@@ -109,8 +95,28 @@ function ChatInner() {
     if (!trimmed) return;
     // Clear input immediately for a more responsive feel
     setInput('');
-    await chatStream.sendMessage(trimmed, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode);
-  }, [input, chatStream, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode]);
+
+    await chatStream.sendMessage(
+      trimmed,
+      conversationId,
+      model,
+      useTools,
+      shouldStream,
+      reasoningEffort,
+      verbosity,
+      researchMode,
+      // Handle auto-created conversation
+      conversations.historyEnabled ? (conversation) => {
+        setConversationId(conversation.id);
+        conversations.addConversation({
+          id: conversation.id,
+          title: conversation.title || 'New chat',
+          model: conversation.model,
+          created_at: conversation.created_at
+        });
+      } : undefined
+    );
+  }, [input, chatStream, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode, conversations, setConversationId]);
 
   const handleSaveEdit = useCallback(() => {
     if (chatStream.pending.streaming) {

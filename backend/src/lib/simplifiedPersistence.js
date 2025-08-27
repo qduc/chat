@@ -7,7 +7,10 @@ import {
   insertUserMessage,
   insertAssistantFinal,
   markAssistantErrorBySeq,
+  createConversation,
+  countConversationsBySession,
 } from '../db/index.js';
+import { v4 as uuidv4 } from 'uuid';
 
 /**
  * Simplified persistence manager that implements final-only writes
@@ -22,6 +25,7 @@ export class SimplifiedPersistence {
     this.assistantBuffer = '';
     this.finalized = false;
     this.errored = false;
+    this.conversationMeta = null; // Store conversation metadata
   }
 
   /**
@@ -38,7 +42,7 @@ export class SimplifiedPersistence {
     // Check if persistence is enabled
     const persistenceEnabled = this.config?.persistence?.enabled || false;
 
-    if (!persistenceEnabled || !conversationId || !sessionId) {
+    if (!persistenceEnabled || !sessionId) {
       this.persist = false;
       return;
     }
@@ -49,11 +53,44 @@ export class SimplifiedPersistence {
       userAgent: req.header('user-agent') || null,
     });
 
-    // Guard conversation ownership
-    const convo = getConversationById({ id: conversationId, sessionId });
-    if (!convo) {
-      this.persist = false;
-      return;
+    let convo = null;
+
+    // If conversation ID provided, validate it exists and belongs to session
+    if (conversationId) {
+      convo = getConversationById({ id: conversationId, sessionId });
+      if (!convo) {
+        // Invalid conversation ID - ignore and auto-create new one
+        conversationId = null;
+      }
+    }
+
+    // Auto-create conversation if none provided or invalid
+    if (!conversationId) {
+      // Check conversation limit before creating
+      const conversationCount = countConversationsBySession(sessionId);
+      const maxConversations = this.config?.persistence?.maxConversationsPerSession || 100;
+
+      if (conversationCount >= maxConversations) {
+        res.status(429).json({
+          error: 'limit_exceeded',
+          message: 'Max conversations per session reached',
+        });
+        throw new Error('Conversation limit exceeded');
+      }
+
+      // Create new conversation
+      const newConversationId = uuidv4();
+      const model = bodyIn.model || this.config.defaultModel || null;
+
+      createConversation({
+        id: newConversationId,
+        sessionId,
+        title: null, // Will be auto-generated from first message if needed
+        model
+      });
+
+      conversationId = newConversationId;
+      convo = getConversationById({ id: conversationId, sessionId });
     }
 
     // Enforce message limit
@@ -89,6 +126,7 @@ export class SimplifiedPersistence {
     this.conversationId = conversationId;
     this.assistantSeq = userSeq + 1;
     this.assistantBuffer = '';
+    this.conversationMeta = convo; // Store conversation metadata for response
   }
 
   /**
@@ -177,6 +215,7 @@ export class SimplifiedPersistence {
       conversationId: this.conversationId,
       assistantSeq: this.assistantSeq,
       bufferLength: this.assistantBuffer.length,
+      conversationMeta: this.conversationMeta,
     };
   }
 }

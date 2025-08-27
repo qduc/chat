@@ -20,7 +20,8 @@ export interface UseChatStreamReturn {
     shouldStream: boolean,
     reasoningEffort: string,
     verbosity: string,
-    researchMode?: boolean
+    researchMode?: boolean,
+    onConversationCreated?: (conversation: { id: string; title?: string | null; model?: string | null; created_at: string }) => void
   ) => Promise<void>;
   regenerateFromCurrent: (
     conversationId: string | null,
@@ -62,7 +63,7 @@ export function useChatStream(): UseChatStreamReturn {
   const [availableTools, setAvailableTools] = useState<ToolSpec[] | null>(null);
   const assistantMsgRef = useRef<ChatMessage | null>(null);
   const inFlightRef = useRef<boolean>(false);
-  const toolsPromiseRef = useRef<Promise<ToolSpec[]>>();
+  const toolsPromiseRef = useRef<Promise<ToolSpec[]> | undefined>(undefined);
 
   // Fetch tool specifications from backend on mount
   useEffect(() => {
@@ -111,7 +112,8 @@ export function useChatStream(): UseChatStreamReturn {
     shouldStream: boolean,
     reasoningEffort: string,
     verbosity: string,
-    researchMode?: boolean
+    researchMode?: boolean,
+    onConversationCreated?: (conversation: { id: string; title?: string | null; model?: string | null; created_at: string }) => void
   ) => {
     if (!input.trim()) return;
     if (inFlightRef.current) return;
@@ -156,6 +158,10 @@ export function useChatStream(): UseChatStreamReturn {
       }
       if (result.responseId) {
         setPreviousResponseId(result.responseId);
+      }
+      // Handle auto-created conversation
+      if (result.conversation && onConversationCreated) {
+        onConversationCreated(result.conversation);
       }
     } catch (e: any) {
       setPending(p => ({ ...p, error: e?.message || String(e) }));
