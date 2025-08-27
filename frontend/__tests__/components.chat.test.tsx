@@ -1,6 +1,7 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Chat } from '../components/Chat';
+import { ThemeProvider } from '../contexts/ThemeContext';
 import * as chatLib from '../lib/chat';
 
 // Mock the chat library functions
@@ -39,6 +40,10 @@ function sseStream(lines: string[]) {
   });
 }
 
+function renderWithProviders(ui: React.ReactElement) {
+  return render(<ThemeProvider>{ui}</ThemeProvider>);
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
 
@@ -59,8 +64,22 @@ beforeEach(() => {
 });
 
 describe('<Chat />', () => {
+  // Provide a minimal matchMedia mock for JSDOM used in tests
+  beforeAll(() => {
+    if (typeof window.matchMedia !== 'function') {
+      // @ts-ignore
+      window.matchMedia = (query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false,
+      });
+    }
+  });
   test('renders welcome state when there are no messages', async () => {
-    render(<Chat />);
+    renderWithProviders(<Chat />);
 
     await waitFor(() => {
       expect(screen.getByText('Welcome to Chat')).toBeInTheDocument();
@@ -72,7 +91,7 @@ describe('<Chat />', () => {
   test('allows sending messages with Enter key', async () => {
     const user = userEvent.setup();
 
-    render(<Chat />);
+    renderWithProviders(<Chat />);
 
     const input = screen.getByPlaceholderText('Type your message...');
     await user.type(input, 'Hi there');
@@ -85,7 +104,7 @@ describe('<Chat />', () => {
   });
 
   test('has input field and send button', async () => {
-    render(<Chat />);
+    renderWithProviders(<Chat />);
 
     await waitFor(() => {
       expect(screen.getByPlaceholderText('Type your message...')).toBeInTheDocument();
@@ -94,7 +113,7 @@ describe('<Chat />', () => {
   });
 
   test('has model selection dropdown', async () => {
-    render(<Chat />);
+    renderWithProviders(<Chat />);
 
     await waitFor(() => {
       // Test behavior: User should be able to see and interact with a model selection interface
@@ -114,7 +133,7 @@ describe('<Chat />', () => {
       next_cursor: null,
     });
 
-    render(<Chat />);
+    renderWithProviders(<Chat />);
 
     await waitFor(() => {
       expect(screen.getByText('Chat History')).toBeInTheDocument();
@@ -142,7 +161,7 @@ describe('<Chat />', () => {
       next_after_seq: null,
     });
 
-    render(<Chat />);
+    renderWithProviders(<Chat />);
 
     await waitFor(() => {
       expect(screen.getByText('Test Conversation')).toBeInTheDocument();
@@ -168,7 +187,7 @@ describe('<Chat />', () => {
     });
     mockedChatLib.deleteConversationApi.mockResolvedValue(true);
 
-    render(<Chat />);
+    renderWithProviders(<Chat />);
 
     await waitFor(() => {
       expect(screen.getByText('Test Conversation')).toBeInTheDocument();
@@ -190,7 +209,7 @@ describe('<Chat />', () => {
         next_cursor: null,
       });
 
-    render(<Chat />);
+    renderWithProviders(<Chat />);
 
     await waitFor(() => {
       expect(screen.getByText('First')).toBeInTheDocument();
@@ -214,7 +233,7 @@ describe('<Chat />', () => {
 
   test('textarea responds to input changes', async () => {
     const user = userEvent.setup();
-    render(<Chat />);
+    renderWithProviders(<Chat />);
 
     const textarea = screen.getByPlaceholderText('Type your message...') as HTMLTextAreaElement;
 
@@ -227,7 +246,7 @@ describe('<Chat />', () => {
   });
 
   test('has clipboard functionality available', async () => {
-    render(<Chat />);
+    renderWithProviders(<Chat />);
 
     await waitFor(() => {
       // Verify the clipboard API is mocked and available
@@ -238,7 +257,7 @@ describe('<Chat />', () => {
   test('handles errors when sendChat fails', async () => {
     mockedChatLib.sendChat.mockRejectedValue(new Error('Network error'));
 
-    render(<Chat />);
+    renderWithProviders(<Chat />);
 
     await waitFor(() => {
       // Verify the component renders without crashing even with a potential error
@@ -249,7 +268,7 @@ describe('<Chat />', () => {
   test('can type in input field', async () => {
     const user = userEvent.setup();
 
-    render(<Chat />);
+    renderWithProviders(<Chat />);
 
     const input = screen.getByPlaceholderText('Type your message...');
     await user.type(input, 'Test message');
@@ -273,7 +292,7 @@ describe('<Chat />', () => {
       next_after_seq: null,
     });
 
-    render(<Chat />);
+    renderWithProviders(<Chat />);
 
     // Select existing conversation
     await waitFor(() => {
@@ -288,7 +307,7 @@ describe('<Chat />', () => {
   test('new chat button exists and can be clicked', async () => {
     const user = userEvent.setup();
 
-    render(<Chat />);
+    renderWithProviders(<Chat />);
 
     await waitFor(() => {
       // Verify New Chat button exists
@@ -325,7 +344,7 @@ describe('<Chat />', () => {
       new_conversation_id: 'new-conv',
     });
 
-    render(<Chat />);
+    renderWithProviders(<Chat />);
 
     // Select conversation
     await waitFor(() => {

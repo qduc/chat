@@ -2,7 +2,7 @@
 
 import { sendChat, getToolSpecs } from '../lib/chat';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useChatStream } from '../hooks/useChatStream';
+import { useChatState } from '../hooks/useChatState';
 
 // Mock the tool specs API
 jest.mock('../lib/chat', () => ({
@@ -240,19 +240,24 @@ describe('Frontend Iterative Orchestration', () => {
 
       global.fetch = mockFetch([mockResponse]);
 
-      const { result } = renderHook(() => useChatStream());
+      const { result } = renderHook(() => useChatState());
 
-      act(() => {
-        result.current.sendMessage('Test message', null, 'gpt-3.5-turbo', true, true, 'low', 'default');
+      await act(async () => {
+        result.current.actions.setInput('Test message');
+      });
+      await waitFor(() => expect(result.current.state.input).toBe('Test message'));
+
+      await act(async () => {
+        await result.current.actions.sendMessage();
       });
 
       await waitFor(() => {
-        const assistantMessage = result.current.messages[1];
+        const assistantMessage = result.current.state.messages[1];
         expect(assistantMessage.tool_calls).toBeDefined();
         expect(assistantMessage.tool_outputs).toBeDefined();
       });
 
-      const messages = result.current.messages;
+      const messages = result.current.state.messages;
       const assistantMessage = messages[1];
       expect(assistantMessage.role).toBe('assistant');
       expect(assistantMessage.content).toBe('Let me help you. Done!');
@@ -278,17 +283,22 @@ describe('Frontend Iterative Orchestration', () => {
 
       global.fetch = mockFetch([mockResponse]);
 
-      const { result } = renderHook(() => useChatStream());
+      const { result } = renderHook(() => useChatState());
 
-      act(() => {
-        result.current.sendMessage('Test', null, 'gpt-3.5-turbo', true, true, 'low', 'default');
+      await act(async () => {
+        result.current.actions.setInput('Test');
+      });
+      await waitFor(() => expect(result.current.state.input).toBe('Test'));
+
+      await act(async () => {
+        await result.current.actions.sendMessage();
       });
 
       await waitFor(() => {
-        expect(result.current.pending.error).toBeTruthy();
+        expect(result.current.state.error).toBeTruthy();
       });
 
-      expect(result.current.messages[1].content).toContain('[error:');
+      expect(result.current.state.messages[1].content).toContain('[error:');
     });
 
     it.skip('should prevent multiple concurrent requests', async () => {

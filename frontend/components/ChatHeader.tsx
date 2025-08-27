@@ -1,16 +1,16 @@
 import { Sun, Moon } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import IconSelect from './ui/IconSelect';
-import { useChatContext } from '../contexts/ChatContext';
 
 interface ChatHeaderProps {
   isStreaming: boolean;
   onNewChat?: () => void;
+  model: string;
+  onModelChange: (model: string) => void;
 }
 
-export function ChatHeader({}: ChatHeaderProps) {
+export function ChatHeader({ model, onModelChange }: ChatHeaderProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
-  const { model, setModel } = useChatContext();
 
   const toggleTheme = () => {
     if (theme === 'dark') {
@@ -28,7 +28,7 @@ export function ChatHeader({}: ChatHeaderProps) {
             <IconSelect
               ariaLabel="Model"
               value={model}
-              onChange={setModel}
+              onChange={onModelChange}
               className="text-lg py-1 px-2"
               options={[
                 { value: 'gpt-5-mini', label: 'GPT-5 Mini' },

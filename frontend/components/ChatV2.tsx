@@ -72,6 +72,8 @@ export function ChatV2() {
         <ChatHeader
           isStreaming={state.status === 'streaming'}
           onNewChat={actions.newChat}
+          model={state.model}
+          onModelChange={actions.setModel}
         />
         <MessageList
           messages={state.messages}
@@ -104,10 +106,13 @@ export function ChatV2() {
             onStop={actions.stopStreaming}
             useTools={state.useTools}
             shouldStream={state.shouldStream}
-            researchMode={false}
+            researchMode={state.researchMode}
             onUseToolsChange={actions.setUseTools}
             onShouldStreamChange={actions.setShouldStream}
-            onResearchModeChange={() => {}}
+            onResearchModeChange={actions.setResearchMode}
+            model={state.model}
+            qualityLevel={state.qualityLevel}
+            onQualityLevelChange={actions.setQualityLevel}
           />
         </div>
       </div>

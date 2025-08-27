@@ -21,7 +21,8 @@ export interface UseChatStreamReturn {
     reasoningEffort: string,
     verbosity: string,
     researchMode?: boolean,
-    onConversationCreated?: (conversation: { id: string; title?: string | null; model?: string | null; created_at: string }) => void
+    onConversationCreated?: (conversation: { id: string; title?: string | null; model?: string | null; created_at: string }) => void,
+    qualityLevel?: string
   ) => Promise<void>;
   regenerateFromCurrent: (
     conversationId: string | null,
@@ -30,7 +31,8 @@ export interface UseChatStreamReturn {
     shouldStream: boolean,
     reasoningEffort: string,
     verbosity: string,
-    researchMode?: boolean
+    researchMode?: boolean,
+    qualityLevel?: string
   ) => Promise<void>;
   regenerateFromBase: (
     baseMessages: ChatMessage[],
@@ -40,7 +42,8 @@ export interface UseChatStreamReturn {
     shouldStream: boolean,
     reasoningEffort: string,
     verbosity: string,
-    researchMode?: boolean
+    researchMode?: boolean,
+    qualityLevel?: string
   ) => Promise<void>;
   generateFromHistory: (
     model: string,
@@ -48,7 +51,8 @@ export interface UseChatStreamReturn {
     reasoningEffort: string,
     verbosity: string,
     messagesOverride?: ChatMessage[],
-    researchMode?: boolean
+    researchMode?: boolean,
+    qualityLevel?: string
   ) => Promise<void>;
   stopStreaming: () => void;
   clearMessages: () => void;
@@ -143,7 +147,6 @@ export function useChatStream(): UseChatStreamReturn {
         model,
         signal: abort.signal,
         conversationId: conversationId || undefined,
-  // ...existing code...
         shouldStream,
         reasoningEffort,
         verbosity,
@@ -273,7 +276,6 @@ export function useChatStream(): UseChatStreamReturn {
         model,
         signal: abort.signal,
         conversationId: conversationId || undefined,
-  // ...existing code...
         shouldStream,
         reasoningEffort,
         verbosity,

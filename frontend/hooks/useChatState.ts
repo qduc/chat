@@ -1,6 +1,7 @@
 import React, { useReducer, useCallback, useRef } from 'react';
 import type { ChatMessage, Role, ConversationMeta } from '../lib/chat';
 import { sendChat, getConversationApi, listConversationsApi, deleteConversationApi, editMessageApi } from '../lib/chat';
+import type { QualityLevel } from '../components/ui/QualitySlider';
 
 // Unified state structure
 export interface ChatState {
@@ -19,6 +20,8 @@ export interface ChatState {
   shouldStream: boolean;
   reasoningEffort: string;
   verbosity: string;
+  researchMode: boolean;
+  qualityLevel: QualityLevel;
 
   // Conversations
   conversations: ConversationMeta[];
@@ -45,6 +48,8 @@ export type ChatAction =
   | { type: 'SET_SHOULD_STREAM'; payload: boolean }
   | { type: 'SET_REASONING_EFFORT'; payload: string }
   | { type: 'SET_VERBOSITY'; payload: string }
+  | { type: 'SET_RESEARCH_MODE'; payload: boolean }
+  | { type: 'SET_QUALITY_LEVEL'; payload: QualityLevel }
   | { type: 'SET_CONVERSATION_ID'; payload: string | null }
   | { type: 'START_STREAMING'; payload: { abort: AbortController; userMessage: ChatMessage; assistantMessage: ChatMessage } }
   | { type: 'REGENERATE_START'; payload: { abort: AbortController; baseMessages: ChatMessage[]; assistantMessage: ChatMessage } }
@@ -67,7 +72,8 @@ export type ChatAction =
   | { type: 'CANCEL_EDIT' }
   | { type: 'SAVE_EDIT_SUCCESS'; payload: { messageId: string; content: string; baseMessages: ChatMessage[] } }
   | { type: 'CLEAR_ERROR' }
-  | { type: 'NEW_CHAT' };
+  | { type: 'NEW_CHAT' }
+  | { type: 'SYNC_ASSISTANT'; payload: ChatMessage };
 
 const initialState: ChatState = {
   status: 'idle',
@@ -80,6 +86,8 @@ const initialState: ChatState = {
   shouldStream: true,
   reasoningEffort: 'medium',
   verbosity: 'medium',
+  researchMode: false,
+  qualityLevel: 'balanced',
   conversations: [],
   nextCursor: null,
   historyEnabled: true,
@@ -109,6 +117,25 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case 'SET_VERBOSITY':
       return { ...state, verbosity: action.payload };
 
+    case 'SET_RESEARCH_MODE':
+      return { ...state, researchMode: action.payload };
+
+    case 'SET_QUALITY_LEVEL': {
+      // Map quality level to derived settings for backward compatibility
+      const map: Record<QualityLevel, { reasoningEffort: string; verbosity: string }> = {
+        quick: { reasoningEffort: 'minimal', verbosity: 'low' },
+        balanced: { reasoningEffort: 'medium', verbosity: 'medium' },
+        thorough: { reasoningEffort: 'high', verbosity: 'high' },
+      };
+      const derived = map[action.payload];
+      return {
+        ...state,
+        qualityLevel: action.payload,
+        reasoningEffort: derived.reasoningEffort,
+        verbosity: derived.verbosity,
+      };
+    }
+
     case 'SET_CONVERSATION_ID':
       return { ...state, conversationId: action.payload };
 
@@ -133,34 +160,71 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
       };
 
     case 'STREAM_TOKEN':
-      return {
-        ...state,
-        messages: state.messages.map(m =>
-          m.id === action.payload.messageId
-            ? { ...m, content: m.content + action.payload.token }
-            : m
-        ),
-      };
+      {
+        let updated = false;
+        const next = state.messages.map(m => {
+          if (m.id === action.payload.messageId) {
+            updated = true;
+            return { ...m, content: m.content + action.payload.token };
+          }
+          return m;
+        });
+        if (!updated) {
+          // Fallback: update the last assistant message if present
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i].role === 'assistant') {
+              next[i] = { ...next[i], content: next[i].content + action.payload.token } as any;
+              break;
+            }
+          }
+        }
+        return { ...state, messages: next };
+      }
 
     case 'STREAM_TOOL_CALL':
-      return {
-        ...state,
-        messages: state.messages.map(m =>
-          m.id === action.payload.messageId
-            ? { ...m, tool_calls: [...(m.tool_calls || []), action.payload.toolCall] }
-            : m
-        ),
-      };
+      {
+        let updated = false;
+        const next = state.messages.map(m => {
+          if (m.id === action.payload.messageId) {
+            updated = true;
+            return { ...m, tool_calls: [...(m.tool_calls || []), action.payload.toolCall] } as any;
+          }
+          return m;
+        });
+        if (!updated) {
+          // Fallback: update last assistant message
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i].role === 'assistant') {
+              const tc = [ ...((next[i] as any).tool_calls || []), action.payload.toolCall ];
+              next[i] = { ...(next[i] as any), tool_calls: tc } as any;
+              break;
+            }
+          }
+        }
+        return { ...state, messages: next };
+      }
 
     case 'STREAM_TOOL_OUTPUT':
-      return {
-        ...state,
-        messages: state.messages.map(m =>
-          m.id === action.payload.messageId
-            ? { ...m, tool_outputs: [...(m.tool_outputs || []), action.payload.toolOutput] }
-            : m
-        ),
-      };
+      {
+        let updated = false;
+        const next = state.messages.map(m => {
+          if (m.id === action.payload.messageId) {
+            updated = true;
+            return { ...m, tool_outputs: [...(m.tool_outputs || []), action.payload.toolOutput] } as any;
+          }
+          return m;
+        });
+        if (!updated) {
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i].role === 'assistant') {
+              const to = [ ...((next[i] as any).tool_outputs || []), action.payload.toolOutput ];
+              next[i] = { ...(next[i] as any), tool_outputs: to } as any;
+              break;
+            }
+          }
+        }
+        return { ...state, messages: next };
+      }
 
     case 'STREAM_COMPLETE':
       return {
@@ -247,6 +311,12 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         editingContent: '',
       };
 
+    case 'SYNC_ASSISTANT':
+      return {
+        ...state,
+        messages: state.messages.map(m => m.id === action.payload.id ? { ...m, ...action.payload } : m),
+      };
+
     case 'CLEAR_ERROR':
       return { ...state, error: null };
 
@@ -329,13 +399,26 @@ export function useChatState() {
     const assistantId = assistantMsgRef.current!.id;
 
     if (event.type === 'text') {
+      // Keep a local snapshot for robustness in case state isn't committed yet
+      if (assistantMsgRef.current) {
+        assistantMsgRef.current.content += event.value;
+      }
       dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token: event.value } });
     } else if (event.type === 'final') {
       // For final events, we could update the entire content
+      if (assistantMsgRef.current) {
+        assistantMsgRef.current.content += event.value;
+      }
       dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token: event.value } });
     } else if (event.type === 'tool_call') {
+      if (assistantMsgRef.current) {
+        assistantMsgRef.current.tool_calls = [...(assistantMsgRef.current.tool_calls || []), event.value];
+      }
       dispatch({ type: 'STREAM_TOOL_CALL', payload: { messageId: assistantId, toolCall: event.value } });
     } else if (event.type === 'tool_output') {
+      if (assistantMsgRef.current) {
+        assistantMsgRef.current.tool_outputs = [...(assistantMsgRef.current.tool_outputs || []), event.value];
+      }
       dispatch({ type: 'STREAM_TOOL_OUTPUT', payload: { messageId: assistantId, toolOutput: event.value } });
     }
   }, []);
@@ -353,6 +436,8 @@ export function useChatState() {
         shouldStream: state.shouldStream,
         reasoningEffort: state.reasoningEffort,
         verbosity: state.verbosity,
+        researchMode: state.researchMode,
+        qualityLevel: state.qualityLevel,
         ...(state.useTools
           ? {
               tools: Object.values(availableTools),
@@ -386,15 +471,24 @@ export function useChatState() {
           // Refresh to reflect server ordering/title rather than optimistic add
           void refreshConversations();
         }
+        // Sync the assistant message from the latest snapshot and the final content
+        if (assistantMsgRef.current) {
+          const merged = { ...assistantMsgRef.current };
+          if (result?.content) merged.content = result.content;
+          dispatch({ type: 'SYNC_ASSISTANT', payload: merged });
+        }
         dispatch({
           type: 'STREAM_COMPLETE',
           payload: { responseId: result.responseId },
         });
       } catch (e: any) {
-        dispatch({
-          type: 'STREAM_ERROR',
-          payload: e?.message || String(e),
-        });
+        const message = e?.message || String(e);
+        // Append error message to the assistant bubble for visibility
+        const assistantId = assistantMsgRef.current?.id;
+        if (assistantId) {
+          dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token: `\n[error: ${message}]` } });
+        }
+        dispatch({ type: 'STREAM_ERROR', payload: message });
       } finally {
         inFlightRef.current = false;
       }
@@ -429,6 +523,14 @@ export function useChatState() {
       dispatch({ type: 'SET_VERBOSITY', payload: verbosity });
     }, []),
 
+    setResearchMode: useCallback((val: boolean) => {
+      dispatch({ type: 'SET_RESEARCH_MODE', payload: val });
+    }, []),
+
+    setQualityLevel: useCallback((level: QualityLevel) => {
+      dispatch({ type: 'SET_QUALITY_LEVEL', payload: level });
+    }, []),
+
     // Chat Actions
     sendMessage: useCallback(async () => {
       const input = state.input.trim();
@@ -444,6 +546,9 @@ export function useChatState() {
         type: 'START_STREAMING',
         payload: { abort, userMessage: userMsg, assistantMessage: assistantMsg }
       });
+
+      // Ensure the START_STREAMING state is applied before streaming events arrive
+      await new Promise(resolve => setTimeout(resolve, 0));
 
       const config = buildSendChatConfig([...state.messages, userMsg], abort.signal);
       await runSend(config);
@@ -461,6 +566,9 @@ export function useChatState() {
         type: 'REGENERATE_START',
         payload: { abort, baseMessages, assistantMessage: assistantMsg }
       });
+
+      // Ensure state commit before events arrive
+      await new Promise(resolve => setTimeout(resolve, 0));
 
       const config = buildSendChatConfig(baseMessages, abort.signal);
       await runSend(config);

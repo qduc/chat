@@ -1,9 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
-import { Send, Loader2, Gauge, Clock, AlignLeft, Wrench, Zap, FlaskConical } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { Send, Loader2, Gauge, Wrench, Zap, FlaskConical } from 'lucide-react';
 import type { PendingState } from '../hooks/useChatStream';
 import Toggle from './ui/Toggle';
 import QualitySlider from './ui/QualitySlider';
-import { useChatContext } from '../contexts/ChatContext';
+import type { QualityLevel } from './ui/QualitySlider';
 
 interface MessageInputProps {
   input: string;
@@ -17,6 +17,9 @@ interface MessageInputProps {
   onUseToolsChange: (useTools: boolean) => void;
   onShouldStreamChange: (val: boolean) => void;
   onResearchModeChange: (val: boolean) => void;
+  model: string;
+  qualityLevel: QualityLevel;
+  onQualityLevelChange: (level: QualityLevel) => void;
 }
 
 export function MessageInput({
@@ -30,14 +33,12 @@ export function MessageInput({
   researchMode,
   onUseToolsChange,
   onShouldStreamChange,
-  onResearchModeChange
+  onResearchModeChange,
+  model,
+  qualityLevel,
+  onQualityLevelChange,
 }: MessageInputProps) {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const {
-    qualityLevel,
-    setQualityLevel,
-    model,
-  } = useChatContext();
 
   // Auto-grow textarea up to ~200px
   useEffect(() => {
@@ -83,7 +84,7 @@ export function MessageInput({
                 <div className="flex items-center">
                   <QualitySlider
                     value={qualityLevel}
-                    onChange={setQualityLevel}
+                    onChange={onQualityLevelChange}
                     icon={<Gauge className="w-4 h-4" />}
                     ariaLabel="Response Quality"
                     className="flex-shrink-0"
