@@ -2,6 +2,7 @@ import fetch from 'node-fetch';
 import { tools as toolRegistry } from './tools.js';
 import { getMessagesPage } from '../db/index.js';
 import { response } from 'express';
+import { addConversationMetadata, getConversationMetadata } from './responseUtils.js';
 
 /**
  * Execute a single tool call from the local registry
@@ -337,14 +338,7 @@ export async function handleUnifiedToolOrchestration({
           };
 
           // Include conversation metadata if auto-created
-          if (persistence && persistence.persist && persistence.conversationMeta) {
-            responseWithEvents._conversation = {
-              id: persistence.conversationId,
-              title: persistence.conversationMeta.title,
-              model: persistence.conversationMeta.model,
-              created_at: persistence.conversationMeta.created_at,
-            };
-          }
+          addConversationMetadata(responseWithEvents, persistence);
 
           return res.status(200).json(responseWithEvents);
         }
@@ -434,14 +428,7 @@ export async function handleUnifiedToolOrchestration({
       };
 
       // Include conversation metadata if auto-created
-      if (persistence && persistence.persist && persistence.conversationMeta) {
-        responseWithEvents._conversation = {
-          id: persistence.conversationId,
-          title: persistence.conversationMeta.title,
-          model: persistence.conversationMeta.model,
-          created_at: persistence.conversationMeta.created_at,
-        };
-      }
+      addConversationMetadata(responseWithEvents, persistence);
 
       return res.status(200).json(responseWithEvents);
     }
@@ -459,16 +446,9 @@ export async function handleUnifiedToolOrchestration({
       }
 
       // Include conversation metadata if auto-created
-      if (persistence && persistence.persist && persistence.conversationMeta) {
-        const conversationEvent = {
-          _conversation: {
-            id: persistence.conversationId,
-            title: persistence.conversationMeta.title,
-            model: persistence.conversationMeta.model,
-            created_at: persistence.conversationMeta.created_at,
-          }
-        };
-        res.write(`data: ${JSON.stringify(conversationEvent)}\n\n`);
+      const conversationMeta = getConversationMetadata(persistence);
+      if (conversationMeta) {
+        res.write(`data: ${JSON.stringify(conversationMeta)}\n\n`);
       }
       res.write('data: [DONE]\n\n');
       return res.end();

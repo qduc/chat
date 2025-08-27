@@ -5,6 +5,7 @@ import {
   setupStreamingHeaders,
 } from './streamUtils.js';
 import { config } from 'dotenv';
+import { getConversationMetadata } from './responseUtils.js';
 
 export { setupStreamingHeaders } from './streamUtils.js';
 
@@ -32,16 +33,9 @@ function setupStreamEventHandlers({
     completed = true;
     try {
       // Include conversation metadata before finalizing if auto-created
-      if (persistence && persistence.persist && persistence.conversationMeta) {
-        const conversationEvent = {
-          _conversation: {
-            id: persistence.conversationId,
-            title: persistence.conversationMeta.title,
-            model: persistence.conversationMeta.model,
-            created_at: persistence.conversationMeta.created_at,
-          }
-        };
-        writeAndFlush(res, `data: ${JSON.stringify(conversationEvent)}\n\n`);
+      const conversationMeta = getConversationMetadata(persistence);
+      if (conversationMeta) {
+        writeAndFlush(res, `data: ${JSON.stringify(conversationMeta)}\n\n`);
       }
 
       if (persistence && persistence.persist) {

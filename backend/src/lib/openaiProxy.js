@@ -7,6 +7,7 @@ import {
   handleRegularStreaming,
 } from './streamingHandler.js';
 import { SimplifiedPersistence } from './simplifiedPersistence.js';
+import { addConversationMetadata } from './responseUtils.js';
 
 export async function proxyOpenAIRequest(req, res) {
   const bodyIn = req.body || {};
@@ -142,14 +143,7 @@ export async function proxyOpenAIRequest(req, res) {
 
       // Include conversation metadata in response if auto-created
       const responseBody = { ...body };
-      if (persistence.persist && persistence.conversationMeta) {
-        responseBody._conversation = {
-          id: persistence.conversationId,
-          title: persistence.conversationMeta.title,
-          model: persistence.conversationMeta.model,
-          created_at: persistence.conversationMeta.created_at,
-        };
-      }
+      addConversationMetadata(responseBody, persistence);
 
       return res.status(200).json(responseBody);
     }

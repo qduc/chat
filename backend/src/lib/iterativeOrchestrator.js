@@ -3,6 +3,7 @@ import { tools as toolRegistry, generateOpenAIToolSpecs } from './tools.js';
 import { getMessagesPage } from '../db/index.js';
 import { parseSSEStream } from './sseParser.js';
 import { createOpenAIRequest, writeAndFlush, createChatCompletionChunk } from './streamUtils.js';
+import { getConversationMetadata } from './responseUtils.js';
 
 /**
  * Iterative tool orchestration with thinking and dynamic tool execution
@@ -284,16 +285,9 @@ export async function handleIterativeOrchestration({
 `);
 
     // Include conversation metadata before [DONE] if auto-created
-    if (persistence && persistence.persist && persistence.conversationMeta) {
-      const conversationEvent = {
-        _conversation: {
-          id: persistence.conversationId,
-          title: persistence.conversationMeta.title,
-          model: persistence.conversationMeta.model,
-          created_at: persistence.conversationMeta.created_at,
-        }
-      };
-      res.write(`data: ${JSON.stringify(conversationEvent)}\n\n`);
+    const conversationMeta = getConversationMetadata(persistence);
+    if (conversationMeta) {
+      res.write(`data: ${JSON.stringify(conversationMeta)}\n\n`);
     }
 
     res.write('data: [DONE]\n\n');
@@ -318,16 +312,9 @@ export async function handleIterativeOrchestration({
     }
 
     // Include conversation metadata before [DONE] if auto-created
-    if (persistence && persistence.persist && persistence.conversationMeta) {
-      const conversationEvent = {
-        _conversation: {
-          id: persistence.conversationId,
-          title: persistence.conversationMeta.title,
-          model: persistence.conversationMeta.model,
-          created_at: persistence.conversationMeta.created_at,
-        }
-      };
-      res.write(`data: ${JSON.stringify(conversationEvent)}\n\n`);
+    const conversationMeta = getConversationMetadata(persistence);
+    if (conversationMeta) {
+      res.write(`data: ${JSON.stringify(conversationMeta)}\n\n`);
     }
 
     res.write('data: [DONE]\n\n');
