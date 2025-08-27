@@ -282,14 +282,8 @@ export async function handleIterativeOrchestration({
     res.write(`data: ${JSON.stringify(finalChunk)}
 
 `);
-    res.write('data: [DONE]\n\n');
 
-    // Finalize persistence
-    if (persistence && persistence.persist) {
-      persistence.recordAssistantFinal({ finishReason: 'stop' });
-    }
-
-    // Include conversation metadata if auto-created
+    // Include conversation metadata before [DONE] if auto-created
     if (persistence && persistence.persist && persistence.conversationMeta) {
       const conversationEvent = {
         _conversation: {
@@ -300,6 +294,13 @@ export async function handleIterativeOrchestration({
         }
       };
       res.write(`data: ${JSON.stringify(conversationEvent)}\n\n`);
+    }
+
+    res.write('data: [DONE]\n\n');
+
+    // Finalize persistence
+    if (persistence && persistence.persist) {
+      persistence.recordAssistantFinal({ finishReason: 'stop' });
     }
 
     res.end();
@@ -314,6 +315,19 @@ export async function handleIterativeOrchestration({
     if (persistence && persistence.persist) {
       persistence.appendContent(errorMsg);
       persistence.markError();
+    }
+
+    // Include conversation metadata before [DONE] if auto-created
+    if (persistence && persistence.persist && persistence.conversationMeta) {
+      const conversationEvent = {
+        _conversation: {
+          id: persistence.conversationId,
+          title: persistence.conversationMeta.title,
+          model: persistence.conversationMeta.model,
+          created_at: persistence.conversationMeta.created_at,
+        }
+      };
+      res.write(`data: ${JSON.stringify(conversationEvent)}\n\n`);
     }
 
     res.write('data: [DONE]\n\n');

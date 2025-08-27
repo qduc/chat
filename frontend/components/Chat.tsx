@@ -105,15 +105,11 @@ function ChatInner() {
       reasoningEffort,
       verbosity,
       researchMode,
-      // Handle auto-created conversation
+      // Handle auto-created conversation: set id and refresh history list
       conversations.historyEnabled ? (conversation) => {
         setConversationId(conversation.id);
-        conversations.addConversation({
-          id: conversation.id,
-          title: conversation.title || 'New chat',
-          model: conversation.model,
-          created_at: conversation.created_at
-        });
+        // Ensure sidebar reflects server ordering/title by refetching
+        void conversations.refreshConversations();
       } : undefined
     );
   }, [input, chatStream, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode, conversations, setConversationId]);

@@ -168,6 +168,18 @@ async function streamResponse(llmResponse, res, persistence) {
       }],
     };
     res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
+    // Include conversation metadata if auto-created
+    if (persistence && persistence.persist && persistence.conversationMeta) {
+      const conversationEvent = {
+        _conversation: {
+          id: persistence.conversationId,
+          title: persistence.conversationMeta.title,
+          model: persistence.conversationMeta.model,
+          created_at: persistence.conversationMeta.created_at,
+        }
+      };
+      res.write(`data: ${JSON.stringify(conversationEvent)}\n\n`);
+    }
     res.write('data: [DONE]\n\n');
     return llmResponse?.choices?.[0]?.finish_reason || 'stop';
   }
@@ -436,6 +448,18 @@ export async function handleUnifiedToolOrchestration({
         persistence.markError();
       }
 
+      // Include conversation metadata if auto-created
+      if (persistence && persistence.persist && persistence.conversationMeta) {
+        const conversationEvent = {
+          _conversation: {
+            id: persistence.conversationId,
+            title: persistence.conversationMeta.title,
+            model: persistence.conversationMeta.model,
+            created_at: persistence.conversationMeta.created_at,
+          }
+        };
+        res.write(`data: ${JSON.stringify(conversationEvent)}\n\n`);
+      }
       res.write('data: [DONE]\n\n');
       return res.end();
     } else {

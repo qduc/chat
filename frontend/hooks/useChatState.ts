@@ -1,6 +1,6 @@
 import React, { useReducer, useCallback, useRef } from 'react';
 import type { ChatMessage, Role, ConversationMeta } from '../lib/chat';
-import { sendChat, createConversation, getConversationApi, listConversationsApi, deleteConversationApi, editMessageApi } from '../lib/chat';
+import { sendChat, getConversationApi, listConversationsApi, deleteConversationApi, editMessageApi } from '../lib/chat';
 
 // Unified state structure
 export interface ChatState {
@@ -380,19 +380,11 @@ export function useChatState() {
             });
           }
         }
-        // If the backend auto-created a conversation, capture it in state
-        // so subsequent turns include conversation_id and append to history list.
+        // If backend auto-created a conversation, set id and refresh history
         if (result.conversation) {
           dispatch({ type: 'SET_CONVERSATION_ID', payload: result.conversation.id });
-          dispatch({
-            type: 'ADD_CONVERSATION',
-            payload: {
-              id: result.conversation.id,
-              title: result.conversation.title || 'New chat',
-              model: result.conversation.model || state.model,
-              created_at: result.conversation.created_at,
-            },
-          });
+          // Refresh to reflect server ordering/title rather than optimistic add
+          void refreshConversations();
         }
         dispatch({
           type: 'STREAM_COMPLETE',
@@ -407,7 +399,7 @@ export function useChatState() {
         inFlightRef.current = false;
       }
     },
-    [state.model]
+    [state.model, refreshConversations]
   );
 
   // Actions
@@ -485,28 +477,10 @@ export function useChatState() {
         actions.stopStreaming();
       }
 
+      // Align with v1 behavior: don't pre-create; first send will autocreate
+      // and the sidebar will refresh on `_conversation` signal.
       dispatch({ type: 'NEW_CHAT' });
-
-      if (state.historyEnabled) {
-        try {
-          const convo = await createConversation(undefined, { model: state.model });
-          dispatch({ type: 'SET_CONVERSATION_ID', payload: convo.id });
-          dispatch({
-            type: 'ADD_CONVERSATION',
-            payload: {
-              id: convo.id,
-              title: convo.title || 'New chat',
-              model: convo.model,
-              created_at: convo.created_at
-            }
-          });
-        } catch (e: any) {
-          if (e.status === 501) {
-            dispatch({ type: 'SET_HISTORY_ENABLED', payload: false });
-          }
-        }
-      }
-    }, [state.status, state.historyEnabled, state.model]),
+    }, [state.status]),
 
     // Conversation Actions
     selectConversation: useCallback(async (id: string) => {
