@@ -206,12 +206,12 @@ function ChatInner() {
           onDeleteConversation={handleDeleteConversation}
           onLoadMore={conversations.loadMoreConversations}
           onRefresh={conversations.refreshConversations}
+          onNewChat={handleNewChat}
         />
       )}
       <div className="flex flex-col flex-1 relative">
         <ChatHeader
           isStreaming={chatStream.pending.streaming}
-          onNewChat={handleNewChat}
         />
         <MessageList
           messages={chatStream.messages}

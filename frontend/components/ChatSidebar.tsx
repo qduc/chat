@@ -1,4 +1,4 @@
-import { Trash2, Loader2 } from 'lucide-react';
+import { Trash2, Loader2, Plus, RefreshCw } from 'lucide-react';
 import type { ConversationMeta } from '../lib/chat';
 
 interface ChatSidebarProps {
@@ -10,6 +10,7 @@ interface ChatSidebarProps {
   onDeleteConversation: (id: string) => void;
   onLoadMore: () => void;
   onRefresh: () => void;
+  onNewChat: () => void;
 }
 
 export function ChatSidebar({
@@ -20,17 +21,27 @@ export function ChatSidebar({
   onSelectConversation,
   onDeleteConversation,
   onLoadMore,
-  onRefresh
+  onRefresh,
+  onNewChat
 }: ChatSidebarProps) {
   return (
     <aside className="w-72 p-4 flex flex-col border-r border-slate-200/60 dark:border-neutral-800/60 bg-white/40 dark:bg-neutral-950/40 backdrop-blur-sm">
       <div className="flex items-center justify-between mb-4">
+        <button
+          className="text-xs p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400 transition-colors duration-200 disabled:opacity-50"
+          onClick={onRefresh}
+          disabled={loadingConversations}
+          title="Refresh"
+        >
+          <RefreshCw className={`w-3 h-3 ${loadingConversations ? 'animate-spin' : ''}`} />
+        </button>
         <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">Chat History</div>
         <button
-          className="text-xs px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400 transition-colors duration-200"
-          onClick={onRefresh}
+          className="text-xs px-3 py-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-neutral-800 border border-slate-200 dark:border-slate-100 text-slate-700 dark:text-slate-300 transition-colors duration-200 flex items-center gap-2"
+          onClick={onNewChat}
         >
-          ↻ Refresh
+          <Plus className="w-3 h-3" />
+          New Chat
         </button>
       </div>
       <div className="flex-1 overflow-y-auto space-y-2 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-neutral-700 scrollbar-track-transparent">
