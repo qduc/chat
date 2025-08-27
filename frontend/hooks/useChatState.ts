@@ -608,6 +608,29 @@ export function useChatState() {
           content: m.content || ''
         }));
         dispatch({ type: 'SET_MESSAGES', payload: msgs });
+
+        // Apply conversation-level settings from API response
+        if (data.model) {
+          dispatch({ type: 'SET_MODEL', payload: data.model });
+        }
+        if (data.streaming_enabled !== undefined) {
+          dispatch({ type: 'SET_SHOULD_STREAM', payload: data.streaming_enabled });
+        }
+        if (data.tools_enabled !== undefined) {
+          dispatch({ type: 'SET_USE_TOOLS', payload: data.tools_enabled });
+        }
+        if (data.research_mode !== undefined) {
+          dispatch({ type: 'SET_RESEARCH_MODE', payload: data.research_mode });
+        }
+        if (data.quality_level) {
+          dispatch({ type: 'SET_QUALITY_LEVEL', payload: data.quality_level as QualityLevel });
+        }
+        if (data.reasoning_effort) {
+          dispatch({ type: 'SET_REASONING_EFFORT', payload: data.reasoning_effort });
+        }
+        if (data.verbosity) {
+          dispatch({ type: 'SET_VERBOSITY', payload: data.verbosity });
+        }
       } catch (e: any) {
         // ignore
       }

@@ -84,13 +84,25 @@ export class SimplifiedPersistence {
       const newConversationId = uuidv4();
       const model = bodyIn.model || this.config.defaultModel || null;
 
+      // Derive persisted settings from request body. Support both explicit
+      // persistence flags and OpenAI-compatible fields used by the client.
+      const persistedStreamingEnabled =
+        bodyIn.streamingEnabled !== undefined
+          ? !!bodyIn.streamingEnabled
+          : !!bodyIn.stream; // map `stream` => persisted flag
+
+      const persistedToolsEnabled =
+        bodyIn.toolsEnabled !== undefined
+          ? !!bodyIn.toolsEnabled
+          : (Array.isArray(bodyIn.tools) && bodyIn.tools.length > 0); // map tools array presence
+
       createConversation({
         id: newConversationId,
         sessionId,
         title: null, // Will be auto-generated from first message if needed
         model,
-        streamingEnabled: bodyIn.streamingEnabled || false,
-        toolsEnabled: bodyIn.toolsEnabled || false,
+        streamingEnabled: persistedStreamingEnabled,
+        toolsEnabled: persistedToolsEnabled,
         researchMode: bodyIn.researchMode || false,
         qualityLevel: bodyIn.qualityLevel || null,
         reasoningEffort: bodyIn.reasoningEffort || null,
