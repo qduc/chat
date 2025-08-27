@@ -142,15 +142,14 @@ async function executeAllTools(toolCalls, streaming, res, model, collectedEvents
 /**
  * Stream a complete LLM response
  */
-async function streamResponse(llmResponse, res, buffer, doFlush, sizeThreshold) {
+async function streamResponse(llmResponse, res, persistence) {
   if (!llmResponse.body) {
     // Non-streaming response, convert to streaming format
     const message = llmResponse?.choices?.[0]?.message;
     if (message?.content) {
       streamEvent(res, { content: message.content });
-      if (buffer && doFlush) {
-        buffer.value += message.content;
-        if (buffer.value.length >= sizeThreshold) doFlush();
+      if (persistence && persistence.persist) {
+        persistence.appendContent(message.content);
       }
     }
 
@@ -181,8 +180,6 @@ async function streamResponse(llmResponse, res, buffer, doFlush, sizeThreshold) 
         res.write(chunk);
         if (typeof res.flush === 'function') res.flush();
 
-        if (!buffer || !doFlush) return;
-
         const s = String(chunk);
         let data = leftover + s;
         const parts = data.split(/\n\n/);
@@ -204,8 +201,9 @@ async function streamResponse(llmResponse, res, buffer, doFlush, sizeThreshold) 
               const obj = JSON.parse(payload);
               const delta = obj?.choices?.[0]?.delta?.content;
               if (delta) {
-                buffer.value += delta;
-                if (buffer.value.length >= sizeThreshold) doFlush();
+                if (persistence && persistence.persist) {
+                  persistence.appendContent(delta);
+                }
               }
               const fr = obj?.choices?.[0]?.finish_reason;
               if (fr) lastFinishReason = fr;
@@ -253,27 +251,8 @@ export async function handleUnifiedToolOrchestration({
   config,
   res,
   req,
-  persist,
-  assistantMessageId,
-  appendAssistantContent,
-  finalizeAssistantMessage,
-  markAssistantError,
-  buffer,
-  flushedOnce,
-  sizeThreshold,
+  persistence,
 }) {
-  const doFlush = () => {
-    if (!persist || !assistantMessageId) return;
-    if (buffer.value.length === 0) return;
-
-    appendAssistantContent({
-      messageId: assistantMessageId,
-      delta: buffer.value,
-    });
-    buffer.value = '';
-    flushedOnce.value = true;
-  };
-
   const messages = [...(bodyIn.messages || [])];
   const requestedStreaming = body.stream !== false;
   const MAX_ITERATIONS = 10;
@@ -290,9 +269,8 @@ export async function handleUnifiedToolOrchestration({
     req.on('close', () => {
       if (res.writableEnded) return;
       try {
-        if (persist && assistantMessageId) {
-          doFlush();
-          markAssistantError({ messageId: assistantMessageId });
+        if (persistence && persistence.persist) {
+          persistence.markError();
         }
       } catch {
         // Ignore errors
@@ -311,28 +289,18 @@ export async function handleUnifiedToolOrchestration({
       if (!toolCalls.length) {
         // No tools needed - this is the final response
         if (requestedStreaming) {
-          const finishReason = await streamResponse(response, res, buffer, doFlush, sizeThreshold);
+          const finishReason = await streamResponse(response, res, persistence);
 
-          if (persist && assistantMessageId) {
-            doFlush();
-            finalizeAssistantMessage({
-              messageId: assistantMessageId,
-              finishReason,
-              status: 'final',
-            });
+          if (persistence && persistence.persist) {
+            persistence.recordAssistantFinal({ finishReason });
           }
 
           return res.end();
         } else {
           // Non-streaming response - add collected events to response
-          if (persist && assistantMessageId && message?.content) {
-            buffer.value += message.content;
-            doFlush();
-            finalizeAssistantMessage({
-              messageId: assistantMessageId,
-              finishReason: response?.choices?.[0]?.finish_reason || 'stop',
-              status: 'final',
-            });
+          if (persistence && persistence.persist && message?.content) {
+            persistence.appendContent(message.content);
+            persistence.recordAssistantFinal({ finishReason: response?.choices?.[0]?.finish_reason || 'stop' });
           }
 
           // Include collected events in the response
@@ -350,9 +318,8 @@ export async function handleUnifiedToolOrchestration({
         // Stream any thinking content
         if (message.content) {
           streamEvent(res, { content: message.content }, response.model);
-          if (persist) {
-            buffer.value += message.content;
-            if (buffer.value.length >= sizeThreshold) doFlush();
+          if (persistence && persistence.persist) {
+            persistence.appendContent(message.content);
           }
         }
 
@@ -367,9 +334,8 @@ export async function handleUnifiedToolOrchestration({
             type: 'text',
             value: message.content
           });
-          if (persist) {
-            buffer.value += message.content;
-            if (buffer.value.length >= sizeThreshold) doFlush();
+          if (persistence && persistence.persist) {
+            persistence.appendContent(message.content);
           }
         }
 
@@ -394,18 +360,12 @@ export async function handleUnifiedToolOrchestration({
     const finalResponse = await callLLM(messages, config, { ...body, stream: requestedStreaming });
 
     if (requestedStreaming) {
-      const finishReason = await streamResponse(finalResponse, res, buffer, doFlush, sizeThreshold);
+      const finishReason = await streamResponse(finalResponse, res, persistence);
       const maxIterMsg = '\n\n[Maximum iterations reached]';
       streamEvent(res, { content: maxIterMsg });
-      if (persist) buffer.value += maxIterMsg;
-
-      if (persist && assistantMessageId) {
-        doFlush();
-        finalizeAssistantMessage({
-          messageId: assistantMessageId,
-          finishReason,
-          status: 'final',
-        });
+      if (persistence && persistence.persist) {
+        persistence.appendContent(maxIterMsg);
+        persistence.recordAssistantFinal({ finishReason });
       }
 
       return res.end();
@@ -425,14 +385,9 @@ export async function handleUnifiedToolOrchestration({
         value: maxIterMsg
       });
 
-      if (persist && assistantMessageId && message?.content) {
-        buffer.value += message.content + maxIterMsg;
-        doFlush();
-        finalizeAssistantMessage({
-          messageId: assistantMessageId,
-          finishReason: finalResponse?.choices?.[0]?.finish_reason || 'stop',
-          status: 'final',
-        });
+      if (persistence && persistence.persist && message?.content) {
+        persistence.appendContent(message.content + maxIterMsg);
+        persistence.recordAssistantFinal({ finishReason: finalResponse?.choices?.[0]?.finish_reason || 'stop' });
       }
 
       // Include collected events in the response
@@ -451,17 +406,16 @@ export async function handleUnifiedToolOrchestration({
       const errorMsg = `[Error: ${error.message}]`;
       streamEvent(res, { content: errorMsg });
 
-      if (persist && assistantMessageId) {
-        buffer.value += errorMsg;
-        doFlush();
-        markAssistantError({ messageId: assistantMessageId });
+      if (persistence && persistence.persist) {
+        persistence.appendContent(errorMsg);
+        persistence.markError();
       }
 
       res.write('data: [DONE]\n\n');
       return res.end();
     } else {
-      if (persist && assistantMessageId) {
-        markAssistantError({ messageId: assistantMessageId });
+      if (persistence && persistence.persist) {
+        persistence.markError();
       }
 
       const errorMsg = `[Error: ${error.message}]`;

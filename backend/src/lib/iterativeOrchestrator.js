@@ -98,26 +98,8 @@ export async function handleIterativeOrchestration({
   config,
   res,
   req,
-  persist,
-  assistantMessageId,
-  appendAssistantContent,
-  finalizeAssistantMessage,
-  markAssistantError,
-  buffer,
-  flushedOnce,
-  sizeThreshold,
+  persistence,
 }) {
-  const doFlush = () => {
-    if (!persist || !assistantMessageId) return;
-    if (buffer.value.length === 0) return;
-
-    appendAssistantContent({
-      messageId: assistantMessageId,
-      delta: buffer.value,
-    });
-    buffer.value = '';
-    flushedOnce.value = true;
-  };
 
   try {
     // Initialize conversation with thinking prompt
@@ -178,9 +160,8 @@ export async function handleIterativeOrchestration({
                 }
 
                 // Persist text content only
-                if (persist && typeof delta.content === 'string' && delta.content.length > 0) {
-                  buffer.value += delta.content;
-                  if (buffer.value.length >= sizeThreshold) doFlush();
+                if (persistence && persistence.persist && typeof delta.content === 'string' && delta.content.length > 0) {
+                  persistence.appendContent(delta.content);
                 }
               },
               () => resolve(),
@@ -255,7 +236,9 @@ export async function handleIterativeOrchestration({
       if (iteration >= MAX_ITERATIONS) {
         const maxIterMsg = '\n\n[Maximum iterations reached]';
         streamEvent(res, { content: maxIterMsg });
-        if (persist) buffer.value += maxIterMsg;
+        if (persistence && persistence.persist) {
+          persistence.appendContent(maxIterMsg);
+        }
         isComplete = true;
       }
     }
@@ -276,13 +259,8 @@ export async function handleIterativeOrchestration({
     res.write('data: [DONE]\n\n');
 
     // Finalize persistence
-    if (persist && assistantMessageId) {
-      doFlush();
-      finalizeAssistantMessage({
-        messageId: assistantMessageId,
-        finishReason: 'stop',
-        status: 'final',
-      });
+    if (persistence && persistence.persist) {
+      persistence.recordAssistantFinal({ finishReason: 'stop' });
     }
 
     res.end();
@@ -294,10 +272,9 @@ export async function handleIterativeOrchestration({
     const errorMsg = `[Error: ${error.message}]`;
     streamEvent(res, { content: errorMsg });
 
-    if (persist && assistantMessageId) {
-      buffer.value += errorMsg;
-      doFlush();
-      markAssistantError({ messageId: assistantMessageId });
+    if (persistence && persistence.persist) {
+      persistence.appendContent(errorMsg);
+      persistence.markError();
     }
 
     res.write('data: [DONE]\n\n');
