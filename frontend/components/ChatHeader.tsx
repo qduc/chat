@@ -11,12 +11,10 @@ export function ChatHeader({
   const { theme, setTheme, resolvedTheme } = useTheme();
 
   const toggleTheme = () => {
-    if (theme === 'system') {
+    if (theme === 'dark') {
       setTheme('light');
-    } else if (theme === 'light') {
-      setTheme('dark');
     } else {
-      setTheme('light');
+      setTheme('dark');
     }
   };
 
