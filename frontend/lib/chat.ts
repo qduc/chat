@@ -28,6 +28,10 @@ export interface SendChatOptions {
   research_mode?: boolean; // enable multi-step research mode with iterative tool usage
   reasoningEffort?: string;
   verbosity?: string;
+  streamingEnabled?: boolean; // persistence setting
+  toolsEnabled?: boolean; // persistence setting
+  researchMode?: boolean; // persistence setting (different from research_mode)
+  qualityLevel?: string; // persistence setting
 }
 
 // API base URL - can be direct backend URL or proxy path
@@ -54,7 +58,7 @@ interface OpenAIStreamChunk {
 // ...existing code...
 
 export async function sendChat(options: SendChatOptions): Promise<{ content: string; responseId?: string; conversation?: ConversationMeta }> {
-  const { apiBase = defaultApiBase, messages, model, signal, onEvent, onToken, conversationId, tools, tool_choice, research_mode, reasoningEffort, verbosity } = options;
+  const { apiBase = defaultApiBase, messages, model, signal, onEvent, onToken, conversationId, tools, tool_choice, research_mode, reasoningEffort, verbosity, streamingEnabled, toolsEnabled, researchMode, qualityLevel } = options;
   const streamFlag = options.shouldStream !== undefined
     ? !!options.shouldStream
     : (options.stream === undefined ? true : !!options.stream);
@@ -66,6 +70,10 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
     reasoning_effort: reasoningEffort,
     verbosity: verbosity,
     ...(research_mode && { research_mode: true }),
+    ...(streamingEnabled !== undefined && { streamingEnabled }),
+    ...(toolsEnabled !== undefined && { toolsEnabled }),
+    ...(researchMode !== undefined && { researchMode }),
+    ...(qualityLevel !== undefined && { qualityLevel }),
   };
   if (Array.isArray(tools) && tools.length > 0) {
     bodyObj.tools = tools;
@@ -197,7 +205,18 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
 }
 
 // --- Sprint 4: History API helpers ---
-export interface ConversationMeta { id: string; title?: string | null; model?: string | null; created_at: string; }
+export interface ConversationMeta {
+  id: string;
+  title?: string | null;
+  model?: string | null;
+  created_at: string;
+  streaming_enabled?: boolean;
+  tools_enabled?: boolean;
+  research_mode?: boolean;
+  quality_level?: string | null;
+  reasoning_effort?: string | null;
+  verbosity?: string | null;
+}
 export interface ConversationsList { items: ConversationMeta[]; next_cursor: string | null; }
 
 async function handleJSON(res: Response) {
@@ -210,7 +229,16 @@ async function handleJSON(res: Response) {
   return res.json();
 }
 
-export async function createConversation(apiBase = defaultApiBase, init?: { title?: string; model?: string; }) {
+export async function createConversation(apiBase = defaultApiBase, init?: {
+  title?: string;
+  model?: string;
+  streamingEnabled?: boolean;
+  toolsEnabled?: boolean;
+  researchMode?: boolean;
+  qualityLevel?: string;
+  reasoningEffort?: string;
+  verbosity?: string;
+}) {
   const res = await fetch(`${apiBase}/v1/conversations`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(init || {}), credentials: 'include'
   });
@@ -230,7 +258,20 @@ export async function getConversationApi(apiBase = defaultApiBase, id: string, p
   if (params?.after_seq) qs.set('after_seq', String(params.after_seq));
   if (params?.limit) qs.set('limit', String(params.limit));
   const res = await fetch(`${apiBase}/v1/conversations/${id}?${qs.toString()}`, { method: 'GET', credentials: 'include' });
-  return handleJSON(res) as Promise<{ id: string; title?: string; model?: string; created_at: string; messages: { id: number; seq: number; role: Role; status: string; content: string; created_at: string; }[]; next_after_seq: number | null; }>;
+  return handleJSON(res) as Promise<{
+    id: string;
+    title?: string;
+    model?: string;
+    created_at: string;
+    streaming_enabled?: boolean;
+    tools_enabled?: boolean;
+    research_mode?: boolean;
+    quality_level?: string | null;
+    reasoning_effort?: string | null;
+    verbosity?: string | null;
+    messages: { id: number; seq: number; role: Role; status: string; content: string; created_at: string; }[];
+    next_after_seq: number | null;
+  }>;
 }
 
 export async function deleteConversationApi(apiBase = defaultApiBase, id: string) {

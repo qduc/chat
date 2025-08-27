@@ -81,9 +81,29 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
         });
     }
 
-    const { title, model } = req.body || {};
+    const {
+      title,
+      model,
+      streamingEnabled,
+      toolsEnabled,
+      researchMode,
+      qualityLevel,
+      reasoningEffort,
+      verbosity
+    } = req.body || {};
     const id = uuidv4();
-    createConversation({ id, sessionId, title, model });
+    createConversation({
+      id,
+      sessionId,
+      title,
+      model,
+      streamingEnabled,
+      toolsEnabled,
+      researchMode,
+      qualityLevel,
+      reasoningEffort,
+      verbosity
+    });
     const convo = getConversationById({ id, sessionId });
     return res.status(201).json(convo);
   } catch (e) {
@@ -168,7 +188,7 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
     }
 
     getDb();
-    
+
     // Update the message content
     const message = updateMessageContent({
       messageId: req.params.messageId,
@@ -176,7 +196,7 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
       sessionId,
       content: content.trim(),
     });
-    
+
     if (!message) {
       return res.status(404).json({ error: 'not_found' });
     }

@@ -113,7 +113,8 @@ export function useChatStream(): UseChatStreamReturn {
     reasoningEffort: string,
     verbosity: string,
     researchMode?: boolean,
-    onConversationCreated?: (conversation: { id: string; title?: string | null; model?: string | null; created_at: string }) => void
+    onConversationCreated?: (conversation: { id: string; title?: string | null; model?: string | null; created_at: string }) => void,
+    qualityLevel?: string
   ) => {
     if (!input.trim()) return;
     if (inFlightRef.current) return;
@@ -146,6 +147,10 @@ export function useChatStream(): UseChatStreamReturn {
         shouldStream,
         reasoningEffort,
         verbosity,
+        streamingEnabled: shouldStream,
+        toolsEnabled: useTools,
+        researchMode: researchMode || false,
+        qualityLevel: qualityLevel || null,
         ...(useTools ? {
           tools: tools || [],
           tool_choice: 'auto',
@@ -184,7 +189,8 @@ export function useChatStream(): UseChatStreamReturn {
     reasoningEffort: string,
     verbosity: string,
     messagesOverride?: ChatMessage[],
-    researchMode?: boolean
+    researchMode?: boolean,
+    qualityLevel?: string
   ) => {
     // Only proceed if there is a user message to respond to
     const history = messagesOverride ?? messages;
@@ -208,6 +214,10 @@ export function useChatStream(): UseChatStreamReturn {
       signal: abort.signal,
       reasoningEffort,
       verbosity,
+      streamingEnabled: true, // Default for generateFromHistory
+      toolsEnabled: useTools,
+      researchMode: researchMode || false,
+      qualityLevel: qualityLevel || null,
       ...(useTools ? {
         tools: tools || [],
         tool_choice: 'auto',
@@ -237,7 +247,8 @@ export function useChatStream(): UseChatStreamReturn {
     shouldStream: boolean,
     reasoningEffort: string,
     verbosity: string,
-    researchMode?: boolean
+    researchMode?: boolean,
+    qualityLevel?: string
   ) => {
     // Must have at least one user message to respond to
     if (baseMessages.length === 0) return;
@@ -266,6 +277,10 @@ export function useChatStream(): UseChatStreamReturn {
         shouldStream,
         reasoningEffort,
         verbosity,
+        streamingEnabled: shouldStream,
+        toolsEnabled: useTools,
+        researchMode: researchMode || false,
+        qualityLevel: qualityLevel || null,
         ...(useTools ? {
           tools: tools || [],
           tool_choice: 'auto',
@@ -297,10 +312,11 @@ export function useChatStream(): UseChatStreamReturn {
     shouldStream: boolean,
     reasoningEffort: string,
     verbosity: string,
-    researchMode?: boolean
+    researchMode?: boolean,
+    qualityLevel?: string
   ) => {
     const base = messages;
-    await regenerateFromBase(base, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode);
+    await regenerateFromBase(base, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode, qualityLevel);
   }, [messages, regenerateFromBase]);
 
   const stopStreaming = useCallback(() => {

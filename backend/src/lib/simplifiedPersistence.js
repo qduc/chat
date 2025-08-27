@@ -88,7 +88,13 @@ export class SimplifiedPersistence {
         id: newConversationId,
         sessionId,
         title: null, // Will be auto-generated from first message if needed
-        model
+        model,
+        streamingEnabled: bodyIn.streamingEnabled || false,
+        toolsEnabled: bodyIn.toolsEnabled || false,
+        researchMode: bodyIn.researchMode || false,
+        qualityLevel: bodyIn.qualityLevel || null,
+        reasoningEffort: bodyIn.reasoningEffort || null,
+        verbosity: bodyIn.verbosity || null
       });
 
       conversationId = newConversationId;

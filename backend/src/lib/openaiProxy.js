@@ -22,7 +22,10 @@ export async function proxyOpenAIRequest(req, res) {
   // Clone and strip non-upstream fields
   const body = { ...bodyIn };
   delete body.conversation_id;
-  // ...existing code...
+  delete body.streamingEnabled;
+  delete body.toolsEnabled;
+  delete body.researchMode;
+  delete body.qualityLevel;
 
   // Validate and handle reasoning_effort
   if (body.reasoning_effort) {

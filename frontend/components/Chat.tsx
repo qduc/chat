@@ -11,6 +11,7 @@ import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
 import { createConversation, getConversationApi } from '../lib/chat';
 import type { Role } from '../lib/chat';
+import type { QualityLevel } from './ui/QualitySlider';
 import { ChatV2 } from './ChatV2';
 import { isFeatureEnabled } from '../lib/featureFlags';
 
@@ -27,7 +28,11 @@ function ChatInner() {
     researchMode,
     setResearchMode,
     reasoningEffort,
+    setReasoningEffort,
     verbosity,
+    setVerbosity,
+    qualityLevel,
+    setQualityLevel,
   } = useChatContext();
   const [input, setInput] = useState('');
 
@@ -77,8 +82,8 @@ function ChatInner() {
     const base = msgs.slice(0, -1);
     chatStream.setMessages(base);
     chatStream.setPreviousResponseId(null);
-    await chatStream.regenerateFromBase(base, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode);
-  }, [chatStream, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode]);
+    await chatStream.regenerateFromBase(base, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode, qualityLevel);
+  }, [chatStream, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode, qualityLevel]);
 
   const handleNewChat = useCallback(async () => {
     if (chatStream.pending.streaming) chatStream.stopStreaming();
@@ -109,10 +114,26 @@ function ChatInner() {
         content: m.content || ''
       }));
       chatStream.setMessages(msgs);
+
+      // Apply persisted settings from conversation data
+      if (data.model) setModel(data.model);
+      if (data.streaming_enabled !== undefined) setShouldStream(data.streaming_enabled);
+      if (data.tools_enabled !== undefined) setUseTools(data.tools_enabled);
+      if (data.research_mode !== undefined) setResearchMode(data.research_mode);
+      if (data.quality_level !== undefined && data.quality_level !== null) {
+        const qualityLevel = data.quality_level as QualityLevel;
+        setQualityLevel(qualityLevel);
+      }
+      if (data.reasoning_effort !== undefined && data.reasoning_effort !== null) {
+        setReasoningEffort(data.reasoning_effort);
+      }
+      if (data.verbosity !== undefined && data.verbosity !== null) {
+        setVerbosity(data.verbosity);
+      }
     } catch (e: any) {
       // ignore
     }
-  }, [chatStream, setConversationId, messageEditing]);
+  }, [chatStream, setConversationId, messageEditing, setModel, setShouldStream, setUseTools, setResearchMode, setQualityLevel, setReasoningEffort, setVerbosity]);
 
   const handleDeleteConversation = useCallback(async (id: string) => {
     await conversations.deleteConversation(id);
@@ -142,9 +163,10 @@ function ChatInner() {
         setConversationId(conversation.id);
         // Ensure sidebar reflects server ordering/title by refetching
         void conversations.refreshConversations();
-      } : undefined
+      } : undefined,
+      qualityLevel
     );
-  }, [input, chatStream, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode, conversations, setConversationId]);
+  }, [input, chatStream, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode, conversations, setConversationId, qualityLevel]);
 
   const handleSaveEdit = useCallback(() => {
     if (chatStream.pending.streaming) {
@@ -163,10 +185,10 @@ function ChatInner() {
         if (newConversationId) {
           setConversationId(newConversationId);
         }
-        await chatStream.regenerateFromBase(base, targetConvoId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode);
+        await chatStream.regenerateFromBase(base, targetConvoId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode, qualityLevel);
       }
     );
-  }, [conversationId, messageEditing, chatStream, model, useTools, shouldStream, setConversationId, reasoningEffort, verbosity, researchMode]);
+  }, [conversationId, messageEditing, chatStream, model, useTools, shouldStream, setConversationId, reasoningEffort, verbosity, researchMode, qualityLevel]);
 
   const handleApplyLocalEdit = useCallback(async () => {
     const id = messageEditing.editingMessageId;
@@ -188,11 +210,11 @@ function ChatInner() {
 
     // Regenerate using computed baseMessages (ensure last is user)
     if (baseMessages.length && baseMessages[baseMessages.length - 1].role === 'user') {
-      await chatStream.generateFromHistory(model, useTools, reasoningEffort, verbosity, baseMessages as any, researchMode);
+      await chatStream.generateFromHistory(model, useTools, reasoningEffort, verbosity, baseMessages as any, researchMode, qualityLevel);
     }
 
     messageEditing.handleCancelEdit();
-  }, [chatStream, messageEditing, model, useTools, reasoningEffort, verbosity, researchMode]);
+  }, [chatStream, messageEditing, model, useTools, reasoningEffort, verbosity, researchMode, qualityLevel]);
 
   return (
     <div className="flex h-dvh max-h-dvh bg-gradient-to-br from-slate-50 via-white to-slate-100/40 dark:from-neutral-950 dark:via-neutral-950 dark:to-neutral-900/20">
