@@ -82,8 +82,70 @@ export async function handleRegularStreaming({
 
   upstream.body.on('data', (chunk) => {
     try {
-      // Pass through raw chunk to client
-      writeAndFlush(res, chunk);
+      const s = String(chunk);
+
+      // Handle stream format conversion if needed
+      if (useResponsesAPI && req.path === '/v1/chat/completions') {
+        // Convert Responses API streaming to Chat Completions format
+        let data = leftover + s;
+        const parts = data.split(/\n\n/);
+        leftover = parts.pop() || '';
+
+        for (const part of parts) {
+          const lines = part.split('\n');
+          for (const line of lines) {
+            const dataMatch = line.match(/^data:\s*(.*)$/);
+
+            if (dataMatch) {
+              const payload = dataMatch[1];
+              if (payload === '[DONE]') {
+                writeAndFlush(res, 'data: [DONE]\n\n');
+                finished = true;
+                break;
+              }
+
+              try {
+                const obj = JSON.parse(payload);
+
+                // Convert Responses API events to Chat Completions format
+                if (obj.type === 'response.output_text.delta' && obj.delta) {
+                  const chatCompletionChunk = createChatCompletionChunk(
+                    obj.item_id,
+                    config.defaultModel,
+                    { content: obj.delta }
+                  );
+                  writeAndFlush(
+                    res,
+                    `data: ${JSON.stringify(chatCompletionChunk)}\n\n`
+                  );
+
+                  // Handle persistence
+                  if (persist && obj.delta) {
+                    buffer.value += obj.delta;
+                    if (buffer.value.length >= sizeThreshold) doFlush();
+                  }
+                } else if (obj.type === 'response.completed') {
+                  const chatCompletionChunk = createChatCompletionChunk(
+                    obj.response.id,
+                    obj.response.model,
+                    {},
+                    'stop'
+                  );
+                  writeAndFlush(
+                    res,
+                    `data: ${JSON.stringify(chatCompletionChunk)}\n\n`
+                  );
+                  lastFinishReason = 'stop';
+                }
+              } catch (e) {
+                // not JSON; ignore
+              }
+            }
+          }
+        }
+      } else {
+        // Direct passthrough for native format or Chat Completions API
+        writeAndFlush(res, chunk);
 
       // Update persistence buffer if enabled
       if (!persistence || !persistence.persist) return;

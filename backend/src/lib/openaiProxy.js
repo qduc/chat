@@ -195,6 +195,7 @@ export async function proxyOpenAIRequest(req, res) {
 
     // Handle regular streaming (non-tool orchestration)
     return await handleRegularStreaming({
+      config,
       upstream,
       res,
       req,

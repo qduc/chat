@@ -30,7 +30,7 @@ async function executeToolCall(call) {
 /**
  * Stream an event to the client
  */
-function streamEvent(res, event, model = 'gpt-3.5-turbo') {
+function streamEvent(res, event, model) {
   const chunk = {
     id: `unified_${Date.now()}`,
     object: 'chat.completion.chunk',
@@ -58,7 +58,7 @@ async function callLLM(messages, config, bodyParams) {
   };
 
   const requestBody = {
-    model: bodyParams.model || config.defaultModel || 'gpt-3.5-turbo',
+    model: bodyParams.model || config.defaultModel,
     messages,
     stream: bodyParams.stream || false,
     ...(bodyParams.tools && { tools: bodyParams.tools, tool_choice: bodyParams.tool_choice || 'auto' })
@@ -147,7 +147,7 @@ async function streamResponse(llmResponse, res, persistence) {
     // Non-streaming response, convert to streaming format
     const message = llmResponse?.choices?.[0]?.message;
     if (message?.content) {
-      streamEvent(res, { content: message.content });
+      streamEvent(res, { content: message.content }, response.model);
       if (persistence && persistence.persist) {
         persistence.appendContent(message.content);
       }
@@ -158,7 +158,7 @@ async function streamResponse(llmResponse, res, persistence) {
       id: llmResponse.id || `unified_${Date.now()}`,
       object: 'chat.completion.chunk',
       created: Math.floor(Date.now() / 1000),
-      model: llmResponse.model || 'gpt-3.5-turbo',
+      model: llmResponse.model || config.defaultModel,
       choices: [{
         index: 0,
         delta: {},

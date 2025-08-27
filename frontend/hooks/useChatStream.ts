@@ -83,19 +83,19 @@ export function useChatStream(): UseChatStreamReturn {
     const assistantId = assistantMsgRef.current!.id;
     setMessages(curr => curr.map(m => {
       if (m.id !== assistantId) return m;
-      
+
       if (event.type === 'text') {
         return { ...m, content: m.content + event.value };
       } else if (event.type === 'tool_call') {
-        return { 
-          ...m, 
+        return {
+          ...m,
           tool_calls: [...(m.tool_calls || []), event.value]
         };
       } else if (event.type === 'final') {
         return { ...m, content: event.value };
       } else if (event.type === 'tool_output') {
-        return { 
-          ...m, 
+        return {
+          ...m,
           tool_outputs: [...(m.tool_outputs || []), event.value]
         };
       }
@@ -131,7 +131,7 @@ export function useChatStream(): UseChatStreamReturn {
     try {
       // Ensure tools are loaded if needed
       const tools = useTools ? (availableTools ?? await toolsPromiseRef.current?.catch(() => [])) : undefined;
-      
+
       const result = await sendChat({
         messages: [...messages, userMsg].map(m => ({ role: m.role as Role, content: m.content })),
         model,
@@ -152,8 +152,7 @@ export function useChatStream(): UseChatStreamReturn {
       // For non-streaming, update the assistant message content from the result
       if (!shouldStream) {
         const msg = assistantMsgRef.current!;
-        msg.content = result.content || msg.content;
-        setMessages(curr => curr.map(m => m.id === msg.id ? { ...msg } : m));
+        setMessages(curr => curr.map(m => m.id === msg.id ? { ...m, content: result.content || m.content } : m));
       }
       if (result.responseId) {
         setPreviousResponseId(result.responseId);

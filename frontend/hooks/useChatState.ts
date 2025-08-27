@@ -370,6 +370,17 @@ export function useChatState() {
     async (config: Parameters<typeof sendChat>[0]) => {
       try {
         const result = await sendChat(config);
+        // For non-streaming requests, ensure the assistant message is populated
+        // since there are no incremental text events to update content.
+        if (config.shouldStream === false && result?.content) {
+          const assistantId = assistantMsgRef.current?.id;
+          if (assistantId) {
+            dispatch({
+              type: 'STREAM_TOKEN',
+              payload: { messageId: assistantId, token: result.content },
+            });
+          }
+        }
         dispatch({
           type: 'STREAM_COMPLETE',
           payload: { responseId: result.responseId },
