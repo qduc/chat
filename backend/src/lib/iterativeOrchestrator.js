@@ -1,5 +1,6 @@
 import fetch from 'node-fetch';
 import { tools as toolRegistry, generateOpenAIToolSpecs } from './tools.js';
+import { getMessagesPage } from '../db/index.js';
 import { parseSSEStream } from './sseParser.js';
 import { createOpenAIRequest, writeAndFlush, createChatCompletionChunk } from './streamUtils.js';
 
@@ -102,12 +103,29 @@ export async function handleIterativeOrchestration({
   req,
   persistence,
 }) {
-
   try {
-    // Initialize conversation with thinking prompt
+    // Build conversation history
+    let prior = [];
+    if (persistence && persistence.persist && persistence.conversationId) {
+      try {
+        // Load last N persisted messages to preserve context during tool runs
+        const page = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
+        prior = (page?.messages || [])
+          .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+          .map(m => ({ role: m.role, content: m.content }));
+      } catch (e) {
+        // Fallback to request body messages if DB fetch fails
+        prior = [...(bodyIn.messages || [])];
+      }
+    } else {
+      // No persistence, rely on request body
+      prior = [...(bodyIn.messages || [])];
+    }
+
+    // Initialize conversation with thinking prompt + prior context
     const conversationHistory = [
       { role: 'system', content: THINKING_PROMPT },
-      ...(bodyIn.messages || [])
+      ...prior,
     ];
 
     let iteration = 0;

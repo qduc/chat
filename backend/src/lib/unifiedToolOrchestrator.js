@@ -1,5 +1,7 @@
 import fetch from 'node-fetch';
 import { tools as toolRegistry } from './tools.js';
+import { getMessagesPage } from '../db/index.js';
+import { response } from 'express';
 
 /**
  * Execute a single tool call from the local registry
@@ -8,23 +10,7 @@ import { tools as toolRegistry } from './tools.js';
  */
 async function executeToolCall(call) {
   const name = call?.function?.name;
-  const argsStr = ca      // Include collected events in the response
-      const responseWithEvents = {
-        ...response,
-        tool_events: collectedEvents
-      };
-
-      // Include conversation metadata if auto-created
-      if (persistence && persistence.persist && persistence.conversationMeta) {
-        responseWithEvents._conversation = {
-          id: persistence.conversationId,
-          title: persistence.conversationMeta.title,
-          model: persistence.conversationMeta.model,
-          created_at: persistence.conversationMeta.created_at,
-        };
-      }
-
-      return res.status(200).json(responseWithEvents);ction?.arguments || '{}';
+  const argsStr = call?.function?.arguments || '{}';
   const tool = toolRegistry[name];
 
   if (!tool) {
@@ -269,7 +255,20 @@ export async function handleUnifiedToolOrchestration({
   req,
   persistence,
 }) {
-  const messages = [...(bodyIn.messages || [])];
+  // Build initial messages from persisted history when available
+  let messages = [];
+  if (persistence && persistence.persist && persistence.conversationId) {
+    try {
+      const page = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
+      messages = (page?.messages || [])
+        .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+        .map(m => ({ role: m.role, content: m.content }));
+    } catch (_) {
+      messages = [...(bodyIn.messages || [])];
+    }
+  } else {
+    messages = [...(bodyIn.messages || [])];
+  }
   const requestedStreaming = body.stream !== false;
   const MAX_ITERATIONS = 10;
 
