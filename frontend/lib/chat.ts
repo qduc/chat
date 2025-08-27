@@ -180,7 +180,10 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
             onToken?.(delta.content);
             onEvent?.({ type: 'text', value: delta.content });
           } else if (delta?.tool_calls) {
-            onEvent?.({ type: 'tool_call', value: delta.tool_calls[0] });
+            // Process all tool calls in the array, not just the first one
+            for (const toolCall of delta.tool_calls) {
+              onEvent?.({ type: 'tool_call', value: toolCall });
+            }
           } else if (delta?.tool_output) {
             onEvent?.({ type: 'tool_output', value: delta.tool_output });
           }

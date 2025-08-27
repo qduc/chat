@@ -145,12 +145,12 @@ async function executeAllTools(toolCalls, streaming, res, model, collectedEvents
 /**
  * Stream a complete LLM response
  */
-async function streamResponse(llmResponse, res, persistence) {
+async function streamResponse(llmResponse, res, persistence, model) {
   if (!llmResponse.body) {
     // Non-streaming response, convert to streaming format
     const message = llmResponse?.choices?.[0]?.message;
     if (message?.content) {
-      streamEvent(res, { content: message.content }, response.model);
+      streamEvent(res, { content: message.content }, llmResponse.model || model);
       if (persistence && persistence.persist) {
         persistence.appendContent(message.content);
       }
@@ -161,7 +161,7 @@ async function streamResponse(llmResponse, res, persistence) {
       id: llmResponse.id || `unified_${Date.now()}`,
       object: 'chat.completion.chunk',
       created: Math.floor(Date.now() / 1000),
-      model: llmResponse.model || config.defaultModel,
+      model: llmResponse.model || model,
       choices: [{
         index: 0,
         delta: {},
@@ -317,7 +317,7 @@ export async function handleUnifiedToolOrchestration({
       if (!toolCalls.length) {
         // No tools needed - this is the final response
         if (requestedStreaming) {
-          const finishReason = await streamResponse(response, res, persistence);
+          const finishReason = await streamResponse(response, res, persistence, body.model || config.defaultModel);
 
           if (persistence && persistence.persist) {
             persistence.recordAssistantFinal({ finishReason });
@@ -348,7 +348,7 @@ export async function handleUnifiedToolOrchestration({
       if (requestedStreaming) {
         // Stream any thinking content
         if (message.content) {
-          streamEvent(res, { content: message.content }, response.model);
+          streamEvent(res, { content: message.content }, response.model || body.model || config.defaultModel);
           if (persistence && persistence.persist) {
             persistence.appendContent(message.content);
           }
@@ -356,7 +356,7 @@ export async function handleUnifiedToolOrchestration({
 
         // Stream tool calls
         for (const toolCall of toolCalls) {
-          streamEvent(res, { tool_calls: [toolCall] }, response.model);
+          streamEvent(res, { tool_calls: [toolCall] }, response.model || body.model || config.defaultModel);
         }
       } else {
         // For non-streaming, collect thinking content as event
@@ -391,9 +391,9 @@ export async function handleUnifiedToolOrchestration({
     const finalResponse = await callLLM(messages, config, { ...body, stream: requestedStreaming });
 
     if (requestedStreaming) {
-      const finishReason = await streamResponse(finalResponse, res, persistence);
+      const finishReason = await streamResponse(finalResponse, res, persistence, body.model || config.defaultModel);
       const maxIterMsg = '\n\n[Maximum iterations reached]';
-      streamEvent(res, { content: maxIterMsg });
+      streamEvent(res, { content: maxIterMsg }, body.model || config.defaultModel);
       if (persistence && persistence.persist) {
         persistence.appendContent(maxIterMsg);
         persistence.recordAssistantFinal({ finishReason });
@@ -438,7 +438,7 @@ export async function handleUnifiedToolOrchestration({
 
     if (requestedStreaming) {
       const errorMsg = `[Error: ${error.message}]`;
-      streamEvent(res, { content: errorMsg });
+      streamEvent(res, { content: errorMsg }, body?.model || config.defaultModel);
 
       if (persistence && persistence.persist) {
         persistence.appendContent(errorMsg);

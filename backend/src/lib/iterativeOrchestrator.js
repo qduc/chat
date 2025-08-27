@@ -48,12 +48,12 @@ async function executeToolCall(call) {
 /**
  * Stream an event to the client
  */
-function streamEvent(res, event) {
+function streamEvent(res, event, model) {
   const chunk = {
     id: `iter_${Date.now()}`,
     object: 'chat.completion.chunk',
     created: Math.floor(Date.now() / 1000),
-    model: config.defaultModel,
+    model: model,
     choices: [{
       index: 0,
       delta: event,
@@ -223,7 +223,7 @@ export async function handleIterativeOrchestration({
                 name,
                 output,
               },
-            });
+            }, body.model || config.defaultModel);
 
             conversationHistory.push({
               role: 'tool',
@@ -238,7 +238,7 @@ export async function handleIterativeOrchestration({
                 name: toolCall.function?.name,
                 output: errorMessage,
               },
-            });
+            }, body.model || config.defaultModel);
             conversationHistory.push({
               role: 'tool',
               tool_call_id: toolCall.id,
@@ -260,7 +260,7 @@ export async function handleIterativeOrchestration({
       // Safety check to prevent infinite loops
       if (iteration >= MAX_ITERATIONS) {
         const maxIterMsg = '\n\n[Maximum iterations reached]';
-        streamEvent(res, { content: maxIterMsg });
+        streamEvent(res, { content: maxIterMsg }, body.model || config.defaultModel);
         if (persistence && persistence.persist) {
           persistence.appendContent(maxIterMsg);
         }
@@ -304,7 +304,7 @@ export async function handleIterativeOrchestration({
 
     // Stream error to client
     const errorMsg = `[Error: ${error.message}]`;
-    streamEvent(res, { content: errorMsg });
+    streamEvent(res, { content: errorMsg }, body?.model || config.defaultModel);
 
     if (persistence && persistence.persist) {
       persistence.appendContent(errorMsg);
