@@ -105,7 +105,7 @@ export function MessageList({
                   <Bot className="w-4 h-4 text-slate-700 dark:text-slate-200" />
                 </div>
               )}
-              <div className={`group relative max-w-[75%] ${isUser ? 'order-first' : ''}`}>
+              <div className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? 'max-w-[50%] order-first' : 'max-w-[75%]'}`}>
                 {isEditing ? (
                   <div className="space-y-2">
                     <textarea
@@ -118,29 +118,19 @@ export function MessageList({
                             // hide native scrollbar - we'll size the textarea to fit
                             style={{ overflow: 'hidden' }}
                     />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={onSaveEdit}
-                        disabled={!editingContent.trim() || !conversationId || (editingMessageId ? editingMessageId.includes('-') : false)}
-                        title={!conversationId ? 'Save & Fork requires a saved conversation' : (editingMessageId && editingMessageId.includes('-') ? 'Only messages from saved history can be edited' : undefined)}
-                        className="px-3 py-1.5 text-xs rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                      >
-                        Save
-                      </button>
-                      {(!conversationId || (editingMessageId ? editingMessageId.includes('-') : false)) && (
-                        <button
-                          onClick={onApplyLocalEdit}
-                          disabled={!editingContent.trim()}
-                          className="px-3 py-1.5 text-xs rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                        >
-                          Apply Edit
-                        </button>
-                      )}
-                      <button
+                    <div className="flex gap-2 text-right justify-end">
+                    <button
                         onClick={onCancelEdit}
                         className="px-3 py-1.5 text-xs rounded-lg bg-slate-200 hover:bg-slate-300 dark:bg-neutral-700 dark:hover:bg-neutral-600 text-slate-700 dark:text-slate-300 transition-colors"
                       >
                         Cancel
+                      </button>
+                      <button
+                        onClick={onApplyLocalEdit}
+                        disabled={!editingContent.trim()}
+                        className="px-3 py-1.5 text-xs rounded-lg bg-slate-600 hover:bg-slate-700 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Save
                       </button>
                     </div>
                   </div>
