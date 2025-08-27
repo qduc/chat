@@ -134,6 +134,14 @@ export function getConversationById({ id, sessionId }) {
     .get({ id, session_id: sessionId });
 }
 
+export function updateConversationTitle({ id, sessionId, title }) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  db.prepare(
+    `UPDATE conversations SET title=@title, updated_at=@now WHERE id=@id AND session_id=@session_id`
+  ).run({ id, session_id: sessionId, title, now });
+}
+
 // --- Sprint 2 helpers ---
 export function countConversationsBySession(sessionId) {
   const db = getDb();

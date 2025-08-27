@@ -9,8 +9,10 @@ import {
   markAssistantErrorBySeq,
   createConversation,
   countConversationsBySession,
+  updateConversationTitle,
 } from '../db/index.js';
 import { v4 as uuidv4 } from 'uuid';
+import { createOpenAIRequest } from './streamUtils.js';
 
 /**
  * Simplified persistence manager that implements final-only writes
@@ -119,6 +121,21 @@ export class SimplifiedPersistence {
         content: lastUser.content,
         seq: userSeq,
       });
+
+      // Attempt to auto-generate a title if conversation has none
+      try {
+        if (!convo?.title) {
+          const generated = await this.generateConversationTitle(lastUser.content);
+          if (generated) {
+            updateConversationTitle({ id: conversationId, sessionId, title: generated });
+            // Refresh conversation meta locally
+            this.conversationMeta = { ...(convo || {}), id: conversationId, title: generated };
+          }
+        }
+      } catch (err) {
+        // Non-fatal: log and continue
+        console.warn('[SimplifiedPersistence] Title generation failed:', err?.message || err);
+      }
     }
 
     // Setup for assistant message - but don't create draft yet
@@ -126,7 +143,63 @@ export class SimplifiedPersistence {
     this.conversationId = conversationId;
     this.assistantSeq = userSeq + 1;
     this.assistantBuffer = '';
-    this.conversationMeta = convo; // Store conversation metadata for response
+    this.conversationMeta = this.conversationMeta || convo; // Store conversation metadata for response
+  }
+
+  /**
+   * Generate a concise conversation title from the user's first message using OpenAI
+   * @param {string} content - User message content
+   * @returns {Promise<string|null>} - Generated title or null
+   */
+  async generateConversationTitle(content) {
+    try {
+      const text = String(content || '').trim();
+      if (!text) return null;
+
+      // Simple fallback if OpenAI isn't configured
+      if (!this.config?.openaiApiKey || !this.config?.openaiBaseUrl) {
+        return this.fallbackTitle(text);
+      }
+
+      const promptUser = text.length > 500 ? text.slice(0, 500) + '…' : text;
+      const requestBody = {
+        model: this.config.titleModel || this.config.defaultModel || 'gpt-4.1-mini',
+        temperature: 0.2,
+        max_tokens: 20,
+        messages: [
+          {
+            role: 'system',
+            content:
+              'You create a very short, descriptive chat title (max 6 words). Output only the title, no quotes, no punctuation at the end.'
+          },
+          { role: 'user', content: `Create a short title for: ${promptUser}` },
+        ],
+      };
+
+      const resp = await createOpenAIRequest(this.config, requestBody);
+      if (!resp.ok) {
+        // Fall back gracefully
+        return this.fallbackTitle(text);
+      }
+      const body = await resp.json();
+      const raw = body?.choices?.[0]?.message?.content || '';
+      let title = String(raw).replace(/^["'\s]+|["'\s]+$/g, '').replace(/[\r\n]+/g, ' ').trim();
+      if (!title) return this.fallbackTitle(text);
+      if (title.length > 80) title = title.slice(0, 77) + '…';
+      return title;
+    } catch (e) {
+      return this.fallbackTitle(String(content || ''));
+    }
+  }
+
+  /**
+   * Fallback title generator based on user content
+   */
+  fallbackTitle(text) {
+    const cleaned = String(text || '').trim().replace(/[\r\n]+/g, ' ');
+    if (!cleaned) return null;
+    const words = cleaned.split(/\s+/).slice(0, 6).join(' ');
+    return words.length > 80 ? words.slice(0, 77) + '…' : words;
   }
 
   /**
