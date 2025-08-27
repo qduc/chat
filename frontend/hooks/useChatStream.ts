@@ -128,7 +128,8 @@ export function useChatStream(): UseChatStreamReturn {
     setMessages(m => [...m, assistantMsg]);
   // Make abort available immediately so callers can stop; but don't mark streaming true
   // until we actually receive data from the server — this keeps the input responsive.
-  setPending(prev => ({ ...prev, abort }));
+  // Clear any previous error when starting a new send and expose the abort controller
+  setPending(prev => ({ ...prev, abort, error: undefined }));
 
     try {
       // Ensure tools are loaded if needed
@@ -194,7 +195,8 @@ export function useChatStream(): UseChatStreamReturn {
     const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
     assistantMsgRef.current = assistantMsg;
     setMessages(m => [...m, assistantMsg]);
-    setPending(prev => ({ ...prev, streaming: true, abort }));
+  // Clear any previous error when starting a new generation from history
+  setPending(prev => ({ ...prev, streaming: true, abort, error: undefined }));
 
     // Ensure tools are loaded if needed
     const tools = useTools ? (availableTools ?? await toolsPromiseRef.current?.catch(() => [])) : undefined;
@@ -248,7 +250,8 @@ export function useChatStream(): UseChatStreamReturn {
     const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
     assistantMsgRef.current = assistantMsg;
     setMessages(() => [...baseMessages, assistantMsg]);
-    setPending(prev => ({ ...prev, streaming: true, abort }));
+  // Clear any previous error when starting a regeneration
+  setPending(prev => ({ ...prev, streaming: true, abort, error: undefined }));
 
     try {
       // Ensure tools are loaded if needed
@@ -305,13 +308,15 @@ export function useChatStream(): UseChatStreamReturn {
     try { pending.abort?.abort(); } catch {}
     // Ensure callers can immediately start a new request (e.g., after editing)
     inFlightRef.current = false;
-    setPending(p => ({ ...p, streaming: false, abort: undefined }));
+    // Also clear any previous error when stopping the stream
+    setPending(p => ({ ...p, streaming: false, abort: undefined, error: undefined }));
   }, [pending.abort]);
 
   const clearMessages = useCallback(() => {
     setMessages([]);
     assistantMsgRef.current = null;
-    setPending({ streaming: false });
+    // Clear pending state and any previous errors when clearing messages
+    setPending({ streaming: false, error: undefined });
     setPreviousResponseId(null);
   }, []);
 
