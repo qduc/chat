@@ -53,12 +53,6 @@ export function ChatSidebar({
             </button>
           </div>
         ))}
-        {conversations.length === 0 && !loadingConversations && (
-          <div className="text-sm text-slate-500 dark:text-slate-400 text-center py-8 bg-white/40 dark:bg-neutral-900/40 rounded-lg border border-dashed border-slate-300 dark:border-neutral-700">
-            <div className="mb-2">💬</div>
-            <div>No conversations yet</div>
-          </div>
-        )}
       </div>
       <div className="mt-4 pt-4 border-t border-slate-200/60 dark:border-neutral-800/60">
         {nextCursor && (
