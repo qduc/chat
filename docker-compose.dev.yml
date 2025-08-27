@@ -24,8 +24,6 @@ services:
     restart: unless-stopped
     networks:
       - app
-    depends_on:
-      - postgres
   frontend:
     build:
       context: ./frontend
@@ -46,20 +44,6 @@ services:
       - backend
     ports:
       - "3003:3000"
-    restart: unless-stopped
-    networks:
-      - app
-
-  postgres:
-    image: postgres:15-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: chatforge
-    volumes:
-      - db_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     restart: unless-stopped
     networks:
       - app
