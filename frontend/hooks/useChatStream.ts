@@ -134,18 +134,14 @@ export function useChatStream(): UseChatStreamReturn {
       // Ensure tools are loaded if needed
       const tools = useTools ? (availableTools ?? await toolsPromiseRef.current?.catch(() => [])) : undefined;
 
-      // Optimization: when a conversation exists and tools are disabled (Responses API),
-      // only send the latest user message; backend has full context persisted.
-      const shouldOptimize = !!conversationId && !useTools;
-      const outgoingForSend = shouldOptimize ? [userMsg] : [...messages, userMsg];
+      const outgoingForSend = [...messages, userMsg];
 
       const result = await sendChat({
         messages: outgoingForSend.map(m => ({ role: m.role as Role, content: m.content })),
         model,
         signal: abort.signal,
         conversationId: conversationId || undefined,
-        previousResponseId: previousResponseId || undefined,
-        useResponsesAPI: !useTools,
+  // ...existing code...
         shouldStream,
         reasoningEffort,
         verbosity,
@@ -208,8 +204,6 @@ export function useChatStream(): UseChatStreamReturn {
       messages: history.map(m => ({ role: m.role as Role, content: m.content })),
       model,
       signal: abort.signal,
-      // No conversationId / previousResponseId for local, unsaved edits
-      useResponsesAPI: !useTools,
       reasoningEffort,
       verbosity,
       ...(useTools ? {
@@ -260,19 +254,12 @@ export function useChatStream(): UseChatStreamReturn {
       // Ensure tools are loaded if needed
       const tools = useTools ? (availableTools ?? await toolsPromiseRef.current?.catch(() => [])) : undefined;
 
-      // Optimization: when a conversation exists and tools are disabled, only send last user message
-      const shouldOptimizeBase = !!conversationId && !useTools;
-      const optimizedBase = shouldOptimizeBase
-        ? (() => { const lastUser = [...baseMessages].reverse().find(m => m.role === 'user'); return lastUser ? [lastUser] : []; })()
-        : baseMessages;
-
       const result = await sendChat({
-        messages: optimizedBase.map(m => ({ role: m.role as Role, content: m.content })),
+        messages: baseMessages.map(m => ({ role: m.role as Role, content: m.content })),
         model,
         signal: abort.signal,
         conversationId: conversationId || undefined,
-        previousResponseId: previousResponseId || undefined,
-        useResponsesAPI: !useTools,
+  // ...existing code...
         shouldStream,
         reasoningEffort,
         verbosity,

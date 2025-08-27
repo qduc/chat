@@ -22,13 +22,13 @@ class MockUpstream {
 
   setupRoutes() {
     this.app.use(express.json());
-    
+
     // Mock OpenAI Chat Completions endpoint
     this.app.post('/v1/chat/completions', (req, res) => {
       if (this.shouldError) {
         return res.status(500).json({ error: 'upstream_error' });
       }
-      
+
       if (req.body.stream) {
         res.setHeader('Content-Type', 'text/event-stream');
         res.write('data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n');
@@ -51,13 +51,13 @@ class MockUpstream {
         });
       }
     });
-    
+
     // Mock Responses API endpoint
     this.app.post('/v1/responses', (req, res) => {
       if (this.shouldError) {
         return res.status(500).json({ error: 'upstream_error' });
       }
-      
+
       if (req.body.stream) {
         res.setHeader('Content-Type', 'text/event-stream');
         res.write('data: {"type":"response.output_text.delta","delta":"Hello","item_id":"item_123"}\n\n');
@@ -131,12 +131,12 @@ let originalModel;
 beforeAll(async () => {
   mockUpstream = new MockUpstream();
   await mockUpstream.start();
-  
+
   // Save original config
   originalBaseUrl = config.openaiBaseUrl;
   originalApiKey = config.openaiApiKey;
   originalModel = config.defaultModel;
-  
+
   // Set test config
   config.openaiBaseUrl = mockUpstream.getUrl();
   config.openaiApiKey = 'test-key';
@@ -145,7 +145,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await mockUpstream.stop();
-  
+
   // Explicitly close the database connection
   const { getDb } = await import('../src/db/index.js');
   const db = getDb();
@@ -163,7 +163,7 @@ beforeEach(() => {
   mockUpstream.setError(false);
   config.persistence.enabled = true;
   config.persistence.dbUrl = 'file::memory:';
-  
+
   if (config.persistence.enabled) {
     const db = getDb();
     if (db) {
@@ -192,7 +192,7 @@ describe('POST /v1/chat/completions (proxy)', () => {
           stream: false
         }),
       });
-      
+
       assert.equal(res.status, 200);
       const body = await res.json();
       assert.equal(body.choices[0].message.content, 'Hello world');
@@ -210,9 +210,9 @@ describe('POST /v1/chat/completions (proxy)', () => {
           stream: true
         }),
       });
-      
+
       assert.equal(res.status, 200);
-      
+
       const text = await res.text();
       assert.ok(text.includes('data: '));
       assert.ok(text.includes('[DONE]'));
@@ -231,7 +231,7 @@ describe('POST /v1/chat/completions (proxy)', () => {
           stream: false
         }),
       });
-      
+
       assert.equal(res.status, 500);
       const body = await res.json();
       assert.equal(body.error, 'upstream_error');
@@ -249,14 +249,14 @@ describe('POST /v1/chat/completions (proxy)', () => {
           stream: true
         }),
       });
-      
+
       assert.equal(res.status, 200);
-      
+
       // Test behavior: streaming content is delivered progressively
       const text = await res.text();
       assert.ok(text.includes('data: '), 'Should deliver data in SSE format');
       assert.ok(text.includes('[DONE]'), 'Should signal completion');
-      
+
       // Verify content arrives in chunks (behavior vs. transport details)
       const chunks = text.split('\n\n').filter(chunk => chunk.startsWith('data: ') && chunk !== 'data: [DONE]');
       assert.ok(chunks.length > 0, 'Should deliver content in multiple chunks');
@@ -268,30 +268,30 @@ describe('POST /v1/chat/completions (proxy)', () => {
     // they should receive a clear error message rather than silently failing
     const originalLimit = config.persistence.maxMessagesPerConversation;
     config.persistence.maxMessagesPerConversation = 1; // Set very low limit
-    
+
     const sessionId = 'test-session-limit';
-    
+
     try {
       const db = getDb();
       upsertSession(sessionId);
       createConversation({ id: 'conv1', sessionId, title: 'Test Limit' });
-      
+
       // Pre-populate one message to reach the limit
       db.prepare(
         `INSERT INTO messages (conversation_id, role, content, seq) VALUES (?, 'user', 'existing message', 1)`
       ).run('conv1');
-      
+
       const app = makeApp();
       await withServer(app, async (port) => {
         // Suppress console.error for this specific test
         const originalConsoleError = console.error;
         console.error = () => {};
-        
+
         try {
           // This message should fail because conversation already has 1 message and limit is 1
           const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
             method: 'POST',
-            headers: { 
+            headers: {
               'Content-Type': 'application/json',
               'x-session-id': sessionId
             },
@@ -301,7 +301,7 @@ describe('POST /v1/chat/completions (proxy)', () => {
               stream: false
             }),
           });
-          
+
           // Test behavior: User should receive clear limit exceeded error
           assert.equal(res.status, 429, 'Should return 429 when limit exceeded');
           const body = await res.json();
@@ -323,12 +323,12 @@ describe('POST /v1/chat/completions (proxy)', () => {
     const db = getDb();
     upsertSession(sessionId);
     createConversation({ id: 'conv1', sessionId, title: 'Test' });
-    
+
     const app = makeApp();
     await withServer(app, async (port) => {
       const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'x-session-id': sessionId,
           'x-conversation-id': 'conv1'
@@ -338,7 +338,7 @@ describe('POST /v1/chat/completions (proxy)', () => {
           stream: true
         }),
       });
-      
+
       assert.equal(res.status, 200);
       const text = await res.text();
       assert.ok(text.includes('data: '));
@@ -350,13 +350,13 @@ describe('POST /v1/chat/completions (proxy)', () => {
     const db = getDb();
     upsertSession(sessionId);
     createConversation({ id: 'conv1', sessionId, title: 'Test' });
-    
+
     const app = makeApp();
     await withServer(app, async (port) => {
       // User sends a message
       const chatRes = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'x-session-id': sessionId
         },
@@ -366,26 +366,26 @@ describe('POST /v1/chat/completions (proxy)', () => {
           stream: false
         }),
       });
-      
+
       assert.equal(chatRes.status, 200);
       const chatBody = await chatRes.json();
       assert.ok(chatBody.choices[0].message.content);
-      
+
       // Test behavior: User should be able to retrieve the conversation with both messages
       const getRes = await fetch(`http://127.0.0.1:${port}/v1/conversations/conv1/messages`, {
         headers: { 'x-session-id': sessionId }
       });
-      
+
       if (getRes.status === 200) {
         const conversationData = await getRes.json();
         const messages = conversationData.messages || [];
-        
+
         // Should have both user and assistant messages persisted
         assert.ok(messages.length >= 2, 'Should persist both user and assistant messages');
-        
+
         const userMessage = messages.find(m => m.role === 'user');
         const assistantMessage = messages.find(m => m.role === 'assistant');
-        
+
         assert.ok(userMessage, 'Should persist user message');
         assert.equal(userMessage.content, 'Hello', 'Should preserve user message content');
         assert.ok(assistantMessage, 'Should persist assistant response');
@@ -400,7 +400,7 @@ describe('POST /v1/chat/completions (proxy)', () => {
     const app = makeApp();
     await withServer(app, async (port) => {
       const controller = new AbortController();
-      
+
       const fetchPromise = fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -410,10 +410,10 @@ describe('POST /v1/chat/completions (proxy)', () => {
         }),
         signal: controller.signal
       });
-      
+
       // Abort the request immediately
       controller.abort();
-      
+
       try {
         await fetchPromise;
         assert.fail('Should have thrown');
@@ -428,14 +428,14 @@ describe('POST /v1/chat/completions (proxy)', () => {
     const db = getDb();
     upsertSession(sessionId);
     createConversation({ id: 'conv1', sessionId, title: 'Test' });
-    
+
     mockUpstream.setError(true);
-    
+
     const app = makeApp();
     await withServer(app, async (port) => {
       const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'x-session-id': sessionId
         },
@@ -445,61 +445,16 @@ describe('POST /v1/chat/completions (proxy)', () => {
           stream: true
         }),
       });
-      
+
       // Test behavior: User should receive appropriate error response
       assert.ok(res.status >= 400, 'Should return error status when upstream fails');
-      
+
       const body = await res.json();
       assert.ok(body.error, 'Should provide error information to user');
     });
   });
 });
 
-describe('POST /v1/responses (proxy)', () => {
-  test('proxies non-streaming requests and returns upstream JSON', async () => {
-    // Test that /v1/responses endpoint works when using chat completions backend
-    const app = makeApp();
-    await withServer(app, async (port) => {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/responses`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          input: [{ role: 'user', content: 'Hello' }],
-          disable_responses_api: true, // Force chat completions format
-          stream: false
-        }),
-      });
-      
-      assert.equal(res.status, 200);
-      const body = await res.json();
-      // When using chat completions backend, the format is preserved
-      assert.ok(body.choices);
-      assert.equal(body.choices[0].message.content, 'Hello world');
-    });
-  });
-
-  test('streams SSE responses line-by-line until [DONE]', async () => {
-    const app = makeApp();
-    await withServer(app, async (port) => {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/responses`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          input: [{ role: 'user', content: 'Hello' }],
-          disable_responses_api: true, // Force chat completions format  
-          stream: true
-        }),
-      });
-      
-      assert.equal(res.status, 200);
-      
-      // Test behavior: streaming response delivers content progressively
-      const text = await res.text();
-      assert.ok(text.includes('data: '), 'Should deliver data in SSE format');
-      assert.ok(text.includes('[DONE]'), 'Should signal completion');
-    });
-  });
-});
 
 describe('Format transformation', () => {
   test('converts Responses API non-streaming JSON to Chat Completions shape when hitting /v1/chat/completions', async () => {
@@ -514,10 +469,10 @@ describe('Format transformation', () => {
           stream: false
         }),
       });
-      
+
       assert.equal(res.status, 200);
       const body = await res.json();
-      
+
       // Should return standard Chat Completions format
       assert.ok(body.choices);
       assert.ok(body.choices[0].message);
@@ -538,10 +493,10 @@ describe('Format transformation', () => {
           stream: true
         }),
       });
-      
+
       assert.equal(res.status, 200);
       const text = await res.text();
-      
+
       // Should contain standard streaming format with delta fields
       assert.ok(text.includes('data: '));
       assert.ok(text.includes('[DONE]'));
@@ -563,7 +518,7 @@ describe('Tool orchestration', () => {
           stream: false
         }),
       });
-      
+
       // Should process but not execute tools (since we're using the basic mock)
       assert.equal(res.status, 200);
       const body = await res.json();
@@ -587,9 +542,9 @@ describe('Tool orchestration', () => {
           stream: true
         }),
       });
-      
+
       assert.equal(res.status, 200);
-      
+
       // Test behavior: streaming works with tools
       const text = await res.text();
       assert.ok(text.includes('data:'), 'Should deliver streaming data');
@@ -607,7 +562,7 @@ describe('Tool orchestration', () => {
     await withServer(app, async (port) => {
       const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
           'x-session-id': sessionId
         },
@@ -618,15 +573,15 @@ describe('Tool orchestration', () => {
           stream: false
         }),
       });
-      
+
       assert.equal(res.status, 200);
-      
+
       // Check that request was processed successfully with tools
       const body = await res.json();
       assert.ok(body.choices);
       assert.ok(body.choices[0].message);
-      
-      // Note: Persistence behavior with tools is complex and depends on 
+
+      // Note: Persistence behavior with tools is complex and depends on
       // the specific tool orchestration flow, which requires detailed mocking
       // This test ensures the request completes successfully
     });
@@ -651,7 +606,7 @@ describe('Request shaping', () => {
           stream: false
         }),
       });
-      
+
       // Should work and not crash when processing multiple messages
       assert.equal(res.status, 200);
       const body = await res.json();
@@ -673,7 +628,7 @@ describe('Request shaping', () => {
           stream: false
         }),
       });
-      
+
       // Should work despite extra fields that would be stripped
       assert.equal(res.status, 200);
       const body = await res.json();
@@ -681,29 +636,6 @@ describe('Request shaping', () => {
     });
   });
 
-  test('for Responses API, forwards previous_response_id when provided via body or header', async () => {
-    // Test that headers are processed correctly without network errors
-    const app = makeApp();
-    await withServer(app, async (port) => {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/responses`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-previous-response-id': 'resp_123'
-        },
-        body: JSON.stringify({
-          input: [{ role: 'user', content: 'Hello' }],
-          disable_responses_api: true, // Force chat completions backend to avoid network errors
-          stream: false
-        }),
-      });
-      
-      // Should handle the header without error
-      assert.equal(res.status, 200);
-      const body = await res.json();
-      assert.ok(body.choices); // Since we're using chat completions backend
-    });
-  });
 
   // Iterative Orchestration Integration Tests
   describe.skip('Iterative Tool Orchestration', () => {
@@ -713,7 +645,7 @@ describe('Request shaping', () => {
       let callCount = 0;
       upstream.app.post('/v1/chat/completions', (req, res) => {
         callCount++;
-        
+
         if (callCount === 1) {
           // First call: return tool calls
           res.json({
@@ -759,14 +691,14 @@ describe('Request shaping', () => {
       });
 
       await upstream.start();
-      
+
       try {
         const app = makeApp();
-        
+
         // Override config to point to our mock upstream
         const originalBaseUrl = config.openaiBaseUrl;
         config.openaiBaseUrl = `http://127.0.0.1:${upstream.port}/v1`;
-        
+
         try {
           await withServer(app, async (port) => {
             const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
@@ -786,18 +718,18 @@ describe('Request shaping', () => {
               }),
             });
             assert.equal(res.status, 200);
-            
+
             // Read the streaming response
             const reader = res.body.getReader();
             const decoder = new TextDecoder();
             let streamData = '';
-            
+
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
               streamData += decoder.decode(value, { stream: true });
             }
-            
+
             // Parse streaming events and check for tool call events
             const events = [];
             const lines = streamData.split('\n');
@@ -811,15 +743,15 @@ describe('Request shaping', () => {
                 }
               }
             }
-            
+
             // Should contain tool call events and tool output events
             const hasToolCalls = events.some(e => e.choices?.[0]?.delta?.tool_calls);
             const hasToolOutput = events.some(e => e.choices?.[0]?.delta?.tool_output);
-            
+
             assert(hasToolCalls, 'Should contain tool call events');
             assert(hasToolOutput, 'Should contain tool output events');
             assert(streamData.includes('[DONE]'), 'Should end with DONE marker');
-            
+
             // Should have made multiple calls to upstream (iterative behavior)
             assert(callCount >= 2, 'Should make multiple calls to upstream for iterative orchestration');
           });
@@ -860,12 +792,12 @@ describe('Request shaping', () => {
       });
 
       await upstream.start();
-      
+
       try {
         const app = makeApp();
         const originalBaseUrl = config.openaiBaseUrl;
         config.openaiBaseUrl = `http://127.0.0.1:${upstream.port}/v1`;
-        
+
         try {
           await withServer(app, async (port) => {
             const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
@@ -884,19 +816,19 @@ describe('Request shaping', () => {
                 stream: true
               }),
             });
-            
+
             assert.equal(res.status, 200);
-            
+
             const reader = res.body.getReader();
             const decoder = new TextDecoder();
             let streamData = '';
-            
+
             while (true) {
               const { done, value } = await reader.read();
               if (done) break;
               streamData += decoder.decode(value, { stream: true });
             }
-            
+
             // Parse events to verify tool execution
             const events = streamData
               .split('\n')
@@ -909,14 +841,14 @@ describe('Request shaping', () => {
                 }
               })
               .filter(Boolean);
-            
+
             // Should have tool output with actual time data
             const toolOutputEvents = events.filter(e => e.choices?.[0]?.delta?.tool_output);
             assert(toolOutputEvents.length > 0, 'Should have tool output events');
-            
-            const timeOutput = toolOutputEvents.find(e => 
+
+            const timeOutput = toolOutputEvents.find(e =>
               e.choices[0].delta.tool_output.output?.iso ||
-              (typeof e.choices[0].delta.tool_output.output === 'object' && 
+              (typeof e.choices[0].delta.tool_output.output === 'object' &&
                e.choices[0].delta.tool_output.output.iso)
             );
             assert(timeOutput, 'Should have actual time data in tool output');
@@ -941,19 +873,19 @@ describe('Request shaping', () => {
             stream: true
           }),
         });
-        
+
         assert.equal(res.status, 200);
-        
+
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let streamData = '';
-        
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           streamData += decoder.decode(value, { stream: true });
         }
-        
+
         // Parse events to check for tool-related content
         const events = [];
         const lines = streamData.split('\n');
@@ -967,12 +899,12 @@ describe('Request shaping', () => {
             }
           }
         }
-        
+
         // Should use regular streaming (not iterative orchestration)
         const hasToolCalls = events.some(e => e.choices?.[0]?.delta?.tool_calls);
         const hasToolOutput = events.some(e => e.choices?.[0]?.delta?.tool_output);
         const hasContent = events.some(e => e.choices?.[0]?.delta?.content?.includes('Hello world'));
-        
+
         assert(!hasToolCalls, 'Should not have tool call events');
         assert(!hasToolOutput, 'Should not have tool output events');
         assert(hasContent, 'Should have regular chat response');

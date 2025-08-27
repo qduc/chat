@@ -15,25 +15,13 @@ export async function proxyOpenAIRequest(req, res) {
   const conversationId =
     bodyIn.conversation_id || req.header('x-conversation-id');
 
-  // Pull optional previous_response_id for Responses API conversation continuity
-  const previousResponseId =
-    bodyIn.previous_response_id || req.header('x-previous-response-id');
-
-  // Determine which API to use
-  let useResponsesAPI =
-    !bodyIn.disable_responses_api &&
-    config.openaiBaseUrl.includes('openai.com');
-
-  // If tools are present, force Chat Completions path for MVP (server orchestration)
   const hasTools = Array.isArray(bodyIn.tools) && bodyIn.tools.length > 0;
-  if (hasTools) useResponsesAPI = false;
 
 
   // Clone and strip non-upstream fields
   const body = { ...bodyIn };
   delete body.conversation_id;
-  delete body.disable_responses_api;
-  delete body.previous_response_id;
+  // ...existing code...
 
   // Validate and handle reasoning_effort
   if (body.reasoning_effort) {
@@ -64,36 +52,9 @@ export async function proxyOpenAIRequest(req, res) {
   if (!body.model) body.model = config.defaultModel;
   const stream = !!body.stream;
 
-  // Convert Chat Completions format to Responses API format if needed (no tools in MVP)
-  if (useResponsesAPI && body.messages) {
-    // For Responses API, only send the latest user message to reduce token usage
-    const lastUserMessage = [...body.messages]
-      .reverse()
-      .find((m) => m && m.role === 'user');
-    body.input = lastUserMessage ? [lastUserMessage] : [];
-    delete body.messages;
+  // ...existing code...
 
-    // Add previous_response_id for conversation continuity if provided
-    if (previousResponseId) {
-      body.previous_response_id = previousResponseId;
-    }
-  }
-
-  // Map compatibility fields for Responses API
-  if (useResponsesAPI) {
-    if (body.reasoning_effort) {
-      const modelName = String(body.model || '').toLowerCase();
-      const supportsReasoning =
-        modelName.includes('o4') || modelName.includes('o3') || modelName.includes('reasoning');
-      if (supportsReasoning) {
-        body.reasoning = { effort: body.reasoning_effort };
-      }
-      // Always remove the compatibility field to avoid upstream 400s
-      delete body.reasoning_effort;
-    }
-    // The Responses API may not recognize 'verbosity'; drop to avoid 400s
-    if (body.verbosity) delete body.verbosity;
-  }
+  // ...existing code...
 
   // Persistence setup
   const persistence = new SimplifiedPersistence(config);
@@ -136,10 +97,10 @@ export async function proxyOpenAIRequest(req, res) {
       }
     }
 
-    // Make upstream request
-    // Build upstream URL resiliently whether base has trailing /v1 or not
-    const base = (config.openaiBaseUrl || '').replace(/\/v1\/?$/, '');
-    const url = `${base}/v1/${useResponsesAPI ? 'responses' : 'chat/completions'}`;
+  // Make upstream request
+  // Build upstream URL resiliently whether base has trailing /v1 or not
+  const base = (config.openaiBaseUrl || '').replace(/\/v1\/?$/, '');
+  const url = `${base}/v1/chat/completions`;
     const headers = {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${config.openaiApiKey}`,
@@ -167,19 +128,11 @@ export async function proxyOpenAIRequest(req, res) {
         let content = '';
         let finishReason = null;
 
-        if (useResponsesAPI) {
-          // Responses API format
-          if (body.output && body.output[0] && body.output[0].content && body.output[0].content[0]) {
-            content = body.output[0].content[0].text;
-          }
-          finishReason = body.status;
-        } else {
-          // Chat Completions format
-          if (body.choices && body.choices[0] && body.choices[0].message) {
-            content = body.choices[0].message.content;
-          }
-          finishReason = body.choices && body.choices[0] ? body.choices[0].finish_reason : null;
+        // Chat Completions format only
+        if (body.choices && body.choices[0] && body.choices[0].message) {
+          content = body.choices[0].message.content;
         }
+        finishReason = body.choices && body.choices[0] ? body.choices[0].finish_reason : null;
 
         if (content) {
           persistence.appendContent(content);
@@ -211,7 +164,6 @@ export async function proxyOpenAIRequest(req, res) {
       res,
       req,
       persistence,
-      useResponsesAPI,
     });
 
   } catch (error) {
