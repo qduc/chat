@@ -1,11 +1,8 @@
-import fetch from 'node-fetch';
 import { config } from '../env.js';
 import { handleUnifiedToolOrchestration } from './unifiedToolOrchestrator.js';
 import { handleIterativeOrchestration } from './iterativeOrchestrator.js';
-import {
-  setupStreamingHeaders,
-  handleRegularStreaming,
-} from './streamingHandler.js';
+import { handleRegularStreaming } from './streamingHandler.js';
+import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
 import { SimplifiedPersistence } from './simplifiedPersistence.js';
 import { addConversationMetadata } from './responseUtils.js';
 
@@ -64,10 +61,6 @@ export async function proxyOpenAIRequest(req, res) {
   if (!body.model) body.model = config.defaultModel;
   const stream = !!body.stream;
 
-  // ...existing code...
-
-  // ...existing code...
-
   // Persistence setup
   const persistence = new SimplifiedPersistence(config);
   const sessionId = req.sessionId;
@@ -107,33 +100,26 @@ export async function proxyOpenAIRequest(req, res) {
       }
     }
 
-  // Make upstream request
-  // Build upstream URL resiliently whether base has trailing /v1 or not
-  const base = (config.openaiBaseUrl || '').replace(/\/v1\/?$/, '');
-  const url = `${base}/v1/chat/completions`;
-    const headers = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.openaiApiKey}`,
-    };
-
-    const upstream = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    });
+    // Make upstream request via shared helper
+    const upstream = await createOpenAIRequest(config, body);
 
     // Check for errors before setting up streaming
     if (!upstream.ok) {
-      const body = await upstream.json();
+      let errorJson;
+      try {
+        errorJson = await upstream.json();
+      } catch {
+        errorJson = { error: 'upstream_error', message: await upstream.text().catch(() => 'Unknown error') };
+      }
       if (persistence.persist) {
         persistence.markError();
       }
-      return res.status(upstream.status).json(body);
+      return res.status(upstream.status).json(errorJson);
     }
 
     // Handle non-streaming responses
     if (!stream) {
-      const body = await upstream.json();
+      const upstreamJson = await upstream.json();
 
       // Extract content and finish reason from response
       if (persistence.persist) {
@@ -141,10 +127,10 @@ export async function proxyOpenAIRequest(req, res) {
         let finishReason = null;
 
         // Chat Completions format only
-        if (body.choices && body.choices[0] && body.choices[0].message) {
-          content = body.choices[0].message.content;
+        if (upstreamJson.choices && upstreamJson.choices[0] && upstreamJson.choices[0].message) {
+          content = upstreamJson.choices[0].message.content;
         }
-        finishReason = body.choices && body.choices[0] ? body.choices[0].finish_reason : null;
+        finishReason = upstreamJson.choices && upstreamJson.choices[0] ? upstreamJson.choices[0].finish_reason : null;
 
         if (content) {
           persistence.appendContent(content);
@@ -153,7 +139,7 @@ export async function proxyOpenAIRequest(req, res) {
       }
 
       // Include conversation metadata in response if auto-created
-      const responseBody = { ...body };
+      const responseBody = { ...upstreamJson };
       addConversationMetadata(responseBody, persistence);
 
       return res.status(200).json(responseBody);

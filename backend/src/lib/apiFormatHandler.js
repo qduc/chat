@@ -26,8 +26,6 @@ export function prepareRequestBody(bodyIn, apiFormat, config) {
 
   if (!body.model) body.model = config.defaultModel;
 
-  // ...existing code...
-
   return body;
 }
 

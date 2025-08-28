@@ -4,7 +4,6 @@ import { generateOpenAIToolSpecs, getAvailableTools } from '../lib/tools.js';
 
 export const chatRouter = Router();
 
-// ...existing code...
 chatRouter.post('/v1/chat/completions', proxyOpenAIRequest);
 
 // Tool specifications endpoint

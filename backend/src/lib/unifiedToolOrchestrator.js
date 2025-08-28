@@ -1,8 +1,8 @@
-import fetch from 'node-fetch';
 import { tools as toolRegistry } from './tools.js';
 import { getMessagesPage } from '../db/index.js';
 import { response } from 'express';
 import { addConversationMetadata, getConversationMetadata } from './responseUtils.js';
+import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
 
 /**
  * Execute a single tool call from the local registry
@@ -53,13 +53,6 @@ function streamEvent(res, event, model) {
  * Make a request to the AI model
  */
 async function callLLM(messages, config, bodyParams) {
-  const base = (config.openaiBaseUrl || '').replace(/\/v1\/?$/, '');
-  const url = `${base}/v1/chat/completions`;
-  const headers = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${config.openaiApiKey}`,
-  };
-
   const requestBody = {
     model: bodyParams.model || config.defaultModel,
     messages,
@@ -73,11 +66,7 @@ async function callLLM(messages, config, bodyParams) {
     if (bodyParams.verbosity) requestBody.verbosity = bodyParams.verbosity;
   }
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(requestBody),
-  });
+  const response = await createOpenAIRequest(config, requestBody);
 
   if (bodyParams.stream) {
     return response; // Return raw response for streaming
@@ -248,19 +237,7 @@ async function streamResponse(llmResponse, res, persistence, model) {
   });
 }
 
-/**
- * Setup streaming response headers
- */
-function setupStreamingHeaders(res) {
-  res.status(200);
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-
-  if (typeof res.flushHeaders === 'function') {
-    res.flushHeaders();
-  }
-}
+// Use shared streaming header setup from streamUtils
 
 /**
  * Unified tool orchestration handler - automatically adapts to request needs

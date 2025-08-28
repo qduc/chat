@@ -1,4 +1,3 @@
-import fetch from 'node-fetch';
 import { tools as toolRegistry, generateOpenAIToolSpecs } from './tools.js';
 import { getMessagesPage } from '../db/index.js';
 import { parseSSEStream } from './sseParser.js';
@@ -71,12 +70,6 @@ function streamEvent(res, event, model) {
  * Make a request to the AI model
  */
 async function callModel(messages, config, bodyParams, tools = null) {
-  const url = `${config.openaiBaseUrl}/chat/completions`;
-  const headers = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${config.openaiApiKey}`,
-  };
-
   const requestBody = {
     model: bodyParams.model || config.defaultModel,
     messages,
@@ -90,12 +83,7 @@ async function callModel(messages, config, bodyParams, tools = null) {
     if (bodyParams.verbosity) requestBody.verbosity = bodyParams.verbosity;
   }
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(requestBody),
-  });
-
+  const response = await createOpenAIRequest(config, requestBody);
   const result = await response.json();
   return result?.choices?.[0]?.message;
 }
