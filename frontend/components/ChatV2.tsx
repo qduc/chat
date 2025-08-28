@@ -5,6 +5,7 @@ import { ChatSidebar } from './ChatSidebar';
 import { ChatHeader } from './ChatHeader';
 import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
+import { RightSidebar } from './RightSidebar';
 
 export function ChatV2() {
   const { state, actions } = useChatState();
@@ -116,6 +117,7 @@ export function ChatV2() {
           />
         </div>
       </div>
+      <RightSidebar systemPrompt={state.systemPrompt ?? ''} onSystemPromptChange={actions.setSystemPrompt} />
     </div>
   );
 }

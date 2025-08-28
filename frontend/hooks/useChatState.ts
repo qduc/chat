@@ -12,6 +12,7 @@ export interface ChatState {
   // Chat State
   messages: ChatMessage[];
   conversationId: string | null;
+  previousResponseId: string | null;
   // ...existing code...
 
   // Settings
@@ -22,6 +23,8 @@ export interface ChatState {
   verbosity: string;
   researchMode: boolean;
   qualityLevel: QualityLevel;
+  // System prompt for the current session
+  systemPrompt: string;
 
   // Conversations
   conversations: ConversationMeta[];
@@ -50,6 +53,7 @@ export type ChatAction =
   | { type: 'SET_VERBOSITY'; payload: string }
   | { type: 'SET_RESEARCH_MODE'; payload: boolean }
   | { type: 'SET_QUALITY_LEVEL'; payload: QualityLevel }
+  | { type: 'SET_SYSTEM_PROMPT'; payload: string }
   | { type: 'SET_CONVERSATION_ID'; payload: string | null }
   | { type: 'START_STREAMING'; payload: { abort: AbortController; userMessage: ChatMessage; assistantMessage: ChatMessage } }
   | { type: 'REGENERATE_START'; payload: { abort: AbortController; baseMessages: ChatMessage[]; assistantMessage: ChatMessage } }
@@ -88,6 +92,7 @@ const initialState: ChatState = {
   verbosity: 'medium',
   researchMode: false,
   qualityLevel: 'balanced',
+  systemPrompt: '',
   conversations: [],
   nextCursor: null,
   historyEnabled: true,
@@ -135,6 +140,9 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         verbosity: derived.verbosity,
       };
     }
+
+    case 'SET_SYSTEM_PROMPT':
+      return { ...state, systemPrompt: action.payload };
 
     case 'SET_CONVERSATION_ID':
       return { ...state, conversationId: action.payload };
@@ -529,6 +537,10 @@ export function useChatState() {
 
     setQualityLevel: useCallback((level: QualityLevel) => {
       dispatch({ type: 'SET_QUALITY_LEVEL', payload: level });
+    }, []),
+
+    setSystemPrompt: useCallback((prompt: string) => {
+      dispatch({ type: 'SET_SYSTEM_PROMPT', payload: prompt });
     }, []),
 
     // Chat Actions
