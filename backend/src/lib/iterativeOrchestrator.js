@@ -4,6 +4,7 @@ import { getMessagesPage } from '../db/index.js';
 import { parseSSEStream } from './sseParser.js';
 import { createOpenAIRequest, writeAndFlush, createChatCompletionChunk } from './streamUtils.js';
 import { getConversationMetadata } from './responseUtils.js';
+import { setupStreamingHeaders } from './streamingHandler.js';
 
 /**
  * Iterative tool orchestration with thinking and dynamic tool execution
@@ -111,6 +112,8 @@ export async function handleIterativeOrchestration({
   persistence,
 }) {
   try {
+    // Setup streaming headers
+    setupStreamingHeaders(res);
     // Build conversation history
     let prior = [];
     if (persistence && persistence.persist && persistence.conversationId) {
@@ -156,12 +159,27 @@ export async function handleIterativeOrchestration({
       }
 
       const upstream = await createOpenAIRequest(config, requestBody);
+      
+      // Check upstream response status
+      if (!upstream.ok) {
+        const errorBody = await upstream.text();
+        throw new Error(`Upstream API error (${upstream.status}): ${errorBody}`);
+      }
 
       let leftoverIter = '';
       const toolCallMap = new Map(); // index -> accumulated tool call
       let gotAnyNonToolDelta = false;
 
       await new Promise((resolve, reject) => {
+        // Add timeout to prevent hanging
+        const timeout = setTimeout(() => {
+          reject(new Error('Stream timeout - no response from upstream API'));
+        }, 30000); // 30 second timeout
+
+        const cleanup = () => {
+          clearTimeout(timeout);
+        };
+
         upstream.body.on('data', (chunk) => {
           try {
             leftoverIter = parseSSEStream(
@@ -198,14 +216,28 @@ export async function handleIterativeOrchestration({
                   persistence.appendContent(delta.content);
                 }
               },
-              () => resolve(),
+              () => {
+                cleanup();
+                resolve();
+              },
               () => { /* ignore JSON parse errors for this stream */ }
             );
           } catch (e) {
+            cleanup();
             reject(e);
           }
         });
-        upstream.body.on('error', reject);
+        
+        upstream.body.on('error', (err) => {
+          cleanup();
+          reject(err);
+        });
+        
+        upstream.body.on('end', () => {
+          // Fallback resolution if [DONE] event wasn't received
+          cleanup();
+          resolve();
+        });
       });
 
       const toolCalls = Array.from(toolCallMap.values());

@@ -108,3 +108,127 @@ Content-Type: application/json
 
 ###
 
+POST http://localhost:4001/v1/chat/completions
+Accept: text/event-stream
+Content-Type: application/json
+
+{
+  "model": "gpt-4.1-mini",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Compare pricing of gpt-5-mini, gpt-4.1-mini and gpt-4o-mini"
+    }
+  ],
+  "stream": true,
+  "reasoning_effort": "medium",
+  "verbosity": "medium",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_time",
+        "description": "Get the current time in ISO format with timezone information",
+        "parameters": {
+          "type": "object",
+          "properties": {}
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "web_search",
+        "description": "Perform a web search using Tavily API to get current information",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "The search query to execute"
+            }
+          },
+          "required": [
+            "query"
+          ]
+        }
+      }
+    }
+  ],
+  "tool_choice": "auto"
+}
+
+###
+
+POST http://localhost:4001/v1/chat/completions
+Accept: text/event-stream
+Content-Type: application/json
+
+{
+  "model": "gpt-4.1-mini",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Hello"
+    }
+  ],
+  "stream": true,
+  "verbosity": "medium"
+}
+
+###
+
+POST http://localhost:4001/v1/chat/completions
+Accept: text/event-stream
+Content-Type: application/json
+
+{
+  "model": "gpt-5-mini",
+  "messages": [
+    {
+      "role": "user",
+      "content": "hi"
+    }
+  ],
+  "stream": true,
+  "researchMode": false,
+  "qualityLevel": "balanced",
+  "reasoning_effort": "medium",
+  "verbosity": "medium",
+  "tools": [
+    {
+      "type": "function",
+      "function": {
+        "name": "get_time",
+        "description": "Get the current local time of the server",
+        "parameters": {
+          "type": "object",
+          "properties": {},
+          "additionalProperties": false
+        }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "web_search",
+        "description": "Perform a web search for a given query",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "The search query"
+            }
+          },
+          "required": [
+            "query"
+          ]
+        }
+      }
+    }
+  ]
+}
+
+###
+

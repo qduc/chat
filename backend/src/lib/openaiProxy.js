@@ -85,8 +85,6 @@ export async function proxyOpenAIRequest(req, res) {
     // Handle tool orchestration
     if (hasTools) {
       if (stream) {
-        // Prepare SSE response for streaming tool orchestration
-        setupStreamingHeaders(res);
         // Stream text deltas; buffer tool_calls and emit consolidated call
         return await handleIterativeOrchestration({
           body,
@@ -124,16 +122,18 @@ export async function proxyOpenAIRequest(req, res) {
       body: JSON.stringify(body),
     });
 
-    // Handle non-streaming responses
-    if (!upstream.ok || !stream) {
+    // Check for errors before setting up streaming
+    if (!upstream.ok) {
       const body = await upstream.json();
-
-      if (!upstream.ok) {
-        if (persistence.persist) {
-          persistence.markError();
-        }
-        return res.status(upstream.status).json(body);
+      if (persistence.persist) {
+        persistence.markError();
       }
+      return res.status(upstream.status).json(body);
+    }
+
+    // Handle non-streaming responses
+    if (!stream) {
+      const body = await upstream.json();
 
       // Extract content and finish reason from response
       if (persistence.persist) {
@@ -159,7 +159,7 @@ export async function proxyOpenAIRequest(req, res) {
       return res.status(200).json(responseBody);
     }
 
-    // Setup streaming headers
+    // Setup streaming headers only after confirming upstream is ok
     setupStreamingHeaders(res);
 
     // Handle regular streaming (non-tool orchestration)
