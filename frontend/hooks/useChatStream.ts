@@ -108,6 +108,96 @@ export function useChatStream(): UseChatStreamReturn {
     }));
   }, []);
 
+  // --- DRY helpers -------------------------------------------------------
+  // Ensure tools are loaded if needed
+  const loadToolsIfNeeded = useCallback(async (useTools: boolean) => {
+    if (!useTools) return undefined as undefined | ToolSpec[];
+    return availableTools ?? (await toolsPromiseRef.current?.catch(() => []) ?? []);
+  }, [availableTools]);
+
+  // Start an operation by creating an assistant message and an AbortController
+  const startOperation = useCallback((options: {
+    attachTo?: 'append' | 'replaceWithBase';
+    baseMessages?: ChatMessage[];
+    setStreaming: boolean;
+  }) => {
+    const { attachTo = 'append', baseMessages, setStreaming } = options;
+    const abort = new AbortController();
+    const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
+    assistantMsgRef.current = assistantMsg;
+
+    if (attachTo === 'replaceWithBase' && baseMessages) {
+      setMessages(() => [...baseMessages, assistantMsg]);
+    } else {
+      setMessages(m => [...m, assistantMsg]);
+    }
+
+    setPending(prev => ({ ...prev, abort, error: undefined, streaming: setStreaming ? true : prev.streaming }));
+    return { abort, assistantMsg };
+  }, []);
+
+  // Build the common payload for sendChat
+  const buildChatPayload = useCallback(async (args: {
+    history: ChatMessage[];
+    model: string;
+    signal: AbortSignal;
+    conversationId?: string | null;
+    shouldStream: boolean;
+    useTools: boolean;
+    reasoningEffort: string;
+    verbosity: string;
+    researchMode?: boolean;
+    qualityLevel?: string;
+  }) => {
+    const {
+      history, model, signal, conversationId,
+      shouldStream, useTools, reasoningEffort, verbosity,
+      researchMode, qualityLevel
+    } = args;
+
+    const tools = await loadToolsIfNeeded(useTools);
+
+    return {
+      messages: history.map(m => ({ role: m.role as Role, content: m.content })),
+      model,
+      signal,
+      conversationId: conversationId || undefined,
+      shouldStream,
+      reasoningEffort,
+      verbosity,
+      streamingEnabled: shouldStream,
+      toolsEnabled: useTools,
+      researchMode: researchMode || false,
+      qualityLevel: qualityLevel ?? undefined,
+      ...(useTools ? {
+        tools: tools || [],
+        tool_choice: 'auto',
+        ...(researchMode && { research_mode: true })
+      } : {}),
+      onEvent: handleStreamEvent
+    };
+  }, [handleStreamEvent, loadToolsIfNeeded]);
+
+  const recordResultMeta = useCallback((result: any, onConversationCreated?: (conversation: { id: string; title?: string | null; model?: string | null; created_at: string }) => void) => {
+    if (result?.responseId) setPreviousResponseId(result.responseId);
+    if (result?.conversation && onConversationCreated) onConversationCreated(result.conversation);
+  }, []);
+
+  const applyNonStreamingContent = useCallback((content?: string) => {
+    const msg = assistantMsgRef.current!;
+    setMessages(curr => curr.map(m => m.id === msg.id ? { ...m, content: content ?? m.content } : m));
+  }, []);
+
+  const handleOperationError = useCallback((e: any, assistantId: string) => {
+    setPending(p => ({ ...p, error: e?.message || String(e) }));
+    setMessages(curr => curr.map(msg => msg.id === assistantId ? { ...msg, content: msg.content + `\n[error: ${e?.message ?? String(e)}]` } : msg));
+  }, []);
+
+  const finalizeOperation = useCallback(() => {
+    setPending(p => ({ ...p, streaming: false, abort: undefined }));
+    inFlightRef.current = false;
+  }, []);
+
   const sendMessage = useCallback(async (
     input: string,
     conversationId: string | null,
@@ -127,64 +217,39 @@ export function useChatStream(): UseChatStreamReturn {
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: input.trim() };
     setMessages(m => [...m, userMsg]);
 
-    const abort = new AbortController();
-    const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
-    assistantMsgRef.current = assistantMsg;
-    setMessages(m => [...m, assistantMsg]);
-  // Make abort available immediately so callers can stop; but don't mark streaming true
-  // until we actually receive data from the server — this keeps the input responsive.
-  // Clear any previous error when starting a new send and expose the abort controller
-  setPending(prev => ({ ...prev, abort, error: undefined }));
+    // Start operation without setting streaming true yet (preserve original behavior)
+    const { abort, assistantMsg } = startOperation({ setStreaming: false });
 
     try {
-      // Ensure tools are loaded if needed
-      const tools = useTools ? (availableTools ?? await toolsPromiseRef.current?.catch(() => [])) : undefined;
-
       const outgoingForSend = [...messages, userMsg];
-
-      const result = await sendChat({
-        messages: outgoingForSend.map(m => ({ role: m.role as Role, content: m.content })),
+      const payload = await buildChatPayload({
+        history: outgoingForSend,
         model,
         signal: abort.signal,
-        conversationId: conversationId || undefined,
+        conversationId,
         shouldStream,
+        useTools,
         reasoningEffort,
         verbosity,
-        streamingEnabled: shouldStream,
-        toolsEnabled: useTools,
-        researchMode: researchMode || false,
-        qualityLevel: qualityLevel || null,
-        ...(useTools ? {
-          tools: tools || [],
-          tool_choice: 'auto',
-          ...(researchMode && { research_mode: true })
-        } : {}),
-        onEvent: handleStreamEvent
+        researchMode,
+        qualityLevel
       });
+      const result = await sendChat(payload);
       // For non-streaming, update the assistant message content from the result
       if (!shouldStream) {
-        const msg = assistantMsgRef.current!;
-        setMessages(curr => curr.map(m => m.id === msg.id ? { ...m, content: result.content || m.content } : m));
+        applyNonStreamingContent(result.content);
       }
-      if (result.responseId) {
-        setPreviousResponseId(result.responseId);
-      }
-      // Handle auto-created conversation
-      if (result.conversation && onConversationCreated) {
-        onConversationCreated(result.conversation);
-      }
+      recordResultMeta(result, onConversationCreated);
     } catch (e: any) {
-      setPending(p => ({ ...p, error: e?.message || String(e) }));
-      setMessages(curr => curr.map(msg => msg.id === assistantMsg.id ? { ...msg, content: msg.content + `\n[error: ${e.message}]` } : msg));
+      handleOperationError(e, assistantMsg.id);
     } finally {
       // Clear streaming/abort when finished
-      setPending(p => ({ ...p, streaming: false, abort: undefined }));
-      inFlightRef.current = false;
+      finalizeOperation();
     }
 
     // Return immediately — caller shouldn't wait for network to finish to keep UI snappy
     return;
-  }, [messages, previousResponseId, availableTools, toolsPromiseRef]);
+  }, [messages, startOperation, buildChatPayload, recordResultMeta, handleOperationError, finalizeOperation]);
 
   const generateFromHistory = useCallback(async (
     model: string,
@@ -200,47 +265,35 @@ export function useChatStream(): UseChatStreamReturn {
     if (!history.length || history[history.length - 1].role !== 'user') return;
     if (inFlightRef.current) return;
     inFlightRef.current = true;
-    const abort = new AbortController();
-    const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
-    assistantMsgRef.current = assistantMsg;
-    setMessages(m => [...m, assistantMsg]);
-  // Clear any previous error when starting a new generation from history
-  setPending(prev => ({ ...prev, streaming: true, abort, error: undefined }));
-
-    // Ensure tools are loaded if needed
-    const tools = useTools ? (availableTools ?? await toolsPromiseRef.current?.catch(() => [])) : undefined;
+    const { abort, assistantMsg } = startOperation({ setStreaming: true });
 
     // Start network operation in background so we don't block the caller/UI.
-    const network = sendChat({
-      messages: history.map(m => ({ role: m.role as Role, content: m.content })),
-      model,
-      signal: abort.signal,
-      reasoningEffort,
-      verbosity,
-      streamingEnabled: true, // Default for generateFromHistory
-      toolsEnabled: useTools,
-      researchMode: researchMode || false,
-      qualityLevel: qualityLevel || null,
-      ...(useTools ? {
-        tools: tools || [],
-        tool_choice: 'auto',
-        ...(researchMode && { research_mode: true })
-      } : {}),
-      onEvent: handleStreamEvent
-    });
+    const network = (async () => {
+      const payload = await buildChatPayload({
+        history,
+        model,
+        signal: abort.signal,
+        conversationId: undefined,
+        shouldStream: true, // default for generateFromHistory
+        useTools,
+        reasoningEffort,
+        verbosity,
+        researchMode,
+        qualityLevel
+      });
+      return sendChat(payload);
+    })();
 
     network.then(result => {
       if (result.responseId) setPreviousResponseId(result.responseId);
     }).catch((e: any) => {
-      setPending(p => ({ ...p, error: e?.message || String(e) }));
-      setMessages(curr => curr.map(msg => msg.id === assistantMsg.id ? { ...msg, content: msg.content + `\n[error: ${e.message}]` } : msg));
+      handleOperationError(e, assistantMsg.id);
     }).finally(() => {
-      setPending(p => ({ ...p, streaming: false, abort: undefined }));
-      inFlightRef.current = false;
+      finalizeOperation();
     });
 
     return;
-  }, [messages, availableTools, toolsPromiseRef]);
+  }, [messages, startOperation, buildChatPayload, finalizeOperation, handleOperationError]);
 
   const regenerateFromBase = useCallback(async (
     baseMessages: ChatMessage[],
@@ -260,52 +313,32 @@ export function useChatStream(): UseChatStreamReturn {
     if (inFlightRef.current) return;
     inFlightRef.current = true;
 
-    const abort = new AbortController();
-    const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
-    assistantMsgRef.current = assistantMsg;
-    setMessages(() => [...baseMessages, assistantMsg]);
-  // Clear any previous error when starting a regeneration
-  setPending(prev => ({ ...prev, streaming: true, abort, error: undefined }));
+    const { abort, assistantMsg } = startOperation({ attachTo: 'replaceWithBase', baseMessages, setStreaming: true });
 
     try {
-      // Ensure tools are loaded if needed
-      const tools = useTools ? (availableTools ?? await toolsPromiseRef.current?.catch(() => [])) : undefined;
-
-      const result = await sendChat({
-        messages: baseMessages.map(m => ({ role: m.role as Role, content: m.content })),
+      const payload = await buildChatPayload({
+        history: baseMessages,
         model,
         signal: abort.signal,
-        conversationId: conversationId || undefined,
+        conversationId,
         shouldStream,
+        useTools,
         reasoningEffort,
         verbosity,
-        streamingEnabled: shouldStream,
-        toolsEnabled: useTools,
-        researchMode: researchMode || false,
-        qualityLevel: qualityLevel || null,
-        ...(useTools ? {
-          tools: tools || [],
-          tool_choice: 'auto',
-          ...(researchMode && { research_mode: true })
-        } : {}),
-        onEvent: handleStreamEvent
+        researchMode,
+        qualityLevel
       });
+      const result = await sendChat(payload);
       if (!shouldStream) {
-        const msg = assistantMsgRef.current!;
-        msg.content = result.content || msg.content;
-        setMessages(curr => curr.map(m => m.id === msg.id ? { ...msg } : m));
+        applyNonStreamingContent(result.content);
       }
-      if (result.responseId) {
-        setPreviousResponseId(result.responseId);
-      }
+      recordResultMeta(result);
     } catch (e: any) {
-      setPending(p => ({ ...p, error: e?.message || String(e) }));
-      setMessages(curr => curr.map(msg => msg.id === assistantMsg.id ? { ...msg, content: msg.content + `\n[error: ${e.message}]` } : msg));
+      handleOperationError(e, assistantMsg.id);
     } finally {
-      setPending(p => ({ ...p, streaming: false, abort: undefined }));
-      inFlightRef.current = false;
+      finalizeOperation();
     }
-  }, [previousResponseId, availableTools, toolsPromiseRef]);
+  }, [startOperation, buildChatPayload, finalizeOperation, handleOperationError, recordResultMeta]);
 
   const regenerateFromCurrent = useCallback(async (
     conversationId: string | null,

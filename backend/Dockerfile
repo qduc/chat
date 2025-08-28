@@ -5,11 +5,13 @@ FROM node:20-slim AS dev
 WORKDIR /app
 ENV NODE_ENV=development
 COPY package*.json ./
-RUN npm install
 # Copy source for dev (mounted again via volume in compose)
 COPY src ./src
 COPY .env.example ./
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
 EXPOSE 3001
+ENTRYPOINT ["./entrypoint.sh"]
 CMD ["npm", "run", "dev"]
 
 # --- Prod stage: lean runtime image (default/final) ---
