@@ -66,6 +66,12 @@ async function callLLM(messages, config, bodyParams) {
     stream: bodyParams.stream || false,
     ...(bodyParams.tools && { tools: bodyParams.tools, tool_choice: bodyParams.tool_choice || 'auto' })
   };
+  // Include reasoning controls only for gpt-5* models
+  const isGpt5 = typeof requestBody.model === 'string' && requestBody.model.startsWith('gpt-5');
+  if (isGpt5) {
+    if (bodyParams.reasoning_effort) requestBody.reasoning_effort = bodyParams.reasoning_effort;
+    if (bodyParams.verbosity) requestBody.verbosity = bodyParams.verbosity;
+  }
 
   const response = await fetch(url, {
     method: 'POST',

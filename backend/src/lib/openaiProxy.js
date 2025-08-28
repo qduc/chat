@@ -27,29 +27,37 @@ export async function proxyOpenAIRequest(req, res) {
   delete body.researchMode;
   delete body.qualityLevel;
 
+  // Only allow reasoning controls for gpt-5* models; strip otherwise
+  const isGpt5 = typeof body.model === 'string' && body.model.startsWith('gpt-5');
+
   // Validate and handle reasoning_effort
   if (body.reasoning_effort) {
-    const allowedEfforts = ['minimal', 'low', 'medium', 'high'];
-    if (!allowedEfforts.includes(body.reasoning_effort)) {
-      return res.status(400).json({
-        error: 'invalid_request_error',
-        message: `Invalid reasoning_effort. Must be one of ${allowedEfforts.join(
-          ', '
-        )}`,
-      });
+    // If not gpt-5, drop the field silently
+    if (!isGpt5) {
+      delete body.reasoning_effort;
+    } else {
+      const allowedEfforts = ['minimal', 'low', 'medium', 'high'];
+      if (!allowedEfforts.includes(body.reasoning_effort)) {
+        return res.status(400).json({
+          error: 'invalid_request_error',
+          message: `Invalid reasoning_effort. Must be one of ${allowedEfforts.join(', ')}`,
+        });
+      }
     }
   }
 
   // Validate and handle verbosity
   if (body.verbosity) {
-    const allowedVerbosity = ['low', 'medium', 'high'];
-    if (!allowedVerbosity.includes(body.verbosity)) {
-      return res.status(400).json({
-        error: 'invalid_request_error',
-        message: `Invalid verbosity. Must be one of ${allowedVerbosity.join(
-          ', '
-        )}`,
-      });
+    if (!isGpt5) {
+      delete body.verbosity;
+    } else {
+      const allowedVerbosity = ['low', 'medium', 'high'];
+      if (!allowedVerbosity.includes(body.verbosity)) {
+        return res.status(400).json({
+          error: 'invalid_request_error',
+          message: `Invalid verbosity. Must be one of ${allowedVerbosity.join(', ')}`,
+        });
+      }
     }
   }
 

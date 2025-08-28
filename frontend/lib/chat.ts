@@ -67,14 +67,17 @@ export async function sendChat(options: SendChatOptions): Promise<{ content: str
     messages,
     stream: streamFlag,
     conversation_id: conversationId,
-    reasoning_effort: reasoningEffort,
-    verbosity: verbosity,
     ...(research_mode && { research_mode: true }),
     ...(streamingEnabled !== undefined && { streamingEnabled }),
     ...(toolsEnabled !== undefined && { toolsEnabled }),
     ...(researchMode !== undefined && { researchMode }),
     ...(qualityLevel !== undefined && { qualityLevel }),
   };
+  // Only include reasoning parameters for gpt-5* models
+  if (typeof model === 'string' && model.startsWith('gpt-5')) {
+    if (reasoningEffort) bodyObj.reasoning_effort = reasoningEffort;
+    if (verbosity) bodyObj.verbosity = verbosity;
+  }
   if (Array.isArray(tools) && tools.length > 0) {
     bodyObj.tools = tools;
     if (tool_choice !== undefined) bodyObj.tool_choice = tool_choice;

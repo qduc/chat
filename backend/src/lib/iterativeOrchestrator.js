@@ -82,6 +82,12 @@ async function callModel(messages, config, bodyParams, tools = null) {
     stream: false,
     ...(tools && { tools, tool_choice: 'auto' })
   };
+  // Include reasoning controls only for gpt-5* models
+  const isGpt5 = typeof requestBody.model === 'string' && requestBody.model.startsWith('gpt-5');
+  if (isGpt5) {
+    if (bodyParams.reasoning_effort) requestBody.reasoning_effort = bodyParams.reasoning_effort;
+    if (bodyParams.verbosity) requestBody.verbosity = bodyParams.verbosity;
+  }
 
   const response = await fetch(url, {
     method: 'POST',
@@ -143,6 +149,11 @@ export async function handleIterativeOrchestration({
         tools: generateOpenAIToolSpecs(),
         tool_choice: 'auto',
       };
+      // Include reasoning controls only for gpt-5* models
+      if (typeof requestBody.model === 'string' && requestBody.model.startsWith('gpt-5')) {
+        if (body.reasoning_effort) requestBody.reasoning_effort = body.reasoning_effort;
+        if (body.verbosity) requestBody.verbosity = body.verbosity;
+      }
 
       const upstream = await createOpenAIRequest(config, requestBody);
 
