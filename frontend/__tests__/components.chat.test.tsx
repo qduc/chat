@@ -1,6 +1,6 @@
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { Chat } from '../components/Chat';
+import { ChatV2 as Chat } from '../components/ChatV2';
 import { ThemeProvider } from '../contexts/ThemeContext';
 import * as chatLib from '../lib/chat';
 
@@ -51,7 +51,10 @@ beforeEach(() => {
   // This represents the most common user scenario and avoids over-specification
   mockedChatLib.listConversationsApi.mockRejectedValue(new Error('History not available'));
   mockedChatLib.createConversation.mockRejectedValue(new Error('History not available'));
-  mockedChatLib.sendChat.mockResolvedValue({ responseId: 'mock-response-id' });
+  mockedChatLib.sendChat.mockResolvedValue({
+    content: 'Mock response',
+    responseId: 'mock-response-id'
+  });
   mockedChatLib.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] });
   mockedChatLib.getConversationApi.mockResolvedValue({
     id: 'mock-conv-id',
@@ -155,8 +158,8 @@ describe('<Chat />', () => {
       model: 'gpt-4o',
       created_at: '2023-01-01',
       messages: [
-        { id: 1, role: 'user', content: 'Hello' },
-        { id: 2, role: 'assistant', content: 'Hi there!' },
+        { id: 1, seq: 1, role: 'user', status: 'sent', content: 'Hello', created_at: '2023-01-01T00:00:00Z' },
+        { id: 2, seq: 2, role: 'assistant', status: 'sent', content: 'Hi there!', created_at: '2023-01-01T00:01:00Z' },
       ],
       next_after_seq: null,
     });
