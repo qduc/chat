@@ -45,6 +45,7 @@ export default function SettingsModal({
   const [activeTab, setActiveTab] = React.useState('providers');
   const [testing, setTesting] = React.useState(false);
   const [testResult, setTestResult] = React.useState<{ success: boolean; message: string } | null>(null);
+  const [toggleLoading, setToggleLoading] = React.useState<Set<string>>(new Set());
 
   const resetForm = React.useCallback(() => {
     setSelectedId(null);
@@ -165,6 +166,47 @@ export default function SettingsModal({
   const confirmDelete = () => {
     setShowDeleteConfirm(true);
   };
+
+  const handleQuickToggle = React.useCallback(async (providerId: string, enabled: boolean) => {
+    // Add to loading set
+    setToggleLoading(prev => new Set([...prev, providerId]));
+    
+    // Optimistic update
+    setProviders(prev => prev.map(p => 
+      p.id === providerId ? { ...p, enabled: enabled ? 1 : 0 } : p
+    ));
+    
+    try {
+      setError(null);
+      const response = await fetch(`${apiBase}/v1/providers/${providerId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled })
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData?.message || `Toggle failed (${response.status})`);
+      }
+      
+      // Refresh providers to get updated data
+      await fetchProviders();
+    } catch (error: any) {
+      // Revert on failure
+      setProviders(prev => prev.map(p => 
+        p.id === providerId ? { ...p, enabled: enabled ? 0 : 1 } : p
+      ));
+      const provider = providers.find(p => p.id === providerId);
+      setError(`Failed to ${enabled ? 'enable' : 'disable'} ${provider?.name || 'provider'}: ${error?.message || 'Unknown error'}`);
+    } finally {
+      // Remove from loading set
+      setToggleLoading(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(providerId);
+        return newSet;
+      });
+    }
+  }, [apiBase, providers, fetchProviders]);
 
   async function testProviderConnection() {
     if (!form.name || !form.provider_type) {
@@ -330,14 +372,27 @@ export default function SettingsModal({
                       </div>
                     )}
                     {providers.map((p) => (
-                      <button
+                      <div
                         key={p.id}
-                        type="button"
-                        onClick={() => onSelectProvider(p)}
-                        className={`w-full text-left p-4 hover:bg-slate-50 dark:hover:bg-slate-750 transition-colors ${
+                        className={`w-full p-4 hover:bg-slate-50 dark:hover:bg-slate-750 transition-colors ${
                           selectedId === p.id ? 'bg-emerald-50 dark:bg-emerald-900/20 border-r-2 border-emerald-500' : ''
                         }`}
                       >
+                        <button
+                          type="button"
+                          onClick={() => onSelectProvider(p)}
+                          onKeyDown={(e) => {
+                            if (e.key === ' ' || e.key === 'Enter') {
+                              e.preventDefault();
+                              onSelectProvider(p);
+                            } else if (e.key === 't' || e.key === 'T') {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleQuickToggle(p.id, !p.enabled);
+                            }
+                          }}
+                          className="w-full text-left focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 rounded-md"
+                        >
                         <div className="flex items-center justify-between">
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
@@ -347,19 +402,23 @@ export default function SettingsModal({
                               {p.provider_type}
                             </p>
                           </div>
-                          <div className="ml-3">
-                            <span
-                              className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                                p.enabled
-                                  ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-800 dark:text-emerald-100'
-                                  : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-400'
-                              }`}
-                            >
-                              {p.enabled ? 'Enabled' : 'Disabled'}
-                            </span>
+                          <div className="ml-3 flex items-center gap-2">
+                            {toggleLoading.has(p.id) ? (
+                              <div className="flex items-center justify-center w-11 h-6">
+                                <RefreshCw className="w-4 h-4 animate-spin text-emerald-500" />
+                              </div>
+                            ) : (
+                              <Toggle
+                                checked={Boolean(p.enabled)}
+                                onChange={(enabled) => handleQuickToggle(p.id, enabled)}
+                                disabled={saving}
+                                ariaLabel={`${p.enabled ? 'Disable' : 'Enable'} ${p.name} provider`}
+                              />
+                            )}
                           </div>
                         </div>
-                      </button>
+                        </button>
+                      </div>
                     ))}
                   </div>
                 </div>
