@@ -13,6 +13,7 @@ import {
 } from '../db/index.js';
 import { v4 as uuidv4 } from 'uuid';
 import { createOpenAIRequest } from './streamUtils.js';
+import { providerIsConfigured } from './providers/index.js';
 
 /**
  * Simplified persistence manager that implements final-only writes
@@ -174,8 +175,8 @@ export class SimplifiedPersistence {
       const text = String(content || '').trim();
       if (!text) return null;
 
-      // Simple fallback if OpenAI isn't configured
-      if (!this.config?.openaiApiKey || !this.config?.openaiBaseUrl) {
+      // Fallback if provider isn't configured
+      if (!providerIsConfigured(this.config)) {
         return this.fallbackTitle(text);
       }
 

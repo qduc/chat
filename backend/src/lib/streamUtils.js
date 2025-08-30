@@ -29,19 +29,13 @@ export function createChatCompletionChunk(id, model, delta, finishReason = null)
  * @returns {Promise<Response>} Fetch response promise
  */
 export async function createOpenAIRequest(config, requestBody) {
-  const base = (config.openaiBaseUrl || '').replace(/\/v1\/?$/, '');
-  const url = `${base}/v1/chat/completions`;
-  const headers = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${config.openaiApiKey}`,
-  };
-  
-  return fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(requestBody),
-  });
+  // Backward-compat shim: delegate to provider registry
+  const { providerChatCompletions } = await import('./providers/index.js');
+  return providerChatCompletions(config, requestBody);
 }
+
+// Optional alias with a more generic name for future call sites
+export const createProviderRequest = createOpenAIRequest;
 
 /**
  * Write data to response and flush if possible

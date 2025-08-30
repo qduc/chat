@@ -3,6 +3,7 @@ import { handleUnifiedToolOrchestration } from './unifiedToolOrchestrator.js';
 import { handleIterativeOrchestration } from './iterativeOrchestrator.js';
 import { handleRegularStreaming } from './streamingHandler.js';
 import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
+import { providerSupportsReasoning } from './providers/index.js';
 import { SimplifiedPersistence } from './simplifiedPersistence.js';
 import { addConversationMetadata } from './responseUtils.js';
 
@@ -22,12 +23,12 @@ function sanitizeIncomingBody(bodyIn, cfg) {
 }
 
 function validateAndNormalizeReasoningControls(body) {
-  // Only allow reasoning controls for gpt-5* models; strip otherwise
-  const isGpt5 = typeof body.model === 'string' && body.model.startsWith('gpt-5');
+  // Only allow reasoning controls if provider+model supports it
+  const isAllowed = providerSupportsReasoning(config, body.model);
 
   // Validate and handle reasoning_effort
   if (body.reasoning_effort) {
-    if (!isGpt5) {
+    if (!isAllowed) {
       delete body.reasoning_effort;
     } else {
       const allowedEfforts = ['minimal', 'low', 'medium', 'high'];
@@ -46,7 +47,7 @@ function validateAndNormalizeReasoningControls(body) {
 
   // Validate and handle verbosity
   if (body.verbosity) {
-    if (!isGpt5) {
+    if (!isAllowed) {
       delete body.verbosity;
     } else {
       const allowedVerbosity = ['low', 'medium', 'high'];

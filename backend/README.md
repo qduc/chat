@@ -1,17 +1,17 @@
 # Backend
 
-Express-based proxy for OpenAI-compatible chat completions.
+Express-based proxy for OpenAI-compatible chat completions, with pluggable providers.
 
 ## Endpoints
 
-- `POST /v1/chat/completions` – proxies to `OPENAI_BASE_URL/chat/completions` (supports streaming)
+- `POST /v1/chat/completions` – proxies to `${PROVIDER_BASE_URL||OPENAI_BASE_URL}/v1/chat/completions` (supports streaming)
 - `POST /v1/conversations` – create a conversation (feature-flagged)
 - `GET /v1/conversations/:id` – fetch conversation metadata (feature-flagged)
 - `GET /healthz` – health/status info
 
 ## Env Vars (.env)
 
-See `.env.example` for required variables.
+See `.env.example` for required variables. You can select a provider via `PROVIDER` (default: `openai`). Generic keys `PROVIDER_BASE_URL`, `PROVIDER_API_KEY`, and optional `PROVIDER_HEADERS_JSON` are supported; OpenAI-specific vars remain for backward compatibility.
 
 Additional (Sprint 1):
 
@@ -50,7 +50,7 @@ This reduces database write load and avoids timer-based flushes while preserving
 1. Create env file (not copied into image):
    ```bash
    cp .env.example .env
-   # edit OPENAI_API_KEY etc.
+   # edit PROVIDER/OPENAI variables as needed
    ```
 2. Build & run (from repo root):
    ```bash

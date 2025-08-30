@@ -2,6 +2,7 @@ import { tools as toolRegistry, generateOpenAIToolSpecs } from './tools.js';
 import { getMessagesPage } from '../db/index.js';
 import { parseSSEStream } from './sseParser.js';
 import { createOpenAIRequest, writeAndFlush, createChatCompletionChunk } from './streamUtils.js';
+import { providerSupportsReasoning } from './providers/index.js';
 import { getConversationMetadata } from './responseUtils.js';
 import { setupStreamingHeaders } from './streamingHandler.js';
 
@@ -76,9 +77,9 @@ async function callModel(messages, config, bodyParams, tools = null) {
     stream: false,
     ...(tools && { tools, tool_choice: 'auto' })
   };
-  // Include reasoning controls only for gpt-5* models
-  const isGpt5 = typeof requestBody.model === 'string' && requestBody.model.startsWith('gpt-5');
-  if (isGpt5) {
+  // Include reasoning controls only if supported by provider
+  const allowReasoning = providerSupportsReasoning(config, requestBody.model);
+  if (allowReasoning) {
     if (bodyParams.reasoning_effort) requestBody.reasoning_effort = bodyParams.reasoning_effort;
     if (bodyParams.verbosity) requestBody.verbosity = bodyParams.verbosity;
   }
@@ -140,8 +141,8 @@ export async function handleIterativeOrchestration({
         tools: generateOpenAIToolSpecs(),
         tool_choice: 'auto',
       };
-      // Include reasoning controls only for gpt-5* models
-      if (typeof requestBody.model === 'string' && requestBody.model.startsWith('gpt-5')) {
+      // Include reasoning controls only if supported by provider
+      if (providerSupportsReasoning(config, requestBody.model)) {
         if (body.reasoning_effort) requestBody.reasoning_effort = body.reasoning_effort;
         if (body.verbosity) requestBody.verbosity = body.verbosity;
       }
