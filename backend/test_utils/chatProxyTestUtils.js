@@ -1,9 +1,9 @@
 // Shared test utilities for chat proxy tests
 import express from 'express';
-import { chatRouter } from '../../src/routes/chat.js';
-import { sessionResolver } from '../../src/middleware/session.js';
-import { config } from '../../src/env.js';
-import { getDb } from '../../src/db/index.js';
+import { chatRouter } from '../src/routes/chat.js';
+import { sessionResolver } from '../src/middleware/session.js';
+import { config } from '../src/env.js';
+import { getDb } from '../src/db/index.js';
 
 // Mock upstream server for testing
 export class MockUpstream {
@@ -175,7 +175,7 @@ export function createChatProxyTestContext() {
 
   afterEach(async () => {
     if (config.persistence.enabled) {
-      const { resetDbCache } = await import('../../src/db/index.js');
+      const { resetDbCache } = await import('../src/db/index.js');
       resetDbCache();
     }
   });

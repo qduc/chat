@@ -1,6 +1,6 @@
 // Persistence-related tests for chat proxy
 import assert from 'node:assert/strict';
-import { createChatProxyTestContext } from './helpers/chatProxyTestUtils.js';
+import { createChatProxyTestContext } from '../test_utils/chatProxyTestUtils.js';
 import { getDb, upsertSession, createConversation } from '../src/db/index.js';
 import { config } from '../src/env.js';
 
@@ -131,4 +131,3 @@ describe('Chat proxy persistence', () => {
     });
   });
 });
-

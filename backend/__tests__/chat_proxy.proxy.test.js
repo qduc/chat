@@ -1,6 +1,6 @@
 // Proxy behavior tests for /v1/chat/completions
 import assert from 'node:assert/strict';
-import { createChatProxyTestContext } from './helpers/chatProxyTestUtils.js';
+import { createChatProxyTestContext } from '../test_utils/chatProxyTestUtils.js';
 import { getDb, upsertSession, createConversation } from '../src/db/index.js';
 
 // Register shared setup/teardown and get helpers
@@ -144,4 +144,3 @@ describe('POST /v1/chat/completions (proxy)', () => {
     });
   });
 });
-
