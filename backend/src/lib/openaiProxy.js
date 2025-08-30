@@ -3,7 +3,7 @@ import { handleUnifiedToolOrchestration } from './unifiedToolOrchestrator.js';
 import { handleIterativeOrchestration } from './iterativeOrchestrator.js';
 import { handleRegularStreaming } from './streamingHandler.js';
 import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
-import { providerSupportsReasoning } from './providers/index.js';
+import { providerSupportsReasoning, getDefaultModel } from './providers/index.js';
 import { SimplifiedPersistence } from './simplifiedPersistence.js';
 import { addConversationMetadata } from './responseUtils.js';
 
@@ -18,7 +18,7 @@ function sanitizeIncomingBody(bodyIn, cfg) {
   delete body.researchMode;
   delete body.qualityLevel;
   // Default model
-  if (!body.model) body.model = cfg.defaultModel;
+  // Default model is resolved later (may come from DB)
   return body;
 }
 
@@ -93,6 +93,11 @@ async function readUpstreamError(upstream) {
 export async function proxyOpenAIRequest(req, res) {
   const bodyIn = req.body || {};
   const body = sanitizeIncomingBody(bodyIn, config);
+
+  // Resolve default model from DB-backed provider settings when missing
+  if (!body.model) {
+    body.model = await getDefaultModel(config);
+  }
 
   // Validate reasoning controls early and return guard failures
   const validation = validateAndNormalizeReasoningControls(body);
