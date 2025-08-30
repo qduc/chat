@@ -7,7 +7,7 @@ interface RightSidebarProps {
 
 export function RightSidebar({ systemPrompt, onSystemPromptChange }: RightSidebarProps) {
   return (
-    <aside className="w-72 p-4 flex flex-col border-l border-slate-200/60 dark:border-neutral-800/60 bg-white/40 dark:bg-neutral-950/40 backdrop-blur-sm">
+    <aside className="w-72 p-4 flex flex-col border-l border-slate-200/50 dark:border-neutral-800/50 bg-white/30 dark:bg-neutral-950/30 backdrop-blur-sm shadow-sm">
       <div className="flex items-center justify-between mb-3">
         <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">System Prompt</div>
       </div>

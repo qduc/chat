@@ -25,7 +25,7 @@ export function ChatSidebar({
   onNewChat
 }: ChatSidebarProps) {
   return (
-    <aside className="w-72 p-4 flex flex-col border-r border-slate-200/60 dark:border-neutral-800/60 bg-white/40 dark:bg-neutral-950/40 backdrop-blur-sm">
+    <aside className="w-72 p-4 flex flex-col border-r border-slate-200/50 dark:border-neutral-800/50 bg-white/30 dark:bg-neutral-950/30 backdrop-blur-sm shadow-sm">
       <div className="flex items-center justify-between mb-4">
         <button
           className="text-xs p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400 transition-colors duration-200 disabled:opacity-50"
@@ -81,7 +81,7 @@ export function ChatSidebar({
           </div>
         ))}
       </div>
-      <div className="mt-4 pt-4 border-t border-slate-200/60 dark:border-neutral-800/60">
+      <div className="mt-4 pt-4 border-t border-slate-200/50 dark:border-neutral-800/50">
         {nextCursor && (
           <button
             className="w-full text-sm px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-300 transition-colors duration-200 disabled:opacity-50"
