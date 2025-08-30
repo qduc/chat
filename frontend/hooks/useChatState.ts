@@ -191,24 +191,85 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
     case 'STREAM_TOOL_CALL':
       {
-        let updated = false;
+        const upsertToolCall = (existing: any[] | undefined, incoming: any): any[] => {
+          const out = Array.isArray(existing) ? [...existing] : [];
+          const idx: number | undefined = typeof incoming.index === 'number' ? incoming.index : undefined;
+          const id: string | undefined = incoming.id;
+
+          const mergeArgs = (prevFn: any = {}, nextFn: any = {}) => {
+            const prevArgs = typeof prevFn.arguments === 'string' ? prevFn.arguments : '';
+            const nextArgs = typeof nextFn.arguments === 'string' ? nextFn.arguments : '';
+            const mergedArgs = prevArgs && nextArgs && nextArgs.startsWith(prevArgs)
+              ? nextArgs
+              : (prevArgs + nextArgs);
+            return {
+              ...prevFn,
+              ...nextFn,
+              arguments: mergedArgs
+            };
+          };
+
+          if (typeof idx === 'number') {
+            while (out.length <= idx) out.push(undefined);
+            const prev = out[idx] || {};
+            out[idx] = {
+              ...prev,
+              ...incoming,
+              function: mergeArgs(prev.function, incoming.function)
+            };
+            return out;
+          }
+
+          if (id) {
+            const found = out.findIndex(tc => tc && tc.id === id);
+            if (found >= 0) {
+              const prev = out[found];
+              out[found] = {
+                ...prev,
+                ...incoming,
+                function: mergeArgs(prev.function, incoming.function)
+              };
+              return out;
+            }
+          }
+
+          if (incoming?.function?.name) {
+            const found = out.findIndex(tc => tc?.function?.name === incoming.function.name && !tc?.id);
+            if (found >= 0) {
+              const prev = out[found];
+              out[found] = {
+                ...prev,
+                ...incoming,
+                function: mergeArgs(prev.function, incoming.function)
+              };
+              return out;
+            }
+          }
+
+          out.push(incoming);
+          return out;
+        };
+
         const next = state.messages.map(m => {
           if (m.id === action.payload.messageId) {
-            updated = true;
-            return { ...m, tool_calls: [...(m.tool_calls || []), action.payload.toolCall] } as any;
+            const tool_calls = upsertToolCall((m as any).tool_calls, action.payload.toolCall);
+            return { ...m, tool_calls } as any;
           }
           return m;
         });
-        if (!updated) {
-          // Fallback: update last assistant message
+
+        // Fallback in case message id not matched yet
+        if (!next.some(m => m.id === action.payload.messageId)) {
           for (let i = next.length - 1; i >= 0; i--) {
             if (next[i].role === 'assistant') {
-              const tc = [ ...((next[i] as any).tool_calls || []), action.payload.toolCall ];
-              next[i] = { ...(next[i] as any), tool_calls: tc } as any;
+              const m: any = next[i];
+              const tool_calls = upsertToolCall(m.tool_calls, action.payload.toolCall);
+              next[i] = { ...m, tool_calls };
               break;
             }
           }
         }
+
         return { ...state, messages: next };
       }
 
@@ -322,7 +383,12 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case 'SYNC_ASSISTANT':
       return {
         ...state,
-        messages: state.messages.map(m => m.id === action.payload.id ? { ...m, ...action.payload } : m),
+        messages: state.messages.map(m => {
+          if (m.id !== action.payload.id) return m;
+          // Only sync content to avoid overwriting tool_calls/tool_outputs built during streaming
+          const content = (action.payload as any).content ?? m.content;
+          return { ...m, content };
+        }),
       };
 
     case 'CLEAR_ERROR':
@@ -346,13 +412,14 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
 }
 
 // Available tools (moved from useChatStream)
-const availableTools = {
+import type { ToolSpec } from '../lib/chat';
+const availableTools: Record<string, ToolSpec> = {
   get_time: {
     type: 'function',
     function: {
       name: 'get_time',
       description: 'Get the current local time of the server',
-      parameters: { type: 'object', properties: {}, additionalProperties: false },
+  parameters: { type: 'object', properties: {}, required: [] },
     }
   },
   web_search: {
@@ -419,14 +486,10 @@ export function useChatState() {
       }
       dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token: event.value } });
     } else if (event.type === 'tool_call') {
-      if (assistantMsgRef.current) {
-        assistantMsgRef.current.tool_calls = [...(assistantMsgRef.current.tool_calls || []), event.value];
-      }
+      // Let reducer manage tool_calls to avoid duplicates from local snapshot
       dispatch({ type: 'STREAM_TOOL_CALL', payload: { messageId: assistantId, toolCall: event.value } });
     } else if (event.type === 'tool_output') {
-      if (assistantMsgRef.current) {
-        assistantMsgRef.current.tool_outputs = [...(assistantMsgRef.current.tool_outputs || []), event.value];
-      }
+      // Let reducer manage tool_outputs to avoid duplicates from local snapshot
       dispatch({ type: 'STREAM_TOOL_OUTPUT', payload: { messageId: assistantId, toolOutput: event.value } });
     }
   }, []);
