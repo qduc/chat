@@ -62,12 +62,13 @@
 - **Tool calling**: ✅ Complete (server-side orchestration)
 - **Quality controls**: ✅ Complete (UI components)
 - **Advanced streaming**: ✅ Complete (tool events, thinking support)
+- **Database persistence**: ✅ Complete (SQLite with migrations)
 
 ### Next (Short-term)
-- Database persistence for conversations (SQLite/Postgres)
 - System prompt & temperature controls in UI
 - Error & retry UX improvements
 - Token usage display
+- Conversation history UI integration
 
 ### Upcoming (Mid-term)
 - Multi-model routing abstraction
