@@ -127,6 +127,8 @@ let mockUpstream;
 let originalBaseUrl;
 let originalApiKey;
 let originalModel;
+let originalProviderBaseUrl;
+let originalProviderApiKey;
 
 beforeAll(async () => {
   mockUpstream = new MockUpstream();
@@ -136,11 +138,17 @@ beforeAll(async () => {
   originalBaseUrl = config.openaiBaseUrl;
   originalApiKey = config.openaiApiKey;
   originalModel = config.defaultModel;
+  originalProviderBaseUrl = config.providerConfig.baseUrl;
+  originalProviderApiKey = config.providerConfig.apiKey;
 
   // Set test config
   config.openaiBaseUrl = mockUpstream.getUrl();
   config.openaiApiKey = 'test-key';
   config.defaultModel = 'gpt-3.5-turbo';
+  
+  // Also set the provider config for the new provider system
+  config.providerConfig.baseUrl = mockUpstream.getUrl();
+  config.providerConfig.apiKey = 'test-key';
 });
 
 afterAll(async () => {
@@ -157,6 +165,8 @@ afterAll(async () => {
   config.openaiBaseUrl = originalBaseUrl;
   config.openaiApiKey = originalApiKey;
   config.defaultModel = originalModel;
+  config.providerConfig.baseUrl = originalProviderBaseUrl;
+  config.providerConfig.apiKey = originalProviderApiKey;
 });
 
 beforeEach(() => {
