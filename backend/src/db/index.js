@@ -507,6 +507,21 @@ export function getProviderById(id) {
   };
 }
 
+// Internal function that includes API key for server-side operations
+export function getProviderByIdWithApiKey(id) {
+  const db = getDb();
+  const r = db.prepare(
+    `SELECT id, name, provider_type, api_key, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at
+     FROM providers WHERE id=@id AND deleted_at IS NULL`
+  ).get({ id });
+  if (!r) return null;
+  return {
+    ...r,
+    extra_headers: safeJsonParse(r.extra_headers, {}),
+    metadata: safeJsonParse(r.metadata, {}),
+  };
+}
+
 export function createProvider({ id, name, provider_type, api_key = null, base_url = null, enabled = true, is_default = false, extra_headers = {}, metadata = {} }) {
   const db = getDb();
   const now = new Date().toISOString();

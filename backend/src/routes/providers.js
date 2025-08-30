@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import {
   listProviders,
   getProviderById,
+  getProviderByIdWithApiKey,
   createProvider,
   updateProvider,
   setDefaultProvider,
@@ -105,7 +106,7 @@ providersRouter.delete('/v1/providers/:id', (req, res) => {
 // List models via provider's API (server-side to avoid exposing keys)
 providersRouter.get('/v1/providers/:id/models', async (req, res) => {
   try {
-    const row = getProviderById(req.params.id);
+    const row = getProviderByIdWithApiKey(req.params.id);
     if (!row) return res.status(404).json({ error: 'not_found' });
     if (row.enabled === 0) return res.status(400).json({ error: 'disabled', message: 'Provider is disabled' });
 
