@@ -1,8 +1,8 @@
 import React from 'react';
 import { Sun, Moon, Settings } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
-import IconSelect from './ui/IconSelect';
-import TabbedSelect, { type Group as TabGroup } from './ui/TabbedSelect';
+import ModelSelector from './ui/ModelSelector';
+import { type Group as TabGroup } from './ui/TabbedSelect';
 
 interface ChatHeaderProps {
   isStreaming: boolean;
@@ -108,23 +108,14 @@ export function ChatHeader({ model, onModelChange, onOpenSettings }: ChatHeaderP
       <div className="mx-auto max-w-4xl px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-4">
-            {Array.isArray(groups) && groups.length > 1 ? (
-              <TabbedSelect
-                ariaLabel="Model"
-                value={model}
-                onChange={onModelChange}
-                className="text-lg py-1 px-2"
-                groups={groups}
-              />
-            ) : (
-              <IconSelect
-                ariaLabel="Model"
-                value={model}
-                onChange={onModelChange}
-                className="text-lg py-1 px-2"
-                options={modelOptions}
-              />
-            )}
+            <ModelSelector
+              value={model}
+              onChange={onModelChange}
+              groups={groups}
+              fallbackOptions={modelOptions}
+              className="text-lg"
+              ariaLabel="Model"
+            />
           </div>
         </div>
 
