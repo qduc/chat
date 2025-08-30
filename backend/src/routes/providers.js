@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import fetch from 'node-fetch';
 import { v4 as uuidv4 } from 'uuid';
 import {
   listProviders,
@@ -101,3 +102,50 @@ providersRouter.delete('/v1/providers/:id', (req, res) => {
   }
 });
 
+// List models via provider's API (server-side to avoid exposing keys)
+providersRouter.get('/v1/providers/:id/models', async (req, res) => {
+  try {
+    const row = getProviderById(req.params.id);
+    if (!row) return res.status(404).json({ error: 'not_found' });
+    if (row.enabled === 0) return res.status(400).json({ error: 'disabled', message: 'Provider is disabled' });
+
+    const baseUrl = String(row.base_url || '').replace(/\/v1\/?$/, '');
+    if (!baseUrl) return res.status(400).json({ error: 'invalid_provider', message: 'Missing base_url' });
+    if (!row.api_key) return res.status(400).json({ error: 'invalid_provider', message: 'Missing api_key' });
+
+    let extra = {};
+    try {
+      extra = row.extra_headers ? JSON.parse(row.extra_headers) : {};
+    } catch {
+      extra = {};
+    }
+
+    const url = `${baseUrl}/v1/models`;
+    const headers = {
+      Accept: 'application/json',
+      Authorization: `Bearer ${row.api_key}`,
+      ...extra,
+    };
+
+    const upstream = await fetch(url, { method: 'GET', headers });
+    if (!upstream.ok) {
+      const text = await upstream.text().catch(() => '');
+      return res.status(502).json({ error: 'bad_gateway', message: `Upstream ${upstream.status}`, detail: text.slice(0, 500) });
+    }
+
+    const json = await upstream.json().catch(() => ({}));
+    let models = [];
+    if (Array.isArray(json?.data)) models = json.data;
+    else if (Array.isArray(json?.models)) models = json.models;
+    else if (Array.isArray(json)) models = json;
+
+    // Normalize to { id, ... }
+    models = models
+      .map((m) => (typeof m === 'string' ? { id: m } : m))
+      .filter((m) => m && m.id);
+
+    res.json({ provider: { id: row.id, name: row.name, provider_type: row.provider_type }, models });
+  } catch (err) {
+    res.status(500).json({ error: 'internal_server_error', message: err?.message || 'failed to list models' });
+  }
+});

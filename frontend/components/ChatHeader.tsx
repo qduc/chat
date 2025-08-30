@@ -1,6 +1,8 @@
+import React from 'react';
 import { Sun, Moon, Settings } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import IconSelect from './ui/IconSelect';
+import TabbedSelect, { type Group as TabGroup } from './ui/TabbedSelect';
 
 interface ChatHeaderProps {
   isStreaming: boolean;
@@ -12,6 +14,86 @@ interface ChatHeaderProps {
 
 export function ChatHeader({ model, onModelChange, onOpenSettings }: ChatHeaderProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
+
+  // Derive models from configured providers with a safe fallback
+  type Option = { value: string; label: string };
+  const defaultOpenAIModels: Option[] = React.useMemo(() => ([
+    { value: 'gpt-5-mini', label: 'GPT-5 Mini' },
+    { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
+    { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+    { value: 'gpt-4o', label: 'GPT-4o' }
+  ]), []);
+
+  const apiBase = (process.env.NEXT_PUBLIC_API_BASE as string) ?? 'http://localhost:3001';
+  const [modelOptions, setModelOptions] = React.useState<Option[]>(defaultOpenAIModels);
+  const [groups, setGroups] = React.useState<TabGroup[] | null>(null);
+
+  React.useEffect(() => {
+    let cancelled = false;
+
+    async function loadProviders() {
+      try {
+        const res = await fetch(`${apiBase}/v1/providers`);
+        if (!res.ok) return; // fallback to defaults silently
+        const json = await res.json();
+        const providers: any[] = Array.isArray(json.providers) ? json.providers : [];
+        const enabledProviders = providers.filter(p => p?.enabled);
+        if (!enabledProviders.length) return;
+
+        // Fetch models for each provider via backend proxy endpoint
+        const results = await Promise.allSettled(
+          enabledProviders.map(async (p) => {
+            const r = await fetch(`${apiBase}/v1/providers/${encodeURIComponent(p.id)}/models`);
+            if (!r.ok) throw new Error(`models ${r.status}`);
+            const j = await r.json();
+            const models = Array.isArray(j.models) ? j.models : [];
+            const options: Option[] = models.map((m: any) => ({ value: m.id, label: m.id }));
+            return { provider: p, options };
+          })
+        );
+
+        // Build groups; include only providers with at least one model
+        const gs: TabGroup[] = [];
+        for (let i = 0; i < results.length; i++) {
+          const r = results[i];
+          if (r.status === 'fulfilled' && r.value.options.length > 0) {
+            gs.push({ id: r.value.provider.id, label: r.value.provider.name || r.value.provider.id, options: r.value.options });
+          }
+        }
+
+        // Fallback: if no models returned, keep OpenAI defaults as a single group
+        if (gs.length === 0) {
+          if (!cancelled) {
+            setGroups([{ id: 'default', label: 'Models', options: defaultOpenAIModels }]);
+            if (!defaultOpenAIModels.some(o => o.value === model)) {
+              onModelChange(defaultOpenAIModels[0].value);
+            }
+          }
+          return;
+        }
+
+        if (!cancelled) {
+          setGroups(gs);
+          // Also flatten into options for simple fallback component rendering if needed
+          const flat = gs.flatMap(g => g.options);
+          setModelOptions(flat);
+
+          // Identify provider default_model if present
+          const firstDefault = enabledProviders.find((p) => p?.is_default);
+          const defaultModel = (firstDefault?.metadata && (firstDefault.metadata as any).default_model) || undefined;
+
+          if (typeof model === 'string' && !flat.some(o => o.value === model)) {
+            onModelChange(defaultModel || flat[0].value);
+          }
+        }
+      } catch {
+        // ignore errors; keep defaults
+      }
+    }
+
+    loadProviders();
+    return () => { cancelled = true; };
+  }, [apiBase, defaultOpenAIModels, onModelChange]);
 
   const toggleTheme = () => {
     if (theme === 'dark') {
@@ -26,18 +108,23 @@ export function ChatHeader({ model, onModelChange, onOpenSettings }: ChatHeaderP
       <div className="mx-auto max-w-4xl px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-4">
-            <IconSelect
-              ariaLabel="Model"
-              value={model}
-              onChange={onModelChange}
-              className="text-lg py-1 px-2"
-              options={[
-                { value: 'gpt-5-mini', label: 'GPT-5 Mini' },
-                { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
-                { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-                { value: 'gpt-4o', label: 'GPT-4o' }
-              ]}
-            />
+            {Array.isArray(groups) && groups.length > 1 ? (
+              <TabbedSelect
+                ariaLabel="Model"
+                value={model}
+                onChange={onModelChange}
+                className="text-lg py-1 px-2"
+                groups={groups}
+              />
+            ) : (
+              <IconSelect
+                ariaLabel="Model"
+                value={model}
+                onChange={onModelChange}
+                className="text-lg py-1 px-2"
+                options={modelOptions}
+              />
+            )}
           </div>
         </div>
 
