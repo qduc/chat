@@ -1,6 +1,6 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import type { ChatMessage } from '../lib/chat';
-import { editMessageApi } from '../lib/chat';
+import { ConversationManager } from '../lib/chat';
 
 export interface UseMessageEditingReturn {
   editingMessageId: string | null;
@@ -18,6 +18,9 @@ export interface UseMessageEditingReturn {
 export function useMessageEditing(): UseMessageEditingReturn {
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingContent, setEditingContent] = useState<string>('');
+
+  // Create conversation manager instance
+  const conversationManager = useMemo(() => new ConversationManager(), []);
 
   const handleEditMessage = useCallback((messageId: string, content: string) => {
     setEditingMessageId(messageId);
@@ -52,7 +55,7 @@ export function useMessageEditing(): UseMessageEditingReturn {
     // If we have a saved conversation, persist the edit and then fork/trim server-side
     if (conversationId) {
       try {
-        const result = await editMessageApi(undefined, conversationId, messageId, newContent);
+        const result = await conversationManager.editMessage(conversationId, messageId, newContent);
         const newId = result?.new_conversation_id;
         // Clear all messages after the edited one locally (server also trims)
         let baseMessages: ChatMessage[] = [];
@@ -95,7 +98,7 @@ export function useMessageEditing(): UseMessageEditingReturn {
       return baseMessages;
     });
     await onAfterSave(baseMessages);
-  }, [editingMessageId, editingContent]);
+  }, [editingMessageId, editingContent, conversationManager]);
 
   return {
     editingMessageId,

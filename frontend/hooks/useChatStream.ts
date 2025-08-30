@@ -1,6 +1,6 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { ChatMessage, Role, ToolSpec } from '../lib/chat';
-import { sendChat, getToolSpecs } from '../lib/chat';
+import { ChatClient, ToolsClient } from '../lib/chat';
 
 export interface PendingState {
   abort?: AbortController;
@@ -69,20 +69,24 @@ export function useChatStream(): UseChatStreamReturn {
   const inFlightRef = useRef<boolean>(false);
   const toolsPromiseRef = useRef<Promise<ToolSpec[]> | undefined>(undefined);
 
+  // Create client instances
+  const chatClient = useMemo(() => new ChatClient(), []);
+  const toolsClient = useMemo(() => new ToolsClient(), []);
+
   // Fetch tool specifications from backend on mount
   useEffect(() => {
-    const toolsPromise = getToolSpecs()
-      .then(response => {
+    const toolsPromise = toolsClient.getToolSpecs()
+      .then((response: any) => {
         setAvailableTools(response.tools);
         return response.tools;
       })
-      .catch(error => {
+      .catch((error: any) => {
         console.error('Failed to fetch tool specs:', error);
         setAvailableTools([]);
         return [];
       });
     toolsPromiseRef.current = toolsPromise;
-  }, []);
+  }, [toolsClient]);
 
   const handleStreamEvent = useCallback((event: any) => {
     const assistantId = assistantMsgRef.current!.id;
@@ -234,7 +238,12 @@ export function useChatStream(): UseChatStreamReturn {
         researchMode,
         qualityLevel
       });
-      const result = await sendChat(payload);
+
+      // Use appropriate client method based on tools usage
+      const result = useTools && payload.tools && payload.tools.length > 0
+        ? await chatClient.sendMessageWithTools(payload)
+        : await chatClient.sendMessage(payload);
+
       // For non-streaming, update the assistant message content from the result
       if (!shouldStream) {
         applyNonStreamingContent(result.content);
@@ -249,7 +258,7 @@ export function useChatStream(): UseChatStreamReturn {
 
     // Return immediately — caller shouldn't wait for network to finish to keep UI snappy
     return;
-  }, [messages, startOperation, buildChatPayload, recordResultMeta, handleOperationError, finalizeOperation]);
+  }, [messages, startOperation, buildChatPayload, recordResultMeta, handleOperationError, finalizeOperation, chatClient]);
 
   const generateFromHistory = useCallback(async (
     model: string,
@@ -281,7 +290,9 @@ export function useChatStream(): UseChatStreamReturn {
         researchMode,
         qualityLevel
       });
-      return sendChat(payload);
+      return useTools && payload.tools && payload.tools.length > 0
+        ? chatClient.sendMessageWithTools(payload)
+        : chatClient.sendMessage(payload);
     })();
 
     network.then(result => {
@@ -293,7 +304,7 @@ export function useChatStream(): UseChatStreamReturn {
     });
 
     return;
-  }, [messages, startOperation, buildChatPayload, finalizeOperation, handleOperationError]);
+  }, [messages, startOperation, buildChatPayload, finalizeOperation, handleOperationError, chatClient]);
 
   const regenerateFromBase = useCallback(async (
     baseMessages: ChatMessage[],
@@ -328,7 +339,9 @@ export function useChatStream(): UseChatStreamReturn {
         researchMode,
         qualityLevel
       });
-      const result = await sendChat(payload);
+      const result = useTools && payload.tools && payload.tools.length > 0
+        ? await chatClient.sendMessageWithTools(payload)
+        : await chatClient.sendMessage(payload);
       if (!shouldStream) {
         applyNonStreamingContent(result.content);
       }
@@ -338,7 +351,7 @@ export function useChatStream(): UseChatStreamReturn {
     } finally {
       finalizeOperation();
     }
-  }, [startOperation, buildChatPayload, finalizeOperation, handleOperationError, recordResultMeta]);
+  }, [startOperation, buildChatPayload, finalizeOperation, handleOperationError, recordResultMeta, chatClient]);
 
   const regenerateFromCurrent = useCallback(async (
     conversationId: string | null,

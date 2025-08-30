@@ -1,6 +1,6 @@
 // Tests for unified tool system - backend as single source of truth
 
-import { getToolSpecs } from '../lib/chat';
+import { ToolsClient } from '../lib/chat';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useChatState } from '../hooks/useChatState';
 
@@ -21,7 +21,7 @@ describe('Unified Tool System', () => {
     jest.clearAllMocks();
   });
 
-  describe('getToolSpecs API', () => {
+  describe('ToolsClient API', () => {
     it('should fetch tool specifications from backend', async () => {
       const mockResponse = new Response(JSON.stringify({
         tools: [
@@ -29,44 +29,25 @@ describe('Unified Tool System', () => {
             type: 'function',
             function: {
               name: 'get_time',
-              description: 'Get the current time in ISO format with timezone information',
+              description: 'Get current time',
               parameters: {
                 type: 'object',
-                properties: {}
-              }
-            }
-          },
-          {
-            type: 'function',
-            function: {
-              name: 'web_search',
-              description: 'Perform a web search using Tavily API to get current information',
-              parameters: {
-                type: 'object',
-                properties: {
-                  query: {
-                    type: 'string',
-                    description: 'The search query to execute'
-                  }
-                },
-                required: ['query']
+                properties: {},
+                required: []
               }
             }
           }
         ],
-        available_tools: ['get_time', 'web_search']
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      });
+        available_tools: ['get_time']
+      }), { status: 200 });
 
-      const fetchSpy = mockFetch(mockResponse);
-      global.fetch = fetchSpy;
+      global.fetch = mockFetch(mockResponse);
 
-      const result = await getToolSpecs();
+      const toolsClient = new ToolsClient();
+      const result = await toolsClient.getToolSpecs();
 
       // Behavior: fetch is invoked and result is parsed correctly
-      expect(fetchSpy).toHaveBeenCalled();
+      expect(global.fetch).toHaveBeenCalled();
 
       expect(result).toEqual({
         tools: [
@@ -74,32 +55,16 @@ describe('Unified Tool System', () => {
             type: 'function',
             function: {
               name: 'get_time',
-              description: 'Get the current time in ISO format with timezone information',
+              description: 'Get current time',
               parameters: {
                 type: 'object',
-                properties: {}
-              }
-            }
-          },
-          {
-            type: 'function',
-            function: {
-              name: 'web_search',
-              description: 'Perform a web search using Tavily API to get current information',
-              parameters: {
-                type: 'object',
-                properties: {
-                  query: {
-                    type: 'string',
-                    description: 'The search query to execute'
-                  }
-                },
-                required: ['query']
+                properties: {},
+                required: []
               }
             }
           }
         ],
-        available_tools: ['get_time', 'web_search']
+        available_tools: ['get_time']
       });
     });
 
@@ -114,7 +79,8 @@ describe('Unified Tool System', () => {
       const fetchSpy = mockFetch(mockResponse);
       global.fetch = fetchSpy;
 
-      await expect(getToolSpecs()).rejects.toThrow('Failed to generate tool specifications');
+      const toolsClient = new ToolsClient();
+      await expect(toolsClient.getToolSpecs()).rejects.toThrow('Failed to generate tool specifications');
     });
   });
 

@@ -1,13 +1,32 @@
 // Tests for frontend iterative orchestration functionality
 
-import { sendChat, getToolSpecs } from '../lib/chat';
+import { ChatClient, ToolsClient } from '../lib/chat';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useChatState } from '../hooks/useChatState';
+
+// Create client instances for legacy compatibility
+const chatClient = new ChatClient();
+const toolsClient = new ToolsClient();
+
+const sendChat = (options: any) => {
+  if (options.tools && options.tools.length > 0) {
+    return chatClient.sendMessageWithTools(options);
+  }
+  return chatClient.sendMessage(options);
+};
+
+const getToolSpecs = () => toolsClient.getToolSpecs();
 
 // Mock the tool specs API
 jest.mock('../lib/chat', () => ({
   ...jest.requireActual('../lib/chat'),
-  getToolSpecs: jest.fn()
+  ChatClient: jest.fn().mockImplementation(() => ({
+    sendMessage: jest.fn(),
+    sendMessageWithTools: jest.fn(),
+  })),
+  ToolsClient: jest.fn().mockImplementation(() => ({
+    getToolSpecs: jest.fn()
+  }))
 }));
 
 // Mock fetch for testing
@@ -43,7 +62,7 @@ describe('Frontend Iterative Orchestration', () => {
 
   beforeEach(() => {
     originalFetch = global.fetch;
-    
+
     // Mock tool specs response
     mockGetToolSpecs.mockResolvedValue({
       tools: [

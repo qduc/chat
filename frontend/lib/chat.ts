@@ -29,6 +29,7 @@ export { ToolsClient } from './chat/tools';
 export { APIError, SSEParser } from './chat/utils';
 
 // Legacy function exports for backward compatibility
+// @deprecated Use ConversationManager class instead
 export {
   createConversation,
   listConversationsApi,
@@ -36,6 +37,7 @@ export {
   deleteConversationApi,
   editMessageApi
 } from './chat/conversations';
+// @deprecated Use ToolsClient class instead
 export { getToolSpecs } from './chat/tools';
 
 import { ChatClient } from './chat/client';
@@ -44,6 +46,7 @@ import { SendChatOptions, ChatResponse } from './chat/types';
 const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
 
 // Legacy sendChat function for backward compatibility
+// @deprecated Use ChatClient.sendMessage() or ChatClient.sendMessageWithTools() instead
 export async function sendChat(options: SendChatOptions): Promise<ChatResponse> {
   const client = new ChatClient(options.apiBase || defaultApiBase);
 
