@@ -180,15 +180,6 @@ export function ChatV2() {
         <SettingsModal
           open={isSettingsOpen}
           onClose={() => setIsSettingsOpen(false)}
-          model={state.model}
-          onModelChange={actions.setModel}
-          // SettingsModal does not expose provider currently; UI decides from header
-          useTools={state.useTools}
-          onUseToolsChange={actions.setUseTools}
-          shouldStream={state.shouldStream}
-          onShouldStreamChange={actions.setShouldStream}
-          qualityLevel={state.qualityLevel}
-          onQualityLevelChange={actions.setQualityLevel}
         />
       </div>
       <RightSidebar systemPrompt={state.systemPrompt ?? ''} onSystemPromptChange={actions.setSystemPrompt} />
