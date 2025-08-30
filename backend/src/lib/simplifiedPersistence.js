@@ -29,6 +29,7 @@ export class SimplifiedPersistence {
     this.finalized = false;
     this.errored = false;
     this.conversationMeta = null; // Store conversation metadata
+    this.providerId = undefined; // Track frontend-selected provider for consistency
   }
 
   /**
@@ -55,6 +56,9 @@ export class SimplifiedPersistence {
     upsertSession(sessionId, {
       userAgent: req.header('user-agent') || null,
     });
+
+    // Capture provider id from request for later use (e.g., title generation)
+    this.providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
 
     let convo = null;
 
@@ -104,7 +108,6 @@ export class SimplifiedPersistence {
         model,
         streamingEnabled: persistedStreamingEnabled,
         toolsEnabled: persistedToolsEnabled,
-        researchMode: bodyIn.researchMode || false,
         qualityLevel: bodyIn.qualityLevel || null,
         reasoningEffort: bodyIn.reasoningEffort || null,
         verbosity: bodyIn.verbosity || null
@@ -195,7 +198,7 @@ export class SimplifiedPersistence {
         ],
       };
 
-      const resp = await createOpenAIRequest(this.config, requestBody);
+      const resp = await createOpenAIRequest(this.config, requestBody, { providerId: this.providerId });
       if (!resp.ok) {
         // Fall back gracefully
         return this.fallbackTitle(text);

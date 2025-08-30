@@ -1,6 +1,6 @@
 "use client";
 import React from 'react';
-import { Cog, Database, Plus, Save, RefreshCw, Trash2, Star } from 'lucide-react';
+import { Cog, Database, Plus, Save, RefreshCw, Trash2 } from 'lucide-react';
 import Modal from './ui/Modal';
 import IconSelect from './ui/IconSelect';
 import Toggle from './ui/Toggle';
@@ -15,8 +15,6 @@ interface SettingsModalProps {
   onUseToolsChange: (v: boolean) => void;
   shouldStream: boolean;
   onShouldStreamChange: (v: boolean) => void;
-  researchMode: boolean;
-  onResearchModeChange: (v: boolean) => void;
   qualityLevel: QualityLevel;
   onQualityLevelChange: (level: QualityLevel) => void;
 }
@@ -30,8 +28,6 @@ export default function SettingsModal({
   onUseToolsChange,
   shouldStream,
   onShouldStreamChange,
-  researchMode,
-  onResearchModeChange,
   qualityLevel,
   onQualityLevelChange,
 }: SettingsModalProps) {
@@ -41,7 +37,6 @@ export default function SettingsModal({
     name: string;
     provider_type: string;
     base_url?: string | null;
-    is_default?: number | boolean;
     enabled?: number | boolean;
     extra_headers?: Record<string, any>;
     metadata?: Record<string, any>;
@@ -59,16 +54,15 @@ export default function SettingsModal({
     provider_type: string;
     base_url: string;
     enabled: boolean;
-    is_default: boolean;
     api_key?: string;
     default_model?: string;
-  }>({ name: '', provider_type: 'openai', base_url: '', enabled: true, is_default: false });
+  }>({ name: '', provider_type: 'openai', base_url: '', enabled: true });
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   const resetForm = React.useCallback(() => {
     setSelectedId(null);
-    setForm({ name: '', provider_type: 'openai', base_url: '', enabled: true, is_default: false, api_key: '', default_model: '' });
+    setForm({ name: '', provider_type: 'openai', base_url: '', enabled: true, api_key: '', default_model: '' });
   }, []);
 
   const fetchProviders = React.useCallback(async () => {
@@ -98,7 +92,6 @@ export default function SettingsModal({
       provider_type: r.provider_type,
       base_url: r.base_url || '',
       enabled: Boolean(r.enabled),
-      is_default: Boolean(r.is_default),
       api_key: '', // not returned by API; allow setting new value
       default_model: (r.metadata as any)?.default_model || '',
     });
@@ -122,7 +115,6 @@ export default function SettingsModal({
         provider_type: form.provider_type,
         base_url: form.base_url || null,
         enabled: form.enabled,
-        is_default: form.is_default,
         metadata: { default_model: form.default_model || null },
       };
       if (form.api_key) payload.api_key = form.api_key;
@@ -152,20 +144,7 @@ export default function SettingsModal({
     }
   }
 
-  async function onSetDefault() {
-    if (!form.id) return;
-    try {
-      setSaving(true);
-      setError(null);
-      const res = await fetch(`${apiBase}/v1/providers/${form.id}/default`, { method: 'POST' });
-      if (!res.ok) throw new Error(`Failed to set default (${res.status})`);
-      await fetchProviders();
-    } catch (e: any) {
-      setError(e?.message || 'Failed to set default');
-    } finally {
-      setSaving(false);
-    }
-  }
+  // Default provider concept removed; frontend chooses provider per request
 
   async function onDeleteProvider(id?: string) {
     const target = id || form.id;
@@ -232,7 +211,6 @@ export default function SettingsModal({
                       {p.name} <span className="text-xs text-slate-500">({p.provider_type})</span>
                     </span>
                     <span className="flex items-center gap-2 text-xs">
-                      {p.is_default ? <span className="inline-flex items-center gap-1 text-amber-600"><Star className="w-3 h-3" /> default</span> : null}
                       {p.enabled ? <span className="text-emerald-600">enabled</span> : <span className="text-slate-500">disabled</span>}
                     </span>
                   </button>
@@ -312,10 +290,7 @@ export default function SettingsModal({
                 <label className="text-xs text-slate-600 dark:text-slate-400">Enabled</label>
                 <div className="col-span-2"><Toggle ariaLabel="Enabled" checked={form.enabled} onChange={(v) => setForm((f) => ({ ...f, enabled: v }))} /></div>
               </div>
-              <div className="grid grid-cols-3 items-center gap-2">
-                <label className="text-xs text-slate-600 dark:text-slate-400">Default</label>
-                <div className="col-span-2"><Toggle ariaLabel="Default" checked={form.is_default} onChange={(v) => setForm((f) => ({ ...f, is_default: v }))} /></div>
-              </div>
+              {/* Default provider removed */}
 
               <div className="flex gap-2 pt-2">
                 <button
@@ -326,16 +301,7 @@ export default function SettingsModal({
                 >
                   <Save className="w-3 h-3" /> Save
                 </button>
-                {form.id && (
-                  <button
-                    type="button"
-                    onClick={onSetDefault}
-                    disabled={saving}
-                    className="inline-flex items-center gap-1 px-3 py-2 text-xs rounded-md bg-amber-600 hover:bg-amber-500 text-white disabled:opacity-60"
-                  >
-                    <Star className="w-3 h-3" /> Set Default
-                  </button>
-                )}
+                {/* Default provider concept removed */}
               </div>
             </div>
           </div>

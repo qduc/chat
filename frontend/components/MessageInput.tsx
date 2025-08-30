@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Send, Loader2, Gauge, Wrench, Zap, FlaskConical } from 'lucide-react';
+import { Send, Loader2, Gauge, Wrench, Zap } from 'lucide-react';
 import type { PendingState } from '../hooks/useChatStream';
 import Toggle from './ui/Toggle';
 import QualitySlider from './ui/QualitySlider';
@@ -13,10 +13,8 @@ interface MessageInputProps {
   onStop: () => void;
   useTools: boolean;
   shouldStream: boolean;
-  researchMode: boolean;
   onUseToolsChange: (useTools: boolean) => void;
   onShouldStreamChange: (val: boolean) => void;
-  onResearchModeChange: (val: boolean) => void;
   model: string;
   qualityLevel: QualityLevel;
   onQualityLevelChange: (level: QualityLevel) => void;
@@ -30,10 +28,8 @@ export function MessageInput({
   onStop,
   useTools,
   shouldStream,
-  researchMode,
   onUseToolsChange,
   onShouldStreamChange,
-  onResearchModeChange,
   model,
   qualityLevel,
   onQualityLevelChange,
@@ -112,16 +108,6 @@ export function MessageInput({
                 />
               </div>
 
-              <div className="flex items-center">
-                <Toggle
-                  ariaLabel="Research"
-                  icon={<FlaskConical className="w-4 h-4" />}
-                  checked={researchMode}
-                  onChange={onResearchModeChange}
-                  disabled={!useTools}
-                  className="whitespace-nowrap"
-                />
-              </div>
             </div>
             <button
                 type="button"

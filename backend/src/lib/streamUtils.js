@@ -28,10 +28,10 @@ export function createChatCompletionChunk(id, model, delta, finishReason = null)
  * @param {Object} requestBody - Request body to send
  * @returns {Promise<Response>} Fetch response promise
  */
-export async function createOpenAIRequest(config, requestBody) {
+export async function createOpenAIRequest(config, requestBody, options = {}) {
   // Backward-compat shim: delegate to provider registry
   const { providerChatCompletions } = await import('./providers/index.js');
-  return providerChatCompletions(config, requestBody);
+  return providerChatCompletions(config, requestBody, options);
 }
 
 // Optional alias with a more generic name for future call sites

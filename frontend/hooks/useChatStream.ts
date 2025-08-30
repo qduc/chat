@@ -20,7 +20,6 @@ export interface UseChatStreamReturn {
     shouldStream: boolean,
     reasoningEffort: string,
     verbosity: string,
-    researchMode?: boolean,
     onConversationCreated?: (conversation: { id: string; title?: string | null; model?: string | null; created_at: string }) => void,
     qualityLevel?: string
   ) => Promise<void>;
@@ -31,7 +30,6 @@ export interface UseChatStreamReturn {
     shouldStream: boolean,
     reasoningEffort: string,
     verbosity: string,
-    researchMode?: boolean,
     qualityLevel?: string
   ) => Promise<void>;
   regenerateFromBase: (
@@ -42,7 +40,6 @@ export interface UseChatStreamReturn {
     shouldStream: boolean,
     reasoningEffort: string,
     verbosity: string,
-    researchMode?: boolean,
     qualityLevel?: string
   ) => Promise<void>;
   generateFromHistory: (
@@ -51,7 +48,6 @@ export interface UseChatStreamReturn {
     reasoningEffort: string,
     verbosity: string,
     messagesOverride?: ChatMessage[],
-    researchMode?: boolean,
     qualityLevel?: string
   ) => Promise<void>;
   stopStreaming: () => void;
@@ -150,13 +146,12 @@ export function useChatStream(): UseChatStreamReturn {
     useTools: boolean;
     reasoningEffort: string;
     verbosity: string;
-    researchMode?: boolean;
     qualityLevel?: string;
   }) => {
     const {
       history, model, signal, conversationId,
       shouldStream, useTools, reasoningEffort, verbosity,
-      researchMode, qualityLevel
+      qualityLevel
     } = args;
 
     const tools = await loadToolsIfNeeded(useTools);
@@ -171,12 +166,10 @@ export function useChatStream(): UseChatStreamReturn {
       verbosity,
       streamingEnabled: shouldStream,
       toolsEnabled: useTools,
-      researchMode: researchMode || false,
       qualityLevel: qualityLevel ?? undefined,
       ...(useTools ? {
         tools: tools || [],
         tool_choice: 'auto',
-        ...(researchMode && { research_mode: true })
       } : {}),
       onEvent: handleStreamEvent
     };
@@ -210,7 +203,6 @@ export function useChatStream(): UseChatStreamReturn {
     shouldStream: boolean,
     reasoningEffort: string,
     verbosity: string,
-    researchMode?: boolean,
     onConversationCreated?: (conversation: { id: string; title?: string | null; model?: string | null; created_at: string }) => void,
     qualityLevel?: string
   ) => {
@@ -235,7 +227,6 @@ export function useChatStream(): UseChatStreamReturn {
         useTools,
         reasoningEffort,
         verbosity,
-        researchMode,
         qualityLevel
       });
 
@@ -266,7 +257,6 @@ export function useChatStream(): UseChatStreamReturn {
     reasoningEffort: string,
     verbosity: string,
     messagesOverride?: ChatMessage[],
-    researchMode?: boolean,
     qualityLevel?: string
   ) => {
     // Only proceed if there is a user message to respond to
@@ -287,7 +277,6 @@ export function useChatStream(): UseChatStreamReturn {
         useTools,
         reasoningEffort,
         verbosity,
-        researchMode,
         qualityLevel
       });
       return useTools && payload.tools && payload.tools.length > 0
@@ -314,7 +303,6 @@ export function useChatStream(): UseChatStreamReturn {
     shouldStream: boolean,
     reasoningEffort: string,
     verbosity: string,
-    researchMode?: boolean,
     qualityLevel?: string
   ) => {
     // Must have at least one user message to respond to
@@ -336,7 +324,6 @@ export function useChatStream(): UseChatStreamReturn {
         useTools,
         reasoningEffort,
         verbosity,
-        researchMode,
         qualityLevel
       });
       const result = useTools && payload.tools && payload.tools.length > 0
@@ -360,11 +347,10 @@ export function useChatStream(): UseChatStreamReturn {
     shouldStream: boolean,
     reasoningEffort: string,
     verbosity: string,
-    researchMode?: boolean,
     qualityLevel?: string
   ) => {
     const base = messages;
-    await regenerateFromBase(base, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode, qualityLevel);
+    await regenerateFromBase(base, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, qualityLevel);
   }, [messages, regenerateFromBase]);
 
   const stopStreaming = useCallback(() => {

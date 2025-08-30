@@ -70,7 +70,7 @@ function streamEvent(res, event, model) {
 /**
  * Make a request to the AI model
  */
-async function callModel(messages, config, bodyParams, tools = null) {
+async function callModel(messages, config, bodyParams, tools = null, providerId) {
   const requestBody = {
     model: bodyParams.model || config.defaultModel,
     messages,
@@ -84,7 +84,7 @@ async function callModel(messages, config, bodyParams, tools = null) {
     if (bodyParams.verbosity) requestBody.verbosity = bodyParams.verbosity;
   }
 
-  const response = await createOpenAIRequest(config, requestBody);
+  const response = await createOpenAIRequest(config, requestBody, { providerId });
   const result = await response.json();
   return result?.choices?.[0]?.message;
 }
@@ -100,6 +100,7 @@ export async function handleIterativeOrchestration({
   req,
   persistence,
 }) {
+  const providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
   try {
     // Setup streaming headers
     setupStreamingHeaders(res);
@@ -147,7 +148,7 @@ export async function handleIterativeOrchestration({
         if (body.verbosity) requestBody.verbosity = body.verbosity;
       }
 
-      const upstream = await createOpenAIRequest(config, requestBody);
+      const upstream = await createOpenAIRequest(config, requestBody, { providerId });
       
       // Check upstream response status
       if (!upstream.ok) {

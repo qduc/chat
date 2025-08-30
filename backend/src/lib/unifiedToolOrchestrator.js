@@ -52,7 +52,7 @@ function streamEvent(res, event, model) {
 /**
  * Make a request to the AI model
  */
-async function callLLM(messages, config, bodyParams) {
+async function callLLM(messages, config, bodyParams, providerId) {
   const requestBody = {
     model: bodyParams.model || config.defaultModel,
     messages,
@@ -66,7 +66,7 @@ async function callLLM(messages, config, bodyParams) {
     if (bodyParams.verbosity) requestBody.verbosity = bodyParams.verbosity;
   }
 
-  const response = await createOpenAIRequest(config, requestBody);
+  const response = await createOpenAIRequest(config, requestBody, { providerId });
 
   if (bodyParams.stream) {
     return response; // Return raw response for streaming
@@ -251,6 +251,7 @@ export async function handleUnifiedToolOrchestration({
   req,
   persistence,
 }) {
+  const providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
   // Build initial messages from persisted history when available
   let messages = [];
   if (persistence && persistence.persist && persistence.conversationId) {
@@ -293,7 +294,7 @@ export async function handleUnifiedToolOrchestration({
     // Main orchestration loop - continues until LLM stops requesting tools
     while (iteration < MAX_ITERATIONS) {
       // Always get response non-streaming first to check for tool calls
-      const response = await callLLM(messages, config, { ...body, stream: false });
+      const response = await callLLM(messages, config, { ...body, stream: false }, providerId);
       const message = response?.choices?.[0]?.message;
       const toolCalls = message?.tool_calls || [];
 
@@ -371,7 +372,7 @@ export async function handleUnifiedToolOrchestration({
     }
 
     // Max iterations reached - get final response
-    const finalResponse = await callLLM(messages, config, { ...body, stream: requestedStreaming });
+    const finalResponse = await callLLM(messages, config, { ...body, stream: requestedStreaming }, providerId);
 
     if (requestedStreaming) {
       const finishReason = await streamResponse(finalResponse, res, persistence, body.model || config.defaultModel);

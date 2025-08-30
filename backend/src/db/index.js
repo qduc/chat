@@ -133,7 +133,6 @@ export function createConversation({
   model,
   streamingEnabled = false,
   toolsEnabled = false,
-  researchMode = false,
   qualityLevel = null,
   reasoningEffort = null,
   verbosity = null
@@ -141,8 +140,8 @@ export function createConversation({
   const db = getDb();
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO conversations (id, session_id, user_id, title, model, metadata, streaming_enabled, tools_enabled, research_mode, quality_level, reasoning_effort, verbosity, created_at, updated_at)
-     VALUES (@id, @session_id, NULL, @title, @model, '{}', @streaming_enabled, @tools_enabled, @research_mode, @quality_level, @reasoning_effort, @verbosity, @now, @now)`
+    `INSERT INTO conversations (id, session_id, user_id, title, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at, updated_at)
+     VALUES (@id, @session_id, NULL, @title, @model, '{}', @streaming_enabled, @tools_enabled, @quality_level, @reasoning_effort, @verbosity, @now, @now)`
   ).run({
     id,
     session_id: sessionId,
@@ -150,7 +149,6 @@ export function createConversation({
     model: model || null,
     streaming_enabled: streamingEnabled ? 1 : 0,
     tools_enabled: toolsEnabled ? 1 : 0,
-    research_mode: researchMode ? 1 : 0,
     quality_level: qualityLevel,
     reasoning_effort: reasoningEffort,
     verbosity: verbosity,
@@ -162,7 +160,7 @@ export function getConversationById({ id, sessionId }) {
   const db = getDb();
   const result = db
     .prepare(
-      `SELECT id, title, model, streaming_enabled, tools_enabled, research_mode, quality_level, reasoning_effort, verbosity, created_at FROM conversations
+      `SELECT id, title, model, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at FROM conversations
      WHERE id=@id AND session_id=@session_id AND deleted_at IS NULL`
     )
     .get({ id, session_id: sessionId });
@@ -171,7 +169,6 @@ export function getConversationById({ id, sessionId }) {
     // Convert SQLite boolean integers back to JavaScript booleans
     result.streaming_enabled = Boolean(result.streaming_enabled);
     result.tools_enabled = Boolean(result.tools_enabled);
-    result.research_mode = Boolean(result.research_mode);
   }
 
   return result;

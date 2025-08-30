@@ -86,7 +86,6 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
       model,
       streamingEnabled,
       toolsEnabled,
-      researchMode,
       qualityLevel,
       reasoningEffort,
       verbosity
@@ -99,7 +98,6 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
       model,
       streamingEnabled,
       toolsEnabled,
-      researchMode,
       qualityLevel,
       reasoningEffort,
       verbosity

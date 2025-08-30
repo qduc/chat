@@ -9,10 +9,12 @@ interface ChatHeaderProps {
   onNewChat?: () => void;
   model: string;
   onModelChange: (model: string) => void;
+  providerId?: string | null;
+  onProviderChange?: (providerId: string | null) => void;
   onOpenSettings?: () => void;
 }
 
-export function ChatHeader({ model, onModelChange, onOpenSettings }: ChatHeaderProps) {
+export function ChatHeader({ model, onModelChange, providerId, onProviderChange, onOpenSettings }: ChatHeaderProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
 
   // Derive models from configured providers with a safe fallback
@@ -68,6 +70,7 @@ export function ChatHeader({ model, onModelChange, onOpenSettings }: ChatHeaderP
             if (!defaultOpenAIModels.some(o => o.value === model)) {
               onModelChange(defaultOpenAIModels[0].value);
             }
+            onProviderChange?.(null);
           }
           return;
         }
@@ -78,12 +81,18 @@ export function ChatHeader({ model, onModelChange, onOpenSettings }: ChatHeaderP
           const flat = gs.flatMap(g => g.options);
           setModelOptions(flat);
 
-          // Identify provider default_model if present
-          const firstDefault = enabledProviders.find((p) => p?.is_default);
-          const defaultModel = (firstDefault?.metadata && (firstDefault.metadata as any).default_model) || undefined;
+          // Determine selected provider: keep current if available, else first
+          const currentProviderInGs = gs.find(g => g.id === (providerId ?? ''));
+          const selectedProvider = currentProviderInGs ? currentProviderInGs : gs[0];
+          if (!currentProviderInGs) {
+            onProviderChange?.(selectedProvider.id);
+          }
 
-          if (typeof model === 'string' && !flat.some(o => o.value === model)) {
-            onModelChange(defaultModel || flat[0].value);
+          // Ensure model belongs to selected provider; else set to first model in that provider
+          const providerModels = selectedProvider.options;
+          if (!providerModels.some(o => o.value === model)) {
+            const nextModel = providerModels[0]?.value || flat[0]?.value;
+            if (nextModel) onModelChange(nextModel);
           }
         }
       } catch {
@@ -93,7 +102,16 @@ export function ChatHeader({ model, onModelChange, onOpenSettings }: ChatHeaderP
 
     loadProviders();
     return () => { cancelled = true; };
-  }, [apiBase, defaultOpenAIModels, onModelChange]);
+  }, [apiBase, defaultOpenAIModels, onModelChange, onProviderChange, providerId]);
+
+  // When user changes model, also derive provider from groups
+  const handleModelChange = React.useCallback((newModel: string) => {
+    if (groups && groups.length > 0) {
+      const owner = groups.find(g => g.options.some(o => o.value === newModel));
+      if (owner) onProviderChange?.(owner.id);
+    }
+    onModelChange(newModel);
+  }, [groups, onProviderChange, onModelChange]);
 
   const toggleTheme = () => {
     if (theme === 'dark') {
@@ -110,7 +128,7 @@ export function ChatHeader({ model, onModelChange, onOpenSettings }: ChatHeaderP
           <div className="flex items-center gap-4">
             <ModelSelector
               value={model}
-              onChange={onModelChange}
+              onChange={handleModelChange}
               groups={groups}
               fallbackOptions={modelOptions}
               className="text-lg"

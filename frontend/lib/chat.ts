@@ -55,7 +55,6 @@ export async function sendChat(options: SendChatOptions): Promise<ChatResponse> 
     ...options,
     stream: options.shouldStream !== undefined ? !!options.shouldStream :
             (options.stream === undefined ? true : !!options.stream),
-    researchMode: options.research_mode || options.researchMode,
     reasoning: (options.reasoningEffort || options.verbosity) ? {
       effort: options.reasoningEffort,
       verbosity: options.verbosity

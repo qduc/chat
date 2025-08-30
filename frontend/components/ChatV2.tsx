@@ -77,6 +77,8 @@ export function ChatV2() {
           onNewChat={actions.newChat}
           model={state.model}
           onModelChange={actions.setModel}
+          providerId={state.providerId}
+          onProviderChange={actions.setProviderId}
           onOpenSettings={() => setIsSettingsOpen(true)}
         />
         <MessageList
@@ -110,10 +112,8 @@ export function ChatV2() {
             onStop={actions.stopStreaming}
             useTools={state.useTools}
             shouldStream={state.shouldStream}
-            researchMode={state.researchMode}
             onUseToolsChange={actions.setUseTools}
             onShouldStreamChange={actions.setShouldStream}
-            onResearchModeChange={actions.setResearchMode}
             model={state.model}
             qualityLevel={state.qualityLevel}
             onQualityLevelChange={actions.setQualityLevel}
@@ -124,12 +124,11 @@ export function ChatV2() {
           onClose={() => setIsSettingsOpen(false)}
           model={state.model}
           onModelChange={actions.setModel}
+          // SettingsModal does not expose provider currently; UI decides from header
           useTools={state.useTools}
           onUseToolsChange={actions.setUseTools}
           shouldStream={state.shouldStream}
           onShouldStreamChange={actions.setShouldStream}
-          researchMode={state.researchMode}
-          onResearchModeChange={actions.setResearchMode}
           qualityLevel={state.qualityLevel}
           onQualityLevelChange={actions.setQualityLevel}
         />

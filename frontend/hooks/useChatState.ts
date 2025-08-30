@@ -17,11 +17,11 @@ export interface ChatState {
 
   // Settings
   model: string;
+  providerId: string | null;
   useTools: boolean;
   shouldStream: boolean;
   reasoningEffort: string;
   verbosity: string;
-  researchMode: boolean;
   qualityLevel: QualityLevel;
   // System prompt for the current session
   systemPrompt: string;
@@ -47,11 +47,11 @@ export interface ChatState {
 export type ChatAction =
   | { type: 'SET_INPUT'; payload: string }
   | { type: 'SET_MODEL'; payload: string }
+  | { type: 'SET_PROVIDER'; payload: string | null }
   | { type: 'SET_USE_TOOLS'; payload: boolean }
   | { type: 'SET_SHOULD_STREAM'; payload: boolean }
   | { type: 'SET_REASONING_EFFORT'; payload: string }
   | { type: 'SET_VERBOSITY'; payload: string }
-  | { type: 'SET_RESEARCH_MODE'; payload: boolean }
   | { type: 'SET_QUALITY_LEVEL'; payload: QualityLevel }
   | { type: 'SET_SYSTEM_PROMPT'; payload: string }
   | { type: 'SET_CONVERSATION_ID'; payload: string | null }
@@ -86,11 +86,11 @@ const initialState: ChatState = {
   conversationId: null,
   previousResponseId: null,
   model: 'gpt-4.1-mini',
+  providerId: null,
   useTools: true,
   shouldStream: true,
   reasoningEffort: 'medium',
   verbosity: 'medium',
-  researchMode: false,
   qualityLevel: 'balanced',
   systemPrompt: '',
   conversations: [],
@@ -110,6 +110,9 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case 'SET_MODEL':
       return { ...state, model: action.payload };
 
+    case 'SET_PROVIDER':
+      return { ...state, providerId: action.payload };
+
     case 'SET_USE_TOOLS':
       return { ...state, useTools: action.payload };
 
@@ -122,8 +125,6 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case 'SET_VERBOSITY':
       return { ...state, verbosity: action.payload };
 
-    case 'SET_RESEARCH_MODE':
-      return { ...state, researchMode: action.payload };
 
     case 'SET_QUALITY_LEVEL': {
       // Map quality level to derived settings for backward compatibility
@@ -502,12 +503,12 @@ export function useChatState() {
       return ({
         messages: outgoing.map(m => ({ role: m.role as Role, content: m.content })),
         model: state.model,
+        providerId: state.providerId || undefined,
         signal,
         conversationId: state.conversationId || undefined,
         shouldStream: state.shouldStream,
         reasoningEffort: state.reasoningEffort,
         verbosity: state.verbosity,
-        researchMode: state.researchMode,
         qualityLevel: state.qualityLevel,
         ...(state.useTools
           ? {
@@ -578,6 +579,10 @@ export function useChatState() {
       dispatch({ type: 'SET_MODEL', payload: model });
     }, []),
 
+    setProviderId: useCallback((providerId: string | null) => {
+      dispatch({ type: 'SET_PROVIDER', payload: providerId });
+    }, []),
+
     setUseTools: useCallback((useTools: boolean) => {
       dispatch({ type: 'SET_USE_TOOLS', payload: useTools });
     }, []),
@@ -594,9 +599,6 @@ export function useChatState() {
       dispatch({ type: 'SET_VERBOSITY', payload: verbosity });
     }, []),
 
-    setResearchMode: useCallback((val: boolean) => {
-      dispatch({ type: 'SET_RESEARCH_MODE', payload: val });
-    }, []),
 
     setQualityLevel: useCallback((level: QualityLevel) => {
       dispatch({ type: 'SET_QUALITY_LEVEL', payload: level });
@@ -693,9 +695,6 @@ export function useChatState() {
         }
         if (data.tools_enabled !== undefined) {
           dispatch({ type: 'SET_USE_TOOLS', payload: data.tools_enabled });
-        }
-        if (data.research_mode !== undefined) {
-          dispatch({ type: 'SET_RESEARCH_MODE', payload: data.research_mode });
         }
         if (data.quality_level) {
           dispatch({ type: 'SET_QUALITY_LEVEL', payload: data.quality_level as QualityLevel });

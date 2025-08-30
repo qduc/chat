@@ -13,6 +13,7 @@ function sanitizeIncomingBody(bodyIn, cfg) {
   const body = { ...bodyIn };
   // Strip non-upstream fields
   delete body.conversation_id;
+  delete body.provider_id; // frontend-selected provider (handled server-side only)
   delete body.streamingEnabled;
   delete body.toolsEnabled;
   delete body.researchMode;
@@ -93,10 +94,11 @@ async function readUpstreamError(upstream) {
 export async function proxyOpenAIRequest(req, res) {
   const bodyIn = req.body || {};
   const body = sanitizeIncomingBody(bodyIn, config);
+  const providerId = bodyIn.provider_id || req.header('x-provider-id') || undefined;
 
   // Resolve default model from DB-backed provider settings when missing
   if (!body.model) {
-    body.model = await getDefaultModel(config);
+    body.model = await getDefaultModel(config, { providerId });
   }
 
   // Validate reasoning controls early and return guard failures
@@ -122,7 +124,7 @@ export async function proxyOpenAIRequest(req, res) {
       handleUnifiedToolOrchestration({ body, bodyIn, config, res, req, persistence }),
 
     'plain:stream': async ({ body, req, res, config, persistence }) => {
-      const upstream = await createOpenAIRequest(config, body);
+      const upstream = await createOpenAIRequest(config, body, { providerId });
       if (!upstream.ok) {
         const errorJson = await readUpstreamError(upstream);
         if (persistence.persist) persistence.markError();
@@ -134,7 +136,7 @@ export async function proxyOpenAIRequest(req, res) {
     },
 
     'plain:json': async ({ body, req, res, config, persistence }) => {
-      const upstream = await createOpenAIRequest(config, body);
+      const upstream = await createOpenAIRequest(config, body, { providerId });
       if (!upstream.ok) {
         const errorJson = await readUpstreamError(upstream);
         if (persistence.persist) persistence.markError();

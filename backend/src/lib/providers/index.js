@@ -17,19 +17,32 @@ function parseJSONSafe(s, fallback) {
   }
 }
 
-async function resolveProviderSettings(config) {
+async function resolveProviderSettings(config, options = {}) {
   try {
     const db = getDb();
     if (db) {
-      const row = db
-        .prepare(
-          `SELECT id, name, provider_type, api_key, base_url, extra_headers, metadata
-           FROM providers
-           WHERE enabled = 1 AND deleted_at IS NULL
-           ORDER BY is_default DESC, updated_at DESC
-           LIMIT 1`
-        )
-        .get();
+      let row;
+      if (options.providerId) {
+        row = db
+          .prepare(
+            `SELECT id, name, provider_type, api_key, base_url, extra_headers, metadata
+             FROM providers
+             WHERE id=@id AND enabled = 1 AND deleted_at IS NULL
+             LIMIT 1`
+          )
+          .get({ id: options.providerId });
+      }
+      if (!row) {
+        row = db
+          .prepare(
+            `SELECT id, name, provider_type, api_key, base_url, extra_headers, metadata
+             FROM providers
+             WHERE enabled = 1 AND deleted_at IS NULL
+             ORDER BY updated_at DESC
+             LIMIT 1`
+          )
+          .get();
+      }
       if (row) {
         const headers = parseJSONSafe(row.extra_headers, {});
         const metadata = parseJSONSafe(row.metadata, {});
@@ -75,8 +88,8 @@ const OpenAIProvider = {
   supportsReasoningControls(model) {
     return typeof model === 'string' && model.startsWith('gpt-5');
   },
-  async createChatCompletionsRequest(config, requestBody) {
-    const settings = await resolveProviderSettings(config);
+  async createChatCompletionsRequest(config, requestBody, options = {}) {
+    const settings = await resolveProviderSettings(config, options);
     const base = String(settings.baseUrl || '').replace(/\/v1\/?$/, '');
     const url = `${base}/v1/chat/completions`;
     const apiKey = settings.apiKey;
@@ -111,12 +124,12 @@ export function providerSupportsReasoning(config, model) {
   return getProvider(config).supportsReasoningControls(model);
 }
 
-export async function providerChatCompletions(config, requestBody) {
+export async function providerChatCompletions(config, requestBody, options = {}) {
   const provider = getProvider(config);
-  return provider.createChatCompletionsRequest(config, requestBody);
+  return provider.createChatCompletionsRequest(config, requestBody, options);
 }
 
-export async function getDefaultModel(config) {
-  const settings = await resolveProviderSettings(config);
+export async function getDefaultModel(config, options = {}) {
+  const settings = await resolveProviderSettings(config, options);
   return settings.defaultModel || config?.defaultModel;
 }

@@ -12,7 +12,6 @@ export interface ConversationCreateOptions {
   model?: string;
   streamingEnabled?: boolean;
   toolsEnabled?: boolean;
-  researchMode?: boolean;
   qualityLevel?: string;
   reasoningEffort?: string;
   verbosity?: string;
