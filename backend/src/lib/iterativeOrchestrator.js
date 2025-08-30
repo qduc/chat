@@ -149,7 +149,7 @@ export async function handleIterativeOrchestration({
       }
 
       const upstream = await createOpenAIRequest(config, requestBody, { providerId });
-      
+
       // Check upstream response status
       if (!upstream.ok) {
         const errorBody = await upstream.text();
@@ -217,12 +217,12 @@ export async function handleIterativeOrchestration({
             reject(e);
           }
         });
-        
+
         upstream.body.on('error', (err) => {
           cleanup();
           reject(err);
         });
-        
+
         upstream.body.on('end', () => {
           // Fallback resolution if [DONE] event wasn't received
           cleanup();

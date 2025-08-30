@@ -101,6 +101,12 @@ export class SimplifiedPersistence {
           ? !!bodyIn.toolsEnabled
           : (Array.isArray(bodyIn.tools) && bodyIn.tools.length > 0); // map tools array presence
 
+      // Prepare optional metadata (e.g., system prompt)
+      const sysPrompt = typeof bodyIn?.systemPrompt === 'string' ? bodyIn.systemPrompt.trim() : (
+        typeof bodyIn?.system_prompt === 'string' ? bodyIn.system_prompt.trim() : ''
+      );
+      const metadata = sysPrompt ? { system_prompt: sysPrompt } : {};
+
       createConversation({
         id: newConversationId,
         sessionId,
@@ -110,7 +116,8 @@ export class SimplifiedPersistence {
         toolsEnabled: persistedToolsEnabled,
         qualityLevel: bodyIn.qualityLevel || null,
         reasoningEffort: bodyIn.reasoningEffort || null,
-        verbosity: bodyIn.verbosity || null
+        verbosity: bodyIn.verbosity || null,
+        metadata
       });
 
       conversationId = newConversationId;
@@ -166,6 +173,26 @@ export class SimplifiedPersistence {
     this.assistantSeq = userSeq + 1;
     this.assistantBuffer = '';
     this.conversationMeta = this.conversationMeta || convo; // Store conversation metadata for response
+
+    // If an existing conversation and a new system prompt is provided, update metadata
+    try {
+      const sysPromptExisting = (this.conversationMeta && this.conversationMeta.metadata && this.conversationMeta.metadata.system_prompt) || null;
+      const incomingSys = typeof bodyIn?.systemPrompt === 'string' ? bodyIn.systemPrompt.trim() : (
+        typeof bodyIn?.system_prompt === 'string' ? bodyIn.system_prompt.trim() : ''
+      );
+      if (incomingSys && incomingSys !== sysPromptExisting) {
+        const { updateConversationMetadata } = await import('../db/index.js');
+        updateConversationMetadata({ id: conversationId, sessionId, patch: { system_prompt: incomingSys } });
+        // Keep local meta in sync
+        this.conversationMeta = this.conversationMeta || {};
+        this.conversationMeta.metadata = {
+          ...(this.conversationMeta.metadata || {}),
+          system_prompt: incomingSys,
+        };
+      }
+    } catch (_) {
+      // ignore metadata update errors
+    }
   }
 
   /**

@@ -498,7 +498,11 @@ export function useChatState() {
   // Helpers to remove duplicate sendChat setup and error handling
   const buildSendChatConfig = useCallback(
     (messages: ChatMessage[], signal: AbortSignal) => {
-      const outgoing = messages;
+      // Prepend the current session's system prompt if provided
+      const trimmedSystem = (state.systemPrompt || '').trim();
+      const outgoing = trimmedSystem
+        ? ([{ role: 'system', content: trimmedSystem } as any, ...messages])
+        : messages;
 
       return ({
         messages: outgoing.map(m => ({ role: m.role as Role, content: m.content })),
@@ -506,6 +510,7 @@ export function useChatState() {
         providerId: state.providerId || undefined,
         signal,
         conversationId: state.conversationId || undefined,
+        systemPrompt: trimmedSystem || undefined,
         shouldStream: state.shouldStream,
         reasoningEffort: state.reasoningEffort,
         verbosity: state.verbosity,
@@ -704,6 +709,9 @@ export function useChatState() {
         }
         if (data.verbosity) {
           dispatch({ type: 'SET_VERBOSITY', payload: data.verbosity });
+        }
+        if (typeof (data as any).system_prompt === 'string') {
+          dispatch({ type: 'SET_SYSTEM_PROMPT', payload: (data as any).system_prompt || '' });
         }
       } catch (e: any) {
         // ignore

@@ -157,8 +157,7 @@ export function ChatV2() {
           onEditingContentChange={actions.updateEditContent}
           onRetryLastAssistant={handleRetryLastAssistant}
         />
-        {/* Soft fade between content and input for visual separation */}
-        <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-white/80 dark:from-neutral-950/80 to-transparent" />
+        {/* Removed soft fade to keep a cleaner boundaryless look */}
         <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-4xl px-6">
           <MessageInput
             input={state.input}

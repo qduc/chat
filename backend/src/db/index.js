@@ -135,18 +135,20 @@ export function createConversation({
   toolsEnabled = false,
   qualityLevel = null,
   reasoningEffort = null,
-  verbosity = null
+  verbosity = null,
+  metadata = {}
 }) {
   const db = getDb();
   const now = new Date().toISOString();
   db.prepare(
     `INSERT INTO conversations (id, session_id, user_id, title, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at, updated_at)
-     VALUES (@id, @session_id, NULL, @title, @model, '{}', @streaming_enabled, @tools_enabled, @quality_level, @reasoning_effort, @verbosity, @now, @now)`
+     VALUES (@id, @session_id, NULL, @title, @model, @metadata, @streaming_enabled, @tools_enabled, @quality_level, @reasoning_effort, @verbosity, @now, @now)`
   ).run({
     id,
     session_id: sessionId,
     title: title || null,
     model: model || null,
+    metadata: JSON.stringify(metadata || {}),
     streaming_enabled: streamingEnabled ? 1 : 0,
     tools_enabled: toolsEnabled ? 1 : 0,
     quality_level: qualityLevel,
@@ -160,7 +162,7 @@ export function getConversationById({ id, sessionId }) {
   const db = getDb();
   const result = db
     .prepare(
-      `SELECT id, title, model, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at FROM conversations
+      `SELECT id, title, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at FROM conversations
      WHERE id=@id AND session_id=@session_id AND deleted_at IS NULL`
     )
     .get({ id, session_id: sessionId });
@@ -169,9 +171,36 @@ export function getConversationById({ id, sessionId }) {
     // Convert SQLite boolean integers back to JavaScript booleans
     result.streaming_enabled = Boolean(result.streaming_enabled);
     result.tools_enabled = Boolean(result.tools_enabled);
+    // Parse metadata JSON safely
+    try {
+      result.metadata = result.metadata ? JSON.parse(result.metadata) : {};
+    } catch (_) {
+      result.metadata = {};
+    }
   }
 
   return result;
+}
+
+// Merge and update conversation metadata JSON
+export function updateConversationMetadata({ id, sessionId, patch }) {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT metadata FROM conversations WHERE id=@id AND session_id=@session_id AND deleted_at IS NULL`
+    )
+    .get({ id, session_id: sessionId });
+  if (!row) return false;
+  let existing = {};
+  try { existing = row.metadata ? JSON.parse(row.metadata) : {}; } catch { existing = {}; }
+  const merged = { ...existing, ...(patch || {}) };
+  const now = new Date().toISOString();
+  const res = db
+    .prepare(
+      `UPDATE conversations SET metadata=@metadata, updated_at=@now WHERE id=@id AND session_id=@session_id`
+    )
+    .run({ id, session_id: sessionId, metadata: JSON.stringify(merged), now });
+  return res.changes > 0;
 }
 
 export function updateConversationTitle({ id, sessionId, title }) {

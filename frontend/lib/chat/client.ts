@@ -79,6 +79,8 @@ export class ChatClient {
       ...(extendedOptions.streamingEnabled !== undefined && { streamingEnabled: extendedOptions.streamingEnabled }),
       ...(extendedOptions.toolsEnabled !== undefined && { toolsEnabled: extendedOptions.toolsEnabled }),
       ...(extendedOptions.qualityLevel !== undefined && { qualityLevel: extendedOptions.qualityLevel }),
+      // Optional system prompt: forwarded for backend persistence and upstream mapping
+      ...((options as any).systemPrompt && { systemPrompt: (options as any).systemPrompt })
     };
 
     // Handle reasoning parameters for gpt-5* models

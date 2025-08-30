@@ -31,6 +31,7 @@ export interface ConversationMeta {
   quality_level?: string | null;
   reasoning_effort?: string | null;
   verbosity?: string | null;
+  system_prompt?: string | null;
 }
 
 export interface ConversationsList {
@@ -49,6 +50,7 @@ export interface ConversationWithMessages {
   quality_level?: string | null;
   reasoning_effort?: string | null;
   verbosity?: string | null;
+  system_prompt?: string | null;
   messages: {
     id: number;
     seq: number;

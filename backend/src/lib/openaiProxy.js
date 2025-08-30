@@ -9,8 +9,24 @@ import { addConversationMetadata } from './responseUtils.js';
 
 // --- Helpers: sanitize, validate, selection, and error shaping ---
 
-function sanitizeIncomingBody(bodyIn, cfg) {
+function sanitizeIncomingBody(bodyIn, _cfg) {
   const body = { ...bodyIn };
+  // Map optional system prompt param to a leading system message
+  try {
+    const sys = (bodyIn.systemPrompt ?? bodyIn.system_prompt);
+    if (typeof sys === 'string' && sys.trim()) {
+      const systemMsg = { role: 'system', content: sys.trim() };
+      if (!Array.isArray(body.messages)) body.messages = [];
+      if (body.messages.length > 0 && body.messages[0] && body.messages[0].role === 'system') {
+        // Replace existing first system message to avoid duplicates
+        body.messages[0] = systemMsg;
+      } else {
+        body.messages.unshift(systemMsg);
+      }
+    }
+  } catch {
+    // ignore mapping errors
+  }
   // Strip non-upstream fields
   delete body.conversation_id;
   delete body.provider_id; // frontend-selected provider (handled server-side only)
@@ -18,6 +34,8 @@ function sanitizeIncomingBody(bodyIn, cfg) {
   delete body.toolsEnabled;
   delete body.researchMode;
   delete body.qualityLevel;
+  delete body.systemPrompt;
+  delete body.system_prompt;
   // Default model
   // Default model is resolved later (may come from DB)
   return body;
@@ -135,7 +153,7 @@ export async function proxyOpenAIRequest(req, res) {
       return handleRegularStreaming({ config, upstream, res, req, persistence });
     },
 
-    'plain:json': async ({ body, req, res, config, persistence }) => {
+  'plain:json': async ({ body, req: _req, res, config, persistence }) => {
       const upstream = await createOpenAIRequest(config, body, { providerId });
       if (!upstream.ok) {
         const errorJson = await readUpstreamError(upstream);
