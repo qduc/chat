@@ -119,9 +119,9 @@ describe('<Chat />', () => {
     renderWithProviders(<Chat />);
 
     await waitFor(() => {
-      // Test behavior: User should be able to see and interact with a model selection interface
-      // Focus on the presence of the selection element and its accessibility
-      const modelSelect = screen.getByRole('combobox', { name: /model/i });
+      // User should be able to see and interact with a model selection interface
+      // Query by accessible label instead of relying on a specific ARIA role implementation
+      const modelSelect = screen.getByLabelText('Model');
       expect(modelSelect).toBeInTheDocument();
       expect(modelSelect).toBeEnabled();
     });
