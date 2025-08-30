@@ -15,7 +15,8 @@ A full-stack AI chat application with advanced tool orchestration and streaming 
 - [x] **Tool orchestration system** (server-side, up to 10 iterations)
 - [x] **Enhanced UI components** (quality controls, floating dropdowns)
 - [x] **Advanced streaming** (tool events, thinking support)
-- [ ] Conversation persistence (database)
+- [x] **Conversation persistence** (SQLite database with migrations)
+- [ ] Conversation history UI integration
 - [ ] System prompt / temperature controls
 - [ ] Auth & per-user limits
 
@@ -35,6 +36,7 @@ A full-stack AI chat application with advanced tool orchestration and streaming 
 
 ### 🔧 **Technical Features**
 - OpenAI-compatible API (Chat Completions + Responses)
+- SQLite database with migrations for conversation persistence
 - Comprehensive test coverage (Jest)
 - ESLint/Prettier code quality tools
 - Docker development environment with hot reload
@@ -61,7 +63,7 @@ npm --prefix frontend run dev
 ```
 Visit http://localhost:3000 (backend on :3001).
 
-**Note**: Set `OPENAI_API_KEY` in `backend/.env` before starting.
+**Note**: Set `OPENAI_API_KEY` in `backend/.env` before starting. Optionally set `TAVILY_API_KEY` for web search tool functionality.
 
 ### Option 2: Docker (Full Stack)
 ```bash

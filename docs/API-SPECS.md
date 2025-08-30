@@ -110,6 +110,6 @@ Returns system health and configuration.
 ## Planned Enhancements
 - **Authentication**: JWT/API key support with per-user limits
 - **Multi-Provider**: Dynamic routing between multiple LLM providers
-- **Conversation Persistence**: Database storage for chat history
 - **Token Accounting**: Usage tracking and billing integration
 - **Observability**: Prometheus metrics and structured logging
+- **Conversation UI**: Frontend integration for conversation history browsing
