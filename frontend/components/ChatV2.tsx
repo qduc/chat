@@ -1,14 +1,16 @@
 "use client";
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useChatState } from '../hooks/useChatState';
 import { ChatSidebar } from './ChatSidebar';
 import { ChatHeader } from './ChatHeader';
 import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
 import { RightSidebar } from './RightSidebar';
+import SettingsModal from './SettingsModal';
 
 export function ChatV2() {
   const { state, actions } = useChatState();
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Simple event handlers - just dispatch actions
   const handleCopy = useCallback(async (text: string) => {
@@ -75,6 +77,7 @@ export function ChatV2() {
           onNewChat={actions.newChat}
           model={state.model}
           onModelChange={actions.setModel}
+          onOpenSettings={() => setIsSettingsOpen(true)}
         />
         <MessageList
           messages={state.messages}
@@ -116,6 +119,20 @@ export function ChatV2() {
             onQualityLevelChange={actions.setQualityLevel}
           />
         </div>
+        <SettingsModal
+          open={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          model={state.model}
+          onModelChange={actions.setModel}
+          useTools={state.useTools}
+          onUseToolsChange={actions.setUseTools}
+          shouldStream={state.shouldStream}
+          onShouldStreamChange={actions.setShouldStream}
+          researchMode={state.researchMode}
+          onResearchModeChange={actions.setResearchMode}
+          qualityLevel={state.qualityLevel}
+          onQualityLevelChange={actions.setQualityLevel}
+        />
       </div>
       <RightSidebar systemPrompt={state.systemPrompt ?? ''} onSystemPromptChange={actions.setSystemPrompt} />
     </div>

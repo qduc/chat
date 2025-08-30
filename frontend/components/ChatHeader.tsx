@@ -1,4 +1,4 @@
-import { Sun, Moon } from 'lucide-react';
+import { Sun, Moon, Settings } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import IconSelect from './ui/IconSelect';
 
@@ -7,9 +7,10 @@ interface ChatHeaderProps {
   onNewChat?: () => void;
   model: string;
   onModelChange: (model: string) => void;
+  onOpenSettings?: () => void;
 }
 
-export function ChatHeader({ model, onModelChange }: ChatHeaderProps) {
+export function ChatHeader({ model, onModelChange, onOpenSettings }: ChatHeaderProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
 
   const toggleTheme = () => {
@@ -42,9 +43,19 @@ export function ChatHeader({ model, onModelChange }: ChatHeaderProps) {
 
         <div className="flex items-center gap-3">
           <button
+            onClick={onOpenSettings}
+            className="w-9 h-9 rounded-lg bg-slate-200 dark:bg-neutral-800 hover:bg-slate-300 dark:hover:bg-neutral-700 flex items-center justify-center shadow-sm transition-colors"
+            title="Open settings"
+            aria-label="Open settings"
+            type="button"
+          >
+            <Settings className="w-4 h-4 text-slate-700 dark:text-slate-200" />
+          </button>
+          <button
             onClick={toggleTheme}
             className="w-9 h-9 rounded-lg bg-slate-200 dark:bg-neutral-800 hover:bg-slate-300 dark:hover:bg-neutral-700 flex items-center justify-center shadow-sm transition-colors"
             title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} theme`}
+            type="button"
           >
             {resolvedTheme === 'dark' ? (
               <Sun className="w-4 h-4 text-slate-700 dark:text-slate-200" />
