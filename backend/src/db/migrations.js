@@ -6,7 +6,7 @@ const migrations = [
     version: 1,
     up: `
       PRAGMA journal_mode = WAL;
-      
+
       CREATE TABLE IF NOT EXISTS sessions (
         id TEXT PRIMARY KEY,
         user_id TEXT NULL,
@@ -28,7 +28,7 @@ const migrations = [
         deleted_at DATETIME NULL,
         FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
       );
-      
+
       CREATE INDEX IF NOT EXISTS idx_conversations_session_created ON conversations(session_id, created_at DESC);
 
       CREATE TABLE IF NOT EXISTS messages (
@@ -51,7 +51,7 @@ const migrations = [
         FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
         FOREIGN KEY(parent_message_id) REFERENCES messages(id)
       );
-      
+
       CREATE INDEX IF NOT EXISTS idx_messages_conv_id ON messages(conversation_id, id);
     `,
     down: `
@@ -64,15 +64,29 @@ const migrations = [
   },
   {
     version: 2,
-    up: `
-      -- Add new columns for conversation settings
-      ALTER TABLE conversations ADD COLUMN streaming_enabled BOOLEAN DEFAULT 0;
-      ALTER TABLE conversations ADD COLUMN tools_enabled BOOLEAN DEFAULT 0;
-      ALTER TABLE conversations ADD COLUMN research_mode BOOLEAN DEFAULT 0;
-      ALTER TABLE conversations ADD COLUMN quality_level TEXT NULL;
-      ALTER TABLE conversations ADD COLUMN reasoning_effort TEXT NULL;
-      ALTER TABLE conversations ADD COLUMN verbosity TEXT NULL;
-    `,
+    up(db) {
+      // Make this migration idempotent by only adding columns that do not already exist.
+      const existing = db.prepare("PRAGMA table_info('conversations')").all().map(r => r.name);
+
+      if (!existing.includes('streaming_enabled')) {
+        db.exec("ALTER TABLE conversations ADD COLUMN streaming_enabled BOOLEAN DEFAULT 0;");
+      }
+      if (!existing.includes('tools_enabled')) {
+        db.exec("ALTER TABLE conversations ADD COLUMN tools_enabled BOOLEAN DEFAULT 0;");
+      }
+      if (!existing.includes('research_mode')) {
+        db.exec("ALTER TABLE conversations ADD COLUMN research_mode BOOLEAN DEFAULT 0;");
+      }
+      if (!existing.includes('quality_level')) {
+        db.exec("ALTER TABLE conversations ADD COLUMN quality_level TEXT NULL;");
+      }
+      if (!existing.includes('reasoning_effort')) {
+        db.exec("ALTER TABLE conversations ADD COLUMN reasoning_effort TEXT NULL;");
+      }
+      if (!existing.includes('verbosity')) {
+        db.exec("ALTER TABLE conversations ADD COLUMN verbosity TEXT NULL;");
+      }
+    },
     down: `
       -- SQLite doesn't support DROP COLUMN, so we'd need to recreate the table
       -- For now, just leave the columns (they won't hurt anything)
