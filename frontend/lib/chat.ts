@@ -1,275 +1,70 @@
-// Simple streaming chat client for OpenAI Chat Completions API
-// Parses Server-Sent Events style stream and aggregates delta content.
+// Main chat API - provides both new modular API and legacy compatibility
 
-export type Role = 'user' | 'assistant' | 'system';
+// Re-export all types for easy access
+export type {
+  Role,
+  ChatMessage,
+  ChatEvent,
+  ChatResponse,
+  ChatOptions,
+  ChatOptionsExtended,
+  SendChatOptions,
+  ConversationMeta,
+  ConversationsList,
+  ConversationWithMessages,
+  ToolSpec,
+  ToolsResponse
+} from './chat/types';
 
-export interface ChatMessage {
-  id: string;
-  role: Role;
-  content: string;
-  tool_calls?: any[]; // Array of tool calls
-  tool_call_id?: string; // ID of the tool call
-  tool_outputs?: Array<{ tool_call_id?: string; name?: string; output: any }>; // tool outputs matched by call id or name
-}
+// Re-export new modular APIs
+export { ChatClient } from './chat/client';
+export {
+  ConversationManager,
+  type ConversationCreateOptions,
+  type ListConversationsParams,
+  type GetConversationParams,
+  type EditMessageResult
+} from './chat/conversations';
+export { ToolsClient } from './chat/tools';
+export { APIError, SSEParser } from './chat/utils';
 
-export interface SendChatOptions {
-  apiBase?: string; // override base; when omitted, uses frontend proxy
-  messages: { role: Role; content: string }[];
-  model?: string;
-  signal?: AbortSignal;
-  onEvent?: (event: any) => void; // called for each event
-  onToken?: (token: string) => void; // called for each text delta token
-  conversationId?: string; // Sprint 4: pass conversation id
-  // ...existing code...
-  tools?: any[]; // optional OpenAI tool specifications (Chat Completions only for now)
-  tool_choice?: any; // optional tool_choice
-  stream?: boolean; // whether to stream response (default: true)
-  shouldStream?: boolean; // alias for stream to avoid env collisions
-  research_mode?: boolean; // enable multi-step research mode with iterative tool usage
-  reasoningEffort?: string;
-  verbosity?: string;
-}
+// Legacy function exports for backward compatibility
+// @deprecated Use ConversationManager class instead
+export {
+  createConversation,
+  listConversationsApi,
+  getConversationApi,
+  deleteConversationApi,
+  editMessageApi
+} from './chat/conversations';
+// @deprecated Use ToolsClient class instead
+export { getToolSpecs } from './chat/tools';
 
-// API base URL - can be direct backend URL or proxy path
-// Direct backend: http://localhost:3001 (for development)
-// Proxy path: /api (legacy Next.js proxy - deprecated)
+import { ChatClient } from './chat/client';
+import { SendChatOptions, ChatResponse } from './chat/types';
+
 const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
 
-// Chat Completions API streaming format
-interface OpenAIStreamChunkChoiceDelta {
-  role?: Role;
-  content?: string;
-  tool_calls?: any[];
-  tool_output?: any; // Custom field for our iterative orchestration
-}
+// Legacy sendChat function for backward compatibility
+// @deprecated Use ChatClient.sendMessage() or ChatClient.sendMessageWithTools() instead
+export async function sendChat(options: SendChatOptions): Promise<ChatResponse> {
+  const client = new ChatClient(options.apiBase || defaultApiBase);
 
-interface OpenAIStreamChunkChoice {
-  delta?: OpenAIStreamChunkChoiceDelta;
-  finish_reason?: string | null;
-}
-interface OpenAIStreamChunk {
-  choices?: OpenAIStreamChunkChoice[];
-}
-
-// ...existing code...
-
-export async function sendChat(options: SendChatOptions): Promise<{ content: string; responseId?: string; conversation?: ConversationMeta }> {
-  const { apiBase = defaultApiBase, messages, model, signal, onEvent, onToken, conversationId, tools, tool_choice, research_mode, reasoningEffort, verbosity } = options;
-  const streamFlag = options.shouldStream !== undefined
-    ? !!options.shouldStream
-    : (options.stream === undefined ? true : !!options.stream);
-  const bodyObj: any = {
-    model,
-    messages,
-    stream: streamFlag,
-    conversation_id: conversationId,
-    reasoning_effort: reasoningEffort,
-    verbosity: verbosity,
-    ...(research_mode && { research_mode: true }),
+  // Convert legacy options to new format
+  const convertedOptions = {
+    ...options,
+    stream: options.shouldStream !== undefined ? !!options.shouldStream :
+            (options.stream === undefined ? true : !!options.stream),
+    reasoning: (options.reasoningEffort || options.verbosity) ? {
+      effort: options.reasoningEffort,
+      verbosity: options.verbosity
+    } : undefined,
+    toolChoice: options.tool_choice
   };
-  if (Array.isArray(tools) && tools.length > 0) {
-    bodyObj.tools = tools;
-    if (tool_choice !== undefined) bodyObj.tool_choice = tool_choice;
+
+  if (convertedOptions.tools && convertedOptions.tools.length > 0) {
+    return client.sendMessageWithTools(convertedOptions);
+  } else {
+    return client.sendMessage(convertedOptions);
   }
-  const body = JSON.stringify(bodyObj);
-
-  const endpoint = '/v1/chat/completions';
-  const fetchInit: RequestInit = {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...(streamFlag ? { 'Accept': 'text/event-stream' } : {}),
-    },
-    body,
-  };
-  if (signal) fetchInit.signal = signal;
-  (fetchInit as any).credentials = 'include';
-  const res = await fetch(`${apiBase}${endpoint}`, fetchInit);
-  if (!res.ok) {
-    let msg = `HTTP ${res.status}`;
-    try {
-      const j = await res.json();
-      msg += `: ${j.error || j.message || JSON.stringify(j)}`;
-    } catch (_) {}
-    throw new Error(msg);
-  }
-
-  // Non-streaming: parse JSON and return content immediately
-  if (!streamFlag) {
-    const json = await res.json();
-
-    // Process tool_events if present (for non-streaming tool orchestration)
-    if (json.tool_events && Array.isArray(json.tool_events)) {
-      for (const event of json.tool_events) {
-        if (event.type === 'text') {
-          onEvent?.({ type: 'text', value: event.value });
-          onToken?.(event.value);
-        } else if (event.type === 'tool_call') {
-          onEvent?.({ type: 'tool_call', value: event.value });
-        } else if (event.type === 'tool_output') {
-          onEvent?.({ type: 'tool_output', value: event.value });
-        }
-      }
-    }
-
-    // Extract conversation metadata if present
-    const conversation = json._conversation ? {
-      id: json._conversation.id,
-      title: json._conversation.title,
-      model: json._conversation.model,
-      created_at: json._conversation.created_at,
-    } : undefined;
-
-    // Debug logging
-
-    // Only handle Chat Completions format
-    if (json?.choices && Array.isArray(json.choices)) {
-      const content = json?.choices?.[0]?.message?.content ?? '';
-      const responseId = json?.id;
-      return { content, responseId, conversation };
-    } else {
-      // Fallback - try to extract content from any available field
-      const content = json?.content ?? json?.message?.content ?? '';
-      const responseId = json?.id;
-      return { content, responseId, conversation };
-    }
-  }
-
-  if (!res.body) throw new Error('No response body');
-
-  const reader = res.body.getReader();
-  const decoder = new TextDecoder('utf-8');
-  let assistant = '';
-  let buffer = '';
-  let responseId: string | undefined;
-  let conversation: ConversationMeta | undefined;
-
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let idx;
-    while ((idx = buffer.indexOf('\n')) !== -1) {
-      const line = buffer.slice(0, idx).trim();
-      buffer = buffer.slice(idx + 1);
-      if (!line) continue;
-      if (line.startsWith('data:')) {
-        const data = line.slice(5).trim();
-        if (data === '[DONE]') {
-          return { content: assistant, responseId, conversation };
-        }
-        try {
-          const json = JSON.parse(data);
-
-          // Handle conversation metadata
-          if (json._conversation) {
-            conversation = {
-              id: json._conversation.id,
-              title: json._conversation.title,
-              model: json._conversation.model,
-              created_at: json._conversation.created_at,
-            };
-            continue; // Skip processing this as content
-          }
-
-          // Only handle Chat Completions API stream format
-          const chunk = json as OpenAIStreamChunk;
-          const delta = chunk.choices?.[0]?.delta;
-          if (delta?.content) {
-            assistant += delta.content;
-            onToken?.(delta.content);
-            onEvent?.({ type: 'text', value: delta.content });
-          } else if (delta?.tool_calls) {
-            // Process all tool calls in the array, not just the first one
-            for (const toolCall of delta.tool_calls) {
-              onEvent?.({ type: 'tool_call', value: toolCall });
-            }
-          } else if (delta?.tool_output) {
-            onEvent?.({ type: 'tool_output', value: delta.tool_output });
-          }
-        } catch (e) {
-          // ignore malformed lines
-        }
-      }
-    }
-  }
-  return { content: assistant, responseId, conversation };
-}
-
-// --- Sprint 4: History API helpers ---
-export interface ConversationMeta { id: string; title?: string | null; model?: string | null; created_at: string; }
-export interface ConversationsList { items: ConversationMeta[]; next_cursor: string | null; }
-
-async function handleJSON(res: Response) {
-  if (!res.ok) {
-    let err: any = { status: res.status };
-    try { err.body = await res.json(); } catch {}
-    const msg = err.body?.message || err.body?.error || `HTTP ${res.status}`;
-    const e = new Error(msg) as any; e.status = res.status; e.body = err.body; throw e;
-  }
-  return res.json();
-}
-
-export async function createConversation(apiBase = defaultApiBase, init?: { title?: string; model?: string; }) {
-  const res = await fetch(`${apiBase}/v1/conversations`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(init || {}), credentials: 'include'
-  });
-  return handleJSON(res) as Promise<ConversationMeta>;
-}
-
-export async function listConversationsApi(apiBase = defaultApiBase, params?: { cursor?: string; limit?: number; }) {
-  const qs = new URLSearchParams();
-  if (params?.cursor) qs.set('cursor', params.cursor);
-  if (params?.limit) qs.set('limit', String(params.limit));
-  const res = await fetch(`${apiBase}/v1/conversations?${qs.toString()}`, { method: 'GET', credentials: 'include' });
-  return handleJSON(res) as Promise<ConversationsList>;
-}
-
-export async function getConversationApi(apiBase = defaultApiBase, id: string, params?: { after_seq?: number; limit?: number; }) {
-  const qs = new URLSearchParams();
-  if (params?.after_seq) qs.set('after_seq', String(params.after_seq));
-  if (params?.limit) qs.set('limit', String(params.limit));
-  const res = await fetch(`${apiBase}/v1/conversations/${id}?${qs.toString()}`, { method: 'GET', credentials: 'include' });
-  return handleJSON(res) as Promise<{ id: string; title?: string; model?: string; created_at: string; messages: { id: number; seq: number; role: Role; status: string; content: string; created_at: string; }[]; next_after_seq: number | null; }>;
-}
-
-export async function deleteConversationApi(apiBase = defaultApiBase, id: string) {
-  const res = await fetch(`${apiBase}/v1/conversations/${id}`, { method: 'DELETE', credentials: 'include' });
-  if (res.status === 204) return true;
-  await handleJSON(res);
-  return true;
-}
-
-export async function editMessageApi(apiBase = defaultApiBase, conversationId: string, messageId: string, content: string) {
-  const res = await fetch(`${apiBase}/v1/conversations/${conversationId}/messages/${messageId}/edit`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content }),
-    credentials: 'include'
-  });
-  return handleJSON(res) as Promise<{ message: { id: string; seq: number; content: string }; new_conversation_id: string }>;
-}
-
-// --- Tool specifications API ---
-export interface ToolSpec {
-  type: 'function';
-  function: {
-    name: string;
-    description: string;
-    parameters: {
-      type: 'object';
-      properties: Record<string, any>;
-      required: string[];
-    };
-  };
-}
-
-export interface ToolsResponse {
-  tools: ToolSpec[];
-  available_tools: string[];
-}
-
-export async function getToolSpecs(apiBase = defaultApiBase): Promise<ToolsResponse> {
-  const res = await fetch(`${apiBase}/v1/tools`, { method: 'GET', credentials: 'include' });
-  return handleJSON(res) as Promise<ToolsResponse>;
 }

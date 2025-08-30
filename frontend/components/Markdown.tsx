@@ -48,10 +48,65 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
                 </code>
               );
             }
+            // Code block with sticky copy button
+            const preRef = React.useRef<HTMLPreElement | null>(null);
+            const [copied, setCopied] = React.useState(false);
+
+            const onCopy = async () => {
+              try {
+                const text = preRef.current?.innerText ?? "";
+                if (!text) return;
+                if (navigator.clipboard?.writeText) {
+                  await navigator.clipboard.writeText(text);
+                } else {
+                  // Fallback
+                  const ta = document.createElement("textarea");
+                  ta.value = text;
+                  ta.style.position = "fixed";
+                  ta.style.opacity = "0";
+                  document.body.appendChild(ta);
+                  ta.select();
+                  document.execCommand("copy");
+                  document.body.removeChild(ta);
+                }
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1200);
+              } catch (e) {
+                // no-op
+              }
+            };
+
             return (
-              <pre className="md-pre overflow-x-auto rounded-lg my-3 text-[0.9em] bg-slate-50 dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 shadow-sm">
-                <code className={`${className} block p-0`}>{children}</code>
-              </pre>
+              <div className="relative my-3">
+                {/* Sticky wrapper keeps the button visible while the code block is on screen */}
+                <div className="sticky top-2 z-10">
+                  <button
+                    type="button"
+                    aria-label={copied ? "Copied" : "Copy code"}
+                    onClick={onCopy}
+                    className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-neutral-700 bg-white/80 dark:bg-neutral-900/70 backdrop-blur px-2 py-1 text-xs text-slate-700 dark:text-slate-200 shadow hover:bg-white dark:hover:bg-neutral-800 transition-colors"
+                  >
+                    {/* Copy icon */}
+                    {copied ? (
+                      // Check icon
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
+                        <path fillRule="evenodd" d="M2.25 12a9.75 9.75 0 1117.132 6.132l2.244 2.244a.75.75 0 11-1.06 1.06l-2.244-2.244A9.75 9.75 0 012.25 12zm13.28-2.03a.75.75 0 00-1.06-1.06l-4.72 4.72-1.44-1.44a.75.75 0 10-1.06 1.06l1.97 1.97a.75.75 0 001.06 0l5.25-5.25z" clipRule="evenodd" />
+                      </svg>
+                    ) : (
+                      // Copy icon
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
+                        <rect x="9" y="9" width="11" height="11" rx="2" />
+                        <rect x="4" y="4" width="11" height="11" rx="2" />
+                      </svg>
+                    )}
+                    <span className="sr-only">{copied ? "Copied" : "Copy"}</span>
+                  </button>
+                </div>
+
+                <pre ref={preRef} className="md-pre overflow-x-auto rounded-lg text-[0.9em] bg-slate-50 dark:bg-neutral-900 border border-slate-200 dark:border-neutral-800 shadow-sm pr-10">
+                  <code className={`${className} block p-0`}>{children}</code>
+                </pre>
+              </div>
             );
           },
           p: ({ children }) => <p className="md-p whitespace-pre-wrap leading-relaxed">{children}</p>,

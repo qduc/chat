@@ -1,9 +1,10 @@
-import fetch from 'node-fetch';
 import { tools as toolRegistry, generateOpenAIToolSpecs } from './tools.js';
 import { getMessagesPage } from '../db/index.js';
 import { parseSSEStream } from './sseParser.js';
 import { createOpenAIRequest, writeAndFlush, createChatCompletionChunk } from './streamUtils.js';
+import { providerSupportsReasoning } from './providers/index.js';
 import { getConversationMetadata } from './responseUtils.js';
+import { setupStreamingHeaders } from './streamingHandler.js';
 
 /**
  * Iterative tool orchestration with thinking and dynamic tool execution
@@ -69,26 +70,21 @@ function streamEvent(res, event, model) {
 /**
  * Make a request to the AI model
  */
-async function callModel(messages, config, bodyParams, tools = null) {
-  const url = `${config.openaiBaseUrl}/chat/completions`;
-  const headers = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${config.openaiApiKey}`,
-  };
-
+async function callModel(messages, config, bodyParams, tools = null, providerId) {
   const requestBody = {
     model: bodyParams.model || config.defaultModel,
     messages,
     stream: false,
     ...(tools && { tools, tool_choice: 'auto' })
   };
+  // Include reasoning controls only if supported by provider
+  const allowReasoning = providerSupportsReasoning(config, requestBody.model);
+  if (allowReasoning) {
+    if (bodyParams.reasoning_effort) requestBody.reasoning_effort = bodyParams.reasoning_effort;
+    if (bodyParams.verbosity) requestBody.verbosity = bodyParams.verbosity;
+  }
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(requestBody),
-  });
-
+  const response = await createOpenAIRequest(config, requestBody, { providerId });
   const result = await response.json();
   return result?.choices?.[0]?.message;
 }
@@ -104,7 +100,10 @@ export async function handleIterativeOrchestration({
   req,
   persistence,
 }) {
+  const providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
   try {
+    // Setup streaming headers
+    setupStreamingHeaders(res);
     // Build conversation history
     let prior = [];
     if (persistence && persistence.persist && persistence.conversationId) {
@@ -143,14 +142,34 @@ export async function handleIterativeOrchestration({
         tools: generateOpenAIToolSpecs(),
         tool_choice: 'auto',
       };
+      // Include reasoning controls only if supported by provider
+      if (providerSupportsReasoning(config, requestBody.model)) {
+        if (body.reasoning_effort) requestBody.reasoning_effort = body.reasoning_effort;
+        if (body.verbosity) requestBody.verbosity = body.verbosity;
+      }
 
-      const upstream = await createOpenAIRequest(config, requestBody);
+      const upstream = await createOpenAIRequest(config, requestBody, { providerId });
+      
+      // Check upstream response status
+      if (!upstream.ok) {
+        const errorBody = await upstream.text();
+        throw new Error(`Upstream API error (${upstream.status}): ${errorBody}`);
+      }
 
       let leftoverIter = '';
       const toolCallMap = new Map(); // index -> accumulated tool call
       let gotAnyNonToolDelta = false;
 
       await new Promise((resolve, reject) => {
+        // Add timeout to prevent hanging
+        const timeout = setTimeout(() => {
+          reject(new Error('Stream timeout - no response from upstream API'));
+        }, 30000); // 30 second timeout
+
+        const cleanup = () => {
+          clearTimeout(timeout);
+        };
+
         upstream.body.on('data', (chunk) => {
           try {
             leftoverIter = parseSSEStream(
@@ -187,14 +206,28 @@ export async function handleIterativeOrchestration({
                   persistence.appendContent(delta.content);
                 }
               },
-              () => resolve(),
+              () => {
+                cleanup();
+                resolve();
+              },
               () => { /* ignore JSON parse errors for this stream */ }
             );
           } catch (e) {
+            cleanup();
             reject(e);
           }
         });
-        upstream.body.on('error', reject);
+        
+        upstream.body.on('error', (err) => {
+          cleanup();
+          reject(err);
+        });
+        
+        upstream.body.on('end', () => {
+          // Fallback resolution if [DONE] event wasn't received
+          cleanup();
+          resolve();
+        });
       });
 
       const toolCalls = Array.from(toolCallMap.values());

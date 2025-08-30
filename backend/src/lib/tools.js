@@ -128,6 +128,11 @@ export function generateOpenAIToolSpecs() {
   ];
 }
 
+// Generic alias for future multi-provider use
+export function generateToolSpecs() {
+  return generateOpenAIToolSpecs();
+}
+
 /**
  * Get available tool names
  * @returns {Array<string>} Available tool names

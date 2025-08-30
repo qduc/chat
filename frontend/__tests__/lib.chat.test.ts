@@ -4,11 +4,8 @@
 
 import type { Role } from '../lib/chat';
 import {
-  sendChat,
-  createConversation,
-  listConversationsApi,
-  getConversationApi,
-  deleteConversationApi,
+  ChatClient,
+  ConversationManager,
 } from '../lib/chat';
 
 const encoder = new TextEncoder();
@@ -27,16 +24,19 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-describe('sendChat', () => {
+describe('ChatClient', () => {
+  let chatClient: ChatClient;
 
-
+  beforeEach(() => {
+    chatClient = new ChatClient();
+  });
 
   test('throws on non-OK responses with message from JSON', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ error: 'bad' }), { status: 400 })
     );
     await expect(
-      sendChat({ messages: [{ role: 'user' as Role, content: 'hi' }] })
+      chatClient.sendMessage({ messages: [{ role: 'user' as Role, content: 'hi' }] })
     ).rejects.toThrow('HTTP 400: bad');
   });
 
@@ -65,7 +65,7 @@ describe('sendChat', () => {
       });
     });
     const abort = new AbortController();
-    const promise = sendChat({
+    const promise = chatClient.sendMessage({
       messages: [{ role: 'user' as Role, content: 'hi' }],
       signal: abort.signal,
     });
@@ -78,16 +78,23 @@ describe('sendChat', () => {
     const fetchMock = jest
       .spyOn(global, 'fetch')
       .mockResolvedValue(new Response(sseStream(lines), { status: 200 }));
-    await sendChat({
+    await chatClient.sendMessageWithTools({
       messages: [{ role: 'user' as Role, content: 'hi' }],
       conversationId: 'abc',
+      tools: [],
     });
     // Test behavior: Conversation context should be maintained
     expect(fetchMock).toHaveBeenCalled();
   });
 });
 
-describe('createConversation', () => {
+describe('ConversationManager', () => {
+  let conversationManager: ConversationManager;
+
+  beforeEach(() => {
+    conversationManager = new ConversationManager();
+  });
+
   test('creates new conversation and returns conversation metadata', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(
@@ -95,7 +102,7 @@ describe('createConversation', () => {
         { status: 200 }
       )
     );
-    const meta = await createConversation();
+    const meta = await conversationManager.create();
 
     // Test behavior: Should create conversation and return metadata
     expect(meta.id).toBe('1');
@@ -114,11 +121,9 @@ describe('createConversation', () => {
       .mockResolvedValue(
         new Response(JSON.stringify({ error: 'nope' }), { status: 501 })
       );
-    await expect(createConversation()).rejects.toHaveProperty('status', 501);
+    await expect(conversationManager.create()).rejects.toHaveProperty('status', 501);
   });
-});
 
-describe('listConversationsApi', () => {
   test('lists conversations with pagination and returns items with next cursor', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(
@@ -126,7 +131,7 @@ describe('listConversationsApi', () => {
         { status: 200 }
       )
     );
-    const res = await listConversationsApi(undefined, { cursor: 'c', limit: 2 });
+    const res = await conversationManager.list({ cursor: 'c', limit: 2 });
 
     // Test behavior: Should return paginated conversation list
     expect(res.items).toHaveLength(1);
@@ -137,9 +142,7 @@ describe('listConversationsApi', () => {
       expect.objectContaining({ method: 'GET' })
     );
   });
-});
 
-describe('getConversationApi', () => {
   test('retrieves conversation details including messages and metadata', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(
@@ -154,7 +157,7 @@ describe('getConversationApi', () => {
         { status: 200 }
       )
     );
-    const res = await getConversationApi(undefined, 'x');
+    const res = await conversationManager.get('x');
 
     // Test behavior: Should return full conversation data
     expect(res.id).toBe('x');
@@ -181,7 +184,7 @@ describe('getConversationApi', () => {
         { status: 200 }
       )
     );
-    const res = await getConversationApi(undefined, 'y', { after_seq: 5, limit: 10 });
+    const res = await conversationManager.get('y', { after_seq: 5, limit: 10 });
 
     // Test behavior: Should handle pagination parameters and return conversation
     expect(res.id).toBe('y');
@@ -190,17 +193,14 @@ describe('getConversationApi', () => {
       expect.objectContaining({ method: 'GET' })
     );
   });
-});
 
-describe('deleteConversationApi', () => {
   test('deletes conversation and returns success status', async () => {
     jest
       .spyOn(global, 'fetch')
       .mockResolvedValue(new Response(null, { status: 204 }));
-    const res = await deleteConversationApi(undefined, 'z');
+    await conversationManager.delete('z');
 
-    // Test behavior: Should successfully delete and return confirmation
-    expect(res).toBe(true);
+    // Test behavior: Should successfully delete
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringMatching(/conversations\/z/),
       expect.objectContaining({ method: 'DELETE' })

@@ -1,8 +1,8 @@
 // Tests for unified tool system - backend as single source of truth
 
-import { getToolSpecs } from '../lib/chat';
+import { ToolsClient } from '../lib/chat';
 import { renderHook, waitFor, act } from '@testing-library/react';
-import { useChatStream } from '../hooks/useChatStream';
+import { useChatState } from '../hooks/useChatState';
 
 // Mock fetch for testing
 const mockFetch = (response: Response) => {
@@ -21,7 +21,7 @@ describe('Unified Tool System', () => {
     jest.clearAllMocks();
   });
 
-  describe('getToolSpecs API', () => {
+  describe('ToolsClient API', () => {
     it('should fetch tool specifications from backend', async () => {
       const mockResponse = new Response(JSON.stringify({
         tools: [
@@ -29,44 +29,25 @@ describe('Unified Tool System', () => {
             type: 'function',
             function: {
               name: 'get_time',
-              description: 'Get the current time in ISO format with timezone information',
+              description: 'Get current time',
               parameters: {
                 type: 'object',
-                properties: {}
-              }
-            }
-          },
-          {
-            type: 'function',
-            function: {
-              name: 'web_search',
-              description: 'Perform a web search using Tavily API to get current information',
-              parameters: {
-                type: 'object',
-                properties: {
-                  query: {
-                    type: 'string',
-                    description: 'The search query to execute'
-                  }
-                },
-                required: ['query']
+                properties: {},
+                required: []
               }
             }
           }
         ],
-        available_tools: ['get_time', 'web_search']
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      });
+        available_tools: ['get_time']
+      }), { status: 200 });
 
-      const fetchSpy = mockFetch(mockResponse);
-      global.fetch = fetchSpy;
+      global.fetch = mockFetch(mockResponse);
 
-      const result = await getToolSpecs();
+      const toolsClient = new ToolsClient();
+      const result = await toolsClient.getToolSpecs();
 
       // Behavior: fetch is invoked and result is parsed correctly
-      expect(fetchSpy).toHaveBeenCalled();
+      expect(global.fetch).toHaveBeenCalled();
 
       expect(result).toEqual({
         tools: [
@@ -74,32 +55,16 @@ describe('Unified Tool System', () => {
             type: 'function',
             function: {
               name: 'get_time',
-              description: 'Get the current time in ISO format with timezone information',
+              description: 'Get current time',
               parameters: {
                 type: 'object',
-                properties: {}
-              }
-            }
-          },
-          {
-            type: 'function',
-            function: {
-              name: 'web_search',
-              description: 'Perform a web search using Tavily API to get current information',
-              parameters: {
-                type: 'object',
-                properties: {
-                  query: {
-                    type: 'string',
-                    description: 'The search query to execute'
-                  }
-                },
-                required: ['query']
+                properties: {},
+                required: []
               }
             }
           }
         ],
-        available_tools: ['get_time', 'web_search']
+        available_tools: ['get_time']
       });
     });
 
@@ -114,70 +79,37 @@ describe('Unified Tool System', () => {
       const fetchSpy = mockFetch(mockResponse);
       global.fetch = fetchSpy;
 
-      await expect(getToolSpecs()).rejects.toThrow('Failed to generate tool specifications');
+      const toolsClient = new ToolsClient();
+      await expect(toolsClient.getToolSpecs()).rejects.toThrow('Failed to generate tool specifications');
     });
   });
 
-  describe('useChatStream hook tool integration', () => {
-    it('should fetch tool specs on mount and use them in chat', async () => {
-      const toolSpecsResponse = new Response(JSON.stringify({
-        tools: [
-          {
-            type: 'function',
-            function: {
-              name: 'get_time',
-              description: 'Get current time',
-              parameters: { type: 'object', properties: {} }
-            }
-          }
-        ],
-        available_tools: ['get_time']
-      }), {
-        status: 200,
-        headers: { 'Content-Type': 'application/json' }
-      });
-
+  describe('useChatState tool integration', () => {
+    it('sends chat and completes stream with tools enabled', async () => {
       const chatResponse = new Response('data: [DONE]\n\n', {
         status: 200,
         headers: { 'Content-Type': 'text/event-stream' }
       });
 
-      const fetchSpy = jest.fn()
-        .mockResolvedValueOnce(toolSpecsResponse) // First call: get tool specs
-        .mockResolvedValueOnce(chatResponse);     // Second call: send chat
-
+      const fetchSpy = jest.fn().mockResolvedValue(chatResponse);
       global.fetch = fetchSpy;
 
-      const { result } = renderHook(() => useChatStream());
+      const { result } = renderHook(() => useChatState());
 
-      // Wait for tool specs to be fetched (don’t assert URL coupling)
-      await waitFor(() => expect(fetchSpy).toHaveBeenCalled());
-
-      // Now call sendMessage, which should await the tool loading internally
       await act(async () => {
-        await result.current.sendMessage('Test message', null, 'gpt-3.5-turbo', true, true);
+        result.current.actions.setInput('Test message');
       });
 
-      // Behavior: first call loads tools, second sends chat (no endpoint/body coupling)
-      expect(fetchSpy).toHaveBeenCalledTimes(2);
-    });
+      // Wait for state to reflect input
+      await waitFor(() => expect(result.current.state.input).toBe('Test message'));
 
-    it('should handle tool spec fetch failure gracefully', async () => {
-      const consoleSpy = jest.spyOn(console, 'error').mockImplementation();
-      
-      global.fetch = jest.fn().mockRejectedValue(new Error('Network error'));
-
-      const { result } = renderHook(() => useChatStream());
-
-      // Wait a bit to let useEffect run
-      await waitFor(() => {
-        expect(consoleSpy).toHaveBeenCalledWith('Failed to fetch tool specs:', expect.any(Error));
+      await act(async () => {
+        await result.current.actions.sendMessage();
       });
 
-      // Tool specs should be empty array, but hook should still work
-      expect(result.current.messages).toEqual([]);
-
-      consoleSpy.mockRestore();
+      expect(fetchSpy).toHaveBeenCalled();
+      // Wait for user + assistant placeholder messages
+      await waitFor(() => expect(result.current.state.messages.length).toBeGreaterThanOrEqual(2));
     });
   });
 });

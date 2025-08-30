@@ -1,9 +1,9 @@
-import { Chat } from "../components/Chat";
+import {ChatV2} from "@/components/ChatV2";
 
 export default function Home() {
   return (
     <div className="min-h-dvh">
-      <Chat />
+      <ChatV2 />
     </div>
   );
 }

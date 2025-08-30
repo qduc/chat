@@ -1,8 +1,7 @@
 import 'dotenv/config';
 
 const required = [
-  'OPENAI_BASE_URL',
-  'OPENAI_API_KEY',
+  // Provider config is flexible; default remains OpenAI-compatible
   'DEFAULT_MODEL',
   'PORT',
   'RATE_LIMIT_WINDOW_SEC',
@@ -23,8 +22,24 @@ const bool = (v, def = false) => {
 };
 
 export const config = {
+  // Provider selection (default to openai for backward-compat)
+  provider: process.env.PROVIDER || 'openai',
+  // Backward-compat: legacy OpenAI fields still present
   openaiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
   openaiApiKey: process.env.OPENAI_API_KEY,
+  // Generic provider config; falls back to OpenAI values
+  providerConfig: {
+    baseUrl: process.env.PROVIDER_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
+    apiKey: process.env.PROVIDER_API_KEY || process.env.OPENAI_API_KEY,
+    headers: (() => {
+      try {
+        return process.env.PROVIDER_HEADERS_JSON ? JSON.parse(process.env.PROVIDER_HEADERS_JSON) : undefined;
+      } catch (e) {
+        console.warn('[env] Invalid PROVIDER_HEADERS_JSON; expected JSON');
+        return undefined;
+      }
+    })(),
+  },
   defaultModel: process.env.DEFAULT_MODEL || 'gpt-4.1-mini',
   titleModel: process.env.TITLE_MODEL || 'gpt-4.1-mini',
   port: Number(process.env.PORT) || 3001,

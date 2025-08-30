@@ -6,6 +6,7 @@ import { sessionResolver } from './middleware/session.js';
 import { chatRouter } from './routes/chat.js';
 import { healthRouter } from './routes/health.js';
 import { conversationsRouter } from './routes/conversations.js';
+import { providersRouter } from './routes/providers.js';
 import { requestLogger, errorLogger } from './middleware/logger.js';
 import { logger } from './logger.js';
 
@@ -25,6 +26,7 @@ app.use(rateLimit);
 
 app.use(healthRouter);
 app.use(conversationsRouter);
+app.use(providersRouter);
 app.use(chatRouter);
 
 app.use(errorLogger);

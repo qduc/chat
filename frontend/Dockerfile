@@ -10,9 +10,11 @@ WORKDIR /app
 ENV NODE_ENV=development
 ENV PORT=3000
 COPY package*.json ./
-RUN npm install
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
 COPY . .
 EXPOSE 3000
+ENTRYPOINT ["sh","./entrypoint.sh"]
 CMD ["npm", "run", "dev"]
 
 FROM node:20-alpine AS build

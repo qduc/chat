@@ -1,6 +1,6 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import type { ConversationMeta } from '../lib/chat';
-import { listConversationsApi, deleteConversationApi } from '../lib/chat';
+import { ConversationManager } from '../lib/chat';
 
 export interface UseConversationsReturn {
   conversations: ConversationMeta[];
@@ -20,11 +20,14 @@ export function useConversations(): UseConversationsReturn {
   const [loadingConversations, setLoadingConversations] = useState<boolean>(false);
   const [historyEnabled, setHistoryEnabled] = useState<boolean>(true);
 
+  // Create conversation manager instance
+  const conversationManager = useMemo(() => new ConversationManager(), []);
+
   const loadMoreConversations = useCallback(async () => {
     if (!nextCursor || loadingConversations) return;
     setLoadingConversations(true);
     try {
-      const list = await listConversationsApi(undefined, { cursor: nextCursor, limit: 20 });
+      const list = await conversationManager.list({ cursor: nextCursor, limit: 20 });
       setConversations(prev => [...prev, ...list.items]);
       setNextCursor(list.next_cursor);
     } catch (e: any) {
@@ -32,16 +35,16 @@ export function useConversations(): UseConversationsReturn {
     } finally {
       setLoadingConversations(false);
     }
-  }, [nextCursor, loadingConversations]);
+  }, [nextCursor, loadingConversations, conversationManager]);
 
   const deleteConversation = useCallback(async (id: string) => {
     try {
-      await deleteConversationApi(undefined, id);
+      await conversationManager.delete(id);
       setConversations(prev => prev.filter(c => c.id !== id));
     } catch (e: any) {
       // ignore
     }
-  }, []);
+  }, [conversationManager]);
 
   const addConversation = useCallback((conversation: ConversationMeta) => {
     setConversations(prev => [conversation, ...prev]);
@@ -50,7 +53,7 @@ export function useConversations(): UseConversationsReturn {
   const refreshConversations = useCallback(async () => {
     try {
       setLoadingConversations(true);
-      const list = await listConversationsApi(undefined, { limit: 20 });
+      const list = await conversationManager.list({ limit: 20 });
       setConversations(list.items);
       setNextCursor(list.next_cursor);
       setHistoryEnabled(true);
@@ -61,7 +64,7 @@ export function useConversations(): UseConversationsReturn {
     } finally {
       setLoadingConversations(false);
     }
-  }, []);
+  }, [conversationManager]);
 
   // Load initial conversations to detect history support
   useEffect(() => {

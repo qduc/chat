@@ -1,174 +1,188 @@
-import fetch from 'node-fetch';
 import { config } from '../env.js';
 import { handleUnifiedToolOrchestration } from './unifiedToolOrchestrator.js';
 import { handleIterativeOrchestration } from './iterativeOrchestrator.js';
-import {
-  setupStreamingHeaders,
-  handleRegularStreaming,
-} from './streamingHandler.js';
+import { handleRegularStreaming } from './streamingHandler.js';
+import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
+import { providerSupportsReasoning, getDefaultModel } from './providers/index.js';
 import { SimplifiedPersistence } from './simplifiedPersistence.js';
 import { addConversationMetadata } from './responseUtils.js';
 
-export async function proxyOpenAIRequest(req, res) {
-  const bodyIn = req.body || {};
+// --- Helpers: sanitize, validate, selection, and error shaping ---
 
-  // Pull optional conversation_id from body or header
-  const conversationId =
-    bodyIn.conversation_id || req.header('x-conversation-id');
-
-  const hasTools = Array.isArray(bodyIn.tools) && bodyIn.tools.length > 0;
-
-
-  // Clone and strip non-upstream fields
+function sanitizeIncomingBody(bodyIn, cfg) {
   const body = { ...bodyIn };
+  // Strip non-upstream fields
   delete body.conversation_id;
-  // ...existing code...
+  delete body.provider_id; // frontend-selected provider (handled server-side only)
+  delete body.streamingEnabled;
+  delete body.toolsEnabled;
+  delete body.researchMode;
+  delete body.qualityLevel;
+  // Default model
+  // Default model is resolved later (may come from DB)
+  return body;
+}
+
+function validateAndNormalizeReasoningControls(body) {
+  // Only allow reasoning controls if provider+model supports it
+  const isAllowed = providerSupportsReasoning(config, body.model);
 
   // Validate and handle reasoning_effort
   if (body.reasoning_effort) {
-    const allowedEfforts = ['minimal', 'low', 'medium', 'high'];
-    if (!allowedEfforts.includes(body.reasoning_effort)) {
-      return res.status(400).json({
-        error: 'invalid_request_error',
-        message: `Invalid reasoning_effort. Must be one of ${allowedEfforts.join(
-          ', '
-        )}`,
-      });
+    if (!isAllowed) {
+      delete body.reasoning_effort;
+    } else {
+      const allowedEfforts = ['minimal', 'low', 'medium', 'high'];
+      if (!allowedEfforts.includes(body.reasoning_effort)) {
+        return {
+          ok: false,
+          status: 400,
+          payload: {
+            error: 'invalid_request_error',
+            message: `Invalid reasoning_effort. Must be one of ${allowedEfforts.join(', ')}`,
+          },
+        };
+      }
     }
   }
 
   // Validate and handle verbosity
   if (body.verbosity) {
-    const allowedVerbosity = ['low', 'medium', 'high'];
-    if (!allowedVerbosity.includes(body.verbosity)) {
-      return res.status(400).json({
-        error: 'invalid_request_error',
-        message: `Invalid verbosity. Must be one of ${allowedVerbosity.join(
-          ', '
-        )}`,
-      });
+    if (!isAllowed) {
+      delete body.verbosity;
+    } else {
+      const allowedVerbosity = ['low', 'medium', 'high'];
+      if (!allowedVerbosity.includes(body.verbosity)) {
+        return {
+          ok: false,
+          status: 400,
+          payload: {
+            error: 'invalid_request_error',
+            message: `Invalid verbosity. Must be one of ${allowedVerbosity.join(', ')}`,
+          },
+        };
+      }
     }
   }
 
-  if (!body.model) body.model = config.defaultModel;
+  return { ok: true };
+}
+
+function getFlags(bodyIn, body) {
+  const hasTools = Array.isArray(bodyIn.tools) && bodyIn.tools.length > 0;
   const stream = !!body.stream;
+  return { hasTools, stream };
+}
 
-  // ...existing code...
+function selectMode(flags) {
+  return `${flags.hasTools ? 'tools' : 'plain'}:${flags.stream ? 'stream' : 'json'}`;
+}
 
-  // ...existing code...
+async function readUpstreamError(upstream) {
+  try {
+    return await upstream.json();
+  } catch {
+    try {
+      const text = await upstream.text();
+      return { error: 'upstream_error', message: text };
+    } catch {
+      return { error: 'upstream_error', message: 'Unknown error' };
+    }
+  }
+}
+
+export async function proxyOpenAIRequest(req, res) {
+  const bodyIn = req.body || {};
+  const body = sanitizeIncomingBody(bodyIn, config);
+  const providerId = bodyIn.provider_id || req.header('x-provider-id') || undefined;
+
+  // Resolve default model from DB-backed provider settings when missing
+  if (!body.model) {
+    body.model = await getDefaultModel(config, { providerId });
+  }
+
+  // Validate reasoning controls early and return guard failures
+  const validation = validateAndNormalizeReasoningControls(body);
+  if (!validation.ok) {
+    return res.status(validation.status).json(validation.payload);
+  }
+
+  // Pull optional conversation_id from body or header
+  const conversationId = bodyIn.conversation_id || req.header('x-conversation-id');
+  const flags = getFlags(bodyIn, body);
 
   // Persistence setup
   const persistence = new SimplifiedPersistence(config);
   const sessionId = req.sessionId;
 
-  try {
-    // Setup persistence
-    await persistence.initialize({
-      conversationId,
-      sessionId,
-      req,
-      res,
-      bodyIn,
-    });
+  // Strategy handlers (selected by flags)
+  const handlers = {
+    'tools:stream': ({ body, bodyIn, req, res, config, persistence }) =>
+      handleIterativeOrchestration({ body, bodyIn, config, res, req, persistence }),
 
-    // Handle tool orchestration
-    if (hasTools) {
-      if (stream) {
-        // Prepare SSE response for streaming tool orchestration
-        setupStreamingHeaders(res);
-        // Stream text deltas; buffer tool_calls and emit consolidated call
-        return await handleIterativeOrchestration({
-          body,
-          bodyIn,
-          config,
-          res,
-          req,
-          persistence,
-        });
-      } else {
-        // Non-streaming JSON with tool events
-        return await handleUnifiedToolOrchestration({
-          body,
-          bodyIn,
-          config,
-          res,
-          req,
-          persistence,
-        });
-      }
-    }
+    'tools:json': ({ body, bodyIn, req, res, config, persistence }) =>
+      handleUnifiedToolOrchestration({ body, bodyIn, config, res, req, persistence }),
 
-  // Make upstream request
-  // Build upstream URL resiliently whether base has trailing /v1 or not
-  const base = (config.openaiBaseUrl || '').replace(/\/v1\/?$/, '');
-  const url = `${base}/v1/chat/completions`;
-    const headers = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${config.openaiApiKey}`,
-    };
-
-    const upstream = await fetch(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-    });
-
-    // Handle non-streaming responses
-    if (!upstream.ok || !stream) {
-      const body = await upstream.json();
-
+    'plain:stream': async ({ body, req, res, config, persistence }) => {
+      const upstream = await createOpenAIRequest(config, body, { providerId });
       if (!upstream.ok) {
-        if (persistence.persist) {
-          persistence.markError();
-        }
-        return res.status(upstream.status).json(body);
+        const errorJson = await readUpstreamError(upstream);
+        if (persistence.persist) persistence.markError();
+        return res.status(upstream.status).json(errorJson);
+      }
+      // Setup streaming headers only after confirming upstream is ok
+      setupStreamingHeaders(res);
+      return handleRegularStreaming({ config, upstream, res, req, persistence });
+    },
+
+    'plain:json': async ({ body, req, res, config, persistence }) => {
+      const upstream = await createOpenAIRequest(config, body, { providerId });
+      if (!upstream.ok) {
+        const errorJson = await readUpstreamError(upstream);
+        if (persistence.persist) persistence.markError();
+        return res.status(upstream.status).json(errorJson);
       }
 
-      // Extract content and finish reason from response
+      const upstreamJson = await upstream.json();
+
       if (persistence.persist) {
         let content = '';
         let finishReason = null;
-
-        // Chat Completions format only
-        if (body.choices && body.choices[0] && body.choices[0].message) {
-          content = body.choices[0].message.content;
+        if (upstreamJson.choices && upstreamJson.choices[0] && upstreamJson.choices[0].message) {
+          content = upstreamJson.choices[0].message.content;
         }
-        finishReason = body.choices && body.choices[0] ? body.choices[0].finish_reason : null;
+        finishReason = upstreamJson.choices && upstreamJson.choices[0]
+          ? upstreamJson.choices[0].finish_reason
+          : null;
 
-        if (content) {
-          persistence.appendContent(content);
-        }
+        if (content) persistence.appendContent(content);
         persistence.recordAssistantFinal({ finishReason });
       }
 
-      // Include conversation metadata in response if auto-created
-      const responseBody = { ...body };
+      const responseBody = { ...upstreamJson };
       addConversationMetadata(responseBody, persistence);
-
       return res.status(200).json(responseBody);
+    },
+  };
+
+  try {
+    await persistence.initialize({ conversationId, sessionId, req, res, bodyIn });
+
+    const mode = selectMode(flags);
+    const handler = handlers[mode];
+
+    if (!handler) {
+      // Fallback safety – should not happen
+      return res.status(400).json({ error: 'invalid_request_error', message: `Unsupported mode: ${mode}` });
     }
 
-    // Setup streaming headers
-    setupStreamingHeaders(res);
-
-    // Handle regular streaming (non-tool orchestration)
-    return await handleRegularStreaming({
-      config,
-      upstream,
-      res,
-      req,
-      persistence,
-    });
-
+    return await handler({ req, res, config, bodyIn, body, flags, persistence });
   } catch (error) {
     console.error('[proxy] error', error);
     if (persistence && persistence.persist) {
       persistence.markError();
     }
-    res.status(500).json({
-      error: 'upstream_error',
-      message: error.message
-    });
+    return res.status(500).json({ error: 'upstream_error', message: error.message });
   } finally {
     if (persistence) {
       persistence.cleanup();

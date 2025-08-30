@@ -1,6 +1,6 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { ChatMessage, Role, ToolSpec } from '../lib/chat';
-import { sendChat, getToolSpecs } from '../lib/chat';
+import { ChatClient, ToolsClient } from '../lib/chat';
 
 export interface PendingState {
   abort?: AbortController;
@@ -20,8 +20,8 @@ export interface UseChatStreamReturn {
     shouldStream: boolean,
     reasoningEffort: string,
     verbosity: string,
-    researchMode?: boolean,
-    onConversationCreated?: (conversation: { id: string; title?: string | null; model?: string | null; created_at: string }) => void
+    onConversationCreated?: (conversation: { id: string; title?: string | null; model?: string | null; created_at: string }) => void,
+    qualityLevel?: string
   ) => Promise<void>;
   regenerateFromCurrent: (
     conversationId: string | null,
@@ -30,7 +30,7 @@ export interface UseChatStreamReturn {
     shouldStream: boolean,
     reasoningEffort: string,
     verbosity: string,
-    researchMode?: boolean
+    qualityLevel?: string
   ) => Promise<void>;
   regenerateFromBase: (
     baseMessages: ChatMessage[],
@@ -40,7 +40,7 @@ export interface UseChatStreamReturn {
     shouldStream: boolean,
     reasoningEffort: string,
     verbosity: string,
-    researchMode?: boolean
+    qualityLevel?: string
   ) => Promise<void>;
   generateFromHistory: (
     model: string,
@@ -48,7 +48,7 @@ export interface UseChatStreamReturn {
     reasoningEffort: string,
     verbosity: string,
     messagesOverride?: ChatMessage[],
-    researchMode?: boolean
+    qualityLevel?: string
   ) => Promise<void>;
   stopStreaming: () => void;
   clearMessages: () => void;
@@ -65,20 +65,24 @@ export function useChatStream(): UseChatStreamReturn {
   const inFlightRef = useRef<boolean>(false);
   const toolsPromiseRef = useRef<Promise<ToolSpec[]> | undefined>(undefined);
 
+  // Create client instances
+  const chatClient = useMemo(() => new ChatClient(), []);
+  const toolsClient = useMemo(() => new ToolsClient(), []);
+
   // Fetch tool specifications from backend on mount
   useEffect(() => {
-    const toolsPromise = getToolSpecs()
-      .then(response => {
+    const toolsPromise = toolsClient.getToolSpecs()
+      .then((response: any) => {
         setAvailableTools(response.tools);
         return response.tools;
       })
-      .catch(error => {
+      .catch((error: any) => {
         console.error('Failed to fetch tool specs:', error);
         setAvailableTools([]);
         return [];
       });
     toolsPromiseRef.current = toolsPromise;
-  }, []);
+  }, [toolsClient]);
 
   const handleStreamEvent = useCallback((event: any) => {
     const assistantId = assistantMsgRef.current!.id;
@@ -104,6 +108,93 @@ export function useChatStream(): UseChatStreamReturn {
     }));
   }, []);
 
+  // --- DRY helpers -------------------------------------------------------
+  // Ensure tools are loaded if needed
+  const loadToolsIfNeeded = useCallback(async (useTools: boolean) => {
+    if (!useTools) return undefined as undefined | ToolSpec[];
+    return availableTools ?? (await toolsPromiseRef.current?.catch(() => []) ?? []);
+  }, [availableTools]);
+
+  // Start an operation by creating an assistant message and an AbortController
+  const startOperation = useCallback((options: {
+    attachTo?: 'append' | 'replaceWithBase';
+    baseMessages?: ChatMessage[];
+    setStreaming: boolean;
+  }) => {
+    const { attachTo = 'append', baseMessages, setStreaming } = options;
+    const abort = new AbortController();
+    const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
+    assistantMsgRef.current = assistantMsg;
+
+    if (attachTo === 'replaceWithBase' && baseMessages) {
+      setMessages(() => [...baseMessages, assistantMsg]);
+    } else {
+      setMessages(m => [...m, assistantMsg]);
+    }
+
+    setPending(prev => ({ ...prev, abort, error: undefined, streaming: setStreaming ? true : prev.streaming }));
+    return { abort, assistantMsg };
+  }, []);
+
+  // Build the common payload for sendChat
+  const buildChatPayload = useCallback(async (args: {
+    history: ChatMessage[];
+    model: string;
+    signal: AbortSignal;
+    conversationId?: string | null;
+    shouldStream: boolean;
+    useTools: boolean;
+    reasoningEffort: string;
+    verbosity: string;
+    qualityLevel?: string;
+  }) => {
+    const {
+      history, model, signal, conversationId,
+      shouldStream, useTools, reasoningEffort, verbosity,
+      qualityLevel
+    } = args;
+
+    const tools = await loadToolsIfNeeded(useTools);
+
+    return {
+      messages: history.map(m => ({ role: m.role as Role, content: m.content })),
+      model,
+      signal,
+      conversationId: conversationId || undefined,
+      shouldStream,
+      reasoningEffort,
+      verbosity,
+      streamingEnabled: shouldStream,
+      toolsEnabled: useTools,
+      qualityLevel: qualityLevel ?? undefined,
+      ...(useTools ? {
+        tools: tools || [],
+        tool_choice: 'auto',
+      } : {}),
+      onEvent: handleStreamEvent
+    };
+  }, [handleStreamEvent, loadToolsIfNeeded]);
+
+  const recordResultMeta = useCallback((result: any, onConversationCreated?: (conversation: { id: string; title?: string | null; model?: string | null; created_at: string }) => void) => {
+    if (result?.responseId) setPreviousResponseId(result.responseId);
+    if (result?.conversation && onConversationCreated) onConversationCreated(result.conversation);
+  }, []);
+
+  const applyNonStreamingContent = useCallback((content?: string) => {
+    const msg = assistantMsgRef.current!;
+    setMessages(curr => curr.map(m => m.id === msg.id ? { ...m, content: content ?? m.content } : m));
+  }, []);
+
+  const handleOperationError = useCallback((e: any, assistantId: string) => {
+    setPending(p => ({ ...p, error: e?.message || String(e) }));
+    setMessages(curr => curr.map(msg => msg.id === assistantId ? { ...msg, content: msg.content + `\n[error: ${e?.message ?? String(e)}]` } : msg));
+  }, []);
+
+  const finalizeOperation = useCallback(() => {
+    setPending(p => ({ ...p, streaming: false, abort: undefined }));
+    inFlightRef.current = false;
+  }, []);
+
   const sendMessage = useCallback(async (
     input: string,
     conversationId: string | null,
@@ -112,8 +203,8 @@ export function useChatStream(): UseChatStreamReturn {
     shouldStream: boolean,
     reasoningEffort: string,
     verbosity: string,
-    researchMode?: boolean,
-    onConversationCreated?: (conversation: { id: string; title?: string | null; model?: string | null; created_at: string }) => void
+    onConversationCreated?: (conversation: { id: string; title?: string | null; model?: string | null; created_at: string }) => void,
+    qualityLevel?: string
   ) => {
     if (!input.trim()) return;
     if (inFlightRef.current) return;
@@ -122,61 +213,43 @@ export function useChatStream(): UseChatStreamReturn {
     const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: input.trim() };
     setMessages(m => [...m, userMsg]);
 
-    const abort = new AbortController();
-    const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
-    assistantMsgRef.current = assistantMsg;
-    setMessages(m => [...m, assistantMsg]);
-  // Make abort available immediately so callers can stop; but don't mark streaming true
-  // until we actually receive data from the server — this keeps the input responsive.
-  // Clear any previous error when starting a new send and expose the abort controller
-  setPending(prev => ({ ...prev, abort, error: undefined }));
+    // Start operation without setting streaming true yet (preserve original behavior)
+    const { abort, assistantMsg } = startOperation({ setStreaming: false });
 
     try {
-      // Ensure tools are loaded if needed
-      const tools = useTools ? (availableTools ?? await toolsPromiseRef.current?.catch(() => [])) : undefined;
-
       const outgoingForSend = [...messages, userMsg];
-
-      const result = await sendChat({
-        messages: outgoingForSend.map(m => ({ role: m.role as Role, content: m.content })),
+      const payload = await buildChatPayload({
+        history: outgoingForSend,
         model,
         signal: abort.signal,
-        conversationId: conversationId || undefined,
-  // ...existing code...
+        conversationId,
         shouldStream,
+        useTools,
         reasoningEffort,
         verbosity,
-        ...(useTools ? {
-          tools: tools || [],
-          tool_choice: 'auto',
-          ...(researchMode && { research_mode: true })
-        } : {}),
-        onEvent: handleStreamEvent
+        qualityLevel
       });
+
+      // Use appropriate client method based on tools usage
+      const result = useTools && payload.tools && payload.tools.length > 0
+        ? await chatClient.sendMessageWithTools(payload)
+        : await chatClient.sendMessage(payload);
+
       // For non-streaming, update the assistant message content from the result
       if (!shouldStream) {
-        const msg = assistantMsgRef.current!;
-        setMessages(curr => curr.map(m => m.id === msg.id ? { ...m, content: result.content || m.content } : m));
+        applyNonStreamingContent(result.content);
       }
-      if (result.responseId) {
-        setPreviousResponseId(result.responseId);
-      }
-      // Handle auto-created conversation
-      if (result.conversation && onConversationCreated) {
-        onConversationCreated(result.conversation);
-      }
+      recordResultMeta(result, onConversationCreated);
     } catch (e: any) {
-      setPending(p => ({ ...p, error: e?.message || String(e) }));
-      setMessages(curr => curr.map(msg => msg.id === assistantMsg.id ? { ...msg, content: msg.content + `\n[error: ${e.message}]` } : msg));
+      handleOperationError(e, assistantMsg.id);
     } finally {
       // Clear streaming/abort when finished
-      setPending(p => ({ ...p, streaming: false, abort: undefined }));
-      inFlightRef.current = false;
+      finalizeOperation();
     }
 
     // Return immediately — caller shouldn't wait for network to finish to keep UI snappy
     return;
-  }, [messages, previousResponseId, availableTools, toolsPromiseRef]);
+  }, [messages, startOperation, buildChatPayload, recordResultMeta, handleOperationError, finalizeOperation, chatClient]);
 
   const generateFromHistory = useCallback(async (
     model: string,
@@ -184,50 +257,43 @@ export function useChatStream(): UseChatStreamReturn {
     reasoningEffort: string,
     verbosity: string,
     messagesOverride?: ChatMessage[],
-    researchMode?: boolean
+    qualityLevel?: string
   ) => {
     // Only proceed if there is a user message to respond to
     const history = messagesOverride ?? messages;
     if (!history.length || history[history.length - 1].role !== 'user') return;
     if (inFlightRef.current) return;
     inFlightRef.current = true;
-    const abort = new AbortController();
-    const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
-    assistantMsgRef.current = assistantMsg;
-    setMessages(m => [...m, assistantMsg]);
-  // Clear any previous error when starting a new generation from history
-  setPending(prev => ({ ...prev, streaming: true, abort, error: undefined }));
-
-    // Ensure tools are loaded if needed
-    const tools = useTools ? (availableTools ?? await toolsPromiseRef.current?.catch(() => [])) : undefined;
+    const { abort, assistantMsg } = startOperation({ setStreaming: true });
 
     // Start network operation in background so we don't block the caller/UI.
-    const network = sendChat({
-      messages: history.map(m => ({ role: m.role as Role, content: m.content })),
-      model,
-      signal: abort.signal,
-      reasoningEffort,
-      verbosity,
-      ...(useTools ? {
-        tools: tools || [],
-        tool_choice: 'auto',
-        ...(researchMode && { research_mode: true })
-      } : {}),
-      onEvent: handleStreamEvent
-    });
+    const network = (async () => {
+      const payload = await buildChatPayload({
+        history,
+        model,
+        signal: abort.signal,
+        conversationId: undefined,
+        shouldStream: true, // default for generateFromHistory
+        useTools,
+        reasoningEffort,
+        verbosity,
+        qualityLevel
+      });
+      return useTools && payload.tools && payload.tools.length > 0
+        ? chatClient.sendMessageWithTools(payload)
+        : chatClient.sendMessage(payload);
+    })();
 
     network.then(result => {
       if (result.responseId) setPreviousResponseId(result.responseId);
     }).catch((e: any) => {
-      setPending(p => ({ ...p, error: e?.message || String(e) }));
-      setMessages(curr => curr.map(msg => msg.id === assistantMsg.id ? { ...msg, content: msg.content + `\n[error: ${e.message}]` } : msg));
+      handleOperationError(e, assistantMsg.id);
     }).finally(() => {
-      setPending(p => ({ ...p, streaming: false, abort: undefined }));
-      inFlightRef.current = false;
+      finalizeOperation();
     });
 
     return;
-  }, [messages, availableTools, toolsPromiseRef]);
+  }, [messages, startOperation, buildChatPayload, finalizeOperation, handleOperationError, chatClient]);
 
   const regenerateFromBase = useCallback(async (
     baseMessages: ChatMessage[],
@@ -237,7 +303,7 @@ export function useChatStream(): UseChatStreamReturn {
     shouldStream: boolean,
     reasoningEffort: string,
     verbosity: string,
-    researchMode?: boolean
+    qualityLevel?: string
   ) => {
     // Must have at least one user message to respond to
     if (baseMessages.length === 0) return;
@@ -246,49 +312,33 @@ export function useChatStream(): UseChatStreamReturn {
     if (inFlightRef.current) return;
     inFlightRef.current = true;
 
-    const abort = new AbortController();
-    const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
-    assistantMsgRef.current = assistantMsg;
-    setMessages(() => [...baseMessages, assistantMsg]);
-  // Clear any previous error when starting a regeneration
-  setPending(prev => ({ ...prev, streaming: true, abort, error: undefined }));
+    const { abort, assistantMsg } = startOperation({ attachTo: 'replaceWithBase', baseMessages, setStreaming: true });
 
     try {
-      // Ensure tools are loaded if needed
-      const tools = useTools ? (availableTools ?? await toolsPromiseRef.current?.catch(() => [])) : undefined;
-
-      const result = await sendChat({
-        messages: baseMessages.map(m => ({ role: m.role as Role, content: m.content })),
+      const payload = await buildChatPayload({
+        history: baseMessages,
         model,
         signal: abort.signal,
-        conversationId: conversationId || undefined,
-  // ...existing code...
+        conversationId,
         shouldStream,
+        useTools,
         reasoningEffort,
         verbosity,
-        ...(useTools ? {
-          tools: tools || [],
-          tool_choice: 'auto',
-          ...(researchMode && { research_mode: true })
-        } : {}),
-        onEvent: handleStreamEvent
+        qualityLevel
       });
+      const result = useTools && payload.tools && payload.tools.length > 0
+        ? await chatClient.sendMessageWithTools(payload)
+        : await chatClient.sendMessage(payload);
       if (!shouldStream) {
-        const msg = assistantMsgRef.current!;
-        msg.content = result.content || msg.content;
-        setMessages(curr => curr.map(m => m.id === msg.id ? { ...msg } : m));
+        applyNonStreamingContent(result.content);
       }
-      if (result.responseId) {
-        setPreviousResponseId(result.responseId);
-      }
+      recordResultMeta(result);
     } catch (e: any) {
-      setPending(p => ({ ...p, error: e?.message || String(e) }));
-      setMessages(curr => curr.map(msg => msg.id === assistantMsg.id ? { ...msg, content: msg.content + `\n[error: ${e.message}]` } : msg));
+      handleOperationError(e, assistantMsg.id);
     } finally {
-      setPending(p => ({ ...p, streaming: false, abort: undefined }));
-      inFlightRef.current = false;
+      finalizeOperation();
     }
-  }, [previousResponseId, availableTools, toolsPromiseRef]);
+  }, [startOperation, buildChatPayload, finalizeOperation, handleOperationError, recordResultMeta, chatClient]);
 
   const regenerateFromCurrent = useCallback(async (
     conversationId: string | null,
@@ -297,10 +347,10 @@ export function useChatStream(): UseChatStreamReturn {
     shouldStream: boolean,
     reasoningEffort: string,
     verbosity: string,
-    researchMode?: boolean
+    qualityLevel?: string
   ) => {
     const base = messages;
-    await regenerateFromBase(base, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, researchMode);
+    await regenerateFromBase(base, conversationId, model, useTools, shouldStream, reasoningEffort, verbosity, qualityLevel);
   }, [messages, regenerateFromBase]);
 
   const stopStreaming = useCallback(() => {

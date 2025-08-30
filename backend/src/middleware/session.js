@@ -21,12 +21,17 @@ export function sessionResolver(req, res, next) {
     const expires = new Date(Date.now() + maxAgeSeconds * 1000).toUTCString();
 
     // Add Secure when request is HTTPS (or behind proxy sending x-forwarded-proto)
-    const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    const xfProto =
+      (typeof req.header === 'function' && req.header('x-forwarded-proto')) ||
+      (req.headers && req.headers['x-forwarded-proto']);
+    const isSecure = Boolean(req.secure) || xfProto === 'https';
 
     let cookie = `cf_session_id=${encodeURIComponent(sessionId)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${maxAgeSeconds}; Expires=${expires}`;
     if (isSecure) cookie += '; Secure';
 
-    res.setHeader('Set-Cookie', cookie);
+    if (res && typeof res.setHeader === 'function') {
+      res.setHeader('Set-Cookie', cookie);
+    }
   }
 
   req.sessionId = sessionId;

@@ -1,6 +1,7 @@
 import React, { useReducer, useCallback, useRef } from 'react';
 import type { ChatMessage, Role, ConversationMeta } from '../lib/chat';
 import { sendChat, getConversationApi, listConversationsApi, deleteConversationApi, editMessageApi } from '../lib/chat';
+import type { QualityLevel } from '../components/ui/QualitySlider';
 
 // Unified state structure
 export interface ChatState {
@@ -11,14 +12,19 @@ export interface ChatState {
   // Chat State
   messages: ChatMessage[];
   conversationId: string | null;
+  previousResponseId: string | null;
   // ...existing code...
 
   // Settings
   model: string;
+  providerId: string | null;
   useTools: boolean;
   shouldStream: boolean;
   reasoningEffort: string;
   verbosity: string;
+  qualityLevel: QualityLevel;
+  // System prompt for the current session
+  systemPrompt: string;
 
   // Conversations
   conversations: ConversationMeta[];
@@ -41,10 +47,13 @@ export interface ChatState {
 export type ChatAction =
   | { type: 'SET_INPUT'; payload: string }
   | { type: 'SET_MODEL'; payload: string }
+  | { type: 'SET_PROVIDER'; payload: string | null }
   | { type: 'SET_USE_TOOLS'; payload: boolean }
   | { type: 'SET_SHOULD_STREAM'; payload: boolean }
   | { type: 'SET_REASONING_EFFORT'; payload: string }
   | { type: 'SET_VERBOSITY'; payload: string }
+  | { type: 'SET_QUALITY_LEVEL'; payload: QualityLevel }
+  | { type: 'SET_SYSTEM_PROMPT'; payload: string }
   | { type: 'SET_CONVERSATION_ID'; payload: string | null }
   | { type: 'START_STREAMING'; payload: { abort: AbortController; userMessage: ChatMessage; assistantMessage: ChatMessage } }
   | { type: 'REGENERATE_START'; payload: { abort: AbortController; baseMessages: ChatMessage[]; assistantMessage: ChatMessage } }
@@ -67,7 +76,8 @@ export type ChatAction =
   | { type: 'CANCEL_EDIT' }
   | { type: 'SAVE_EDIT_SUCCESS'; payload: { messageId: string; content: string; baseMessages: ChatMessage[] } }
   | { type: 'CLEAR_ERROR' }
-  | { type: 'NEW_CHAT' };
+  | { type: 'NEW_CHAT' }
+  | { type: 'SYNC_ASSISTANT'; payload: ChatMessage };
 
 const initialState: ChatState = {
   status: 'idle',
@@ -76,10 +86,13 @@ const initialState: ChatState = {
   conversationId: null,
   previousResponseId: null,
   model: 'gpt-4.1-mini',
+  providerId: null,
   useTools: true,
   shouldStream: true,
   reasoningEffort: 'medium',
   verbosity: 'medium',
+  qualityLevel: 'balanced',
+  systemPrompt: '',
   conversations: [],
   nextCursor: null,
   historyEnabled: true,
@@ -97,6 +110,9 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case 'SET_MODEL':
       return { ...state, model: action.payload };
 
+    case 'SET_PROVIDER':
+      return { ...state, providerId: action.payload };
+
     case 'SET_USE_TOOLS':
       return { ...state, useTools: action.payload };
 
@@ -108,6 +124,26 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
     case 'SET_VERBOSITY':
       return { ...state, verbosity: action.payload };
+
+
+    case 'SET_QUALITY_LEVEL': {
+      // Map quality level to derived settings for backward compatibility
+      const map: Record<QualityLevel, { reasoningEffort: string; verbosity: string }> = {
+        quick: { reasoningEffort: 'minimal', verbosity: 'low' },
+        balanced: { reasoningEffort: 'medium', verbosity: 'medium' },
+        thorough: { reasoningEffort: 'high', verbosity: 'high' },
+      };
+      const derived = map[action.payload];
+      return {
+        ...state,
+        qualityLevel: action.payload,
+        reasoningEffort: derived.reasoningEffort,
+        verbosity: derived.verbosity,
+      };
+    }
+
+    case 'SET_SYSTEM_PROMPT':
+      return { ...state, systemPrompt: action.payload };
 
     case 'SET_CONVERSATION_ID':
       return { ...state, conversationId: action.payload };
@@ -133,34 +169,132 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
       };
 
     case 'STREAM_TOKEN':
-      return {
-        ...state,
-        messages: state.messages.map(m =>
-          m.id === action.payload.messageId
-            ? { ...m, content: m.content + action.payload.token }
-            : m
-        ),
-      };
+      {
+        let updated = false;
+        const next = state.messages.map(m => {
+          if (m.id === action.payload.messageId) {
+            updated = true;
+            return { ...m, content: m.content + action.payload.token };
+          }
+          return m;
+        });
+        if (!updated) {
+          // Fallback: update the last assistant message if present
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i].role === 'assistant') {
+              next[i] = { ...next[i], content: next[i].content + action.payload.token } as any;
+              break;
+            }
+          }
+        }
+        return { ...state, messages: next };
+      }
 
     case 'STREAM_TOOL_CALL':
-      return {
-        ...state,
-        messages: state.messages.map(m =>
-          m.id === action.payload.messageId
-            ? { ...m, tool_calls: [...(m.tool_calls || []), action.payload.toolCall] }
-            : m
-        ),
-      };
+      {
+        const upsertToolCall = (existing: any[] | undefined, incoming: any): any[] => {
+          const out = Array.isArray(existing) ? [...existing] : [];
+          const idx: number | undefined = typeof incoming.index === 'number' ? incoming.index : undefined;
+          const id: string | undefined = incoming.id;
+
+          const mergeArgs = (prevFn: any = {}, nextFn: any = {}) => {
+            const prevArgs = typeof prevFn.arguments === 'string' ? prevFn.arguments : '';
+            const nextArgs = typeof nextFn.arguments === 'string' ? nextFn.arguments : '';
+            const mergedArgs = prevArgs && nextArgs && nextArgs.startsWith(prevArgs)
+              ? nextArgs
+              : (prevArgs + nextArgs);
+            return {
+              ...prevFn,
+              ...nextFn,
+              arguments: mergedArgs
+            };
+          };
+
+          if (typeof idx === 'number') {
+            while (out.length <= idx) out.push(undefined);
+            const prev = out[idx] || {};
+            out[idx] = {
+              ...prev,
+              ...incoming,
+              function: mergeArgs(prev.function, incoming.function)
+            };
+            return out;
+          }
+
+          if (id) {
+            const found = out.findIndex(tc => tc && tc.id === id);
+            if (found >= 0) {
+              const prev = out[found];
+              out[found] = {
+                ...prev,
+                ...incoming,
+                function: mergeArgs(prev.function, incoming.function)
+              };
+              return out;
+            }
+          }
+
+          if (incoming?.function?.name) {
+            const found = out.findIndex(tc => tc?.function?.name === incoming.function.name && !tc?.id);
+            if (found >= 0) {
+              const prev = out[found];
+              out[found] = {
+                ...prev,
+                ...incoming,
+                function: mergeArgs(prev.function, incoming.function)
+              };
+              return out;
+            }
+          }
+
+          out.push(incoming);
+          return out;
+        };
+
+        const next = state.messages.map(m => {
+          if (m.id === action.payload.messageId) {
+            const tool_calls = upsertToolCall((m as any).tool_calls, action.payload.toolCall);
+            return { ...m, tool_calls } as any;
+          }
+          return m;
+        });
+
+        // Fallback in case message id not matched yet
+        if (!next.some(m => m.id === action.payload.messageId)) {
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i].role === 'assistant') {
+              const m: any = next[i];
+              const tool_calls = upsertToolCall(m.tool_calls, action.payload.toolCall);
+              next[i] = { ...m, tool_calls };
+              break;
+            }
+          }
+        }
+
+        return { ...state, messages: next };
+      }
 
     case 'STREAM_TOOL_OUTPUT':
-      return {
-        ...state,
-        messages: state.messages.map(m =>
-          m.id === action.payload.messageId
-            ? { ...m, tool_outputs: [...(m.tool_outputs || []), action.payload.toolOutput] }
-            : m
-        ),
-      };
+      {
+        let updated = false;
+        const next = state.messages.map(m => {
+          if (m.id === action.payload.messageId) {
+            updated = true;
+            return { ...m, tool_outputs: [...(m.tool_outputs || []), action.payload.toolOutput] } as any;
+          }
+          return m;
+        });
+        if (!updated) {
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i].role === 'assistant') {
+              const to = [ ...((next[i] as any).tool_outputs || []), action.payload.toolOutput ];
+              next[i] = { ...(next[i] as any), tool_outputs: to } as any;
+              break;
+            }
+          }
+        }
+        return { ...state, messages: next };
+      }
 
     case 'STREAM_COMPLETE':
       return {
@@ -247,6 +381,17 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         editingContent: '',
       };
 
+    case 'SYNC_ASSISTANT':
+      return {
+        ...state,
+        messages: state.messages.map(m => {
+          if (m.id !== action.payload.id) return m;
+          // Only sync content to avoid overwriting tool_calls/tool_outputs built during streaming
+          const content = (action.payload as any).content ?? m.content;
+          return { ...m, content };
+        }),
+      };
+
     case 'CLEAR_ERROR':
       return { ...state, error: null };
 
@@ -268,13 +413,14 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
 }
 
 // Available tools (moved from useChatStream)
-const availableTools = {
+import type { ToolSpec } from '../lib/chat';
+const availableTools: Record<string, ToolSpec> = {
   get_time: {
     type: 'function',
     function: {
       name: 'get_time',
       description: 'Get the current local time of the server',
-      parameters: { type: 'object', properties: {}, additionalProperties: false },
+  parameters: { type: 'object', properties: {}, required: [] },
     }
   },
   web_search: {
@@ -329,13 +475,22 @@ export function useChatState() {
     const assistantId = assistantMsgRef.current!.id;
 
     if (event.type === 'text') {
+      // Keep a local snapshot for robustness in case state isn't committed yet
+      if (assistantMsgRef.current) {
+        assistantMsgRef.current.content += event.value;
+      }
       dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token: event.value } });
     } else if (event.type === 'final') {
       // For final events, we could update the entire content
+      if (assistantMsgRef.current) {
+        assistantMsgRef.current.content += event.value;
+      }
       dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token: event.value } });
     } else if (event.type === 'tool_call') {
+      // Let reducer manage tool_calls to avoid duplicates from local snapshot
       dispatch({ type: 'STREAM_TOOL_CALL', payload: { messageId: assistantId, toolCall: event.value } });
     } else if (event.type === 'tool_output') {
+      // Let reducer manage tool_outputs to avoid duplicates from local snapshot
       dispatch({ type: 'STREAM_TOOL_OUTPUT', payload: { messageId: assistantId, toolOutput: event.value } });
     }
   }, []);
@@ -348,11 +503,13 @@ export function useChatState() {
       return ({
         messages: outgoing.map(m => ({ role: m.role as Role, content: m.content })),
         model: state.model,
+        providerId: state.providerId || undefined,
         signal,
         conversationId: state.conversationId || undefined,
         shouldStream: state.shouldStream,
         reasoningEffort: state.reasoningEffort,
         verbosity: state.verbosity,
+        qualityLevel: state.qualityLevel,
         ...(state.useTools
           ? {
               tools: Object.values(availableTools),
@@ -386,15 +543,24 @@ export function useChatState() {
           // Refresh to reflect server ordering/title rather than optimistic add
           void refreshConversations();
         }
+        // Sync the assistant message from the latest snapshot and the final content
+        if (assistantMsgRef.current) {
+          const merged = { ...assistantMsgRef.current };
+          if (result?.content) merged.content = result.content;
+          dispatch({ type: 'SYNC_ASSISTANT', payload: merged });
+        }
         dispatch({
           type: 'STREAM_COMPLETE',
           payload: { responseId: result.responseId },
         });
       } catch (e: any) {
-        dispatch({
-          type: 'STREAM_ERROR',
-          payload: e?.message || String(e),
-        });
+        const message = e?.message || String(e);
+        // Append error message to the assistant bubble for visibility
+        const assistantId = assistantMsgRef.current?.id;
+        if (assistantId) {
+          dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token: `\n[error: ${message}]` } });
+        }
+        dispatch({ type: 'STREAM_ERROR', payload: message });
       } finally {
         inFlightRef.current = false;
       }
@@ -413,6 +579,10 @@ export function useChatState() {
       dispatch({ type: 'SET_MODEL', payload: model });
     }, []),
 
+    setProviderId: useCallback((providerId: string | null) => {
+      dispatch({ type: 'SET_PROVIDER', payload: providerId });
+    }, []),
+
     setUseTools: useCallback((useTools: boolean) => {
       dispatch({ type: 'SET_USE_TOOLS', payload: useTools });
     }, []),
@@ -427,6 +597,15 @@ export function useChatState() {
 
     setVerbosity: useCallback((verbosity: string) => {
       dispatch({ type: 'SET_VERBOSITY', payload: verbosity });
+    }, []),
+
+
+    setQualityLevel: useCallback((level: QualityLevel) => {
+      dispatch({ type: 'SET_QUALITY_LEVEL', payload: level });
+    }, []),
+
+    setSystemPrompt: useCallback((prompt: string) => {
+      dispatch({ type: 'SET_SYSTEM_PROMPT', payload: prompt });
     }, []),
 
     // Chat Actions
@@ -445,6 +624,9 @@ export function useChatState() {
         payload: { abort, userMessage: userMsg, assistantMessage: assistantMsg }
       });
 
+      // Ensure the START_STREAMING state is applied before streaming events arrive
+      await new Promise(resolve => setTimeout(resolve, 0));
+
       const config = buildSendChatConfig([...state.messages, userMsg], abort.signal);
       await runSend(config);
     }, [state, handleStreamEvent, buildSendChatConfig, runSend]),
@@ -461,6 +643,9 @@ export function useChatState() {
         type: 'REGENERATE_START',
         payload: { abort, baseMessages, assistantMessage: assistantMsg }
       });
+
+      // Ensure state commit before events arrive
+      await new Promise(resolve => setTimeout(resolve, 0));
 
       const config = buildSendChatConfig(baseMessages, abort.signal);
       await runSend(config);
@@ -500,6 +685,26 @@ export function useChatState() {
           content: m.content || ''
         }));
         dispatch({ type: 'SET_MESSAGES', payload: msgs });
+
+        // Apply conversation-level settings from API response
+        if (data.model) {
+          dispatch({ type: 'SET_MODEL', payload: data.model });
+        }
+        if (data.streaming_enabled !== undefined) {
+          dispatch({ type: 'SET_SHOULD_STREAM', payload: data.streaming_enabled });
+        }
+        if (data.tools_enabled !== undefined) {
+          dispatch({ type: 'SET_USE_TOOLS', payload: data.tools_enabled });
+        }
+        if (data.quality_level) {
+          dispatch({ type: 'SET_QUALITY_LEVEL', payload: data.quality_level as QualityLevel });
+        }
+        if (data.reasoning_effort) {
+          dispatch({ type: 'SET_REASONING_EFFORT', payload: data.reasoning_effort });
+        }
+        if (data.verbosity) {
+          dispatch({ type: 'SET_VERBOSITY', payload: data.verbosity });
+        }
       } catch (e: any) {
         // ignore
       }

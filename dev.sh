@@ -17,6 +17,7 @@ Commands:
   logs    Follow logs (passes remaining args through to docker compose logs)
   ps      Show service status
   exec    Execute commands in containers (requires service name)
+  migrate Run database migrations in backend container
 
 Examples:
   $(basename "$0") up --build
@@ -24,6 +25,9 @@ Examples:
   $(basename "$0") exec backend npm test
   $(basename "$0") exec frontend npm run build
   $(basename "$0") exec backend sh -c "ls -la"
+  $(basename "$0") migrate status
+  $(basename "$0") migrate up
+  $(basename "$0") migrate fresh
 EOF
 }
 
@@ -96,6 +100,30 @@ case "$cmd" in
   test:frontend)
       test_frontend
       ;;
+  migrate)
+    # Run migration commands in backend container
+    if [ $# -eq 0 ]; then
+      echo "Migration subcommand required (status|up|fresh)" >&2
+      exit 1
+    fi
+    subcommand="$1"
+    shift
+    case "$subcommand" in
+      status|up|fresh)
+        echo "Running migration: $subcommand"
+        if [ -t 0 ] && [ -t 1 ]; then
+          "${DC[@]}" exec backend npm run migrate "$subcommand" "$@"
+        else
+          "${DC[@]}" exec -T backend npm run migrate "$subcommand" "$@"
+        fi
+        ;;
+      *)
+        echo "Unknown migration subcommand: $subcommand" >&2
+        echo "Available: status, up, fresh" >&2
+        exit 1
+        ;;
+    esac
+    ;;
   *)
     echo "Unknown command: $cmd" >&2
     usage

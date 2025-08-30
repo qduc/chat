@@ -1,10 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
-import { Send, Loader2, Gauge, Cpu, Clock, AlignLeft, Wrench, Zap, FlaskConical } from 'lucide-react';
+import { useEffect, useRef } from 'react';
+import { Send, Loader2, Gauge, Wrench, Zap } from 'lucide-react';
 import type { PendingState } from '../hooks/useChatStream';
-import IconSelect from './ui/IconSelect';
 import Toggle from './ui/Toggle';
 import QualitySlider from './ui/QualitySlider';
-import { useChatContext } from '../contexts/ChatContext';
+import type { QualityLevel } from './ui/QualitySlider';
 
 interface MessageInputProps {
   input: string;
@@ -12,14 +11,13 @@ interface MessageInputProps {
   onInputChange: (value: string) => void;
   onSend: () => void;
   onStop: () => void;
-  model: string;
   useTools: boolean;
   shouldStream: boolean;
-  researchMode: boolean;
-  onModelChange: (model: string) => void;
   onUseToolsChange: (useTools: boolean) => void;
   onShouldStreamChange: (val: boolean) => void;
-  onResearchModeChange: (val: boolean) => void;
+  model: string;
+  qualityLevel: QualityLevel;
+  onQualityLevelChange: (level: QualityLevel) => void;
 }
 
 export function MessageInput({
@@ -28,20 +26,15 @@ export function MessageInput({
   onInputChange,
   onSend,
   onStop,
-  model,
   useTools,
   shouldStream,
-  researchMode,
-  onModelChange,
   onUseToolsChange,
   onShouldStreamChange,
-  onResearchModeChange
+  model,
+  qualityLevel,
+  onQualityLevelChange,
 }: MessageInputProps) {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const {
-    qualityLevel,
-    setQualityLevel,
-  } = useChatContext();
 
   // Auto-grow textarea up to ~200px
   useEffect(() => {
@@ -80,26 +73,14 @@ export function MessageInput({
           <div className="flex items-center justify-between px-4 pb-4">
             <div className="flex items-center gap-4 text-xs scrollbar-hide">
               <div className="flex items-center">
-                <IconSelect
-                  ariaLabel="Model"
-                  icon={<Cpu className="w-4 h-4" />}
-                  value={model}
-                  onChange={onModelChange}
-                  className="text-xs py-1 px-2"
-                  options={[
-                    { value: 'gpt-5-mini', label: 'GPT-5 Mini' },
-                    { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
-                    { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-                    { value: 'gpt-4o', label: 'GPT-4o' }
-                  ]}
-                />
+                {/* model selector moved to header */}
               </div>
 
               {model?.startsWith('gpt-5') && (
                 <div className="flex items-center">
                   <QualitySlider
                     value={qualityLevel}
-                    onChange={setQualityLevel}
+                    onChange={onQualityLevelChange}
                     icon={<Gauge className="w-4 h-4" />}
                     ariaLabel="Response Quality"
                     className="flex-shrink-0"
@@ -127,16 +108,6 @@ export function MessageInput({
                 />
               </div>
 
-              <div className="flex items-center">
-                <Toggle
-                  ariaLabel="Research"
-                  icon={<FlaskConical className="w-4 h-4" />}
-                  checked={researchMode}
-                  onChange={onResearchModeChange}
-                  disabled={!useTools}
-                  className="whitespace-nowrap"
-                />
-              </div>
             </div>
             <button
                 type="button"

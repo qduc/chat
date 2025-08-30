@@ -2,6 +2,7 @@ import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
 import { config } from '../env.js';
+import { runMigrations } from './migrations.js';
 
 let db = null;
 
@@ -11,54 +12,68 @@ function ensureDir(p) {
 }
 
 function applyMigrationsSQLite(db) {
-  // Keep SQL conservative and SQLite-friendly
-  db.exec(`
-    PRAGMA journal_mode = WAL;
-    CREATE TABLE IF NOT EXISTS sessions (
-      id TEXT PRIMARY KEY,
-      user_id TEXT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      last_seen_at DATETIME NULL,
-      user_agent TEXT NULL,
-      ip_hash TEXT NULL
-    );
+  // Use the proper migration system
+  runMigrations(db);
+}
 
-    CREATE TABLE IF NOT EXISTS conversations (
-      id TEXT PRIMARY KEY,
-      session_id TEXT NOT NULL,
-      user_id TEXT NULL,
-      title TEXT NULL,
-      model TEXT NULL,
-      metadata TEXT DEFAULT '{}' ,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      deleted_at DATETIME NULL,
-      FOREIGN KEY(session_id) REFERENCES sessions(id) ON DELETE CASCADE
-    );
-    CREATE INDEX IF NOT EXISTS idx_conversations_session_created ON conversations(session_id, created_at DESC);
+function seedProvidersFromEnv(db) {
+  try {
+    // If table doesn't exist yet, this will throw; migrations ensure it exists before calling
+    const countRow = db
+      .prepare("SELECT COUNT(1) AS c FROM providers WHERE deleted_at IS NULL")
+      .get();
+    const existing = countRow?.c || 0;
+    if (existing > 0) return; // Already seeded/managed in DB
 
-    CREATE TABLE IF NOT EXISTS messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      conversation_id TEXT NOT NULL,
-      role TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'final',
-      content TEXT NOT NULL DEFAULT '',
-      content_json TEXT NULL,
-      seq INTEGER NOT NULL,
-      parent_message_id INTEGER NULL,
-      tokens_in INTEGER NULL,
-      tokens_out INTEGER NULL,
-      finish_reason TEXT NULL,
-      tool_calls TEXT NULL,
-      function_call TEXT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      UNIQUE(conversation_id, seq),
-      FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
-      FOREIGN KEY(parent_message_id) REFERENCES messages(id)
-    );
-    CREATE INDEX IF NOT EXISTS idx_messages_conv_id ON messages(conversation_id, id);
-  `);
+    const providerType = (config.provider || 'openai').toLowerCase();
+    const baseUrl = config?.providerConfig?.baseUrl || config?.openaiBaseUrl || null;
+    const apiKey = config?.providerConfig?.apiKey || config?.openaiApiKey || null;
+    const headersObj = config?.providerConfig?.headers || {};
+
+    if (!apiKey && !baseUrl) return; // Nothing meaningful to seed
+
+    const now = new Date().toISOString();
+    const name = providerType; // simple name; unique index on name
+    const id = providerType;   // keep id stable and readable
+    const extraHeaders = JSON.stringify(headersObj || {});
+    const metadata = JSON.stringify({ default_model: config?.defaultModel || null });
+
+    db.prepare(`
+      INSERT INTO providers (
+        id, name, provider_type, api_key, base_url,
+        is_default, enabled, extra_headers, metadata,
+        created_at, updated_at
+      ) VALUES (
+        @id, @name, @provider_type, @api_key, @base_url,
+        1, 1, @extra_headers, @metadata,
+        @now, @now
+      )
+      ON CONFLICT(id) DO UPDATE SET
+        name=excluded.name,
+        provider_type=excluded.provider_type,
+        api_key=COALESCE(excluded.api_key, providers.api_key),
+        base_url=COALESCE(excluded.base_url, providers.base_url),
+        extra_headers=excluded.extra_headers,
+        metadata=excluded.metadata,
+        is_default=1,
+        enabled=1,
+        updated_at=excluded.updated_at
+    `).run({
+      id,
+      name,
+      provider_type: providerType,
+      api_key: apiKey,
+      base_url: baseUrl,
+      extra_headers: extraHeaders,
+      metadata,
+      now,
+    });
+
+    // Ensure only one default (this one)
+    db.prepare(`UPDATE providers SET is_default = CASE WHEN id=@id THEN 1 ELSE 0 END`).run({ id });
+  } catch (err) {
+    console.warn('[db] Provider seeding skipped:', err?.message || String(err));
+  }
 }
 
 export function getDb() {
@@ -76,6 +91,8 @@ export function getDb() {
     ensureDir(filePath);
     db = new Database(filePath);
     applyMigrationsSQLite(db);
+    // After migrations, seed providers table from environment if empty
+    seedProvidersFromEnv(db);
   }
   return db;
 }
@@ -109,29 +126,52 @@ export function upsertSession(sessionId, meta = {}) {
   });
 }
 
-export function createConversation({ id, sessionId, title, model }) {
+export function createConversation({
+  id,
+  sessionId,
+  title,
+  model,
+  streamingEnabled = false,
+  toolsEnabled = false,
+  qualityLevel = null,
+  reasoningEffort = null,
+  verbosity = null
+}) {
   const db = getDb();
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO conversations (id, session_id, user_id, title, model, metadata, created_at, updated_at)
-     VALUES (@id, @session_id, NULL, @title, @model, '{}', @now, @now)`
+    `INSERT INTO conversations (id, session_id, user_id, title, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at, updated_at)
+     VALUES (@id, @session_id, NULL, @title, @model, '{}', @streaming_enabled, @tools_enabled, @quality_level, @reasoning_effort, @verbosity, @now, @now)`
   ).run({
     id,
     session_id: sessionId,
     title: title || null,
     model: model || null,
+    streaming_enabled: streamingEnabled ? 1 : 0,
+    tools_enabled: toolsEnabled ? 1 : 0,
+    quality_level: qualityLevel,
+    reasoning_effort: reasoningEffort,
+    verbosity: verbosity,
     now,
   });
 }
 
 export function getConversationById({ id, sessionId }) {
   const db = getDb();
-  return db
+  const result = db
     .prepare(
-      `SELECT id, title, model, created_at FROM conversations
+      `SELECT id, title, model, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at FROM conversations
      WHERE id=@id AND session_id=@session_id AND deleted_at IS NULL`
     )
     .get({ id, session_id: sessionId });
+
+  if (result) {
+    // Convert SQLite boolean integers back to JavaScript booleans
+    result.streaming_enabled = Boolean(result.streaming_enabled);
+    result.tools_enabled = Boolean(result.tools_enabled);
+  }
+
+  return result;
 }
 
 export function updateConversationTitle({ id, sessionId, title }) {
@@ -434,4 +474,129 @@ export function retentionSweep({ days }) {
     if (rows.length < 500) break;
   }
   return { deleted: total };
+}
+
+// --- Providers DAO ---
+export function listProviders() {
+  const db = getDb();
+  const rows = db.prepare(
+    `SELECT id, name, provider_type, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at
+     FROM providers WHERE deleted_at IS NULL ORDER BY is_default DESC, updated_at DESC`
+  ).all();
+  return rows.map((r) => ({
+    ...r,
+    extra_headers: safeJsonParse(r.extra_headers, {}),
+    metadata: safeJsonParse(r.metadata, {}),
+  }));
+}
+
+export function getProviderById(id) {
+  const db = getDb();
+  const r = db.prepare(
+    `SELECT id, name, provider_type, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at
+     FROM providers WHERE id=@id AND deleted_at IS NULL`
+  ).get({ id });
+  if (!r) return null;
+  return {
+    ...r,
+    extra_headers: safeJsonParse(r.extra_headers, {}),
+    metadata: safeJsonParse(r.metadata, {}),
+  };
+}
+
+// Internal function that includes API key for server-side operations
+export function getProviderByIdWithApiKey(id) {
+  const db = getDb();
+  const r = db.prepare(
+    `SELECT id, name, provider_type, api_key, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at
+     FROM providers WHERE id=@id AND deleted_at IS NULL`
+  ).get({ id });
+  if (!r) return null;
+  return {
+    ...r,
+    extra_headers: safeJsonParse(r.extra_headers, {}),
+    metadata: safeJsonParse(r.metadata, {}),
+  };
+}
+
+export function createProvider({ id, name, provider_type, api_key = null, base_url = null, enabled = true, is_default = false, extra_headers = {}, metadata = {} }) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const pid = id || name || provider_type;
+  db.prepare(
+    `INSERT INTO providers (id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
+     VALUES (@id, @name, @provider_type, @api_key, @base_url, @enabled, @is_default, @extra_headers, @metadata, @now, @now)`
+  ).run({
+    id: pid,
+    name,
+    provider_type,
+    api_key,
+    base_url,
+    enabled: enabled ? 1 : 0,
+    is_default: is_default ? 1 : 0,
+    extra_headers: JSON.stringify(extra_headers || {}),
+    metadata: JSON.stringify(metadata || {}),
+    now,
+  });
+  if (is_default) setDefaultProvider(pid);
+  return getProviderById(pid);
+}
+
+export function updateProvider(id, { name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata }) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const current = db.prepare(`SELECT * FROM providers WHERE id=@id AND deleted_at IS NULL`).get({ id });
+  if (!current) return null;
+  const values = {
+    id,
+    name: name ?? current.name,
+    provider_type: provider_type ?? current.provider_type,
+    api_key: api_key ?? current.api_key,
+    base_url: base_url ?? current.base_url,
+    enabled: enabled === undefined ? current.enabled : (enabled ? 1 : 0),
+    is_default: is_default === undefined ? current.is_default : (is_default ? 1 : 0),
+    extra_headers: JSON.stringify(extra_headers ?? safeJsonParse(current.extra_headers, {})),
+    metadata: JSON.stringify(metadata ?? safeJsonParse(current.metadata, {})),
+    now,
+  };
+  db.prepare(
+    `UPDATE providers SET
+       name=@name,
+       provider_type=@provider_type,
+       api_key=@api_key,
+       base_url=@base_url,
+       enabled=@enabled,
+       is_default=@is_default,
+       extra_headers=@extra_headers,
+       metadata=@metadata,
+       updated_at=@now
+     WHERE id=@id`
+  ).run(values);
+  if (values.is_default) setDefaultProvider(id);
+  return getProviderById(id);
+}
+
+export function setDefaultProvider(id) {
+  const db = getDb();
+  const tx = db.transaction((pid) => {
+    db.prepare(`UPDATE providers SET is_default=0 WHERE deleted_at IS NULL`).run();
+    db.prepare(`UPDATE providers SET is_default=1, enabled=1, updated_at=@now WHERE id=@id AND deleted_at IS NULL`).run({ id: pid, now: new Date().toISOString() });
+  });
+  tx(id);
+  return getProviderById(id);
+}
+
+export function deleteProvider(id) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const info = db.prepare(`UPDATE providers SET deleted_at=@now, updated_at=@now WHERE id=@id AND deleted_at IS NULL`).run({ id, now });
+  return info.changes > 0;
+}
+
+function safeJsonParse(s, fallback) {
+  try {
+    return s ? JSON.parse(s) : fallback;
+  } catch {
+    return fallback;
+  }
 }

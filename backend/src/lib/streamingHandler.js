@@ -4,7 +4,6 @@ import {
   writeAndFlush,
   setupStreamingHeaders,
 } from './streamUtils.js';
-import { config } from 'dotenv';
 import { getConversationMetadata } from './responseUtils.js';
 
 export { setupStreamingHeaders } from './streamUtils.js';

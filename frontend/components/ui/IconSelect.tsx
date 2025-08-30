@@ -102,13 +102,12 @@ export function IconSelect({
                 type="button"
                 role="option"
                 aria-selected={option.value === value}
-                className={`w-full block text-left px-3 py-2 text-sm hover:bg-slate-100 dark:hover:bg-neutral-800 hover:text-slate-900 dark:hover:text-slate-100 transition-all duration-200 ${
+                className={`w-full block text-left px-3 py-2 text-sm cursor-pointer hover:bg-slate-100 dark:hover:bg-neutral-800 hover:text-slate-900 dark:hover:text-slate-100 transition-all duration-200 ${
                   option.value === value
                     ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
                     : 'text-slate-700 dark:text-slate-300'
                 }`}
                 style={{
-                  background: option.value === value ? undefined : 'transparent',
                   border: 'none'
                 }}
                 onClick={() => {

@@ -1,8 +1,8 @@
-import fetch from 'node-fetch';
 import { tools as toolRegistry } from './tools.js';
 import { getMessagesPage } from '../db/index.js';
 import { response } from 'express';
 import { addConversationMetadata, getConversationMetadata } from './responseUtils.js';
+import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
 
 /**
  * Execute a single tool call from the local registry
@@ -52,26 +52,21 @@ function streamEvent(res, event, model) {
 /**
  * Make a request to the AI model
  */
-async function callLLM(messages, config, bodyParams) {
-  const base = (config.openaiBaseUrl || '').replace(/\/v1\/?$/, '');
-  const url = `${base}/v1/chat/completions`;
-  const headers = {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${config.openaiApiKey}`,
-  };
-
+async function callLLM(messages, config, bodyParams, providerId) {
   const requestBody = {
     model: bodyParams.model || config.defaultModel,
     messages,
     stream: bodyParams.stream || false,
     ...(bodyParams.tools && { tools: bodyParams.tools, tool_choice: bodyParams.tool_choice || 'auto' })
   };
+  // Include reasoning controls only for gpt-5* models
+  const isGpt5 = typeof requestBody.model === 'string' && requestBody.model.startsWith('gpt-5');
+  if (isGpt5) {
+    if (bodyParams.reasoning_effort) requestBody.reasoning_effort = bodyParams.reasoning_effort;
+    if (bodyParams.verbosity) requestBody.verbosity = bodyParams.verbosity;
+  }
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify(requestBody),
-  });
+  const response = await createOpenAIRequest(config, requestBody, { providerId });
 
   if (bodyParams.stream) {
     return response; // Return raw response for streaming
@@ -242,19 +237,7 @@ async function streamResponse(llmResponse, res, persistence, model) {
   });
 }
 
-/**
- * Setup streaming response headers
- */
-function setupStreamingHeaders(res) {
-  res.status(200);
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-
-  if (typeof res.flushHeaders === 'function') {
-    res.flushHeaders();
-  }
-}
+// Use shared streaming header setup from streamUtils
 
 /**
  * Unified tool orchestration handler - automatically adapts to request needs
@@ -268,6 +251,7 @@ export async function handleUnifiedToolOrchestration({
   req,
   persistence,
 }) {
+  const providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
   // Build initial messages from persisted history when available
   let messages = [];
   if (persistence && persistence.persist && persistence.conversationId) {
@@ -310,7 +294,7 @@ export async function handleUnifiedToolOrchestration({
     // Main orchestration loop - continues until LLM stops requesting tools
     while (iteration < MAX_ITERATIONS) {
       // Always get response non-streaming first to check for tool calls
-      const response = await callLLM(messages, config, { ...body, stream: false });
+      const response = await callLLM(messages, config, { ...body, stream: false }, providerId);
       const message = response?.choices?.[0]?.message;
       const toolCalls = message?.tool_calls || [];
 
@@ -388,7 +372,7 @@ export async function handleUnifiedToolOrchestration({
     }
 
     // Max iterations reached - get final response
-    const finalResponse = await callLLM(messages, config, { ...body, stream: requestedStreaming });
+    const finalResponse = await callLLM(messages, config, { ...body, stream: requestedStreaming }, providerId);
 
     if (requestedStreaming) {
       const finishReason = await streamResponse(finalResponse, res, persistence, body.model || config.defaultModel);

@@ -13,6 +13,7 @@ import {
 } from '../db/index.js';
 import { v4 as uuidv4 } from 'uuid';
 import { createOpenAIRequest } from './streamUtils.js';
+import { providerIsConfigured } from './providers/index.js';
 
 /**
  * Simplified persistence manager that implements final-only writes
@@ -28,6 +29,7 @@ export class SimplifiedPersistence {
     this.finalized = false;
     this.errored = false;
     this.conversationMeta = null; // Store conversation metadata
+    this.providerId = undefined; // Track frontend-selected provider for consistency
   }
 
   /**
@@ -54,6 +56,9 @@ export class SimplifiedPersistence {
     upsertSession(sessionId, {
       userAgent: req.header('user-agent') || null,
     });
+
+    // Capture provider id from request for later use (e.g., title generation)
+    this.providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
 
     let convo = null;
 
@@ -84,11 +89,28 @@ export class SimplifiedPersistence {
       const newConversationId = uuidv4();
       const model = bodyIn.model || this.config.defaultModel || null;
 
+      // Derive persisted settings from request body. Support both explicit
+      // persistence flags and OpenAI-compatible fields used by the client.
+      const persistedStreamingEnabled =
+        bodyIn.streamingEnabled !== undefined
+          ? !!bodyIn.streamingEnabled
+          : !!bodyIn.stream; // map `stream` => persisted flag
+
+      const persistedToolsEnabled =
+        bodyIn.toolsEnabled !== undefined
+          ? !!bodyIn.toolsEnabled
+          : (Array.isArray(bodyIn.tools) && bodyIn.tools.length > 0); // map tools array presence
+
       createConversation({
         id: newConversationId,
         sessionId,
         title: null, // Will be auto-generated from first message if needed
-        model
+        model,
+        streamingEnabled: persistedStreamingEnabled,
+        toolsEnabled: persistedToolsEnabled,
+        qualityLevel: bodyIn.qualityLevel || null,
+        reasoningEffort: bodyIn.reasoningEffort || null,
+        verbosity: bodyIn.verbosity || null
       });
 
       conversationId = newConversationId;
@@ -156,8 +178,8 @@ export class SimplifiedPersistence {
       const text = String(content || '').trim();
       if (!text) return null;
 
-      // Simple fallback if OpenAI isn't configured
-      if (!this.config?.openaiApiKey || !this.config?.openaiBaseUrl) {
+      // Fallback if provider isn't configured
+      if (!providerIsConfigured(this.config)) {
         return this.fallbackTitle(text);
       }
 
@@ -176,7 +198,7 @@ export class SimplifiedPersistence {
         ],
       };
 
-      const resp = await createOpenAIRequest(this.config, requestBody);
+      const resp = await createOpenAIRequest(this.config, requestBody, { providerId: this.providerId });
       if (!resp.ok) {
         // Fall back gracefully
         return this.fallbackTitle(text);
