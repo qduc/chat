@@ -5,6 +5,12 @@ import { jest } from '@jest/globals';
 
 import { handleUnifiedToolOrchestration } from '../src/lib/unifiedToolOrchestrator.js';
 import { tools as toolRegistry } from '../src/lib/tools.js';
+import request from 'supertest';
+import { MockUpstream } from '../test_utils/chatProxyTestUtils.js';
+import { config } from '../src/env.js';
+import express from 'express';
+import { chatRouter } from '../src/routes/chat.js';
+import { getDb } from '../src/db/index.js';
 
 // Mock response object for testing
 class MockResponse {
@@ -484,6 +490,243 @@ describe('Iterative Orchestration', () => {
     }, 15000);
   });
 
+  describe('Unified Orchestration (supertest)', () => {
+    // Helper to build an express app bound to the chat router
+    const makeApp = () => {
+      const app = express();
+      app.use(express.json());
+      app.use(chatRouter);
+      return app;
+    };
+
+    test('handles single tool call then final JSON via /v1/chat/completions', async () => {
+      const upstream = new MockUpstream();
+      // Replace default routes with a fresh app so our override takes effect first
+      upstream.app = express();
+      upstream.app.use(express.json());
+      // Simulate: first call returns a tool_call, second returns final message
+      let calls = 0;
+      upstream.app.post('/v1/chat/completions', (req, res) => {
+        calls++;
+        if (calls === 1) {
+          return res.json({
+            id: 'chat_iter_1',
+            object: 'chat.completion',
+            created: Math.floor(Date.now()/1000),
+            model: 'gpt-3.5-turbo',
+            choices: [{
+              index: 0,
+              message: {
+                role: 'assistant',
+                content: 'Thinking…',
+                tool_calls: [{ id: 'call_time', type: 'function', function: { name: 'get_time', arguments: '{}' } }]
+              },
+              finish_reason: null
+            }]
+          });
+        }
+        return res.json({
+          id: 'chat_iter_final',
+          object: 'chat.completion',
+          created: Math.floor(Date.now()/1000),
+          model: 'gpt-3.5-turbo',
+          choices: [{
+            index: 0,
+            message: { role: 'assistant', content: 'The current time is 08:30 UTC.', tool_calls: null },
+            finish_reason: 'stop'
+          }]
+        });
+      });
+
+      await upstream.start();
+
+      // Point provider config to mock upstream and clear DB providers
+      const db = getDb();
+      try { db.exec('DELETE FROM providers;'); } catch {}
+      const prevBase = config.openaiBaseUrl;
+      const prevProvBase = config.providerConfig.baseUrl;
+      config.openaiBaseUrl = `${upstream.getUrl()}/v1`;
+      config.providerConfig.baseUrl = `${upstream.getUrl()}`;
+
+      try {
+        const app = makeApp();
+        const res = await request(app)
+          .post('/v1/chat/completions')
+          .send({
+            model: 'gpt-3.5-turbo',
+            messages: [{ role: 'user', content: 'What time is it?' }],
+            tools: [toolRegistry.get_time],
+            stream: false,
+          });
+        assert.equal(res.status, 200);
+        // Debug: surface response shape if assertion fails
+        // eslint-disable-next-line no-console
+        if (!res.body || !res.body.tool_events) console.log('DEBUG unified response', JSON.stringify(res.body));
+        // Expect tool_events to include tool_call and tool_output, and final message present
+        const ev = res.body.tool_events || [];
+        const hasToolCall = ev.some(e => e.type === 'tool_call');
+        const hasToolOutput = ev.some(e => e.type === 'tool_output');
+        if (!hasToolCall) {
+          throw new Error('Should record a tool_call event. Body=' + JSON.stringify(res.body));
+        }
+        if (!hasToolOutput) {
+          throw new Error('Should record a tool_output event. Body=' + JSON.stringify(res.body));
+        }
+        assert(res.body?.choices?.[0]?.message?.content, 'Should include final assistant message');
+      } finally {
+        config.openaiBaseUrl = prevBase;
+        config.providerConfig.baseUrl = prevProvBase;
+        await upstream.stop();
+      }
+    }, 15000);
+
+    test('handles multiple tool calls in sequence (JSON mode)', async () => {
+      const upstream = new MockUpstream();
+      upstream.app = express();
+      upstream.app.use(express.json());
+      let calls = 0;
+      upstream.app.post('/v1/chat/completions', (req, res) => {
+        calls++;
+        if (calls === 1) {
+          return res.json({
+            id: 'iter_1', object: 'chat.completion', created: Math.floor(Date.now()/1000), model: 'gpt-3.5-turbo',
+            choices: [{ index: 0, message: { role: 'assistant', content: 'Getting time…', tool_calls: [ { id: 'c1', type: 'function', function: { name: 'get_time', arguments: '{}' } } ] }, finish_reason: null }]
+          });
+        }
+        if (calls === 2) {
+          return res.json({
+            id: 'iter_2', object: 'chat.completion', created: Math.floor(Date.now()/1000), model: 'gpt-3.5-turbo',
+            choices: [{ index: 0, message: { role: 'assistant', content: 'Searching…', tool_calls: [ { id: 'c2', type: 'function', function: { name: 'web_search', arguments: '{"query":"latest tech"}' } } ] }, finish_reason: null }]
+          });
+        }
+        return res.json({
+          id: 'iter_final', object: 'chat.completion', created: Math.floor(Date.now()/1000), model: 'gpt-3.5-turbo',
+          choices: [{ index: 0, message: { role: 'assistant', content: 'Here is the summary…', tool_calls: null }, finish_reason: 'stop' }]
+        });
+      });
+
+      await upstream.start();
+      const db = getDb();
+      try { db.exec('DELETE FROM providers;'); } catch {}
+      const prevBase = config.openaiBaseUrl;
+      const prevProvBase = config.providerConfig.baseUrl;
+      config.openaiBaseUrl = `${upstream.getUrl()}/v1`;
+      config.providerConfig.baseUrl = `${upstream.getUrl()}`;
+
+      try {
+        const app = makeApp();
+        const res = await request(app)
+          .post('/v1/chat/completions')
+          .send({
+            model: 'gpt-3.5-turbo',
+            messages: [{ role: 'user', content: 'Get time then search latest tech' }],
+            tools: [toolRegistry.get_time, toolRegistry.web_search],
+            stream: false,
+          });
+        assert.equal(res.status, 200);
+        const ev = res.body.tool_events || [];
+        const toolCalls = ev.filter(e => e.type === 'tool_call');
+        const toolOutputs = ev.filter(e => e.type === 'tool_output');
+        assert(toolCalls.length >= 2, 'Should record multiple tool_call events');
+        assert(toolOutputs.length >= 2, 'Should record multiple tool_output events');
+      } finally {
+        config.openaiBaseUrl = prevBase;
+        config.providerConfig.baseUrl = prevProvBase;
+        await upstream.stop();
+      }
+    }, 15000);
+
+    test('handles invalid tool gracefully (JSON mode)', async () => {
+      const upstream = new MockUpstream();
+      upstream.app = express();
+      upstream.app.use(express.json());
+      let calls = 0;
+      upstream.app.post('/v1/chat/completions', (req, res) => {
+        calls++;
+        if (calls === 1) {
+          return res.json({
+            id: 'iter_err', object: 'chat.completion', created: Math.floor(Date.now()/1000), model: 'gpt-3.5-turbo',
+            choices: [{ index: 0, message: { role: 'assistant', content: null, tool_calls: [ { id: 'bad', type: 'function', function: { name: 'nonexistent_tool', arguments: '{}' } } ] }, finish_reason: null }]
+          });
+        }
+        return res.json({
+          id: 'iter_final', object: 'chat.completion', created: Math.floor(Date.now()/1000), model: 'gpt-3.5-turbo',
+          choices: [{ index: 0, message: { role: 'assistant', content: 'Fallback answer', tool_calls: null }, finish_reason: 'stop' }]
+        });
+      });
+
+      await upstream.start();
+      const db = getDb();
+      try { db.exec('DELETE FROM providers;'); } catch {}
+      const prevBase = config.openaiBaseUrl;
+      const prevProvBase = config.providerConfig.baseUrl;
+      config.openaiBaseUrl = `${upstream.getUrl()}/v1`;
+      config.providerConfig.baseUrl = `${upstream.getUrl()}`;
+
+      try {
+        const app = makeApp();
+        const res = await request(app)
+          .post('/v1/chat/completions')
+          .send({
+            model: 'gpt-3.5-turbo',
+            messages: [{ role: 'user', content: 'Try a bad tool' }],
+            tools: [toolRegistry.get_time],
+            stream: false,
+          });
+        assert.equal(res.status, 200);
+        const ev = res.body.tool_events || [];
+        const toolOutputs = ev.filter(e => e.type === 'tool_output');
+        assert(toolOutputs.length >= 1, 'Should include a tool_output event');
+        const hasError = toolOutputs.some(e => String(e.value?.output || '').includes('unknown_tool'));
+        assert(hasError, 'Tool output should include unknown_tool error');
+      } finally {
+        config.openaiBaseUrl = prevBase;
+        config.providerConfig.baseUrl = prevProvBase;
+        await upstream.stop();
+      }
+    }, 15000);
+
+    test('respects maximum iterations limit (JSON mode)', async () => {
+      const upstream = new MockUpstream();
+      upstream.app = express();
+      upstream.app.use(express.json());
+      // Always returns a tool call to force loop
+      upstream.app.post('/v1/chat/completions', (req, res) => {
+        return res.json({
+          id: 'loop', object: 'chat.completion', created: Math.floor(Date.now()/1000), model: 'gpt-3.5-turbo',
+          choices: [{ index: 0, message: { role: 'assistant', content: 'Looping…', tool_calls: [ { id: 'loop_1', type: 'function', function: { name: 'get_time', arguments: '{}' } } ] }, finish_reason: null }]
+        });
+      });
+
+      await upstream.start();
+      const db = getDb();
+      try { db.exec('DELETE FROM providers;'); } catch {}
+      const prevBase = config.openaiBaseUrl;
+      const prevProvBase = config.providerConfig.baseUrl;
+      config.openaiBaseUrl = `${upstream.getUrl()}/v1`;
+      config.providerConfig.baseUrl = `${upstream.getUrl()}`;
+
+      try {
+        const app = makeApp();
+        const res = await request(app)
+          .post('/v1/chat/completions')
+          .send({
+            model: 'gpt-3.5-turbo',
+            messages: [{ role: 'user', content: 'Force tool loop' }],
+            tools: [toolRegistry.get_time],
+            stream: false,
+          });
+        assert.equal(res.status, 200);
+        const ev = res.body.tool_events || [];
+        const maxIterMsg = ev.find(e => e.type === 'text' && typeof e.value === 'string' && e.value.includes('Maximum iterations reached'));
+        assert(maxIterMsg, 'Should include Maximum iterations reached marker');
+      } finally {
+        config.openaiBaseUrl = prevBase;
+        config.providerConfig.baseUrl = prevProvBase;
+        await upstream.stop();
+      }
+    }, 15000);
+  });
 describe('Tool Integration', () => {
   beforeAll(() => {
     // Mock TAVILY_API_KEY for web_search tests
