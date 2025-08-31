@@ -1,5 +1,6 @@
 // Persistence-related tests for chat proxy
 import assert from 'node:assert/strict';
+import request from 'supertest';
 import { createChatProxyTestContext } from '../test_utils/chatProxyTestUtils.js';
 import { getDb, upsertSession, createConversation } from '../src/db/index.js';
 import { config } from '../src/env.js';
@@ -30,21 +31,12 @@ describe('Chat proxy persistence', () => {
         console.error = () => {};
 
         try {
-          const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'x-session-id': sessionId
-            },
-            body: JSON.stringify({
-              messages: [{ role: 'user', content: 'This should be blocked' }],
-              conversation_id: 'conv1',
-              stream: false
-            }),
-          });
-
+          const res = await request(app)
+            .post('/v1/chat/completions')
+            .set('x-session-id', sessionId)
+            .send({ messages: [{ role: 'user', content: 'This should be blocked' }], conversation_id: 'conv1', stream: false });
           assert.equal(res.status, 429, 'Should return 429 when limit exceeded');
-          const body = await res.json();
+          const body = res.body;
           assert.equal(body.error, 'limit_exceeded', 'Should indicate limit exceeded');
           assert.ok(body.message, 'Should provide explanatory message to user');
         } finally {
@@ -63,24 +55,13 @@ describe('Chat proxy persistence', () => {
     createConversation({ id: 'conv1', sessionId, title: 'Test' });
 
     const app = makeApp();
-    await withServer(app, async (port) => {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-session-id': sessionId,
-          'x-conversation-id': 'conv1'
-        },
-        body: JSON.stringify({
-          messages: [{ role: 'user', content: 'Hello' }],
-          stream: true
-        }),
-      });
-
-      assert.equal(res.status, 200);
-      const text = await res.text();
-      assert.ok(text.includes('data: '));
-    });
+    const res = await request(app)
+      .post('/v1/chat/completions')
+      .set('x-session-id', sessionId)
+      .set('x-conversation-id', 'conv1')
+      .send({ messages: [{ role: 'user', content: 'Hello' }], stream: true });
+    assert.equal(res.status, 200);
+    assert.ok(res.text.includes('data: '));
   });
 
   test('user can retrieve persisted conversation messages after sending a message', async () => {
@@ -90,44 +71,25 @@ describe('Chat proxy persistence', () => {
     createConversation({ id: 'conv1', sessionId, title: 'Test' });
 
     const app = makeApp();
-    await withServer(app, async (port) => {
-      // User sends a message
-      const chatRes = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-session-id': sessionId
-        },
-        body: JSON.stringify({
-          messages: [{ role: 'user', content: 'Hello' }],
-          conversation_id: 'conv1',
-          stream: false
-        }),
-      });
+    // User sends a message
+    const chatRes = await request(app)
+      .post('/v1/chat/completions')
+      .set('x-session-id', sessionId)
+      .send({ messages: [{ role: 'user', content: 'Hello' }], conversation_id: 'conv1', stream: false });
+    assert.equal(chatRes.status, 200);
+    assert.ok(chatRes.body.choices[0].message.content);
 
-      assert.equal(chatRes.status, 200);
-      const chatBody = await chatRes.json();
-      assert.ok(chatBody.choices[0].message.content);
-
-      // Retrieve the conversation messages
-      const getRes = await fetch(`http://127.0.0.1:${port}/v1/conversations/conv1/messages`, {
-        headers: { 'x-session-id': sessionId }
-      });
-
-      if (getRes.status === 200) {
-        const conversationData = await getRes.json();
-        const messages = conversationData.messages || [];
-
-        assert.ok(messages.length >= 2, 'Should persist both user and assistant messages');
-
-        const userMessage = messages.find(m => m.role === 'user');
-        const assistantMessage = messages.find(m => m.role === 'assistant');
-
-        assert.ok(userMessage, 'Should persist user message');
-        assert.equal(userMessage.content, 'Hello', 'Should preserve user message content');
-        assert.ok(assistantMessage, 'Should persist assistant response');
-        assert.ok(assistantMessage.content, 'Assistant message should have content');
-      }
-    });
+    // Retrieve the conversation messages
+    const getRes = await request(app).get('/v1/conversations/conv1/messages').set('x-session-id', sessionId);
+    if (getRes.status === 200) {
+      const messages = (getRes.body.messages || []);
+      assert.ok(messages.length >= 2, 'Should persist both user and assistant messages');
+      const userMessage = messages.find(m => m.role === 'user');
+      const assistantMessage = messages.find(m => m.role === 'assistant');
+      assert.ok(userMessage, 'Should persist user message');
+      assert.equal(userMessage.content, 'Hello', 'Should preserve user message content');
+      assert.ok(assistantMessage, 'Should persist assistant response');
+      assert.ok(assistantMessage.content, 'Assistant message should have content');
+    }
   });
 });
