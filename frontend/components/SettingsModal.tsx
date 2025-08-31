@@ -292,10 +292,10 @@ export default function SettingsModal({
       <Modal
         open={open}
         onClose={onClose}
-        maxWidthClassName="max-w-4xl"
-        title={<div className="flex items-center gap-2"><Cog className="w-5 h-5" /> Settings</div> as any}
+        maxWidthClassName="max-w-2xl"
+        title={<div className="flex items-center gap-2"><Cog className="w-4 h-4" /> Settings</div> as any}
       >
-        <div className="flex flex-col gap-6">
+        <div className="flex flex-col gap-3">
           {/* Tab Navigation */}
           <div>
             <nav className="flex items-center gap-2 bg-slate-50 dark:bg-neutral-900/40 rounded-lg p-1" aria-label="Settings tabs">
@@ -318,16 +318,16 @@ export default function SettingsModal({
 
           {/* Tab Content */}
           {activeTab === 'providers' && (
-            <div className="space-y-6">
+            <div className="space-y-3">
               {/* Header with refresh button */}
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-medium text-slate-900 dark:text-slate-100">AI Providers</h3>
-                  <p className="text-sm text-slate-600 dark:text-slate-400">Manage your AI provider configurations</p>
+                  <h3 className="text-sm font-medium text-slate-900 dark:text-slate-100">AI Providers</h3>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">Manage your AI provider configurations</p>
                 </div>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-md border border-slate-200/70 dark:border-neutral-800 bg-transparent hover:bg-slate-50 dark:hover:bg-neutral-800 text-slate-700 dark:text-slate-300 transition-colors"
+                  className="inline-flex items-center gap-2 px-2 py-1 text-sm rounded-md border border-slate-200/70 dark:border-neutral-800 bg-transparent hover:bg-slate-50 dark:hover:bg-neutral-800 text-slate-700 dark:text-slate-300 transition-colors"
                   onClick={fetchProviders}
                   disabled={loadingProviders}
                   title="Refresh providers list"
@@ -345,28 +345,28 @@ export default function SettingsModal({
               )}
 
               {/* Main Content - Responsive Grid */}
-              <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
                 {/* Provider List */}
-                <div className="lg:col-span-2 space-y-4">
+                <div className="lg:col-span-2 space-y-3">
                   <div className="flex items-center justify-between">
                     <h4 className="text-sm font-medium text-slate-900 dark:text-slate-100">Existing Providers</h4>
                     <button
                       type="button"
                       onClick={resetForm}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-md border border-slate-200/70 dark:border-neutral-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors"
+                      className="inline-flex items-center gap-1 px-2 py-1 text-sm rounded-md border border-slate-200/70 dark:border-neutral-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors"
                     >
                       <Plus className="w-4 h-4" />
                       Add New
                     </button>
                   </div>
 
-                  <div className="bg-white/70 dark:bg-neutral-900/60 rounded-xl border border-slate-200/70 dark:border-neutral-800 divide-y divide-slate-200/60 dark:divide-neutral-800 max-h-96 overflow-auto shadow-sm">
+                  <div className="bg-white/70 dark:bg-neutral-900/60 rounded-xl border border-slate-200/70 dark:border-neutral-800 divide-y divide-slate-200/60 dark:divide-neutral-800 max-h-72 overflow-auto shadow-sm">
                     {loadingProviders && (
-                      <div className="p-4 text-sm text-slate-500 text-center">Loading providers...</div>
+                      <div className="p-3 text-sm text-slate-500 text-center">Loading providers...</div>
                     )}
                     {!loadingProviders && providers.length === 0 && (
-                      <div className="p-8 text-center">
-                        <Database className="mx-auto h-12 w-12 text-slate-400 mb-3" />
+                      <div className="p-6 text-center">
+                        <Database className="mx-auto h-10 w-10 text-slate-400 mb-2" />
                         <p className="text-sm text-slate-500">No providers configured</p>
                         <p className="text-xs text-slate-400 mt-1">Click &ldquo;Add New&rdquo; to get started</p>
                       </div>
@@ -374,7 +374,7 @@ export default function SettingsModal({
                     {providers.map((p) => (
                       <div
                         key={p.id}
-                        className={`w-full p-3 sm:p-4 transition-colors ${
+                        className={`w-full p-2 sm:p-3 transition-colors ${
                           selectedId === p.id
                             ? 'bg-slate-50 dark:bg-neutral-800/60'
                             : 'hover:bg-slate-50 dark:hover:bg-neutral-900/40'
@@ -407,7 +407,7 @@ export default function SettingsModal({
                           </div>
                           <div className="ml-3 flex items-center gap-2">
                             {toggleLoading.has(p.id) ? (
-                              <div className="flex items-center justify-center w-11 h-6">
+                              <div className="flex items-center justify-center w-9 h-5">
                                 <RefreshCw className="w-4 h-4 animate-spin text-slate-500 dark:text-slate-400" />
                               </div>
                             ) : (
@@ -427,8 +427,8 @@ export default function SettingsModal({
                 </div>
 
                 {/* Provider Editor */}
-                <div className="lg:col-span-3 bg-white/70 dark:bg-neutral-900/60 rounded-xl border border-slate-200/70 dark:border-neutral-800 p-6 shadow-sm">
-                  <div className="flex items-center justify-between mb-6">
+                <div className="lg:col-span-3 bg-white/70 dark:bg-neutral-900/60 rounded-xl border border-slate-200/70 dark:border-neutral-800 p-4 shadow-sm">
+                  <div className="flex items-center justify-between mb-4">
                     <h4 className="text-sm font-medium text-slate-900 dark:text-slate-100">
                       {form.id ? 'Edit Provider' : 'New Provider'}
                     </h4>
@@ -444,15 +444,15 @@ export default function SettingsModal({
                     )}
                   </div>
 
-                  <div className="space-y-4">
-                    <div className="space-y-2">
+                  <div className="space-y-3">
+                    <div className="space-y-1">
                       <label htmlFor="provider-name" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                         Provider Name *
                       </label>
                       <input
                         id="provider-name"
                         type="text"
-                        className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-slate-300 dark:focus:ring-neutral-700 focus:border-slate-300"
+                        className="w-full px-3 py-1.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-slate-300 dark:focus:ring-neutral-700 focus:border-slate-300"
                         value={form.name}
                         onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                         placeholder="OpenAI"
@@ -460,13 +460,13 @@ export default function SettingsModal({
                       />
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-1">
                       <label htmlFor="provider-type" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                         Provider Type *
                       </label>
                       <select
                         id="provider-type"
-                        className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-slate-300 dark:focus:ring-neutral-700 focus:border-slate-300"
+                        className="w-full px-3 py-1.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-slate-300 dark:focus:ring-neutral-700 focus:border-slate-300"
                         value={form.provider_type}
                         onChange={(e) => setForm((f) => ({ ...f, provider_type: e.target.value }))}
                         required
@@ -475,14 +475,14 @@ export default function SettingsModal({
                       </select>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-1">
                       <label htmlFor="base-url" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                         Base URL
                       </label>
                       <input
                         id="base-url"
                         type="url"
-                        className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-slate-300 dark:focus:ring-neutral-700 focus:border-slate-300"
+                        className="w-full px-3 py-1.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-slate-300 dark:focus:ring-neutral-700 focus:border-slate-300"
                         value={form.base_url}
                         onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
                         placeholder="https://api.openai.com/v1"
@@ -490,14 +490,14 @@ export default function SettingsModal({
                       <p className="text-xs text-slate-500 dark:text-slate-400">Leave empty to use the default OpenAI endpoint</p>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-1">
                       <label htmlFor="api-key" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                         API Key
                       </label>
                       <input
                         id="api-key"
                         type="password"
-                        className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-slate-300 dark:focus:ring-neutral-700 focus:border-slate-300"
+                        className="w-full px-3 py-1.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-slate-300 dark:focus:ring-neutral-700 focus:border-slate-300"
                         value={form.api_key || ''}
                         onChange={(e) => setForm((f) => ({ ...f, api_key: e.target.value }))}
                         placeholder={form.id ? "Leave blank to keep existing key" : "sk-..."}
@@ -507,14 +507,14 @@ export default function SettingsModal({
                       )}
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-1">
                       <label htmlFor="default-model" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                         Default Model
                       </label>
                       <input
                         id="default-model"
                         type="text"
-                        className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-slate-300 dark:focus:ring-neutral-700 focus:border-slate-300"
+                        className="w-full px-3 py-1.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-slate-300 dark:focus:ring-neutral-700 focus:border-slate-300"
                         value={form.default_model || ''}
                         onChange={(e) => setForm((f) => ({ ...f, default_model: e.target.value }))}
                         placeholder="gpt-4o-mini"
@@ -523,16 +523,16 @@ export default function SettingsModal({
 
                     {/* Test Result Display */}
                     {testResult && (
-                      <div className={`p-4 rounded-lg border ${
+                      <div className={`p-3 rounded-lg border ${
                         testResult.success
                           ? 'bg-emerald-50/70 dark:bg-emerald-900/20 border-emerald-200/70 dark:border-emerald-800/70'
                           : 'bg-red-50/70 dark:bg-red-900/20 border-red-200/70 dark:border-red-800/70'
                       }`}>
-                        <div className="flex items-start gap-3">
+                        <div className="flex items-start gap-2">
                           {testResult.success ? (
-                            <CheckCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
+                            <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
                           ) : (
-                            <XCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                            <XCircle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
                           )}
                           <div className="flex-1">
                             <h4 className={`text-sm font-medium ${
@@ -542,7 +542,7 @@ export default function SettingsModal({
                             }`}>
                               {testResult.success ? 'Connection Successful' : 'Connection Failed'}
                             </h4>
-                            <p className={`text-sm mt-1 ${
+                            <p className={`text-xs mt-1 ${
                               testResult.success
                                 ? 'text-emerald-700 dark:text-emerald-300'
                                 : 'text-red-700 dark:text-red-300'
@@ -554,13 +554,13 @@ export default function SettingsModal({
                       </div>
                     )}
 
-                    <div className="pt-4 border-t border-slate-200/70 dark:border-neutral-800 space-y-3">
+                    <div className="pt-3 border-t border-slate-200/70 dark:border-neutral-800 space-y-2">
                       {/* Test Connection Button */}
                       <button
                         type="button"
                         onClick={testProviderConnection}
                         disabled={testing || !form.name || !form.provider_type}
-                        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md border border-slate-200/70 dark:border-neutral-800 bg-transparent hover:bg-slate-50 dark:hover:bg-neutral-800 text-slate-700 dark:text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md border border-slate-200/70 dark:border-neutral-800 bg-transparent hover:bg-slate-50 dark:hover:bg-neutral-800 text-slate-700 dark:text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
                         {testing ? (
                           <RefreshCw className="w-4 h-4 animate-spin" />
@@ -575,7 +575,7 @@ export default function SettingsModal({
                         type="button"
                         onClick={onSaveProvider}
                         disabled={saving || !form.name || !form.provider_type}
-                        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 text-sm font-medium rounded-md bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                       >
                         {saving ? (
                           <RefreshCw className="w-4 h-4 animate-spin" />
