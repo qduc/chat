@@ -148,3 +148,33 @@ if (typeof global.Response === 'undefined') {
 
 // Mock scrollIntoView as it's not available in jsdom
 Element.prototype.scrollIntoView = jest.fn();
+
+// Provide a basic mock for next/navigation hooks so components can render in JSDOM without the App Router
+jest.mock('next/navigation', () => {
+	// We don't need the real module in tests; return minimal stubs
+	return {
+		useRouter: () => ({
+			push: jest.fn(),
+			replace: jest.fn(),
+			prefetch: jest.fn(),
+			back: jest.fn(),
+			forward: jest.fn(),
+			refresh: jest.fn(),
+		}),
+		usePathname: () => '/',
+		useSearchParams: () => {
+			const params = new URLSearchParams();
+			return {
+				get: params.get.bind(params),
+				getAll: params.getAll.bind(params),
+				has: params.has.bind(params),
+				entries: params.entries.bind(params),
+				forEach: params.forEach.bind(params),
+				keys: params.keys.bind(params),
+				values: params.values.bind(params),
+				toString: params.toString.bind(params),
+				[Symbol.iterator]: params[Symbol.iterator].bind(params),
+			};
+		},
+	};
+});

@@ -31,12 +31,6 @@ function setupStreamEventHandlers({
     if (completed) return;
     completed = true;
     try {
-      // Include conversation metadata before finalizing if auto-created
-      const conversationMeta = getConversationMetadata(persistence);
-      if (conversationMeta) {
-        writeAndFlush(res, `data: ${JSON.stringify(conversationMeta)}\n\n`);
-      }
-
       if (persistence && persistence.persist) {
         const finishReason = (typeof lastFinishReason === 'object' && lastFinishReason !== null ? lastFinishReason.value : lastFinishReason) || 'stop';
         persistence.recordAssistantFinal({ finishReason });
@@ -86,6 +80,18 @@ export async function handleRegularStreaming({
   let leftover = '';
   let finished = false;
   let lastFinishReason = { value: null };
+
+  // Emit conversation metadata upfront if available so clients receive
+  // the conversation id before any model chunks or [DONE]
+  try {
+    const conversationMeta = getConversationMetadata(persistence);
+    if (conversationMeta) {
+      writeAndFlush(res, `data: ${JSON.stringify(conversationMeta)}\n\n`);
+    }
+  } catch (e) {
+    // Non-fatal: continue streaming even if metadata cannot be serialized
+    console.warn('[stream] failed to write conversation metadata early', e?.message || e);
+  }
 
   upstream.body.on('data', (chunk) => {
     try {

@@ -5,7 +5,7 @@
 // - supportsReasoningControls(model): boolean
 // - createChatCompletionsRequest(config, requestBody): Promise<Response>
 
-import fetch from 'node-fetch';
+import fetchLib from 'node-fetch';
 import { getDb } from '../../db/index.js';
 
 function parseJSONSafe(s, fallback) {
@@ -99,7 +99,9 @@ const OpenAIProvider = {
       Authorization: `Bearer ${apiKey}`,
       ...extraHeaders,
     };
-    return fetch(url, {
+    // Prefer node-fetch for server-side semantics (Node streams for .body)
+    const http = options.http || fetchLib;
+    return http(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(requestBody),

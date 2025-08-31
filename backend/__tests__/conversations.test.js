@@ -3,6 +3,7 @@
 import assert from 'node:assert/strict';
 import express from 'express';
 import { conversationsRouter } from '../src/routes/conversations.js';
+import request from 'supertest';
 import { sessionResolver } from '../src/middleware/session.js';
 import { config } from '../src/env.js';
 import {
@@ -30,19 +31,6 @@ const makeApp = (useSession = true) => {
   return app;
 };
 
-const withServer = async (app, fn) => {
-  return new Promise((resolve, reject) => {
-    const srv = app.listen(0, async () => {
-      const port = srv.address().port;
-      try {
-        const result = await fn(port);
-        srv.close(() => resolve(result));
-      } catch (err) {
-        srv.close(() => reject(err));
-      }
-    });
-  });
-};
 
 beforeEach(() => {
   // Reset config and database state for each test
@@ -65,48 +53,31 @@ afterAll(() => {
 describe('POST /v1/conversations', () => {
   test('creates a new conversation and returns 201 with id, title, model, created_at', async () => {
     const app = makeApp();
-    await withServer(app, async (port) => {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/conversations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-session-id': sessionId },
-        body: JSON.stringify({ title: 't1', model: 'm1' }),
-      });
-      assert.equal(res.status, 201);
-      const body = await res.json();
-      assert.ok(body.id);
-      assert.equal(body.title, 't1');
-      assert.equal(body.model, 'm1');
-      assert.ok(body.created_at);
-    });
+    const res = await request(app)
+      .post('/v1/conversations')
+      .set('x-session-id', sessionId)
+      .send({ title: 't1', model: 'm1' });
+    assert.equal(res.status, 201);
+    const body = res.body;
+    assert.ok(body.id);
+    assert.equal(body.title, 't1');
+    assert.equal(body.model, 'm1');
+    assert.ok(body.created_at);
   });
 
   test('enforces max conversations per session with 429', async () => {
     config.persistence.maxConversationsPerSession = 1;
     const app = makeApp();
-    await withServer(app, async (port) => {
-      const url = `http://127.0.0.1:${port}/v1/conversations`;
-      await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-session-id': sessionId },
-      });
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-session-id': sessionId },
-      });
-      assert.equal(res.status, 429);
-    });
+    await request(app).post('/v1/conversations').set('x-session-id', sessionId).send();
+    const res = await request(app).post('/v1/conversations').set('x-session-id', sessionId).send();
+    assert.equal(res.status, 429);
   });
 
   test('returns 501 when persistence is disabled', async () => {
     config.persistence.enabled = false;
     const app = makeApp();
-    await withServer(app, async (port) => {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/conversations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-session-id': sessionId },
-      });
-      assert.equal(res.status, 501);
-    });
+    const res = await request(app).post('/v1/conversations').set('x-session-id', sessionId).send();
+    assert.equal(res.status, 501);
   });
 });
 
@@ -120,50 +91,34 @@ describe('GET /v1/conversations', () => {
     db.prepare(`UPDATE conversations SET created_at = datetime('now', '-1 hour') WHERE id = 'c1'`).run();
     db.prepare(`UPDATE conversations SET created_at = datetime('now') WHERE id = 'c2'`).run();
     const app = makeApp();
-    await withServer(app, async (port) => {
-      const first = await fetch(
-        `http://127.0.0.1:${port}/v1/conversations?limit=1`,
-        { headers: { 'x-session-id': sessionId } }
-      );
-      const body1 = await first.json();
+    const first = await request(app).get('/v1/conversations?limit=1').set('x-session-id', sessionId);
+    const body1 = first.body;
       assert.equal(body1.items.length, 1);
       assert.equal(body1.items[0].id, 'c2');
       assert.ok(body1.next_cursor);
 
-      const second = await fetch(
-        `http://127.0.0.1:${port}/v1/conversations?limit=1&cursor=${encodeURIComponent(
-          body1.next_cursor
-        )}`,
-        { headers: { 'x-session-id': sessionId } }
-      );
-      const body2 = await second.json();
+    const second = await request(app)
+      .get(`/v1/conversations?limit=1&cursor=${encodeURIComponent(body1.next_cursor)}`)
+      .set('x-session-id', sessionId);
+    const body2 = second.body;
       assert.equal(body2.items.length, 1);
       assert.equal(body2.items[0].id, 'c1');
       assert.equal(body2.next_cursor, null);
-    });
   });
 
   test('returns 501 when persistence is disabled', async () => {
     config.persistence.enabled = false;
     const app = makeApp();
-    await withServer(app, async (port) => {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/conversations`, {
-        headers: { 'x-session-id': sessionId },
-      });
-      assert.equal(res.status, 501);
-    });
+    const res = await request(app).get('/v1/conversations').set('x-session-id', sessionId);
+    assert.equal(res.status, 501);
   });
 
   test('returns empty items and next_cursor=null when no conversations exist', async () => {
     const app = makeApp();
-    await withServer(app, async (port) => {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/conversations`, {
-        headers: { 'x-session-id': sessionId },
-      });
-      const body = await res.json();
-      assert.equal(body.items.length, 0);
-      assert.equal(body.next_cursor, null);
-    });
+    const res = await request(app).get('/v1/conversations').set('x-session-id', sessionId);
+    const body = res.body;
+    assert.equal(body.items.length, 0);
+    assert.equal(body.next_cursor, null);
   });
 
   test('excludes deleted conversations by default; include_deleted=1 returns them', async () => {
@@ -171,24 +126,17 @@ describe('GET /v1/conversations', () => {
     createConversation({ id: 'c2', sessionId, title: 'two' });
     softDeleteConversation({ id: 'c1', sessionId });
     const app = makeApp();
-    await withServer(app, async (port) => {
-      const res1 = await fetch(`http://127.0.0.1:${port}/v1/conversations`, {
-        headers: { 'x-session-id': sessionId },
-      });
-      const body1 = await res1.json();
+    const res1 = await request(app).get('/v1/conversations').set('x-session-id', sessionId);
+    const body1 = res1.body;
       assert.equal(body1.items.length, 1);
       assert.equal(body1.items[0].id, 'c2');
 
-      const res2 = await fetch(
-        `http://127.0.0.1:${port}/v1/conversations?include_deleted=1`,
-        { headers: { 'x-session-id': sessionId } }
-      );
-      const body2 = await res2.json();
+    const res2 = await request(app).get('/v1/conversations?include_deleted=1').set('x-session-id', sessionId);
+    const body2 = res2.body;
       const ids = body2.items.map((i) => i.id).sort();
       assert.equal(ids.length, 2);
       assert.ok(ids.includes('c1'));
       assert.ok(ids.includes('c2'));
-    });
   });
 });
 
@@ -196,21 +144,14 @@ describe('GET /v1/conversations', () => {
 describe('GET /v1/conversations/:id', () => {
   test('returns 400 when session id is missing (no session resolver)', async () => {
     const app = makeApp(false);
-    await withServer(app, async (port) => {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/conversations/abc`);
-      assert.equal(res.status, 400);
-    });
+    const res = await request(app).get('/v1/conversations/abc');
+    assert.equal(res.status, 400);
   });
 
   test('returns 404 for non-existent conversation', async () => {
     const app = makeApp();
-    await withServer(app, async (port) => {
-      const res = await fetch(
-        `http://127.0.0.1:${port}/v1/conversations/missing`,
-        { headers: { 'x-session-id': sessionId } }
-      );
-      assert.equal(res.status, 404);
-    });
+    const res = await request(app).get('/v1/conversations/missing').set('x-session-id', sessionId);
+    assert.equal(res.status, 404);
   });
 
   test('returns metadata and first page of messages with next_after_seq', async () => {
@@ -223,16 +164,12 @@ describe('GET /v1/conversations/:id', () => {
     stmt.run({ cid: 'c1', c: 'm2', s: 2 });
     stmt.run({ cid: 'c1', c: 'm3', s: 3 });
     const app = makeApp();
-    await withServer(app, async (port) => {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/conversations/c1?limit=2`, {
-        headers: { 'x-session-id': sessionId },
-      });
-      const body = await res.json();
-      assert.equal(body.id, 'c1');
-      assert.equal(body.messages.length, 2);
-      assert.equal(body.messages[0].seq, 1);
-      assert.equal(body.next_after_seq, 2);
-    });
+    const res = await request(app).get('/v1/conversations/c1?limit=2').set('x-session-id', sessionId);
+    const body = res.body;
+    assert.equal(body.id, 'c1');
+    assert.equal(body.messages.length, 2);
+    assert.equal(body.messages[0].seq, 1);
+    assert.equal(body.next_after_seq, 2);
   });
 
   test('supports after_seq and limit query params', async () => {
@@ -245,28 +182,20 @@ describe('GET /v1/conversations/:id', () => {
     stmt.run({ cid: 'c1', c: 'm2', s: 2 });
     stmt.run({ cid: 'c1', c: 'm3', s: 3 });
     const app = makeApp();
-    await withServer(app, async (port) => {
-      const res = await fetch(
-        `http://127.0.0.1:${port}/v1/conversations/c1?after_seq=2&limit=2`,
-        { headers: { 'x-session-id': sessionId } }
-      );
-      const body = await res.json();
-      assert.equal(body.messages.length, 1);
-      assert.equal(body.messages[0].seq, 3);
-      assert.equal(body.next_after_seq, null);
-    });
+    const res = await request(app)
+      .get('/v1/conversations/c1?after_seq=2&limit=2')
+      .set('x-session-id', sessionId);
+    const body = res.body;
+    assert.equal(body.messages.length, 1);
+    assert.equal(body.messages[0].seq, 3);
+    assert.equal(body.next_after_seq, null);
   });
 
   test('returns 501 when persistence is disabled', async () => {
     config.persistence.enabled = false;
     const app = makeApp();
-    await withServer(app, async (port) => {
-      const res = await fetch(
-        `http://127.0.0.1:${port}/v1/conversations/c1`,
-        { headers: { 'x-session-id': sessionId } }
-      );
-      assert.equal(res.status, 501);
-    });
+    const res = await request(app).get('/v1/conversations/c1').set('x-session-id', sessionId);
+    assert.equal(res.status, 501);
   });
 });
 
@@ -275,53 +204,31 @@ describe('DELETE /v1/conversations/:id', () => {
   test('soft deletes an existing conversation and returns 204', async () => {
     createConversation({ id: 'c1', sessionId });
     const app = makeApp();
-    await withServer(app, async (port) => {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/conversations/c1`, {
-        method: 'DELETE',
-        headers: { 'x-session-id': sessionId },
-      });
-      assert.equal(res.status, 204);
-      const db = getDb();
-      const row = db
-        .prepare("SELECT deleted_at FROM conversations WHERE id='c1'")
-        .get();
-      assert.ok(row.deleted_at);
-    });
+    const res = await request(app).delete('/v1/conversations/c1').set('x-session-id', sessionId);
+    assert.equal(res.status, 204);
+    const db = getDb();
+    const row = db.prepare("SELECT deleted_at FROM conversations WHERE id='c1'").get();
+    assert.ok(row.deleted_at);
   });
 
   test('returns 404 when deleting already deleted conversation', async () => {
     createConversation({ id: 'c1', sessionId });
     softDeleteConversation({ id: 'c1', sessionId });
     const app = makeApp();
-    await withServer(app, async (port) => {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/conversations/c1`, {
-        method: 'DELETE',
-        headers: { 'x-session-id': sessionId },
-      });
-      assert.equal(res.status, 404);
-    });
+    const res = await request(app).delete('/v1/conversations/c1').set('x-session-id', sessionId);
+    assert.equal(res.status, 404);
   });
 
   test('returns 404 when conversation not found', async () => {
     const app = makeApp();
-    await withServer(app, async (port) => {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/conversations/missing`, {
-        method: 'DELETE',
-        headers: { 'x-session-id': sessionId },
-      });
-      assert.equal(res.status, 404);
-    });
+    const res = await request(app).delete('/v1/conversations/missing').set('x-session-id', sessionId);
+    assert.equal(res.status, 404);
   });
 
   test('returns 501 when persistence is disabled', async () => {
     config.persistence.enabled = false;
     const app = makeApp();
-    await withServer(app, async (port) => {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/conversations/c1`, {
-        method: 'DELETE',
-        headers: { 'x-session-id': sessionId },
-      });
-      assert.equal(res.status, 501);
-    });
+    const res = await request(app).delete('/v1/conversations/c1').set('x-session-id', sessionId);
+    assert.equal(res.status, 501);
   });
 });

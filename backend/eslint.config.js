@@ -31,10 +31,12 @@ export default [
     },
     rules: {
       'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      // Allow empty catch blocks in tests/utilities where we intentionally swallow errors
+      'no-empty': ['error', { allowEmptyCatch: true }],
     },
   },
   {
-    files: ['__tests__/**/*.js'],
+    files: ['__tests__/**/*.js', 'test_utils/**/*.js'],
     languageOptions: {
       globals: {
         ...globals.jest,

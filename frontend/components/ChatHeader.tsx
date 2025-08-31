@@ -122,7 +122,7 @@ export function ChatHeader({ model, onModelChange, providerId, onProviderChange,
   };
 
   return (
-    <header className="sticky top-0 z-10 border-b border-slate-200/60 dark:border-neutral-800/60 bg-white/80 dark:bg-neutral-950/80 backdrop-blur-md supports-[backdrop-filter]:bg-white/70 dark:supports-[backdrop-filter]:bg-neutral-950/70 shadow-sm">
+    <header className="sticky top-0 z-10 bg-white/60 dark:bg-neutral-900/60 backdrop-blur-md">
       <div className="mx-auto max-w-4xl px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-4">

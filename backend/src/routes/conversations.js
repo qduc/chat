@@ -90,6 +90,9 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
       reasoningEffort,
       verbosity
     } = req.body || {};
+    const sysPrompt = typeof req.body?.system_prompt === 'string' ? req.body.system_prompt.trim() : (
+      typeof req.body?.systemPrompt === 'string' ? req.body.systemPrompt.trim() : ''
+    );
     const id = uuidv4();
     createConversation({
       id,
@@ -100,7 +103,8 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
       toolsEnabled,
       qualityLevel,
       reasoningEffort,
-      verbosity
+      verbosity,
+      metadata: sysPrompt ? { system_prompt: sysPrompt } : {}
     });
     const convo = getConversationById({ id, sessionId });
     return res.status(201).json(convo);
@@ -138,8 +142,10 @@ conversationsRouter.get('/v1/conversations/:id', (req, res) => {
       limit,
     });
 
+    const sysPrompt = convo?.metadata?.system_prompt || null;
     return res.json({
       ...convo,
+      system_prompt: sysPrompt,
       messages: page.messages,
       next_after_seq: page.next_after_seq,
     });

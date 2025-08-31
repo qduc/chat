@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatV2 as Chat } from '../components/ChatV2';
 import { ThemeProvider } from '../contexts/ThemeContext';
@@ -28,17 +28,7 @@ Object.defineProperty(global, 'crypto', {
   },
 });
 
-const encoder = new TextEncoder();
-function sseStream(lines: string[]) {
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const line of lines) {
-        controller.enqueue(encoder.encode(line));
-      }
-      controller.close();
-    },
-  });
-}
+// Note: no SSE helpers needed; tests stub sendChat directly
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(<ThemeProvider>{ui}</ThemeProvider>);
@@ -119,9 +109,9 @@ describe('<Chat />', () => {
     renderWithProviders(<Chat />);
 
     await waitFor(() => {
-      // Test behavior: User should be able to see and interact with a model selection interface
-      // Focus on the presence of the selection element and its accessibility
-      const modelSelect = screen.getByRole('combobox', { name: /model/i });
+      // User should be able to see and interact with a model selection interface
+      // Query by accessible label instead of relying on a specific ARIA role implementation
+      const modelSelect = screen.getByLabelText('Model');
       expect(modelSelect).toBeInTheDocument();
       expect(modelSelect).toBeEnabled();
     });

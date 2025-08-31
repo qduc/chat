@@ -21,11 +21,11 @@ interface ModelSelectorProps {
 const FAVORITES_KEY = 'chatforge-favorite-models';
 const RECENT_KEY = 'chatforge-recent-models';
 
-export default function ModelSelector({ 
-  value, 
-  onChange, 
-  groups, 
-  fallbackOptions, 
+export default function ModelSelector({
+  value,
+  onChange,
+  groups,
+  fallbackOptions,
   className = '',
   ariaLabel = 'Select model'
 }: ModelSelectorProps) {
@@ -34,7 +34,7 @@ export default function ModelSelector({
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [recentModels, setRecentModels] = useState<string[]>([]);
   const [selectedTab, setSelectedTab] = useState<string>('all');
-  
+
   const searchInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -45,7 +45,7 @@ export default function ModelSelector({
       if (savedFavorites) {
         setFavorites(new Set(JSON.parse(savedFavorites)));
       }
-      
+
       const savedRecent = localStorage.getItem(RECENT_KEY);
       if (savedRecent) {
         setRecentModels(JSON.parse(savedRecent));
@@ -58,7 +58,7 @@ export default function ModelSelector({
   // Get all available models with provider info
   const allModels = useMemo(() => {
     if (groups && groups.length > 0) {
-      return groups.flatMap(group => 
+      return groups.flatMap(group =>
         group.options.map(option => ({
           ...option,
           provider: group.label,
@@ -76,7 +76,7 @@ export default function ModelSelector({
   // Get available provider tabs
   const providerTabs = useMemo(() => {
     const tabs = [{ id: 'all', label: 'All', count: allModels.length }];
-    
+
     if (groups && groups.length > 1) {
       groups.forEach(group => {
         tabs.push({
@@ -86,39 +86,39 @@ export default function ModelSelector({
         });
       });
     }
-    
+
     return tabs;
   }, [groups, allModels.length]);
 
   // Filter models based on search query and selected tab
   const filteredModels = useMemo(() => {
     let models = allModels;
-    
+
     // Filter by selected tab
     if (selectedTab !== 'all') {
       models = models.filter(model => model.providerId === selectedTab);
     }
-    
+
     // Filter by search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      models = models.filter(model => 
+      models = models.filter(model =>
         model.label.toLowerCase().includes(query) ||
         model.value.toLowerCase().includes(query) ||
         (model.provider && model.provider.toLowerCase().includes(query))
       );
     }
-    
+
     return models;
   }, [allModels, searchQuery, selectedTab]);
 
   // Organize models into sections
   const organizedModels = useMemo(() => {
     const favoriteModels = filteredModels.filter(model => favorites.has(model.value));
-    const recentFilteredModels = filteredModels.filter(model => 
+    const recentFilteredModels = filteredModels.filter(model =>
       recentModels.includes(model.value) && !favorites.has(model.value)
     ).sort((a, b) => recentModels.indexOf(a.value) - recentModels.indexOf(b.value));
-    const otherModels = filteredModels.filter(model => 
+    const otherModels = filteredModels.filter(model =>
       !favorites.has(model.value) && !recentModels.includes(model.value)
     );
 
@@ -137,7 +137,7 @@ export default function ModelSelector({
       newFavorites.add(modelValue);
     }
     setFavorites(newFavorites);
-    
+
     try {
       localStorage.setItem(FAVORITES_KEY, JSON.stringify([...newFavorites]));
     } catch (error) {
@@ -150,12 +150,12 @@ export default function ModelSelector({
     setIsOpen(false);
     setSearchQuery('');
     setSelectedTab('all'); // Reset to All tab after selection
-    
+
     // Update recent models (max 5, exclude favorites)
     if (!favorites.has(modelValue)) {
       const newRecent = [modelValue, ...recentModels.filter(m => m !== modelValue)].slice(0, 5);
       setRecentModels(newRecent);
-      
+
       try {
         localStorage.setItem(RECENT_KEY, JSON.stringify(newRecent));
       } catch (error) {
@@ -270,7 +270,7 @@ export default function ModelSelector({
               ))}
             </div>
           )}
-          
+
           {/* Search Header */}
           <div className="p-2 border-b border-slate-200 dark:border-neutral-700">
             <div className="relative">
@@ -326,7 +326,7 @@ export default function ModelSelector({
 
             {filteredModels.length === 0 && (
               <div className="px-3 py-6 text-center text-slate-500 dark:text-slate-400">
-                No models found matching "{searchQuery}"
+                No models found matching &quot;{searchQuery}&quot;
               </div>
             )}
           </div>
