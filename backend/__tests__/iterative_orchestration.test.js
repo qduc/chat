@@ -138,12 +138,12 @@ describe('Iterative Orchestration', () => {
 
       const res = new MockResponse();
       const req = new MockRequest();
-      const body = { 
+      const body = {
         model: 'gpt-3.5-turbo',
         tools: [toolRegistry.get_time]
       };
-      const bodyIn = { 
-        messages: [{ role: 'user', content: 'What time is it?' }] 
+      const bodyIn = {
+        messages: [{ role: 'user', content: 'What time is it?' }]
       };
 
       // Mock persistence functions
@@ -169,9 +169,9 @@ describe('Iterative Orchestration', () => {
       });
 
       assert(res.ended, 'Response should be ended');
-      
+
       const events = res.getStreamedEvents();
-      
+
       // Should have: tool_call event, tool_output event, content event, final event
       const toolCallEvents = events.filter(e => e.choices?.[0]?.delta?.tool_calls);
       const toolOutputEvents = events.filter(e => e.choices?.[0]?.delta?.tool_output);
@@ -237,12 +237,12 @@ describe('Iterative Orchestration', () => {
 
       const res = new MockResponse();
       const req = new MockRequest();
-      const body = { 
+      const body = {
         model: 'gpt-3.5-turbo',
         tools: [toolRegistry.get_time, toolRegistry.web_search]
       };
-      const bodyIn = { 
-        messages: [{ role: 'user', content: 'Get time then search for latest tech news' }] 
+      const bodyIn = {
+        messages: [{ role: 'user', content: 'Get time then search for latest tech news' }]
       };
 
       const mockPersistence = {
@@ -267,9 +267,9 @@ describe('Iterative Orchestration', () => {
       });
 
       assert(res.ended, 'Response should be ended');
-      
+
       const events = res.getStreamedEvents();
-      
+
       // Should have multiple iterations with different tools
       const toolCallEvents = events.filter(e => e.choices?.[0]?.delta?.tool_calls);
       const toolOutputEvents = events.filter(e => e.choices?.[0]?.delta?.tool_output);
@@ -314,12 +314,12 @@ describe('Iterative Orchestration', () => {
 
       const res = new MockResponse();
       const req = new MockRequest();
-      const body = { 
+      const body = {
         model: 'gpt-3.5-turbo',
         tools: [toolRegistry.get_time]
       };
-      const bodyIn = { 
-        messages: [{ role: 'user', content: 'Use invalid tool' }] 
+      const bodyIn = {
+        messages: [{ role: 'user', content: 'Use invalid tool' }]
       };
 
       const mockPersistence = {
@@ -344,15 +344,15 @@ describe('Iterative Orchestration', () => {
       });
 
       assert(res.ended, 'Response should be ended');
-      
+
       const events = res.getStreamedEvents();
       const toolOutputEvents = events.filter(e => e.choices?.[0]?.delta?.tool_output);
-      
+
       // Should have error output
       assert(toolOutputEvents.length >= 1, 'Should have tool output event');
-      
+
       // Check if error is properly handled
-      const errorOutput = toolOutputEvents.find(e => 
+      const errorOutput = toolOutputEvents.find(e =>
         e.choices[0].delta.tool_output.output?.includes('unknown_tool') ||
         typeof e.choices[0].delta.tool_output.output === 'string'
       );
@@ -386,12 +386,12 @@ describe('Iterative Orchestration', () => {
 
       const res = new MockResponse();
       const req = new MockRequest();
-      const body = { 
+      const body = {
         model: 'gpt-3.5-turbo',
         tools: [toolRegistry.get_time]
       };
-      const bodyIn = { 
-        messages: [{ role: 'user', content: 'Keep calling tools' }] 
+      const bodyIn = {
+        messages: [{ role: 'user', content: 'Keep calling tools' }]
       };
 
       const mockPersistence = {
@@ -415,12 +415,12 @@ describe('Iterative Orchestration', () => {
       });
 
       assert(res.ended, 'Response should be ended');
-      
+
       const events = res.getStreamedEvents();
       const contentEvents = events.filter(e => e.choices?.[0]?.delta?.content);
-      
+
       // Should have maximum iterations reached message
-      const maxIterationsEvent = contentEvents.find(e => 
+      const maxIterationsEvent = contentEvents.find(e =>
         e.choices[0].delta.content?.includes('Maximum iterations reached')
       );
       assert(maxIterationsEvent, 'Should have maximum iterations reached message');
@@ -444,16 +444,17 @@ describe('Iterative Orchestration', () => {
         }]
       }];
 
-      setupMockFetch(aiResponses);
+      const mockHttp = jest.fn();
+      setupMockFetch(aiResponses, mockHttp);
 
       const res = new MockResponse();
       const req = new MockRequest();
-      const body = { 
+      const body = {
         model: 'gpt-3.5-turbo',
         tools: [toolRegistry.get_time]
       };
-      const bodyIn = { 
-        messages: [{ role: 'user', content: 'What time is it?' }] 
+      const bodyIn = {
+        messages: [{ role: 'user', content: 'What time is it?' }]
       };
 
       const mockPersistence = {
@@ -740,7 +741,7 @@ describe('Tool Integration', () => {
 
   it('should correctly execute get_time tool', async () => {
     const result = await toolRegistry.get_time.handler({});
-    
+
     assert(result.iso, 'Should return ISO timestamp');
     assert(result.human, 'Should return human readable time');
     assert(result.timezone, 'Should return timezone info');
@@ -767,7 +768,7 @@ describe('Tool Integration', () => {
 
     try {
       const result = await toolRegistry.web_search.handler({ query: 'test query' });
-      
+
       assert(typeof result === 'string', 'Should return string result');
       assert(result.includes('Test answer'), 'Should contain search answer');
       assert(result.includes('Test Result 1'), 'Should contain search results');
