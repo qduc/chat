@@ -12,6 +12,7 @@ export class MockUpstream {
     this.server = null;
     this.port = null;
     this.shouldError = false;
+    this.sockets = new Set();
     this.setupRoutes();
   }
 
@@ -79,13 +80,28 @@ export class MockUpstream {
         this.port = this.server.address().port;
         resolve();
       });
+
+      // Track sockets so we can force-close them in tests
+      this.server.on('connection', (socket) => {
+        this.sockets.add(socket);
+        socket.on('close', () => this.sockets.delete(socket));
+      });
     });
   }
 
   async stop() {
     if (this.server) {
+      // Destroy any open keep-alive sockets first to avoid open handle leaks
+      for (const socket of this.sockets) {
+        try { socket.destroy(); } catch {}
+      }
+      this.sockets.clear();
+
       return new Promise((resolve) => {
-        this.server.close(resolve);
+        this.server.close(() => {
+          this.server = null;
+          resolve();
+        });
       });
     }
   }
@@ -109,11 +125,21 @@ export const makeApp = (useSession = true) => {
 
 export const withServer = async (app, fn) => {
   const srv = app.listen(0);
+  const sockets = new Set();
+  srv.on('connection', (socket) => {
+    sockets.add(socket);
+    socket.on('close', () => sockets.delete(socket));
+  });
   await new Promise(resolve => srv.on('listening', resolve));
   const port = srv.address().port;
   try {
     return await fn(port);
   } finally {
+    // Ensure any lingering keep-alive sockets are torn down before closing
+    for (const s of sockets) {
+      try { s.destroy(); } catch {}
+    }
+    sockets.clear();
     await new Promise(resolve => srv.close(resolve));
   }
 };
@@ -182,4 +208,3 @@ export function createChatProxyTestContext() {
 
   return { upstream, makeApp, withServer };
 }
-
