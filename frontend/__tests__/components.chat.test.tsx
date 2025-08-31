@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatV2 as Chat } from '../components/ChatV2';
 import { ThemeProvider } from '../contexts/ThemeContext';
@@ -28,17 +28,7 @@ Object.defineProperty(global, 'crypto', {
   },
 });
 
-const encoder = new TextEncoder();
-function sseStream(lines: string[]) {
-  return new ReadableStream<Uint8Array>({
-    start(controller) {
-      for (const line of lines) {
-        controller.enqueue(encoder.encode(line));
-      }
-      controller.close();
-    },
-  });
-}
+// Note: no SSE helpers needed; tests stub sendChat directly
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(<ThemeProvider>{ui}</ThemeProvider>);
