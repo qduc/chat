@@ -98,8 +98,12 @@ export class MockUpstream {
       this.sockets.clear();
 
       return new Promise((resolve) => {
-        this.server.close(() => {
+        this.server.close((err) => {
+          if (err) {
+            console.warn('Error closing server:', err);
+          }
           this.server = null;
+          this.port = null;
           resolve();
         });
       });
