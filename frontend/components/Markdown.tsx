@@ -32,23 +32,13 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
               {children}
             </a>
           ),
-          code: (p) => {
+          code: function CodeRenderer(p) {
             const { inline, className: cls, children } = p as any;
-            // Consider it a block only if explicitly non-inline OR language-* class is present
             const hasLanguage = /\blanguage-/.test(cls || "");
             const isInline = inline ?? !hasLanguage;
-            // Keep classes provided by rehype-highlight for blocks only (e.g., 'hljs', 'language-xyz')
             const className = ["md-code", cls].filter(Boolean).join(" ");
-            if (isInline) {
-              return (
-                <code
-                  className="md-inline-code px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-neutral-800 text-[0.9em] font-mono border border-slate-200 dark:border-neutral-700"
-                >
-                  {children}
-                </code>
-              );
-            }
-            // Code block with sticky copy button
+
+            // Hooks must be called unconditionally
             const preRef = React.useRef<HTMLPreElement | null>(null);
             const [copied, setCopied] = React.useState(false);
 
@@ -59,7 +49,6 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
                 if (navigator.clipboard?.writeText) {
                   await navigator.clipboard.writeText(text);
                 } else {
-                  // Fallback
                   const ta = document.createElement("textarea");
                   ta.value = text;
                   ta.style.position = "fixed";
@@ -71,14 +60,21 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
                 }
                 setCopied(true);
                 setTimeout(() => setCopied(false), 1200);
-              } catch (e) {
+              } catch {
                 // no-op
               }
             };
 
+            if (isInline) {
+              return (
+                <code className="md-inline-code px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-neutral-800 text-[0.9em] font-mono border border-slate-200 dark:border-neutral-700">
+                  {children}
+                </code>
+              );
+            }
+
             return (
               <div className="relative my-3">
-                {/* Sticky wrapper keeps the button visible while the code block is on screen */}
                 <div className="sticky top-2 z-10">
                   <button
                     type="button"
@@ -86,14 +82,11 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
                     onClick={onCopy}
                     className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-neutral-700 bg-white/80 dark:bg-neutral-900/70 backdrop-blur px-2 py-1 text-xs text-slate-700 dark:text-slate-200 shadow hover:bg-white dark:hover:bg-neutral-800 transition-colors"
                   >
-                    {/* Copy icon */}
                     {copied ? (
-                      // Check icon
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
                         <path fillRule="evenodd" d="M2.25 12a9.75 9.75 0 1117.132 6.132l2.244 2.244a.75.75 0 11-1.06 1.06l-2.244-2.244A9.75 9.75 0 012.25 12zm13.28-2.03a.75.75 0 00-1.06-1.06l-4.72 4.72-1.44-1.44a.75.75 0 10-1.06 1.06l1.97 1.97a.75.75 0 001.06 0l5.25-5.25z" clipRule="evenodd" />
                       </svg>
                     ) : (
-                      // Copy icon
                       <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="h-4 w-4">
                         <rect x="9" y="9" width="11" height="11" rx="2" />
                         <rect x="4" y="4" width="11" height="11" rx="2" />
