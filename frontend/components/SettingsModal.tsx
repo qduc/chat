@@ -92,7 +92,7 @@ export default function SettingsModal({
 
   // Clear test results when form changes (but not immediately after setting them)
   const [lastTestTime, setLastTestTime] = React.useState(0);
-  
+
   React.useEffect(() => {
     // Don't clear results if we just set them (within last 500ms)
     if (testResult && Date.now() - lastTestTime > 500) {
@@ -170,12 +170,12 @@ export default function SettingsModal({
   const handleQuickToggle = React.useCallback(async (providerId: string, enabled: boolean) => {
     // Add to loading set
     setToggleLoading(prev => new Set([...prev, providerId]));
-    
+
     // Optimistic update
-    setProviders(prev => prev.map(p => 
+    setProviders(prev => prev.map(p =>
       p.id === providerId ? { ...p, enabled: enabled ? 1 : 0 } : p
     ));
-    
+
     try {
       setError(null);
       const response = await fetch(`${apiBase}/v1/providers/${providerId}`, {
@@ -183,17 +183,17 @@ export default function SettingsModal({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ enabled })
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData?.message || `Toggle failed (${response.status})`);
       }
-      
+
       // Refresh providers to get updated data
       await fetchProviders();
     } catch (error: any) {
       // Revert on failure
-      setProviders(prev => prev.map(p => 
+      setProviders(prev => prev.map(p =>
         p.id === providerId ? { ...p, enabled: enabled ? 0 : 1 } : p
       ));
       const provider = providers.find(p => p.id === providerId);
@@ -219,7 +219,7 @@ export default function SettingsModal({
     // Check if we have an API key or if we're testing an existing provider
     const hasApiKey = form.api_key && form.api_key.trim() !== '';
     const isExistingProvider = form.id && form.id.trim() !== '';
-    
+
     if (!hasApiKey && !isExistingProvider) {
       const errorResult = { success: false, message: 'Please enter an API key to test the connection' };
       setLastTestTime(Date.now());
@@ -268,7 +268,7 @@ export default function SettingsModal({
       }
 
       const result = await res.json();
-      
+
       const successResult = {
         success: true,
         message: result?.message || 'Connection successful! Provider is working correctly.',
@@ -359,7 +359,7 @@ export default function SettingsModal({
                       Add New
                     </button>
                   </div>
-                  
+
                   <div className="bg-white/70 dark:bg-neutral-900/60 rounded-xl border border-slate-200/70 dark:border-neutral-800 divide-y divide-slate-200/60 dark:divide-neutral-800 max-h-96 overflow-auto shadow-sm">
                     {loadingProviders && (
                       <div className="p-4 text-sm text-slate-500 text-center">Loading providers...</div>
@@ -375,13 +375,14 @@ export default function SettingsModal({
                       <div
                         key={p.id}
                         className={`w-full p-3 sm:p-4 transition-colors ${
-                          selectedId === p.id 
+                          selectedId === p.id
                             ? 'bg-slate-50 dark:bg-neutral-800/60'
                             : 'hover:bg-slate-50 dark:hover:bg-neutral-900/40'
                         }`}
                       >
-                        <button
-                          type="button"
+                        <div
+                          role="button"
+                          tabIndex={0}
                           onClick={() => onSelectProvider(p)}
                           onKeyDown={(e) => {
                             if (e.key === ' ' || e.key === 'Enter') {
@@ -419,7 +420,7 @@ export default function SettingsModal({
                             )}
                           </div>
                         </div>
-                        </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -517,21 +518,6 @@ export default function SettingsModal({
                         value={form.default_model || ''}
                         onChange={(e) => setForm((f) => ({ ...f, default_model: e.target.value }))}
                         placeholder="gpt-4o-mini"
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between py-2">
-                      <div>
-                        <label htmlFor="provider-enabled" className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                          Enable Provider
-                        </label>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Allow this provider to be used for chat completions</p>
-                      </div>
-                      <Toggle
-                        id="provider-enabled"
-                        ariaLabel="Enable provider"
-                        checked={form.enabled}
-                        onChange={(v) => setForm((f) => ({ ...f, enabled: v }))}
                       />
                     </div>
 
