@@ -1,15 +1,15 @@
 // Behavior tests for Providers API CRUD and connectivity endpoints
 import assert from 'node:assert/strict';
 import express from 'express';
-import { providersRouter } from '../src/routes/providers.js';
+import { jest } from '@jest/globals';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
 
 // Helper to spin up a minimal app
-const makeApp = () => {
+const makeApp = (router) => {
   const app = express();
   app.use(express.json());
-  app.use(providersRouter);
+  app.use(router);
   return app;
 };
 
@@ -41,7 +41,8 @@ afterAll(() => {
 
 describe('Providers CRUD', () => {
   test('create, list, get, update, set default, and delete provider', async () => {
-    const app = makeApp();
+    const { providersRouter } = await import('../src/routes/providers.js');
+    const app = makeApp(providersRouter);
     await withServer(app, async (port) => {
       const base = `http://127.0.0.1:${port}/v1/providers`;
 
@@ -110,15 +111,17 @@ describe('Providers CRUD', () => {
 
 describe('Providers connectivity', () => {
   test('GET /v1/providers/:id/models returns normalized model list when upstream ok', async () => {
-    // Use ESM mocking for node-fetch and import router in isolated module
-    const { jest } = await import('@jest/globals');
-    await jest.isolateModulesAsync(async () => {
-      const fetchMock = jest.fn().mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: [{ id: 'gpt-x' }, { id: 'gpt-y' }] }),
-      });
-      const providersModule = await jest.unstable_mockModule('node-fetch', () => ({ default: fetchMock }));
-      const { providersRouter: mockedRouter } = await import('../src/routes/providers.js');
+    // Use DI to inject a mocked HTTP client
+    const mockHttp = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: [{ id: 'gpt-x' }, { id: 'gpt-y' }] }),
+    });
+
+    const { createProvidersRouter } = await import('../src/routes/providers.js');
+    const app = makeApp(createProvidersRouter({ http: mockHttp }));
+
+    await withServer(app, async (port) => {
+      const base = `http://127.0.0.1:${port}/v1/providers`;
 
       // Seed provider
       const db = getDb();
@@ -126,58 +129,51 @@ describe('Providers connectivity', () => {
       db.prepare(`INSERT INTO providers (id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
                   VALUES ('p2','p2','openai','k','http://mock',1,1,'{}','{}',datetime('now'),datetime('now'))`).run();
 
-      const app = express();
-      app.use(express.json());
-      app.use(mockedRouter);
-
-      await withServer(app, async (port) => {
-        const res = await fetch(`http://127.0.0.1:${port}/v1/providers/p2/models`);
-        assert.equal(res.status, 200);
-        const body = await res.json();
-        assert.ok(Array.isArray(body.models));
-        assert.ok(body.models.some((m) => m.id === 'gpt-x'));
-      });
+      const res = await fetch(`${base}/p2/models`);
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.ok(Array.isArray(body.models));
+      assert.ok(body.models.some((m) => m.id === 'gpt-x'));
     });
   });
 
   test('POST /v1/providers/test maps upstream 401 to friendly message', async () => {
-    const { jest } = await import('@jest/globals');
-    await jest.isolateModulesAsync(async () => {
-      const fetchMock = jest.fn().mockResolvedValueOnce({
-        ok: false,
-        status: 401,
-        text: async () => 'Unauthorized',
-      });
-      await jest.unstable_mockModule('node-fetch', () => ({ default: fetchMock }));
-      const { providersRouter: mockedRouter } = await import('../src/routes/providers.js');
+    // Mock HTTP to simulate 401 unauthorized
+    const mockHttp = jest.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      text: async () => 'Unauthorized',
+    });
 
-      const app = express();
-      app.use(express.json());
-      app.use(mockedRouter);
+    const { createProvidersRouter } = await import('../src/routes/providers.js');
+    const app = makeApp(createProvidersRouter({ http: mockHttp }));
 
-      await withServer(app, async (port) => {
-        const res = await fetch(`http://127.0.0.1:${port}/v1/providers/test`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ name: 'p3', provider_type: 'openai', api_key: 'bad-key', base_url: 'http://mock' }),
-        });
-        assert.equal(res.status, 400);
-        const body = await res.json();
-        assert.equal(body.error, 'test_failed');
-        assert.ok(/Invalid API key/i.test(body.message));
+    await withServer(app, async (port) => {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/providers/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'p3', provider_type: 'openai', api_key: 'bad-key', base_url: 'http://mock' }),
       });
+      assert.equal(res.status, 400);
+      const body = await res.json();
+      assert.equal(body.error, 'test_failed');
+      console.log('Provider test error message:', body.message);
+      assert.ok(/Invalid API key/i.test(body.message));
     });
   });
 
   test('POST /v1/providers/:id/test uses stored key and succeeds', async () => {
-    const { jest } = await import('@jest/globals');
-    await jest.isolateModulesAsync(async () => {
-      const fetchMock = jest.fn().mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({ data: [{ id: 'gpt-z' }] }),
-      });
-      await jest.unstable_mockModule('node-fetch', () => ({ default: fetchMock }));
-      const { providersRouter: mockedRouter } = await import('../src/routes/providers.js');
+    // Mock HTTP to simulate successful response
+    const mockHttp = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: [{ id: 'gpt-z' }] }),
+    });
+
+    const { createProvidersRouter } = await import('../src/routes/providers.js');
+    const app = makeApp(createProvidersRouter({ http: mockHttp }));
+
+    await withServer(app, async (port) => {
+      const base = `http://127.0.0.1:${port}/v1/providers`;
 
       // Seed provider with key
       const db = getDb();
@@ -185,21 +181,19 @@ describe('Providers connectivity', () => {
       db.prepare(`INSERT INTO providers (id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
                   VALUES ('p4','p4','openai','key123','http://mock',1,1,'{}','{}',datetime('now'),datetime('now'))`).run();
 
-      const app = express();
-      app.use(express.json());
-      app.use(mockedRouter);
-
-      await withServer(app, async (port) => {
-        const res = await fetch(`http://127.0.0.1:${port}/v1/providers/p4/test`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ base_url: 'http://mock' }),
-        });
-        assert.equal(res.status, 200);
-        const body = await res.json();
-        assert.equal(body.success, true);
-        assert.ok(typeof body.models === 'number');
+      const res = await fetch(`${base}/p4/test`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ base_url: 'http://mock' }),
       });
+      if (res.status !== 200) {
+        const errorBody = await res.text();
+        console.log('Provider :id/test error:', res.status, errorBody);
+      }
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.equal(body.success, true);
+      assert.ok(typeof body.models === 'number');
     });
   });
 });

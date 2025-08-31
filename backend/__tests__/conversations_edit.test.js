@@ -85,7 +85,8 @@ describe('PUT /v1/conversations/:id/messages/:messageId/edit', () => {
       );
       const origBody = await resOrig.json();
       const origSeqs = origBody.messages.map((m) => m.seq);
-      assert.deepEqual(origSeqs, [1]);
+      assert.equal(origSeqs.length, 1);
+      assert.equal(origSeqs[0], 1);
 
       // New conversation should have copied messages up to the edited one
       const resNew = await fetch(
@@ -94,7 +95,8 @@ describe('PUT /v1/conversations/:id/messages/:messageId/edit', () => {
       );
       const newBody = await resNew.json();
       const newSeqs = newBody.messages.map((m) => m.seq);
-      assert.deepEqual(newSeqs, [1]);
+      assert.equal(newSeqs.length, 1);
+      assert.equal(newSeqs[0], 1);
       assert.equal(newBody.messages[0].content, 'Hello world');
     });
   });

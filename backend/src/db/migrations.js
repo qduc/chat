@@ -131,9 +131,13 @@ const migrations = [
 export function runMigrations(db) {
   try {
     migrate(db, migrations);
-    console.log('[db] Migrations completed successfully');
+    if (process.env.NODE_ENV !== 'test') {
+      console.log('[db] Migrations completed successfully');
+    }
   } catch (error) {
-    console.error('[db] Migration failed:', error);
+    if (process.env.NODE_ENV !== 'test') {
+      console.error('[db] Migration failed:', error);
+    }
     throw error;
   }
 }

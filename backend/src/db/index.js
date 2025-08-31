@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import fs from 'fs';
 import path from 'path';
+import { v4 as uuidv4 } from 'uuid';
 import { config } from '../env.js';
 import { runMigrations } from './migrations.js';
 
@@ -425,7 +426,6 @@ export function forkConversationFromMessage({ originalConversationId, sessionId,
   const now = new Date().toISOString();
 
   // Create new conversation
-  const { v4: uuidv4 } = require('uuid');
   const newConversationId = uuidv4();
   db.prepare(
     `INSERT INTO conversations (id, session_id, user_id, title, model, metadata, created_at, updated_at)
