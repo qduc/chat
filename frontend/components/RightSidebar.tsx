@@ -38,7 +38,7 @@ export function RightSidebar({ systemPrompt, onSystemPromptChange }: RightSideba
   );
 
   return (
-    <aside className="w-72 p-4 flex flex-col bg-white/20 dark:bg-neutral-950/20 backdrop-blur-sm">
+    <aside className="w-72 p-4 flex flex-col bg-white/60 dark:bg-neutral-900/60 backdrop-blur-sm">
       <div className="flex items-center justify-between mb-3">
         <div className="text-sm font-semibold text-slate-700 dark:text-slate-300">System Prompt</div>
       </div>
