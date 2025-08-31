@@ -1,4 +1,3 @@
-import fetch from 'node-fetch';
 
 /**
  * Create a standardized chat completion chunk object

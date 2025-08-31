@@ -3,10 +3,6 @@
 import assert from 'node:assert/strict';
 import { jest } from '@jest/globals';
 
-// Mock node-fetch before importing modules that use it
-const mockFetch = jest.fn();
-jest.mock('node-fetch', () => mockFetch);
-
 import { handleUnifiedToolOrchestration } from '../src/lib/unifiedToolOrchestrator.js';
 import { tools as toolRegistry } from '../src/lib/tools.js';
 
@@ -80,9 +76,9 @@ const mockConfig = {
 };
 
 // Helper to setup mock responses
-const setupMockFetch = (responses) => {
+const setupMockFetch = (responses, mock) => {
   let callCount = 0;
-  mockFetch.mockImplementation(async (url, options) => {
+  mock.mockImplementation(async (url, options) => {
     const response = responses[callCount++] || responses[responses.length - 1];
     return {
       ok: true,
@@ -93,11 +89,11 @@ const setupMockFetch = (responses) => {
 
 describe('Iterative Orchestration', () => {
   beforeEach(() => {
-    mockFetch.mockReset();
+    // no-op: each test will create its own mock
   });
 
   afterEach(() => {
-    mockFetch.mockReset();
+    // no-op
   });
 
   describe.skip('handleUnifiedToolOrchestration', () => {
@@ -131,7 +127,8 @@ describe('Iterative Orchestration', () => {
         }
       ];
 
-      setupMockFetch(aiResponses);
+      const mockHttp = jest.fn();
+      setupMockFetch(aiResponses, mockHttp);
 
       const res = new MockResponse();
       const req = new MockRequest();
@@ -161,7 +158,8 @@ describe('Iterative Orchestration', () => {
         config: mockConfig,
         res,
         req,
-        ...mockPersistence
+        ...mockPersistence,
+        providerHttp: mockHttp
       });
 
       assert(res.ended, 'Response should be ended');
@@ -228,7 +226,8 @@ describe('Iterative Orchestration', () => {
         }
       ];
 
-      setupMockFetch(aiResponses);
+      const mockHttp = jest.fn();
+      setupMockFetch(aiResponses, mockHttp);
 
       const res = new MockResponse();
       const req = new MockRequest();
@@ -257,7 +256,8 @@ describe('Iterative Orchestration', () => {
         config: mockConfig,
         res,
         req,
-        ...mockPersistence
+        ...mockPersistence,
+        providerHttp: mockHttp
       });
 
       assert(res.ended, 'Response should be ended');
@@ -303,7 +303,8 @@ describe('Iterative Orchestration', () => {
         }
       ];
 
-      setupMockFetch(aiResponses);
+      const mockHttp = jest.fn();
+      setupMockFetch(aiResponses, mockHttp);
 
       const res = new MockResponse();
       const req = new MockRequest();
@@ -332,7 +333,8 @@ describe('Iterative Orchestration', () => {
         config: mockConfig,
         res,
         req,
-        ...mockPersistence
+        ...mockPersistence,
+        providerHttp: mockHttp
       });
 
       assert(res.ended, 'Response should be ended');
@@ -373,7 +375,8 @@ describe('Iterative Orchestration', () => {
       // Return the same response 15 times (more than MAX_ITERATIONS)
       const aiResponses = Array(15).fill(infiniteToolResponse);
 
-      setupMockFetch(aiResponses);
+      const mockHttp = jest.fn();
+      setupMockFetch(aiResponses, mockHttp);
 
       const res = new MockResponse();
       const req = new MockRequest();
@@ -465,7 +468,8 @@ describe('Iterative Orchestration', () => {
         config: mockConfig,
         res,
         req,
-        ...mockPersistence
+        ...mockPersistence,
+        providerHttp: mockHttp
       });
 
       // Simulate client disconnect
