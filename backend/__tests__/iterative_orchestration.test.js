@@ -94,12 +94,71 @@ const setupMockFetch = (responses, mock) => {
 };
 
 describe('Iterative Orchestration', () => {
-  beforeEach(() => {
-    // no-op: each test will create its own mock
+  // Track all MockUpstream instances for cleanup
+  const upstreamInstances = new Set();
+
+  // Setup database configuration for tests
+  beforeAll(() => {
+    // Configure test environment variables
+    process.env.PERSIST_TRANSCRIPTS = 'true';
+    process.env.DB_URL = 'file::memory:';
+    process.env.DEFAULT_MODEL = 'gpt-3.5-turbo';
+    process.env.PORT = '3001';
+    process.env.RATE_LIMIT_WINDOW_SEC = '60';
+    process.env.RATE_LIMIT_MAX = '50';
+    process.env.ALLOWED_ORIGIN = 'http://localhost:3000';
+
+    // Update config object directly since it's already imported
+    config.persistence.enabled = true;
+    config.persistence.dbUrl = 'file::memory:';
+    config.defaultModel = 'gpt-3.5-turbo';
+    config.port = 3001;
+    config.rate.windowSec = 60;
+    config.rate.max = 50;
+    config.allowedOrigin = 'http://localhost:3000';
   });
 
-  afterEach(() => {
-    // no-op
+  beforeEach(async () => {
+    // Reset database cache for clean state
+    const { resetDbCache } = await import('../src/db/index.js');
+    resetDbCache();
+  });
+
+  afterEach(async () => {
+    // Clean up all upstream instances created during tests
+    for (const upstream of upstreamInstances) {
+      try {
+        await upstream.stop();
+      } catch (error) {
+        console.warn('Error stopping upstream:', error);
+      }
+    }
+    upstreamInstances.clear();
+
+    // Clean up database connections after each test
+    const { resetDbCache } = await import('../src/db/index.js');
+    resetDbCache();
+  });
+
+  afterAll(async () => {
+    // Final cleanup - ensure all upstreams are stopped
+    for (const upstream of upstreamInstances) {
+      try {
+        await upstream.stop();
+      } catch (error) {
+        console.warn('Error in final upstream cleanup:', error);
+      }
+    }
+    upstreamInstances.clear();
+
+    // Clean up environment variables
+    delete process.env.PERSIST_TRANSCRIPTS;
+    delete process.env.DB_URL;
+    delete process.env.DEFAULT_MODEL;
+    delete process.env.PORT;
+    delete process.env.RATE_LIMIT_WINDOW_SEC;
+    delete process.env.RATE_LIMIT_MAX;
+    delete process.env.ALLOWED_ORIGIN;
   });
 
   describe.skip('handleUnifiedToolOrchestration', () => {
@@ -502,6 +561,7 @@ describe('Iterative Orchestration', () => {
 
     test('handles single tool call then final JSON via /v1/chat/completions', async () => {
       const upstream = new MockUpstream();
+      upstreamInstances.add(upstream); // Track for cleanup
       // Replace default routes with a fresh app so our override takes effect first
       upstream.app = express();
       upstream.app.use(express.json());
@@ -577,12 +637,13 @@ describe('Iterative Orchestration', () => {
       } finally {
         config.openaiBaseUrl = prevBase;
         config.providerConfig.baseUrl = prevProvBase;
-        await upstream.stop();
+        // Note: upstream cleanup handled by afterEach hook
       }
     }, 15000);
 
     test('handles multiple tool calls in sequence (JSON mode)', async () => {
       const upstream = new MockUpstream();
+      upstreamInstances.add(upstream); // Track for cleanup
       upstream.app = express();
       upstream.app.use(express.json());
       let calls = 0;
@@ -633,12 +694,13 @@ describe('Iterative Orchestration', () => {
       } finally {
         config.openaiBaseUrl = prevBase;
         config.providerConfig.baseUrl = prevProvBase;
-        await upstream.stop();
+        // Note: upstream cleanup handled by afterEach hook
       }
     }, 15000);
 
     test('handles invalid tool gracefully (JSON mode)', async () => {
       const upstream = new MockUpstream();
+      upstreamInstances.add(upstream); // Track for cleanup
       upstream.app = express();
       upstream.app.use(express.json());
       let calls = 0;
@@ -683,12 +745,13 @@ describe('Iterative Orchestration', () => {
       } finally {
         config.openaiBaseUrl = prevBase;
         config.providerConfig.baseUrl = prevProvBase;
-        await upstream.stop();
+        // Note: upstream cleanup handled by afterEach hook
       }
     }, 15000);
 
     test('respects maximum iterations limit (JSON mode)', async () => {
       const upstream = new MockUpstream();
+      upstreamInstances.add(upstream); // Track for cleanup
       upstream.app = express();
       upstream.app.use(express.json());
       // Always returns a tool call to force loop
@@ -724,7 +787,7 @@ describe('Iterative Orchestration', () => {
       } finally {
         config.openaiBaseUrl = prevBase;
         config.providerConfig.baseUrl = prevProvBase;
-        await upstream.stop();
+        // Note: upstream cleanup handled by afterEach hook
       }
     }, 15000);
   });
