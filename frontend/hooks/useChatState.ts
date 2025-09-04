@@ -524,9 +524,10 @@ export function useChatState() {
         qualityLevel: state.qualityLevel,
         ...(state.useTools
           ? {
+              // Send a simplified list of tool names to the backend. Backend will map names -> specs.
               tools: (state.enabledTools && state.enabledTools.length > 0)
-                ? Object.values(availableTools).filter(t => state.enabledTools!.includes(t.function?.name ?? ''))
-                : Object.values(availableTools),
+                ? state.enabledTools
+                : Object.keys(availableTools),
               tool_choice: 'auto',
             }
           : {}),
