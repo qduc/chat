@@ -39,6 +39,7 @@ export function MessageInput({
   onQualityLevelChange,
 }: MessageInputProps) {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  const toolsDropdownRef = useRef<HTMLDivElement | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [availableTools, setAvailableTools] = useState<{ name: string; description?: string }[]>([]);
   const [localSelected, setLocalSelected] = useState<string[]>(enabledTools);
@@ -55,6 +56,20 @@ export function MessageInput({
   useEffect(() => {
     setLocalSelected(enabledTools ?? []);
   }, [enabledTools]);
+
+  // Click outside to close tools dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (toolsDropdownRef.current && !toolsDropdownRef.current.contains(event.target as Node)) {
+        setToolsOpen(false);
+      }
+    };
+
+    if (toolsOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [toolsOpen]);
 
   // Load tool specs for the selector UI
   useEffect(() => {
@@ -116,12 +131,12 @@ export function MessageInput({
               )}
 
               <div className="flex items-center">
-                <div className="relative">
+                <div className="relative" ref={toolsDropdownRef}>
                   <button
                     type="button"
                     aria-label="Tools"
                     onClick={() => setToolsOpen(v => !v)}
-                    className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-neutral-800"
+                    className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors duration-150"
                   >
                     <Wrench className="w-4 h-4" />
                     <span className="text-xs text-slate-600 dark:text-slate-300">{localSelected.length ? `${localSelected.length}` : 'Off'}</span>
@@ -138,10 +153,10 @@ export function MessageInput({
                           const id = t.name;
                           const checked = localSelected.includes(id);
                           return (
-                            <label key={id} className="flex items-start gap-2">
+                            <label key={id} className="flex items-start gap-2 cursor-pointer p-1 rounded-md hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors duration-150">
                               <input
                                 type="checkbox"
-                                className="mt-1"
+                                className="mt-1 cursor-pointer"
                                 checked={checked}
                                 onChange={e => {
                                   const next = e.target.checked ? [...localSelected, id] : localSelected.filter(x => x !== id);
@@ -162,7 +177,7 @@ export function MessageInput({
                         <button
                           type="button"
                           onClick={() => setToolsOpen(false)}
-                          className="text-xs px-3 py-1 rounded-md bg-slate-100 dark:bg-neutral-800"
+                          className="text-xs px-3 py-1 rounded-md bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700 cursor-pointer transition-colors duration-150"
                         >Done</button>
                       </div>
                     </div>

@@ -68,33 +68,6 @@ function streamEvent(res, event, model) {
 }
 
 /**
- * Make a request to the AI model
- */
-async function callModel(messages, config, bodyParams, tools = null, providerId) {
-  // Determine tools to send: prefer bodyParams.tools (frontend-provided), then explicit tools arg, then full registry
-  const toolsToSend = (Array.isArray(bodyParams.tools) && bodyParams.tools.length)
-    ? bodyParams.tools
-    : (Array.isArray(tools) && tools.length) ? tools : null;
-
-  const requestBody = {
-    model: bodyParams.model || config.defaultModel,
-    messages,
-    stream: false,
-    ...(toolsToSend && { tools: toolsToSend, tool_choice: 'auto' })
-  };
-  // Include reasoning controls only if supported by provider
-  const allowReasoning = providerSupportsReasoning(config, requestBody.model);
-  if (allowReasoning) {
-    if (bodyParams.reasoning_effort) requestBody.reasoning_effort = bodyParams.reasoning_effort;
-    if (bodyParams.verbosity) requestBody.verbosity = bodyParams.verbosity;
-  }
-
-  const response = await createOpenAIRequest(config, requestBody, { providerId });
-  const result = await response.json();
-  return result?.choices?.[0]?.message;
-}
-
-/**
  * Handle iterative tool orchestration with thinking support
  */
 export async function handleIterativeOrchestration({
