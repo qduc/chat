@@ -172,6 +172,8 @@ export function ChatV2() {
             useTools={state.useTools}
             shouldStream={state.shouldStream}
             onUseToolsChange={actions.setUseTools}
+            enabledTools={state.enabledTools}
+            onEnabledToolsChange={actions.setEnabledTools}
             onShouldStreamChange={actions.setShouldStream}
             model={state.model}
             qualityLevel={state.qualityLevel}

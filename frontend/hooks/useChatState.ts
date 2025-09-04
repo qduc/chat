@@ -25,6 +25,8 @@ export interface ChatState {
   qualityLevel: QualityLevel;
   // System prompt for the current session
   systemPrompt: string;
+  // Per-tool enablement (list of tool names). Empty array means no explicit selection.
+  enabledTools: string[];
 
   // Conversations
   conversations: ConversationMeta[];
@@ -54,6 +56,7 @@ export type ChatAction =
   | { type: 'SET_VERBOSITY'; payload: string }
   | { type: 'SET_QUALITY_LEVEL'; payload: QualityLevel }
   | { type: 'SET_SYSTEM_PROMPT'; payload: string }
+  | { type: 'SET_ENABLED_TOOLS'; payload: string[] }
   | { type: 'SET_CONVERSATION_ID'; payload: string | null }
   | { type: 'START_STREAMING'; payload: { abort: AbortController; userMessage: ChatMessage; assistantMessage: ChatMessage } }
   | { type: 'REGENERATE_START'; payload: { abort: AbortController; baseMessages: ChatMessage[]; assistantMessage: ChatMessage } }
@@ -93,6 +96,7 @@ const initialState: ChatState = {
   verbosity: 'medium',
   qualityLevel: 'balanced',
   systemPrompt: '',
+  enabledTools: [],
   conversations: [],
   nextCursor: null,
   historyEnabled: true,
@@ -144,6 +148,9 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
     case 'SET_SYSTEM_PROMPT':
       return { ...state, systemPrompt: action.payload };
+
+    case 'SET_ENABLED_TOOLS':
+      return { ...state, enabledTools: action.payload };
 
     case 'SET_CONVERSATION_ID':
       return { ...state, conversationId: action.payload };
@@ -517,7 +524,9 @@ export function useChatState() {
         qualityLevel: state.qualityLevel,
         ...(state.useTools
           ? {
-              tools: Object.values(availableTools),
+              tools: (state.enabledTools && state.enabledTools.length > 0)
+                ? Object.values(availableTools).filter(t => state.enabledTools!.includes(t.function?.name ?? ''))
+                : Object.values(availableTools),
               tool_choice: 'auto',
             }
           : {}),
@@ -611,6 +620,10 @@ export function useChatState() {
 
     setSystemPrompt: useCallback((prompt: string) => {
       dispatch({ type: 'SET_SYSTEM_PROMPT', payload: prompt });
+    }, []),
+
+    setEnabledTools: useCallback((list: string[]) => {
+      dispatch({ type: 'SET_ENABLED_TOOLS', payload: list });
     }, []),
 
     // Chat Actions
