@@ -178,7 +178,7 @@ export function ChatV2() {
           onRetryLastAssistant={handleRetryLastAssistant}
         />
         {/* Removed soft fade to keep a cleaner boundaryless look */}
-  <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-4xl px-6 z-20">
+  <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-4xl px-6 z-30">
           <MessageInput
             input={state.input}
             pending={{
