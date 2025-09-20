@@ -31,6 +31,7 @@ export interface ChatState {
   nextCursor: string | null;
   historyEnabled: boolean;
   loadingConversations: boolean;
+  sidebarCollapsed: boolean;
 
   // Message Editing
   editingMessageId: string | null;
@@ -77,7 +78,9 @@ export type ChatAction =
   | { type: 'SAVE_EDIT_SUCCESS'; payload: { messageId: string; content: string; baseMessages: ChatMessage[] } }
   | { type: 'CLEAR_ERROR' }
   | { type: 'NEW_CHAT' }
-  | { type: 'SYNC_ASSISTANT'; payload: ChatMessage };
+  | { type: 'SYNC_ASSISTANT'; payload: ChatMessage }
+  | { type: 'TOGGLE_SIDEBAR' }
+  | { type: 'SET_SIDEBAR_COLLAPSED'; payload: boolean };
 
 const initialState: ChatState = {
   status: 'idle',
@@ -97,6 +100,7 @@ const initialState: ChatState = {
   nextCursor: null,
   historyEnabled: true,
   loadingConversations: false,
+  sidebarCollapsed: false,
   editingMessageId: null,
   editingContent: '',
   error: null,
@@ -407,6 +411,23 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         error: null,
       };
 
+    case 'TOGGLE_SIDEBAR':
+      {
+        const newCollapsed = !state.sidebarCollapsed;
+        // Save to localStorage
+        try {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('sidebarCollapsed', String(newCollapsed));
+          }
+        } catch (e) {
+          // ignore storage errors
+        }
+        return { ...state, sidebarCollapsed: newCollapsed };
+      }
+
+    case 'SET_SIDEBAR_COLLAPSED':
+      return { ...state, sidebarCollapsed: action.payload };
+
     default:
       return state;
   }
@@ -469,6 +490,18 @@ export function useChatState() {
     }, 0);
     return () => clearTimeout(timer);
   }, [refreshConversations]);
+
+  // Load sidebar collapsed state from localStorage on mount
+  React.useEffect(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const collapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+        dispatch({ type: 'SET_SIDEBAR_COLLAPSED', payload: collapsed });
+      }
+    } catch (e) {
+      // ignore storage errors
+    }
+  }, []);
 
   // Stream event handler
   const handleStreamEvent = useCallback((event: any) => {
@@ -787,6 +820,10 @@ export function useChatState() {
     }, []),
 
     refreshConversations,
+
+    toggleSidebar: useCallback(() => {
+      dispatch({ type: 'TOGGLE_SIDEBAR' });
+    }, []),
   };
 
   return { state, actions };
