@@ -95,7 +95,8 @@ export interface ChatOptions {
 // Extended options for advanced features
 export interface ChatOptionsExtended extends ChatOptions {
   conversationId?: string;
-  tools?: ToolSpec[];
+  // Accept either full ToolSpec objects or simple tool name strings
+  tools?: Array<ToolSpec | string>;
   toolChoice?: any;
   reasoning?: {
     effort?: string;

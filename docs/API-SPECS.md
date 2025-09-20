@@ -1,6 +1,7 @@
 # API Specifications
 
 ## Chat APIs
+> **Note:** All conversation history, including tool outputs and reasoning steps, is persisted in a SQLite database for continuity and auditability.
 
 ### POST /v1/responses (Primary)
 The primary chat endpoint supporting conversation continuity.
@@ -34,7 +35,7 @@ OpenAI-compatible endpoint for standard chat completions.
     "research_mode": true     // Optional: enable research mode for multi-step tool usage
   }
   ```
-- **Response**: 
+- **Response**:
   - `stream=false`: Standard OpenAI JSON response
   - `stream=true`: Standard OpenAI SSE format with `data: [DONE]` termination
 
@@ -42,16 +43,14 @@ OpenAI-compatible endpoint for standard chat completions.
 
 #### Tool Usage
 When `tools` array is provided, the system can execute server-side tools during the conversation:
-- Available tools: `get_time`, `web_search`
-- Tools are executed automatically when the AI determines they're needed
-- Tool results are streamed back to the client in real-time
+ Available tools: `get_time`, `web_search`, and any additional tools defined in the server registry (see `backend/src/lib/tools.js`). Tools can be added by extending the registry with validation schemas and handler functions. Tool inputs are validated server-side for safety and correctness.
 
 #### Research Mode
 When `research_mode: true` is set with tools, the system enables multi-step research capabilities:
-- AI can use tools multiple times in sequence
-- AI can analyze tool results and perform follow-up searches
-- AI streams its reasoning process between tool calls
-- Ideal for complex research queries requiring multiple information sources
+
+**Iterative Orchestration:**
+ When `research_mode: true` is enabled, the AI can perform up to 10 tool calls per request, streaming its reasoning and tool outputs between steps. The orchestration system adapts to both streaming and non-streaming requests.
+ Tool execution is server-side, with input validation and error handling. Tool results are persisted as part of the conversation history.
 
 **Research Mode Streaming**: Includes additional event types:
 ```
@@ -65,13 +64,18 @@ data: {"id":"iter_123","choices":[{"delta":{"content":"Based on the results, let
 ```
 
 ### Streaming Format (Both Endpoints)
+
+Streaming events include:
 ```
 data: {"id":"chatcmpl-123","object":"chat.completion.chunk","choices":[{"delta":{"content":"Hello"}}]}
-
 data: {"id":"chatcmpl-123","object":"chat.completion.chunk","choices":[{"delta":{"content":" world"}}]}
-
+data: {"id":"chatcmpl-123","object":"chat.completion.chunk","choices":[{"delta":{"tool_calls":[{"id":"call_abc","function":{"name":"web_search","arguments":"{\"query\":\"AI developments 2024\"}"}}]}]}}
+data: {"id":"chatcmpl-123","object":"chat.completion.chunk","choices":[{"delta":{"tool_output":{"tool_call_id":"call_abc","name":"web_search","output":"Search results..."}}}]}
+data: {"id":"chatcmpl-123","object":"chat.completion.chunk","choices":[{"delta":{"content":"Based on the results, let me search for more specific information..."}}]}
 data: [DONE]
 ```
+
+Tool events (`tool_calls`, `tool_output`) and reasoning events are streamed in real-time. All tool outputs and reasoning steps are persisted as part of the conversation history.
 
 ## Health & Monitoring
 
@@ -88,10 +92,10 @@ Returns system health and configuration.
   ```
 
 ## Rate Limiting
-- **Current**: In-memory per-IP limiting
-- **Headers**: Standard rate limit headers in responses
-- **Limits**: Configurable per environment
-- **Future**: Redis-based distributed limiting
+ - **Current**: In-memory per-IP sliding window limiting (configurable via `RATE_LIMIT_WINDOW_SEC` and `RATE_LIMIT_MAX`)
+ - **Headers**: Standard rate limit headers in responses
+ - **Limits**: Configurable per environment
+ - **Planned**: Redis-backed per-user and per-key limits for production scaling
 
 ## Server Features
 
@@ -99,17 +103,20 @@ Returns system health and configuration.
 - **Proxy Mode**: Direct passthrough to OpenAI-compatible providers
 - **Header Injection**: Automatic `Authorization` header from server environment
 - **Format Conversion**: Automatic conversion between Responses API and Chat Completions formats
-- **Error Handling**: Proper HTTP status codes and error responses
+ - **Error Handling**: Structured error responses with proper HTTP status codes. Tool failures and upstream errors are handled gracefully, with error details persisted in conversation history. Input validation and timeouts are enforced for all tool executions.
 
 ### Logging & Observability
 - **Access Logs**: Morgan middleware for HTTP request logging
-- **Error Handling**: Structured error responses
+ - **Error Handling**: Structured error responses. Tool errors and upstream failures are logged and persisted for observability and debugging.
 - **Performance**: Request timing and basic metrics
 - **Privacy**: Input masking for sensitive data (planned)
 
 ## Planned Enhancements
-- **Authentication**: JWT/API key support with per-user limits
-- **Multi-Provider**: Dynamic routing between multiple LLM providers
-- **Token Accounting**: Usage tracking and billing integration
-- **Observability**: Prometheus metrics and structured logging
-- **Conversation UI**: Frontend integration for conversation history browsing
+ - **Authentication**: JWT/API key support with per-user limits
+ - **Multi-Provider**: Dynamic routing between multiple LLM providers
+ - **Token Accounting**: Usage tracking and billing integration
+ - **Observability**: Prometheus metrics and structured logging
+ - **Conversation UI**: Frontend integration for conversation history browsing
+ - **System Prompt & Temperature Controls**: UI and backend support for system prompt and temperature settings
+ - **File Uploads & Attachments**: Support for file uploads and attachments in chat
+ - **Token Usage Display**: Show token usage and cost estimates in UI

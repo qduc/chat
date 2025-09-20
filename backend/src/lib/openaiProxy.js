@@ -1,4 +1,5 @@
 import { config } from '../env.js';
+import { generateOpenAIToolSpecs } from './tools.js';
 import { handleUnifiedToolOrchestration } from './unifiedToolOrchestrator.js';
 import { handleIterativeOrchestration } from './iterativeOrchestrator.js';
 import { handleRegularStreaming } from './streamingHandler.js';
@@ -38,6 +39,18 @@ function sanitizeIncomingBody(bodyIn, _cfg) {
   delete body.system_prompt;
   // Default model
   // Default model is resolved later (may come from DB)
+
+  // Allow a simplified tools representation from frontend: an array of tool names (strings).
+  // Expand into full OpenAI-compatible tool specs using server-side registry.
+  try {
+    if (Array.isArray(bodyIn.tools) && bodyIn.tools.length > 0 && typeof bodyIn.tools[0] === 'string') {
+      const allSpecs = generateOpenAIToolSpecs();
+      const selected = allSpecs.filter(s => bodyIn.tools.includes(s.function?.name));
+      body.tools = selected;
+    }
+  } catch (e) {
+    // ignore expansion errors and let downstream validation handle unexpected shapes
+  }
   return body;
 }
 

@@ -16,9 +16,9 @@ A full-stack AI chat application with advanced tool orchestration and streaming 
 - [x] **Enhanced UI components** (quality controls, floating dropdowns)
 - [x] **Advanced streaming** (tool events, thinking support)
 - [x] **Conversation persistence** (SQLite database with migrations)
-- [ ] Conversation history UI integration
-- [ ] System prompt / temperature controls
-- [ ] Auth & per-user limits
+- [x] Conversation history UI integration
+- [x] System prompt / temperature controls
+- [ ] Auth & per-user limits (planned)
 
 ## Key Features
 
@@ -94,15 +94,20 @@ Frontend on http://localhost:3000 with hot reload enabled.
 ### Tool Development
 The application includes a server-side tool registry located in `backend/src/lib/tools.js`. To add new tools:
 
-1. Define your tool in the registry with validation schema
-2. Implement the handler function
+1. Define your tool in the registry with a `validate` function for arguments
+2. Implement the `handler` function
 3. Tools are automatically available via the orchestration system
 
 Example:
 ```javascript
 export const tools = {
   get_weather: {
-    schema: z.object({ city: z.string().min(1) }).strict(),
+    validate: (args) => {
+      if (!args || typeof args.city !== 'string') {
+        throw new Error('get_weather requires a "city" argument of type string');
+      }
+      return { city: args.city };
+    },
     handler: async ({ city }) => ({ tempC: 22, city }),
   }
 };

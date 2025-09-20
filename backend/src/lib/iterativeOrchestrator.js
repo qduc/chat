@@ -68,28 +68,6 @@ function streamEvent(res, event, model) {
 }
 
 /**
- * Make a request to the AI model
- */
-async function callModel(messages, config, bodyParams, tools = null, providerId) {
-  const requestBody = {
-    model: bodyParams.model || config.defaultModel,
-    messages,
-    stream: false,
-    ...(tools && { tools, tool_choice: 'auto' })
-  };
-  // Include reasoning controls only if supported by provider
-  const allowReasoning = providerSupportsReasoning(config, requestBody.model);
-  if (allowReasoning) {
-    if (bodyParams.reasoning_effort) requestBody.reasoning_effort = bodyParams.reasoning_effort;
-    if (bodyParams.verbosity) requestBody.verbosity = bodyParams.verbosity;
-  }
-
-  const response = await createOpenAIRequest(config, requestBody, { providerId });
-  const result = await response.json();
-  return result?.choices?.[0]?.message;
-}
-
-/**
  * Handle iterative tool orchestration with thinking support
  */
 export async function handleIterativeOrchestration({
@@ -135,12 +113,14 @@ export async function handleIterativeOrchestration({
       iteration++;
 
       // Stream the model response for this iteration, buffering only tool calls
+      // Prefer the frontend-provided tools (expanded by sanitizeIncomingBody) when present.
+      // Otherwise fall back to the server-side registry.
+      const toolsToSend = (Array.isArray(body.tools) && body.tools.length) ? body.tools : generateOpenAIToolSpecs();
       const requestBody = {
         model: body.model || config.defaultModel,
         messages: conversationHistory,
         stream: true,
-        tools: generateOpenAIToolSpecs(),
-        tool_choice: 'auto',
+        ...(toolsToSend && { tools: toolsToSend, tool_choice: body.tool_choice || 'auto' }),
       };
       // Include reasoning controls only if supported by provider
       if (providerSupportsReasoning(config, requestBody.model)) {
