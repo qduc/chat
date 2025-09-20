@@ -32,6 +32,7 @@ export interface ChatState {
   historyEnabled: boolean;
   loadingConversations: boolean;
   sidebarCollapsed: boolean;
+  rightSidebarCollapsed: boolean;
 
   // Message Editing
   editingMessageId: string | null;
@@ -80,7 +81,9 @@ export type ChatAction =
   | { type: 'NEW_CHAT' }
   | { type: 'SYNC_ASSISTANT'; payload: ChatMessage }
   | { type: 'TOGGLE_SIDEBAR' }
-  | { type: 'SET_SIDEBAR_COLLAPSED'; payload: boolean };
+  | { type: 'SET_SIDEBAR_COLLAPSED'; payload: boolean }
+  | { type: 'TOGGLE_RIGHT_SIDEBAR' }
+  | { type: 'SET_RIGHT_SIDEBAR_COLLAPSED'; payload: boolean };
 
 const initialState: ChatState = {
   status: 'idle',
@@ -101,6 +104,7 @@ const initialState: ChatState = {
   historyEnabled: true,
   loadingConversations: false,
   sidebarCollapsed: false,
+  rightSidebarCollapsed: false,
   editingMessageId: null,
   editingContent: '',
   error: null,
@@ -428,6 +432,23 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case 'SET_SIDEBAR_COLLAPSED':
       return { ...state, sidebarCollapsed: action.payload };
 
+    case 'TOGGLE_RIGHT_SIDEBAR':
+      {
+        const newCollapsed = !state.rightSidebarCollapsed;
+        // Save to localStorage
+        try {
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('rightSidebarCollapsed', String(newCollapsed));
+          }
+        } catch (e) {
+          // ignore storage errors
+        }
+        return { ...state, rightSidebarCollapsed: newCollapsed };
+      }
+
+    case 'SET_RIGHT_SIDEBAR_COLLAPSED':
+      return { ...state, rightSidebarCollapsed: action.payload };
+
     default:
       return state;
   }
@@ -497,6 +518,8 @@ export function useChatState() {
       if (typeof window !== 'undefined') {
         const collapsed = localStorage.getItem('sidebarCollapsed') === 'true';
         dispatch({ type: 'SET_SIDEBAR_COLLAPSED', payload: collapsed });
+        const rightCollapsed = localStorage.getItem('rightSidebarCollapsed') === 'true';
+        dispatch({ type: 'SET_RIGHT_SIDEBAR_COLLAPSED', payload: rightCollapsed });
       }
     } catch (e) {
       // ignore storage errors
@@ -823,6 +846,10 @@ export function useChatState() {
 
     toggleSidebar: useCallback(() => {
       dispatch({ type: 'TOGGLE_SIDEBAR' });
+    }, []),
+
+    toggleRightSidebar: useCallback(() => {
+      dispatch({ type: 'TOGGLE_RIGHT_SIDEBAR' });
     }, []),
   };
 

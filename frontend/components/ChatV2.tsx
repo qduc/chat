@@ -33,6 +33,11 @@ export function ChatV2() {
         e.preventDefault();
         actions.toggleSidebar();
       }
+      // Keyboard shortcut for toggling right sidebar (Ctrl/Cmd + Shift + \)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === '\\') {
+        e.preventDefault();
+        actions.toggleRightSidebar();
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -198,7 +203,7 @@ export function ChatV2() {
           onClose={() => setIsSettingsOpen(false)}
         />
       </div>
-      <RightSidebar systemPrompt={state.systemPrompt ?? ''} onSystemPromptChange={actions.setSystemPrompt} />
+      <RightSidebar systemPrompt={state.systemPrompt ?? ''} onSystemPromptChange={actions.setSystemPrompt} collapsed={state.rightSidebarCollapsed} onToggleCollapse={actions.toggleRightSidebar} />
     </div>
   );
 }
