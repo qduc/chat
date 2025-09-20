@@ -74,7 +74,7 @@ export class ChatClient {
       model,
       messages,
       stream,
-      ...(providerId && { provider: providerId }),
+      ...(providerId && { provider_id: providerId }),
       ...(extendedOptions.conversationId && { conversation_id: extendedOptions.conversationId }),
       ...(extendedOptions.streamingEnabled !== undefined && { streamingEnabled: extendedOptions.streamingEnabled }),
       ...(extendedOptions.toolsEnabled !== undefined && { toolsEnabled: extendedOptions.toolsEnabled }),
@@ -83,8 +83,8 @@ export class ChatClient {
       ...((options as any).systemPrompt && { systemPrompt: (options as any).systemPrompt })
     };
 
-    // Handle reasoning parameters for gpt-5* models
-    if (typeof model === 'string' && model.startsWith('gpt-5') && extendedOptions.reasoning) {
+    // Handle reasoning parameters for gpt-5* models except gpt-5-chat
+    if (typeof model === 'string' && model.startsWith('gpt-5') && extendedOptions.reasoning && !model.startsWith('gpt-5-chat')) {
       if (extendedOptions.reasoning.effort) {
         bodyObj.reasoning_effort = extendedOptions.reasoning.effort;
       }

@@ -118,7 +118,7 @@ export function MessageInput({
                 {/* model selector moved to header */}
               </div>
 
-              {model?.startsWith('gpt-5') && (
+              {model?.startsWith('gpt-5') && !model.startsWith('gpt-5-chat') && (
                 <div className="flex items-center">
                   <QualitySlider
                     value={qualityLevel}
