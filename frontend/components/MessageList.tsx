@@ -105,7 +105,7 @@ export function MessageList({
                   <Bot className="w-4 h-4 text-slate-700 dark:text-slate-200" />
                 </div>
               )}
-              <div className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? 'max-w-[50%] order-first' : 'max-w-[75%]'}`}>
+              <div className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? 'max-w-[50%] order-first' : 'max-w-[95%]'}`}>
                 {isEditing ? (
                   <div className="space-y-2">
                     <textarea

@@ -26,6 +26,24 @@ export function ChatV2() {
     } catch (_) {}
   }, []);
 
+  // Keyboard shortcut for toggling sidebar (Ctrl/Cmd + \)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === '\\') {
+        e.preventDefault();
+        actions.toggleSidebar();
+      }
+      // Keyboard shortcut for toggling right sidebar (Ctrl/Cmd + Shift + \)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === '\\') {
+        e.preventDefault();
+        actions.toggleRightSidebar();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [actions]);
+
   // Respond to URL changes (e.g., back/forward) to drive state
   useEffect(() => {
     if (!searchParams) return;
@@ -122,11 +140,13 @@ export function ChatV2() {
           nextCursor={state.nextCursor}
           loadingConversations={state.loadingConversations}
           conversationId={state.conversationId}
+          collapsed={state.sidebarCollapsed}
           onSelectConversation={actions.selectConversation}
           onDeleteConversation={actions.deleteConversation}
           onLoadMore={actions.loadMoreConversations}
           onRefresh={actions.refreshConversations}
           onNewChat={actions.newChat}
+          onToggleCollapse={actions.toggleSidebar}
         />
       )}
       <div className="flex flex-col flex-1 relative">
@@ -183,7 +203,7 @@ export function ChatV2() {
           onClose={() => setIsSettingsOpen(false)}
         />
       </div>
-      <RightSidebar systemPrompt={state.systemPrompt ?? ''} onSystemPromptChange={actions.setSystemPrompt} />
+      <RightSidebar systemPrompt={state.systemPrompt ?? ''} onSystemPromptChange={actions.setSystemPrompt} collapsed={state.rightSidebarCollapsed} onToggleCollapse={actions.toggleRightSidebar} />
     </div>
   );
 }
