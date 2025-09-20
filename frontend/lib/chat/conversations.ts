@@ -9,6 +9,7 @@ const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:300
 
 export interface ConversationCreateOptions {
   title?: string;
+  provider?: string;
   model?: string;
   streamingEnabled?: boolean;
   toolsEnabled?: boolean;

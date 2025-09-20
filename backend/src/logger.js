@@ -3,18 +3,18 @@ import pino from 'pino';
 const level = process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug');
 const pretty = (process.env.LOG_PRETTY ?? '').toLowerCase() !== 'false' && process.env.NODE_ENV !== 'production';
 
-// Configure pino to write to both stdout and file
+// Configure pino to write to both stdout and file with date-based rotation
 export const logger = pino({
   level,
   transport: {
     targets: [
-      // Always write JSON logs to file for debugging
+      // Always write JSON logs to file with date-based filenames
       {
-        target: 'pino/file',
+        target: './lib/dailyRotatingFileTransport.js',
         level,
         options: {
-          destination: './logs/app.log',
-          mkdir: true,
+          file: './logs/app',
+          extension: '.log',
         },
       },
       // Pretty console output in development, plain JSON in production

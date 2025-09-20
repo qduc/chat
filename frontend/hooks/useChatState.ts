@@ -578,12 +578,10 @@ export function useChatState() {
         reasoningEffort: state.reasoningEffort,
         verbosity: state.verbosity,
         qualityLevel: state.qualityLevel,
-        ...(state.useTools
+        ...((state.useTools && state.enabledTools.length > 0)
           ? {
               // Send a simplified list of tool names to the backend. Backend will map names -> specs.
-              tools: (state.enabledTools && state.enabledTools.length > 0)
-                ? state.enabledTools
-                : Object.keys(availableTools),
+              tools: state.enabledTools,
               tool_choice: 'auto',
             }
           : {}),
@@ -762,6 +760,9 @@ export function useChatState() {
         dispatch({ type: 'SET_MESSAGES', payload: msgs });
 
         // Apply conversation-level settings from API response
+        if (data.provider) {
+          dispatch({ type: 'SET_PROVIDER', payload: data.provider });
+        }
         if (data.model) {
           dispatch({ type: 'SET_MODEL', payload: data.model });
         }

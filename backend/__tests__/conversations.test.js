@@ -39,8 +39,10 @@ beforeEach(() => {
   resetDbCache(); // Ensure fresh DB connection with updated config
   const db = getDb();
   if (db) {
-    db.exec('DELETE FROM messages; DELETE FROM conversations; DELETE FROM sessions;');
+    db.exec('DELETE FROM messages; DELETE FROM conversations; DELETE FROM sessions; DELETE FROM providers;');
     upsertSession(sessionId);
+    db.prepare(`INSERT INTO providers (id, name, provider_type) VALUES (@id, @name, @provider_type)`).run({ id: 'p1', name: 'p1', provider_type: 'openai' });
+    db.prepare(`INSERT INTO providers (id, name, provider_type) VALUES (@id, @name, @provider_type)`).run({ id: 'p2', name: 'p2', provider_type: 'openai' });
   }
 });
 
@@ -51,16 +53,17 @@ afterAll(() => {
 
 // --- POST /v1/conversations ---
 describe('POST /v1/conversations', () => {
-  test('creates a new conversation and returns 201 with id, title, model, created_at', async () => {
+  test('creates a new conversation and returns 201 with id, title, provider, model, created_at', async () => {
     const app = makeApp();
     const res = await request(app)
       .post('/v1/conversations')
       .set('x-session-id', sessionId)
-      .send({ title: 't1', model: 'm1' });
+      .send({ title: 't1', provider: 'p1', model: 'm1' });
     assert.equal(res.status, 201);
     const body = res.body;
     assert.ok(body.id);
     assert.equal(body.title, 't1');
+    assert.equal(body.provider, 'p1');
     assert.equal(body.model, 'm1');
     assert.ok(body.created_at);
   });
@@ -84,8 +87,8 @@ describe('POST /v1/conversations', () => {
 // --- GET /v1/conversations ---
 describe('GET /v1/conversations', () => {
   test('lists conversations for current session with pagination (cursor, limit)', async () => {
-    createConversation({ id: 'c1', sessionId, title: 'one' });
-    createConversation({ id: 'c2', sessionId, title: 'two' });
+    createConversation({ id: 'c1', sessionId, title: 'one', provider: 'p1' });
+    createConversation({ id: 'c2', sessionId, title: 'two', provider: 'p2' });
     // Make ordering deterministic without relying on wall-clock timing
     const db = getDb();
     db.prepare(`UPDATE conversations SET created_at = datetime('now', '-1 hour') WHERE id = 'c1'`).run();
@@ -95,6 +98,7 @@ describe('GET /v1/conversations', () => {
     const body1 = first.body;
       assert.equal(body1.items.length, 1);
       assert.equal(body1.items[0].id, 'c2');
+      assert.equal(body1.items[0].provider, 'p2');
       assert.ok(body1.next_cursor);
 
     const second = await request(app)
@@ -103,6 +107,7 @@ describe('GET /v1/conversations', () => {
     const body2 = second.body;
       assert.equal(body2.items.length, 1);
       assert.equal(body2.items[0].id, 'c1');
+      assert.equal(body2.items[0].provider, 'p1');
       assert.equal(body2.next_cursor, null);
   });
 
@@ -122,21 +127,24 @@ describe('GET /v1/conversations', () => {
   });
 
   test('excludes deleted conversations by default; include_deleted=1 returns them', async () => {
-    createConversation({ id: 'c1', sessionId, title: 'one' });
-    createConversation({ id: 'c2', sessionId, title: 'two' });
+    createConversation({ id: 'c1', sessionId, title: 'one', provider: 'p1' });
+    createConversation({ id: 'c2', sessionId, title: 'two', provider: 'p2' });
     softDeleteConversation({ id: 'c1', sessionId });
     const app = makeApp();
     const res1 = await request(app).get('/v1/conversations').set('x-session-id', sessionId);
     const body1 = res1.body;
       assert.equal(body1.items.length, 1);
       assert.equal(body1.items[0].id, 'c2');
+      assert.equal(body1.items[0].provider, 'p2');
 
     const res2 = await request(app).get('/v1/conversations?include_deleted=1').set('x-session-id', sessionId);
     const body2 = res2.body;
-      const ids = body2.items.map((i) => i.id).sort();
-      assert.equal(ids.length, 2);
-      assert.ok(ids.includes('c1'));
-      assert.ok(ids.includes('c2'));
+      const items = body2.items.sort((a, b) => a.id.localeCompare(b.id));
+      assert.equal(items.length, 2);
+      assert.equal(items[0].id, 'c1');
+      assert.equal(items[0].provider, 'p1');
+      assert.equal(items[1].id, 'c2');
+      assert.equal(items[1].provider, 'p2');
   });
 });
 
@@ -155,7 +163,7 @@ describe('GET /v1/conversations/:id', () => {
   });
 
   test('returns metadata and first page of messages with next_after_seq', async () => {
-    createConversation({ id: 'c1', sessionId, title: 'hi' });
+    createConversation({ id: 'c1', sessionId, title: 'hi', provider: 'p1' });
     const db = getDb();
     const stmt = db.prepare(
       `INSERT INTO messages (conversation_id, role, content, seq) VALUES (@cid, 'user', @c, @s)`
@@ -167,13 +175,14 @@ describe('GET /v1/conversations/:id', () => {
     const res = await request(app).get('/v1/conversations/c1?limit=2').set('x-session-id', sessionId);
     const body = res.body;
     assert.equal(body.id, 'c1');
+    assert.equal(body.provider, 'p1');
     assert.equal(body.messages.length, 2);
     assert.equal(body.messages[0].seq, 1);
     assert.equal(body.next_after_seq, 2);
   });
 
   test('supports after_seq and limit query params', async () => {
-    createConversation({ id: 'c1', sessionId, title: 'hi' });
+    createConversation({ id: 'c1', sessionId, title: 'hi', provider: 'p1' });
     const db = getDb();
     const stmt = db.prepare(
       `INSERT INTO messages (conversation_id, role, content, seq) VALUES (@cid, 'user', @c, @s)`
@@ -186,6 +195,7 @@ describe('GET /v1/conversations/:id', () => {
       .get('/v1/conversations/c1?after_seq=2&limit=2')
       .set('x-session-id', sessionId);
     const body = res.body;
+    assert.equal(body.provider, 'p1');
     assert.equal(body.messages.length, 1);
     assert.equal(body.messages[0].seq, 3);
     assert.equal(body.next_after_seq, null);
@@ -202,7 +212,7 @@ describe('GET /v1/conversations/:id', () => {
 // --- DELETE /v1/conversations/:id ---
 describe('DELETE /v1/conversations/:id', () => {
   test('soft deletes an existing conversation and returns 204', async () => {
-    createConversation({ id: 'c1', sessionId });
+    createConversation({ id: 'c1', sessionId, provider: 'p1' });
     const app = makeApp();
     const res = await request(app).delete('/v1/conversations/c1').set('x-session-id', sessionId);
     assert.equal(res.status, 204);
@@ -212,7 +222,7 @@ describe('DELETE /v1/conversations/:id', () => {
   });
 
   test('returns 404 when deleting already deleted conversation', async () => {
-    createConversation({ id: 'c1', sessionId });
+    createConversation({ id: 'c1', sessionId, provider: 'p1' });
     softDeleteConversation({ id: 'c1', sessionId });
     const app = makeApp();
     const res = await request(app).delete('/v1/conversations/c1').set('x-session-id', sessionId);

@@ -131,6 +131,7 @@ export function createConversation({
   id,
   sessionId,
   title,
+  provider,
   model,
   streamingEnabled = false,
   toolsEnabled = false,
@@ -142,12 +143,13 @@ export function createConversation({
   const db = getDb();
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO conversations (id, session_id, user_id, title, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at, updated_at)
-     VALUES (@id, @session_id, NULL, @title, @model, @metadata, @streaming_enabled, @tools_enabled, @quality_level, @reasoning_effort, @verbosity, @now, @now)`
+    `INSERT INTO conversations (id, session_id, user_id, title, provider, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at, updated_at)
+     VALUES (@id, @session_id, NULL, @title, @provider, @model, @metadata, @streaming_enabled, @tools_enabled, @quality_level, @reasoning_effort, @verbosity, @now, @now)`
   ).run({
     id,
     session_id: sessionId,
     title: title || null,
+    provider: provider || null,
     model: model || null,
     metadata: JSON.stringify(metadata || {}),
     streaming_enabled: streamingEnabled ? 1 : 0,
@@ -163,7 +165,7 @@ export function getConversationById({ id, sessionId }) {
   const db = getDb();
   const result = db
     .prepare(
-      `SELECT id, title, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at FROM conversations
+      `SELECT id, title, provider, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at FROM conversations
      WHERE id=@id AND session_id=@session_id AND deleted_at IS NULL`
     )
     .get({ id, session_id: sessionId });
@@ -204,12 +206,12 @@ export function updateConversationMetadata({ id, sessionId, patch }) {
   return res.changes > 0;
 }
 
-export function updateConversationTitle({ id, sessionId, title }) {
+export function updateConversationTitle({ id, sessionId, title, provider }) {
   const db = getDb();
   const now = new Date().toISOString();
   db.prepare(
-    `UPDATE conversations SET title=@title, updated_at=@now WHERE id=@id AND session_id=@session_id`
-  ).run({ id, session_id: sessionId, title, now });
+    `UPDATE conversations SET title=@title, provider=@provider, updated_at=@now WHERE id=@id AND session_id=@session_id`
+  ).run({ id, session_id: sessionId, title, provider, now });
 }
 
 // --- Sprint 2 helpers ---
@@ -228,7 +230,7 @@ export function countConversationsBySession(sessionId) {
 export function listConversations({ sessionId, cursor, limit }) {
   const db = getDb();
   limit = Math.min(Math.max(Number(limit) || 20, 1), 100);
-  let sql = `SELECT id, title, model, created_at FROM conversations
+  let sql = `SELECT id, title, provider, model, created_at FROM conversations
              WHERE session_id=@sessionId AND deleted_at IS NULL`;
   const params = { sessionId };
   if (cursor) {
@@ -354,6 +356,18 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
   return { messages, next_after_seq };
 }
 
+export function getLastMessage({ conversationId }) {
+  const db = getDb();
+  const message = db
+    .prepare(
+      `SELECT id, seq, role, status, content, created_at
+     FROM messages WHERE conversation_id=@conversationId
+     ORDER BY seq DESC LIMIT 1`
+    )
+    .get({ conversationId });
+  return message;
+}
+
 // --- Sprint 3 ---
 export function softDeleteConversation({ id, sessionId }) {
   const db = getDb();
@@ -374,7 +388,7 @@ export function listConversationsIncludingDeleted({
 }) {
   const db = getDb();
   limit = Math.min(Math.max(Number(limit) || 20, 1), 100);
-  let sql = `SELECT id, title, model, created_at, deleted_at FROM conversations
+  let sql = `SELECT id, title, provider, model, created_at, deleted_at FROM conversations
              WHERE session_id=@sessionId`;
   if (!includeDeleted) sql += ` AND deleted_at IS NULL`;
   const params = { sessionId };
@@ -390,6 +404,7 @@ export function listConversationsIncludingDeleted({
     .map((r) => ({
       id: r.id,
       title: r.title,
+      provider: r.provider,
       model: r.model,
       created_at: r.created_at,
     }));
@@ -421,19 +436,20 @@ export function updateMessageContent({ messageId, conversationId, sessionId, con
   return message;
 }
 
-export function forkConversationFromMessage({ originalConversationId, sessionId, messageSeq, title, model }) {
+export function forkConversationFromMessage({ originalConversationId, sessionId, messageSeq, title, provider, model }) {
   const db = getDb();
   const now = new Date().toISOString();
 
   // Create new conversation
   const newConversationId = uuidv4();
   db.prepare(
-    `INSERT INTO conversations (id, session_id, user_id, title, model, metadata, created_at, updated_at)
-     VALUES (@id, @session_id, NULL, @title, @model, '{}', @now, @now)`
+    `INSERT INTO conversations (id, session_id, user_id, title, provider, model, metadata, created_at, updated_at)
+     VALUES (@id, @session_id, NULL, @title, @provider, @model, '{}', @now, @now)`
   ).run({
     id: newConversationId,
     session_id: sessionId,
     title: title || null,
+    provider: provider || null,
     model: model || null,
     now,
   });
@@ -464,6 +480,24 @@ export function deleteMessagesAfterSeq({ conversationId, sessionId, afterSeq }) 
   const result = db.prepare(
     `DELETE FROM messages WHERE conversation_id = @conversationId AND seq > @afterSeq`
   ).run({ conversationId, afterSeq });
+
+  return result.changes > 0;
+}
+
+export function clearAllMessages({ conversationId, sessionId }) {
+  const db = getDb();
+
+  // Verify conversation belongs to session
+  const conversation = db.prepare(
+    `SELECT id FROM conversations WHERE id = @conversationId AND session_id = @sessionId AND deleted_at IS NULL`
+  ).get({ conversationId, sessionId });
+
+  if (!conversation) return false;
+
+  // Delete all messages for this conversation
+  const result = db.prepare(
+    `DELETE FROM messages WHERE conversation_id = @conversationId`
+  ).run({ conversationId });
 
   return result.changes > 0;
 }

@@ -3,6 +3,12 @@
   "version": "2.0.0",
   "tasks": [
     {
+      "label": "Start docker dev server",
+      "type": "shell",
+      "command": "./dev.sh up",
+      "problemMatcher": []
+    },
+    {
       "label": "Backend: dev",
       "type": "shell",
       "command": "npm --prefix backend run dev",

@@ -23,6 +23,7 @@ export interface ChatResponse {
 export interface ConversationMeta {
   id: string;
   title?: string | null;
+  provider?: string | null;
   model?: string | null;
   created_at: string;
   streaming_enabled?: boolean;
@@ -42,6 +43,7 @@ export interface ConversationsList {
 export interface ConversationWithMessages {
   id: string;
   title?: string;
+  provider?: string;
   model?: string;
   created_at: string;
   streaming_enabled?: boolean;

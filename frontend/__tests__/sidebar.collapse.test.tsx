@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatV2 as Chat } from '../components/ChatV2';
 import { ThemeProvider } from '../contexts/ThemeContext';
@@ -103,7 +103,7 @@ describe('Sidebar Collapse Functionality', () => {
     });
 
     // Find and click the collapse button
-    const collapseButton = screen.getByTitle('Collapse sidebar');
+    const collapseButton = screen.getAllByTitle('Collapse sidebar')[0];
     expect(collapseButton).toBeInTheDocument();
 
     await user.click(collapseButton);
@@ -134,7 +134,8 @@ describe('Sidebar Collapse Functionality', () => {
     });
 
     // Click collapse button
-    const collapseButton = screen.getByTitle('Collapse sidebar');
+    const leftSidebar = screen.getByText('Chat History').closest('aside');
+    const collapseButton = within(leftSidebar).getByTitle('Collapse sidebar');
     await user.click(collapseButton);
 
     // Verify localStorage.setItem was called with 'true'
@@ -157,8 +158,8 @@ describe('Sidebar Collapse Functionality', () => {
     await waitFor(() => {
       // Should not show "Chat History" text when collapsed
       expect(screen.queryByText('Chat History')).not.toBeInTheDocument();
-      // Should show expand button
-      expect(screen.getByTitle('Expand sidebar')).toBeInTheDocument();
+      // Should show expand button(s) - there may be left and right sidebars
+      expect(screen.getAllByTitle('Expand sidebar').length).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -194,7 +195,8 @@ describe('Sidebar Collapse Functionality', () => {
     });
 
     // Collapse the sidebar
-    const collapseButton = screen.getByTitle('Collapse sidebar');
+    const leftSidebar = screen.getByText('Chat History').closest('aside');
+    const collapseButton = within(leftSidebar).getByTitle('Collapse sidebar');
     await user.click(collapseButton);
 
     await waitFor(() => {
@@ -215,7 +217,8 @@ describe('Sidebar Collapse Functionality', () => {
     });
 
     // Collapse the sidebar
-    const collapseButton = screen.getByTitle('Collapse sidebar');
+    const leftSidebar = screen.getByText('Chat History').closest('aside');
+    const collapseButton = within(leftSidebar).getByTitle('Collapse sidebar');
     await user.click(collapseButton);
 
     await waitFor(() => {

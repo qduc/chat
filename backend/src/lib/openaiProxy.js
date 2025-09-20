@@ -7,6 +7,7 @@ import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
 import { providerSupportsReasoning, getDefaultModel } from './providers/index.js';
 import { SimplifiedPersistence } from './simplifiedPersistence.js';
 import { addConversationMetadata } from './responseUtils.js';
+import { logger } from '../logger.js';
 
 // --- Helpers: sanitize, validate, selection, and error shaping ---
 
@@ -31,6 +32,7 @@ function sanitizeIncomingBody(bodyIn, _cfg) {
   // Strip non-upstream fields
   delete body.conversation_id;
   delete body.provider_id; // frontend-selected provider (handled server-side only)
+  delete body.provider; // internal provider selection field
   delete body.streamingEnabled;
   delete body.toolsEnabled;
   delete body.researchMode;
@@ -135,6 +137,24 @@ export async function proxyOpenAIRequest(req, res) {
   // Validate reasoning controls early and return guard failures
   const validation = validateAndNormalizeReasoningControls(body);
   if (!validation.ok) {
+    logger.error({
+      msg: 'validation_error',
+      error: {
+        message: validation.payload.message,
+        type: validation.payload.error,
+      },
+      req: {
+        id: req.id,
+        method: req.method,
+        url: req.url,
+        body: req.body,
+      },
+      validation: {
+        status: validation.status,
+        payload: validation.payload,
+      },
+      validationFailure: `${validation.payload.error}: ${validation.payload.message}`,
+    });
     return res.status(validation.status).json(validation.payload);
   }
 
@@ -204,12 +224,42 @@ export async function proxyOpenAIRequest(req, res) {
 
     if (!handler) {
       // Fallback safety – should not happen
+      logger.error({
+        msg: 'unsupported_mode_error',
+        error: {
+          message: `Unsupported mode: ${mode}`,
+          type: 'invalid_request_error',
+        },
+        req: {
+          id: req.id,
+          method: req.method,
+          url: req.url,
+          body: req.body,
+        },
+        mode,
+        flags,
+        modeError: `Unsupported mode: ${mode} (hasTools: ${flags.hasTools}, stream: ${flags.stream})`,
+      });
       return res.status(400).json({ error: 'invalid_request_error', message: `Unsupported mode: ${mode}` });
     }
 
     return await handler({ req, res, config, bodyIn, body, flags, persistence });
   } catch (error) {
-    console.error('[proxy] error', error);
+    logger.error({
+      msg: 'proxy_error',
+      error: {
+        message: error.message,
+        stack: error.stack,
+        name: error.name,
+      },
+      req: {
+        id: req.id,
+        method: req.method,
+        url: req.url,
+        body: req.body,
+      },
+      proxyError: `${error.name}: ${error.message}`,
+    });
     if (persistence && persistence.persist) {
       persistence.markError();
     }

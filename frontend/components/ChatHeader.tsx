@@ -88,9 +88,9 @@ export function ChatHeader({ model, onModelChange, providerId, onProviderChange,
             onProviderChange?.(selectedProvider.id);
           }
 
-          // Ensure model belongs to selected provider; else set to first model in that provider
+          // Ensure model belongs to a provider; else set to first model in that provider
           const providerModels = selectedProvider.options;
-          if (!providerModels.some(o => o.value === model)) {
+          if (!flat.some(o => o.value === model)) {
             const nextModel = providerModels[0]?.value || flat[0]?.value;
             if (nextModel) onModelChange(nextModel);
           }

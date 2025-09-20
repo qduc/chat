@@ -74,7 +74,7 @@ export class ChatClient {
       model,
       messages,
       stream,
-      ...(providerId && { provider_id: providerId }),
+      ...(providerId && { provider: providerId }),
       ...(extendedOptions.conversationId && { conversation_id: extendedOptions.conversationId }),
       ...(extendedOptions.streamingEnabled !== undefined && { streamingEnabled: extendedOptions.streamingEnabled }),
       ...(extendedOptions.toolsEnabled !== undefined && { toolsEnabled: extendedOptions.toolsEnabled }),

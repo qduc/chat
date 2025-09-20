@@ -10,6 +10,7 @@ import {
   createConversation,
   countConversationsBySession,
   updateConversationTitle,
+  clearAllMessages,
 } from '../db/index.js';
 import { v4 as uuidv4 } from 'uuid';
 import { createOpenAIRequest } from './streamUtils.js';
@@ -135,30 +136,48 @@ export class SimplifiedPersistence {
       throw new Error('Message limit exceeded');
     }
 
-    // Determine next seq for user and assistant
-    const userSeq = getNextSeq(conversationId);
-
-    // Persist user message if available
+    // Overwrite approach: trust frontend message history completely
     const msgs = Array.isArray(bodyIn.messages) ? bodyIn.messages : [];
-    const lastUser = [...msgs]
-      .reverse()
-      .find((m) => m && m.role === 'user' && typeof m.content === 'string');
+    const nonSystemMessages = msgs.filter((m) => m && m.role !== 'system');
 
-    if (lastUser) {
-      insertUserMessage({
-        conversationId,
-        content: lastUser.content,
-        seq: userSeq,
-      });
+    if (nonSystemMessages.length > 0) {
+      // Clear all existing messages for this conversation
+      clearAllMessages({ conversationId, sessionId });
+
+      // Insert all messages from frontend in sequence
+      let seq = 1;
+      for (const message of nonSystemMessages) {
+        if (message.role === 'user' && typeof message.content === 'string') {
+          insertUserMessage({
+            conversationId,
+            content: message.content,
+            seq: seq++,
+          });
+        } else if (message.role === 'assistant' && typeof message.content === 'string') {
+          insertAssistantFinal({
+            conversationId,
+            content: message.content,
+            seq: seq++,
+            finishReason: 'stop',
+          });
+        }
+      }
 
       // Attempt to auto-generate a title if conversation has none
       try {
         if (!convo?.title) {
-          const generated = await this.generateConversationTitle(lastUser.content);
-          if (generated) {
-            updateConversationTitle({ id: conversationId, sessionId, title: generated });
-            // Refresh conversation meta locally
-            this.conversationMeta = { ...(convo || {}), id: conversationId, title: generated };
+          // Find the last user message for title generation
+          const lastUser = [...nonSystemMessages]
+            .reverse()
+            .find((m) => m && m.role === 'user' && typeof m.content === 'string');
+
+          if (lastUser) {
+            const generated = await this.generateConversationTitle(lastUser.content);
+            if (generated) {
+              updateConversationTitle({ id: conversationId, sessionId, title: generated });
+              // Refresh conversation meta locally
+              this.conversationMeta = { ...(convo || {}), id: conversationId, title: generated };
+            }
           }
         }
       } catch (err) {
@@ -170,7 +189,7 @@ export class SimplifiedPersistence {
     // Setup for assistant message - but don't create draft yet
     this.persist = true;
     this.conversationId = conversationId;
-    this.assistantSeq = userSeq + 1;
+    this.assistantSeq = getNextSeq(conversationId);
     this.assistantBuffer = '';
     this.conversationMeta = this.conversationMeta || convo; // Store conversation metadata for response
 
@@ -267,7 +286,7 @@ export class SimplifiedPersistence {
     });
 
     // Update assistant seq
-    this.assistantSeq = userSeq + 1;
+    this.assistantSeq = getNextSeq(this.conversationId);
   }
 
   /**
