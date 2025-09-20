@@ -3,6 +3,7 @@ import React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeHighlight from "rehype-highlight";
+import { useTheme } from "../contexts/ThemeContext";
 
 interface MarkdownProps {
   text: string;
@@ -15,8 +16,14 @@ interface MarkdownProps {
 // - Secure by default (no raw HTML rendering)
 // - Accessible links opening in a new tab
 export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+
+  // Note: Syntax highlighting theme is automatically handled by CSS
+  // based on the .dark class applied to the document root
+
   return (
-    <div className={className}>
+    <div className={`${className || ''} ${isDark ? 'dark' : ''}`}>
       <ReactMarkdown
         // Do NOT enable raw HTML to prevent XSS
         remarkPlugins={[remarkGfm]}
@@ -96,28 +103,8 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
               </pre>
             );
           },
-          code: function CodeRenderer(p) {
-            const { inline, className: cls, children } = p as any;
-            const hasLanguage = /\blanguage-/.test(cls || "");
-            const isInline = inline ?? !hasLanguage;
-
-            // Keep inline code styled (small pill). For fenced/block code we
-            // avoid adding background/padding/font styles here because the
-            // surrounding `pre` now supplies padding, mono font and scrollable
-            // container. Preserve the language class (e.g. language-js) so
-            // syntax highlighting can work.
-            if (isInline) {
-              return (
-                <code className="md-inline-code px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-neutral-800 text-[0.9em] font-mono border border-slate-200 dark:border-neutral-700">
-                  {children}
-                </code>
-              );
-            }
-
-            // For block code, allow rehype/highlight to attach language-* class
-            // but don't duplicate layout or visual styles already applied by
-            // the `pre` renderer.
-            return <code className={cls}>{children}</code>;
+          code: function CodeRenderer({ className, children }: { className?: string; children?: React.ReactNode }) {
+            return <code className={`${className} bg-slate-50 dark:bg-neutral-900/50`}>{children}</code>;
           },
           p: ({ children }) => <p className="md-p whitespace-pre-wrap leading-relaxed">{children}</p>,
           h1: ({ children }) => <h1 className="md-h1 text-2xl font-bold mt-6 mb-4 pb-2 border-b border-slate-200 dark:border-neutral-800">{children}</h1>,
