@@ -1,5 +1,4 @@
 import React from 'react';
-import { Check, X } from 'lucide-react';
 
 interface ToggleProps {
   checked: boolean;
@@ -43,21 +42,7 @@ export function Toggle({ checked, onChange, ariaLabel, disabled, icon, label, cl
             ${checked ? 'translate-x-5' : 'translate-x-0'}
             ${disabled ? 'opacity-75' : ''}
           `}
-        >
-          {/* Optional check/cross icons inside the switch */}
-          <span className={`
-            absolute inset-0 flex items-center justify-center transition-opacity duration-100
-            ${checked ? 'opacity-100' : 'opacity-0'}
-          `}>
-            <Check size={12} className="text-emerald-600" />
-          </span>
-          <span className={`
-            absolute inset-0 flex items-center justify-center transition-opacity duration-100
-            ${!checked ? 'opacity-100' : 'opacity-0'}
-          `}>
-            <X size={12} className="text-slate-400" />
-          </span>
-        </span>
+        />
       </button>
 
       {label && (

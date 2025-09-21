@@ -47,6 +47,17 @@ export default function SettingsModal({
   const [testResult, setTestResult] = React.useState<{ success: boolean; message: string } | null>(null);
   const [toggleLoading, setToggleLoading] = React.useState<Set<string>>(new Set());
 
+  // Generate user-friendly ID from provider name
+  const generateIdFromName = React.useCallback((name: string): string => {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '') // Remove special chars except spaces and hyphens
+      .replace(/\s+/g, '-') // Replace spaces with hyphens
+      .replace(/-+/g, '-') // Replace multiple hyphens with single
+      .replace(/^-|-$/g, '') // Remove leading/trailing hyphens
+      .slice(0, 50); // Limit length
+  }, []);
+
   const resetForm = React.useCallback(() => {
     setSelectedId(null);
     setForm({ name: '', provider_type: 'openai', base_url: '', enabled: true, api_key: '', default_model: '' });
@@ -125,11 +136,33 @@ export default function SettingsModal({
           body: JSON.stringify(payload),
         });
       } else {
-        res = await fetch(`${apiBase}/v1/providers`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...payload, id: form.name || undefined }),
-        });
+        // Generate user-friendly ID from name for new providers
+        let generatedId = generateIdFromName(form.name);
+        let attempt = 0;
+        const maxAttempts = 5;
+
+        while (attempt < maxAttempts) {
+          const idToTry = attempt === 0 ? generatedId : `${generatedId}-${attempt}`;
+          res = await fetch(`${apiBase}/v1/providers`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ...payload, id: idToTry }),
+          });
+
+          if (res.ok) {
+            break; // Success, exit retry loop
+          }
+
+          const err = await res.json().catch(() => ({}));
+          if (res.status === 409 && attempt < maxAttempts - 1) {
+            // Conflict error, try with next suffix
+            attempt++;
+            continue;
+          } else {
+            // Other error or max attempts reached
+            throw new Error(err?.message || `Save failed (${res.status})`);
+          }
+        }
       }
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -292,7 +325,7 @@ export default function SettingsModal({
       <Modal
         open={open}
         onClose={onClose}
-        maxWidthClassName="max-w-2xl"
+        maxWidthClassName="max-w-6xl"
         title={<div className="flex items-center gap-2"><Cog className="w-4 h-4" /> Settings</div> as any}
       >
         <div className="flex flex-col gap-3">
@@ -345,30 +378,34 @@ export default function SettingsModal({
               )}
 
               {/* Main Content - Responsive Grid */}
-              <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
-                {/* Provider List */}
-                <div className="lg:col-span-2 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-sm font-medium text-slate-900 dark:text-slate-100">Existing Providers</h4>
-                    <button
-                      type="button"
-                      onClick={resetForm}
-                      className="inline-flex items-center gap-1 px-2 py-1 text-sm rounded-md border border-slate-200/70 dark:border-neutral-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Add New
-                    </button>
-                  </div>
+              <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+                {/* Provider List Section */}
+                <div className="lg:col-span-2 space-y-4">
+                  <div className="bg-slate-50/60 dark:bg-neutral-800/30 rounded-lg p-3 border border-slate-200/30 dark:border-neutral-700/30">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Your Providers</h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Manage and toggle existing configurations</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={resetForm}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-slate-600 hover:bg-slate-700 text-white transition-colors font-medium"
+                      >
+                        <Plus className="w-4 h-4" />
+                        Add New
+                      </button>
+                    </div>
 
-                  <div className="bg-white/70 dark:bg-neutral-900/60 rounded-xl border border-slate-200/70 dark:border-neutral-800 divide-y divide-slate-200/60 dark:divide-neutral-800 max-h-72 overflow-auto shadow-sm">
+                    <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 divide-y divide-slate-200/60 dark:divide-neutral-700 max-h-64 overflow-auto shadow-sm">
                     {loadingProviders && (
                       <div className="p-3 text-sm text-slate-500 text-center">Loading providers...</div>
                     )}
                     {!loadingProviders && providers.length === 0 && (
                       <div className="p-6 text-center">
-                        <Database className="mx-auto h-10 w-10 text-slate-400 mb-2" />
-                        <p className="text-sm text-slate-500">No providers configured</p>
-                        <p className="text-xs text-slate-400 mt-1">Click &ldquo;Add New&rdquo; to get started</p>
+                        <Database className="mx-auto h-10 w-10 text-slate-400 mb-3" />
+                        <p className="text-sm font-medium text-slate-600 dark:text-slate-400">No AI providers yet</p>
+                        <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">Click "Add New" to configure your first AI provider</p>
                       </div>
                     )}
                     {providers.map((p) => (
@@ -398,7 +435,7 @@ export default function SettingsModal({
                         >
                         <div className="flex items-center justify-between">
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate">
+                            <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate capitalize">
                               {p.name}
                             </p>
                             <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -423,15 +460,22 @@ export default function SettingsModal({
                         </div>
                       </div>
                     ))}
+                    </div>
                   </div>
                 </div>
 
-                {/* Provider Editor */}
-                <div className="lg:col-span-3 bg-white/70 dark:bg-neutral-900/60 rounded-xl border border-slate-200/70 dark:border-neutral-800 p-4 shadow-sm">
-                  <div className="flex items-center justify-between mb-4">
-                    <h4 className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                      {form.id ? 'Edit Provider' : 'New Provider'}
-                    </h4>
+                {/* Provider Configuration Section */}
+                <div className="lg:col-span-3 bg-slate-50/60 dark:bg-neutral-800/30 rounded-lg p-4 border border-slate-200/30 dark:border-neutral-700/30">
+                  <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-4 shadow-sm">
+                    <div className="flex items-center justify-between mb-5">
+                      <div>
+                        <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                          {form.id ? 'Edit Provider Configuration' : 'Add New Provider'}
+                        </h4>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          {form.id ? 'Update settings for this provider' : 'Configure a new AI provider for your account'}
+                        </p>
+                      </div>
                     {form.id && (
                       <button
                         type="button"
@@ -445,80 +489,93 @@ export default function SettingsModal({
                   </div>
 
                   <div className="space-y-3">
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       <label htmlFor="provider-name" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                         Provider Name *
                       </label>
                       <input
                         id="provider-name"
                         type="text"
-                        className="w-full px-3 py-1.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-slate-300 dark:focus:ring-neutral-700 focus:border-slate-300"
+                        className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
                         value={form.name}
                         onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                        placeholder="OpenAI"
+                        placeholder="e.g., OpenAI, Anthropic, Custom Provider"
                         required
                       />
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Choose a descriptive name to identify this provider</p>
                     </div>
 
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       <label htmlFor="provider-type" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                         Provider Type *
                       </label>
                       <select
                         id="provider-type"
-                        className="w-full px-3 py-1.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-slate-300 dark:focus:ring-neutral-700 focus:border-slate-300"
+                        className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
                         value={form.provider_type}
                         onChange={(e) => setForm((f) => ({ ...f, provider_type: e.target.value }))}
                         required
                       >
                         <option value="openai">OpenAI Compatible</option>
                       </select>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Compatible with OpenAI API format (ChatGPT, Claude, most providers)</p>
                     </div>
 
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       <label htmlFor="base-url" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                         Base URL
+                        <span className="text-xs font-normal text-slate-500 dark:text-slate-400 ml-2">(Optional)</span>
                       </label>
                       <input
                         id="base-url"
                         type="url"
-                        className="w-full px-3 py-1.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-slate-300 dark:focus:ring-neutral-700 focus:border-slate-300"
+                        className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
                         value={form.base_url}
                         onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
-                        placeholder="https://api.openai.com/v1"
+                        placeholder="https://api.openai.com/v1 (auto-filled if empty)"
                       />
-                      <p className="text-xs text-slate-500 dark:text-slate-400">Leave empty to use the default OpenAI endpoint</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Custom API endpoint. Leave empty for OpenAI's default endpoint.
+                      </p>
                     </div>
 
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       <label htmlFor="api-key" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                        API Key
+                        API Key {!form.id && <span className="text-red-500">*</span>}
                       </label>
                       <input
                         id="api-key"
                         type="password"
-                        className="w-full px-3 py-1.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-slate-300 dark:focus:ring-neutral-700 focus:border-slate-300"
+                        className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
                         value={form.api_key || ''}
                         onChange={(e) => setForm((f) => ({ ...f, api_key: e.target.value }))}
-                        placeholder={form.id ? "Leave blank to keep existing key" : "sk-..."}
+                        placeholder={form.id ? "••••••••••••••••••••" : "sk-proj-abc123... or your provider's API key"}
+                        required={!form.id}
                       />
-                      {form.id && (
-                        <p className="text-xs text-slate-500 dark:text-slate-400">Leave blank to keep the existing API key</p>
-                      )}
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {form.id
+                          ? "Leave blank to keep existing key. Keys are stored securely and encrypted."
+                          : "Your API key will be encrypted and stored securely. Never shared or logged."
+                        }
+                      </p>
                     </div>
 
-                    <div className="space-y-1">
+                    <div className="space-y-1.5">
                       <label htmlFor="default-model" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                         Default Model
+                        <span className="text-xs font-normal text-slate-500 dark:text-slate-400 ml-2">(Optional)</span>
                       </label>
                       <input
                         id="default-model"
                         type="text"
-                        className="w-full px-3 py-1.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-slate-300 dark:focus:ring-neutral-700 focus:border-slate-300"
+                        className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
                         value={form.default_model || ''}
                         onChange={(e) => setForm((f) => ({ ...f, default_model: e.target.value }))}
-                        placeholder="gpt-4o-mini"
+                        placeholder="gpt-4o-mini, claude-3-5-sonnet-20241022, etc."
                       />
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        Fallback model if none specified. Use exact model name from provider docs.
+                      </p>
                     </div>
 
                     {/* Test Result Display */}
@@ -540,7 +597,7 @@ export default function SettingsModal({
                                 ? 'text-emerald-800 dark:text-emerald-200'
                                 : 'text-red-800 dark:text-red-200'
                             }`}>
-                              {testResult.success ? 'Connection Successful' : 'Connection Failed'}
+                              {testResult.success ? '✓ Connection Successful' : '✗ Connection Failed'}
                             </h4>
                             <p className={`text-xs mt-1 ${
                               testResult.success
@@ -554,38 +611,48 @@ export default function SettingsModal({
                       </div>
                     )}
 
-                    <div className="pt-3 border-t border-slate-200/70 dark:border-neutral-800 space-y-2">
-                      {/* Test Connection Button */}
-                      <button
-                        type="button"
-                        onClick={testProviderConnection}
-                        disabled={testing || !form.name || !form.provider_type}
-                        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md border border-slate-200/70 dark:border-neutral-800 bg-transparent hover:bg-slate-50 dark:hover:bg-neutral-800 text-slate-700 dark:text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {testing ? (
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Zap className="w-4 h-4" />
-                        )}
-                        {testing ? 'Testing...' : 'Test Connection'}
-                      </button>
+                    <div className="pt-4 border-t border-slate-200/70 dark:border-neutral-800">
+                      <div className="flex flex-col sm:flex-row gap-3">
+                        {/* Test Connection Button */}
+                        <button
+                          type="button"
+                          onClick={testProviderConnection}
+                          disabled={testing || !form.name || !form.provider_type}
+                          className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg border border-slate-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 hover:bg-slate-50 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                        >
+                          {testing ? (
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Zap className="w-4 h-4" />
+                          )}
+                          {testing ? 'Testing Connection...' : 'Test Connection'}
+                        </button>
 
-                      {/* Save Button */}
-                      <button
-                        type="button"
-                        onClick={onSaveProvider}
-                        disabled={saving || !form.name || !form.provider_type}
-                        className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md bg-slate-900 hover:bg-slate-800 text-white dark:bg-white dark:text-neutral-900 dark:hover:bg-neutral-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                      >
-                        {saving ? (
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Save className="w-4 h-4" />
-                        )}
-                        {saving ? 'Saving...' : form.id ? 'Update Provider' : 'Create Provider'}
-                      </button>
+                        {/* Save Button */}
+                        <button
+                          type="button"
+                          onClick={onSaveProvider}
+                          disabled={saving || !form.name || !form.provider_type || (testResult ? !testResult.success : false)}
+                          className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                        >
+                          {saving ? (
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Save className="w-4 h-4" />
+                          )}
+                          {saving ? 'Saving...' : form.id ? 'Update Provider' : 'Create Provider'}
+                        </button>
+                      </div>
+
+                      {testResult && !testResult.success && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
+                          <span className="inline-block w-1 h-1 bg-amber-500 rounded-full"></span>
+                          Test connection first to ensure your settings work correctly
+                        </p>
+                      )}
                     </div>
                   </div>
+                </div>
                 </div>
               </div>
             </div>
@@ -595,7 +662,7 @@ export default function SettingsModal({
 
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 overflow-y-auto">
+        <div className="fixed inset-0 z-[10001] overflow-y-auto">
           <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
             <div className="fixed inset-0 bg-slate-500 bg-opacity-75 transition-opacity" onClick={() => setShowDeleteConfirm(false)} />
             <div className="relative transform overflow-hidden rounded-lg bg-white dark:bg-slate-800 px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
@@ -609,7 +676,7 @@ export default function SettingsModal({
                   </h3>
                   <div className="mt-2">
                     <p className="text-sm text-slate-500 dark:text-slate-400">
-                      Are you sure you want to delete &ldquo;{form.name}&rdquo;? This action cannot be undone.
+                      Are you sure you want to permanently delete "{form.name}"? This action cannot be undone.
                     </p>
                   </div>
                 </div>
