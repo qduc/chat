@@ -535,19 +535,24 @@ export function useChatState() {
 
   // Stream event handler
   const handleStreamEvent = useCallback((event: any) => {
-    const assistantId = assistantMsgRef.current!.id;
+    const current = assistantMsgRef.current;
+    if (!current) return;
+    const assistantId = current.id;
+
+    // Maintain a separate assistant snapshot without mutating the reducer-managed message
+    const appendSnapshotContent = (delta: string) => {
+      if (!delta) return;
+      const prev = assistantMsgRef.current;
+      if (!prev) return;
+      const nextContent = (prev.content ?? '') + delta;
+      assistantMsgRef.current = { ...prev, content: nextContent };
+    };
 
     if (event.type === 'text') {
-      // Keep a local snapshot for robustness in case state isn't committed yet
-      if (assistantMsgRef.current) {
-        assistantMsgRef.current.content += event.value;
-      }
+      appendSnapshotContent(event.value);
       dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token: event.value } });
     } else if (event.type === 'final') {
-      // For final events, we could update the entire content
-      if (assistantMsgRef.current) {
-        assistantMsgRef.current.content += event.value;
-      }
+      appendSnapshotContent(event.value);
       dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token: event.value } });
     } else if (event.type === 'tool_call') {
       // Let reducer manage tool_calls to avoid duplicates from local snapshot
