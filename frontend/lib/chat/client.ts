@@ -67,14 +67,14 @@ export class ChatClient {
   }
 
   private buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: boolean): any {
-    const { messages, model, providerId } = options as any;
+    const { messages, model, providerId } = options;
     const extendedOptions = options as ChatOptionsExtended;
 
     const bodyObj: any = {
       model,
       messages,
       stream,
-      ...(providerId && { provider_id: providerId }),
+      provider_id: providerId,
       ...(extendedOptions.conversationId && { conversation_id: extendedOptions.conversationId }),
       ...(extendedOptions.streamingEnabled !== undefined && { streamingEnabled: extendedOptions.streamingEnabled }),
       ...(extendedOptions.toolsEnabled !== undefined && { toolsEnabled: extendedOptions.toolsEnabled }),

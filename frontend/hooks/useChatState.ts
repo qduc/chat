@@ -17,6 +17,7 @@ export interface ChatState {
 
   // Settings
   model: string;
+  providerId: string | null;
   useTools: boolean;
   shouldStream: boolean;
   reasoningEffort: string;
@@ -50,6 +51,7 @@ export interface ChatState {
 export type ChatAction =
   | { type: 'SET_INPUT'; payload: string }
   | { type: 'SET_MODEL'; payload: string }
+  | { type: 'SET_PROVIDER_ID'; payload: string | null }
   | { type: 'SET_USE_TOOLS'; payload: boolean }
   | { type: 'SET_SHOULD_STREAM'; payload: boolean }
   | { type: 'SET_REASONING_EFFORT'; payload: string }
@@ -93,6 +95,7 @@ const initialState: ChatState = {
   conversationId: null,
   previousResponseId: null,
   model: 'gpt-4.1-mini',
+  providerId: null,
   useTools: true,
   shouldStream: true,
   reasoningEffort: 'medium',
@@ -118,6 +121,9 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
     case 'SET_MODEL':
       return { ...state, model: action.payload };
+
+    case 'SET_PROVIDER_ID':
+      return { ...state, providerId: action.payload };
 
     case 'SET_USE_TOOLS':
       return { ...state, useTools: action.payload };
@@ -564,6 +570,7 @@ export function useChatState() {
       return ({
         messages: outgoing.map(m => ({ role: m.role as Role, content: m.content })),
         model: state.model,
+        providerId: state.providerId,
         signal,
         conversationId: state.conversationId || undefined,
         systemPrompt: trimmedSystem || undefined,
@@ -662,6 +669,10 @@ export function useChatState() {
 
     setModel: useCallback((model: string) => {
       dispatch({ type: 'SET_MODEL', payload: model });
+    }, []),
+
+    setProviderId: useCallback((providerId: string | null) => {
+      dispatch({ type: 'SET_PROVIDER_ID', payload: providerId });
     }, []),
 
     setUseTools: useCallback((useTools: boolean) => {

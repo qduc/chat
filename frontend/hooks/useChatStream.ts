@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { ChatMessage, Role, ToolSpec } from '../lib/chat';
 import { ChatClient, ToolsClient } from '../lib/chat';
+import { getDefaultProviderId } from '../lib/chat/utils';
 
 export interface PendingState {
   abort?: AbortController;
@@ -61,6 +62,7 @@ export function useChatStream(): UseChatStreamReturn {
   const [pending, setPending] = useState<PendingState>({ streaming: false });
   const [previousResponseId, setPreviousResponseId] = useState<string | null>(null);
   const [availableTools, setAvailableTools] = useState<ToolSpec[] | null>(null);
+  const [defaultProviderId, setDefaultProviderId] = useState<string | null>(null);
   const assistantMsgRef = useRef<ChatMessage | null>(null);
   const inFlightRef = useRef<boolean>(false);
   const toolsPromiseRef = useRef<Promise<ToolSpec[]> | undefined>(undefined);
@@ -69,7 +71,7 @@ export function useChatStream(): UseChatStreamReturn {
   const chatClient = useMemo(() => new ChatClient(), []);
   const toolsClient = useMemo(() => new ToolsClient(), []);
 
-  // Fetch tool specifications from backend on mount
+  // Fetch tool specifications and default provider from backend on mount
   useEffect(() => {
     const toolsPromise = toolsClient.getToolSpecs()
       .then((response: any) => {
@@ -82,6 +84,14 @@ export function useChatStream(): UseChatStreamReturn {
         return [];
       });
     toolsPromiseRef.current = toolsPromise;
+
+    // Fetch default provider
+    getDefaultProviderId()
+      .then(setDefaultProviderId)
+      .catch((error: any) => {
+        console.error('Failed to fetch default provider:', error);
+        setDefaultProviderId(null);
+      });
   }, [toolsClient]);
 
   const handleStreamEvent = useCallback((event: any) => {
@@ -156,9 +166,14 @@ export function useChatStream(): UseChatStreamReturn {
 
     const tools = await loadToolsIfNeeded(useTools);
 
+    if (!defaultProviderId) {
+      throw new Error('No provider available');
+    }
+
     return {
       messages: history.map(m => ({ role: m.role as Role, content: m.content })),
       model,
+      providerId: defaultProviderId,
       signal,
       conversationId: conversationId || undefined,
       shouldStream,
@@ -173,7 +188,7 @@ export function useChatStream(): UseChatStreamReturn {
       } : {}),
       onEvent: handleStreamEvent
     };
-  }, [handleStreamEvent, loadToolsIfNeeded]);
+  }, [handleStreamEvent, loadToolsIfNeeded, defaultProviderId]);
 
   const recordResultMeta = useCallback((result: any, onConversationCreated?: (conversation: { id: string; title?: string | null; model?: string | null; created_at: string }) => void) => {
     if (result?.responseId) setPreviousResponseId(result.responseId);

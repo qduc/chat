@@ -9,10 +9,11 @@ interface ChatHeaderProps {
   onNewChat?: () => void;
   model: string;
   onModelChange: (model: string) => void;
+  onProviderChange?: (providerId: string) => void;
   onOpenSettings?: () => void;
 }
 
-export function ChatHeader({ model, onModelChange, onOpenSettings }: ChatHeaderProps) {
+export function ChatHeader({ model, onModelChange, onProviderChange, onOpenSettings }: ChatHeaderProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
 
   // Derive models from configured providers with a safe fallback
@@ -27,6 +28,7 @@ export function ChatHeader({ model, onModelChange, onOpenSettings }: ChatHeaderP
   const apiBase = (process.env.NEXT_PUBLIC_API_BASE as string) ?? 'http://localhost:3001';
   const [modelOptions, setModelOptions] = React.useState<Option[]>(defaultOpenAIModels);
   const [groups, setGroups] = React.useState<TabGroup[] | null>(null);
+  const [modelToProvider, setModelToProvider] = React.useState<Map<string, string>>(new Map());
 
   React.useEffect(() => {
     let cancelled = false;
@@ -52,12 +54,20 @@ export function ChatHeader({ model, onModelChange, onOpenSettings }: ChatHeaderP
           })
         );
 
-        // Build groups; include only providers with at least one model
+        // Build groups and model-to-provider mapping; include only providers with at least one model
         const gs: TabGroup[] = [];
+        const modelProviderMap = new Map<string, string>();
+
         for (let i = 0; i < results.length; i++) {
           const r = results[i];
           if (r.status === 'fulfilled' && r.value.options.length > 0) {
-            gs.push({ id: r.value.provider.id, label: r.value.provider.name || r.value.provider.id, options: r.value.options });
+            const providerId = r.value.provider.id;
+            gs.push({ id: providerId, label: r.value.provider.name || providerId, options: r.value.options });
+
+            // Map each model to its provider
+            r.value.options.forEach((option: Option) => {
+              modelProviderMap.set(option.value, providerId);
+            });
           }
         }
 
@@ -65,6 +75,11 @@ export function ChatHeader({ model, onModelChange, onOpenSettings }: ChatHeaderP
         if (gs.length === 0) {
           if (!cancelled) {
             setGroups([{ id: 'default', label: 'Models', options: defaultOpenAIModels }]);
+            const fallbackMap = new Map<string, string>();
+            defaultOpenAIModels.forEach(option => {
+              fallbackMap.set(option.value, 'default');
+            });
+            setModelToProvider(fallbackMap);
             if (!defaultOpenAIModels.some(o => o.value === model)) {
               onModelChange(defaultOpenAIModels[0].value);
             }
@@ -74,6 +89,7 @@ export function ChatHeader({ model, onModelChange, onOpenSettings }: ChatHeaderP
 
         if (!cancelled) {
           setGroups(gs);
+          setModelToProvider(modelProviderMap);
           // Also flatten into options for simple fallback component rendering if needed
           const flat = gs.flatMap(g => g.options);
           setModelOptions(flat);
@@ -91,7 +107,15 @@ export function ChatHeader({ model, onModelChange, onOpenSettings }: ChatHeaderP
 
     loadProviders();
     return () => { cancelled = true; };
-  }, [apiBase, defaultOpenAIModels, onModelChange]);
+  }, [apiBase, defaultOpenAIModels, onModelChange, model]);
+
+  // Notify parent when provider changes based on selected model
+  React.useEffect(() => {
+    const providerId = modelToProvider.get(model);
+    if (providerId && onProviderChange) {
+      onProviderChange(providerId);
+    }
+  }, [model, modelToProvider, onProviderChange]);
 
   const toggleTheme = () => {
     if (theme === 'dark') {

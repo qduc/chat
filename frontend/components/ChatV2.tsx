@@ -155,6 +155,7 @@ export function ChatV2() {
           onNewChat={actions.newChat}
           model={state.model}
           onModelChange={actions.setModel}
+          onProviderChange={actions.setProviderId}
           onOpenSettings={() => setIsSettingsOpen(true)}
         />
         <MessageList

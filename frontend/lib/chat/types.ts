@@ -86,6 +86,7 @@ export interface ToolsResponse {
 export interface ChatOptions {
   messages: { role: Role; content: string }[];
   model?: string;
+  providerId: string;
   stream?: boolean;
   signal?: AbortSignal;
   onToken?: (token: string) => void;

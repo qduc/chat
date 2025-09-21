@@ -113,6 +113,7 @@ export class SimplifiedPersistence {
         sessionId,
         title: null, // Will be auto-generated from first message if needed
         model,
+        providerId: this.providerId,
         streamingEnabled: persistedStreamingEnabled,
         toolsEnabled: persistedToolsEnabled,
         qualityLevel: bodyIn.qualityLevel || null,
@@ -193,21 +194,36 @@ export class SimplifiedPersistence {
     this.assistantBuffer = '';
     this.conversationMeta = this.conversationMeta || convo; // Store conversation metadata for response
 
-    // If an existing conversation and a new system prompt is provided, update metadata
+    // If an existing conversation and a new system prompt or provider_id is provided, update metadata
     try {
       const sysPromptExisting = (this.conversationMeta && this.conversationMeta.metadata && this.conversationMeta.metadata.system_prompt) || null;
+      const providerIdExisting = this.conversationMeta && this.conversationMeta.providerId;
       const incomingSys = typeof bodyIn?.systemPrompt === 'string' ? bodyIn.systemPrompt.trim() : (
         typeof bodyIn?.system_prompt === 'string' ? bodyIn.system_prompt.trim() : ''
       );
-      if (incomingSys && incomingSys !== sysPromptExisting) {
-        const { updateConversationMetadata } = await import('../db/index.js');
-        updateConversationMetadata({ id: conversationId, sessionId, patch: { system_prompt: incomingSys } });
-        // Keep local meta in sync
-        this.conversationMeta = this.conversationMeta || {};
-        this.conversationMeta.metadata = {
-          ...(this.conversationMeta.metadata || {}),
-          system_prompt: incomingSys,
-        };
+
+      const needsSystemUpdate = incomingSys && incomingSys !== sysPromptExisting;
+      const needsProviderUpdate = this.providerId && this.providerId !== providerIdExisting;
+
+      if (needsSystemUpdate || needsProviderUpdate) {
+        const { updateConversationMetadata, updateConversationProviderId } = await import('../db/index.js');
+
+        if (needsSystemUpdate) {
+          updateConversationMetadata({ id: conversationId, sessionId, patch: { system_prompt: incomingSys } });
+          // Keep local meta in sync
+          this.conversationMeta = this.conversationMeta || {};
+          this.conversationMeta.metadata = {
+            ...(this.conversationMeta.metadata || {}),
+            system_prompt: incomingSys,
+          };
+        }
+
+        if (needsProviderUpdate) {
+          updateConversationProviderId({ id: conversationId, sessionId, providerId: this.providerId });
+          // Keep local meta in sync
+          this.conversationMeta = this.conversationMeta || {};
+          this.conversationMeta.providerId = this.providerId;
+        }
       }
     } catch (_) {
       // ignore metadata update errors

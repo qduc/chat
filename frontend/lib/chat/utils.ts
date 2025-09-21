@@ -84,3 +84,48 @@ export function createRequestInit(body: any, options: { stream?: boolean; signal
 
   return init;
 }
+
+// Provider utilities
+export interface Provider {
+  id: string;
+  name: string;
+  provider_type: string;
+  enabled: number;
+  updated_at: string;
+}
+
+let cachedDefaultProvider: string | null = null;
+
+export async function getDefaultProviderId(apiBase: string = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001'): Promise<string> {
+  if (cachedDefaultProvider) {
+    return cachedDefaultProvider;
+  }
+
+  try {
+    const response = await fetch(`${apiBase}/v1/providers`);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch providers: ${response.status}`);
+    }
+
+    const json = await response.json();
+    const providers: Provider[] = Array.isArray(json.providers) ? json.providers : [];
+    const enabledProviders = providers.filter(p => p.enabled === 1);
+
+    if (enabledProviders.length === 0) {
+      throw new Error('No enabled providers found');
+    }
+
+    // Sort by updated_at desc to get the most recent one
+    enabledProviders.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+
+    cachedDefaultProvider = enabledProviders[0].id;
+    return cachedDefaultProvider;
+  } catch (error) {
+    console.error('Failed to get default provider:', error);
+    throw new Error('Unable to determine default provider');
+  }
+}
+
+export function clearProviderCache() {
+  cachedDefaultProvider = null;
+}

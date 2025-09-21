@@ -26,7 +26,7 @@ export {
   type EditMessageResult
 } from './chat/conversations';
 export { ToolsClient } from './chat/tools';
-export { APIError, SSEParser } from './chat/utils';
+export { APIError, SSEParser, getDefaultProviderId, clearProviderCache } from './chat/utils';
 
 // Legacy function exports for backward compatibility
 // @deprecated Use ConversationManager class instead
@@ -42,6 +42,7 @@ export { getToolSpecs } from './chat/tools';
 
 import { ChatClient } from './chat/client';
 import { SendChatOptions, ChatResponse } from './chat/types';
+import { getDefaultProviderId } from './chat/utils';
 
 const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
 
@@ -50,9 +51,13 @@ const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:300
 export async function sendChat(options: SendChatOptions): Promise<ChatResponse> {
   const client = new ChatClient(options.apiBase || defaultApiBase);
 
+  // Get default provider if not provided
+  const providerId = (options as any).providerId || await getDefaultProviderId(options.apiBase || defaultApiBase);
+
   // Convert legacy options to new format
   const convertedOptions = {
     ...options,
+    providerId,
     stream: options.shouldStream !== undefined ? !!options.shouldStream :
             (options.stream === undefined ? true : !!options.stream),
     reasoning: (options.reasoningEffort || options.verbosity) ? {
