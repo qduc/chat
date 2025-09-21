@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Send, Loader2, Gauge, Wrench, Zap } from 'lucide-react';
-import type { PendingState } from '../hooks/useChatStream';
+import type { PendingState } from '../hooks/useChatState';
 import Toggle from './ui/Toggle';
 import QualitySlider from './ui/QualitySlider';
 import type { QualityLevel } from './ui/QualitySlider';

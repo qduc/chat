@@ -3,6 +3,12 @@ import type { ChatMessage, Role, ConversationMeta } from '../lib/chat';
 import { sendChat, getConversationApi, listConversationsApi, deleteConversationApi, editMessageApi } from '../lib/chat';
 import type { QualityLevel } from '../components/ui/QualitySlider';
 
+export interface PendingState {
+  abort?: AbortController;
+  streaming: boolean;
+  error?: string;
+}
+
 // Unified state structure
 export interface ChatState {
   // UI State
@@ -461,7 +467,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
   }
 }
 
-// Available tools (moved from useChatStream)
+// Available tools used for quick lookups by name
 import type { ToolSpec } from '../lib/chat';
 const availableTools: Record<string, ToolSpec> = {
   get_time: {

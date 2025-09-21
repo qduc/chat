@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import Markdown from './Markdown';
 import type { ChatMessage } from '../lib/chat';
-import type { PendingState } from '../hooks/useChatStream';
+import type { PendingState } from '../hooks/useChatState';
 
 interface MessageListProps {
   messages: ChatMessage[];
