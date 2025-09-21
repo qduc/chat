@@ -5,8 +5,6 @@ import { type Group as TabGroup } from './TabbedSelect';
 interface ModelOption {
   value: string;
   label: string;
-  provider?: string;
-  providerId?: string;
 }
 
 interface ModelSelectorProps {
@@ -33,7 +31,6 @@ export default function ModelSelector({
   const [searchQuery, setSearchQuery] = useState('');
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [recentModels, setRecentModels] = useState<string[]>([]);
-  const [selectedTab, setSelectedTab] = useState<string>('all');
 
   const searchInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -61,56 +58,29 @@ export default function ModelSelector({
       return groups.flatMap(group =>
         group.options.map(option => ({
           ...option,
-          provider: group.label,
-          providerId: group.id
         }))
       );
     }
     return fallbackOptions.map(option => ({
       ...option,
-      provider: option.provider || 'Default',
-      providerId: 'default'
     }));
   }, [groups, fallbackOptions]);
 
-  // Get available provider tabs
-  const providerTabs = useMemo(() => {
-    const tabs = [{ id: 'all', label: 'All', count: allModels.length }];
-
-    if (groups && groups.length > 1) {
-      groups.forEach(group => {
-        tabs.push({
-          id: group.id,
-          label: group.label,
-          count: group.options.length
-        });
-      });
-    }
-
-    return tabs;
-  }, [groups, allModels.length]);
-
-  // Filter models based on search query and selected tab
+  // Filter models based on search query
   const filteredModels = useMemo(() => {
     let models = allModels;
-
-    // Filter by selected tab
-    if (selectedTab !== 'all') {
-      models = models.filter(model => model.providerId === selectedTab);
-    }
 
     // Filter by search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       models = models.filter(model =>
         model.label.toLowerCase().includes(query) ||
-        model.value.toLowerCase().includes(query) ||
-        (model.provider && model.provider.toLowerCase().includes(query))
+        model.value.toLowerCase().includes(query)
       );
     }
 
     return models;
-  }, [allModels, searchQuery, selectedTab]);
+  }, [allModels, searchQuery]);
 
   // Organize models into sections
   const organizedModels = useMemo(() => {
@@ -149,7 +119,6 @@ export default function ModelSelector({
     onChange(modelValue);
     setIsOpen(false);
     setSearchQuery('');
-    setSelectedTab('all'); // Reset to All tab after selection
 
     // Update recent models (max 5, exclude favorites)
     if (!favorites.has(modelValue)) {
@@ -169,7 +138,6 @@ export default function ModelSelector({
     if (e.key === 'Escape') {
       setIsOpen(false);
       setSearchQuery('');
-      setSelectedTab('all');
     }
   };
 
@@ -179,7 +147,6 @@ export default function ModelSelector({
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsOpen(false);
         setSearchQuery('');
-        setSelectedTab('all');
       }
     };
 
@@ -227,11 +194,6 @@ export default function ModelSelector({
         }`}
       >
         <div className="text-sm font-medium truncate leading-tight">{model.label}</div>
-        {model.provider && (
-          <div className="text-xs text-slate-500 dark:text-slate-400 truncate leading-tight">
-            {model.provider}
-          </div>
-        )}
       </button>
     </div>
   );
@@ -251,26 +213,6 @@ export default function ModelSelector({
 
       {isOpen && (
         <div className="absolute top-full left-0 w-80 mt-2 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 rounded-lg shadow-lg max-h-96 overflow-hidden z-50">
-          {/* Provider Tabs */}
-          {providerTabs.length > 1 && (
-            <div className="flex border-b border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800/50">
-              {providerTabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setSelectedTab(tab.id)}
-                  className={`flex-1 px-3 py-2 text-xs font-medium text-center border-b-2 transition-colors ${
-                    selectedTab === tab.id
-                      ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-white dark:bg-neutral-900'
-                      : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-neutral-700'
-                  }`}
-                >
-                  <div className="truncate">{tab.label}</div>
-                  <div className="text-xs opacity-75">({tab.count})</div>
-                </button>
-              ))}
-            </div>
-          )}
-
           {/* Search Header */}
           <div className="p-2 border-b border-slate-200 dark:border-neutral-700">
             <div className="relative">

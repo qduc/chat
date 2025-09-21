@@ -83,7 +83,7 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
 
     const {
       title,
-      provider,
+      provider_id,
       model,
       streamingEnabled,
       toolsEnabled,
@@ -99,7 +99,7 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
       id,
       sessionId,
       title,
-      provider,
+      provider_id,
       model,
       streamingEnabled,
       toolsEnabled,
@@ -219,7 +219,7 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
       sessionId,
       messageSeq: message.seq,
       title: conversation.title,
-      provider: conversation.provider,
+      provider_id: conversation.provider_id,
       model: conversation.model,
     });
 

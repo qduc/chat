@@ -17,7 +17,6 @@ export interface ChatState {
 
   // Settings
   model: string;
-  providerId: string | null;
   useTools: boolean;
   shouldStream: boolean;
   reasoningEffort: string;
@@ -51,7 +50,6 @@ export interface ChatState {
 export type ChatAction =
   | { type: 'SET_INPUT'; payload: string }
   | { type: 'SET_MODEL'; payload: string }
-  | { type: 'SET_PROVIDER'; payload: string | null }
   | { type: 'SET_USE_TOOLS'; payload: boolean }
   | { type: 'SET_SHOULD_STREAM'; payload: boolean }
   | { type: 'SET_REASONING_EFFORT'; payload: string }
@@ -95,7 +93,6 @@ const initialState: ChatState = {
   conversationId: null,
   previousResponseId: null,
   model: 'gpt-4.1-mini',
-  providerId: null,
   useTools: true,
   shouldStream: true,
   reasoningEffort: 'medium',
@@ -121,9 +118,6 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
     case 'SET_MODEL':
       return { ...state, model: action.payload };
-
-    case 'SET_PROVIDER':
-      return { ...state, providerId: action.payload };
 
     case 'SET_USE_TOOLS':
       return { ...state, useTools: action.payload };
@@ -570,7 +564,6 @@ export function useChatState() {
       return ({
         messages: outgoing.map(m => ({ role: m.role as Role, content: m.content })),
         model: state.model,
-        providerId: state.providerId || undefined,
         signal,
         conversationId: state.conversationId || undefined,
         systemPrompt: trimmedSystem || undefined,
@@ -623,13 +616,36 @@ export function useChatState() {
           payload: { responseId: result.responseId },
         });
       } catch (e: any) {
-        const message = e?.message || String(e);
+        let displayError = 'An unexpected error occurred.';
+
+        // Duck-typing for APIError
+        if (e && typeof e.status === 'number' && e.body) {
+          if (e.body && typeof e.body === 'object') {
+            let detail = e.body.error?.message || e.body.message;
+            if (e.body.error?.metadata?.raw) {
+              try {
+                const rawError = JSON.parse(e.body.error.metadata.raw);
+                detail = rawError.error?.message || detail;
+              } catch (parseError) {
+                // Failed to parse raw error metadata
+              }
+            }
+            displayError = `HTTP ${e.status}: ${detail || 'An unknown error occurred.'}`;
+          } else {
+            displayError = e.message;
+          }
+        } else if (e instanceof Error) {
+          displayError = e.message;
+        } else {
+          displayError = String(e);
+        }
+
         // Append error message to the assistant bubble for visibility
         const assistantId = assistantMsgRef.current?.id;
         if (assistantId) {
-          dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token: `\n[error: ${message}]` } });
+          dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token: `\n[error: ${displayError}]` } });
         }
-        dispatch({ type: 'STREAM_ERROR', payload: message });
+        dispatch({ type: 'STREAM_ERROR', payload: displayError });
       } finally {
         inFlightRef.current = false;
       }
@@ -646,10 +662,6 @@ export function useChatState() {
 
     setModel: useCallback((model: string) => {
       dispatch({ type: 'SET_MODEL', payload: model });
-    }, []),
-
-    setProviderId: useCallback((providerId: string | null) => {
-      dispatch({ type: 'SET_PROVIDER', payload: providerId });
     }, []),
 
     setUseTools: useCallback((useTools: boolean) => {
@@ -760,9 +772,6 @@ export function useChatState() {
         dispatch({ type: 'SET_MESSAGES', payload: msgs });
 
         // Apply conversation-level settings from API response
-        if (data.provider) {
-          dispatch({ type: 'SET_PROVIDER', payload: data.provider });
-        }
         if (data.model) {
           dispatch({ type: 'SET_MODEL', payload: data.model });
         }

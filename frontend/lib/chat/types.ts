@@ -23,7 +23,7 @@ export interface ChatResponse {
 export interface ConversationMeta {
   id: string;
   title?: string | null;
-  provider?: string | null;
+  provider_id?: string | null;
   model?: string | null;
   created_at: string;
   streaming_enabled?: boolean;
@@ -86,7 +86,6 @@ export interface ToolsResponse {
 export interface ChatOptions {
   messages: { role: Role; content: string }[];
   model?: string;
-  providerId?: string;
   stream?: boolean;
   signal?: AbortSignal;
   onToken?: (token: string) => void;

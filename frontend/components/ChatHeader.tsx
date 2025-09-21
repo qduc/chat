@@ -9,12 +9,10 @@ interface ChatHeaderProps {
   onNewChat?: () => void;
   model: string;
   onModelChange: (model: string) => void;
-  providerId?: string | null;
-  onProviderChange?: (providerId: string | null) => void;
   onOpenSettings?: () => void;
 }
 
-export function ChatHeader({ model, onModelChange, providerId, onProviderChange, onOpenSettings }: ChatHeaderProps) {
+export function ChatHeader({ model, onModelChange, onOpenSettings }: ChatHeaderProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
 
   // Derive models from configured providers with a safe fallback
@@ -70,7 +68,6 @@ export function ChatHeader({ model, onModelChange, providerId, onProviderChange,
             if (!defaultOpenAIModels.some(o => o.value === model)) {
               onModelChange(defaultOpenAIModels[0].value);
             }
-            onProviderChange?.(null);
           }
           return;
         }
@@ -81,17 +78,9 @@ export function ChatHeader({ model, onModelChange, providerId, onProviderChange,
           const flat = gs.flatMap(g => g.options);
           setModelOptions(flat);
 
-          // Determine selected provider: keep current if available, else first
-          const currentProviderInGs = gs.find(g => g.id === (providerId ?? ''));
-          const selectedProvider = currentProviderInGs ? currentProviderInGs : gs[0];
-          if (!currentProviderInGs) {
-            onProviderChange?.(selectedProvider.id);
-          }
-
           // Ensure model belongs to a provider; else set to first model in that provider
-          const providerModels = selectedProvider.options;
           if (!flat.some(o => o.value === model)) {
-            const nextModel = providerModels[0]?.value || flat[0]?.value;
+            const nextModel = flat[0]?.value;
             if (nextModel) onModelChange(nextModel);
           }
         }
@@ -102,16 +91,7 @@ export function ChatHeader({ model, onModelChange, providerId, onProviderChange,
 
     loadProviders();
     return () => { cancelled = true; };
-  }, [apiBase, defaultOpenAIModels, onModelChange, onProviderChange, providerId]);
-
-  // When user changes model, also derive provider from groups
-  const handleModelChange = React.useCallback((newModel: string) => {
-    if (groups && groups.length > 0) {
-      const owner = groups.find(g => g.options.some(o => o.value === newModel));
-      if (owner) onProviderChange?.(owner.id);
-    }
-    onModelChange(newModel);
-  }, [groups, onProviderChange, onModelChange]);
+  }, [apiBase, defaultOpenAIModels, onModelChange]);
 
   const toggleTheme = () => {
     if (theme === 'dark') {
@@ -128,7 +108,7 @@ export function ChatHeader({ model, onModelChange, providerId, onProviderChange,
           <div className="flex items-center gap-4">
             <ModelSelector
               value={model}
-              onChange={handleModelChange}
+              onChange={onModelChange}
               groups={groups}
               fallbackOptions={modelOptions}
               className="text-lg"

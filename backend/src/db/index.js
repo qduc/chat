@@ -131,7 +131,7 @@ export function createConversation({
   id,
   sessionId,
   title,
-  provider,
+  provider_id,
   model,
   streamingEnabled = false,
   toolsEnabled = false,
@@ -143,13 +143,13 @@ export function createConversation({
   const db = getDb();
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO conversations (id, session_id, user_id, title, provider, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at, updated_at)
-     VALUES (@id, @session_id, NULL, @title, @provider, @model, @metadata, @streaming_enabled, @tools_enabled, @quality_level, @reasoning_effort, @verbosity, @now, @now)`
+    `INSERT INTO conversations (id, session_id, user_id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at, updated_at)
+     VALUES (@id, @session_id, NULL, @title, @provider_id, @model, @metadata, @streaming_enabled, @tools_enabled, @quality_level, @reasoning_effort, @verbosity, @now, @now)`
   ).run({
     id,
     session_id: sessionId,
     title: title || null,
-    provider: provider || null,
+    provider_id: provider_id || null,
     model: model || null,
     metadata: JSON.stringify(metadata || {}),
     streaming_enabled: streamingEnabled ? 1 : 0,
@@ -165,7 +165,7 @@ export function getConversationById({ id, sessionId }) {
   const db = getDb();
   const result = db
     .prepare(
-      `SELECT id, title, provider, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at FROM conversations
+      `SELECT id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at FROM conversations
      WHERE id=@id AND session_id=@session_id AND deleted_at IS NULL`
     )
     .get({ id, session_id: sessionId });
@@ -206,12 +206,12 @@ export function updateConversationMetadata({ id, sessionId, patch }) {
   return res.changes > 0;
 }
 
-export function updateConversationTitle({ id, sessionId, title, provider }) {
+export function updateConversationTitle({ id, sessionId, title, provider_id }) {
   const db = getDb();
   const now = new Date().toISOString();
   db.prepare(
-    `UPDATE conversations SET title=@title, provider=@provider, updated_at=@now WHERE id=@id AND session_id=@session_id`
-  ).run({ id, session_id: sessionId, title, provider, now });
+    `UPDATE conversations SET title=@title, provider_id=@provider_id, updated_at=@now WHERE id=@id AND session_id=@session_id`
+  ).run({ id, session_id: sessionId, title, provider_id, now });
 }
 
 // --- Sprint 2 helpers ---
@@ -230,7 +230,7 @@ export function countConversationsBySession(sessionId) {
 export function listConversations({ sessionId, cursor, limit }) {
   const db = getDb();
   limit = Math.min(Math.max(Number(limit) || 20, 1), 100);
-  let sql = `SELECT id, title, provider, model, created_at FROM conversations
+  let sql = `SELECT id, title, provider_id, model, created_at FROM conversations
              WHERE session_id=@sessionId AND deleted_at IS NULL`;
   const params = { sessionId };
   if (cursor) {
@@ -388,7 +388,7 @@ export function listConversationsIncludingDeleted({
 }) {
   const db = getDb();
   limit = Math.min(Math.max(Number(limit) || 20, 1), 100);
-  let sql = `SELECT id, title, provider, model, created_at, deleted_at FROM conversations
+  let sql = `SELECT id, title, provider_id, model, created_at, deleted_at FROM conversations
              WHERE session_id=@sessionId`;
   if (!includeDeleted) sql += ` AND deleted_at IS NULL`;
   const params = { sessionId };
@@ -404,7 +404,7 @@ export function listConversationsIncludingDeleted({
     .map((r) => ({
       id: r.id,
       title: r.title,
-      provider: r.provider,
+      provider_id: r.provider_id,
       model: r.model,
       created_at: r.created_at,
     }));
@@ -436,20 +436,20 @@ export function updateMessageContent({ messageId, conversationId, sessionId, con
   return message;
 }
 
-export function forkConversationFromMessage({ originalConversationId, sessionId, messageSeq, title, provider, model }) {
+export function forkConversationFromMessage({ originalConversationId, sessionId, messageSeq, title, provider_id, model }) {
   const db = getDb();
   const now = new Date().toISOString();
 
   // Create new conversation
   const newConversationId = uuidv4();
   db.prepare(
-    `INSERT INTO conversations (id, session_id, user_id, title, provider, model, metadata, created_at, updated_at)
-     VALUES (@id, @session_id, NULL, @title, @provider, @model, '{}', @now, @now)`
+    `INSERT INTO conversations (id, session_id, user_id, title, provider_id, model, metadata, created_at, updated_at)
+     VALUES (@id, @session_id, NULL, @title, @provider_id, @model, '{}', @now, @now)`
   ).run({
     id: newConversationId,
     session_id: sessionId,
     title: title || null,
-    provider: provider || null,
+    provider_id: provider_id || null,
     model: model || null,
     now,
   });
