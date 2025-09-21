@@ -15,8 +15,8 @@ const qualityConfig: Record<QualityLevel, { label: string; description: string; 
   quick: {
     label: 'Quick',
     description: 'Fast responses with minimal reasoning',
-    reasoningEffort: 'minimal',
-    verbosity: 'low'
+    reasoningEffort: 'low',
+    verbosity: 'medium'
   },
   balanced: {
     label: 'Balanced',
@@ -28,25 +28,9 @@ const qualityConfig: Record<QualityLevel, { label: string; description: string; 
     label: 'Thorough',
     description: 'Deep reasoning with comprehensive responses',
     reasoningEffort: 'high',
-    verbosity: 'high'
+    verbosity: 'medium'
   }
 };
-
-export function getQualitySettings(level: QualityLevel) {
-  const config = qualityConfig[level];
-  return {
-    reasoningEffort: config.reasoningEffort,
-    verbosity: config.verbosity
-  };
-}
-
-export function getQualityLevelFromSettings(reasoningEffort: string, verbosity: string): QualityLevel {
-  // Find best match for current settings
-  if (reasoningEffort === 'minimal' && verbosity === 'low') return 'quick';
-  if (reasoningEffort === 'high' && verbosity === 'high') return 'thorough';
-  return 'balanced'; // default/fallback
-}
-
 export function QualitySlider({ value, onChange, ariaLabel, disabled, icon, className = '' }: QualitySliderProps) {
   const levels: QualityLevel[] = ['quick', 'balanced', 'thorough'];
   const currentIndex = levels.indexOf(value);

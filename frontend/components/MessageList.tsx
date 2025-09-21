@@ -1,5 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { Bot, User as UserIcon, MessageSquareText, Clock, Search, Zap, Copy, Edit2, RefreshCw, AlertCircle } from 'lucide-react';
+import {
+  Bot,
+  User as UserIcon,
+  MessageSquareText,
+  Clock,
+  Search,
+  Zap,
+  Copy,
+  Edit2,
+  RefreshCw,
+  AlertCircle,
+  ChevronDown
+} from 'lucide-react';
 import Markdown from './Markdown';
 import type { ChatMessage } from '../lib/chat';
 import type { PendingState } from '../hooks/useChatStream';
@@ -205,19 +217,7 @@ export function MessageList({
                                       {getToolDisplayName(toolName)}
                                     </span>
                                     {outputs.length > 0 && (
-                                      <svg
-                                        className={`w-4 h-4 text-slate-400 dark:text-slate-300 transition-transform flex-shrink-0 ${isCollapsed ? '' : 'rotate-180'}`}
-                                        xmlns="http://www.w3.org/2000/svg"
-                                        viewBox="0 0 24 24"
-                                        fill="none"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        aria-hidden="true"
-                                      >
-                                        <path d="M6 9l6 6 6-6" />
-                                      </svg>
+                                      <ChevronDown className={`w-4 h-4 text-slate-400 dark:text-slate-300 transition-transform flex-shrink-0 ${isCollapsed ? '' : 'rotate-180'}`} />
                                     )}
                                   </div>
                                   {(() => {

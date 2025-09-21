@@ -29,7 +29,7 @@ export function ChatSidebar({
   onToggleCollapse
 }: ChatSidebarProps) {
   return (
-    <aside className={`${collapsed ? 'w-16' : 'w-72'} z-30 p-4 flex flex-col bg-white/60 dark:bg-neutral-900/60 backdrop-blur-sm transition-all duration-300 ease-in-out relative`}>
+    <aside className={`${collapsed ? 'w-16' : 'w-72'} z-30 p-4 flex flex-col bg-neutral-100/80 dark:bg-neutral-800/80 backdrop-blur-sm transition-all duration-300 ease-in-out relative`}>
       {/* Collapse/Expand Button */}
       <button
         className="absolute -right-3 top-6 z-10 w-6 h-6 rounded-full bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
@@ -101,7 +101,7 @@ export function ChatSidebar({
             {conversations.map(c => (
               <div
                 key={c.id}
-                className={`group flex items-center gap-2 text-sm p-3 rounded-lg transition-all duration-200 hover:shadow-sm cursor-pointer ${conversationId === c.id ? 'bg-slate-100 dark:bg-neutral-900/40 border border-slate-200/50 dark:border-neutral-700/50 shadow-sm' : 'bg-white/60 dark:bg-neutral-900/60 hover:bg-white/80 dark:hover:bg-neutral-900/80 border border-transparent'}`}
+                className={`group flex items-center gap-2 text-sm p-3 rounded-lg transition-all duration-100 cursor-pointer ${conversationId === c.id ? 'bg-neutral-200 dark:bg-neutral-700 border border-slate-200/50 dark:border-neutral-700/50 shadow-sm' : 'hover:bg-neutral-200 dark:hover:bg-neutral-700 border border-transparent'}`}
                 onClick={() => onSelectConversation(c.id)}
                 tabIndex={0}
                 role="button"
