@@ -1,8 +1,9 @@
-import { tools as toolRegistry } from './tools.js';
+import { tools as toolRegistry, generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
 import { getMessagesPage } from '../db/index.js';
 import { response } from 'express';
 import { addConversationMetadata, getConversationMetadata } from './responseUtils.js';
 import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
+import { createProvider } from './providers/index.js';
 
 /**
  * Execute a single tool call from the local registry
@@ -52,16 +53,15 @@ function streamEvent(res, event, model) {
 /**
  * Make a request to the AI model
  */
-async function callLLM(messages, config, bodyParams, providerId, providerHttp) {
+async function callLLM({ messages, config, bodyParams, providerId, providerHttp, provider }) {
   const requestBody = {
     model: bodyParams.model || config.defaultModel,
     messages,
     stream: bodyParams.stream || false,
     ...(bodyParams.tools && { tools: bodyParams.tools, tool_choice: bodyParams.tool_choice || 'auto' })
   };
-  // Include reasoning controls only for gpt-5* models
-  const isGpt5 = typeof requestBody.model === 'string' && requestBody.model.startsWith('gpt-5');
-  if (isGpt5) {
+  // Include reasoning controls only when the provider supports them
+  if (provider?.supportsReasoningControls(requestBody.model)) {
     if (bodyParams.reasoning_effort) requestBody.reasoning_effort = bodyParams.reasoning_effort;
     if (bodyParams.verbosity) requestBody.verbosity = bodyParams.verbosity;
   }
@@ -251,8 +251,14 @@ export async function handleUnifiedToolOrchestration({
   req,
   persistence,
   providerHttp,
+  provider,
 }) {
   const providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
+  const providerInstance = provider || await createProvider(config, { providerId });
+  const fallbackToolSpecs = providerInstance.getToolsetSpec({
+    generateOpenAIToolSpecs,
+    generateToolSpecs,
+  }) || generateOpenAIToolSpecs();
   // Build initial messages from persisted history when available
   let messages = [];
   if (persistence && persistence.persist && persistence.conversationId) {
@@ -295,7 +301,14 @@ export async function handleUnifiedToolOrchestration({
     // Main orchestration loop - continues until LLM stops requesting tools
     while (iteration < MAX_ITERATIONS) {
       // Always get response non-streaming first to check for tool calls
-      const response = await callLLM(messages, config, { ...body, stream: false }, providerId, providerHttp);
+      const response = await callLLM({
+        messages,
+        config,
+        bodyParams: { ...body, tools: (Array.isArray(body.tools) && body.tools.length > 0) ? body.tools : fallbackToolSpecs, stream: false },
+        providerId,
+        providerHttp,
+        provider: providerInstance,
+      });
       const message = response?.choices?.[0]?.message;
       const toolCalls = message?.tool_calls || [];
 
@@ -373,7 +386,14 @@ export async function handleUnifiedToolOrchestration({
     }
 
     // Max iterations reached - get final response
-    const finalResponse = await callLLM(messages, config, { ...body, stream: requestedStreaming }, providerId, providerHttp);
+    const finalResponse = await callLLM({
+      messages,
+      config,
+      bodyParams: { ...body, tools: (Array.isArray(body.tools) && body.tools.length > 0) ? body.tools : fallbackToolSpecs, stream: requestedStreaming },
+      providerId,
+      providerHttp,
+      provider: providerInstance,
+    });
 
     if (requestedStreaming) {
       const finishReason = await streamResponse(finalResponse, res, persistence, body.model || config.defaultModel);

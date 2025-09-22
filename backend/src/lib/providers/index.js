@@ -1,23 +1,18 @@
-// Provider registry and interface helpers
-// Each provider should implement:
-// - name: string
-// - isConfigured(config): boolean
-// - supportsReasoningControls(model): boolean
-// - createChatCompletionsRequest(config, requestBody): Promise<Response>
-
-import fetchLib from 'node-fetch';
 import { getDb } from '../../db/index.js';
+import { OpenAIProvider } from './openaiProvider.js';
+import { AnthropicProvider } from './anthropicProvider.js';
+import { GeminiProvider } from './geminiProvider.js';
 
-function parseJSONSafe(s, fallback) {
+function parseJSONSafe(value, fallback) {
   try {
-    if (!s) return fallback;
-    return JSON.parse(s);
+    if (!value) return fallback;
+    return JSON.parse(value);
   } catch {
     return fallback;
   }
 }
 
-async function resolveProviderSettings(config, options = {}) {
+export async function resolveProviderSettings(config, options = {}) {
   try {
     const db = getDb();
     if (db) {
@@ -53,14 +48,14 @@ async function resolveProviderSettings(config, options = {}) {
           apiKey: row.api_key || config?.providerConfig?.apiKey || config?.openaiApiKey,
           headers,
           defaultModel: metadata?.default_model || config?.defaultModel,
+          raw: row,
         };
       }
     }
-  } catch (e) {
-    // fall through to env fallback
+  } catch {
+    // TODO: surface diagnostics when provider resolution fails.
   }
 
-  // Fallback to env-based config
   return {
     source: 'env',
     providerType: (config?.provider || 'openai'),
@@ -68,70 +63,49 @@ async function resolveProviderSettings(config, options = {}) {
     apiKey: config?.providerConfig?.apiKey || config?.openaiApiKey,
     headers: { ...(config?.providerConfig?.headers || {}) },
     defaultModel: config?.defaultModel,
+    raw: null,
   };
 }
 
-function headerDict(obj) {
-  // Normalize header keys to proper casing where helpful but keep as-is mostly
-  const out = {};
-  for (const [k, v] of Object.entries(obj || {})) out[k] = v;
-  return out;
-}
-
-// OpenAI-compatible provider
-const OpenAIProvider = {
-  name: 'openai',
-  isConfigured(config) {
-    // OpenAI legacy fields
-    return !!(config?.openaiApiKey || config?.providerConfig?.apiKey);
-  },
-  supportsReasoningControls(model) {
-    return typeof model === 'string' && model.startsWith('gpt-5');
-  },
-  async createChatCompletionsRequest(config, requestBody, options = {}) {
-    const settings = await resolveProviderSettings(config, options);
-    const base = String(settings.baseUrl || '').replace(/\/v1\/?$/, '');
-    const url = `${base}/v1/chat/completions`;
-    const apiKey = settings.apiKey;
-    const extraHeaders = headerDict(settings.headers || {});
-    const headers = {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      ...extraHeaders,
-    };
-    // Prefer node-fetch for server-side semantics (Node streams for .body)
-    const http = options.http || fetchLib;
-    return http(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(requestBody),
-    });
-  },
-};
-
-const providers = {
+const providerConstructors = {
   openai: OpenAIProvider,
+  anthropic: AnthropicProvider,
+  gemini: GeminiProvider,
 };
 
-export function getProvider(config) {
-  const key = (config?.provider || 'openai').toLowerCase();
-  return providers[key] || OpenAIProvider;
+function selectProviderConstructor(providerType) {
+  const key = (providerType || 'openai').toLowerCase();
+  return providerConstructors[key] || OpenAIProvider;
 }
 
-export function providerIsConfigured(config) {
-  return getProvider(config).isConfigured(config);
+export async function createProvider(config, options = {}) {
+  const settings = await resolveProviderSettings(config, options);
+  const ProviderClass = selectProviderConstructor(settings.providerType);
+  return new ProviderClass({
+    config,
+    providerId: options.providerId,
+    http: options.http,
+    settings,
+  });
 }
 
-export function providerSupportsReasoning(config, model) {
-  return getProvider(config).supportsReasoningControls(model);
+export async function providerIsConfigured(config, options = {}) {
+  const provider = await createProvider(config, options);
+  return provider.isConfigured();
 }
 
-export async function providerChatCompletions(config, requestBody, options = {}) {
-  const provider = getProvider(config);
-  return provider.createChatCompletionsRequest(config, requestBody, options);
+export async function providerSupportsReasoning(config, model, options = {}) {
+  const provider = await createProvider(config, options);
+  return provider.supportsReasoningControls(model);
 }
 
 export async function getDefaultModel(config, options = {}) {
-  const settings = await resolveProviderSettings(config, options);
-  return settings.defaultModel || config?.defaultModel;
+  const provider = await createProvider(config, options);
+  return provider.getDefaultModel();
+}
+
+export async function providerChatCompletions(config, requestBody, options = {}) {
+  const provider = await createProvider(config, options);
+  const normalizedRequest = provider.normalizeRequest(requestBody);
+  return provider.sendRequest(normalizedRequest);
 }

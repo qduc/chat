@@ -1,8 +1,8 @@
-import { tools as toolRegistry, generateOpenAIToolSpecs } from './tools.js';
+import { tools as toolRegistry, generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
 import { getMessagesPage } from '../db/index.js';
 import { parseSSEStream } from './sseParser.js';
 import { createOpenAIRequest, writeAndFlush, createChatCompletionChunk } from './streamUtils.js';
-import { providerSupportsReasoning } from './providers/index.js';
+import { createProvider } from './providers/index.js';
 import { getConversationMetadata } from './responseUtils.js';
 import { setupStreamingHeaders } from './streamingHandler.js';
 
@@ -77,8 +77,10 @@ export async function handleIterativeOrchestration({
   res,
   req,
   persistence,
+  provider,
 }) {
   const providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
+  const providerInstance = provider || await createProvider(config, { providerId });
   try {
     // Setup streaming headers
     setupStreamingHeaders(res);
@@ -115,7 +117,11 @@ export async function handleIterativeOrchestration({
       // Stream the model response for this iteration, buffering only tool calls
       // Prefer the frontend-provided tools (expanded by sanitizeIncomingBody) when present.
       // Otherwise fall back to the server-side registry.
-      const toolsToSend = (Array.isArray(body.tools) && body.tools.length) ? body.tools : generateOpenAIToolSpecs();
+      const fallbackToolSpecs = providerInstance.getToolsetSpec({
+        generateOpenAIToolSpecs,
+        generateToolSpecs,
+      }) || generateOpenAIToolSpecs();
+      const toolsToSend = (Array.isArray(body.tools) && body.tools.length) ? body.tools : fallbackToolSpecs;
       const requestBody = {
         model: body.model || config.defaultModel,
         messages: conversationHistory,
@@ -123,7 +129,7 @@ export async function handleIterativeOrchestration({
         ...(toolsToSend && { tools: toolsToSend, tool_choice: body.tool_choice || 'auto' }),
       };
       // Include reasoning controls only if supported by provider
-      if (providerSupportsReasoning(config, requestBody.model)) {
+      if (providerInstance.supportsReasoningControls(requestBody.model)) {
         if (body.reasoning_effort) requestBody.reasoning_effort = body.reasoning_effort;
         if (body.verbosity) requestBody.verbosity = body.verbosity;
       }

@@ -241,7 +241,8 @@ export class SimplifiedPersistence {
       if (!text) return null;
 
       // Fallback if provider isn't configured
-      if (!providerIsConfigured(this.config)) {
+      const configured = await providerIsConfigured(this.config);
+      if (!configured) {
         return this.fallbackTitle(text);
       }
 

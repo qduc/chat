@@ -1,17 +1,17 @@
 import { config } from '../env.js';
-import { generateOpenAIToolSpecs } from './tools.js';
+import { generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
 import { handleUnifiedToolOrchestration } from './unifiedToolOrchestrator.js';
 import { handleIterativeOrchestration } from './iterativeOrchestrator.js';
 import { handleRegularStreaming } from './streamingHandler.js';
 import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
-import { providerSupportsReasoning, getDefaultModel } from './providers/index.js';
+import { createProvider } from './providers/index.js';
 import { SimplifiedPersistence } from './simplifiedPersistence.js';
 import { addConversationMetadata } from './responseUtils.js';
 import { logger } from '../logger.js';
 
 // --- Helpers: sanitize, validate, selection, and error shaping ---
 
-function sanitizeIncomingBody(bodyIn, _cfg) {
+function sanitizeIncomingBody(bodyIn, helpers = {}) {
   const body = { ...bodyIn };
   // Map optional system prompt param to a leading system message
   try {
@@ -46,8 +46,10 @@ function sanitizeIncomingBody(bodyIn, _cfg) {
   // Expand into full OpenAI-compatible tool specs using server-side registry.
   try {
     if (Array.isArray(bodyIn.tools) && bodyIn.tools.length > 0 && typeof bodyIn.tools[0] === 'string') {
-      const allSpecs = generateOpenAIToolSpecs();
-      const selected = allSpecs.filter(s => bodyIn.tools.includes(s.function?.name));
+      const toolSpecs = Array.isArray(helpers.toolSpecs) && helpers.toolSpecs.length > 0
+        ? helpers.toolSpecs
+        : generateOpenAIToolSpecs();
+      const selected = toolSpecs.filter((spec) => bodyIn.tools.includes(spec.function?.name));
       body.tools = selected;
     }
   } catch (e) {
@@ -56,9 +58,9 @@ function sanitizeIncomingBody(bodyIn, _cfg) {
   return body;
 }
 
-function validateAndNormalizeReasoningControls(body) {
+function validateAndNormalizeReasoningControls(body, { reasoningAllowed }) {
   // Only allow reasoning controls if provider+model supports it
-  const isAllowed = providerSupportsReasoning(config, body.model);
+  const isAllowed = !!reasoningAllowed;
 
   // Validate and handle reasoning_effort
   if (body.reasoning_effort) {
@@ -101,8 +103,8 @@ function validateAndNormalizeReasoningControls(body) {
   return { ok: true };
 }
 
-function getFlags(bodyIn, body) {
-  const hasTools = Array.isArray(bodyIn.tools) && bodyIn.tools.length > 0;
+function getFlags({ body, provider }) {
+  const hasTools = provider.supportsTools() && Array.isArray(body.tools) && body.tools.length > 0;
   const stream = !!body.stream;
   return { hasTools, stream };
 }
@@ -126,16 +128,24 @@ async function readUpstreamError(upstream) {
 
 export async function proxyOpenAIRequest(req, res) {
   const bodyIn = req.body || {};
-  const body = sanitizeIncomingBody(bodyIn, config);
   const providerId = bodyIn.provider_id || req.header('x-provider-id') || undefined;
+  const provider = await createProvider(config, { providerId });
+
+  const toolSpecs = provider.getToolsetSpec({
+    generateOpenAIToolSpecs,
+    generateToolSpecs,
+  }) || [];
+  const body = sanitizeIncomingBody(bodyIn, { toolSpecs });
 
   // Resolve default model from DB-backed provider settings when missing
   if (!body.model) {
-    body.model = await getDefaultModel(config, { providerId });
+    body.model = provider.getDefaultModel();
   }
 
   // Validate reasoning controls early and return guard failures
-  const validation = validateAndNormalizeReasoningControls(body);
+  const validation = validateAndNormalizeReasoningControls(body, {
+    reasoningAllowed: provider.supportsReasoningControls(body.model),
+  });
   if (!validation.ok) {
     logger.error({
       msg: 'validation_error',
@@ -160,7 +170,7 @@ export async function proxyOpenAIRequest(req, res) {
 
   // Pull optional conversation_id from body or header
   const conversationId = bodyIn.conversation_id || req.header('x-conversation-id');
-  const flags = getFlags(bodyIn, body);
+  const flags = getFlags({ body, provider });
 
   // Persistence setup
   const persistence = new SimplifiedPersistence(config);
@@ -168,11 +178,11 @@ export async function proxyOpenAIRequest(req, res) {
 
   // Strategy handlers (selected by flags)
   const handlers = {
-    'tools:stream': ({ body, bodyIn, req, res, config, persistence }) =>
-      handleIterativeOrchestration({ body, bodyIn, config, res, req, persistence }),
+    'tools:stream': ({ body, bodyIn, req, res, config, persistence, provider }) =>
+      handleIterativeOrchestration({ body, bodyIn, config, res, req, persistence, provider }),
 
-    'tools:json': ({ body, bodyIn, req, res, config, persistence }) =>
-      handleUnifiedToolOrchestration({ body, bodyIn, config, res, req, persistence }),
+    'tools:json': ({ body, bodyIn, req, res, config, persistence, provider }) =>
+      handleUnifiedToolOrchestration({ body, bodyIn, config, res, req, persistence, provider }),
 
     'plain:stream': async ({ body, req, res, config, persistence }) => {
       const upstream = await createOpenAIRequest(config, body, { providerId });
@@ -243,7 +253,7 @@ export async function proxyOpenAIRequest(req, res) {
       return res.status(400).json({ error: 'invalid_request_error', message: `Unsupported mode: ${mode}` });
     }
 
-    return await handler({ req, res, config, bodyIn, body, flags, persistence });
+    return await handler({ req, res, config, bodyIn, body, flags, persistence, provider });
   } catch (error) {
     logger.error({
       msg: 'proxy_error',
