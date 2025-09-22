@@ -35,13 +35,17 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'internal_server_error' });
 });
 
-// Retention worker (Sprint 3)
+// Database initialization and retention worker (Sprint 3)
 import { getDb, retentionSweep } from './db/index.js';
 
+// Initialize database and run seeders on server startup
 if (config.persistence.enabled && process.env.NODE_ENV !== 'test') {
   try {
-    // Initialize DB once
-    getDb();
+    // Initialize DB once - this will run migrations and seeders
+    const db = getDb();
+    logger.info({ msg: 'database:initialized', seeders: 'completed' });
+
+    // Set up retention worker
     const intervalMs = 60 * 60 * 1000; // hourly
     setInterval(() => {
       try {
@@ -62,8 +66,10 @@ if (config.persistence.enabled && process.env.NODE_ENV !== 'test') {
       days: config.persistence.retentionDays,
     });
   } catch (e) {
-    logger.error({ msg: 'retention:init_error', err: e });
+    logger.error({ msg: 'database:init_error', err: e });
   }
+} else if (process.env.NODE_ENV !== 'test') {
+  logger.info({ msg: 'database:disabled', persistence: false });
 }
 
 if (process.env.NODE_ENV !== 'test') {

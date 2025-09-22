@@ -4,6 +4,7 @@ import path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { config } from '../env.js';
 import { runMigrations } from './migrations.js';
+import { runSeeders } from './seeders/index.js';
 
 let db = null;
 
@@ -92,6 +93,8 @@ export function getDb() {
     ensureDir(filePath);
     db = new Database(filePath);
     applyMigrationsSQLite(db);
+    // After migrations, run seeders to populate initial data
+    runSeeders(db);
     // After migrations, seed providers table from environment if empty
     seedProvidersFromEnv(db);
   }
