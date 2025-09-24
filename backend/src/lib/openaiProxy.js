@@ -9,6 +9,15 @@ import { SimplifiedPersistence } from './simplifiedPersistence.js';
 import { addConversationMetadata } from './responseUtils.js';
 import { logger } from '../logger.js';
 
+// --- Constants ---
+
+const EXECUTION_MODES = {
+  TOOLS_STREAM: 'tools:stream',
+  TOOLS_JSON: 'tools:json',
+  PLAIN_STREAM: 'plain:stream',
+  PLAIN_JSON: 'plain:json'
+};
+
 // --- Helpers: sanitize, validate, selection, and error shaping ---
 
 function sanitizeIncomingBody(bodyIn, helpers = {}) {
@@ -110,7 +119,16 @@ function getFlags({ body, provider }) {
 }
 
 function selectMode(flags) {
-  return `${flags.hasTools ? 'tools' : 'plain'}:${flags.stream ? 'stream' : 'json'}`;
+  const toolsMode = flags.hasTools ? 'tools' : 'plain';
+  const streamMode = flags.stream ? 'stream' : 'json';
+
+  if (toolsMode === 'tools' && streamMode === 'stream') return EXECUTION_MODES.TOOLS_STREAM;
+  if (toolsMode === 'tools' && streamMode === 'json') return EXECUTION_MODES.TOOLS_JSON;
+  if (toolsMode === 'plain' && streamMode === 'stream') return EXECUTION_MODES.PLAIN_STREAM;
+  if (toolsMode === 'plain' && streamMode === 'json') return EXECUTION_MODES.PLAIN_JSON;
+
+  // Fallback - should not happen
+  return `${toolsMode}:${streamMode}`;
 }
 
 async function readUpstreamError(upstream) {
@@ -126,7 +144,9 @@ async function readUpstreamError(upstream) {
   }
 }
 
-export async function proxyOpenAIRequest(req, res) {
+// --- Request Context Building ---
+
+async function buildRequestContext(req) {
   const bodyIn = req.body || {};
   const providerId = bodyIn.provider_id || req.header('x-provider-id') || undefined;
   const provider = await createProvider(config, { providerId });
@@ -135,6 +155,7 @@ export async function proxyOpenAIRequest(req, res) {
     generateOpenAIToolSpecs,
     generateToolSpecs,
   }) || [];
+
   const body = sanitizeIncomingBody(bodyIn, { toolSpecs });
 
   // Resolve default model from DB-backed provider settings when missing
@@ -142,10 +163,30 @@ export async function proxyOpenAIRequest(req, res) {
     body.model = provider.getDefaultModel();
   }
 
+  const conversationId = bodyIn.conversation_id || req.header('x-conversation-id');
+  const flags = getFlags({ body, provider });
+
+  return {
+    bodyIn,
+    body,
+    provider,
+    providerId,
+    conversationId,
+    flags,
+    toolSpecs
+  };
+}
+
+// --- Request Validation ---
+
+async function validateRequestContext(context, req) {
+  const { body, provider } = context;
+
   // Validate reasoning controls early and return guard failures
   const validation = validateAndNormalizeReasoningControls(body, {
     reasoningAllowed: provider.supportsReasoningControls(body.model),
   });
+
   if (!validation.ok) {
     logger.error({
       msg: 'validation_error',
@@ -165,12 +206,49 @@ export async function proxyOpenAIRequest(req, res) {
       },
       validationFailure: `${validation.payload.error}: ${validation.payload.message}`,
     });
-    return res.status(validation.status).json(validation.payload);
   }
 
-  // Pull optional conversation_id from body or header
-  const conversationId = bodyIn.conversation_id || req.header('x-conversation-id');
-  const flags = getFlags({ body, provider });
+  return validation;
+}
+
+// --- Error Handling Helpers ---
+
+function handleValidationError(res, validation) {
+  return res.status(validation.status).json(validation.payload);
+}
+
+async function handleUpstreamError(upstream, persistence) {
+  const errorJson = await readUpstreamError(upstream);
+  if (persistence.persist) persistence.markError();
+  return { status: upstream.status, errorJson };
+}
+
+function handleProxyError(error, req, res, persistence) {
+  logger.error({
+    msg: 'proxy_error',
+    error: {
+      message: error.message,
+      stack: error.stack,
+      name: error.name,
+    },
+    req: {
+      id: req.id,
+      method: req.method,
+      url: req.url,
+      body: req.body,
+    },
+    proxyError: `${error.name}: ${error.message}`,
+  });
+  if (persistence && persistence.persist) {
+    persistence.markError();
+  }
+  return res.status(500).json({ error: 'upstream_error', message: error.message });
+}
+
+// --- Handler Execution ---
+
+async function executeRequestHandler(context, req, res) {
+  const { flags, providerId } = context;
 
   // Persistence setup
   const persistence = new SimplifiedPersistence(config);
@@ -178,30 +256,28 @@ export async function proxyOpenAIRequest(req, res) {
 
   // Strategy handlers (selected by flags)
   const handlers = {
-    'tools:stream': ({ body, bodyIn, req, res, config, persistence, provider }) =>
+    [EXECUTION_MODES.TOOLS_STREAM]: ({ body, bodyIn, req, res, config, persistence, provider }) =>
       handleIterativeOrchestration({ body, bodyIn, config, res, req, persistence, provider }),
 
-    'tools:json': ({ body, bodyIn, req, res, config, persistence, provider }) =>
+    [EXECUTION_MODES.TOOLS_JSON]: ({ body, bodyIn, req, res, config, persistence, provider }) =>
       handleUnifiedToolOrchestration({ body, bodyIn, config, res, req, persistence, provider }),
 
-    'plain:stream': async ({ body, req, res, config, persistence }) => {
+    [EXECUTION_MODES.PLAIN_STREAM]: async ({ body, req, res, config, persistence, providerId }) => {
       const upstream = await createOpenAIRequest(config, body, { providerId });
       if (!upstream.ok) {
-        const errorJson = await readUpstreamError(upstream);
-        if (persistence.persist) persistence.markError();
-        return res.status(upstream.status).json(errorJson);
+        const { status, errorJson } = await handleUpstreamError(upstream, persistence);
+        return res.status(status).json(errorJson);
       }
       // Setup streaming headers only after confirming upstream is ok
       setupStreamingHeaders(res);
       return handleRegularStreaming({ config, upstream, res, req, persistence });
     },
 
-  'plain:json': async ({ body, req: _req, res, config, persistence }) => {
+    [EXECUTION_MODES.PLAIN_JSON]: async ({ body, req: _req, res, config, persistence, providerId }) => {
       const upstream = await createOpenAIRequest(config, body, { providerId });
       if (!upstream.ok) {
-        const errorJson = await readUpstreamError(upstream);
-        if (persistence.persist) persistence.markError();
-        return res.status(upstream.status).json(errorJson);
+        const { status, errorJson } = await handleUpstreamError(upstream, persistence);
+        return res.status(status).json(errorJson);
       }
 
       const upstreamJson = await upstream.json();
@@ -226,41 +302,24 @@ export async function proxyOpenAIRequest(req, res) {
     },
   };
 
-  try {
-    await persistence.initialize({ conversationId, sessionId, req, res, bodyIn });
+  await persistence.initialize({
+    conversationId: context.conversationId,
+    sessionId,
+    req,
+    res,
+    bodyIn: context.bodyIn
+  });
 
-    const mode = selectMode(flags);
-    const handler = handlers[mode];
+  const mode = selectMode(flags);
+  const handler = handlers[mode];
 
-    if (!handler) {
-      // Fallback safety – should not happen
-      logger.error({
-        msg: 'unsupported_mode_error',
-        error: {
-          message: `Unsupported mode: ${mode}`,
-          type: 'invalid_request_error',
-        },
-        req: {
-          id: req.id,
-          method: req.method,
-          url: req.url,
-          body: req.body,
-        },
-        mode,
-        flags,
-        modeError: `Unsupported mode: ${mode} (hasTools: ${flags.hasTools}, stream: ${flags.stream})`,
-      });
-      return res.status(400).json({ error: 'invalid_request_error', message: `Unsupported mode: ${mode}` });
-    }
-
-    return await handler({ req, res, config, bodyIn, body, flags, persistence, provider });
-  } catch (error) {
+  if (!handler) {
+    // Fallback safety – should not happen
     logger.error({
-      msg: 'proxy_error',
+      msg: 'unsupported_mode_error',
       error: {
-        message: error.message,
-        stack: error.stack,
-        name: error.name,
+        message: `Unsupported mode: ${mode}`,
+        type: 'invalid_request_error',
       },
       req: {
         id: req.id,
@@ -268,15 +327,43 @@ export async function proxyOpenAIRequest(req, res) {
         url: req.url,
         body: req.body,
       },
-      proxyError: `${error.name}: ${error.message}`,
+      mode,
+      flags,
+      modeError: `Unsupported mode: ${mode} (hasTools: ${flags.hasTools}, stream: ${flags.stream})`,
     });
-    if (persistence && persistence.persist) {
-      persistence.markError();
-    }
-    return res.status(500).json({ error: 'upstream_error', message: error.message });
+    return res.status(400).json({ error: 'invalid_request_error', message: `Unsupported mode: ${mode}` });
+  }
+
+  try {
+    return await handler({
+      req,
+      res,
+      config,
+      bodyIn: context.bodyIn,
+      body: context.body,
+      flags,
+      persistence,
+      provider: context.provider,
+      providerId
+    });
   } finally {
     if (persistence) {
       persistence.cleanup();
     }
+  }
+}
+
+export async function proxyOpenAIRequest(req, res) {
+  let context;
+  try {
+    context = await buildRequestContext(req);
+    const validation = await validateRequestContext(context, req);
+    if (!validation.ok) return handleValidationError(res, validation);
+
+    return await executeRequestHandler(context, req, res);
+  } catch (error) {
+    return handleProxyError(error, req, res, context?.persistence);
+  } finally {
+    // Persistence cleanup is handled within executeRequestHandler
   }
 }
