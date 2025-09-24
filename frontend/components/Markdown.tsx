@@ -20,6 +20,15 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
 
+  // Transform thinking blocks into collapsible sections
+  const processedText = text.replace(
+    /<thinking>([\s\S]*?)<\/thinking>/g,
+    (match, content) => {
+      // Convert to a custom code block that we can detect
+      return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
+    }
+  );
+
   // Note: Syntax highlighting theme is automatically handled by CSS
   // based on the .dark class applied to the document root
 
@@ -100,6 +109,22 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
             );
           },
           code: function CodeRenderer({ className, children }: { className?: string; children?: React.ReactNode }) {
+            // Handle thinking blocks
+            if (className?.includes('language-thinking')) {
+              return (
+                <details className="my-4 border border-slate-200 dark:border-neutral-800 rounded-lg bg-slate-50 dark:bg-neutral-900/50">
+                  <summary className="px-4 py-2 cursor-pointer font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-t-lg">
+                    💭 Thinking...
+                  </summary>
+                  <div className="px-4 py-3 border-t border-slate-200 dark:border-neutral-800">
+                    <pre className="whitespace-pre-wrap font-mono text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                      {children}
+                    </pre>
+                  </div>
+                </details>
+              );
+            }
+
             return <code className={`${className} bg-slate-50 dark:bg-neutral-900/50`}>{children}</code>;
           },
           hr: () => <hr className="my-4 border-slate-200 dark:border-neutral-800" />,
@@ -130,7 +155,7 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
           ),
         }}
       >
-        {text}
+        {processedText}
       </ReactMarkdown>
     </div>
   );
