@@ -1,4 +1,4 @@
-import { getDb } from '../db/index.js';
+import { getDb } from '../db/client.js';
 import {
   ConversationManager,
   ConversationValidator,

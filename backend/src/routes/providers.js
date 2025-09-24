@@ -9,7 +9,7 @@ import {
   updateProvider,
   setDefaultProvider,
   deleteProvider,
-} from '../db/index.js';
+} from '../db/providers.js';
 
 export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = {}) {
   const providersRouter = Router();

@@ -1,19 +1,21 @@
 import { Router } from 'express';
 import { config } from '../env.js';
+import { getDb } from '../db/client.js';
+import { upsertSession } from '../db/sessions.js';
 import {
-  getDb,
-  upsertSession,
   createConversation,
   getConversationById,
   countConversationsBySession,
   listConversations,
-  getMessagesPage,
   softDeleteConversation,
   listConversationsIncludingDeleted,
-  updateMessageContent,
   forkConversationFromMessage,
+} from '../db/conversations.js';
+import {
+  getMessagesPage,
+  updateMessageContent,
   deleteMessagesAfterSeq,
-} from '../db/index.js';
+} from '../db/messages.js';
 import { v4 as uuidv4 } from 'uuid';
 
 export const conversationsRouter = Router();

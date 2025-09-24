@@ -1,24 +1,35 @@
 import assert from 'node:assert/strict';
-import { ConversationValidator, ValidationErrors } from '../../src/lib/persistence/ConversationValidator.js';
+import { jest } from '@jest/globals';
 
 // Mock the db functions
 let mockCountConversationsBySession = () => 0;
 let mockCountMessagesByConversation = () => 0;
 
 // Mock the db module
-jest.unstable_mockModule('../../src/db/index.js', () => ({
+jest.unstable_mockModule('../../src/db/conversations.js', () => ({
   countConversationsBySession: (...args) => mockCountConversationsBySession(...args),
+}));
+
+jest.unstable_mockModule('../../src/db/messages.js', () => ({
   countMessagesByConversation: (...args) => mockCountMessagesByConversation(...args),
 }));
 
 describe('ConversationValidator', () => {
   let validator;
+  let ConversationValidator;
+  let ValidationErrors;
   const mockConfig = {
     persistence: {
       maxConversationsPerSession: 5,
       maxMessagesPerConversation: 10,
     },
   };
+
+  beforeAll(async () => {
+    const module = await import('../../src/lib/persistence/ConversationValidator.js');
+    ConversationValidator = module.ConversationValidator;
+    ValidationErrors = module.ValidationErrors;
+  });
 
   beforeEach(() => {
     validator = new ConversationValidator(mockConfig);

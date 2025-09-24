@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { ConversationTitleService } from '../../src/lib/persistence/ConversationTitleService.js';
+import { jest } from '@jest/globals';
 
 // Mock the dependencies
 let mockProviderIsConfigured = () => Promise.resolve(true);
@@ -25,11 +25,16 @@ jest.unstable_mockModule('../../src/lib/providers/index.js', () => ({
 
 
 describe('ConversationTitleService', () => {
+  let ConversationTitleService;
   let titleService;
   const mockConfig = {
     titleModel: 'gpt-3.5-turbo',
     defaultModel: 'gpt-4',
   };
+
+  beforeAll(async () => {
+    ({ ConversationTitleService } = await import('../../src/lib/persistence/ConversationTitleService.js'));
+  });
 
   beforeEach(() => {
     titleService = new ConversationTitleService(mockConfig);

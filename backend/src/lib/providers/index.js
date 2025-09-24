@@ -1,4 +1,4 @@
-import { getDb } from '../../db/index.js';
+import { getDb } from '../../db/client.js';
 import { OpenAIProvider } from './openaiProvider.js';
 import { AnthropicProvider } from './anthropicProvider.js';
 import { GeminiProvider } from './geminiProvider.js';

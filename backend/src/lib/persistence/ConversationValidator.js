@@ -1,7 +1,5 @@
-import {
-  countConversationsBySession,
-  countMessagesByConversation,
-} from '../../db/index.js';
+import { countConversationsBySession } from '../../db/conversations.js';
+import { countMessagesByConversation } from '../../db/messages.js';
 
 /**
  * Error types for validation failures

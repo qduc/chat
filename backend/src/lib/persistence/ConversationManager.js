@@ -1,16 +1,18 @@
+import { upsertSession } from '../../db/sessions.js';
 import {
-  upsertSession,
   getConversationById,
   createConversation,
+  updateConversationTitle,
+  updateConversationMetadata,
+  updateConversationProviderId,
+} from '../../db/conversations.js';
+import {
   clearAllMessages,
   insertUserMessage,
   insertAssistantFinal,
   markAssistantErrorBySeq,
   getNextSeq,
-  updateConversationTitle,
-  updateConversationMetadata,
-  updateConversationProviderId,
-} from '../../db/index.js';
+} from '../../db/messages.js';
 import { v4 as uuidv4 } from 'uuid';
 
 /**

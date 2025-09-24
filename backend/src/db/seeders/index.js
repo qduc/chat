@@ -1,3 +1,4 @@
+import envProviderSeeder from './000-env-provider.js';
 import openAIProviderSeeder from './001-openai-provider.js';
 
 /**
@@ -12,7 +13,8 @@ export function runSeeders(db) {
 
   // List of seeders to run in order
   const seeders = [
-    { name: '001-openai-provider', fn: openAIProviderSeeder }
+    { name: '000-env-provider', fn: envProviderSeeder },
+    { name: '001-openai-provider', fn: openAIProviderSeeder },
   ];
 
   try {

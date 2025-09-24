@@ -36,7 +36,8 @@ app.use((err, req, res, next) => {
 });
 
 // Database initialization and retention worker (Sprint 3)
-import { getDb, retentionSweep } from './db/index.js';
+import { getDb } from './db/client.js';
+import { retentionSweep } from './db/retention.js';
 
 // Initialize database and run seeders on server startup
 if (config.persistence.enabled && process.env.NODE_ENV !== 'test') {

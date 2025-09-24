@@ -1,5 +1,5 @@
 import { tools as toolRegistry, generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
-import { getMessagesPage } from '../db/index.js';
+import { getMessagesPage } from '../db/messages.js';
 import { addConversationMetadata, getConversationMetadata } from './responseUtils.js';
 import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
 import { createProvider } from './providers/index.js';
