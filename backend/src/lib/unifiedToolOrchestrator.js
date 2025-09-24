@@ -1,9 +1,33 @@
 import { tools as toolRegistry, generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
 import { getMessagesPage } from '../db/index.js';
-import { response } from 'express';
 import { addConversationMetadata, getConversationMetadata } from './responseUtils.js';
 import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
 import { createProvider } from './providers/index.js';
+
+/**
+ * Configuration class for orchestration behavior
+ */
+class OrchestrationConfig {
+  constructor(options = {}) {
+    this.maxIterations = options.maxIterations || 10;
+    this.streamingEnabled = options.streamingEnabled !== false;
+    this.model = options.model;
+    this.defaultModel = options.defaultModel;
+    this.tools = options.tools;
+    this.fallbackToolSpecs = options.fallbackToolSpecs;
+  }
+
+  static fromRequest(body, config, fallbackToolSpecs) {
+    return new OrchestrationConfig({
+      maxIterations: 10,
+      streamingEnabled: body.stream !== false,
+      model: body.model || config.defaultModel,
+      defaultModel: config.defaultModel,
+      tools: (Array.isArray(body.tools) && body.tools.length > 0) ? body.tools : fallbackToolSpecs,
+      fallbackToolSpecs
+    });
+  }
+}
 
 /**
  * Execute a single tool call from the local registry
@@ -51,6 +75,178 @@ function streamEvent(res, event, model) {
 }
 
 /**
+ * Response handler factory
+ */
+class ResponseHandlerFactory {
+  static create(config, res) {
+    return config.streamingEnabled
+      ? new StreamingResponseHandler(res, config.model)
+      : new JsonResponseHandler(config.model);
+  }
+}
+
+/**
+ * Base response handler interface
+ */
+class ResponseHandler {
+  constructor(model) {
+    this.model = model;
+    this.collectedEvents = [];
+  }
+
+  sendThinkingContent(content, persistence) {
+    throw new Error('Must implement sendThinkingContent');
+  }
+
+  sendToolCalls(toolCalls) {
+    throw new Error('Must implement sendToolCalls');
+  }
+
+  sendToolOutputs(outputs) {
+    throw new Error('Must implement sendToolOutputs');
+  }
+
+  sendFinalResponse(response, persistence) {
+    throw new Error('Must implement sendFinalResponse');
+  }
+
+  sendError(error, persistence) {
+    throw new Error('Must implement sendError');
+  }
+}
+
+/**
+ * Streaming response handler
+ */
+class StreamingResponseHandler extends ResponseHandler {
+  constructor(res, model) {
+    super(model);
+    this.res = res;
+  }
+
+  _streamEvent(event) {
+    streamEvent(this.res, event, this.model);
+  }
+
+  sendThinkingContent(content, persistence) {
+    this._streamEvent({ content });
+    if (persistence && persistence.persist) {
+      persistence.appendContent(content);
+    }
+  }
+
+  sendToolCalls(toolCalls) {
+    for (const toolCall of toolCalls) {
+      this._streamEvent({ tool_calls: [toolCall] });
+    }
+  }
+
+  sendToolOutputs(outputs) {
+    for (const output of outputs) {
+      this._streamEvent({ tool_output: output });
+    }
+  }
+
+  async sendFinalResponse(response, persistence) {
+    return await streamResponse(response, this.res, persistence, this.model);
+  }
+
+  sendError(error, persistence) {
+    const errorMsg = `[Error: ${error.message}]`;
+    this._streamEvent({ content: errorMsg });
+
+    if (persistence && persistence.persist) {
+      persistence.appendContent(errorMsg);
+      persistence.markError();
+    }
+
+    const conversationMeta = getConversationMetadata(persistence);
+    if (conversationMeta) {
+      this.res.write(`data: ${JSON.stringify(conversationMeta)}\n\n`);
+    }
+    this.res.write('data: [DONE]\n\n');
+    return this.res.end();
+  }
+}
+
+/**
+ * JSON response handler (collects events)
+ */
+class JsonResponseHandler extends ResponseHandler {
+  sendThinkingContent(content, persistence) {
+    this.collectedEvents.push({
+      type: 'text',
+      value: content
+    });
+    if (persistence && persistence.persist) {
+      persistence.appendContent(content);
+    }
+  }
+
+  sendToolCalls(toolCalls) {
+    for (const toolCall of toolCalls) {
+      this.collectedEvents.push({
+        type: 'tool_call',
+        value: toolCall
+      });
+    }
+  }
+
+  sendToolOutputs(outputs) {
+    for (const output of outputs) {
+      this.collectedEvents.push({
+        type: 'tool_output',
+        value: output
+      });
+    }
+  }
+
+  sendFinalResponse(response, persistence) {
+    const message = response?.choices?.[0]?.message;
+    if (message?.content) {
+      this.collectedEvents.push({
+        type: 'text',
+        value: message.content
+      });
+      if (persistence && persistence.persist) {
+        persistence.appendContent(message.content);
+        persistence.recordAssistantFinal({
+          finishReason: response?.choices?.[0]?.finish_reason || 'stop'
+        });
+      }
+    }
+
+    const responseWithEvents = {
+      ...response,
+      tool_events: this.collectedEvents
+    };
+
+    addConversationMetadata(responseWithEvents, persistence);
+    return responseWithEvents;
+  }
+
+  sendError(error, persistence) {
+    if (persistence && persistence.persist) {
+      persistence.markError();
+    }
+
+    const errorMsg = `[Error: ${error.message}]`;
+    this.collectedEvents.push({
+      type: 'text',
+      value: errorMsg
+    });
+
+    return {
+      error: {
+        message: error.message,
+        type: 'tool_orchestration_error'
+      },
+      tool_events: this.collectedEvents
+    };
+  }
+}
+
+/**
  * Make a request to the AI model
  */
 async function callLLM({ messages, config, bodyParams, providerId, providerHttp, provider }) {
@@ -77,10 +273,11 @@ async function callLLM({ messages, config, bodyParams, providerId, providerHttp,
 }
 
 /**
- * Execute all tool calls and optionally stream results
+ * Execute all tool calls using response handler
  */
-async function executeAllTools(toolCalls, streaming, res, model, collectedEvents = []) {
+async function executeAllTools(toolCalls, responseHandler) {
   const toolResults = [];
+  const toolOutputs = [];
 
   for (const toolCall of toolCalls) {
     try {
@@ -92,16 +289,7 @@ async function executeAllTools(toolCalls, streaming, res, model, collectedEvents
         output
       };
 
-      if (streaming) {
-        streamEvent(res, { tool_output: toolOutput }, model);
-      } else {
-        // Collect tool output for non-streaming mode
-        collectedEvents.push({
-          type: 'tool_output',
-          value: toolOutput
-        });
-      }
-
+      toolOutputs.push(toolOutput);
       toolResults.push({
         role: 'tool',
         tool_call_id: toolCall.id,
@@ -116,16 +304,7 @@ async function executeAllTools(toolCalls, streaming, res, model, collectedEvents
         output: errorMessage
       };
 
-      if (streaming) {
-        streamEvent(res, { tool_output: toolOutput }, model);
-      } else {
-        // Collect tool output for non-streaming mode
-        collectedEvents.push({
-          type: 'tool_output',
-          value: toolOutput
-        });
-      }
-
+      toolOutputs.push(toolOutput);
       toolResults.push({
         role: 'tool',
         tool_call_id: toolCall.id,
@@ -134,6 +313,8 @@ async function executeAllTools(toolCalls, streaming, res, model, collectedEvents
     }
   }
 
+  // Send all tool outputs through response handler
+  responseHandler.sendToolOutputs(toolOutputs);
   return toolResults;
 }
 
@@ -273,14 +454,11 @@ export async function handleUnifiedToolOrchestration({
   } else {
     messages = [...(bodyIn.messages || [])];
   }
-  const requestedStreaming = body.stream !== false;
-  const MAX_ITERATIONS = 10;
-
-  // For non-streaming, collect all events to send at the end
-  const collectedEvents = [];
+  const orchestrationConfig = OrchestrationConfig.fromRequest(body, config, fallbackToolSpecs);
+  const responseHandler = ResponseHandlerFactory.create(orchestrationConfig, res);
 
   try {
-    if (requestedStreaming) {
+    if (orchestrationConfig.streamingEnabled) {
       setupStreamingHeaders(res);
     }
 
@@ -299,12 +477,12 @@ export async function handleUnifiedToolOrchestration({
     let iteration = 0;
 
     // Main orchestration loop - continues until LLM stops requesting tools
-    while (iteration < MAX_ITERATIONS) {
+    while (iteration < orchestrationConfig.maxIterations) {
       // Always get response non-streaming first to check for tool calls
       const response = await callLLM({
         messages,
         config,
-        bodyParams: { ...body, tools: (Array.isArray(body.tools) && body.tools.length > 0) ? body.tools : fallbackToolSpecs, stream: false },
+        bodyParams: { ...body, tools: orchestrationConfig.tools, stream: false },
         providerId,
         providerHttp,
         provider: providerInstance,
@@ -314,8 +492,8 @@ export async function handleUnifiedToolOrchestration({
 
       if (!toolCalls.length) {
         // No tools needed - this is the final response
-        if (requestedStreaming) {
-          const finishReason = await streamResponse(response, res, persistence, body.model || config.defaultModel);
+        if (orchestrationConfig.streamingEnabled) {
+          const finishReason = await responseHandler.sendFinalResponse(response, persistence);
 
           if (persistence && persistence.persist) {
             persistence.recordAssistantFinal({ finishReason });
@@ -323,62 +501,22 @@ export async function handleUnifiedToolOrchestration({
 
           return res.end();
         } else {
-          // Non-streaming response - add collected events to response
-          if (persistence && persistence.persist && message?.content) {
-            persistence.appendContent(message.content);
-            persistence.recordAssistantFinal({ finishReason: response?.choices?.[0]?.finish_reason || 'stop' });
-          }
-
-          // Include collected events in the response
-          const responseWithEvents = {
-            ...response,
-            tool_events: collectedEvents
-          };
-
-          // Include conversation metadata if auto-created
-          addConversationMetadata(responseWithEvents, persistence);
-
+          const responseWithEvents = responseHandler.sendFinalResponse(response, persistence);
           return res.status(200).json(responseWithEvents);
         }
       }
 
       // Handle tool execution
-      if (requestedStreaming) {
-        // Stream any thinking content
-        if (message.content) {
-          streamEvent(res, { content: message.content }, response.model || body.model || config.defaultModel);
-          if (persistence && persistence.persist) {
-            persistence.appendContent(message.content);
-          }
-        }
-
-        // Stream tool calls
-        for (const toolCall of toolCalls) {
-          streamEvent(res, { tool_calls: [toolCall] }, response.model || body.model || config.defaultModel);
-        }
-      } else {
-        // For non-streaming, collect thinking content as event
-        if (message.content) {
-          collectedEvents.push({
-            type: 'text',
-            value: message.content
-          });
-          if (persistence && persistence.persist) {
-            persistence.appendContent(message.content);
-          }
-        }
-
-        // Collect tool calls as events
-        for (const toolCall of toolCalls) {
-          collectedEvents.push({
-            type: 'tool_call',
-            value: toolCall
-          });
-        }
+      // Send any thinking content
+      if (message.content) {
+        responseHandler.sendThinkingContent(message.content, persistence);
       }
 
-      // Execute all tools - now collects events for non-streaming too
-      const toolResults = await executeAllTools(toolCalls, requestedStreaming, res, response.model, collectedEvents);
+      // Send tool calls
+      responseHandler.sendToolCalls(toolCalls);
+
+      // Execute all tools
+      const toolResults = await executeAllTools(toolCalls, responseHandler);
 
       // Add to conversation for next iteration
       messages.push(message, ...toolResults);
@@ -389,92 +527,36 @@ export async function handleUnifiedToolOrchestration({
     const finalResponse = await callLLM({
       messages,
       config,
-      bodyParams: { ...body, tools: (Array.isArray(body.tools) && body.tools.length > 0) ? body.tools : fallbackToolSpecs, stream: requestedStreaming },
+      bodyParams: { ...body, tools: orchestrationConfig.tools, stream: orchestrationConfig.streamingEnabled },
       providerId,
       providerHttp,
       provider: providerInstance,
     });
 
-    if (requestedStreaming) {
-      const finishReason = await streamResponse(finalResponse, res, persistence, body.model || config.defaultModel);
-      const maxIterMsg = '\n\n[Maximum iterations reached]';
-      streamEvent(res, { content: maxIterMsg }, body.model || config.defaultModel);
+    // Handle max iterations reached
+    const maxIterMsg = '\n\n[Maximum iterations reached]';
+
+    if (orchestrationConfig.streamingEnabled) {
+      const finishReason = await responseHandler.sendFinalResponse(finalResponse, persistence);
+      responseHandler.sendThinkingContent(maxIterMsg, persistence);
       if (persistence && persistence.persist) {
-        persistence.appendContent(maxIterMsg);
         persistence.recordAssistantFinal({ finishReason });
       }
-
       return res.end();
     } else {
-      const message = finalResponse?.choices?.[0]?.message;
-      const maxIterMsg = '\n\n[Maximum iterations reached]';
-
-      // Add final content and max iterations message as events
-      if (message?.content) {
-        collectedEvents.push({
-          type: 'text',
-          value: message.content
-        });
-      }
-      collectedEvents.push({
-        type: 'text',
-        value: maxIterMsg
-      });
-
-      if (persistence && persistence.persist && message?.content) {
-        persistence.appendContent(message.content + maxIterMsg);
-        persistence.recordAssistantFinal({ finishReason: finalResponse?.choices?.[0]?.finish_reason || 'stop' });
-      }
-
-      // Include collected events in the response
-      const responseWithEvents = {
-        ...finalResponse,
-        tool_events: collectedEvents
-      };
-
-      // Include conversation metadata if auto-created
-      addConversationMetadata(responseWithEvents, persistence);
-
+      const responseWithEvents = responseHandler.sendFinalResponse(finalResponse, persistence);
+      responseHandler.sendThinkingContent(maxIterMsg, persistence);
       return res.status(200).json(responseWithEvents);
     }
 
   } catch (error) {
     console.error('[unified orchestration] error:', error);
 
-    if (requestedStreaming) {
-      const errorMsg = `[Error: ${error.message}]`;
-      streamEvent(res, { content: errorMsg }, body?.model || config.defaultModel);
-
-      if (persistence && persistence.persist) {
-        persistence.appendContent(errorMsg);
-        persistence.markError();
-      }
-
-      // Include conversation metadata if auto-created
-      const conversationMeta = getConversationMetadata(persistence);
-      if (conversationMeta) {
-        res.write(`data: ${JSON.stringify(conversationMeta)}\n\n`);
-      }
-      res.write('data: [DONE]\n\n');
-      return res.end();
+    if (orchestrationConfig.streamingEnabled) {
+      return responseHandler.sendError(error, persistence);
     } else {
-      if (persistence && persistence.persist) {
-        persistence.markError();
-      }
-
-      const errorMsg = `[Error: ${error.message}]`;
-      collectedEvents.push({
-        type: 'text',
-        value: errorMsg
-      });
-
-      return res.status(500).json({
-        error: {
-          message: error.message,
-          type: 'tool_orchestration_error'
-        },
-        tool_events: collectedEvents
-      });
+      const errorResponse = responseHandler.sendError(error, persistence);
+      return res.status(500).json(errorResponse);
     }
   }
 }
