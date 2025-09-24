@@ -540,27 +540,26 @@ export function useChatState() {
   }, []);
 
   // Stream event handler
-  const handleStreamEvent = useCallback((event: any) => {
+  const handleStreamToken = useCallback((token: string) => {
+    if (!token) return;
     const current = assistantMsgRef.current;
     if (!current) return;
     const assistantId = current.id;
 
-    // Maintain a separate assistant snapshot without mutating the reducer-managed message
-    const appendSnapshotContent = (delta: string) => {
-      if (!delta) return;
-      const prev = assistantMsgRef.current;
-      if (!prev) return;
-      const nextContent = (prev.content ?? '') + delta;
-      assistantMsgRef.current = { ...prev, content: nextContent };
-    };
+    const nextContent = (current.content ?? '') + token;
+    assistantMsgRef.current = { ...current, content: nextContent };
+    dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token } });
+  }, []);
 
-    if (event.type === 'text') {
-      appendSnapshotContent(event.value);
-      dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token: event.value } });
-    } else if (event.type === 'final') {
-      appendSnapshotContent(event.value);
-      dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token: event.value } });
-    } else if (event.type === 'tool_call') {
+  const handleStreamEvent = useCallback((event: any) => {
+    const assistantId = assistantMsgRef.current?.id;
+    if (!assistantId) return;
+
+    if (event.type === 'text' || event.type === 'reasoning' || event.type === 'final') {
+      return;
+    }
+
+    if (event.type === 'tool_call') {
       // Let reducer manage tool_calls to avoid duplicates from local snapshot
       dispatch({ type: 'STREAM_TOOL_CALL', payload: { messageId: assistantId, toolCall: event.value } });
     } else if (event.type === 'tool_output') {
@@ -597,9 +596,10 @@ export function useChatState() {
             }
           : {}),
         onEvent: handleStreamEvent,
+        onToken: handleStreamToken,
       });
     },
-    [state, handleStreamEvent]
+    [state, handleStreamEvent, handleStreamToken]
   );
 
   const runSend = useCallback(

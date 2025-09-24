@@ -21,7 +21,22 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
   const isDark = resolvedTheme === 'dark';
 
   // Transform thinking blocks into collapsible sections
-  const processedText = text.replace(
+  // First, handle incomplete thinking blocks by temporarily adding closing tags
+  let textToProcess = text;
+
+  // Check for incomplete thinking block (has <thinking> but no matching </thinking>)
+  // Count opening and closing tags to ensure they match
+  const openingTags = (textToProcess.match(/<thinking>/g) || []).length;
+  const closingTags = (textToProcess.match(/<\/thinking>/g) || []).length;
+  const hasIncompleteThinking = openingTags > closingTags;
+
+  if (hasIncompleteThinking) {
+    // Only add closing tag if we have unmatched opening tags
+    // Find the last <thinking> without a matching </thinking>
+    textToProcess = textToProcess.replace(/<thinking>(?![\s\S]*<\/thinking>)([\s\S]*)$/, '<thinking>$1</thinking>');
+  }
+
+  const processedText = textToProcess.replace(
     /<thinking>([\s\S]*?)<\/thinking>/g,
     (match, content) => {
       // Convert to a custom code block that we can detect

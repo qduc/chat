@@ -15,6 +15,7 @@ interface OpenAIStreamChunkChoiceDelta {
   content?: string;
   tool_calls?: any[];
   tool_output?: any;
+  reasoning?: string;
 }
 
 interface OpenAIStreamChunkChoice {
@@ -150,7 +151,13 @@ export class ChatClient {
     // Extract content
     let content = '';
     if (json?.choices && Array.isArray(json.choices)) {
-      content = json?.choices?.[0]?.message?.content ?? '';
+      const message = json.choices[0]?.message;
+      content = message?.content ?? '';
+
+      // Handle reasoning content from non-streaming response
+      if (message?.reasoning) {
+        content = `<thinking>${message.reasoning}</thinking>\n\n${content}`;
+      }
     } else {
       content = json?.content ?? json?.message?.content ?? '';
     }
@@ -178,6 +185,7 @@ export class ChatClient {
     let content = '';
     let responseId: string | undefined;
     let conversation: ConversationMeta | undefined;
+    let reasoningStarted = false;
 
     try {
       while (true) {
@@ -189,14 +197,21 @@ export class ChatClient {
 
         for (const event of events) {
           if (event.type === 'done') {
+            // If we're in the middle of reasoning, close the thinking tag
+            if (reasoningStarted) {
+              const closingTag = '</thinking>';
+              onToken?.(closingTag);
+              content += closingTag;
+            }
             return { content, responseId, conversation };
           }
 
           if (event.type === 'data' && event.data) {
-            const result = this.processStreamChunk(event.data, onToken, onEvent);
+            const result = this.processStreamChunk(event.data, onToken, onEvent, reasoningStarted);
             if (result.content) content += result.content;
             if (result.responseId) responseId = result.responseId;
             if (result.conversation) conversation = result.conversation;
+            if (result.reasoningStarted !== undefined) reasoningStarted = result.reasoningStarted;
           }
         }
       }
@@ -213,8 +228,9 @@ export class ChatClient {
   private processStreamChunk(
     data: any,
     onToken?: (token: string) => void,
-    onEvent?: (event: any) => void
-  ): { content?: string; responseId?: string; conversation?: ConversationMeta } {
+    onEvent?: (event: any) => void,
+    reasoningStarted?: boolean
+  ): { content?: string; responseId?: string; conversation?: ConversationMeta; reasoningStarted?: boolean } {
     // Handle conversation metadata
     if (data._conversation) {
       return {
@@ -230,6 +246,38 @@ export class ChatClient {
     // Handle Chat Completions API stream format
     const chunk = data as OpenAIStreamChunk;
     const delta = chunk.choices?.[0]?.delta;
+
+    if (reasoningStarted && delta?.content) {
+      const closingTag = '</thinking>';
+      onToken?.(closingTag);
+      onToken?.(delta.content);
+      onEvent?.({ type: 'text', value: delta.content });
+
+      return {
+        content: closingTag + delta.content,
+        reasoningStarted: false
+      };
+    }
+
+    if (delta?.reasoning) {
+      let contentToAdd = '';
+
+      // If this is the first reasoning token, open the thinking tag
+      if (!reasoningStarted) {
+        contentToAdd = '<thinking>' + delta.reasoning;
+        reasoningStarted = true;
+      } else {
+        contentToAdd = delta.reasoning;
+      }
+
+      onToken?.(contentToAdd);
+      onEvent?.({ type: 'reasoning', value: delta.reasoning });
+
+      return {
+        content: contentToAdd,
+        reasoningStarted
+      };
+    }
 
     if (delta?.content) {
       onToken?.(delta.content);

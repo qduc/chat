@@ -10,7 +10,7 @@ export interface ChatMessage {
 }
 
 export interface ChatEvent {
-  type: 'text' | 'tool_call' | 'tool_output';
+  type: 'text' | 'reasoning' | 'tool_call' | 'tool_output' | 'final';
   value: any;
 }
 
