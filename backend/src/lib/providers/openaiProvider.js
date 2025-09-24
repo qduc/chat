@@ -30,14 +30,50 @@ function wrapStreamingResponse(response) {
 }
 
 export class OpenAIProvider extends BaseProvider {
-  constructor(options = {}) {
-    super(options);
-    this.adapter = new ChatCompletionsAdapter({
+  createAdapter() {
+    if (this.shouldUseResponsesAPI()) {
+      const ResponsesAPIAdapter = this.resolveResponsesAdapter();
+      if (ResponsesAPIAdapter) {
+        return new ResponsesAPIAdapter({
+          config: this.config,
+          settings: this.settings,
+        });
+      }
+    }
+
+    return new ChatCompletionsAdapter({
       config: this.config,
       settings: this.settings,
       getDefaultModel: () => this.getDefaultModel(),
       supportsReasoningControls: (model) => this.supportsReasoningControls(model),
     });
+  }
+
+  buildAdapterContext(context = {}) {
+    return {
+      getDefaultModel: () => this.getDefaultModel(),
+      supportsReasoningControls: (model) => this.supportsReasoningControls(model),
+      ...context,
+    };
+  }
+
+  shouldUseResponsesAPI() {
+    const baseUrl = (this.baseUrl || '').toLowerCase();
+    return baseUrl.includes('api.openai.com') && this.isResponsesAPIEnabled();
+  }
+
+  resolveResponsesAdapter() {
+    return null;
+  }
+
+  isResponsesAPIEnabled() {
+    if (typeof this.config?.featureFlags?.responsesApiEnabled === 'boolean') {
+      return this.config.featureFlags.responsesApiEnabled;
+    }
+    if (typeof this.settings?.responsesApiEnabled === 'boolean') {
+      return this.settings.responsesApiEnabled;
+    }
+    return process.env.RESPONSES_API_ENABLED === 'true';
   }
 
   get apiKey() {
@@ -75,14 +111,7 @@ export class OpenAIProvider extends BaseProvider {
     return Boolean(this.apiKey || this.defaultHeaders.Authorization);
   }
 
-  normalizeRequest(internalRequest = {}) {
-    return this.adapter.translateRequest(internalRequest, {
-      getDefaultModel: () => this.getDefaultModel(),
-      supportsReasoningControls: (model) => this.supportsReasoningControls(model),
-    });
-  }
-
-  async sendRequest(normalizedRequest) {
+  async makeHttpRequest(translatedRequest) {
     const client = this.httpClient;
     if (!client) {
       throw new Error('No HTTP client available for OpenAI provider');
@@ -91,7 +120,7 @@ export class OpenAIProvider extends BaseProvider {
     const url = `${this.baseUrl}/v1/chat/completions`;
     const headers = {
       'Content-Type': 'application/json',
-      ...(normalizedRequest?.stream ? { Accept: 'text/event-stream' } : { Accept: 'application/json' }),
+      ...(translatedRequest?.stream ? { Accept: 'text/event-stream' } : { Accept: 'application/json' }),
       ...this.defaultHeaders,
     };
 
@@ -102,22 +131,14 @@ export class OpenAIProvider extends BaseProvider {
     const response = await client(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify(normalizedRequest),
+      body: JSON.stringify(translatedRequest),
     });
 
-    if (normalizedRequest?.stream) {
+    if (translatedRequest?.stream) {
       return wrapStreamingResponse(response);
     }
 
     return response;
-  }
-
-  normalizeResponse(upstreamResponse) {
-    return this.adapter.translateResponse(upstreamResponse);
-  }
-
-  normalizeStreamChunk(chunk) {
-    return this.adapter.translateStreamChunk(chunk);
   }
 
   getToolsetSpec(toolRegistry) {

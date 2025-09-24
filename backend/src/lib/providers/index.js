@@ -41,6 +41,10 @@ export async function resolveProviderSettings(config, options = {}) {
       if (row) {
         const headers = parseJSONSafe(row.extra_headers, {});
         const metadata = parseJSONSafe(row.metadata, {});
+        const responsesApiEnabled =
+          typeof metadata?.responses_api_enabled === 'boolean'
+            ? metadata.responses_api_enabled
+            : undefined;
         return {
           source: 'db',
           providerType: row.provider_type || (config?.provider || 'openai'),
@@ -48,6 +52,7 @@ export async function resolveProviderSettings(config, options = {}) {
           apiKey: row.api_key || config?.providerConfig?.apiKey || config?.openaiApiKey,
           headers,
           defaultModel: metadata?.default_model || config?.defaultModel,
+          responsesApiEnabled,
           raw: row,
         };
       }
@@ -63,6 +68,7 @@ export async function resolveProviderSettings(config, options = {}) {
     apiKey: config?.providerConfig?.apiKey || config?.openaiApiKey,
     headers: { ...(config?.providerConfig?.headers || {}) },
     defaultModel: config?.defaultModel,
+    responsesApiEnabled: config?.featureFlags?.responsesApiEnabled,
     raw: null,
   };
 }
@@ -106,6 +112,9 @@ export async function getDefaultModel(config, options = {}) {
 
 export async function providerChatCompletions(config, requestBody, options = {}) {
   const provider = await createProvider(config, options);
-  const normalizedRequest = provider.normalizeRequest(requestBody);
-  return provider.sendRequest(normalizedRequest);
+  const context = {
+    providerId: options.providerId || provider.providerId,
+    ...options.context,
+  };
+  return provider.sendRequest(requestBody, context);
 }
