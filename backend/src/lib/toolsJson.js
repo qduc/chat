@@ -424,7 +424,7 @@ async function streamResponse(llmResponse, res, persistence, model) {
  * Unified tool orchestration handler - automatically adapts to request needs
  * Replaces all 3 previous modes with a single self-adapting implementation
  */
-export async function handleUnifiedToolOrchestration({
+export async function handleToolsJson({
   body,
   bodyIn,
   config,

@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { jest } from '@jest/globals';
 
-import { handleUnifiedToolOrchestration } from '../src/lib/unifiedToolOrchestrator.js';
+import { handleToolsJson } from '../src/lib/toolsJson.js';
 import { tools as toolRegistry } from '../src/lib/tools.js';
 import request from 'supertest';
 import { MockUpstream } from '../test_utils/chatProxyTestUtils.js';
@@ -161,7 +161,7 @@ describe('Iterative Orchestration', () => {
     delete process.env.ALLOWED_ORIGIN;
   });
 
-  describe.skip('handleUnifiedToolOrchestration', () => {
+  describe.skip('handleToolsJson', () => {
     it('should handle single tool call followed by final response', async () => {
       // Mock AI responses: first with tool call, then final response
       const aiResponses = [
@@ -217,7 +217,7 @@ describe('Iterative Orchestration', () => {
         sizeThreshold: 512
       };
 
-      await handleUnifiedToolOrchestration({
+      await handleToolsJson({
         body,
         bodyIn,
         config: mockConfig,
@@ -315,7 +315,7 @@ describe('Iterative Orchestration', () => {
         sizeThreshold: 512
       };
 
-      await handleUnifiedToolOrchestration({
+      await handleToolsJson({
         body,
         bodyIn,
         config: mockConfig,
@@ -392,7 +392,7 @@ describe('Iterative Orchestration', () => {
         sizeThreshold: 512
       };
 
-      await handleUnifiedToolOrchestration({
+      await handleToolsJson({
         body,
         bodyIn,
         config: mockConfig,
@@ -464,7 +464,7 @@ describe('Iterative Orchestration', () => {
         sizeThreshold: 512
       };
 
-      await handleUnifiedToolOrchestration({
+      await handleToolsJson({
         body,
         bodyIn,
         config: mockConfig,
@@ -528,7 +528,7 @@ describe('Iterative Orchestration', () => {
       };
 
       // Start the orchestration
-      const orchestrationPromise = handleUnifiedToolOrchestration({
+      const orchestrationPromise = handleToolsJson({
         body,
         bodyIn,
         config: mockConfig,

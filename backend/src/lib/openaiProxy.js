@@ -1,7 +1,7 @@
 import { config } from '../env.js';
 import { generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
-import { handleUnifiedToolOrchestration } from './unifiedToolOrchestrator.js';
-import { handleIterativeOrchestration } from './iterativeOrchestrator.js';
+import { handleToolsJson } from './toolsJson.js';
+import { handleToolsStreaming } from './toolsStreaming.js';
 import { handleRegularStreaming } from './streamingHandler.js';
 import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
 import { createProvider } from './providers/index.js';
@@ -234,9 +234,9 @@ async function handleRequest(context, req, res) {
   if (flags.hasTools) {
     // Tool orchestration path
     if (flags.stream) {
-      return handleIterativeOrchestration({ body, bodyIn, config, res, req, persistence, provider });
+      return handleToolsStreaming({ body, bodyIn, config, res, req, persistence, provider });
     } else {
-      return handleUnifiedToolOrchestration({ body, bodyIn, config, res, req, persistence, provider });
+      return handleToolsJson({ body, bodyIn, config, res, req, persistence, provider });
     }
   }
 

@@ -70,7 +70,7 @@ function streamEvent(res, event, model) {
 /**
  * Handle iterative tool orchestration with thinking support
  */
-export async function handleIterativeOrchestration({
+export async function handleToolsStreaming({
   body,
   bodyIn,
   config,
