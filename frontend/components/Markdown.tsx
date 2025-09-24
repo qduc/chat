@@ -2,13 +2,54 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import { useTheme } from "../contexts/ThemeContext";
 import { ClipboardCheck, Clipboard } from 'lucide-react';
 
 interface MarkdownProps {
   text: string;
   className?: string;
+}
+
+const CODE_FENCE_PATTERN = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`]*`)/g;
+const BLOCK_LATEX_PATTERN = /(^|[^\\])\\\[((?:\\.|[\s\S])*?)\\\]/g;
+const INLINE_LATEX_PATTERN = /(^|[^\\])\\\(([\s\S]*?)\\\)/g;
+
+// Normalize common LaTeX delimiters from \(…\)/\[…\] to $…$/$$…$$.
+// Some providers emit the escaped forms by default, and remark-math only parses dollar delimiters.
+function normalizeLatexDelimiters(input: string): string {
+  if (!input) return input;
+
+  const segments = input.split(CODE_FENCE_PATTERN);
+  return segments
+    .map((segment) => {
+      if (!segment) return segment;
+      if (segment.startsWith("```") || segment.startsWith("~~~") || segment.startsWith("`")) {
+        return segment;
+      }
+
+      const withBlocks = segment.replace(
+        BLOCK_LATEX_PATTERN,
+        (match, prefix, body) => {
+          const hasLineBreak = body.includes("\n");
+          const trimmed = body.trim();
+          const normalized = hasLineBreak ? `\n${trimmed}\n` : trimmed;
+          return `${prefix}$$${normalized}$$`;
+        }
+      );
+
+      return withBlocks.replace(
+        INLINE_LATEX_PATTERN,
+        (match, prefix, body) => {
+          const normalized = body.trim();
+          return `${prefix}$${normalized}$`;
+        }
+      );
+    })
+    .join("");
 }
 
 // Library-based Markdown renderer with:
@@ -22,13 +63,16 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
 
   // Transform thinking blocks into collapsible sections
   // First, handle incomplete thinking blocks by temporarily adding closing tags
-  let textToProcess = text;
+  let textToProcess = normalizeLatexDelimiters(text);
 
-  // Check for incomplete thinking block (has <thinking> but no matching </thinking>)
+  // Check for incomplete thinking blocks (both <thinking> and <think> variants)
   // Count opening and closing tags to ensure they match
-  const openingTags = (textToProcess.match(/<thinking>/g) || []).length;
-  const closingTags = (textToProcess.match(/<\/thinking>/g) || []).length;
-  const hasIncompleteThinking = openingTags > closingTags;
+  const openingThinkingTags = (textToProcess.match(/<thinking>/g) || []).length;
+  const closingThinkingTags = (textToProcess.match(/<\/thinking>/g) || []).length;
+  const openingThinkTags = (textToProcess.match(/<think>/g) || []).length;
+  const closingThinkTags = (textToProcess.match(/<\/think>/g) || []).length;
+  const hasIncompleteThinking = openingThinkingTags > closingThinkingTags;
+  const hasIncompleteThink = openingThinkTags > closingThinkTags;
 
   if (hasIncompleteThinking) {
     // Only add closing tag if we have unmatched opening tags
@@ -36,13 +80,27 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
     textToProcess = textToProcess.replace(/<thinking>(?![\s\S]*<\/thinking>)([\s\S]*)$/, '<thinking>$1</thinking>');
   }
 
-  const processedText = textToProcess.replace(
-    /<thinking>([\s\S]*?)<\/thinking>/g,
-    (match, content) => {
-      // Convert to a custom code block that we can detect
-      return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
-    }
-  );
+  if (hasIncompleteThink) {
+    // Only add closing tag if we have unmatched opening tags
+    // Find the last <think> without a matching </think>
+    textToProcess = textToProcess.replace(/<think>(?![\s\S]*<\/think>)([\s\S]*)$/, '<think>$1</think>');
+  }
+
+  const processedText = textToProcess
+    .replace(
+      /<thinking>([\s\S]*?)<\/thinking>/g,
+      (match, content) => {
+        // Convert to a custom code block that we can detect
+        return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
+      }
+    )
+    .replace(
+      /<think>([\s\S]*?)<\/think>/g,
+      (match, content) => {
+        // Convert to a custom code block that we can detect (same as thinking)
+        return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
+      }
+    );
 
   // Note: Syntax highlighting theme is automatically handled by CSS
   // based on the .dark class applied to the document root
@@ -51,8 +109,11 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
     <div className={`${className || ''} ${isDark ? 'dark' : ''}`}>
       <ReactMarkdown
         // Do NOT enable raw HTML to prevent XSS
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[[rehypeHighlight, { ignoreMissing: true }]]}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[
+          [rehypeHighlight, { ignoreMissing: true }],
+          rehypeKatex
+        ]}
         components={{
           a: ({ href, children }) => (
             <a
