@@ -11,13 +11,6 @@ import { logger } from '../logger.js';
 
 // --- Constants ---
 
-const EXECUTION_MODES = {
-  TOOLS_STREAM: 'tools:stream',
-  TOOLS_JSON: 'tools:json',
-  PLAIN_STREAM: 'plain:stream',
-  PLAIN_JSON: 'plain:json'
-};
-
 // --- Helpers: sanitize, validate, selection, and error shaping ---
 
 function sanitizeIncomingBody(bodyIn, helpers = {}) {
@@ -118,18 +111,6 @@ function getFlags({ body, provider }) {
   return { hasTools, stream };
 }
 
-function selectMode(flags) {
-  const toolsMode = flags.hasTools ? 'tools' : 'plain';
-  const streamMode = flags.stream ? 'stream' : 'json';
-
-  if (toolsMode === 'tools' && streamMode === 'stream') return EXECUTION_MODES.TOOLS_STREAM;
-  if (toolsMode === 'tools' && streamMode === 'json') return EXECUTION_MODES.TOOLS_JSON;
-  if (toolsMode === 'plain' && streamMode === 'stream') return EXECUTION_MODES.PLAIN_STREAM;
-  if (toolsMode === 'plain' && streamMode === 'json') return EXECUTION_MODES.PLAIN_JSON;
-
-  // Fallback - should not happen
-  return `${toolsMode}:${streamMode}`;
-}
 
 async function readUpstreamError(upstream) {
   try {
@@ -247,60 +228,57 @@ function handleProxyError(error, req, res, persistence) {
 
 // --- Handler Execution ---
 
-async function executeRequestHandler(context, req, res) {
-  const { flags, providerId } = context;
+async function handleRequest(context, req, res) {
+  const { body, bodyIn, flags, provider, providerId, persistence } = context;
 
+  if (flags.hasTools) {
+    // Tool orchestration path
+    if (flags.stream) {
+      return handleIterativeOrchestration({ body, bodyIn, config, res, req, persistence, provider });
+    } else {
+      return handleUnifiedToolOrchestration({ body, bodyIn, config, res, req, persistence, provider });
+    }
+  }
+
+  // Plain proxy path
+  const upstream = await createOpenAIRequest(config, body, { providerId });
+  if (!upstream.ok) {
+    const { status, errorJson } = await handleUpstreamError(upstream, persistence);
+    return res.status(status).json(errorJson);
+  }
+
+  if (flags.stream) {
+    // Streaming response
+    setupStreamingHeaders(res);
+    return handleRegularStreaming({ config, upstream, res, req, persistence });
+  } else {
+    // JSON response
+    const upstreamJson = await upstream.json();
+
+    if (persistence.persist) {
+      let content = '';
+      let finishReason = null;
+      if (upstreamJson.choices && upstreamJson.choices[0] && upstreamJson.choices[0].message) {
+        content = upstreamJson.choices[0].message.content;
+      }
+      finishReason = upstreamJson.choices && upstreamJson.choices[0]
+        ? upstreamJson.choices[0].finish_reason
+        : null;
+
+      if (content) persistence.appendContent(content);
+      persistence.recordAssistantFinal({ finishReason });
+    }
+
+    const responseBody = { ...upstreamJson };
+    addConversationMetadata(responseBody, persistence);
+    return res.status(200).json(responseBody);
+  }
+}
+
+async function executeRequestHandler(context, req, res) {
   // Persistence setup
   const persistence = new SimplifiedPersistence(config);
   const sessionId = req.sessionId;
-
-  // Strategy handlers (selected by flags)
-  const handlers = {
-    [EXECUTION_MODES.TOOLS_STREAM]: ({ body, bodyIn, req, res, config, persistence, provider }) =>
-      handleIterativeOrchestration({ body, bodyIn, config, res, req, persistence, provider }),
-
-    [EXECUTION_MODES.TOOLS_JSON]: ({ body, bodyIn, req, res, config, persistence, provider }) =>
-      handleUnifiedToolOrchestration({ body, bodyIn, config, res, req, persistence, provider }),
-
-    [EXECUTION_MODES.PLAIN_STREAM]: async ({ body, req, res, config, persistence, providerId }) => {
-      const upstream = await createOpenAIRequest(config, body, { providerId });
-      if (!upstream.ok) {
-        const { status, errorJson } = await handleUpstreamError(upstream, persistence);
-        return res.status(status).json(errorJson);
-      }
-      // Setup streaming headers only after confirming upstream is ok
-      setupStreamingHeaders(res);
-      return handleRegularStreaming({ config, upstream, res, req, persistence });
-    },
-
-    [EXECUTION_MODES.PLAIN_JSON]: async ({ body, req: _req, res, config, persistence, providerId }) => {
-      const upstream = await createOpenAIRequest(config, body, { providerId });
-      if (!upstream.ok) {
-        const { status, errorJson } = await handleUpstreamError(upstream, persistence);
-        return res.status(status).json(errorJson);
-      }
-
-      const upstreamJson = await upstream.json();
-
-      if (persistence.persist) {
-        let content = '';
-        let finishReason = null;
-        if (upstreamJson.choices && upstreamJson.choices[0] && upstreamJson.choices[0].message) {
-          content = upstreamJson.choices[0].message.content;
-        }
-        finishReason = upstreamJson.choices && upstreamJson.choices[0]
-          ? upstreamJson.choices[0].finish_reason
-          : null;
-
-        if (content) persistence.appendContent(content);
-        persistence.recordAssistantFinal({ finishReason });
-      }
-
-      const responseBody = { ...upstreamJson };
-      addConversationMetadata(responseBody, persistence);
-      return res.status(200).json(responseBody);
-    },
-  };
 
   await persistence.initialize({
     conversationId: context.conversationId,
@@ -310,42 +288,11 @@ async function executeRequestHandler(context, req, res) {
     bodyIn: context.bodyIn
   });
 
-  const mode = selectMode(flags);
-  const handler = handlers[mode];
-
-  if (!handler) {
-    // Fallback safety – should not happen
-    logger.error({
-      msg: 'unsupported_mode_error',
-      error: {
-        message: `Unsupported mode: ${mode}`,
-        type: 'invalid_request_error',
-      },
-      req: {
-        id: req.id,
-        method: req.method,
-        url: req.url,
-        body: req.body,
-      },
-      mode,
-      flags,
-      modeError: `Unsupported mode: ${mode} (hasTools: ${flags.hasTools}, stream: ${flags.stream})`,
-    });
-    return res.status(400).json({ error: 'invalid_request_error', message: `Unsupported mode: ${mode}` });
-  }
+  // Add persistence to context for the unified handler
+  const contextWithPersistence = { ...context, persistence };
 
   try {
-    return await handler({
-      req,
-      res,
-      config,
-      bodyIn: context.bodyIn,
-      body: context.body,
-      flags,
-      persistence,
-      provider: context.provider,
-      providerId
-    });
+    return await handleRequest(contextWithPersistence, req, res);
   } finally {
     if (persistence) {
       persistence.cleanup();
