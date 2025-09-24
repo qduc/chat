@@ -280,13 +280,21 @@ async function executeRequestHandler(context, req, res) {
   const persistence = new SimplifiedPersistence(config);
   const sessionId = req.sessionId;
 
-  await persistence.initialize({
+  const initResult = await persistence.initialize({
     conversationId: context.conversationId,
     sessionId,
     req,
-    res,
     bodyIn: context.bodyIn
   });
+
+  // Handle persistence validation errors
+  if (initResult.error) {
+    return res.status(initResult.error.statusCode).json({
+      error: initResult.error.type,
+      message: initResult.error.message,
+      details: initResult.error.details,
+    });
+  }
 
   // Add persistence to context for the unified handler
   const contextWithPersistence = { ...context, persistence };

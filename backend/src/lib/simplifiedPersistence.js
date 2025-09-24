@@ -1,36 +1,31 @@
+import { getDb } from '../db/index.js';
 import {
-  getDb,
-  upsertSession,
-  getConversationById,
-  countMessagesByConversation,
-  getNextSeq,
-  insertUserMessage,
-  insertAssistantFinal,
-  markAssistantErrorBySeq,
-  createConversation,
-  countConversationsBySession,
-  updateConversationTitle,
-  clearAllMessages,
-} from '../db/index.js';
-import { v4 as uuidv4 } from 'uuid';
-import { createOpenAIRequest } from './streamUtils.js';
-import { providerIsConfigured } from './providers/index.js';
+  ConversationManager,
+  ConversationValidator,
+  ConversationTitleService,
+  PersistenceConfig,
+} from './persistence/index.js';
 
 /**
  * Simplified persistence manager that implements final-only writes
- * Consolidates the dual abstraction of persistenceHandler + PersistenceManager
+ * Uses composition pattern with specialized components for better maintainability
  */
 export class SimplifiedPersistence {
   constructor(config) {
-    this.config = config;
+    this.persistenceConfig = new PersistenceConfig(config);
+    this.conversationManager = new ConversationManager();
+    this.validator = new ConversationValidator(config);
+    this.titleService = new ConversationTitleService(config);
+
+    // Runtime state
     this.persist = false;
     this.conversationId = null;
     this.assistantSeq = null;
     this.assistantBuffer = '';
     this.finalized = false;
     this.errored = false;
-    this.conversationMeta = null; // Store conversation metadata
-    this.providerId = undefined; // Track frontend-selected provider for consistency
+    this.conversationMeta = null;
+    this.providerId = undefined;
   }
 
   /**
@@ -39,273 +34,164 @@ export class SimplifiedPersistence {
    * @param {string|null} params.conversationId - Conversation ID
    * @param {string} params.sessionId - Session ID
    * @param {Object} params.req - Express request object
-   * @param {Object} params.res - Express response object
    * @param {Object} params.bodyIn - Original request body
-   * @returns {Promise<void>}
+   * @returns {Promise<{error?: Object}>} Error object if validation fails
    */
-  async initialize({ conversationId, sessionId, req, res, bodyIn }) {
+  async initialize({ conversationId, sessionId, req, bodyIn }) {
     // Check if persistence is enabled
-    const persistenceEnabled = this.config?.persistence?.enabled || false;
-
-    if (!persistenceEnabled || !sessionId) {
+    if (!this.persistenceConfig.isPersistenceEnabled() || !sessionId) {
       this.persist = false;
-      return;
+      return {};
     }
 
-    // Ensure DB session row
+    // Initialize database connection and session
     getDb();
-    upsertSession(sessionId, {
+    this.conversationManager.ensureSession(sessionId, {
       userAgent: req.header('user-agent') || null,
     });
 
-    // Capture provider id from request for later use (e.g., title generation)
-    this.providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
+    // Extract provider ID
+    this.providerId = this.persistenceConfig.extractProviderId(bodyIn, req);
 
+    // Handle existing conversation or create new one
+    const result = await this._handleConversation({ conversationId, sessionId, bodyIn });
+    if (result.error) {
+      return result;
+    }
+
+    // Process message history and generate title if needed
+    await this._processMessageHistory(sessionId, bodyIn);
+
+    // Setup for assistant message recording
+    this._setupAssistantRecording();
+
+    // Handle metadata updates for existing conversations
+    await this._handleMetadataUpdates(sessionId, bodyIn);
+
+    return {};
+  }
+
+  /**
+   * Handle conversation creation or validation
+   * @private
+   */
+  async _handleConversation({ conversationId, sessionId, bodyIn }) {
     let convo = null;
+    let isNewConversation = false;
 
-    // If conversation ID provided, validate it exists and belongs to session
+    // If conversation ID provided, try to get existing conversation
     if (conversationId) {
-      convo = getConversationById({ id: conversationId, sessionId });
+      convo = this.conversationManager.getConversation(conversationId, sessionId);
       if (!convo) {
-        // Invalid conversation ID - ignore and auto-create new one
+        // Invalid conversation ID - will auto-create new one
         conversationId = null;
+        isNewConversation = true;
       }
+    } else {
+      isNewConversation = true;
     }
 
-    // Auto-create conversation if none provided or invalid
-    if (!conversationId) {
-      // Check conversation limit before creating
-      const conversationCount = countConversationsBySession(sessionId);
-      const maxConversations = this.config?.persistence?.maxConversationsPerSession || 100;
-
-      if (conversationCount >= maxConversations) {
-        res.status(429).json({
-          error: 'limit_exceeded',
-          message: 'Max conversations per session reached',
-        });
-        throw new Error('Conversation limit exceeded');
-      }
-
-      // Create new conversation
-      const newConversationId = uuidv4();
-      const model = bodyIn.model || this.config.defaultModel || null;
-
-      // Derive persisted settings from request body. Support both explicit
-      // persistence flags and OpenAI-compatible fields used by the client.
-      const persistedStreamingEnabled =
-        bodyIn.streamingEnabled !== undefined
-          ? !!bodyIn.streamingEnabled
-          : !!bodyIn.stream; // map `stream` => persisted flag
-
-      const persistedToolsEnabled =
-        bodyIn.toolsEnabled !== undefined
-          ? !!bodyIn.toolsEnabled
-          : (Array.isArray(bodyIn.tools) && bodyIn.tools.length > 0); // map tools array presence
-
-      // Prepare optional metadata (e.g., system prompt)
-      const sysPrompt = typeof bodyIn?.systemPrompt === 'string' ? bodyIn.systemPrompt.trim() : (
-        typeof bodyIn?.system_prompt === 'string' ? bodyIn.system_prompt.trim() : ''
-      );
-      const metadata = sysPrompt ? { system_prompt: sysPrompt } : {};
-
-      createConversation({
-        id: newConversationId,
-        sessionId,
-        title: null, // Will be auto-generated from first message if needed
-        model,
-        providerId: this.providerId,
-        streamingEnabled: persistedStreamingEnabled,
-        toolsEnabled: persistedToolsEnabled,
-        qualityLevel: bodyIn.qualityLevel || null,
-        reasoningEffort: bodyIn.reasoningEffort || null,
-        verbosity: bodyIn.verbosity || null,
-        metadata
-      });
-
-      conversationId = newConversationId;
-      convo = getConversationById({ id: conversationId, sessionId });
-    }
-
-    // Enforce message limit
-    const cnt = countMessagesByConversation(conversationId);
-    const maxMessages = this.config?.persistence?.maxMessagesPerConversation || 1000;
-    if (cnt >= maxMessages) {
-      res.status(429).json({
-        error: 'limit_exceeded',
-        message: 'Max messages per conversation reached',
-      });
-      throw new Error('Message limit exceeded');
-    }
-
-    // Overwrite approach: trust frontend message history completely
-    const msgs = Array.isArray(bodyIn.messages) ? bodyIn.messages : [];
-    const nonSystemMessages = msgs.filter((m) => m && m.role !== 'system');
-
-    if (nonSystemMessages.length > 0) {
-      // Clear all existing messages for this conversation
-      clearAllMessages({ conversationId, sessionId });
-
-      // Insert all messages from frontend in sequence
-      let seq = 1;
-      for (const message of nonSystemMessages) {
-        if (message.role === 'user' && typeof message.content === 'string') {
-          insertUserMessage({
-            conversationId,
-            content: message.content,
-            seq: seq++,
-          });
-        } else if (message.role === 'assistant' && typeof message.content === 'string') {
-          insertAssistantFinal({
-            conversationId,
-            content: message.content,
-            seq: seq++,
-            finishReason: 'stop',
-          });
-        }
-      }
-
-      // Attempt to auto-generate a title if conversation has none
-      try {
-        if (!convo?.title) {
-          // Find the last user message for title generation
-          const lastUser = [...nonSystemMessages]
-            .reverse()
-            .find((m) => m && m.role === 'user' && typeof m.content === 'string');
-
-          if (lastUser) {
-            const generated = await this.generateConversationTitle(lastUser.content);
-            if (generated) {
-              updateConversationTitle({ id: conversationId, sessionId, title: generated });
-              // Refresh conversation meta locally
-              this.conversationMeta = { ...(convo || {}), id: conversationId, title: generated };
-            }
-          }
-        }
-      } catch (err) {
-        // Non-fatal: log and continue
-        console.warn('[SimplifiedPersistence] Title generation failed:', err?.message || err);
-      }
-    }
-
-    // Setup for assistant message - but don't create draft yet
-    this.persist = true;
-    this.conversationId = conversationId;
-    this.assistantSeq = getNextSeq(conversationId);
-    this.assistantBuffer = '';
-    this.conversationMeta = this.conversationMeta || convo; // Store conversation metadata for response
-
-    // If an existing conversation and a new system prompt or provider_id is provided, update metadata
-    try {
-      const sysPromptExisting = (this.conversationMeta && this.conversationMeta.metadata && this.conversationMeta.metadata.system_prompt) || null;
-      const providerIdExisting = this.conversationMeta && this.conversationMeta.providerId;
-      const incomingSys = typeof bodyIn?.systemPrompt === 'string' ? bodyIn.systemPrompt.trim() : (
-        typeof bodyIn?.system_prompt === 'string' ? bodyIn.system_prompt.trim() : ''
-      );
-
-      const needsSystemUpdate = incomingSys && incomingSys !== sysPromptExisting;
-      const needsProviderUpdate = this.providerId && this.providerId !== providerIdExisting;
-
-      if (needsSystemUpdate || needsProviderUpdate) {
-        const { updateConversationMetadata, updateConversationProviderId } = await import('../db/index.js');
-
-        if (needsSystemUpdate) {
-          updateConversationMetadata({ id: conversationId, sessionId, patch: { system_prompt: incomingSys } });
-          // Keep local meta in sync
-          this.conversationMeta = this.conversationMeta || {};
-          this.conversationMeta.metadata = {
-            ...(this.conversationMeta.metadata || {}),
-            system_prompt: incomingSys,
-          };
-        }
-
-        if (needsProviderUpdate) {
-          updateConversationProviderId({ id: conversationId, sessionId, providerId: this.providerId });
-          // Keep local meta in sync
-          this.conversationMeta = this.conversationMeta || {};
-          this.conversationMeta.providerId = this.providerId;
-        }
-      }
-    } catch (_) {
-      // ignore metadata update errors
-    }
-  }
-
-  /**
-   * Generate a concise conversation title from the user's first message using OpenAI
-   * @param {string} content - User message content
-   * @returns {Promise<string|null>} - Generated title or null
-   */
-  async generateConversationTitle(content) {
-    try {
-      const text = String(content || '').trim();
-      if (!text) return null;
-
-      // Fallback if provider isn't configured
-      const configured = await providerIsConfigured(this.config);
-      if (!configured) {
-        return this.fallbackTitle(text);
-      }
-
-      const promptUser = text.length > 500 ? text.slice(0, 500) + '…' : text;
-      const requestBody = {
-        model: this.config.titleModel || this.config.defaultModel || 'gpt-4.1-mini',
-        temperature: 0.2,
-        max_tokens: 20,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'You create a very short, descriptive chat title (max 6 words). Output only the title, no quotes, no punctuation at the end.'
-          },
-          { role: 'user', content: `Create a short title for: ${promptUser}` },
-        ],
-      };
-
-      const resp = await createOpenAIRequest(this.config, requestBody, { providerId: this.providerId });
-      if (!resp.ok) {
-        // Fall back gracefully
-        return this.fallbackTitle(text);
-      }
-      const body = await resp.json();
-      const raw = body?.choices?.[0]?.message?.content || '';
-      let title = String(raw).replace(/^["'\s]+|["'\s]+$/g, '').replace(/[\r\n]+/g, ' ').trim();
-      if (!title) return this.fallbackTitle(text);
-      if (title.length > 80) title = title.slice(0, 77) + '…';
-      return title;
-    } catch (e) {
-      return this.fallbackTitle(String(content || ''));
-    }
-  }
-
-  /**
-   * Fallback title generator based on user content
-   */
-  fallbackTitle(text) {
-    const cleaned = String(text || '').trim().replace(/[\r\n]+/g, ' ');
-    if (!cleaned) return null;
-    const words = cleaned.split(/\s+/).slice(0, 6).join(' ');
-    return words.length > 80 ? words.slice(0, 77) + '…' : words;
-  }
-
-  /**
-   * Record user message (for cases where it's not in bodyIn.messages)
-   * @param {Object} params - Message parameters
-   * @param {string} params.content - Message content
-   */
-  recordUserMessage({ content }) {
-    if (!this.persist || !this.conversationId) return;
-
-    const userSeq = getNextSeq(this.conversationId);
-    insertUserMessage({
-      conversationId: this.conversationId,
-      content,
-      seq: userSeq,
+    // Validate request before proceeding
+    const validationError = this.validator.validateRequest({
+      conversationId,
+      sessionId,
+      existingConversation: convo,
+      isNewConversation
     });
 
-    // Update assistant seq
-    this.assistantSeq = getNextSeq(this.conversationId);
+    if (validationError) {
+      return { error: validationError };
+    }
+
+    // Create new conversation if needed
+    if (isNewConversation) {
+      const settings = this.persistenceConfig.extractRequestSettings(bodyIn);
+      conversationId = this.conversationManager.createNewConversation({
+        sessionId,
+        providerId: this.providerId,
+        ...settings
+      });
+      convo = this.conversationManager.getConversation(conversationId, sessionId);
+    }
+
+    this.conversationId = conversationId;
+    this.conversationMeta = convo;
+    return {};
   }
 
+  /**
+   * Process message history and generate title if needed
+   * @private
+   */
+  async _processMessageHistory(sessionId, bodyIn) {
+    const messages = this.persistenceConfig.filterNonSystemMessages(bodyIn.messages || []);
+
+    if (messages.length > 0) {
+      // Sync message history
+      this.conversationManager.syncMessageHistory(this.conversationId, sessionId, messages);
+
+      // Generate title if conversation doesn't have one
+      if (!this.conversationMeta?.title) {
+        try {
+          const lastUser = ConversationTitleService.findLastUserMessage(messages);
+          if (lastUser) {
+            const generated = await this.titleService.generateTitle(lastUser.content, this.providerId);
+            if (generated) {
+              this.conversationManager.updateTitle(this.conversationId, sessionId, generated);
+              this.conversationMeta = { ...this.conversationMeta, title: generated };
+            }
+          }
+        } catch (err) {
+          console.warn('[SimplifiedPersistence] Title generation failed:', err?.message || err);
+        }
+      }
+    }
+  }
+
+  /**
+   * Setup assistant message recording state
+   * @private
+   */
+  _setupAssistantRecording() {
+    this.persist = true;
+    this.assistantSeq = this.conversationManager.getNextSequence(this.conversationId);
+    this.assistantBuffer = '';
+  }
+
+  /**
+   * Handle metadata updates for existing conversations
+   * @private
+   */
+  async _handleMetadataUpdates(sessionId, bodyIn) {
+    if (!this.conversationMeta) return;
+
+    const incomingSystemPrompt = ConversationTitleService.extractSystemPrompt(bodyIn);
+    const updates = this.persistenceConfig.checkMetadataUpdates(
+      this.conversationMeta,
+      incomingSystemPrompt,
+      this.providerId
+    );
+
+    try {
+      if (updates.needsSystemUpdate) {
+        this.conversationManager.updateMetadata(this.conversationId, sessionId, {
+          system_prompt: updates.systemPrompt
+        });
+        this.conversationMeta.metadata = {
+          ...(this.conversationMeta.metadata || {}),
+          system_prompt: updates.systemPrompt,
+        };
+      }
+
+      if (updates.needsProviderUpdate) {
+        this.conversationManager.updateProviderId(this.conversationId, sessionId, updates.providerId);
+        this.conversationMeta.providerId = updates.providerId;
+      }
+    } catch (error) {
+      // Non-fatal: log and continue
+      console.warn('[SimplifiedPersistence] Metadata update failed:', error?.message || error);
+    }
+  }
   /**
    * Buffer assistant content (no immediate DB write)
    * @param {string} delta - Content delta to add
@@ -325,7 +211,7 @@ export class SimplifiedPersistence {
     if (this.finalized || this.errored) return;
 
     try {
-      insertAssistantFinal({
+      this.conversationManager.recordAssistantMessage({
         conversationId: this.conversationId,
         content: this.assistantBuffer,
         seq: this.assistantSeq,
@@ -346,10 +232,7 @@ export class SimplifiedPersistence {
     if (this.finalized || this.errored) return;
 
     try {
-      markAssistantErrorBySeq({
-        conversationId: this.conversationId,
-        seq: this.assistantSeq,
-      });
+      this.conversationManager.markAssistantError(this.conversationId, this.assistantSeq);
       this.errored = true;
     } catch (error) {
       console.error('[SimplifiedPersistence] Failed to mark error:', error);
@@ -362,18 +245,5 @@ export class SimplifiedPersistence {
    */
   cleanup() {
     // No timers or resources to clean up in final-only approach
-  }
-
-  /**
-   * Get current state for legacy compatibility
-   */
-  getState() {
-    return {
-      persist: this.persist,
-      conversationId: this.conversationId,
-      assistantSeq: this.assistantSeq,
-      bufferLength: this.assistantBuffer.length,
-      conversationMeta: this.conversationMeta,
-    };
   }
 }
