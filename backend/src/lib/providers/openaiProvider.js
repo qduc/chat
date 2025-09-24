@@ -1,6 +1,7 @@
 import { Readable } from 'node:stream';
 import { BaseProvider } from './baseProvider.js';
 import { ChatCompletionsAdapter } from '../adapters/chatCompletionsAdapter.js';
+import { ResponsesAPIAdapter } from '../adapters/responsesApiAdapter.js';
 
 const FALLBACK_MODEL = 'gpt-4.1-mini';
 
@@ -37,6 +38,8 @@ export class OpenAIProvider extends BaseProvider {
         return new ResponsesAPIAdapter({
           config: this.config,
           settings: this.settings,
+          getDefaultModel: () => this.getDefaultModel(),
+          supportsReasoningControls: (model) => this.supportsReasoningControls(model),
         });
       }
     }
@@ -63,7 +66,7 @@ export class OpenAIProvider extends BaseProvider {
   }
 
   resolveResponsesAdapter() {
-    return null;
+    return ResponsesAPIAdapter;
   }
 
   isResponsesAPIEnabled() {
@@ -117,7 +120,8 @@ export class OpenAIProvider extends BaseProvider {
       throw new Error('No HTTP client available for OpenAI provider');
     }
 
-    const url = `${this.baseUrl}/v1/chat/completions`;
+    const endpoint = translatedRequest?.__endpoint || '/v1/chat/completions';
+    const url = `${this.baseUrl}${endpoint}`;
     const headers = {
       'Content-Type': 'application/json',
       ...(translatedRequest?.stream ? { Accept: 'text/event-stream' } : { Accept: 'application/json' }),
