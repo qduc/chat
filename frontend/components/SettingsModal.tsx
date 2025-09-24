@@ -325,7 +325,7 @@ export default function SettingsModal({
       <Modal
         open={open}
         onClose={onClose}
-        maxWidthClassName="max-w-6xl"
+        maxWidthClassName="max-w-4xl"
         title={<div className="flex items-center gap-2"><Cog className="w-4 h-4" /> Settings</div> as any}
       >
         <div className="flex flex-col gap-3">

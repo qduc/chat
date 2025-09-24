@@ -18,6 +18,7 @@ export interface ChatResponse {
   content: string;
   responseId?: string;
   conversation?: ConversationMeta;
+  reasoning_summary?: string;
 }
 
 export interface ConversationMeta {
@@ -103,6 +104,7 @@ export interface ChatOptionsExtended extends ChatOptions {
   reasoning?: {
     effort?: string;
     verbosity?: string;
+    summary?: string;
   };
   // Persistence settings
   streamingEnabled?: boolean;

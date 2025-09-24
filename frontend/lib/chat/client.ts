@@ -92,6 +92,9 @@ export class ChatClient {
       if (extendedOptions.reasoning.verbosity) {
         bodyObj.verbosity = extendedOptions.reasoning.verbosity;
       }
+      if (extendedOptions.reasoning.summary) {
+        bodyObj.reasoning_summary = extendedOptions.reasoning.summary;
+      }
     }
 
     // Handle tools
@@ -165,7 +168,8 @@ export class ChatClient {
     return {
       content,
       responseId: json?.id,
-      conversation
+      conversation,
+      reasoning_summary: json?.reasoning_summary
     };
   }
 
@@ -186,6 +190,7 @@ export class ChatClient {
     let responseId: string | undefined;
     let conversation: ConversationMeta | undefined;
     let reasoningStarted = false;
+    let reasoning_summary: string | undefined;
 
     try {
       while (true) {
@@ -203,7 +208,7 @@ export class ChatClient {
               onToken?.(closingTag);
               content += closingTag;
             }
-            return { content, responseId, conversation };
+            return { content, responseId, conversation, reasoning_summary };
           }
 
           if (event.type === 'data' && event.data) {
@@ -212,6 +217,7 @@ export class ChatClient {
             if (result.responseId) responseId = result.responseId;
             if (result.conversation) conversation = result.conversation;
             if (result.reasoningStarted !== undefined) reasoningStarted = result.reasoningStarted;
+            if (result.reasoning_summary) reasoning_summary = result.reasoning_summary;
           }
         }
       }
@@ -222,7 +228,7 @@ export class ChatClient {
       }
     }
 
-    return { content, responseId, conversation };
+    return { content, responseId, conversation, reasoning_summary };
   }
 
   private processStreamChunk(
@@ -230,7 +236,7 @@ export class ChatClient {
     onToken?: (token: string) => void,
     onEvent?: (event: any) => void,
     reasoningStarted?: boolean
-  ): { content?: string; responseId?: string; conversation?: ConversationMeta; reasoningStarted?: boolean } {
+  ): { content?: string; responseId?: string; conversation?: ConversationMeta; reasoningStarted?: boolean; reasoning_summary?: string } {
     // Handle conversation metadata
     if (data._conversation) {
       return {
@@ -240,6 +246,13 @@ export class ChatClient {
           model: data._conversation.model,
           created_at: data._conversation.created_at,
         }
+      };
+    }
+
+    // Handle reasoning_summary if present in the chunk
+    if (data.reasoning_summary) {
+      return {
+        reasoning_summary: data.reasoning_summary
       };
     }
 

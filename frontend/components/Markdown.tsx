@@ -61,7 +61,7 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
 
-  // Transform thinking blocks into collapsible sections
+  // Transform thinking blocks and reasoning summaries into collapsible sections
   // First, handle incomplete thinking blocks by temporarily adding closing tags
   let textToProcess = normalizeLatexDelimiters(text);
 
@@ -98,6 +98,13 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
       /<think>([\s\S]*?)<\/think>/g,
       (match, content) => {
         // Convert to a custom code block that we can detect (same as thinking)
+        return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
+      }
+    )
+    .replace(
+      /<reasoning_summary>([\s\S]*?)<\/reasoning_summary>/g,
+      (match, content) => {
+        // Convert reasoning summary to thinking block (reuse same rendering logic)
         return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
       }
     );

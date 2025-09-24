@@ -24,8 +24,8 @@ const RESPONSES_ALLOWED_REQUEST_KEYS = new Set([
   'stop',
   'stream',
   'response_format',
-  'reasoning_effort',
-  'verbosity',
+  'reasoning',
+  'text',
   'user',
 ]);
 
@@ -194,6 +194,9 @@ function convertResponsesJson(json, context) {
   const outputSource = response.output ?? json.output ?? response.output_text ?? json.output_text;
   const assistantContent = collectTextFromOutput(outputSource);
 
+  // Extract reasoning summary if present
+  const reasoningSummary = response.reasoning_summary ?? json.reasoning_summary;
+
   const mapped = {
     id,
     object: 'chat.completion',
@@ -204,6 +207,7 @@ function convertResponsesJson(json, context) {
       message: {
         role: 'assistant',
         content: assistantContent,
+        ...(reasoningSummary && { reasoning_content: reasoningSummary }),
       },
       finish_reason: finishReason,
     }],
@@ -408,19 +412,43 @@ export class ResponsesAPIAdapter extends BaseAdapter {
       translated.stream = Boolean(payload.stream);
     }
 
+    // Handle reasoning parameters specially
+    const reasoning = {};
+    if (payload.reasoning_effort !== undefined) {
+      reasoning.effort = payload.reasoning_effort;
+    }
+    if (payload.reasoning_summary !== undefined) {
+      reasoning.summary = payload.reasoning_summary;
+    }
+
+    // Auto-set reasoning_summary to 'auto' if reasoning is enabled but summary not explicitly set
+    if (payload.reasoning_effort !== undefined && payload.reasoning_summary === undefined) {
+      reasoning.summary = 'auto';
+    }
+
+    // Handle text parameters specially
+    const text = {};
+    if (payload.verbosity !== undefined) {
+      text.verbosity = payload.verbosity;
+    }
+
     for (const [key, value] of Object.entries(payload)) {
       if (value === undefined) continue;
       if (key === 'messages' || key === 'model' || key === 'stream') continue;
+      if (key === 'reasoning_effort' || key === 'reasoning_summary' || key === 'verbosity') continue;
       if (RESPONSES_ALLOWED_REQUEST_KEYS.has(key)) {
         translated[key] = value;
       }
     }
 
-    if (translated.reasoning_effort && !this.supportsReasoningControls(model)) {
-      delete translated.reasoning_effort;
+    // Add reasoning object if it has any properties and model supports it
+    if (Object.keys(reasoning).length > 0 && this.supportsReasoningControls(model)) {
+      translated.reasoning = reasoning;
     }
-    if (translated.verbosity && !this.supportsReasoningControls(model)) {
-      delete translated.verbosity;
+
+    // Add text object if it has any properties and model supports reasoning controls
+    if (Object.keys(text).length > 0 && this.supportsReasoningControls(model)) {
+      translated.text = text;
     }
 
     context.__isStream = translated.stream === true;

@@ -62,21 +62,11 @@ export class OpenAIProvider extends BaseProvider {
 
   shouldUseResponsesAPI() {
     const baseUrl = (this.baseUrl || '').toLowerCase();
-    return baseUrl.includes('api.openai.com') && this.isResponsesAPIEnabled();
+    return baseUrl.includes('api.openai.com');
   }
 
   resolveResponsesAdapter() {
     return ResponsesAPIAdapter;
-  }
-
-  isResponsesAPIEnabled() {
-    if (typeof this.config?.featureFlags?.responsesApiEnabled === 'boolean') {
-      return this.config.featureFlags.responsesApiEnabled;
-    }
-    if (typeof this.settings?.responsesApiEnabled === 'boolean') {
-      return this.settings.responsesApiEnabled;
-    }
-    return process.env.RESPONSES_API_ENABLED === 'true';
   }
 
   get apiKey() {
@@ -164,7 +154,7 @@ export class OpenAIProvider extends BaseProvider {
   supportsReasoningControls(model) {
     if (!model || typeof model !== 'string') return false;
     const normalized = model.toLowerCase();
-    if (!normalized.startsWith('gpt-5')) return false;
+    if (!normalized.startsWith('gpt-5') && !normalized.startsWith('o3') && !normalized.startsWith('o4')) return false;
     return !normalized.includes('chat');
   }
 
