@@ -27,6 +27,7 @@ const RESPONSES_ALLOWED_REQUEST_KEYS = new Set([
   'reasoning',
   'text',
   'user',
+  'previous_response_id',
 ]);
 
 function omitReservedKeys(payload) {
@@ -385,6 +386,9 @@ export class ResponsesAPIAdapter extends BaseAdapter {
   translateRequest(internalRequest = {}, context = {}) {
     const payload = omitReservedKeys(internalRequest);
 
+    // Extract previous_response_id for message optimization logic
+    const responseId = internalRequest.previous_response_id;
+
     const resolveDefaultModel = context.getDefaultModel || this.getDefaultModel;
     const model = payload.model || resolveDefaultModel();
     if (!model) {
@@ -393,7 +397,24 @@ export class ResponsesAPIAdapter extends BaseAdapter {
 
     const messages = Array.isArray(payload.messages) ? payload.messages : [];
     const instructions = extractSystemInstructions(messages);
-    const input = normalizeMessagesToInput(messages);
+
+    // When previous_response_id is provided, only send the latest message for context efficiency
+    let input;
+    if (responseId && messages.length > 0) {
+      // Find the last non-system message (should be the user's new message)
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage && lastMessage.role !== 'system') {
+        input = normalizeMessagesToInput([lastMessage]);
+      } else {
+        // Fallback: find the last non-system message
+        const nonSystemMessages = messages.filter(msg => msg.role !== 'system');
+        input = nonSystemMessages.length > 0
+          ? normalizeMessagesToInput([nonSystemMessages[nonSystemMessages.length - 1]])
+          : normalizeMessagesToInput(messages);
+      }
+    } else {
+      input = normalizeMessagesToInput(messages);
+    }
 
     if (input.length === 0) {
       throw new Error('OpenAI provider requires at least one non-system message');
@@ -422,9 +443,9 @@ export class ResponsesAPIAdapter extends BaseAdapter {
     }
 
     // Auto-set reasoning_summary to 'auto' if reasoning is enabled but summary not explicitly set
-    if (payload.reasoning_effort !== undefined && payload.reasoning_summary === undefined) {
-      reasoning.summary = 'auto';
-    }
+    // if (payload.reasoning_effort !== undefined && payload.reasoning_summary === undefined) {
+    //   reasoning.summary = 'auto';
+    // }
 
     // Handle text parameters specially
     const text = {};

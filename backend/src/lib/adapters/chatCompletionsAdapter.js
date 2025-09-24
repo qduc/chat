@@ -38,6 +38,7 @@ const RESERVED_INTERNAL_KEYS = new Set([
   'researchMode',
   'systemPrompt',
   'system_prompt',
+  'previous_response_id',
 ]);
 
 function normalizeToolCall(toolCall) {

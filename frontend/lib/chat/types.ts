@@ -93,6 +93,7 @@ export interface ChatOptions {
   onToken?: (token: string) => void;
   onEvent?: (event: ChatEvent) => void;
   apiBase?: string;
+  responseId?: string; // Previous response ID to maintain conversation context
 }
 
 // Extended options for advanced features
