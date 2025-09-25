@@ -1,8 +1,16 @@
 import { generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
-import { addConversationMetadata, getConversationMetadata } from './responseUtils.js';
+import { addConversationMetadata } from './responseUtils.js';
 import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
 import { createProvider } from './providers/index.js';
-import { buildConversationMessages, executeToolCall } from './toolOrchestrationUtils.js';
+import {
+  buildConversationMessages,
+  executeToolCall,
+  appendToPersistence,
+  recordFinalToPersistence,
+  emitConversationMetadata,
+  streamDeltaEvent,
+  streamDone,
+} from './toolOrchestrationUtils.js';
 
 /**
  * Configuration class for orchestration behavior
@@ -28,26 +36,6 @@ class OrchestrationConfig {
     });
   }
 }
-
-/**
- * Stream an event to the client
- */
-function streamEvent(res, event, model) {
-  const chunk = {
-    id: `unified_${Date.now()}`,
-    object: 'chat.completion.chunk',
-    created: Math.floor(Date.now() / 1000),
-    model,
-    choices: [{
-      index: 0,
-      delta: event,
-      finish_reason: null,
-    }],
-  };
-  res.write(`data: ${JSON.stringify(chunk)}\n\n`);
-  if (typeof res.flush === 'function') res.flush();
-}
-
 /**
  * Response handler factory
  */
@@ -76,7 +64,7 @@ class ResponseHandler {
     throw new Error('Must implement sendToolCalls');
   }
 
-  sendToolOutputs(_outputs) {
+  sendToolOutputs(_outputs, _persistence) {
     throw new Error('Must implement sendToolOutputs');
   }
 
@@ -98,15 +86,18 @@ class StreamingResponseHandler extends ResponseHandler {
     this.res = res;
   }
 
-  _streamEvent(event) {
-    streamEvent(this.res, event, this.model);
+  _streamEvent(event, prefix = 'unified') {
+    streamDeltaEvent({
+      res: this.res,
+      model: this.model,
+      event,
+      prefix,
+    });
   }
 
   sendThinkingContent(content, persistence) {
     this._streamEvent({ content });
-    if (persistence && persistence.persist) {
-      persistence.appendContent(content);
-    }
+    appendToPersistence(persistence, content);
   }
 
   sendToolCalls(toolCalls) {
@@ -115,9 +106,13 @@ class StreamingResponseHandler extends ResponseHandler {
     }
   }
 
-  sendToolOutputs(outputs) {
+  sendToolOutputs(outputs, persistence) {
     for (const output of outputs) {
       this._streamEvent({ tool_output: output });
+      const toolContent = typeof output.output === 'string'
+        ? output.output
+        : JSON.stringify(output.output);
+      appendToPersistence(persistence, toolContent);
     }
   }
 
@@ -129,16 +124,13 @@ class StreamingResponseHandler extends ResponseHandler {
     const errorMsg = `[Error: ${error.message}]`;
     this._streamEvent({ content: errorMsg });
 
+    appendToPersistence(persistence, errorMsg);
     if (persistence && persistence.persist) {
-      persistence.appendContent(errorMsg);
       persistence.markError();
     }
 
-    const conversationMeta = getConversationMetadata(persistence);
-    if (conversationMeta) {
-      this.res.write(`data: ${JSON.stringify(conversationMeta)}\n\n`);
-    }
-    this.res.write('data: [DONE]\n\n');
+    emitConversationMetadata(this.res, persistence);
+    streamDone(this.res);
     return this.res.end();
   }
 }
@@ -152,9 +144,7 @@ class JsonResponseHandler extends ResponseHandler {
       type: 'text',
       value: content
     });
-    if (persistence && persistence.persist) {
-      persistence.appendContent(content);
-    }
+    appendToPersistence(persistence, content);
   }
 
   sendToolCalls(toolCalls) {
@@ -166,12 +156,16 @@ class JsonResponseHandler extends ResponseHandler {
     }
   }
 
-  sendToolOutputs(outputs) {
+  sendToolOutputs(outputs, persistence) {
     for (const output of outputs) {
       this.collectedEvents.push({
         type: 'tool_output',
         value: output
       });
+      const toolContent = typeof output.output === 'string'
+        ? output.output
+        : JSON.stringify(output.output);
+      appendToPersistence(persistence, toolContent);
     }
   }
 
@@ -182,12 +176,8 @@ class JsonResponseHandler extends ResponseHandler {
         type: 'text',
         value: message.content
       });
-      if (persistence && persistence.persist) {
-        persistence.appendContent(message.content);
-        persistence.recordAssistantFinal({
-          finishReason: response?.choices?.[0]?.finish_reason || 'stop'
-        });
-      }
+      appendToPersistence(persistence, message.content);
+      recordFinalToPersistence(persistence, response?.choices?.[0]?.finish_reason || 'stop');
     }
 
     const responseWithEvents = {
@@ -209,6 +199,7 @@ class JsonResponseHandler extends ResponseHandler {
       type: 'text',
       value: errorMsg
     });
+    appendToPersistence(persistence, errorMsg);
 
     return {
       error: {
@@ -249,7 +240,7 @@ async function callLLM({ messages, config, bodyParams, providerId, providerHttp,
 /**
  * Execute all tool calls using response handler
  */
-async function executeAllTools(toolCalls, responseHandler) {
+async function executeAllTools(toolCalls, responseHandler, persistence) {
   const toolResults = [];
   const toolOutputs = [];
 
@@ -288,7 +279,7 @@ async function executeAllTools(toolCalls, responseHandler) {
   }
 
   // Send all tool outputs through response handler
-  responseHandler.sendToolOutputs(toolOutputs);
+  responseHandler.sendToolOutputs(toolOutputs, persistence);
   return toolResults;
 }
 
@@ -300,10 +291,13 @@ async function streamResponse(llmResponse, res, persistence, model) {
     // Non-streaming response, convert to streaming format
     const message = llmResponse?.choices?.[0]?.message;
     if (message?.content) {
-      streamEvent(res, { content: message.content }, llmResponse.model || model);
-      if (persistence && persistence.persist) {
-        persistence.appendContent(message.content);
-      }
+      streamDeltaEvent({
+        res,
+        model: llmResponse.model || model,
+        event: { content: message.content },
+        prefix: 'unified',
+      });
+      appendToPersistence(persistence, message.content);
     }
 
     // Send completion event
@@ -320,18 +314,8 @@ async function streamResponse(llmResponse, res, persistence, model) {
     };
     res.write(`data: ${JSON.stringify(finalChunk)}\n\n`);
     // Include conversation metadata if auto-created
-    if (persistence && persistence.persist && persistence.conversationMeta) {
-      const conversationEvent = {
-        _conversation: {
-          id: persistence.conversationId,
-          title: persistence.conversationMeta.title,
-          model: persistence.conversationMeta.model,
-          created_at: persistence.conversationMeta.created_at,
-        }
-      };
-      res.write(`data: ${JSON.stringify(conversationEvent)}\n\n`);
-    }
-    res.write('data: [DONE]\n\n');
+    emitConversationMetadata(res, persistence);
+    streamDone(res);
     return llmResponse?.choices?.[0]?.finish_reason || 'stop';
   }
 
@@ -366,9 +350,7 @@ async function streamResponse(llmResponse, res, persistence, model) {
               const obj = JSON.parse(payload);
               const delta = obj?.choices?.[0]?.delta?.content;
               if (delta) {
-                if (persistence && persistence.persist) {
-                  persistence.appendContent(delta);
-                }
+                appendToPersistence(persistence, delta);
               }
               const fr = obj?.choices?.[0]?.finish_reason;
               if (fr) lastFinishReason = fr;
@@ -457,9 +439,7 @@ export async function handleToolsJson({
         if (orchestrationConfig.streamingEnabled) {
           const finishReason = await responseHandler.sendFinalResponse(response, persistence);
 
-          if (persistence && persistence.persist) {
-            persistence.recordAssistantFinal({ finishReason });
-          }
+          recordFinalToPersistence(persistence, finishReason);
 
           return res.end();
         } else {
@@ -478,7 +458,7 @@ export async function handleToolsJson({
       responseHandler.sendToolCalls(toolCalls);
 
       // Execute all tools
-      const toolResults = await executeAllTools(toolCalls, responseHandler);
+  const toolResults = await executeAllTools(toolCalls, responseHandler, persistence);
 
       // Add to conversation for next iteration
       messages.push(message, ...toolResults);
@@ -501,9 +481,7 @@ export async function handleToolsJson({
     if (orchestrationConfig.streamingEnabled) {
       const finishReason = await responseHandler.sendFinalResponse(finalResponse, persistence);
       responseHandler.sendThinkingContent(maxIterMsg, persistence);
-      if (persistence && persistence.persist) {
-        persistence.recordAssistantFinal({ finishReason });
-      }
+      recordFinalToPersistence(persistence, finishReason);
       return res.end();
     } else {
       const responseWithEvents = responseHandler.sendFinalResponse(finalResponse, persistence);

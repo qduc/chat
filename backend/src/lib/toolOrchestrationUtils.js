@@ -1,5 +1,6 @@
 import { tools as toolRegistry } from './tools.js';
 import { getMessagesPage } from '../db/messages.js';
+import { getConversationMetadata } from './responseUtils.js';
 
 export function extractSystemPrompt({ body, bodyIn, persistence }) {
   const fromMessages = Array.isArray(body?.messages)
@@ -77,4 +78,43 @@ export async function executeToolCall(call) {
   const validated = tool.validate ? tool.validate(args) : args;
   const output = await tool.handler(validated);
   return { name, output };
+}
+
+export function appendToPersistence(persistence, content) {
+  if (!persistence || !persistence.persist) return;
+  if (typeof content !== 'string' || content.length === 0) return;
+  persistence.appendContent(content);
+}
+
+export function recordFinalToPersistence(persistence, finishReason) {
+  if (!persistence || !persistence.persist) return;
+  persistence.recordAssistantFinal({ finishReason: finishReason || 'stop' });
+}
+
+export function emitConversationMetadata(res, persistence) {
+  const conversationMeta = getConversationMetadata(persistence);
+  if (!conversationMeta) return;
+  res.write(`data: ${JSON.stringify(conversationMeta)}\n\n`);
+  if (typeof res.flush === 'function') res.flush();
+}
+
+export function streamDeltaEvent({ res, model, event, prefix = 'tool' }) {
+  const chunk = {
+    id: `${prefix}_${Date.now()}`,
+    object: 'chat.completion.chunk',
+    created: Math.floor(Date.now() / 1000),
+    model,
+    choices: [{
+      index: 0,
+      delta: event,
+      finish_reason: null,
+    }],
+  };
+  res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+  if (typeof res.flush === 'function') res.flush();
+}
+
+export function streamDone(res) {
+  res.write('data: [DONE]\n\n');
+  if (typeof res.flush === 'function') res.flush();
 }

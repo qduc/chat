@@ -2,9 +2,16 @@ import { generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
 import { parseSSEStream } from './sseParser.js';
 import { createOpenAIRequest, writeAndFlush, createChatCompletionChunk } from './streamUtils.js';
 import { createProvider } from './providers/index.js';
-import { getConversationMetadata } from './responseUtils.js';
 import { setupStreamingHeaders } from './streamingHandler.js';
-import { buildConversationMessages, executeToolCall } from './toolOrchestrationUtils.js';
+import {
+  buildConversationMessages,
+  executeToolCall,
+  appendToPersistence,
+  recordFinalToPersistence,
+  emitConversationMetadata,
+  streamDeltaEvent,
+  streamDone,
+} from './toolOrchestrationUtils.js';
 
 /**
  * Iterative tool orchestration with thinking and dynamic tool execution
@@ -12,28 +19,6 @@ import { buildConversationMessages, executeToolCall } from './toolOrchestrationU
  */
 
 const MAX_ITERATIONS = 10; // Prevent infinite loops
-
-/**
- * Stream an event to the client
- */
-function streamEvent(res, event, model) {
-  const chunk = {
-    id: `iter_${Date.now()}`,
-    object: 'chat.completion.chunk',
-    created: Math.floor(Date.now() / 1000),
-    model: model,
-    choices: [{
-      index: 0,
-      delta: event,
-      finish_reason: null,
-    }],
-  };
-  res.write(`data: ${JSON.stringify(chunk)}
-
-`);
-  if (typeof res.flush === 'function') res.flush();
-}
-
 /**
  * Handle iterative tool orchestration with thinking support
  */
@@ -52,7 +37,7 @@ export async function handleToolsStreaming({
     // Setup streaming headers
     setupStreamingHeaders(res);
     // Build conversation history including the active system prompt
-  const conversationHistory = buildConversationMessages({ body, bodyIn, persistence });
+    const conversationHistory = buildConversationMessages({ body, bodyIn, persistence });
 
     let iteration = 0;
     let isComplete = false;
@@ -134,9 +119,7 @@ export async function handleToolsStreaming({
                 }
 
                 // Persist text content only
-                if (persistence && persistence.persist && typeof delta.content === 'string' && delta.content.length > 0) {
-                  persistence.appendContent(delta.content);
-                }
+                appendToPersistence(persistence, delta.content);
               },
               () => {
                 cleanup();
@@ -182,28 +165,42 @@ export async function handleToolsStreaming({
         for (const toolCall of toolCalls) {
           try {
             const { name, output } = await executeToolCall(toolCall);
-            streamEvent(res, {
-              tool_output: {
-                tool_call_id: toolCall.id,
-                name,
-                output,
+            streamDeltaEvent({
+              res,
+              model: body.model || config.defaultModel,
+              event: {
+                tool_output: {
+                  tool_call_id: toolCall.id,
+                  name,
+                  output,
+                },
               },
-            }, body.model || config.defaultModel);
+              prefix: 'iter',
+            });
+
+            const toolContent = typeof output === 'string' ? output : JSON.stringify(output);
+            appendToPersistence(persistence, toolContent);
 
             conversationHistory.push({
               role: 'tool',
               tool_call_id: toolCall.id,
-              content: typeof output === 'string' ? output : JSON.stringify(output),
+              content: toolContent,
             });
           } catch (error) {
             const errorMessage = `Tool ${toolCall.function?.name} failed: ${error.message}`;
-            streamEvent(res, {
-              tool_output: {
-                tool_call_id: toolCall.id,
-                name: toolCall.function?.name,
-                output: errorMessage,
+            streamDeltaEvent({
+              res,
+              model: body.model || config.defaultModel,
+              event: {
+                tool_output: {
+                  tool_call_id: toolCall.id,
+                  name: toolCall.function?.name,
+                  output: errorMessage,
+                },
               },
-            }, body.model || config.defaultModel);
+              prefix: 'iter',
+            });
+            appendToPersistence(persistence, errorMessage);
             conversationHistory.push({
               role: 'tool',
               tool_call_id: toolCall.id,
@@ -225,10 +222,13 @@ export async function handleToolsStreaming({
       // Safety check to prevent infinite loops
       if (iteration >= MAX_ITERATIONS) {
         const maxIterMsg = '\n\n[Maximum iterations reached]';
-        streamEvent(res, { content: maxIterMsg }, body.model || config.defaultModel);
-        if (persistence && persistence.persist) {
-          persistence.appendContent(maxIterMsg);
-        }
+        streamDeltaEvent({
+          res,
+          model: body.model || config.defaultModel,
+          event: { content: maxIterMsg },
+          prefix: 'iter',
+        });
+        appendToPersistence(persistence, maxIterMsg);
         isComplete = true;
       }
     }
@@ -250,17 +250,10 @@ export async function handleToolsStreaming({
 `);
 
     // Include conversation metadata before [DONE] if auto-created
-    const conversationMeta = getConversationMetadata(persistence);
-    if (conversationMeta) {
-      res.write(`data: ${JSON.stringify(conversationMeta)}\n\n`);
-    }
+    emitConversationMetadata(res, persistence);
+    streamDone(res);
 
-    res.write('data: [DONE]\n\n');
-
-    // Finalize persistence
-    if (persistence && persistence.persist) {
-      persistence.recordAssistantFinal({ finishReason: 'stop' });
-    }
+    recordFinalToPersistence(persistence, 'stop');
 
     res.end();
 
@@ -269,20 +262,20 @@ export async function handleToolsStreaming({
 
     // Stream error to client
     const errorMsg = `[Error: ${error.message}]`;
-    streamEvent(res, { content: errorMsg }, body?.model || config.defaultModel);
+    streamDeltaEvent({
+      res,
+      model: body?.model || config.defaultModel,
+      event: { content: errorMsg },
+      prefix: 'iter',
+    });
 
+    appendToPersistence(persistence, errorMsg);
     if (persistence && persistence.persist) {
-      persistence.appendContent(errorMsg);
       persistence.markError();
     }
 
-    // Include conversation metadata before [DONE] if auto-created
-    const conversationMeta = getConversationMetadata(persistence);
-    if (conversationMeta) {
-      res.write(`data: ${JSON.stringify(conversationMeta)}\n\n`);
-    }
-
-    res.write('data: [DONE]\n\n');
+    emitConversationMetadata(res, persistence);
+    streamDone(res);
     res.end();
   }
 }
