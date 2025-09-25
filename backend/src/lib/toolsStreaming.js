@@ -1,10 +1,10 @@
-import { tools as toolRegistry, generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
-import { getMessagesPage } from '../db/messages.js';
+import { generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
 import { parseSSEStream } from './sseParser.js';
 import { createOpenAIRequest, writeAndFlush, createChatCompletionChunk } from './streamUtils.js';
 import { createProvider } from './providers/index.js';
 import { getConversationMetadata } from './responseUtils.js';
 import { setupStreamingHeaders } from './streamingHandler.js';
+import { buildConversationMessages, executeToolCall } from './toolOrchestrationUtils.js';
 
 /**
  * Iterative tool orchestration with thinking and dynamic tool execution
@@ -12,87 +12,6 @@ import { setupStreamingHeaders } from './streamingHandler.js';
  */
 
 const MAX_ITERATIONS = 10; // Prevent infinite loops
-
-function extractSystemPrompt({ body, bodyIn, persistence }) {
-  const fromMessages = Array.isArray(body?.messages)
-    ? body.messages.find((msg) => msg && msg.role === 'system' && typeof msg.content === 'string' && msg.content.trim())
-    : null;
-  if (fromMessages) {
-    return fromMessages.content.trim();
-  }
-
-  const fromBodyParam = typeof bodyIn?.systemPrompt === 'string'
-    ? bodyIn.systemPrompt.trim()
-    : (typeof bodyIn?.system_prompt === 'string' ? bodyIn.system_prompt.trim() : '');
-  if (fromBodyParam) {
-    return fromBodyParam;
-  }
-
-  const fromPersistence = persistence?.conversationMeta?.metadata?.system_prompt;
-  if (typeof fromPersistence === 'string' && fromPersistence.trim()) {
-    return fromPersistence.trim();
-  }
-
-  return '';
-}
-
-function buildConversationHistory({ body, bodyIn, persistence }) {
-  const sanitizedMessages = Array.isArray(body?.messages) ? [...body.messages] : [];
-  const nonSystemMessages = sanitizedMessages.filter((msg) => msg && msg.role !== 'system');
-  const systemPrompt = extractSystemPrompt({ body, bodyIn, persistence });
-
-  if (nonSystemMessages.length > 0) {
-    return systemPrompt
-      ? [{ role: 'system', content: systemPrompt }, ...nonSystemMessages]
-      : nonSystemMessages;
-  }
-
-  let prior = [];
-  if (persistence && persistence.persist && persistence.conversationId) {
-    try {
-      const page = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
-      prior = (page?.messages || [])
-        .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
-        .map((m) => ({ role: m.role, content: m.content }));
-    } catch (e) {
-      prior = Array.isArray(bodyIn?.messages)
-        ? bodyIn.messages.filter((m) => m && m.role !== 'system')
-        : [];
-    }
-  } else if (Array.isArray(bodyIn?.messages)) {
-    prior = bodyIn.messages.filter((m) => m && m.role !== 'system');
-  }
-
-  if (systemPrompt) {
-    return [{ role: 'system', content: systemPrompt }, ...prior];
-  }
-
-  return prior;
-}
-
-/**
- * Execute a single tool call
- */
-async function executeToolCall(call) {
-  const name = call?.function?.name;
-  const argsStr = call?.function?.arguments || '{}';
-  const tool = toolRegistry[name];
-
-  if (!tool) {
-    throw new Error(`unknown_tool: ${name}`);
-  }
-
-  let args;
-  try {
-    args = JSON.parse(argsStr || '{}');
-  } catch (e) {
-    throw new Error('invalid_arguments_json');
-  }
-
-  const validated = tool.validate ? tool.validate(args) : args;
-  const output = await tool.handler(validated);
-  return { name, output };
-}
 
 /**
  * Stream an event to the client
@@ -133,7 +52,7 @@ export async function handleToolsStreaming({
     // Setup streaming headers
     setupStreamingHeaders(res);
     // Build conversation history including the active system prompt
-    const conversationHistory = buildConversationHistory({ body, bodyIn, persistence });
+  const conversationHistory = buildConversationMessages({ body, bodyIn, persistence });
 
     let iteration = 0;
     let isComplete = false;

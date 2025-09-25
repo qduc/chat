@@ -1,8 +1,8 @@
-import { tools as toolRegistry, generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
-import { getMessagesPage } from '../db/messages.js';
+import { generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
 import { addConversationMetadata, getConversationMetadata } from './responseUtils.js';
 import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
 import { createProvider } from './providers/index.js';
+import { buildConversationMessages, executeToolCall } from './toolOrchestrationUtils.js';
 
 /**
  * Configuration class for orchestration behavior
@@ -27,89 +27,6 @@ class OrchestrationConfig {
       fallbackToolSpecs
     });
   }
-}
-
-function extractSystemPrompt({ body, bodyIn, persistence }) {
-  const fromMessages = Array.isArray(body?.messages)
-    ? body.messages.find((msg) => msg && msg.role === 'system' && typeof msg.content === 'string' && msg.content.trim())
-    : null;
-  if (fromMessages) {
-    return fromMessages.content.trim();
-  }
-
-  const fromBodyParam = typeof bodyIn?.systemPrompt === 'string'
-    ? bodyIn.systemPrompt.trim()
-    : (typeof bodyIn?.system_prompt === 'string' ? bodyIn.system_prompt.trim() : '');
-  if (fromBodyParam) {
-    return fromBodyParam;
-  }
-
-  const fromPersistence = persistence?.conversationMeta?.metadata?.system_prompt;
-  if (typeof fromPersistence === 'string' && fromPersistence.trim()) {
-    return fromPersistence.trim();
-  }
-
-  return '';
-}
-
-function buildInitialMessages({ body, bodyIn, persistence }) {
-  const sanitizedMessages = Array.isArray(body?.messages) ? [...body.messages] : [];
-  const nonSystemMessages = sanitizedMessages.filter((msg) => msg && msg.role !== 'system');
-  const systemPrompt = extractSystemPrompt({ body, bodyIn, persistence });
-
-  if (nonSystemMessages.length > 0) {
-    return systemPrompt
-      ? [{ role: 'system', content: systemPrompt }, ...nonSystemMessages]
-      : nonSystemMessages;
-  }
-
-  let prior = [];
-  if (persistence && persistence.persist && persistence.conversationId) {
-    try {
-      const page = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
-      prior = (page?.messages || [])
-        .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
-        .map((m) => ({ role: m.role, content: m.content }));
-    } catch (_) {
-      prior = Array.isArray(bodyIn?.messages)
-        ? bodyIn.messages.filter((m) => m && m.role !== 'system')
-        : [];
-    }
-  } else if (Array.isArray(bodyIn?.messages)) {
-    prior = bodyIn.messages.filter((m) => m && m.role !== 'system');
-  }
-
-  if (systemPrompt) {
-    return [{ role: 'system', content: systemPrompt }, ...prior];
-  }
-
-  return prior;
-}
-
-/**
- * Execute a single tool call from the local registry
- * @param {Object} call - Tool call object with function name and arguments
- * @returns {Promise<{name: string, output: any}>} Tool execution result
- */
-async function executeToolCall(call) {
-  const name = call?.function?.name;
-  const argsStr = call?.function?.arguments || '{}';
-  const tool = toolRegistry[name];
-
-  if (!tool) {
-    throw new Error(`unknown_tool: ${name}`);
-  }
-
-  let args;
-  try {
-    args = JSON.parse(argsStr || '{}');
-  } catch {
-    throw new Error('invalid_arguments_json');
-  }
-
-  const validated = tool.validate ? tool.validate(args) : args;
-  const output = await tool.handler(validated);
-  return { name, output };
 }
 
 /**
@@ -151,23 +68,23 @@ class ResponseHandler {
     this.collectedEvents = [];
   }
 
-  sendThinkingContent(content, persistence) {
+  sendThinkingContent(_content, _persistence) {
     throw new Error('Must implement sendThinkingContent');
   }
 
-  sendToolCalls(toolCalls) {
+  sendToolCalls(_toolCalls) {
     throw new Error('Must implement sendToolCalls');
   }
 
-  sendToolOutputs(outputs) {
+  sendToolOutputs(_outputs) {
     throw new Error('Must implement sendToolOutputs');
   }
 
-  sendFinalResponse(response, persistence) {
+  sendFinalResponse(_response, _persistence) {
     throw new Error('Must implement sendFinalResponse');
   }
 
-  sendError(error, persistence) {
+  sendError(_error, _persistence) {
     throw new Error('Must implement sendError');
   }
 }
@@ -498,7 +415,7 @@ export async function handleToolsJson({
     generateToolSpecs,
   }) || generateOpenAIToolSpecs();
   // Build initial messages ensuring the active system prompt is preserved
-  const messages = buildInitialMessages({ body, bodyIn, persistence });
+  const messages = buildConversationMessages({ body, bodyIn, persistence });
   const orchestrationConfig = OrchestrationConfig.fromRequest(body, config, fallbackToolSpecs);
   const responseHandler = ResponseHandlerFactory.create(orchestrationConfig, res);
 
