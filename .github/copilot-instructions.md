@@ -19,11 +19,12 @@
 - UI shells (`ChatSidebar`, `RightSidebar`, `MessageList`, `MessageInput`) expect tool events and errors shaped like the SSE parser output; align new event types with those contracts.
 
 ## Workflows & Tooling
-- Root scripts: `npm test`, `npm run lint`, `npm run test:backend`, and `npm run test:frontend` fan out via `--prefix` to each service.
-- Backend tests require `NODE_OPTIONS=--experimental-vm-modules`; `npm --prefix backend test` already sets it—mirror that when adding bespoke commands.
-- Run SQLite migrations with `npm --prefix backend run migrate [status|up|fresh]`; `PERSIST_TRANSCRIPTS=true` and `DB_URL` must be set or the script exits.
-- Frontend dev uses Turbopack (`npm --prefix frontend run dev`); API calls default to `/api` and rely on Next.js rewrites to hit the backend.
-- Docker dev helper `./dev.sh up --build` exposes frontend on 3003 and backend on 4001; local Node dev stays on 3000/3001.
+- **All development commands must be run in Docker.** Use the `./dev.sh` helper script to manage the Docker environment and run commands without entering containers. Start the Docker dev environment with `./dev.sh up --build` to ensure consistent setup and dependencies.
+- Root scripts: Use `./dev.sh test` for running all tests, `./dev.sh test:backend` for backend tests, `./dev.sh test:frontend` for frontend tests, and `./dev.sh exec backend npm run lint` for linting, which fan out via `--prefix` to each service.
+- Backend tests require `NODE_OPTIONS=--experimental-vm-modules`; `./dev.sh test:backend` already sets it—mirror that when adding bespoke commands.
+- Run SQLite migrations with `./dev.sh migrate [status|up|fresh]`; ensure `PERSIST_TRANSCRIPTS=true` and `DB_URL` are set or the script exits.
+- Frontend dev uses Turbopack; start with `./dev.sh up --build`; API calls default to `/api` and rely on Next.js rewrites to hit the backend.
+- Docker dev helper `./dev.sh up --build` exposes frontend on 3003 and backend on 4001; local Node dev is not supported—always use Docker.
 
 ## Testing Notes
 - Backend integration helpers live in `backend/test_utils/`; reuse `chatProxyTestUtils` to simulate streaming/tool iterations instead of hand-rolling fetch mocks.

@@ -27,14 +27,14 @@ chat/
 - Real-time chat interface with streaming support
 - State management via React hooks/reducers
 - Direct API calls to backend (no SSR for chat data)
-- Local `npm run dev` serves on http://localhost:3000
+- Docker dev serves on http://localhost:3003
 
 **Backend (service port 3001; dev containers expose http://localhost:4001)**
 - Express.js API server
 - OpenAI API proxy with tool orchestration
 - SQLite database for conversation persistence
 - Rate limiting and session management
-- Local `npm run dev` serves on http://localhost:3001
+- Docker dev serves on http://localhost:4001
 
 ### Key Integration Points
 
@@ -49,17 +49,19 @@ chat/
 
 ### Development Commands
 
+**All development commands must be run in Docker.** Use the `./dev.sh` helper script to manage the Docker environment and run commands without entering containers.
+
 **Root level** (`package.json` scripts):
 ```bash
 # Run tests for both frontend and backend
-npm test
+./dev.sh test
 
 # Run linting for both services
-npm run lint
+./dev.sh exec backend npm run lint
 
 # Individual service testing
-npm run test:backend
-npm run test:frontend
+./dev.sh test:backend
+./dev.sh test:frontend
 ```
 
 **Development script** (`./dev.sh`):
@@ -73,18 +75,16 @@ npm run test:frontend
 
 **Frontend development**:
 ```bash
-cd frontend
-npm run dev            # Start with Turbopack
-npm run build          # Production build
-npm test               # Jest tests
+./dev.sh up --build     # Start with Turbopack in Docker
+./dev.sh exec frontend npm run build  # Production build
+./dev.sh test:frontend  # Jest tests
 ```
 
 **Backend development**:
 ```bash
-cd backend
-npm run dev            # Nodemon with auto-reload
-npm run migrate        # Database migrations
-npm run format         # Prettier formatting
+./dev.sh up --build     # Nodemon with auto-reload in Docker
+./dev.sh migrate up     # Database migrations
+./dev.sh exec backend npm run format  # Prettier formatting
 ```
 
 ### Testing Strategy
@@ -229,7 +229,6 @@ cp backend/.env.example backend/.env
 # Access application (docker-compose.dev host ports)
 # Frontend: http://localhost:3003
 # Backend API: http://localhost:4001
-# Direct local dev (without Docker): http://localhost:3000 and http://localhost:3001
 ```
 
 ### Common Development Tasks
