@@ -9,6 +9,7 @@ import {
   updateProvider,
   setDefaultProvider,
   deleteProvider,
+  getDefaultProvider,
 } from '../db/providers.js';
 
 export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = {}) {
@@ -18,8 +19,23 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
 
   providersRouter.get('/v1/providers', (req, res) => {
     try {
-      const rows = listProviders();
+      const userId = req.user?.id || null; // Get user ID from auth context
+      const rows = listProviders(userId);
       res.json({ providers: rows });
+    } catch (err) {
+      res.status(500).json({ error: 'internal_server_error', message: err.message });
+    }
+  });
+
+  // Get the effective default provider for the current user
+  providersRouter.get('/v1/providers/default', (req, res) => {
+    try {
+      const userId = req.user?.id || null; // Get user ID from auth context
+      const defaultProvider = getDefaultProvider(userId);
+      if (!defaultProvider) {
+        return res.status(404).json({ error: 'not_found', message: 'No default provider configured' });
+      }
+      res.json(defaultProvider);
     } catch (err) {
       res.status(500).json({ error: 'internal_server_error', message: err.message });
     }
@@ -27,7 +43,8 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
 
   providersRouter.get('/v1/providers/:id', (req, res) => {
     try {
-      const row = getProviderById(req.params.id);
+      const userId = req.user?.id || null; // Get user ID from auth context
+      const row = getProviderById(req.params.id, userId);
       if (!row) return res.status(404).json({ error: 'not_found' });
       res.json(row);
     } catch (err) {
@@ -44,6 +61,8 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
         return res.status(400).json({ error: 'invalid_request', message: 'name and provider_type are required' });
       }
       const id = body.id ? String(body.id) : uuidv4();
+      const userId = req.user?.id || null; // Get user ID from auth context
+
       const created = createProvider({
         id,
         name,
@@ -54,6 +73,7 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
         is_default: !!body.is_default,
         extra_headers: typeof body.extra_headers === 'object' && body.extra_headers !== null ? body.extra_headers : {},
         metadata: typeof body.metadata === 'object' && body.metadata !== null ? body.metadata : {},
+        user_id: userId, // Set user ownership
       });
       res.status(201).json(created);
     } catch (err) {
@@ -67,6 +87,8 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
   providersRouter.put('/v1/providers/:id', (req, res) => {
     try {
       const body = req.body || {};
+      const userId = req.user?.id || null; // Get user ID from auth context
+
       const updated = updateProvider(req.params.id, {
         name: body.name,
         provider_type: body.provider_type,
@@ -76,7 +98,7 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
         is_default: body.is_default,
         extra_headers: body.extra_headers,
         metadata: body.metadata,
-      });
+      }, userId);
       if (!updated) return res.status(404).json({ error: 'not_found' });
       res.json(updated);
     } catch (err) {
@@ -86,7 +108,8 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
 
   providersRouter.post('/v1/providers/:id/default', (req, res) => {
     try {
-      const row = setDefaultProvider(req.params.id);
+      const userId = req.user?.id || null; // Get user ID from auth context
+      const row = setDefaultProvider(req.params.id, userId);
       if (!row) return res.status(404).json({ error: 'not_found' });
       res.json(row);
     } catch (err) {
@@ -96,7 +119,8 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
 
   providersRouter.delete('/v1/providers/:id', (req, res) => {
     try {
-      const ok = deleteProvider(req.params.id);
+      const userId = req.user?.id || null; // Get user ID from auth context
+      const ok = deleteProvider(req.params.id, userId);
       if (!ok) return res.status(404).json({ error: 'not_found' });
       res.status(204).end();
     } catch (err) {
@@ -107,7 +131,8 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
 // List models via provider's API (server-side to avoid exposing keys)
   providersRouter.get('/v1/providers/:id/models', async (req, res) => {
     try {
-      const row = getProviderByIdWithApiKey(req.params.id);
+      const userId = req.user?.id || null; // Get user ID from auth context
+      const row = getProviderByIdWithApiKey(req.params.id, userId);
       if (!row) return res.status(404).json({ error: 'not_found' });
       if (row.enabled === 0) return res.status(400).json({ error: 'disabled', message: 'Provider is disabled' });
 
@@ -158,7 +183,7 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
       const body = req.body || {};
       const name = String(body.name || '').trim();
       const provider_type = String(body.provider_type || '').trim();
-      
+
       if (!name || !provider_type) {
         return res.status(400).json({ error: 'invalid_request', message: 'name and provider_type are required' });
       }
@@ -169,7 +194,7 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
     }
 
     const base_url = String(body.base_url || '').replace(/\/v1\/?$/, '') || 'https://api.openai.com';
-    
+
     let extra = {};
     try {
       extra = body.extra_headers ? JSON.parse(body.extra_headers) : {};
@@ -185,8 +210,8 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
       ...extra,
     };
 
-    const upstream = await http(url, { 
-      method: 'GET', 
+    const upstream = await http(url, {
+      method: 'GET',
       headers,
       timeout: 10000 // 10 second timeout
     });
@@ -194,7 +219,7 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
     if (!upstream.ok) {
       const text = await upstream.text().catch(() => '');
       let errorMessage = 'Connection failed';
-      
+
       if (upstream.status === 401) {
         errorMessage = 'Invalid API key. Please check your credentials.';
       } else if (upstream.status === 403) {
@@ -206,11 +231,11 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
       } else {
         errorMessage = `Provider returned error: ${upstream.status}`;
       }
-      
-      return res.status(400).json({ 
-        error: 'test_failed', 
+
+      return res.status(400).json({
+        error: 'test_failed',
         message: errorMessage,
-        detail: text.slice(0, 200) 
+        detail: text.slice(0, 200)
       });
     }
 
@@ -226,23 +251,23 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
 
     const modelCount = models.length;
     const sampleModels = models.slice(0, 3).map(m => m.id).join(', ');
-    
-    res.json({ 
+
+    res.json({
       success: true,
       message: `Connection successful! Found ${modelCount} models${sampleModels ? ` (${sampleModels}${modelCount > 3 ? ', ...' : ''})` : ''}.`,
       models: modelCount
     });
   } catch (err) {
     let errorMessage = 'Connection test failed. Please check your configuration.';
-    
+
     if (err.name === 'AbortError' || err.code === 'ETIMEDOUT') {
       errorMessage = 'Connection timeout. Please check your base URL and network connection.';
     } else if (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED') {
       errorMessage = 'Cannot connect to the provider. Please check your base URL.';
     }
-    
-    res.status(400).json({ 
-      error: 'test_failed', 
+
+    res.status(400).json({
+      error: 'test_failed',
       message: errorMessage,
       detail: err?.message || 'Unknown error'
     });
@@ -254,22 +279,23 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
     try {
       const providerId = req.params.id;
       const body = req.body || {};
-      
-      // Get the existing provider with API key
-      const existingProvider = getProviderByIdWithApiKey(providerId);
+      const userId = req.user?.id || null; // Get user ID from auth context
+
+      // Get the existing provider with API key (with user scoping)
+      const existingProvider = getProviderByIdWithApiKey(providerId, userId);
       if (!existingProvider) {
         return res.status(404).json({ error: 'not_found', message: 'Provider not found' });
       }
-    
+
     if (!existingProvider.api_key) {
       return res.status(400).json({ error: 'invalid_provider', message: 'Provider has no API key stored' });
     }
 
     // Use existing API key but allow override of other settings for testing
     const base_url = (body.base_url !== undefined ? body.base_url : existingProvider.base_url) || 'https://api.openai.com';
-    
+
     const testBaseUrl = String(base_url).replace(/\/v1\/?$/, '');
-    
+
     let extra = {};
     try {
       extra = existingProvider.extra_headers ? JSON.parse(existingProvider.extra_headers) : {};
@@ -288,8 +314,8 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
       ...extra,
     };
 
-    const upstream = await http(url, { 
-      method: 'GET', 
+    const upstream = await http(url, {
+      method: 'GET',
       headers,
       timeout: 10000 // 10 second timeout
     });
@@ -297,7 +323,7 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
     if (!upstream.ok) {
       const text = await upstream.text().catch(() => '');
       let errorMessage = 'Connection failed';
-      
+
       if (upstream.status === 401) {
         errorMessage = 'Invalid API key. Please update your credentials.';
       } else if (upstream.status === 403) {
@@ -309,11 +335,11 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
       } else {
         errorMessage = `Provider returned error: ${upstream.status}`;
       }
-      
-      return res.status(400).json({ 
-        error: 'test_failed', 
+
+      return res.status(400).json({
+        error: 'test_failed',
         message: errorMessage,
-        detail: text.slice(0, 200) 
+        detail: text.slice(0, 200)
       });
     }
 
@@ -329,23 +355,23 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
 
     const modelCount = models.length;
     const sampleModels = models.slice(0, 3).map(m => m.id).join(', ');
-    
-    res.json({ 
+
+    res.json({
       success: true,
       message: `Connection successful! Found ${modelCount} models${sampleModels ? ` (${sampleModels}${modelCount > 3 ? ', ...' : ''})` : ''}.`,
       models: modelCount
     });
   } catch (err) {
     let errorMessage = 'Connection test failed. Please check your configuration.';
-    
+
     if (err.name === 'AbortError' || err.code === 'ETIMEDOUT') {
       errorMessage = 'Connection timeout. Please check your base URL and network connection.';
     } else if (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED') {
       errorMessage = 'Cannot connect to the provider. Please check your base URL.';
     }
-    
-    res.status(400).json({ 
-      error: 'test_failed', 
+
+    res.status(400).json({
+      error: 'test_failed',
       message: errorMessage,
       detail: err?.message || 'Unknown error'
     });
