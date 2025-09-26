@@ -12,9 +12,11 @@ interface ChatHeaderProps {
   onModelChange: (model: string) => void;
   onProviderChange?: (providerId: string) => void;
   onOpenSettings?: () => void;
+  onShowLogin?: () => void;
+  onShowRegister?: () => void;
 }
 
-export function ChatHeader({ model, onModelChange, onProviderChange, onOpenSettings }: ChatHeaderProps) {
+export function ChatHeader({ model, onModelChange, onProviderChange, onOpenSettings, onShowLogin, onShowRegister }: ChatHeaderProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
 
   // Derive models from configured providers with a safe fallback
@@ -128,22 +130,20 @@ export function ChatHeader({ model, onModelChange, onProviderChange, onOpenSetti
 
   return (
     <header className="sticky top-0 z-10 bg-white/60 dark:bg-neutral-900/60 backdrop-blur-md">
-      <div className="mx-auto max-w-4xl px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-4">
-            <ModelSelector
-              value={model}
-              onChange={onModelChange}
-              groups={groups}
-              fallbackOptions={modelOptions}
-              className="text-lg"
-              ariaLabel="Model"
-            />
-          </div>
+      <div className="px-6 py-4 flex items-center justify-between">
+        <div className="flex items-center">
+          <ModelSelector
+            value={model}
+            onChange={onModelChange}
+            groups={groups}
+            fallbackOptions={modelOptions}
+            className="text-lg"
+            ariaLabel="Model"
+          />
         </div>
 
         <div className="flex items-center gap-3">
-          <AuthButton />
+          <AuthButton onShowLogin={onShowLogin} onShowRegister={onShowRegister} />
           <button
             onClick={onOpenSettings}
             className="w-9 h-9 rounded-lg bg-slate-200 dark:bg-neutral-800 hover:bg-slate-300 dark:hover:bg-neutral-700 flex items-center justify-center shadow-sm transition-colors"
