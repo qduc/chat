@@ -130,12 +130,12 @@ export class SimplifiedPersistence {
    * Process message history and generate title if needed
    * @private
    */
-  async _processMessageHistory(sessionId, bodyIn) {
+  async _processMessageHistory(sessionId, userId, bodyIn) {
     const messages = this.persistenceConfig.filterNonSystemMessages(bodyIn.messages || []);
 
     if (messages.length > 0) {
       // Sync message history
-      this.conversationManager.syncMessageHistory(this.conversationId, sessionId, messages);
+      this.conversationManager.syncMessageHistory(this.conversationId, sessionId, userId, messages);
 
       // Generate title if conversation doesn't have one
       if (!this.conversationMeta?.title) {
@@ -144,7 +144,7 @@ export class SimplifiedPersistence {
           if (lastUser) {
             const generated = await this.titleService.generateTitle(lastUser.content, this.providerId);
             if (generated) {
-              this.conversationManager.updateTitle(this.conversationId, sessionId, generated);
+              this.conversationManager.updateTitle(this.conversationId, sessionId, userId, generated);
               this.conversationMeta = { ...this.conversationMeta, title: generated };
             }
           }
@@ -169,7 +169,7 @@ export class SimplifiedPersistence {
    * Handle metadata updates for existing conversations
    * @private
    */
-  async _handleMetadataUpdates(sessionId, bodyIn) {
+  async _handleMetadataUpdates(sessionId, userId, bodyIn) {
     if (!this.conversationMeta) return;
 
     const incomingSystemPrompt = ConversationTitleService.extractSystemPrompt(bodyIn);
@@ -181,7 +181,7 @@ export class SimplifiedPersistence {
 
     try {
       if (updates.needsSystemUpdate) {
-        this.conversationManager.updateMetadata(this.conversationId, sessionId, {
+        this.conversationManager.updateMetadata(this.conversationId, sessionId, userId, {
           system_prompt: updates.systemPrompt
         });
         this.conversationMeta.metadata = {
@@ -191,7 +191,7 @@ export class SimplifiedPersistence {
       }
 
       if (updates.needsProviderUpdate) {
-        this.conversationManager.updateProviderId(this.conversationId, sessionId, updates.providerId);
+        this.conversationManager.updateProviderId(this.conversationId, sessionId, userId, updates.providerId);
         this.conversationMeta.providerId = updates.providerId;
       }
     } catch (error) {

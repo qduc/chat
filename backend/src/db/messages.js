@@ -159,12 +159,21 @@ export function deleteMessagesAfterSeq({ conversationId, sessionId, afterSeq }) 
   return result.changes > 0;
 }
 
-export function clearAllMessages({ conversationId, sessionId }) {
+export function clearAllMessages({ conversationId, sessionId, userId = null }) {
   const db = getDb();
 
-  const conversation = db.prepare(
-    `SELECT id FROM conversations WHERE id = @conversationId AND session_id = @sessionId AND deleted_at IS NULL`
-  ).get({ conversationId, sessionId });
+  let query, params;
+
+  // Support both user-based and session-based access for backward compatibility
+  if (userId) {
+    query = `SELECT id FROM conversations WHERE id = @conversationId AND (user_id = @userId OR (user_id IS NULL AND session_id = @sessionId)) AND deleted_at IS NULL`;
+    params = { conversationId, userId, sessionId };
+  } else {
+    query = `SELECT id FROM conversations WHERE id = @conversationId AND session_id = @sessionId AND user_id IS NULL AND deleted_at IS NULL`;
+    params = { conversationId, sessionId };
+  }
+
+  const conversation = db.prepare(query).get(params);
 
   if (!conversation) return false;
 

@@ -72,11 +72,12 @@ export class ConversationManager {
    * Clear all messages for a conversation and insert new ones
    * @param {string} conversationId - Conversation ID
    * @param {string} sessionId - Session ID
+   * @param {string|null} userId - User ID (if authenticated)
    * @param {Array} messages - Array of messages to insert
    */
-  syncMessageHistory(conversationId, sessionId, messages) {
+  syncMessageHistory(conversationId, sessionId, userId = null, messages) {
     // Clear existing messages
-    clearAllMessages({ conversationId, sessionId });
+    clearAllMessages({ conversationId, sessionId, userId });
 
     // Insert new messages in sequence
     let seq = 1;
@@ -136,29 +137,32 @@ export class ConversationManager {
    * Update conversation title
    * @param {string} conversationId - Conversation ID
    * @param {string} sessionId - Session ID
+   * @param {string|null} userId - User ID (if authenticated)
    * @param {string} title - New title
    */
-  updateTitle(conversationId, sessionId, title) {
-    updateConversationTitle({ id: conversationId, sessionId, title });
+  updateTitle(conversationId, sessionId, userId = null, title) {
+    updateConversationTitle({ id: conversationId, sessionId, userId, title });
   }
 
   /**
    * Update conversation metadata
    * @param {string} conversationId - Conversation ID
    * @param {string} sessionId - Session ID
+   * @param {string|null} userId - User ID (if authenticated)
    * @param {Object} metadataPatch - Metadata updates
    */
-  updateMetadata(conversationId, sessionId, metadataPatch) {
-    updateConversationMetadata({ id: conversationId, sessionId, patch: metadataPatch });
+  updateMetadata(conversationId, sessionId, userId = null, metadataPatch) {
+    updateConversationMetadata({ id: conversationId, sessionId, userId, patch: metadataPatch });
   }
 
   /**
    * Update conversation provider ID
    * @param {string} conversationId - Conversation ID
    * @param {string} sessionId - Session ID
+   * @param {string|null} userId - User ID (if authenticated)
    * @param {string} providerId - New provider ID
    */
-  updateProviderId(conversationId, sessionId, providerId) {
-    updateConversationProviderId({ id: conversationId, sessionId, providerId });
+  updateProviderId(conversationId, sessionId, userId = null, providerId) {
+    updateConversationProviderId({ id: conversationId, sessionId, userId, providerId });
   }
 }

@@ -68,14 +68,25 @@ export function getConversationById({ id, sessionId, userId = null }) {
   return result;
 }
 
-export function updateConversationMetadata({ id, sessionId, patch }) {
+export function updateConversationMetadata({ id, sessionId, userId = null, patch }) {
   const db = getDb();
-  const row = db
-    .prepare(
-      `SELECT metadata FROM conversations WHERE id=@id AND session_id=@session_id AND deleted_at IS NULL`
-    )
-    .get({ id, session_id: sessionId });
+
+  let selectQuery, selectParams, updateQuery, updateParams;
+
+  // Support both user-based and session-based access for backward compatibility
+  if (userId) {
+    selectQuery = `SELECT metadata FROM conversations WHERE id=@id AND (user_id=@userId OR (user_id IS NULL AND session_id=@sessionId)) AND deleted_at IS NULL`;
+    selectParams = { id, userId, sessionId };
+    updateQuery = `UPDATE conversations SET metadata=@metadata, updated_at=@now WHERE id=@id AND (user_id=@userId OR (user_id IS NULL AND session_id=@sessionId)) AND deleted_at IS NULL`;
+  } else {
+    selectQuery = `SELECT metadata FROM conversations WHERE id=@id AND session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
+    selectParams = { id, sessionId };
+    updateQuery = `UPDATE conversations SET metadata=@metadata, updated_at=@now WHERE id=@id AND session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
+  }
+
+  const row = db.prepare(selectQuery).get(selectParams);
   if (!row) return false;
+
   let existing = {};
   try {
     existing = row.metadata ? JSON.parse(row.metadata) : {};
@@ -84,28 +95,51 @@ export function updateConversationMetadata({ id, sessionId, patch }) {
   }
   const merged = { ...existing, ...(patch || {}) };
   const now = new Date().toISOString();
-  const res = db
-    .prepare(
-      `UPDATE conversations SET metadata=@metadata, updated_at=@now WHERE id=@id AND session_id=@session_id`
-    )
-    .run({ id, session_id: sessionId, metadata: JSON.stringify(merged), now });
+
+  if (userId) {
+    updateParams = { id, userId, sessionId, metadata: JSON.stringify(merged), now };
+  } else {
+    updateParams = { id, sessionId, metadata: JSON.stringify(merged), now };
+  }
+
+  const res = db.prepare(updateQuery).run(updateParams);
   return res.changes > 0;
 }
 
-export function updateConversationTitle({ id, sessionId, title, provider_id }) {
+export function updateConversationTitle({ id, sessionId, userId = null, title, provider_id }) {
   const db = getDb();
   const now = new Date().toISOString();
-  db.prepare(
-    `UPDATE conversations SET title=@title, provider_id=@provider_id, updated_at=@now WHERE id=@id AND session_id=@session_id`
-  ).run({ id, session_id: sessionId, title, provider_id, now });
+
+  let query, params;
+
+  // Support both user-based and session-based access for backward compatibility
+  if (userId) {
+    query = `UPDATE conversations SET title=@title, provider_id=@provider_id, updated_at=@now WHERE id=@id AND (user_id=@userId OR (user_id IS NULL AND session_id=@sessionId)) AND deleted_at IS NULL`;
+    params = { id, sessionId, userId, title, provider_id, now };
+  } else {
+    query = `UPDATE conversations SET title=@title, provider_id=@provider_id, updated_at=@now WHERE id=@id AND session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
+    params = { id, sessionId, title, provider_id, now };
+  }
+
+  db.prepare(query).run(params);
 }
 
-export function updateConversationProviderId({ id, sessionId, providerId }) {
+export function updateConversationProviderId({ id, sessionId, userId = null, providerId }) {
   const db = getDb();
   const now = new Date().toISOString();
-  const info = db.prepare(
-    `UPDATE conversations SET provider_id=@provider_id, updated_at=@now WHERE id=@id AND session_id=@session_id`
-  ).run({ id, session_id: sessionId, provider_id: providerId, now });
+
+  let query, params;
+
+  // Support both user-based and session-based access for backward compatibility
+  if (userId) {
+    query = `UPDATE conversations SET provider_id=@provider_id, updated_at=@now WHERE id=@id AND (user_id=@userId OR (user_id IS NULL AND session_id=@sessionId)) AND deleted_at IS NULL`;
+    params = { id, userId, sessionId, provider_id: providerId, now };
+  } else {
+    query = `UPDATE conversations SET provider_id=@provider_id, updated_at=@now WHERE id=@id AND session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
+    params = { id, sessionId, provider_id: providerId, now };
+  }
+
+  const info = db.prepare(query).run(params);
   return info.changes > 0;
 }
 
