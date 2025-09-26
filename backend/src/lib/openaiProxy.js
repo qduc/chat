@@ -279,10 +279,12 @@ async function executeRequestHandler(context, req, res) {
   // Persistence setup
   const persistence = new SimplifiedPersistence(config);
   const sessionId = req.sessionId;
+  const userId = req.user?.id || null; // Get user ID if authenticated
 
   const initResult = await persistence.initialize({
     conversationId: context.conversationId,
     sessionId,
+    userId, // Pass user context to persistence
     req,
     bodyIn: context.bodyIn
   });

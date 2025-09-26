@@ -33,40 +33,46 @@ export class SimplifiedPersistence {
    * @param {Object} params - Initialization parameters
    * @param {string|null} params.conversationId - Conversation ID
    * @param {string} params.sessionId - Session ID
+   * @param {string|null} params.userId - User ID (if authenticated)
    * @param {Object} params.req - Express request object
    * @param {Object} params.bodyIn - Original request body
    * @returns {Promise<{error?: Object}>} Error object if validation fails
    */
-  async initialize({ conversationId, sessionId, req, bodyIn }) {
+  async initialize({ conversationId, sessionId, userId = null, req, bodyIn }) {
+    // Store user context for later use
+    this.userId = userId;
+
     // Check if persistence is enabled
-    if (!this.persistenceConfig.isPersistenceEnabled() || !sessionId) {
+    if (!this.persistenceConfig.isPersistenceEnabled() || (!sessionId && !userId)) {
       this.persist = false;
       return {};
     }
 
-    // Initialize database connection and session
+    // Initialize database connection and session (still needed for session-based users)
     getDb();
-    this.conversationManager.ensureSession(sessionId, {
-      userAgent: req.header('user-agent') || null,
-    });
+    if (sessionId) {
+      this.conversationManager.ensureSession(sessionId, {
+        userAgent: req.header('user-agent') || null,
+      });
+    }
 
     // Extract provider ID
     this.providerId = this.persistenceConfig.extractProviderId(bodyIn, req);
 
     // Handle existing conversation or create new one
-    const result = await this._handleConversation({ conversationId, sessionId, bodyIn });
+    const result = await this._handleConversation({ conversationId, sessionId, userId, bodyIn });
     if (result.error) {
       return result;
     }
 
     // Process message history and generate title if needed
-    await this._processMessageHistory(sessionId, bodyIn);
+    await this._processMessageHistory(sessionId, userId, bodyIn);
 
     // Setup for assistant message recording
     this._setupAssistantRecording();
 
     // Handle metadata updates for existing conversations
-    await this._handleMetadataUpdates(sessionId, bodyIn);
+    await this._handleMetadataUpdates(sessionId, userId, bodyIn);
 
     return {};
   }
@@ -75,13 +81,13 @@ export class SimplifiedPersistence {
    * Handle conversation creation or validation
    * @private
    */
-  async _handleConversation({ conversationId, sessionId, bodyIn }) {
+  async _handleConversation({ conversationId, sessionId, userId, bodyIn }) {
     let convo = null;
     let isNewConversation = false;
 
     // If conversation ID provided, try to get existing conversation
     if (conversationId) {
-      convo = this.conversationManager.getConversation(conversationId, sessionId);
+      convo = this.conversationManager.getConversation(conversationId, sessionId, userId);
       if (!convo) {
         // Invalid conversation ID - will auto-create new one
         conversationId = null;
@@ -108,10 +114,11 @@ export class SimplifiedPersistence {
       const settings = this.persistenceConfig.extractRequestSettings(bodyIn);
       conversationId = this.conversationManager.createNewConversation({
         sessionId,
+        userId, // Pass user context
         providerId: this.providerId,
         ...settings
       });
-      convo = this.conversationManager.getConversation(conversationId, sessionId);
+      convo = this.conversationManager.getConversation(conversationId, sessionId, userId);
     }
 
     this.conversationId = conversationId;

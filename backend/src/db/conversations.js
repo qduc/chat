@@ -5,6 +5,7 @@ import { clampLimit, parseCreatedAtCursor, appendCreatedAtCursor } from './pagin
 export function createConversation({
   id,
   sessionId,
+  userId = null,
   title,
   provider_id,
   model,
@@ -19,10 +20,11 @@ export function createConversation({
   const now = new Date().toISOString();
   db.prepare(
     `INSERT INTO conversations (id, session_id, user_id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at, updated_at)
-     VALUES (@id, @session_id, NULL, @title, @provider_id, @model, @metadata, @streaming_enabled, @tools_enabled, @quality_level, @reasoning_effort, @verbosity, @now, @now)`
+     VALUES (@id, @session_id, @user_id, @title, @provider_id, @model, @metadata, @streaming_enabled, @tools_enabled, @quality_level, @reasoning_effort, @verbosity, @now, @now)`
   ).run({
     id,
     session_id: sessionId,
+    user_id: userId,
     title: title || null,
     provider_id: provider_id || null,
     model: model || null,
@@ -36,14 +38,22 @@ export function createConversation({
   });
 }
 
-export function getConversationById({ id, sessionId }) {
+export function getConversationById({ id, sessionId, userId = null }) {
   const db = getDb();
-  const result = db
-    .prepare(
-      `SELECT id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at FROM conversations
-     WHERE id=@id AND session_id=@session_id AND deleted_at IS NULL`
-    )
-    .get({ id, session_id: sessionId });
+
+  // Support both user-based and session-based access for backward compatibility
+  let query, params;
+  if (userId) {
+    query = `SELECT id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at FROM conversations
+             WHERE id=@id AND (user_id=@user_id OR (user_id IS NULL AND session_id=@session_id)) AND deleted_at IS NULL`;
+    params = { id, user_id: userId, session_id: sessionId };
+  } else {
+    query = `SELECT id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at FROM conversations
+             WHERE id=@id AND session_id=@session_id AND user_id IS NULL AND deleted_at IS NULL`;
+    params = { id, session_id: sessionId };
+  }
+
+  const result = db.prepare(query).get(params);
 
   if (result) {
     result.streaming_enabled = Boolean(result.streaming_enabled);
@@ -109,22 +119,26 @@ export function countConversationsBySession(sessionId) {
   return row?.c || 0;
 }
 
-export function listConversations({ sessionId, cursor, limit }) {
+export function listConversations({ sessionId, userId = null, cursor, limit }) {
   const db = getDb();
   const safeLimit = clampLimit(limit, { fallback: 20, min: 1, max: 100 });
   const { cursorCreatedAt, cursorId } = parseCreatedAtCursor(cursor);
 
-  let sql = `SELECT id, title, provider_id, model, created_at FROM conversations
-             WHERE session_id=@sessionId AND deleted_at IS NULL`;
+  let sql, params;
+
+  // Support both user-based and session-based access for backward compatibility
+  if (userId) {
+    sql = `SELECT id, title, provider_id, model, created_at FROM conversations
+           WHERE (user_id=@userId OR (user_id IS NULL AND session_id=@sessionId)) AND deleted_at IS NULL`;
+    params = { userId, sessionId, cursorCreatedAt, cursorId, limit: safeLimit + 1 };
+  } else {
+    sql = `SELECT id, title, provider_id, model, created_at FROM conversations
+           WHERE session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
+    params = { sessionId, cursorCreatedAt, cursorId, limit: safeLimit + 1 };
+  }
+
   sql = appendCreatedAtCursor(sql, { cursorCreatedAt, cursorId });
   sql += ` ORDER BY datetime(created_at) DESC, id DESC LIMIT @limit`;
-
-  const params = {
-    sessionId,
-    cursorCreatedAt,
-    cursorId,
-    limit: safeLimit + 1,
-  };
 
   const allItems = db.prepare(sql).all(params);
   const items = allItems.slice(0, safeLimit);
@@ -133,19 +147,28 @@ export function listConversations({ sessionId, cursor, limit }) {
   return { items, next_cursor };
 }
 
-export function softDeleteConversation({ id, sessionId }) {
+export function softDeleteConversation({ id, sessionId, userId = null }) {
   const db = getDb();
   const now = new Date().toISOString();
-  const info = db
-    .prepare(
-      `UPDATE conversations SET deleted_at=@now, updated_at=@now WHERE id=@id AND session_id=@sessionId AND deleted_at IS NULL`
-    )
-    .run({ id, sessionId, now });
+
+  let query, params;
+
+  // Support both user-based and session-based access for backward compatibility
+  if (userId) {
+    query = `UPDATE conversations SET deleted_at=@now, updated_at=@now WHERE id=@id AND (user_id=@userId OR (user_id IS NULL AND session_id=@sessionId)) AND deleted_at IS NULL`;
+    params = { id, sessionId, userId, now };
+  } else {
+    query = `UPDATE conversations SET deleted_at=@now, updated_at=@now WHERE id=@id AND session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
+    params = { id, sessionId, now };
+  }
+
+  const info = db.prepare(query).run(params);
   return info.changes > 0;
 }
 
 export function listConversationsIncludingDeleted({
   sessionId,
+  userId = null,
   cursor,
   limit,
   includeDeleted = false,
@@ -154,18 +177,22 @@ export function listConversationsIncludingDeleted({
   const safeLimit = clampLimit(limit, { fallback: 20, min: 1, max: 100 });
   const { cursorCreatedAt, cursorId } = parseCreatedAtCursor(cursor);
 
-  let sql = `SELECT id, title, provider_id, model, created_at, deleted_at FROM conversations
-             WHERE session_id=@sessionId`;
+  let sql, params;
+
+  // Support both user-based and session-based access for backward compatibility
+  if (userId) {
+    sql = `SELECT id, title, provider_id, model, created_at, deleted_at FROM conversations
+           WHERE (user_id=@userId OR (user_id IS NULL AND session_id=@sessionId))`;
+    params = { userId, sessionId, cursorCreatedAt, cursorId, limit: safeLimit + 1 };
+  } else {
+    sql = `SELECT id, title, provider_id, model, created_at, deleted_at FROM conversations
+           WHERE session_id=@sessionId AND user_id IS NULL`;
+    params = { sessionId, cursorCreatedAt, cursorId, limit: safeLimit + 1 };
+  }
+
   if (!includeDeleted) sql += ` AND deleted_at IS NULL`;
   sql = appendCreatedAtCursor(sql, { cursorCreatedAt, cursorId });
   sql += ` ORDER BY datetime(created_at) DESC, id DESC LIMIT @limit`;
-
-  const params = {
-    sessionId,
-    cursorCreatedAt,
-    cursorId,
-    limit: safeLimit + 1,
-  };
 
   const allItems = db
     .prepare(sql)

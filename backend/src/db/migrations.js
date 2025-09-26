@@ -1,15 +1,37 @@
 import { migrate } from '@blackglory/better-sqlite3-migrations';
+import { readdir } from 'fs/promises';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
-import m1 from './migrations/001-initial.js';
-import m2 from './migrations/002-add-conversation-columns.js';
-import m3 from './migrations/003-providers.js';
-import m4 from './migrations/004-add-provider-id.js';
-import m5 from './migrations/005-rename-provider-column.js';
-import m6 from './migrations/006-users-table.js';
-import m7 from './migrations/007-link-sessions-users.js';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
-// Assemble migrations in order. Each migration should have a unique version number.
-const migrations = [m1, m2, m3, m4, m5, m6, m7];
+async function loadMigrations() {
+  const migrationsDir = join(__dirname, 'migrations');
+  const files = await readdir(migrationsDir);
+
+  // Filter and sort migration files by their numeric prefix
+  const migrationFiles = files
+    .filter(file => file.endsWith('.js') && /^\d{3}-/.test(file))
+    .sort((a, b) => {
+      const aNum = parseInt(a.split('-')[0]);
+      const bNum = parseInt(b.split('-')[0]);
+      return aNum - bNum;
+    });
+
+  // Dynamically import all migration modules
+  const migrations = [];
+  for (const file of migrationFiles) {
+    const migrationPath = join(migrationsDir, file);
+    const migration = await import(migrationPath);
+    migrations.push(migration.default);
+  }
+
+  return migrations;
+}
+
+// Load migrations dynamically
+const migrations = await loadMigrations();
 
 export function runMigrations(db) {
   try {

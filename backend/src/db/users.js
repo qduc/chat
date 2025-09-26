@@ -21,7 +21,7 @@ export function createUser({ email, passwordHash, displayName }) {
     display_name: displayName || null,
     created_at: now,
     updated_at: now,
-    email_verified: false,
+    email_verified: 0, // SQLite boolean as integer
     last_login_at: null,
     deleted_at: null
   };

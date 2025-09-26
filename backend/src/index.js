@@ -3,7 +3,7 @@ import cors from 'cors';
 import { config } from './env.js';
 import { rateLimit } from './middleware/rateLimit.js';
 import { sessionResolver } from './middleware/session.js';
-import { getUserContext } from './middleware/auth.js';
+import { getUserContext, authenticateToken, optionalAuth } from './middleware/auth.js';
 import { chatRouter } from './routes/chat.js';
 import { healthRouter } from './routes/health.js';
 import { conversationsRouter } from './routes/conversations.js';

@@ -35,10 +35,11 @@ export class ConversationManager {
    * Get conversation by ID and validate ownership
    * @param {string} conversationId - Conversation ID
    * @param {string} sessionId - Session ID
+   * @param {string|null} userId - User ID (if authenticated)
    * @returns {Object|null} Conversation object or null if not found
    */
-  getConversation(conversationId, sessionId) {
-    return getConversationById({ id: conversationId, sessionId });
+  getConversation(conversationId, sessionId, userId = null) {
+    return getConversationById({ id: conversationId, sessionId, userId });
   }
 
   /**
@@ -52,9 +53,10 @@ export class ConversationManager {
     createConversation({
       id: conversationId,
       sessionId: params.sessionId,
+      userId: params.userId || null, // Pass user context
       title: null, // Will be auto-generated if needed
       model: params.model,
-      providerId: params.providerId,
+      provider_id: params.providerId,
       streamingEnabled: params.streamingEnabled,
       toolsEnabled: params.toolsEnabled,
       qualityLevel: params.qualityLevel || null,
