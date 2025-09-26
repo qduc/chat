@@ -1,7 +1,9 @@
-import React, { useReducer, useCallback, useRef } from 'react';
+import React, { useReducer, useCallback, useRef, useEffect } from 'react';
 import type { ChatMessage, Role, ConversationMeta } from '../lib/chat';
 import { sendChat, getConversationApi, listConversationsApi, deleteConversationApi, editMessageApi } from '../lib/chat';
 import type { QualityLevel } from '../components/ui/QualitySlider';
+import type { User } from '../lib/auth/api';
+import { useAuth } from '../contexts/AuthContext';
 
 export interface PendingState {
   abort?: AbortController;
@@ -11,6 +13,10 @@ export interface PendingState {
 
 // Unified state structure
 export interface ChatState {
+  // Authentication State
+  user: User | null;
+  isAuthenticated: boolean;
+
   // UI State
   status: 'idle' | 'streaming' | 'loading' | 'error';
   input: string;
@@ -55,6 +61,11 @@ export interface ChatState {
 
 // Action types
 export type ChatAction =
+  // Authentication Actions
+  | { type: 'SET_USER'; payload: User | null }
+  | { type: 'SET_AUTHENTICATED'; payload: boolean }
+
+  // Existing Actions
   | { type: 'SET_INPUT'; payload: string }
   | { type: 'SET_MODEL'; payload: string }
   | { type: 'SET_PROVIDER_ID'; payload: string | null }
@@ -95,6 +106,10 @@ export type ChatAction =
   | { type: 'SET_RIGHT_SIDEBAR_COLLAPSED'; payload: boolean };
 
 const initialState: ChatState = {
+  // Authentication State
+  user: null,
+  isAuthenticated: false,
+
   status: 'idle',
   input: '',
   messages: [],
@@ -122,6 +137,18 @@ const initialState: ChatState = {
 
 function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
+    // Authentication Actions
+    case 'SET_USER':
+      return {
+        ...state,
+        user: action.payload,
+        isAuthenticated: action.payload !== null
+      };
+
+    case 'SET_AUTHENTICATED':
+      return { ...state, isAuthenticated: action.payload };
+
+    // Existing Actions
     case 'SET_INPUT':
       return { ...state, input: action.payload };
 
@@ -495,9 +522,17 @@ const availableTools: Record<string, ToolSpec> = {
 };
 
 export function useChatState() {
+  const { user, loading: authLoading } = useAuth();
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const assistantMsgRef = useRef<ChatMessage | null>(null);
   const inFlightRef = useRef<boolean>(false);
+
+  // Sync authentication state from AuthContext
+  useEffect(() => {
+    if (!authLoading) {
+      dispatch({ type: 'SET_USER', payload: user });
+    }
+  }, [user, authLoading]);
 
   // Initialize conversations on mount
   const refreshConversations = useCallback(async () => {
@@ -673,6 +708,15 @@ export function useChatState() {
 
   // Actions
   const actions = {
+    // Authentication Actions
+    setUser: useCallback((user: User | null) => {
+      dispatch({ type: 'SET_USER', payload: user });
+    }, []),
+
+    setAuthenticated: useCallback((authenticated: boolean) => {
+      dispatch({ type: 'SET_AUTHENTICATED', payload: authenticated });
+    }, []),
+
     // UI Actions
     setInput: useCallback((input: string) => {
       dispatch({ type: 'SET_INPUT', payload: input });

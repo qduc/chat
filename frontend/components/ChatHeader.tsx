@@ -3,6 +3,7 @@ import { Sun, Moon, Settings } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import ModelSelector from './ui/ModelSelector';
 import { type Group as TabGroup } from './ui/TabbedSelect';
+import { AuthButton } from './auth/AuthButton';
 
 interface ChatHeaderProps {
   isStreaming: boolean;
@@ -142,6 +143,7 @@ export function ChatHeader({ model, onModelChange, onProviderChange, onOpenSetti
         </div>
 
         <div className="flex items-center gap-3">
+          <AuthButton />
           <button
             onClick={onOpenSettings}
             className="w-9 h-9 rounded-lg bg-slate-200 dark:bg-neutral-800 hover:bg-slate-300 dark:hover:bg-neutral-700 flex items-center justify-center shadow-sm transition-colors"
