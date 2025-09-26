@@ -5,9 +5,11 @@ import m2 from './migrations/002-add-conversation-columns.js';
 import m3 from './migrations/003-providers.js';
 import m4 from './migrations/004-add-provider-id.js';
 import m5 from './migrations/005-rename-provider-column.js';
+import m6 from './migrations/006-users-table.js';
+import m7 from './migrations/007-link-sessions-users.js';
 
 // Assemble migrations in order. Each migration should have a unique version number.
-const migrations = [m1, m2, m3, m4, m5];
+const migrations = [m1, m2, m3, m4, m5, m6, m7];
 
 export function runMigrations(db) {
   try {

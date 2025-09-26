@@ -1,0 +1,148 @@
+import jwt from 'jsonwebtoken';
+import { getUserById } from '../db/users.js';
+import { config } from '../env.js';
+
+/**
+ * Middleware that requires authentication
+ * Returns 401 if no token provided, 403 if token invalid
+ */
+export function authenticateToken(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+
+  if (!token) {
+    return res.status(401).json({
+      error: 'authentication_required',
+      message: 'No authorization token provided'
+    });
+  }
+
+  try {
+    const decoded = jwt.verify(token, config.auth.jwtSecret);
+
+    // Get fresh user data to ensure user still exists
+    const user = getUserById(decoded.userId);
+    if (!user) {
+      return res.status(403).json({
+        error: 'invalid_token',
+        message: 'User no longer exists'
+      });
+    }
+
+    req.user = {
+      id: user.id,
+      email: user.email,
+      displayName: user.display_name,
+      emailVerified: user.email_verified
+    };
+
+    next();
+  } catch (err) {
+    if (err.name === 'TokenExpiredError') {
+      return res.status(401).json({
+        error: 'token_expired',
+        message: 'Token has expired'
+      });
+    } else if (err.name === 'JsonWebTokenError') {
+      return res.status(403).json({
+        error: 'invalid_token',
+        message: 'Invalid token'
+      });
+    }
+
+    return res.status(500).json({
+      error: 'auth_error',
+      message: 'Authentication error'
+    });
+  }
+}
+
+/**
+ * Optional authentication middleware
+ * Sets req.user if valid token provided, but doesn't fail if no token
+ */
+export function optionalAuth(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1]; // Bearer TOKEN
+
+  if (!token) {
+    req.user = null;
+    return next();
+  }
+
+  try {
+    const decoded = jwt.verify(token, config.auth.jwtSecret);
+
+    // Get fresh user data to ensure user still exists
+    const user = getUserById(decoded.userId);
+    if (user) {
+      req.user = {
+        id: user.id,
+        email: user.email,
+        displayName: user.display_name,
+        emailVerified: user.email_verified
+      };
+    } else {
+      req.user = null;
+    }
+  } catch {
+    // Silently fail for optional auth
+    req.user = null;
+  }
+
+  next();
+}
+
+/**
+ * Middleware to get user from session or token
+ * Prioritizes user auth over session-based access
+ */
+export function getUserContext(req, res, next) {
+  // First try to get authenticated user
+  optionalAuth(req, res, () => {
+    // If no user auth, check session
+    if (!req.user && req.session?.id) {
+      req.sessionId = req.session.id;
+    }
+    next();
+  });
+}
+
+/**
+ * Generate JWT access token
+ */
+export function generateAccessToken(user) {
+  return jwt.sign(
+    {
+      userId: user.id,
+      email: user.email
+    },
+    config.auth.jwtSecret,
+    { expiresIn: config.auth.jwtExpiresIn }
+  );
+}
+
+/**
+ * Generate JWT refresh token
+ */
+export function generateRefreshToken(user) {
+  return jwt.sign(
+    {
+      userId: user.id,
+      type: 'refresh'
+    },
+    config.auth.jwtSecret,
+    { expiresIn: config.auth.jwtRefreshExpiresIn }
+  );
+}
+
+/**
+ * Verify refresh token
+ */
+export function verifyRefreshToken(token) {
+  const decoded = jwt.verify(token, config.auth.jwtSecret);
+  if (decoded.type !== 'refresh') {
+    throw new Error('Invalid token type');
+  }
+  return decoded;
+}

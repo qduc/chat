@@ -7,6 +7,8 @@ const required = [
   'RATE_LIMIT_WINDOW_SEC',
   'RATE_LIMIT_MAX',
   'ALLOWED_ORIGIN',
+  // Auth config
+  'JWT_SECRET',
 ];
 
 for (const key of required) {
@@ -34,7 +36,7 @@ export const config = {
     headers: (() => {
       try {
         return process.env.PROVIDER_HEADERS_JSON ? JSON.parse(process.env.PROVIDER_HEADERS_JSON) : undefined;
-      } catch (e) {
+      } catch {
         console.warn('[env] Invalid PROVIDER_HEADERS_JSON; expected JSON');
         return undefined;
       }
@@ -57,5 +59,10 @@ export const config = {
       Number(process.env.MAX_MESSAGES_PER_CONVERSATION) || 1000,
     historyBatchFlushMs: Number(process.env.HISTORY_BATCH_FLUSH_MS) || 250,
     retentionDays: Number(process.env.RETENTION_DAYS) || 30,
+  },
+  auth: {
+    jwtSecret: process.env.JWT_SECRET || 'development-secret-key-change-in-production',
+    jwtExpiresIn: process.env.JWT_EXPIRES_IN || '15m',
+    jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '7d',
   },
 };
