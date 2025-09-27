@@ -16,23 +16,8 @@ import { logger } from '../logger.js';
 async function sanitizeIncomingBody(bodyIn, helpers = {}) {
   const body = { ...bodyIn };
 
-  // First try explicit system prompt params (for backward compatibility)
-  let effectiveSystemPrompt = (bodyIn.systemPrompt ?? bodyIn.system_prompt);
-
-  // If no explicit system prompt but we have conversation context, get effective prompt
-  if (!effectiveSystemPrompt && helpers.conversationId && (helpers.userId || helpers.sessionId)) {
-    try {
-      const { getEffectivePromptText } = await import('./promptService.js');
-      const inlineOverride = bodyIn.inline_system_prompt_override || null;
-      effectiveSystemPrompt = await getEffectivePromptText(helpers.conversationId, {
-        userId: helpers.userId || null,
-        sessionId: helpers.sessionId || null
-      }, inlineOverride);
-    } catch (error) {
-      // Ignore errors getting system prompt - don't break the request
-      console.warn('[openaiProxy] Failed to get effective system prompt:', error.message);
-    }
-  }
+  // Use system prompt directly from frontend (already calculated effective prompt)
+  const effectiveSystemPrompt = bodyIn.system_prompt;
 
   // Inject system prompt as leading system message
   try {
@@ -57,7 +42,6 @@ async function sanitizeIncomingBody(bodyIn, helpers = {}) {
   delete body.toolsEnabled;
   delete body.researchMode;
   delete body.qualityLevel;
-  delete body.systemPrompt;
   delete body.system_prompt;
   // Default model
   // Default model is resolved later (may come from DB)
@@ -336,7 +320,7 @@ async function executeRequestHandler(context, req, res) {
     if (userId && context.conversationId && persistence.persist) {
       try {
         const { updateUsageAfterSend } = await import('./promptService.js');
-        const inlineOverride = context.bodyIn.inline_system_prompt_override || null;
+        const inlineOverride = null; // No longer sending inline override separately
         await updateUsageAfterSend(
           context.conversationId,
           { userId, sessionId: context.sessionId || null },

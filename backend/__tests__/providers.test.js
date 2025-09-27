@@ -5,6 +5,7 @@ import request from 'supertest';
 import { jest } from '@jest/globals';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
+import { safeTestSetup } from './test_utils/database-safety.js';
 
 // Helper to spin up a minimal app
 const makeApp = (router) => {
@@ -29,6 +30,8 @@ const withServer = async (app, fn) => {
 };
 
 beforeAll(() => {
+  // Safety check: ensure we're using a test database
+  safeTestSetup();
   // Ensure DB enabled for provider storage
   config.persistence.enabled = true;
   config.persistence.dbUrl = 'file::memory:';

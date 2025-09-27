@@ -6,6 +6,7 @@ import { conversationsRouter } from '../src/routes/conversations.js';
 import request from 'supertest';
 import { sessionResolver } from '../src/middleware/session.js';
 import { config } from '../src/env.js';
+import { safeTestSetup } from './test_utils/database-safety.js';
 import {
   getDb,
   upsertSession,
@@ -22,6 +23,11 @@ config.persistence.enabled = true;
 config.persistence.dbUrl = 'file::memory:';
 resetDbCache(); // Reset cache after enabling persistence - CRITICAL!
 const sessionId = 'sess1';
+
+beforeAll(() => {
+  // Safety check: ensure we're using a test database
+  safeTestSetup();
+});
 
 const makeApp = (useSession = true) => {
   const app = express();

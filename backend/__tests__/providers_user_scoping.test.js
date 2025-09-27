@@ -1,12 +1,14 @@
-import { describe, test, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, test, expect, beforeEach, afterEach, beforeAll, afterAll } from '@jest/globals';
 import express from 'express';
 import request from 'supertest';
 import bcrypt from 'bcryptjs';
 import { createUser } from '../src/db/users.js';
 import { generateAccessToken } from '../src/middleware/auth.js';
-import { resetDbCache } from '../src/db/index.js';
+import { resetDbCache, getDb } from '../src/db/index.js';
 import { createProvidersRouter } from '../src/routes/providers.js';
 import { getUserContext } from '../src/middleware/auth.js';
+import { config } from '../src/env.js';
+import { safeTestSetup } from './test_utils/database-safety.js';
 
 // Helper to create test app with authentication middleware
 const createTestApp = () => {
@@ -16,6 +18,17 @@ const createTestApp = () => {
   app.use(createProvidersRouter());
   return app;
 };
+
+beforeAll(() => {
+  // Safety check: ensure we're using a test database
+  safeTestSetup();
+  resetDbCache();
+  getDb();
+});
+
+afterAll(() => {
+  resetDbCache();
+});
 
 describe('User-scoped Providers', () => {
   let app;

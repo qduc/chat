@@ -1,11 +1,17 @@
-import { describe, expect, test, beforeEach, afterEach } from '@jest/globals';
+import { describe, expect, test, beforeEach, afterEach, beforeAll } from '@jest/globals';
 import { createUser, getUserByEmail, getUserById, isEmailAvailable, updateLastLogin, linkSessionToUser } from '../src/db/users.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
 import bcrypt from 'bcryptjs';
+import { safeTestSetup } from './test_utils/database-safety.js';
 
 // Mock environment for testing
 process.env.PERSIST_TRANSCRIPTS = 'true';
-process.env.DB_URL = 'file:test-auth.db';
+process.env.DB_URL = 'file::memory:';
+
+beforeAll(() => {
+  // Safety check: ensure we're using a test database
+  safeTestSetup();
+});
 
 describe('User Database Operations', () => {
   let db;

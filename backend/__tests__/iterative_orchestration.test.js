@@ -11,6 +11,7 @@ import { config } from '../src/env.js';
 import express from 'express';
 import { chatRouter } from '../src/routes/chat.js';
 import { getDb } from '../src/db/index.js';
+import { safeTestSetup } from './test_utils/database-safety.js';
 
 // Mock response object for testing
 class MockResponse {
@@ -99,6 +100,8 @@ describe('Iterative Orchestration', () => {
 
   // Setup database configuration for tests
   beforeAll(() => {
+  // Safety check: ensure we're using a test database
+  safeTestSetup();
     // Configure test environment variables
     process.env.PERSIST_TRANSCRIPTS = 'true';
     process.env.DB_URL = 'file::memory:';

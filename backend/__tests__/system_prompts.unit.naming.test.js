@@ -2,6 +2,7 @@
 import assert from 'node:assert/strict';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
+import { safeTestSetup } from './test_utils/database-safety.js';
 import {ensureTestUser,
   TEST_USER_ID,
   getTestAuthToken
@@ -13,6 +14,8 @@ import {
 
 // Configure in-memory DB for deterministic suffix behaviour
 beforeAll(() => {
+  // Safety check: ensure we're using a test database
+  safeTestSetup();
   config.persistence.enabled = true;
   config.persistence.dbUrl = 'file::memory:';
   resetDbCache();

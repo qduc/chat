@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
+import { safeTestSetup } from './test_utils/database-safety.js';
 import {
   makeAuthedApp,
   ensureTestUser,
@@ -15,6 +16,8 @@ import {
 const makeApp = makeAuthedApp;
 
 beforeAll(() => {
+  // Safety check: ensure we're using a test database
+  safeTestSetup();
   // Ensure DB enabled for system prompts storage
   config.persistence.enabled = true;
   config.persistence.dbUrl = 'file::memory:';

@@ -11,6 +11,7 @@ import {
   resetDbCache,
 } from '../src/db/index.js';
 import { config } from '../src/env.js';
+import { safeTestSetup } from './test_utils/database-safety.js';
 
 // IMPORTANT: Database setup for tests
 // 1. Enable persistence BEFORE calling getDb() to avoid null cache
@@ -21,6 +22,11 @@ config.persistence.dbUrl = 'file::memory:';
 resetDbCache(); // Reset cache after enabling persistence - CRITICAL!
 
 const sessionId = 'sess1';
+
+beforeAll(() => {
+  // Safety check: ensure we're using a test database
+  safeTestSetup();
+});
 
 beforeEach(() => {
   // Always get fresh db instance in beforeEach - don't cache the reference

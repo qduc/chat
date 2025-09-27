@@ -280,16 +280,8 @@ describe('System prompt injection', () => {
     return `Bearer ${token}`;
   }
 
-  test('injects the active conversation system prompt as leading system message', async () => {
+  test('processes requests without system prompt when none provided', async () => {
     seedUserSessionAndConversation();
-    insertCustomPrompt('prompt-custom-1', 'Act as a precise assistant.');
-
-    await updateConversationMetadata({
-      id: CONVERSATION_ID,
-      sessionId: SESSION_ID,
-      userId: USER_ID,
-      patch: { active_system_prompt_id: 'prompt-custom-1' },
-    });
 
     const app = makeApp({ mockUser: { id: USER_ID, email: USER_EMAIL } });
     const res = await request(app)
@@ -305,22 +297,12 @@ describe('System prompt injection', () => {
     assert.equal(res.status, 200);
     const lastRequest = upstream.lastChatRequestBody;
     assert.ok(lastRequest, 'Should capture upstream request payload');
-    assert.equal(lastRequest.messages[0].role, 'system');
-    assert.equal(lastRequest.messages[0].content, 'Act as a precise assistant.');
-    assert.equal(lastRequest.messages[1].role, 'user');
-    assert.equal(lastRequest.messages[1].content, 'Hello there');
+    assert.equal(lastRequest.messages[0].role, 'user');
+    assert.equal(lastRequest.messages[0].content, 'Hello there');
   });
 
-  test('prefers inline override over stored prompt when provided', async () => {
+  test('uses system_prompt field for effective prompt content', async () => {
     seedUserSessionAndConversation();
-    insertCustomPrompt('prompt-custom-2', 'Stored prompt body.');
-
-    await updateConversationMetadata({
-      id: CONVERSATION_ID,
-      sessionId: SESSION_ID,
-      userId: USER_ID,
-      patch: { active_system_prompt_id: 'prompt-custom-2' },
-    });
 
     const app = makeApp({ mockUser: { id: USER_ID, email: USER_EMAIL } });
     const res = await request(app)
@@ -330,14 +312,14 @@ describe('System prompt injection', () => {
       .send({
         messages: [{ role: 'user', content: 'Send override example' }],
         conversation_id: CONVERSATION_ID,
-        inline_system_prompt_override: 'Use this inline override body.',
+        system_prompt: 'Use this effective system prompt.',
         stream: false,
       });
 
     assert.equal(res.status, 200);
     const lastRequest = upstream.lastChatRequestBody;
     assert.equal(lastRequest.messages[0].role, 'system');
-    assert.equal(lastRequest.messages[0].content, 'Use this inline override body.');
+    assert.equal(lastRequest.messages[0].content, 'Use this effective system prompt.');
     assert.equal(lastRequest.messages[1].role, 'user');
     assert.equal(lastRequest.messages[1].content, 'Send override example');
   });

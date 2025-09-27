@@ -626,7 +626,6 @@ export function useChatState() {
         signal,
         conversationId: state.conversationId || undefined,
         systemPrompt: effectiveSystemPrompt || undefined,
-        inlineSystemPromptOverride: state.inlineSystemPromptOverride || undefined,
         shouldStream: state.shouldStream,
         reasoningEffort: state.reasoningEffort,
         verbosity: state.verbosity,

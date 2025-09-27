@@ -1,12 +1,11 @@
-// Frontend test: Render Built-ins & My Prompts grouping
-import { render, screen } from '@testing-library/react';
+// Frontend test: Render prompt dropdown with built-ins & custom prompts
+import { render, screen, fireEvent } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 describe('Prompt Manager Rendering', () => {
-  test('renders built-ins and custom prompts in separate groups', async () => {
-    // This test will fail until components exist
+  test('renders built-ins and custom prompts in dropdown groups', async () => {
     try {
-      const PromptList = (await import('../app/components/promptManager/PromptList')).default;
+      const PromptDropdown = (await import('../app/components/promptManager/PromptDropdown')).default;
 
       const mockPrompts = {
         built_ins: [
@@ -18,25 +17,30 @@ describe('Prompt Manager Rendering', () => {
       };
 
       render(
-        <PromptList
+        <PromptDropdown
           builtIns={mockPrompts.built_ins}
           customPrompts={mockPrompts.custom}
-          activePromptId={null}
+          selectedPromptId={null}
           hasUnsavedChanges={() => false}
           onSelectPrompt={() => {}}
-          onEditPrompt={() => {}}
-          onDuplicatePrompt={() => {}}
-          onDeletePrompt={() => {}}
           onClearSelection={() => {}}
         />
       );
 
-  // Should have Built-ins section
-  expect(screen.getByRole('button', { name: /Built-in Prompts/i })).toBeInTheDocument();
+      // Should have dropdown button
+      const dropdownButton = screen.getByRole('button', { name: /Select system prompt/i });
+      expect(dropdownButton).toBeInTheDocument();
+      expect(dropdownButton).toHaveTextContent('No system prompt');
+
+      // Open dropdown
+      fireEvent.click(dropdownButton);
+
+      // Should have Built-ins section header
+      expect(screen.getByText('Built-in Prompts')).toBeInTheDocument();
       expect(screen.getByText('Example')).toBeInTheDocument();
 
-      // Should have My Prompts section
-  expect(screen.getByRole('button', { name: /My Prompts/i })).toBeInTheDocument();
+      // Should have My Prompts section header
+      expect(screen.getByText('My Prompts')).toBeInTheDocument();
       expect(screen.getByText('My Prompt')).toBeInTheDocument();
 
     } catch (error) {
@@ -50,28 +54,33 @@ describe('Prompt Manager Rendering', () => {
     }
   });
 
-  test('shows None option when no prompt selected', async () => {
+  test('shows None option in dropdown when no prompt selected', async () => {
     try {
-      const PromptList = (await import('../app/components/promptManager/PromptList')).default;
+      const PromptDropdown = (await import('../app/components/promptManager/PromptDropdown')).default;
 
       const mockPrompts = { built_ins: [], custom: [] };
 
       render(
-        <PromptList
+        <PromptDropdown
           builtIns={mockPrompts.built_ins}
           customPrompts={mockPrompts.custom}
-          activePromptId={null}
+          selectedPromptId={null}
           hasUnsavedChanges={() => false}
           onSelectPrompt={() => {}}
-          onEditPrompt={() => {}}
-          onDuplicatePrompt={() => {}}
-          onDeletePrompt={() => {}}
           onClearSelection={() => {}}
         />
       );
 
-  // Should show None option
-  expect(screen.getByRole('button', { name: /None/ })).toBeInTheDocument();
+      // Should show "No system prompt" when nothing selected
+      const dropdownButton = screen.getByRole('button', { name: /Select system prompt/i });
+      expect(dropdownButton).toHaveTextContent('No system prompt');
+
+      // Open dropdown
+      fireEvent.click(dropdownButton);
+
+      // Should show No system prompt option in the dropdown
+      const dropdownOptions = screen.getAllByText('No system prompt');
+      expect(dropdownOptions.length).toBe(2); // One in button, one in dropdown
 
     } catch (error) {
       const err = error as { code?: string; message?: string };
