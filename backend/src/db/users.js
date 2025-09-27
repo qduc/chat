@@ -1,5 +1,6 @@
 import { getDb } from './client.js';
 import { randomUUID } from 'crypto';
+import { createDefaultProviders } from './providers.js';
 
 /**
  * Create a new user
@@ -30,6 +31,14 @@ export function createUser({ email, passwordHash, displayName }) {
     INSERT INTO users (id, email, password_hash, display_name, created_at, updated_at, email_verified, last_login_at, deleted_at)
     VALUES (@id, @email, @password_hash, @display_name, @created_at, @updated_at, @email_verified, @last_login_at, @deleted_at)
   `).run(user);
+
+  // Create default providers for the new user
+  try {
+    createDefaultProviders(id);
+  } catch (error) {
+    console.warn(`Failed to create default providers for user ${id}:`, error.message);
+    // Don't fail user creation if provider creation fails
+  }
 
   // Return user without password hash
   // eslint-disable-next-line no-unused-vars

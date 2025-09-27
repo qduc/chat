@@ -305,3 +305,80 @@ export function getDefaultProvider(userId = null) {
 
   return null;
 }
+
+/**
+ * Create default providers for a new user
+ * Adds OpenAI, OpenRouter, LMStudio, and Llama.cpp local server providers
+ * All providers start disabled with empty API keys
+ * @param {string} userId - The ID of the user to create providers for
+ */
+export function createDefaultProviders(userId) {
+  if (!userId) {
+    throw new Error('userId is required to create default providers');
+  }
+
+  const defaultProviders = [
+    {
+      id: `${userId}-openai`,
+      name: `Personal OpenAI (${userId.slice(0, 8)})`,
+      provider_type: 'openai',
+      base_url: 'https://api.openai.com',
+      api_key: null,
+      enabled: false,
+      is_default: false,
+      extra_headers: {},
+      metadata: { description: 'Personal OpenAI API configuration' },
+      user_id: userId
+    },
+    {
+      id: `${userId}-openrouter`,
+      name: `Personal OpenRouter (${userId.slice(0, 8)})`,
+      provider_type: 'openai', // Uses OpenAI-compatible API
+      base_url: 'https://openrouter.ai/api',
+      api_key: null,
+      enabled: false,
+      is_default: false,
+      extra_headers: {},
+      metadata: { description: 'OpenRouter unified API for multiple models' },
+      user_id: userId
+    },
+    {
+      id: `${userId}-lmstudio`,
+      name: `Personal LM Studio (${userId.slice(0, 8)})`,
+      provider_type: 'openai', // Uses OpenAI-compatible API
+      base_url: 'http://localhost:1234',
+      api_key: null,
+      enabled: false,
+      is_default: false,
+      extra_headers: {},
+      metadata: { description: 'Local LM Studio server' },
+      user_id: userId
+    },
+    {
+      id: `${userId}-llamacpp`,
+      name: `Personal Llama.cpp (${userId.slice(0, 8)})`,
+      provider_type: 'openai', // Uses OpenAI-compatible API
+      base_url: 'http://localhost:8080',
+      api_key: null,
+      enabled: false,
+      is_default: false,
+      extra_headers: {},
+      metadata: { description: 'Local llama.cpp server' },
+      user_id: userId
+    }
+  ];
+
+  const createdProviders = [];
+  
+  for (const providerConfig of defaultProviders) {
+    try {
+      const provider = createProvider(providerConfig);
+      createdProviders.push(provider);
+    } catch (error) {
+      console.warn(`Failed to create default provider ${providerConfig.name} for user ${userId}:`, error.message);
+      // Continue with other providers even if one fails
+    }
+  }
+
+  return createdProviders;
+}
