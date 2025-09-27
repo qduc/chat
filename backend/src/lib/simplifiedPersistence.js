@@ -118,7 +118,7 @@ export class SimplifiedPersistence {
 
     // Create new conversation if needed
     if (isNewConversation) {
-      const settings = this.persistenceConfig.extractRequestSettings(bodyIn);
+      const settings = await this.persistenceConfig.extractRequestSettingsAsync(bodyIn, userId);
       conversationId = this.conversationManager.createNewConversation({
         sessionId,
         userId, // Pass user context

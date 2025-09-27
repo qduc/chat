@@ -38,6 +38,15 @@ export function getDb() {
     if (!url) {
       throw new Error('[db] PERSIST_TRANSCRIPTS=true but DB_URL is empty');
     }
+    if (process.env.NODE_ENV === 'test') {
+      const safePatterns = [/^file::memory:$/i, /^:memory:$/i, /^file:test-.*\.db$/i];
+      const isSafe = safePatterns.some(pattern => pattern.test(url));
+      if (!isSafe) {
+        throw new Error(
+          `[db] Unsafe test database URL detected: ${url}. Tests must use file::memory:, :memory:, or file:test-*.db`
+        );
+      }
+    }
     if (!url.startsWith('file:')) {
       throw new Error('[db] Only SQLite (file:...) is supported currently.');
     }
