@@ -82,7 +82,9 @@ export class ChatClient {
       ...(extendedOptions.toolsEnabled !== undefined && { toolsEnabled: extendedOptions.toolsEnabled }),
       ...(extendedOptions.qualityLevel !== undefined && { qualityLevel: extendedOptions.qualityLevel }),
       // Optional system prompt: forwarded for backend persistence and upstream mapping
-      ...((options as any).systemPrompt && { systemPrompt: (options as any).systemPrompt })
+      ...((options as any).systemPrompt && { systemPrompt: (options as any).systemPrompt }),
+      // Inline system prompt override for temporary prompt edits
+      ...((options as any).inlineSystemPromptOverride && { inline_system_prompt_override: (options as any).inlineSystemPromptOverride })
     };
 
     // Handle reasoning parameters for gpt-5* models except gpt-5-chat

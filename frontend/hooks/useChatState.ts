@@ -35,8 +35,10 @@ export interface ChatState {
   reasoningEffort: string;
   verbosity: string;
   qualityLevel: QualityLevel;
-  // System prompt for the current session
+  // System prompt for the current session (legacy support)
   systemPrompt: string;
+  // Inline system prompt override (from prompt manager)
+  inlineSystemPromptOverride: string;
   // Per-tool enablement (list of tool names). Empty array means no explicit selection.
   enabledTools: string[];
 
@@ -75,6 +77,7 @@ export type ChatAction =
   | { type: 'SET_VERBOSITY'; payload: string }
   | { type: 'SET_QUALITY_LEVEL'; payload: QualityLevel }
   | { type: 'SET_SYSTEM_PROMPT'; payload: string }
+  | { type: 'SET_INLINE_SYSTEM_PROMPT_OVERRIDE'; payload: string }
   | { type: 'SET_ENABLED_TOOLS'; payload: string[] }
   | { type: 'SET_CONVERSATION_ID'; payload: string | null }
   | { type: 'START_STREAMING'; payload: { abort: AbortController; userMessage: ChatMessage; assistantMessage: ChatMessage } }
@@ -123,6 +126,7 @@ const initialState: ChatState = {
   verbosity: 'medium',
   qualityLevel: 'balanced',
   systemPrompt: '',
+  inlineSystemPromptOverride: '',
   enabledTools: [],
   conversations: [],
   nextCursor: null,
@@ -189,6 +193,9 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
     case 'SET_SYSTEM_PROMPT':
       return { ...state, systemPrompt: action.payload };
+
+    case 'SET_INLINE_SYSTEM_PROMPT_OVERRIDE':
+      return { ...state, inlineSystemPromptOverride: action.payload };
 
     case 'SET_ENABLED_TOOLS':
       return { ...state, enabledTools: action.payload };
@@ -606,33 +613,40 @@ export function useChatState() {
   // Helpers to remove duplicate sendChat setup and error handling
   const buildSendChatConfig = useCallback(
     (messages: ChatMessage[], signal: AbortSignal) => {
-      // Prepend the current session's system prompt if provided
-      const trimmedSystem = (state.systemPrompt || '').trim();
-      const outgoing = trimmedSystem
-        ? ([{ role: 'system', content: trimmedSystem } as any, ...messages])
+      // Use inline override if available, otherwise fall back to system prompt
+      const effectiveSystemPrompt = (state.inlineSystemPromptOverride || state.systemPrompt || '').trim();
+
+      const outgoing = effectiveSystemPrompt
+        ? ([{ role: 'system', content: effectiveSystemPrompt } as any, ...messages])
         : messages;
 
-      return ({
+      const config: any = {
         messages: outgoing.map(m => ({ role: m.role as Role, content: m.content })),
         model: state.model,
-        providerId: state.providerId,
         signal,
         conversationId: state.conversationId || undefined,
-        systemPrompt: trimmedSystem || undefined,
+        systemPrompt: effectiveSystemPrompt || undefined,
+        inlineSystemPromptOverride: state.inlineSystemPromptOverride || undefined,
         shouldStream: state.shouldStream,
         reasoningEffort: state.reasoningEffort,
         verbosity: state.verbosity,
         qualityLevel: state.qualityLevel,
-        ...((state.useTools && state.enabledTools.length > 0)
-          ? {
-              // Send a simplified list of tool names to the backend. Backend will map names -> specs.
-              tools: state.enabledTools,
-              tool_choice: 'auto',
-            }
-          : {}),
         onEvent: handleStreamEvent,
         onToken: handleStreamToken,
-      });
+      };
+
+      // Only add providerId if it's not null
+      if (state.providerId) {
+        config.providerId = state.providerId;
+      }
+
+      // Add tools if enabled
+      if (state.useTools && state.enabledTools.length > 0) {
+        config.tools = state.enabledTools;
+        config.tool_choice = 'auto';
+      }
+
+      return config;
     },
     [state, handleStreamEvent, handleStreamToken]
   );
@@ -753,6 +767,10 @@ export function useChatState() {
 
     setSystemPrompt: useCallback((prompt: string) => {
       dispatch({ type: 'SET_SYSTEM_PROMPT', payload: prompt });
+    }, []),
+
+    setInlineSystemPromptOverride: useCallback((prompt: string) => {
+      dispatch({ type: 'SET_INLINE_SYSTEM_PROMPT_OVERRIDE', payload: prompt });
     }, []),
 
     setEnabledTools: useCallback((list: string[]) => {

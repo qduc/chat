@@ -226,7 +226,13 @@ export function ChatV2() {
               initialMode={authMode}
             />
           </div>
-          <RightSidebar systemPrompt={state.systemPrompt ?? ''} onSystemPromptChange={actions.setSystemPrompt} collapsed={state.rightSidebarCollapsed} onToggleCollapse={actions.toggleRightSidebar} />
+          <RightSidebar
+            userId={state.user?.id}
+            conversationId={state.conversationId || undefined}
+            collapsed={state.rightSidebarCollapsed}
+            onToggleCollapse={actions.toggleRightSidebar}
+            onEffectivePromptChange={actions.setInlineSystemPromptOverride}
+          />
         </div>
       </div>
     </div>

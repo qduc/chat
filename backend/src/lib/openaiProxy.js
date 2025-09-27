@@ -13,13 +13,32 @@ import { logger } from '../logger.js';
 
 // --- Helpers: sanitize, validate, selection, and error shaping ---
 
-function sanitizeIncomingBody(bodyIn, helpers = {}) {
+async function sanitizeIncomingBody(bodyIn, helpers = {}) {
   const body = { ...bodyIn };
-  // Map optional system prompt param to a leading system message
+
+  // First try explicit system prompt params (for backward compatibility)
+  let effectiveSystemPrompt = (bodyIn.systemPrompt ?? bodyIn.system_prompt);
+
+  // If no explicit system prompt but we have conversation context, get effective prompt
+  if (!effectiveSystemPrompt && helpers.conversationId && helpers.userId) {
+    try {
+      const { getEffectivePromptText } = await import('./promptService.js');
+      const inlineOverride = bodyIn.inline_system_prompt_override || null;
+      effectiveSystemPrompt = await getEffectivePromptText(
+        helpers.conversationId,
+        helpers.userId,
+        inlineOverride
+      );
+    } catch (error) {
+      // Ignore errors getting system prompt - don't break the request
+      console.warn('[openaiProxy] Failed to get effective system prompt:', error.message);
+    }
+  }
+
+  // Inject system prompt as leading system message
   try {
-    const sys = (bodyIn.systemPrompt ?? bodyIn.system_prompt);
-    if (typeof sys === 'string' && sys.trim()) {
-      const systemMsg = { role: 'system', content: sys.trim() };
+    if (typeof effectiveSystemPrompt === 'string' && effectiveSystemPrompt.trim()) {
+      const systemMsg = { role: 'system', content: effectiveSystemPrompt.trim() };
       if (!Array.isArray(body.messages)) body.messages = [];
       if (body.messages.length > 0 && body.messages[0] && body.messages[0].role === 'system') {
         // Replace existing first system message to avoid duplicates
@@ -54,7 +73,7 @@ function sanitizeIncomingBody(bodyIn, helpers = {}) {
       const selected = toolSpecs.filter((spec) => bodyIn.tools.includes(spec.function?.name));
       body.tools = selected;
     }
-  } catch (e) {
+  } catch {
     // ignore expansion errors and let downstream validation handle unexpected shapes
   }
   return body;
@@ -137,14 +156,16 @@ async function buildRequestContext(req) {
     generateToolSpecs,
   }) || [];
 
-  const body = sanitizeIncomingBody(bodyIn, { toolSpecs });
+  const conversationId = bodyIn.conversation_id || req.header('x-conversation-id');
+  const userId = req.user?.id || null;
+
+  const body = await sanitizeIncomingBody(bodyIn, { toolSpecs, conversationId, userId });
 
   // Resolve default model from DB-backed provider settings when missing
   if (!body.model) {
     body.model = provider.getDefaultModel();
   }
 
-  const conversationId = bodyIn.conversation_id || req.header('x-conversation-id');
   const flags = getFlags({ body, provider });
 
   return {
@@ -153,6 +174,7 @@ async function buildRequestContext(req) {
     provider,
     providerId,
     conversationId,
+    userId,
     flags,
     toolSpecs
   };
@@ -279,7 +301,7 @@ async function executeRequestHandler(context, req, res) {
   // Persistence setup
   const persistence = new SimplifiedPersistence(config);
   const sessionId = req.sessionId;
-  const userId = req.user?.id || null; // Get user ID if authenticated
+  const userId = context.userId; // Use userId from context
 
   const initResult = await persistence.initialize({
     conversationId: context.conversationId,
@@ -302,7 +324,21 @@ async function executeRequestHandler(context, req, res) {
   const contextWithPersistence = { ...context, persistence };
 
   try {
-    return await handleRequest(contextWithPersistence, req, res);
+    const result = await handleRequest(contextWithPersistence, req, res);
+
+    // After successful response, update usage tracking for system prompts
+    if (userId && context.conversationId && persistence.persist) {
+      try {
+        const { updateUsageAfterSend } = await import('./promptService.js');
+        const inlineOverride = context.bodyIn.inline_system_prompt_override || null;
+        await updateUsageAfterSend(context.conversationId, userId, inlineOverride);
+      } catch (error) {
+        // Don't fail the request if usage tracking fails
+        console.warn('[openaiProxy] Failed to update prompt usage:', error.message);
+      }
+    }
+
+    return result;
   } finally {
     if (persistence) {
       persistence.cleanup();
