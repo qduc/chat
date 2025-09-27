@@ -32,23 +32,56 @@ EOF
 }
 
 test_backend() {
-    echo "Running backend tests..."
-    npm --prefix backend test
+    echo "Running backend tests inside docker container..."
+    # If the backend service is already running, exec into it; otherwise start a one-off run
+  backend_cid="$("${DC[@]}" ps -q backend)"
+    if [ -n "$backend_cid" ]; then
+      if [ -t 0 ] && [ -t 1 ]; then
+        "${DC[@]}" exec backend npm test
+      else
+        "${DC[@]}" exec -T backend npm test
+      fi
+    else
+      if [ -t 0 ] && [ -t 1 ]; then
+        "${DC[@]}" run --rm backend npm test
+      else
+        "${DC[@]}" run --rm -T backend npm test
+      fi
+    fi
 }
 
 test_frontend() {
-    echo "Running frontend tests..."
-    npm --prefix frontend test
+    echo "Running frontend tests inside docker container..."
+    # If the frontend service is already running, exec into it; otherwise start a one-off run
+  frontend_cid="$("${DC[@]}" ps -q frontend)"
+    if [ -n "$frontend_cid" ]; then
+      if [ -t 0 ] && [ -t 1 ]; then
+        "${DC[@]}" exec frontend npm test
+      else
+        "${DC[@]}" exec -T frontend npm test
+      fi
+    else
+      if [ -t 0 ] && [ -t 1 ]; then
+        "${DC[@]}" run --rm frontend npm test
+      else
+        "${DC[@]}" run --rm -T frontend npm test
+      fi
+    fi
 }
 
 test_all() {
-    echo "Running all tests..."
+    echo "Running all tests inside docker containers..."
+    # Temporarily disable errexit so we can inspect the exit code and decide
+    # whether to run frontend tests after backend tests.
+    set +e
     test_backend
-    if [ $? -eq 0 ]; then
+    rc=$?
+    set -e
+    if [ $rc -eq 0 ]; then
         test_frontend
     else
         echo "Backend tests failed, skipping frontend tests"
-        exit 1
+        return $rc
     fi
 }
 
