@@ -67,6 +67,14 @@ export function getConversationById({ id, sessionId, userId = null }) {
     } catch {
       result.metadata = {};
     }
+    const activeTools = Array.isArray(result.metadata?.active_tools)
+      ? result.metadata.active_tools
+      : [];
+    result.metadata = {
+      ...result.metadata,
+      active_tools: activeTools,
+    };
+    result.active_tools = activeTools;
   }
 
   return result;

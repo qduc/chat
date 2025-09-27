@@ -47,7 +47,7 @@ export const config = {
   port: Number(process.env.PORT) || 3001,
   rate: {
     windowSec: Number(process.env.RATE_LIMIT_WINDOW_SEC) || 60,
-    max: Number(process.env.RATE_LIMIT_MAX) || 50,
+    max: Number(process.env.RATE_LIMIT_MAX) || 500,
   },
   allowedOrigin: process.env.ALLOWED_ORIGIN || 'http://localhost:3000',
   persistence: {

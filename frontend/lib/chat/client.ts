@@ -150,6 +150,12 @@ export class ChatClient {
       title: json._conversation.title,
       model: json._conversation.model,
       created_at: json._conversation.created_at,
+      ...(typeof json._conversation.tools_enabled === 'boolean'
+        ? { tools_enabled: json._conversation.tools_enabled }
+        : {}),
+      ...(Array.isArray(json._conversation.active_tools)
+        ? { active_tools: json._conversation.active_tools }
+        : {}),
     } : undefined;
 
     // Extract content
@@ -246,6 +252,12 @@ export class ChatClient {
           title: data._conversation.title,
           model: data._conversation.model,
           created_at: data._conversation.created_at,
+          ...(typeof data._conversation.tools_enabled === 'boolean'
+            ? { tools_enabled: data._conversation.tools_enabled }
+            : {}),
+          ...(Array.isArray(data._conversation.active_tools)
+            ? { active_tools: data._conversation.active_tools }
+            : {}),
         }
       };
     }

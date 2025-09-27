@@ -871,6 +871,16 @@ export function useChatState() {
         if (data.tools_enabled !== undefined) {
           dispatch({ type: 'SET_USE_TOOLS', payload: data.tools_enabled });
         }
+        const activeTools = Array.isArray((data as any).active_tools)
+          ? (data as any).active_tools
+          : Array.isArray((data as any).metadata?.active_tools)
+            ? (data as any).metadata.active_tools
+            : undefined;
+        if (Array.isArray(activeTools)) {
+          dispatch({ type: 'SET_ENABLED_TOOLS', payload: activeTools });
+        } else if (data.tools_enabled === false) {
+          dispatch({ type: 'SET_ENABLED_TOOLS', payload: [] });
+        }
         if (data.quality_level) {
           dispatch({ type: 'SET_QUALITY_LEVEL', payload: data.quality_level as QualityLevel });
         }

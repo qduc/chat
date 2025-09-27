@@ -29,6 +29,7 @@ export interface ConversationMeta {
   created_at: string;
   streaming_enabled?: boolean;
   tools_enabled?: boolean;
+  active_tools?: string[];
   research_mode?: boolean;
   quality_level?: string | null;
   reasoning_effort?: string | null;
@@ -49,6 +50,7 @@ export interface ConversationWithMessages {
   created_at: string;
   streaming_enabled?: boolean;
   tools_enabled?: boolean;
+  active_tools?: string[];
   research_mode?: boolean;
   quality_level?: string | null;
   reasoning_effort?: string | null;

@@ -87,7 +87,11 @@ describe('PersistenceConfig', () => {
       assert.equal(result.toolsEnabled, true);
       assert.equal(result.systemPrompt, 'You are helpful');
       assert.equal(result.qualityLevel, 'high');
-      assert.deepEqual(result.metadata, { system_prompt: 'You are helpful' });
+      assert.deepEqual(result.metadata, {
+        system_prompt: 'You are helpful',
+        active_tools: ['test']
+      });
+      assert.deepEqual(result.activeTools, ['test']);
     });
 
     test('should handle explicit persistence flags', () => {
@@ -102,6 +106,7 @@ describe('PersistenceConfig', () => {
 
       assert.equal(result.streamingEnabled, false);
       assert.equal(result.toolsEnabled, true);
+      assert.deepEqual(result.metadata.active_tools, []);
     });
 
     test('should fallback to default model', () => {
@@ -109,6 +114,7 @@ describe('PersistenceConfig', () => {
       const result = config.extractRequestSettings(bodyIn);
 
       assert.equal(result.model, 'gpt-4');
+      assert.deepEqual(result.metadata.active_tools, []);
     });
 
     test('should handle system_prompt field', () => {
@@ -119,7 +125,10 @@ describe('PersistenceConfig', () => {
       const result = config.extractRequestSettings(bodyIn);
 
       assert.equal(result.systemPrompt, 'Alternative system prompt field');
-      assert.deepEqual(result.metadata, { system_prompt: 'Alternative system prompt field' });
+      assert.deepEqual(result.metadata, {
+        system_prompt: 'Alternative system prompt field',
+        active_tools: []
+      });
     });
   });
 
@@ -191,11 +200,13 @@ describe('PersistenceConfig', () => {
         providerId: 'same-provider',
       };
 
-      const result = config.checkMetadataUpdates(existingConvo, 'New prompt', 'same-provider');
+      const result = config.checkMetadataUpdates(existingConvo, 'New prompt', 'same-provider', ['test']);
 
       assert.equal(result.needsSystemUpdate, true);
       assert.equal(result.needsProviderUpdate, false);
       assert.equal(result.systemPrompt, 'New prompt');
+      assert.equal(result.needsActiveToolsUpdate, true);
+      assert.deepEqual(result.activeTools, ['test']);
     });
 
     test('should detect provider update needed', () => {
@@ -204,32 +215,49 @@ describe('PersistenceConfig', () => {
         providerId: 'old-provider',
       };
 
-      const result = config.checkMetadataUpdates(existingConvo, 'Same prompt', 'new-provider');
+      const result = config.checkMetadataUpdates(existingConvo, 'Same prompt', 'new-provider', []);
 
       assert.equal(result.needsSystemUpdate, false);
       assert.equal(result.needsProviderUpdate, true);
       assert.equal(result.providerId, 'new-provider');
+      assert.equal(result.needsActiveToolsUpdate, false);
     });
 
     test('should detect no updates needed', () => {
       const existingConvo = {
-        metadata: { system_prompt: 'Same prompt' },
+        metadata: { system_prompt: 'Same prompt', active_tools: ['a'] },
         providerId: 'same-provider',
       };
 
-      const result = config.checkMetadataUpdates(existingConvo, 'Same prompt', 'same-provider');
+      const result = config.checkMetadataUpdates(existingConvo, 'Same prompt', 'same-provider', ['a']);
 
       assert.equal(result.needsSystemUpdate, false);
       assert.equal(result.needsProviderUpdate, false);
+      assert.equal(result.needsActiveToolsUpdate, false);
     });
 
     test('should handle missing metadata', () => {
       const existingConvo = { providerId: 'same-provider' };
 
-      const result = config.checkMetadataUpdates(existingConvo, 'New prompt', 'same-provider');
+      const result = config.checkMetadataUpdates(existingConvo, 'New prompt', 'same-provider', []);
 
       assert.equal(result.needsSystemUpdate, true);
       assert.equal(result.needsProviderUpdate, false);
+      assert.equal(result.needsActiveToolsUpdate, false);
+    });
+
+    test('should detect active tools update when list changes', () => {
+      const existingConvo = {
+        metadata: { system_prompt: 'Same prompt', active_tools: ['a', 'b'] },
+        providerId: 'same-provider',
+      };
+
+      const result = config.checkMetadataUpdates(existingConvo, 'Same prompt', 'same-provider', ['a']);
+
+      assert.equal(result.needsSystemUpdate, false);
+      assert.equal(result.needsProviderUpdate, false);
+      assert.equal(result.needsActiveToolsUpdate, true);
+      assert.deepEqual(result.activeTools, ['a']);
     });
   });
 });

@@ -180,10 +180,12 @@ export class SimplifiedPersistence {
     if (!this.conversationMeta) return;
 
     const incomingSystemPrompt = ConversationTitleService.extractSystemPrompt(bodyIn);
+    const { activeTools: incomingActiveTools = [] } = this.persistenceConfig.extractRequestSettings(bodyIn);
     const updates = this.persistenceConfig.checkMetadataUpdates(
       this.conversationMeta,
       incomingSystemPrompt,
-      this.providerId
+      this.providerId,
+      incomingActiveTools
     );
 
     try {
@@ -200,6 +202,17 @@ export class SimplifiedPersistence {
       if (updates.needsProviderUpdate) {
         this.conversationManager.updateProviderId(this.conversationId, sessionId, userId, updates.providerId);
         this.conversationMeta.providerId = updates.providerId;
+      }
+
+      if (updates.needsActiveToolsUpdate) {
+        this.conversationManager.updateMetadata(this.conversationId, sessionId, userId, {
+          active_tools: updates.activeTools
+        });
+        this.conversationMeta.metadata = {
+          ...(this.conversationMeta.metadata || {}),
+          active_tools: updates.activeTools,
+        };
+        this.conversationMeta.active_tools = updates.activeTools;
       }
     } catch (error) {
       // Non-fatal: log and continue

@@ -54,18 +54,26 @@ export class PersistenceConfig {
    * @returns {Object} Parsed request settings
    */
   extractRequestSettings(bodyIn) {
+    const activeTools = this._extractActiveTools(bodyIn);
+
     const persistedStreamingEnabled = bodyIn.streamingEnabled !== undefined
       ? !!bodyIn.streamingEnabled
       : !!bodyIn.stream; // Map OpenAI 'stream' field
 
     const persistedToolsEnabled = bodyIn.toolsEnabled !== undefined
       ? !!bodyIn.toolsEnabled
-      : (Array.isArray(bodyIn.tools) && bodyIn.tools.length > 0); // Map tools array presence
+      : activeTools.length > 0; // Map tools array presence
 
     // Extract system prompt
     const systemPrompt = typeof bodyIn?.systemPrompt === 'string'
       ? bodyIn.systemPrompt.trim()
       : (typeof bodyIn?.system_prompt === 'string' ? bodyIn.system_prompt.trim() : '');
+
+    const metadata = {};
+    if (systemPrompt) {
+      metadata.system_prompt = systemPrompt;
+    }
+    metadata.active_tools = persistedToolsEnabled ? activeTools : [];
 
     return {
       model: bodyIn.model || this.getDefaultModel(),
@@ -75,7 +83,8 @@ export class PersistenceConfig {
       reasoningEffort: bodyIn.reasoningEffort || null,
       verbosity: bodyIn.verbosity || null,
       systemPrompt,
-      metadata: systemPrompt ? { system_prompt: systemPrompt } : {},
+      metadata,
+      activeTools: metadata.active_tools,
     };
   }
 
@@ -96,6 +105,7 @@ export class PersistenceConfig {
         if (prompt?.body) {
           settings.systemPrompt = prompt.body.trim();
           settings.metadata = {
+            ...settings.metadata,
             system_prompt: settings.systemPrompt,
             active_system_prompt_id: bodyIn.active_system_prompt_id
           };
@@ -106,6 +116,7 @@ export class PersistenceConfig {
     } else if (settings.systemPrompt && bodyIn.active_system_prompt_id) {
       // If there's both an explicit system prompt and active_system_prompt_id, save both
       settings.metadata = {
+        ...settings.metadata,
         system_prompt: settings.systemPrompt,
         active_system_prompt_id: bodyIn.active_system_prompt_id
       };
@@ -141,9 +152,17 @@ export class PersistenceConfig {
    * @param {string} incomingProviderId - New provider ID
    * @returns {Object} Update flags and values
    */
-  checkMetadataUpdates(existingConvo, incomingSystemPrompt, incomingProviderId) {
+  checkMetadataUpdates(existingConvo, incomingSystemPrompt, incomingProviderId, incomingActiveTools = []) {
     const existingSystemPrompt = existingConvo?.metadata?.system_prompt || null;
     const existingProviderId = existingConvo?.providerId;
+    const existingActiveTools = Array.isArray(existingConvo?.metadata?.active_tools)
+      ? existingConvo.metadata.active_tools
+      : [];
+    const normalizedIncomingTools = Array.isArray(incomingActiveTools)
+      ? incomingActiveTools
+      : [];
+
+    const needsActiveToolsUpdate = !this._areToolListsEqual(existingActiveTools, normalizedIncomingTools);
 
     const needsSystemUpdate = incomingSystemPrompt && incomingSystemPrompt !== existingSystemPrompt;
     const needsProviderUpdate = incomingProviderId && incomingProviderId !== existingProviderId;
@@ -153,6 +172,8 @@ export class PersistenceConfig {
       needsProviderUpdate,
       systemPrompt: incomingSystemPrompt,
       providerId: incomingProviderId,
+      needsActiveToolsUpdate,
+      activeTools: normalizedIncomingTools,
     };
   }
 
@@ -176,5 +197,40 @@ export class PersistenceConfig {
     if (maxMessages < 1 || maxMessages > 50000) {
       console.warn('[PersistenceConfig] maxMessagesPerConversation should be between 1 and 50000, got:', maxMessages);
     }
+  }
+
+  _extractActiveTools(bodyIn) {
+    if (!bodyIn || !Array.isArray(bodyIn.tools)) return [];
+
+    const names = bodyIn.tools
+      .map((tool) => {
+        if (typeof tool === 'string') return tool.trim();
+        if (tool && typeof tool === 'object') {
+          const fnName = tool.function?.name;
+          if (typeof fnName === 'string') return fnName.trim();
+        }
+        return null;
+      })
+      .filter((name) => typeof name === 'string' && name.length > 0);
+
+    // Deduplicate while preserving order
+    const seen = new Set();
+    const deduped = [];
+    for (const name of names) {
+      if (seen.has(name)) continue;
+      seen.add(name);
+      deduped.push(name);
+    }
+    return deduped;
+  }
+
+  _areToolListsEqual(a, b) {
+    if (a === b) return true;
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    if (a.length !== b.length) return false;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) return false;
+    }
+    return true;
   }
 }
