@@ -76,19 +76,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setLoading(true);
       const response = await authApi.login(email, password);
       setUser(response.user);
-
-      // Attempt to migrate anonymous conversations to the authenticated user
-      try {
-        const { ConversationManager } = await import('../lib/chat/conversations');
-        const conversationManager = new ConversationManager();
-        const migrationResult = await conversationManager.migrateFromSession();
-        if (migrationResult.migrated > 0) {
-          console.log(`Migrated ${migrationResult.migrated} conversations to authenticated account`);
-        }
-      } catch (migrationError) {
-        // Migration failure shouldn't break login
-        console.warn('Failed to migrate conversations:', migrationError);
-      }
     } catch (error) {
       setUser(null);
       throw error;
@@ -102,19 +89,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setLoading(true);
       const response = await authApi.register(email, password, displayName);
       setUser(response.user);
-
-      // Attempt to migrate anonymous conversations to the newly registered user
-      try {
-        const { ConversationManager } = await import('../lib/chat/conversations');
-        const conversationManager = new ConversationManager();
-        const migrationResult = await conversationManager.migrateFromSession();
-        if (migrationResult.migrated > 0) {
-          console.log(`Migrated ${migrationResult.migrated} conversations to new account`);
-        }
-      } catch (migrationError) {
-        // Migration failure shouldn't break registration
-        console.warn('Failed to migrate conversations:', migrationError);
-      }
     } catch (error) {
       setUser(null);
       throw error;

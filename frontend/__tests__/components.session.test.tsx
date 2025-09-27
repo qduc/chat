@@ -1,23 +1,60 @@
-// Test stubs for SessionBootstrap component behaviors
-/* eslint-disable */
-// Declare Jest-like globals for typechecking
-declare const describe: any; declare const test: any; declare const expect: any;
+/**
+ * @jest-environment jsdom
+ */
 
-import { render, waitFor } from '@testing-library/react';
-import { SessionBootstrap } from '../components/Session';
+import React from 'react';
+import { render, screen } from '@testing-library/react';
+import '@testing-library/jest-dom';
+import { ProtectedRoute } from '../components/auth/ProtectedRoute';
 
-describe('<SessionBootstrap />', () => {
-  test('sets cf_session_id cookie when missing', async () => {
-    document.cookie = '';
-    render(<SessionBootstrap />);
-    await waitFor(() => expect(document.cookie).toMatch(/cf_session_id=/));
+const useAuthMock = jest.fn();
+
+jest.mock('../contexts/AuthContext', () => ({
+  useAuth: () => useAuthMock(),
+}));
+
+describe('ProtectedRoute (requireAuth)', () => {
+  beforeEach(() => {
+    useAuthMock.mockReset();
   });
 
-  test('does not overwrite existing cf_session_id cookie', async () => {
-    document.cookie = 'cf_session_id=existing';
-    render(<SessionBootstrap />);
-    await waitFor(() => expect(document.cookie).toBe('cf_session_id=existing'));
+  it('renders a loading indicator while auth state resolves', () => {
+    useAuthMock.mockReturnValue({ user: null, loading: true });
+
+    const { container } = render(
+      <ProtectedRoute requireAuth fallback={<div data-testid="fallback" />}>
+        <div data-testid="protected" />
+      </ProtectedRoute>
+    );
+
+    expect(container.querySelector('.animate-spin')).toBeTruthy();
+    expect(screen.queryByTestId('protected')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('fallback')).not.toBeInTheDocument();
+  });
+
+  it('shows fallback when authentication is required and user is missing', () => {
+    useAuthMock.mockReturnValue({ user: null, loading: false });
+
+    render(
+      <ProtectedRoute requireAuth fallback={<div data-testid="fallback">Login required</div>}>
+        <div data-testid="protected" />
+      </ProtectedRoute>
+    );
+
+    expect(screen.getByTestId('fallback')).toHaveTextContent('Login required');
+    expect(screen.queryByTestId('protected')).not.toBeInTheDocument();
+  });
+
+  it('renders children when user is authenticated', () => {
+    useAuthMock.mockReturnValue({ user: { id: '1' }, loading: false });
+
+    render(
+      <ProtectedRoute requireAuth fallback={<div data-testid="fallback" />}>
+        <div data-testid="protected">Secret</div>
+      </ProtectedRoute>
+    );
+
+    expect(screen.getByTestId('protected')).toHaveTextContent('Secret');
+    expect(screen.queryByTestId('fallback')).not.toBeInTheDocument();
   });
 });
-
-export {};
