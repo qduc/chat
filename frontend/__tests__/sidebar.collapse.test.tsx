@@ -2,6 +2,8 @@ jest.mock('../contexts/AuthContext', () => {
   const authValue = {
     user: null,
     loading: false,
+    ready: true,
+    waitForAuth: jest.fn(() => Promise.resolve()),
     login: jest.fn(),
     register: jest.fn(),
     logout: jest.fn(),

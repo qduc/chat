@@ -6,6 +6,7 @@ import {
   Role
 } from './types';
 import { SSEParser, createRequestInit, APIError } from './utils';
+import { waitForAuthReady } from '../auth/ready';
 
 const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
 
@@ -39,6 +40,7 @@ export class ChatClient {
   }
 
   private async sendMessageInternal(options: ChatOptions | ChatOptionsExtended): Promise<ChatResponse> {
+    await waitForAuthReady();
     const {
       apiBase = this.apiBase,
       messages,

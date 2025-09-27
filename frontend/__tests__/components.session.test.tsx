@@ -19,7 +19,16 @@ describe('ProtectedRoute (requireAuth)', () => {
   });
 
   it('renders a loading indicator while auth state resolves', () => {
-    useAuthMock.mockReturnValue({ user: null, loading: true });
+    useAuthMock.mockReturnValue({
+      user: null,
+      loading: true,
+      ready: false,
+      waitForAuth: jest.fn(() => Promise.resolve()),
+      login: jest.fn(),
+      register: jest.fn(),
+      logout: jest.fn(),
+      refreshUser: jest.fn(),
+    });
 
     const { container } = render(
       <ProtectedRoute requireAuth fallback={<div data-testid="fallback" />}>
@@ -33,7 +42,16 @@ describe('ProtectedRoute (requireAuth)', () => {
   });
 
   it('shows fallback when authentication is required and user is missing', () => {
-    useAuthMock.mockReturnValue({ user: null, loading: false });
+    useAuthMock.mockReturnValue({
+      user: null,
+      loading: false,
+      ready: true,
+      waitForAuth: jest.fn(() => Promise.resolve()),
+      login: jest.fn(),
+      register: jest.fn(),
+      logout: jest.fn(),
+      refreshUser: jest.fn(),
+    });
 
     render(
       <ProtectedRoute requireAuth fallback={<div data-testid="fallback">Login required</div>}>
@@ -46,7 +64,16 @@ describe('ProtectedRoute (requireAuth)', () => {
   });
 
   it('renders children when user is authenticated', () => {
-    useAuthMock.mockReturnValue({ user: { id: '1' }, loading: false });
+    useAuthMock.mockReturnValue({
+      user: { id: '1' },
+      loading: false,
+      ready: true,
+      waitForAuth: jest.fn(() => Promise.resolve()),
+      login: jest.fn(),
+      register: jest.fn(),
+      logout: jest.fn(),
+      refreshUser: jest.fn(),
+    });
 
     render(
       <ProtectedRoute requireAuth fallback={<div data-testid="fallback" />}>

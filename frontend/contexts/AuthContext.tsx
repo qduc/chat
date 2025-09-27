@@ -4,10 +4,13 @@ import React, { createContext, useContext, useEffect, useState, useCallback } fr
 import { User, authApi } from '../lib/auth/api';
 import { getToken, getUserFromToken, clearTokens } from '../lib/auth/tokens';
 import { verifySession } from '../lib/auth/verification';
+import { markAuthReady, resetAuthReady, waitForAuthReady } from '../lib/auth/ready';
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  ready: boolean;
+  waitForAuth: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, displayName?: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -31,11 +34,8 @@ interface AuthProviderProps {
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-
-  // Initialize auth state
-  useEffect(() => {
-    initializeAuth();
-  }, []);
+  const [ready, setReady] = useState(false);
+  const waitForAuth = useCallback(() => waitForAuthReady(), []);
 
   const initializeAuth = useCallback(async () => {
     try {
@@ -68,8 +68,17 @@ export function AuthProvider({ children }: AuthProviderProps) {
       setUser(null);
     } finally {
       setLoading(false);
+      setReady(true);
+      markAuthReady();
     }
   }, []);
+
+  // Initialize auth state
+  useEffect(() => {
+    setReady(false);
+    resetAuthReady();
+    void initializeAuth();
+  }, [initializeAuth]);
 
   const login = useCallback(async (email: string, password: string) => {
     try {
@@ -134,6 +143,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const value: AuthContextType = {
     user,
     loading,
+    ready,
+    waitForAuth,
     login,
     register,
     logout,

@@ -1,3 +1,5 @@
+import { waitForAuthReady } from '../auth/ready';
+
 export class APIError extends Error {
   constructor(
     public status: number,
@@ -110,6 +112,7 @@ export async function getDefaultProviderId(apiBase: string = process.env.NEXT_PU
   }
 
   try {
+    await waitForAuthReady();
     const headers: Record<string, string> = {};
 
     // Add authentication header if token exists

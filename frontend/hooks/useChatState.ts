@@ -553,20 +553,23 @@ const availableTools: Record<string, ToolSpec> = {
 };
 
 export function useChatState() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, ready: authReady } = useAuth();
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const assistantMsgRef = useRef<ChatMessage | null>(null);
   const inFlightRef = useRef<boolean>(false);
 
   // Sync authentication state from AuthContext
   useEffect(() => {
-    if (!authLoading) {
+    if (!authLoading && authReady) {
       dispatch({ type: 'SET_USER', payload: user });
     }
-  }, [user, authLoading]);
+  }, [user, authLoading, authReady]);
 
   // Load models/providers centrally (moved from ChatHeader local state)
   const loadProvidersAndModels = useCallback(async () => {
+    if (authLoading || !authReady || !user) {
+      return;
+    }
     const apiBase = (process.env.NEXT_PUBLIC_API_BASE as string) ?? 'http://localhost:3001';
     try {
       const res = await fetch(`${apiBase}/v1/providers`);
@@ -613,12 +616,15 @@ export function useChatState() {
     } catch (e) {
       // ignore
     }
-  }, [state.model]);
+  }, [authLoading, authReady, state.model, user]);
 
   // Call loader on mount
   useEffect(() => {
+    if (authLoading || !authReady) {
+      return;
+    }
     void loadProvidersAndModels();
-  }, [loadProvidersAndModels]);
+  }, [authLoading, authReady, loadProvidersAndModels]);
 
   // Listen for external provider change events to refresh models
   useEffect(() => {
@@ -635,6 +641,19 @@ export function useChatState() {
 
   // Initialize conversations on mount
   const refreshConversations = useCallback(async () => {
+    if (authLoading || !authReady) {
+      return;
+    }
+
+    if (!user) {
+      dispatch({
+        type: 'LOAD_CONVERSATIONS_SUCCESS',
+        payload: { conversations: [], nextCursor: null, replace: true }
+      });
+      dispatch({ type: 'SET_HISTORY_ENABLED', payload: false });
+      return;
+    }
+
     try {
       dispatch({ type: 'LOAD_CONVERSATIONS_START' });
       const list = await listConversationsApi(undefined, { limit: 20 });
@@ -649,15 +668,18 @@ export function useChatState() {
       }
       dispatch({ type: 'LOAD_CONVERSATIONS_ERROR' });
     }
-  }, []);
+  }, [authLoading, authReady, user]);
 
   // Initialize conversations on first render
   React.useEffect(() => {
+    if (authLoading || !authReady) {
+      return;
+    }
     const timer = setTimeout(() => {
-      refreshConversations();
+      void refreshConversations();
     }, 0);
     return () => clearTimeout(timer);
-  }, [refreshConversations]);
+  }, [authLoading, authReady, refreshConversations]);
 
   // Load sidebar collapsed state from localStorage on mount
   React.useEffect(() => {

@@ -2,6 +2,8 @@ jest.mock('../contexts/AuthContext', () => {
   const authValue = {
     user: { id: 'test-user', email: 'test@example.com' },
     loading: false,
+    ready: true,
+    waitForAuth: jest.fn(() => Promise.resolve()),
     login: jest.fn(),
     register: jest.fn(),
     logout: jest.fn(),
@@ -240,4 +242,3 @@ describe('Frontend Iterative Orchestration', () => {
     });
   });
 });
-
