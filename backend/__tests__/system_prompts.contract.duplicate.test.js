@@ -1,17 +1,11 @@
 // Contract test for POST /v1/system-prompts/:id/duplicate - Duplicate prompt
 import assert from 'node:assert/strict';
-import express from 'express';
 import request from 'supertest';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
+import { makeAuthedApp, ensureTestUser, seedCustomPrompt } from './helpers/systemPromptsTestUtils.js';
 
-// Helper to spin up a minimal app
-const makeApp = (router) => {
-  const app = express();
-  app.use(express.json());
-  app.use(router);
-  return app;
-};
+const makeApp = makeAuthedApp;
 
 beforeAll(() => {
   // Ensure DB enabled for system prompts storage
@@ -19,10 +13,16 @@ beforeAll(() => {
   config.persistence.dbUrl = 'file::memory:';
   resetDbCache();
   getDb();
+  ensureTestUser();
 });
 
 afterAll(() => {
   resetDbCache();
+});
+
+beforeEach(() => {
+  const db = getDb();
+  db.prepare('DELETE FROM system_prompts').run();
 });
 
 describe('POST /v1/system-prompts/:id/duplicate - Contract Test', () => {
@@ -31,6 +31,8 @@ describe('POST /v1/system-prompts/:id/duplicate - Contract Test', () => {
       const { systemPromptsRouter } = await import('../src/routes/systemPrompts.js');
       const app = makeApp(systemPromptsRouter);
       const agent = request(app);
+
+      seedCustomPrompt({ id: 'source-custom-id', name: 'Source Prompt', body: 'Source body' });
 
       const res = await agent
         .post('/v1/system-prompts/source-custom-id/duplicate');
@@ -118,6 +120,9 @@ describe('POST /v1/system-prompts/:id/duplicate - Contract Test', () => {
       const app = makeApp(systemPromptsRouter);
       const agent = request(app);
 
+      seedCustomPrompt({ id: 'prompt-with-common-name', name: 'Common Name', body: 'Duplicate me' });
+      seedCustomPrompt({ id: 'existing-common', name: 'Common Name', body: 'Existing custom' });
+
       const res = await agent
         .post('/v1/system-prompts/prompt-with-common-name/duplicate');
 
@@ -143,6 +148,8 @@ describe('POST /v1/system-prompts/:id/duplicate - Contract Test', () => {
       const { systemPromptsRouter } = await import('../src/routes/systemPrompts.js');
       const app = makeApp(systemPromptsRouter);
       const agent = request(app);
+
+      seedCustomPrompt({ id: 'test-id', name: 'Content Type Prompt', body: 'Check headers' });
 
       const res = await agent
         .post('/v1/system-prompts/test-id/duplicate');

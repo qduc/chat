@@ -41,6 +41,10 @@ A full-stack AI chat application with advanced tool orchestration and streaming 
 - ESLint/Prettier code quality tools
 - Docker development environment with hot reload
 
+### 🗂️ **Prompt Management**
+- **Backend**: `/v1/system-prompts` REST API merges built-in markdown prompts with per-user custom presets, enforces read-only built-ins, and injects the effective system prompt into chat completions without logging prompt bodies.
+- **Frontend**: Right sidebar prompt manager lists built-ins and "My Prompts", supports inline overrides with local persistence, duplicate/save flows, and conversation-aware selection with unsaved-change safeguards.
+
 ## Quick Links
 - [Overview](docs/OVERVIEW.md)
 - [Progress log](docs/PROGRESS.md)

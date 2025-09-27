@@ -1,17 +1,11 @@
 // Integration test: list built-ins + empty custom state
 import assert from 'node:assert/strict';
-import express from 'express';
 import request from 'supertest';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
+import { makeAuthedApp, ensureTestUser, TEST_USER_ID } from './helpers/systemPromptsTestUtils.js';
 
-// Helper to spin up a minimal app
-const makeApp = (router) => {
-  const app = express();
-  app.use(express.json());
-  app.use(router);
-  return app;
-};
+const makeApp = makeAuthedApp;
 
 beforeAll(() => {
   // Ensure DB enabled for system prompts storage
@@ -19,10 +13,16 @@ beforeAll(() => {
   config.persistence.dbUrl = 'file::memory:';
   resetDbCache();
   getDb();
+  ensureTestUser();
 });
 
 afterAll(() => {
   resetDbCache();
+});
+
+beforeEach(() => {
+  const db = getDb();
+  db.prepare('DELETE FROM system_prompts').run();
 });
 
 describe('Integration: List built-ins with empty custom prompts', () => {
@@ -34,7 +34,7 @@ describe('Integration: List built-ins with empty custom prompts', () => {
 
       // Simulate fresh state - no custom prompts yet
       const db = getDb();
-      db.exec('DELETE FROM system_prompts WHERE user_id = "test-user-1"');
+  db.prepare('DELETE FROM system_prompts WHERE user_id = @userId').run({ userId: TEST_USER_ID });
 
       const res = await agent.get('/v1/system-prompts');
       assert.equal(res.status, 200);

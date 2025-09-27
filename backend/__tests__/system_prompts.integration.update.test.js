@@ -1,26 +1,27 @@
 // Integration test: update custom prompt (timestamps, body)
 import assert from 'node:assert/strict';
-import express from 'express';
 import request from 'supertest';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
+import { makeAuthedApp, ensureTestUser } from './helpers/systemPromptsTestUtils.js';
 
-const makeApp = (router) => {
-  const app = express();
-  app.use(express.json());
-  app.use(router);
-  return app;
-};
+const makeApp = makeAuthedApp;
 
 beforeAll(() => {
   config.persistence.enabled = true;
   config.persistence.dbUrl = 'file::memory:';
   resetDbCache();
   getDb();
+  ensureTestUser();
 });
 
 afterAll(() => {
   resetDbCache();
+});
+
+beforeEach(() => {
+  const db = getDb();
+  db.prepare('DELETE FROM system_prompts').run();
 });
 
 describe('Integration: Update custom prompt', () => {

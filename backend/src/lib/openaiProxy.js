@@ -20,15 +20,14 @@ async function sanitizeIncomingBody(bodyIn, helpers = {}) {
   let effectiveSystemPrompt = (bodyIn.systemPrompt ?? bodyIn.system_prompt);
 
   // If no explicit system prompt but we have conversation context, get effective prompt
-  if (!effectiveSystemPrompt && helpers.conversationId && helpers.userId) {
+  if (!effectiveSystemPrompt && helpers.conversationId && (helpers.userId || helpers.sessionId)) {
     try {
       const { getEffectivePromptText } = await import('./promptService.js');
       const inlineOverride = bodyIn.inline_system_prompt_override || null;
-      effectiveSystemPrompt = await getEffectivePromptText(
-        helpers.conversationId,
-        helpers.userId,
-        inlineOverride
-      );
+      effectiveSystemPrompt = await getEffectivePromptText(helpers.conversationId, {
+        userId: helpers.userId || null,
+        sessionId: helpers.sessionId || null
+      }, inlineOverride);
     } catch (error) {
       // Ignore errors getting system prompt - don't break the request
       console.warn('[openaiProxy] Failed to get effective system prompt:', error.message);
@@ -158,8 +157,14 @@ async function buildRequestContext(req) {
 
   const conversationId = bodyIn.conversation_id || req.header('x-conversation-id');
   const userId = req.user?.id || null;
+  const sessionId = req.sessionId || null;
 
-  const body = await sanitizeIncomingBody(bodyIn, { toolSpecs, conversationId, userId });
+  const body = await sanitizeIncomingBody(bodyIn, {
+    toolSpecs,
+    conversationId,
+    userId,
+    sessionId
+  });
 
   // Resolve default model from DB-backed provider settings when missing
   if (!body.model) {
@@ -176,7 +181,8 @@ async function buildRequestContext(req) {
     conversationId,
     userId,
     flags,
-    toolSpecs
+    toolSpecs,
+    sessionId
   };
 }
 
@@ -331,7 +337,11 @@ async function executeRequestHandler(context, req, res) {
       try {
         const { updateUsageAfterSend } = await import('./promptService.js');
         const inlineOverride = context.bodyIn.inline_system_prompt_override || null;
-        await updateUsageAfterSend(context.conversationId, userId, inlineOverride);
+        await updateUsageAfterSend(
+          context.conversationId,
+          { userId, sessionId: context.sessionId || null },
+          inlineOverride
+        );
       } catch (error) {
         // Don't fail the request if usage tracking fails
         console.warn('[openaiProxy] Failed to update prompt usage:', error.message);

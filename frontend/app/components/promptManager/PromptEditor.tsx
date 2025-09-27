@@ -27,6 +27,8 @@ export default function PromptEditor({
   const isBuiltIn = prompt && 'read_only' in prompt;
   const hasUnsavedChanges = Boolean(inlineContent);
   const displayContent = inlineContent || prompt?.body || '';
+  const headingId = prompt ? `prompt-${prompt.id}-heading` : 'prompt-editor-heading';
+  const inlineNoticeId = `${headingId}-unsaved`;
 
   // Reset form when prompt changes
   useEffect(() => {
@@ -87,9 +89,10 @@ export default function PromptEditor({
               onChange={(e) => setEditName(e.target.value)}
               className="w-full text-lg font-medium bg-transparent border border-gray-300 dark:border-gray-600 rounded px-2 py-1 focus:outline-none focus:border-blue-500"
               placeholder="Prompt name"
+              aria-label="Prompt name"
             />
           ) : (
-            <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 truncate">
+            <h3 id={headingId} className="text-lg font-medium text-gray-900 dark:text-gray-100 truncate">
               {prompt.name}
               {hasUnsavedChanges && <span className="text-orange-500 ml-2">*</span>}
             </h3>
@@ -108,6 +111,7 @@ export default function PromptEditor({
               {!isEditing ? (
                 <button
                   onClick={onToggleEdit}
+                  type="button"
                   className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   Edit
@@ -116,6 +120,7 @@ export default function PromptEditor({
                 <>
                   <button
                     onClick={handleCancel}
+                    type="button"
                     className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-500"
                     disabled={saving}
                   >
@@ -123,6 +128,7 @@ export default function PromptEditor({
                   </button>
                   <button
                     onClick={handleSave}
+                    type="button"
                     className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
                     disabled={saving || (!editName.trim() || !editBody.trim())}
                   >
@@ -143,6 +149,7 @@ export default function PromptEditor({
             onChange={(e) => setEditBody(e.target.value)}
             className="flex-1 p-4 border-0 resize-none focus:outline-none bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
             placeholder="Enter your prompt content..."
+            aria-label="Prompt content"
           />
         ) : (
           <>
@@ -152,10 +159,17 @@ export default function PromptEditor({
               className="flex-1 p-4 border-0 resize-none focus:outline-none bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
               placeholder={isBuiltIn ? "This is a built-in prompt. Your edits will be temporary and used only for the current session." : "Edit your prompt content..."}
               readOnly={false}
+              aria-labelledby={headingId}
+              aria-describedby={hasUnsavedChanges ? inlineNoticeId : undefined}
+              aria-label="Inline prompt content"
             />
 
             {hasUnsavedChanges && (
-              <div className="p-3 bg-orange-50 dark:bg-orange-900/20 border-t border-orange-200 dark:border-orange-700">
+              <div
+                className="p-3 bg-orange-50 dark:bg-orange-900/20 border-t border-orange-200 dark:border-orange-700"
+                role="alert"
+                id={inlineNoticeId}
+              >
                 <div className="flex items-center justify-between">
                   <span className="text-sm text-orange-700 dark:text-orange-300">
                     You have unsaved changes that will be used for new conversations.
@@ -163,6 +177,7 @@ export default function PromptEditor({
                   <div className="flex space-x-2">
                     <button
                       onClick={() => onInlineChange('')}
+                      type="button"
                       className="px-2 py-1 text-xs bg-gray-500 text-white rounded hover:bg-gray-600"
                     >
                       Discard
@@ -170,6 +185,7 @@ export default function PromptEditor({
                     {!isBuiltIn && (
                       <button
                         onClick={() => onSave({ body: inlineContent })}
+                        type="button"
                         className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
                       >
                         Save Permanently

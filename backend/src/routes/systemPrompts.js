@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { ZodError } from 'zod';
 import * as promptService from '../lib/promptService.js';
+import { PromptServiceError } from '../lib/promptService.js';
 import {
   validateCreatePrompt,
   validateUpdatePrompt,
@@ -8,6 +9,7 @@ import {
   validateClearSelection,
   validatePromptId
 } from '../lib/validation/systemPromptsSchemas.js';
+import { logger } from '../logger.js';
 
 export const systemPromptsRouter = Router();
 
@@ -25,7 +27,11 @@ systemPromptsRouter.get('/v1/system-prompts', async (req, res) => {
 
     // Include error flag for frontend graceful fallback, but also log it
     if (result.error) {
-      console.warn('[systemPrompts] Warning:', result.error);
+      // SECURITY: Log metadata only; never include prompt bodies or request payloads.
+      logger.warn({
+        msg: 'system_prompts:list_partial',
+        warning: result.error
+      });
     }
 
     res.json({
@@ -34,8 +40,10 @@ systemPromptsRouter.get('/v1/system-prompts', async (req, res) => {
       error: result.error || null
     });
   } catch (error) {
-    console.error('[systemPrompts] Error listing prompts:', error);
-    res.status(500).json({ error: 'internal_server_error', message: 'Failed to list prompts' });
+    return handlePromptError(res, error, {
+      context: 'system_prompts:list_error',
+      defaultMessage: 'Failed to list prompts'
+    });
   }
 });
 
@@ -55,16 +63,11 @@ systemPromptsRouter.post('/v1/system-prompts', async (req, res) => {
 
     res.status(201).json(newPrompt);
   } catch (error) {
-    if (error instanceof ZodError) {
-      return res.status(400).json({
-        error: 'validation_error',
-        message: 'Invalid request data',
-        details: error.errors
-      });
-    }
-
-    console.error('[systemPrompts] Error creating prompt:', error);
-    res.status(500).json({ error: 'internal_server_error', message: 'Failed to create prompt' });
+    return handlePromptError(res, error, {
+      context: 'system_prompts:create_error',
+      defaultMessage: 'Failed to create prompt',
+      validationMessage: 'Invalid request data'
+    });
   }
 });
 
@@ -91,23 +94,11 @@ systemPromptsRouter.patch('/v1/system-prompts/:id', async (req, res) => {
 
     res.json(updatedPrompt);
   } catch (error) {
-    if (error instanceof ZodError) {
-      return res.status(400).json({
-        error: 'validation_error',
-        message: 'Invalid request data',
-        details: error.errors
-      });
-    }
-
-    if (error.message === 'Built-in prompts are read-only') {
-      return res.status(400).json({
-        error: 'read_only',
-        message: 'Built-in prompts cannot be modified'
-      });
-    }
-
-    console.error('[systemPrompts] Error updating prompt:', error);
-    res.status(500).json({ error: 'internal_server_error', message: 'Failed to update prompt' });
+    return handlePromptError(res, error, {
+      context: 'system_prompts:update_error',
+      defaultMessage: 'Failed to update prompt',
+      validationMessage: 'Invalid request data'
+    });
   }
 });
 
@@ -131,23 +122,11 @@ systemPromptsRouter.delete('/v1/system-prompts/:id', async (req, res) => {
 
     res.status(204).send();
   } catch (error) {
-    if (error instanceof ZodError) {
-      return res.status(400).json({
-        error: 'validation_error',
-        message: 'Invalid prompt ID',
-        details: error.errors
-      });
-    }
-
-    if (error.message === 'Built-in prompts cannot be deleted') {
-      return res.status(400).json({
-        error: 'read_only',
-        message: 'Built-in prompts cannot be deleted'
-      });
-    }
-
-    console.error('[systemPrompts] Error deleting prompt:', error);
-    res.status(500).json({ error: 'internal_server_error', message: 'Failed to delete prompt' });
+    return handlePromptError(res, error, {
+      context: 'system_prompts:delete_error',
+      defaultMessage: 'Failed to delete prompt',
+      validationMessage: 'Invalid prompt ID'
+    });
   }
 });
 
@@ -171,16 +150,39 @@ systemPromptsRouter.post('/v1/system-prompts/:id/duplicate', async (req, res) =>
 
     res.status(201).json(newPrompt);
   } catch (error) {
-    if (error instanceof ZodError) {
-      return res.status(400).json({
-        error: 'validation_error',
-        message: 'Invalid prompt ID',
-        details: error.errors
-      });
+    return handlePromptError(res, error, {
+      context: 'system_prompts:duplicate_error',
+      defaultMessage: 'Failed to duplicate prompt',
+      validationMessage: 'Invalid prompt ID'
+    });
+  }
+});
+
+// POST /v1/system-prompts/none/select - Clear active prompt selection
+systemPromptsRouter.post('/v1/system-prompts/none/select', async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    const sessionId = req.sessionId || null;
+    if (!userId) {
+      return res.status(401).json({ error: 'unauthorized', message: 'Authentication required' });
     }
 
-    console.error('[systemPrompts] Error duplicating prompt:', error);
-    res.status(500).json({ error: 'internal_server_error', message: 'Failed to duplicate prompt' });
+    // Validate request body
+    const { conversation_id } = validateClearSelection(req.body);
+
+    // Clear prompt selection
+    const result = await promptService.clearPromptFromConversation(conversation_id, {
+      userId,
+      sessionId
+    });
+
+    res.json(result);
+  } catch (error) {
+    return handlePromptError(res, error, {
+      context: 'system_prompts:clear_error',
+      defaultMessage: 'Failed to clear prompt selection',
+      validationMessage: 'Invalid request data'
+    });
   }
 });
 
@@ -188,6 +190,7 @@ systemPromptsRouter.post('/v1/system-prompts/:id/duplicate', async (req, res) =>
 systemPromptsRouter.post('/v1/system-prompts/:id/select', async (req, res) => {
   try {
     const userId = req.user?.id;
+    const sessionId = req.sessionId || null;
     if (!userId) {
       return res.status(401).json({ error: 'unauthorized', message: 'Authentication required' });
     }
@@ -202,56 +205,48 @@ systemPromptsRouter.post('/v1/system-prompts/:id/select', async (req, res) => {
     const result = await promptService.selectPromptForConversation(
       promptId,
       conversation_id,
-      userId,
-      inline_override
+      {
+        userId,
+        sessionId,
+        inlineOverride: typeof inline_override === 'undefined' ? undefined : inline_override
+      }
     );
 
     res.json(result);
   } catch (error) {
-    if (error instanceof ZodError) {
-      return res.status(400).json({
-        error: 'validation_error',
-        message: 'Invalid request data',
-        details: error.errors
-      });
-    }
-
-    if (error.message === 'Prompt not found') {
-      return res.status(404).json({ error: 'not_found', message: 'Prompt not found' });
-    }
-
-    console.error('[systemPrompts] Error selecting prompt:', error);
-    res.status(500).json({ error: 'internal_server_error', message: 'Failed to select prompt' });
+    return handlePromptError(res, error, {
+      context: 'system_prompts:select_error',
+      defaultMessage: 'Failed to select prompt',
+      validationMessage: 'Invalid request data'
+    });
   }
 });
 
-// POST /v1/system-prompts/none/select - Clear active prompt selection
-systemPromptsRouter.post('/v1/system-prompts/none/select', async (req, res) => {
-  try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: 'unauthorized', message: 'Authentication required' });
-    }
-
-    // Validate request body
-    const { conversation_id } = validateClearSelection(req.body);
-
-    // Clear prompt selection
-    const result = await promptService.clearPromptFromConversation(conversation_id);
-
-    res.json(result);
-  } catch (error) {
-    if (error instanceof ZodError) {
-      return res.status(400).json({
-        error: 'validation_error',
-        message: 'Invalid request data',
-        details: error.errors
-      });
-    }
-
-    console.error('[systemPrompts] Error clearing prompt selection:', error);
-    res.status(500).json({ error: 'internal_server_error', message: 'Failed to clear prompt selection' });
+function handlePromptError(res, error, { context, defaultMessage, validationMessage = 'Invalid request data' }) {
+  if (error instanceof ZodError) {
+    return res.status(400).json({
+      error: 'validation_error',
+      message: validationMessage,
+      details: error.errors
+    });
   }
-});
+
+  if (error instanceof PromptServiceError) {
+    return res.status(error.status).json({
+      error: error.code,
+      message: error.message
+    });
+  }
+
+  logger.error({
+    msg: context,
+    error: {
+      name: error?.name || 'Error',
+      message: error?.message || defaultMessage
+    }
+  });
+
+  return res.status(500).json({ error: 'internal_server_error', message: defaultMessage });
+}
 
 export default systemPromptsRouter;

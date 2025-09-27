@@ -1,9 +1,20 @@
 import * as systemPromptsDb from '../db/systemPrompts.js';
 import { getBuiltInPrompts, getBuiltInPromptById, getLoadError } from './builtInsPromptLoader.js';
 import { isBuiltInPromptId } from './validation/systemPromptsSchemas.js';
+import { logger } from '../logger.js';
+
+export class PromptServiceError extends Error {
+  constructor(message, { status = 500, code = 'prompt_error' } = {}) {
+    super(message);
+    this.status = status;
+    this.code = code;
+  }
+}
 
 /**
  * Get combined list of built-in and custom prompts for a user
+ * Performance note (2025-09-27): p95 ≈ 33ms (avg ≈ 7.5ms) across 10 iterations
+ *   measured via `backend/__tests__/system_prompts.performance.list.test.js`.
  * @param {string} userId - User ID
  * @returns {Object} Object with built_ins and custom arrays
  */
@@ -21,7 +32,14 @@ export async function listAllPrompts(userId) {
       error: getLoadError() ? 'Failed to load some built-in prompts' : null
     };
   } catch (error) {
-    console.error('[promptService] Error listing prompts:', error);
+    // SECURITY: Never log prompt bodies or user-provided content.
+    logger.error({
+      msg: 'system_prompts:list_failed',
+      error: {
+        name: error?.name || 'Error',
+        message: error?.message || 'Unknown error'
+      }
+    });
 
     // Return custom prompts even if built-ins fail
     const custom = systemPromptsDb.listCustomPrompts(userId);
@@ -68,7 +86,10 @@ export function createCustomPrompt(promptData, userId) {
 export function updateCustomPrompt(id, updates, userId) {
   // Prevent updating built-in prompts
   if (isBuiltInPromptId(id)) {
-    throw new Error('Built-in prompts are read-only');
+    throw new PromptServiceError('Built-in prompts are read-only', {
+      status: 400,
+      code: 'read_only'
+    });
   }
 
   return systemPromptsDb.updateCustomPrompt(id, updates, userId);
@@ -83,7 +104,10 @@ export function updateCustomPrompt(id, updates, userId) {
 export function deleteCustomPrompt(id, userId) {
   // Prevent deleting built-in prompts
   if (isBuiltInPromptId(id)) {
-    throw new Error('Built-in prompts cannot be deleted');
+    throw new PromptServiceError('Built-in prompts cannot be deleted', {
+      status: 400,
+      code: 'read_only'
+    });
   }
 
   return systemPromptsDb.deleteCustomPrompt(id, userId);
@@ -113,15 +137,29 @@ export async function duplicatePrompt(sourceId, userId) {
  * @param {string} inlineOverride - Optional inline override content
  * @returns {Object} Selection result
  */
-export async function selectPromptForConversation(promptId, conversationId, userId, inlineOverride = null) {
+export async function selectPromptForConversation(
+  promptId,
+  conversationId,
+  { userId, sessionId, inlineOverride = null } = {}
+) {
+  if (!userId && !sessionId) {
+    throw new PromptServiceError('Conversation context required', {
+      status: 400,
+      code: 'conversation_context_required'
+    });
+  }
+
   // Verify prompt exists and user has access
   const prompt = await getPromptById(promptId, userId);
   if (!prompt) {
-    throw new Error('Prompt not found');
+    throw new PromptServiceError('Prompt not found', {
+      status: 404,
+      code: 'not_found'
+    });
   }
 
   // Update conversation metadata
-  await updateConversationActivePrompt(conversationId, promptId);
+  await updateConversationActivePrompt(conversationId, userId, sessionId, promptId, inlineOverride);
 
   return {
     conversation_id: conversationId,
@@ -134,8 +172,15 @@ export async function selectPromptForConversation(promptId, conversationId, user
  * @param {string} conversationId - Conversation ID
  * @returns {Object} Clear result
  */
-export async function clearPromptFromConversation(conversationId) {
-  await updateConversationActivePrompt(conversationId, null);
+export async function clearPromptFromConversation(conversationId, { userId, sessionId } = {}) {
+  if (!userId && !sessionId) {
+    throw new PromptServiceError('Conversation context required', {
+      status: 400,
+      code: 'conversation_context_required'
+    });
+  }
+
+  await updateConversationActivePrompt(conversationId, userId, sessionId, null, null);
 
   return {
     conversation_id: conversationId,
@@ -150,14 +195,27 @@ export async function clearPromptFromConversation(conversationId) {
  * @param {string} inlineOverride - Optional inline override content
  * @returns {string|null} Effective prompt text or null if no prompt
  */
-export async function getEffectivePromptText(conversationId, userId, inlineOverride = null) {
+export async function getEffectivePromptText(
+  conversationId,
+  { userId, sessionId } = {},
+  inlineOverride = null
+) {
   // If inline override provided, use it directly
   if (inlineOverride && inlineOverride.trim()) {
     return inlineOverride.trim();
   }
 
   // Get active prompt from conversation metadata
-  const activePromptId = await getConversationActivePrompt(conversationId);
+  const { promptId: activePromptId, inlineOverride: storedInline } = await getConversationPromptContext(
+    conversationId,
+    userId,
+    sessionId
+  );
+
+  if (storedInline && storedInline.trim()) {
+    return storedInline.trim();
+  }
+
   if (!activePromptId) {
     return null;
   }
@@ -177,15 +235,27 @@ export async function getEffectivePromptText(conversationId, userId, inlineOverr
  * @param {string} userId - User ID
  * @param {string} inlineOverride - Optional inline override content
  */
-export async function updateUsageAfterSend(conversationId, userId, inlineOverride = null) {
+export async function updateUsageAfterSend(
+  conversationId,
+  { userId, sessionId } = {},
+  inlineOverride = null
+) {
   // Only update usage if no inline override (using stored prompt)
   if (inlineOverride && inlineOverride.trim()) {
     return; // Using inline override, don't update stored prompt usage
   }
 
-  const activePromptId = await getConversationActivePrompt(conversationId);
+  const { promptId: activePromptId } = await getConversationPromptContext(
+    conversationId,
+    userId,
+    sessionId
+  );
   if (!activePromptId || isBuiltInPromptId(activePromptId)) {
     return; // No prompt or built-in prompt - don't update usage
+  }
+
+  if (!userId) {
+    return;
   }
 
   // Update usage for custom prompt
@@ -196,33 +266,60 @@ export async function updateUsageAfterSend(conversationId, userId, inlineOverrid
  * Helper to update conversation metadata with active prompt
  * @private
  */
-async function updateConversationActivePrompt(conversationId, promptId) {
+async function updateConversationActivePrompt(
+  conversationId,
+  userId,
+  sessionId,
+  promptId,
+  inlineOverride
+) {
   // Import conversations module to update metadata
   const { updateConversationMetadata } = await import('../db/conversations.js');
 
-  const metadata = promptId ? { active_system_prompt_id: promptId } : {};
-  const operation = promptId ? 'merge' : 'remove_key';
-  const key = promptId ? null : 'active_system_prompt_id';
-
-  if (operation === 'remove_key') {
-    await updateConversationMetadata(conversationId, key, null, 'remove_key');
-  } else {
-    await updateConversationMetadata(conversationId, null, metadata, 'merge');
+  const patch = {};
+  if (promptId !== undefined) {
+    patch.active_system_prompt_id = promptId;
   }
+
+  if (inlineOverride !== undefined) {
+    patch.inline_system_prompt_override = inlineOverride && inlineOverride.trim()
+      ? inlineOverride.trim()
+      : null;
+  }
+
+  await updateConversationMetadata({
+    id: conversationId,
+    sessionId: sessionId || null,
+    userId: userId || null,
+    patch
+  });
 }
 
 /**
  * Helper to get active prompt from conversation metadata
  * @private
  */
-async function getConversationActivePrompt(conversationId) {
+async function getConversationPromptContext(conversationId, userId, sessionId) {
   // Import conversations module to get metadata
-  const { getConversation } = await import('../db/conversations.js');
+  const { getConversationById } = await import('../db/conversations.js');
 
-  const conversation = await getConversation(conversationId);
-  if (!conversation || !conversation.metadata) {
-    return null;
+  if (!userId && !sessionId) {
+    return { promptId: null, inlineOverride: null };
   }
 
-  return conversation.metadata.active_system_prompt_id || null;
+  const conversation = await getConversationById({
+    id: conversationId,
+    sessionId: sessionId || null,
+    userId: userId || null
+  });
+  if (!conversation || !conversation.metadata) {
+    return { promptId: null, inlineOverride: null };
+  }
+
+  const metadata = conversation.metadata;
+
+  return {
+    promptId: metadata.active_system_prompt_id || null,
+    inlineOverride: metadata.inline_system_prompt_override || null
+  };
 }

@@ -6,7 +6,7 @@ describe('Prompt Manager Rendering', () => {
   test('renders built-ins and custom prompts in separate groups', async () => {
     // This test will fail until components exist
     try {
-      const { PromptList } = await import('../app/components/promptManager/PromptList');
+      const PromptList = (await import('../app/components/promptManager/PromptList')).default;
 
       const mockPrompts = {
         built_ins: [
@@ -17,18 +17,31 @@ describe('Prompt Manager Rendering', () => {
         ]
       };
 
-      render(<PromptList prompts={mockPrompts} onSelect={() => {}} activeId={null} />);
+      render(
+        <PromptList
+          builtIns={mockPrompts.built_ins}
+          customPrompts={mockPrompts.custom}
+          activePromptId={null}
+          hasUnsavedChanges={() => false}
+          onSelectPrompt={() => {}}
+          onEditPrompt={() => {}}
+          onDuplicatePrompt={() => {}}
+          onDeletePrompt={() => {}}
+          onClearSelection={() => {}}
+        />
+      );
 
-      // Should have Built-ins section
-      expect(screen.getByText('Built-ins')).toBeInTheDocument();
+  // Should have Built-ins section
+  expect(screen.getByRole('button', { name: /Built-in Prompts/i })).toBeInTheDocument();
       expect(screen.getByText('Example')).toBeInTheDocument();
 
       // Should have My Prompts section
-      expect(screen.getByText('My Prompts')).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: /My Prompts/i })).toBeInTheDocument();
       expect(screen.getByText('My Prompt')).toBeInTheDocument();
 
     } catch (error) {
-      if (error.code === 'MODULE_NOT_FOUND' || error.message.includes('Cannot resolve module')) {
+      const err = error as { code?: string; message?: string };
+      if (err?.code === 'MODULE_NOT_FOUND' || err?.message?.includes('Cannot resolve module')) {
         // Expected to fail - components don't exist yet
         expect(true).toBe(true); // TDD phase
       } else {
@@ -39,17 +52,30 @@ describe('Prompt Manager Rendering', () => {
 
   test('shows None option when no prompt selected', async () => {
     try {
-      const { PromptList } = await import('../app/components/promptManager/PromptList');
+      const PromptList = (await import('../app/components/promptManager/PromptList')).default;
 
       const mockPrompts = { built_ins: [], custom: [] };
 
-      render(<PromptList prompts={mockPrompts} onSelect={() => {}} activeId={null} />);
+      render(
+        <PromptList
+          builtIns={mockPrompts.built_ins}
+          customPrompts={mockPrompts.custom}
+          activePromptId={null}
+          hasUnsavedChanges={() => false}
+          onSelectPrompt={() => {}}
+          onEditPrompt={() => {}}
+          onDuplicatePrompt={() => {}}
+          onDeletePrompt={() => {}}
+          onClearSelection={() => {}}
+        />
+      );
 
-      // Should show None option
-      expect(screen.getByText('None')).toBeInTheDocument();
+  // Should show None option
+  expect(screen.getByRole('button', { name: /None/ })).toBeInTheDocument();
 
     } catch (error) {
-      if (error.code === 'MODULE_NOT_FOUND' || error.message.includes('Cannot resolve module')) {
+      const err = error as { code?: string; message?: string };
+      if (err?.code === 'MODULE_NOT_FOUND' || err?.message?.includes('Cannot resolve module')) {
         expect(true).toBe(true); // TDD phase
       } else {
         throw error;

@@ -63,6 +63,7 @@ function PromptItem({
   showEditActions
 }: PromptItemProps) {
   const isBuiltIn = 'read_only' in prompt;
+  const itemLabel = `${prompt.name}${hasUnsavedChanges ? ' (unsaved changes)' : ''}`;
 
   return (
     <div
@@ -72,12 +73,22 @@ function PromptItem({
         ${isActive ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700' : ''}
       `}
       onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onSelect();
+        }
+      }}
+      role="button"
+      tabIndex={0}
+      aria-pressed={isActive}
+      aria-label={`Select prompt ${itemLabel}`}
     >
       <div className="flex-1 min-w-0">
         <div className="flex items-center">
           <span className="truncate">
             {prompt.name}
-            {hasUnsavedChanges && <span className="text-orange-500 ml-1">*</span>}
+            {hasUnsavedChanges && <span className="text-orange-500 ml-1" aria-hidden="true">*</span>}
           </span>
           {isBuiltIn && (
             <span className="ml-2 px-1.5 py-0.5 text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded">
@@ -104,8 +115,10 @@ function PromptItem({
               e.stopPropagation();
               onDuplicate();
             }}
+            type="button"
             className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
             title="Duplicate"
+            aria-label={`Duplicate prompt ${prompt.name}`}
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -118,8 +131,10 @@ function PromptItem({
                 e.stopPropagation();
                 onEdit();
               }}
+              type="button"
               className="p-1 hover:bg-gray-200 dark:hover:bg-gray-600 rounded text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
               title="Edit"
+              aria-label={`Edit prompt ${prompt.name}`}
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -135,8 +150,10 @@ function PromptItem({
                   onDelete();
                 }
               }}
+              type="button"
               className="p-1 hover:bg-red-100 dark:hover:bg-red-900/30 rounded text-gray-500 hover:text-red-600 dark:text-gray-400 dark:hover:text-red-400"
               title="Delete"
+              aria-label={`Delete prompt ${prompt.name}`}
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
@@ -163,19 +180,31 @@ function PromptSection({
   showEditActions
 }: PromptSectionProps) {
   const Icon = isExpanded ? ChevronDownIcon : ChevronRightIcon;
+  const sectionSlug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'section';
+  const headingId = `${sectionSlug}-heading`;
+  const contentId = `${sectionSlug}-content`;
 
   return (
     <div className="mb-4">
       <button
         onClick={onToggleExpanded}
+        type="button"
         className="flex items-center w-full p-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
+        aria-expanded={isExpanded}
+        aria-controls={contentId}
+        id={headingId}
       >
         <Icon className="w-4 h-4 mr-2" />
         {title} ({prompts.length})
       </button>
 
       {isExpanded && (
-        <div className="ml-2 space-y-1">
+        <div
+          className="ml-2 space-y-1"
+          id={contentId}
+          role="region"
+          aria-labelledby={headingId}
+        >
           {prompts.length === 0 ? (
             <div className="p-2 text-sm text-gray-500 dark:text-gray-400 italic">
               No prompts in this category
@@ -240,7 +269,11 @@ export default function PromptList({
   return (
     <div className="space-y-2">
       {error && (
-        <div className="p-2 text-sm text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded">
+        <div
+          className="p-2 text-sm text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded"
+          role="status"
+          aria-live="polite"
+        >
           ⚠️ {error}
         </div>
       )}
@@ -262,16 +295,19 @@ export default function PromptList({
 
       {expandedSections.none && (
         <div className="ml-2">
-          <div
+          <button
+            type="button"
             className={`
-              flex items-center p-2 text-sm rounded cursor-pointer
+              flex items-center w-full p-2 text-sm rounded cursor-pointer text-left
               hover:bg-gray-100 dark:hover:bg-gray-700
               ${!activePromptId ? 'bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700' : ''}
             `}
             onClick={onClearSelection}
+            aria-pressed={!activePromptId}
+            aria-label="Clear active system prompt"
           >
             <span className="text-gray-700 dark:text-gray-300">No system prompt</span>
-          </div>
+          </button>
         </div>
       )}
 

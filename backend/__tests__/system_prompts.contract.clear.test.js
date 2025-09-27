@@ -1,17 +1,11 @@
 // Contract test for POST /v1/system-prompts/none/select - Clear active prompt selection
 import assert from 'node:assert/strict';
-import express from 'express';
 import request from 'supertest';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
+import { makeAuthedApp, ensureTestUser, ensureTestConversation } from './helpers/systemPromptsTestUtils.js';
 
-// Helper to spin up a minimal app
-const makeApp = (router) => {
-  const app = express();
-  app.use(express.json());
-  app.use(router);
-  return app;
-};
+const makeApp = makeAuthedApp;
 
 beforeAll(() => {
   // Ensure DB enabled for system prompts storage
@@ -19,10 +13,17 @@ beforeAll(() => {
   config.persistence.dbUrl = 'file::memory:';
   resetDbCache();
   getDb();
+  ensureTestUser();
 });
 
 afterAll(() => {
   resetDbCache();
+});
+
+beforeEach(() => {
+  const db = getDb();
+  db.prepare('DELETE FROM conversations').run();
+  db.prepare('DELETE FROM sessions').run();
 });
 
 describe('POST /v1/system-prompts/none/select - Contract Test', () => {
@@ -31,6 +32,8 @@ describe('POST /v1/system-prompts/none/select - Contract Test', () => {
       const { systemPromptsRouter } = await import('../src/routes/systemPrompts.js');
       const app = makeApp(systemPromptsRouter);
       const agent = request(app);
+
+      ensureTestConversation('test-conversation-id');
 
       const payload = {
         conversation_id: 'test-conversation-id'
@@ -93,6 +96,8 @@ describe('POST /v1/system-prompts/none/select - Contract Test', () => {
         conversation_id: 'conversation-with-no-selection'
       };
 
+      ensureTestConversation('conversation-with-no-selection');
+
       const res = await agent
         .post('/v1/system-prompts/none/select')
         .send(payload);
@@ -115,6 +120,8 @@ describe('POST /v1/system-prompts/none/select - Contract Test', () => {
       const { systemPromptsRouter } = await import('../src/routes/systemPrompts.js');
       const app = makeApp(systemPromptsRouter);
       const agent = request(app);
+
+      ensureTestConversation('test-conversation-id');
 
       const payload = {
         conversation_id: 'test-conversation-id'
@@ -141,6 +148,8 @@ describe('POST /v1/system-prompts/none/select - Contract Test', () => {
       const { systemPromptsRouter } = await import('../src/routes/systemPrompts.js');
       const app = makeApp(systemPromptsRouter);
       const agent = request(app);
+
+      ensureTestConversation('test-conversation-id');
 
       const payload = {
         conversation_id: 'test-conversation-id',

@@ -89,20 +89,20 @@ Error & Edge Handling:
 - [X] T053 Inline override snapshot on send: ensure message send uses snapshot not live editing state (frontend send handler adjustment)
 
 ## Phase 3.4: Integration
-- [ ] T054 Run migration, seed example built-in, execute all contract & integration tests (they should now pass) – adjust as needed
-- [ ] T055 Verify system prompt injection does not break existing chat tests; update or extend `backend/__tests__/chat_proxy.*` as necessary for new metadata
-- [ ] T056 Add security review: ensure no logging of prompt bodies (scan logger usage) and add comment in sensitive areas
-- [ ] T057 Add docs snippet to `README.md` (backend + frontend sections) describing prompt management feature
+- [X] T054 Run migration, seed example built-in, execute all contract & integration tests (they should now pass) – adjust as needed
+- [X] T055 Verify system prompt injection does not break existing chat tests; update or extend `backend/__tests__/chat_proxy.*` as necessary for new metadata
+- [X] T056 Add security review: ensure no logging of prompt bodies (scan logger usage) and add comment in sensitive areas
+- [X] T057 Add docs snippet to `README.md` (backend + frontend sections) describing prompt management feature
 
 ## Phase 3.5: Polish
-- [ ] T058 [P] Additional fine-grained unit tests for name suffix function in `backend/__tests__/system_prompts.unit.naming.test.js`
-- [ ] T059 [P] Unit tests for Zod schemas (invalid cases) `backend/__tests__/system_prompts.unit.validation.test.js`
-- [ ] T060 [P] Frontend unit tests for hook localStorage logic `frontend/__tests__/promptManager.hookStorage.test.tsx`
-- [ ] T061 Accessibility pass: ensure aria labels for sections & modal `frontend/app/components/promptManager/` updates
-- [ ] T062 [P] Performance re-check list endpoint (measure & log) update performance doc comment in migration or service
-- [ ] T063 Update quickstart.md with any endpoint path changes or additional scenarios discovered during implementation
-- [ ] T064 Refactor pass: remove duplication in service & route (consolidate error mapping) `promptService.js`
-- [ ] T065 Final green build & lint run; mark feature ready for review
+- [X] T058 [P] Additional fine-grained unit tests for name suffix function in `backend/__tests__/system_prompts.unit.naming.test.js`
+- [X] T059 [P] Unit tests for Zod schemas (invalid cases) `backend/__tests__/system_prompts.unit.validation.test.js`
+- [X] T060 [P] Frontend unit tests for hook localStorage logic `frontend/__tests__/promptManager.hookStorage.test.tsx`
+- [X] T061 Accessibility pass: ensure aria labels for sections & modal `frontend/app/components/promptManager/` updates
+- [X] T062 [P] Performance re-check list endpoint (measure & log) update performance doc comment in migration or service
+- [X] T063 Update quickstart.md with any endpoint path changes or additional scenarios discovered during implementation
+- [X] T064 Refactor pass: remove duplication in service & route (consolidate error mapping) `promptService.js`
+- [X] T065 Final green build & lint run; mark feature ready for review
 
 ## Dependencies Summary
 - Setup (T001-T005) precedes tests.

@@ -1,17 +1,11 @@
 // Contract test for DELETE /v1/system-prompts/:id - Delete custom prompt
 import assert from 'node:assert/strict';
-import express from 'express';
 import request from 'supertest';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
+import { makeAuthedApp, ensureTestUser, seedCustomPrompt } from './helpers/systemPromptsTestUtils.js';
 
-// Helper to spin up a minimal app
-const makeApp = (router) => {
-  const app = express();
-  app.use(express.json());
-  app.use(router);
-  return app;
-};
+const makeApp = makeAuthedApp;
 
 beforeAll(() => {
   // Ensure DB enabled for system prompts storage
@@ -19,10 +13,16 @@ beforeAll(() => {
   config.persistence.dbUrl = 'file::memory:';
   resetDbCache();
   getDb();
+  ensureTestUser();
 });
 
 afterAll(() => {
   resetDbCache();
+});
+
+beforeEach(() => {
+  const db = getDb();
+  db.prepare('DELETE FROM system_prompts').run();
 });
 
 describe('DELETE /v1/system-prompts/:id - Contract Test', () => {
@@ -31,6 +31,8 @@ describe('DELETE /v1/system-prompts/:id - Contract Test', () => {
       const { systemPromptsRouter } = await import('../src/routes/systemPrompts.js');
       const app = makeApp(systemPromptsRouter);
       const agent = request(app);
+
+      seedCustomPrompt({ id: 'test-custom-id', name: 'Prompt to Delete', body: 'Delete me' });
 
       const res = await agent
         .delete('/v1/system-prompts/test-custom-id');
@@ -61,8 +63,13 @@ describe('DELETE /v1/system-prompts/:id - Contract Test', () => {
       const body = res.body;
       assert.ok(typeof body === 'object', 'Error response should be an object');
       assert.ok(typeof body.error === 'string', 'Should have error field');
-      assert.ok(body.error.includes('read-only') || body.error.includes('built-in'),
-                'Error should mention read-only or built-in');
+      assert.ok(
+        body.error.includes('read-only') ||
+          body.error.includes('read_only') ||
+          body.error.includes('built-in') ||
+          body.error.includes('built_in'),
+        'Error should mention read-only or built-in'
+      );
     } catch (error) {
       if (error.code === 'ERR_MODULE_NOT_FOUND') {
         // Expected to fail - route doesn't exist yet
@@ -102,6 +109,8 @@ describe('DELETE /v1/system-prompts/:id - Contract Test', () => {
       const { systemPromptsRouter } = await import('../src/routes/systemPrompts.js');
       const app = makeApp(systemPromptsRouter);
       const agent = request(app);
+
+  seedCustomPrompt({ id: 'test-active-prompt-id', name: 'Active Prompt', body: 'Active content' });
 
       // This test verifies that when a prompt is deleted,
       // any conversations using it as active_system_prompt_id are updated

@@ -13,6 +13,9 @@ export class MockUpstream {
     this.port = null;
     this.shouldError = false;
     this.sockets = new Set();
+    this.lastChatRequestBody = null;
+    this.lastChatRequestHeaders = null;
+    this.lastResponsesRequestBody = null;
     this.setupRoutes();
   }
 
@@ -21,6 +24,8 @@ export class MockUpstream {
 
     // Mock OpenAI Chat Completions endpoint
     this.app.post('/v1/chat/completions', (req, res) => {
+      this.lastChatRequestBody = req.body;
+      this.lastChatRequestHeaders = req.headers;
       if (this.shouldError) {
         return res.status(500).json({ error: 'upstream_error' });
       }
@@ -50,6 +55,7 @@ export class MockUpstream {
 
     // Mock Responses API endpoint
     this.app.post('/v1/responses', (req, res) => {
+      this.lastResponsesRequestBody = req.body;
       if (this.shouldError) {
         return res.status(500).json({ error: 'upstream_error' });
       }
@@ -119,10 +125,19 @@ export class MockUpstream {
   }
 }
 
-export const makeApp = (useSession = true) => {
+export const makeApp = (options = {}) => {
+  const opts = typeof options === 'boolean' ? { useSession: options } : options;
+  const { useSession = true, mockUser = null } = opts;
+
   const app = express();
   app.use(express.json());
   if (useSession) app.use(sessionResolver);
+  if (mockUser) {
+    app.use((req, _res, next) => {
+      req.user = mockUser;
+      next();
+    });
+  }
   app.use(chatRouter);
   return app;
 };
@@ -192,6 +207,9 @@ export function createChatProxyTestContext() {
 
   beforeEach(() => {
     upstream.setError(false);
+    upstream.lastChatRequestBody = null;
+    upstream.lastChatRequestHeaders = null;
+    upstream.lastResponsesRequestBody = null;
     config.persistence.enabled = true;
     config.persistence.dbUrl = 'file::memory:';
 

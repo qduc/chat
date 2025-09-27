@@ -1,17 +1,16 @@
 // Contract test for POST /v1/system-prompts/:id/select - Select prompt for conversation
 import assert from 'node:assert/strict';
-import express from 'express';
 import request from 'supertest';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
+import {
+  makeAuthedApp,
+  ensureTestUser,
+  ensureTestConversation,
+  seedCustomPrompt
+} from './helpers/systemPromptsTestUtils.js';
 
-// Helper to spin up a minimal app
-const makeApp = (router) => {
-  const app = express();
-  app.use(express.json());
-  app.use(router);
-  return app;
-};
+const makeApp = makeAuthedApp;
 
 beforeAll(() => {
   // Ensure DB enabled for system prompts storage
@@ -19,10 +18,18 @@ beforeAll(() => {
   config.persistence.dbUrl = 'file::memory:';
   resetDbCache();
   getDb();
+  ensureTestUser();
 });
 
 afterAll(() => {
   resetDbCache();
+});
+
+beforeEach(() => {
+  const db = getDb();
+  db.prepare('DELETE FROM system_prompts').run();
+  db.prepare('DELETE FROM conversations').run();
+  db.prepare('DELETE FROM sessions').run();
 });
 
 describe('POST /v1/system-prompts/:id/select - Contract Test', () => {
@@ -31,6 +38,9 @@ describe('POST /v1/system-prompts/:id/select - Contract Test', () => {
       const { systemPromptsRouter } = await import('../src/routes/systemPrompts.js');
       const app = makeApp(systemPromptsRouter);
       const agent = request(app);
+
+      seedCustomPrompt({ id: 'test-prompt-id', name: 'Selectable Prompt', body: 'Prompt body' });
+      ensureTestConversation('test-conversation-id');
 
       const payload = {
         conversation_id: 'test-conversation-id'
@@ -61,6 +71,9 @@ describe('POST /v1/system-prompts/:id/select - Contract Test', () => {
       const { systemPromptsRouter } = await import('../src/routes/systemPrompts.js');
       const app = makeApp(systemPromptsRouter);
       const agent = request(app);
+
+      seedCustomPrompt({ id: 'test-prompt-id', name: 'Selectable Prompt', body: 'Prompt body' });
+      ensureTestConversation('test-conversation-id');
 
       const payload = {
         conversation_id: 'test-conversation-id',
@@ -124,6 +137,9 @@ describe('POST /v1/system-prompts/:id/select - Contract Test', () => {
       const app = makeApp(systemPromptsRouter);
       const agent = request(app);
 
+      seedCustomPrompt({ id: 'test-id', name: 'Selectable Prompt', body: 'Prompt body' });
+      ensureTestConversation('test-conversation-id');
+
       const payload = {
         conversation_id: 'test-conversation-id'
       };
@@ -152,6 +168,8 @@ describe('POST /v1/system-prompts/:id/select - Contract Test', () => {
       const { systemPromptsRouter } = await import('../src/routes/systemPrompts.js');
       const app = makeApp(systemPromptsRouter);
       const agent = request(app);
+
+      ensureTestConversation('test-conversation-id');
 
       const payload = {
         conversation_id: 'test-conversation-id'

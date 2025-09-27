@@ -1,26 +1,29 @@
 // Integration test: delete active prompt clears conversation selection
 import assert from 'node:assert/strict';
-import express from 'express';
 import request from 'supertest';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
+import { makeAuthedApp, ensureTestUser, ensureTestConversation } from './helpers/systemPromptsTestUtils.js';
 
-const makeApp = (router) => {
-  const app = express();
-  app.use(express.json());
-  app.use(router);
-  return app;
-};
+const makeApp = makeAuthedApp;
 
 beforeAll(() => {
   config.persistence.enabled = true;
   config.persistence.dbUrl = 'file::memory:';
   resetDbCache();
   getDb();
+  ensureTestUser();
 });
 
 afterAll(() => {
   resetDbCache();
+});
+
+beforeEach(() => {
+  const db = getDb();
+  db.prepare('DELETE FROM system_prompts').run();
+  db.prepare('DELETE FROM conversations').run();
+  db.prepare('DELETE FROM sessions').run();
 });
 
 describe('Integration: Delete active prompt clears conversation selection', () => {
@@ -38,6 +41,7 @@ describe('Integration: Delete active prompt clears conversation selection', () =
       const prompt = res.body;
 
       // Select for conversation
+      ensureTestConversation('test-conv-123');
       res = await agent
         .post(`/v1/system-prompts/${prompt.id}/select`)
         .send({ conversation_id: 'test-conv-123' });

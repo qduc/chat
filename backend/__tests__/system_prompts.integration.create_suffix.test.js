@@ -1,26 +1,27 @@
 // Integration test: create + list + uniqueness suffix
 import assert from 'node:assert/strict';
-import express from 'express';
 import request from 'supertest';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
+import { makeAuthedApp, ensureTestUser } from './helpers/systemPromptsTestUtils.js';
 
-const makeApp = (router) => {
-  const app = express();
-  app.use(express.json());
-  app.use(router);
-  return app;
-};
+const makeApp = makeAuthedApp;
 
 beforeAll(() => {
   config.persistence.enabled = true;
   config.persistence.dbUrl = 'file::memory:';
   resetDbCache();
   getDb();
+  ensureTestUser();
 });
 
 afterAll(() => {
   resetDbCache();
+});
+
+beforeEach(() => {
+  const db = getDb();
+  db.prepare('DELETE FROM system_prompts').run();
 });
 
 describe('Integration: Create prompt with name uniqueness', () => {
@@ -34,8 +35,7 @@ describe('Integration: Create prompt with name uniqueness', () => {
       let res = await agent
         .post('/v1/system-prompts')
         .send({ name: 'Helper', body: 'Original helper' });
-      assert.equal(res.status, 201);
-      const first = res.body;
+  assert.equal(res.status, 201);
 
       // Create second with same name - should get suffix
       res = await agent

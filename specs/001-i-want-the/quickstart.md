@@ -13,10 +13,11 @@ Expected JSON:
 ```
 {
   "built_ins": [ { "id": "built:classification", "name": "Classification", ... } ],
-  "custom": []
+  "custom": [],
+  "error": null
 }
 ```
-Latency: p95 < 300ms (check logs / measure locally <50ms typical).
+Latency: p95 < 50ms typical (latest run: avg ≈ 7.5ms, p95 ≈ 33ms across 10 calls).
 
 ## 2. Create Custom Prompt
 `POST /v1/system-prompts`
@@ -39,16 +40,16 @@ Expect 200 with updated fields.
 ## 5. Select Prompt for Conversation
 `POST /v1/system-prompts/{id}/select`
 ```
-{ "conversation_id": "<conversation-uuid>" }
+{ "conversation_id": "<conversation-uuid>", "inline_override": "(optional session-only edits)" }
 ```
 Conversation metadata now has `active_system_prompt_id` set.
 
 ## 6. Inline Edit (Ephemeral)
 Frontend: Change text in textarea (do NOT save). Send a message.
-Backend message request should include system message with inline edited body. Underlying prompt record unchanged. After send, usage_count increment & last_used_at updated.
+Chat request (`POST /api/v1/chat/completions`) will include `inline_system_prompt_override` alongside `conversation_id` so the backend injects the temporary system message without mutating the stored prompt. After send, `usage_count` increments & `last_used_at` updates.
 
 ## 7. Save Ephemeral Changes
-Click "Save" -> triggers `PATCH` updating prompt body; inline change indicator cleared.
+Click “Save Permanently” in the inline notice or exit edit mode -> triggers `PATCH` updating prompt body; inline change indicator clears and localStorage draft removed.
 
 ## 8. Clear Active Prompt
 `POST /v1/system-prompts/none/select`
@@ -69,7 +70,7 @@ Active cleared; subsequent messages omit system prompt.
 - Create missing name: 400
 
 ## 12. Performance Check
-Call list endpoint 10x; verify average < 100ms and p95 < 300ms.
+Call list endpoint 10x; verify average < 100ms and p95 < 50ms (see Jest performance test for automated measurement).
 
 ## 13. Frontend State
 - Built-ins pinned at top.
@@ -78,16 +79,16 @@ Call list endpoint 10x; verify average < 100ms and p95 < 300ms.
 - Switching prompts with unsaved edits triggers modal with: Discard / Save / Save as New.
 
 ## 14. Regression Tests Reference
-Backend tests (to be created):
-- system_prompts.contract.test.js (schema validation)
-- system_prompts.crud.test.js
-- system_prompts.selection.test.js
-- system_prompts.inline_override.test.js (message pipeline)
+Backend regression suite:
+- `backend/__tests__/system_prompts.contract.*.test.js`
+- `backend/__tests__/system_prompts.integration.*.test.js`
+- `backend/__tests__/system_prompts.performance.list.test.js`
+- `backend/__tests__/chat_proxy.*.test.js` (verifies system prompt injection path)
 
-Frontend tests (to be created):
-- PromptManager.render.test.tsx
-- PromptManager.inlineEdits.test.tsx
-- PromptSelection.conversationInit.test.tsx
+Frontend regression suite:
+- `frontend/__tests__/promptManager.render.test.tsx`
+- `frontend/__tests__/promptManager.hookStorage.test.tsx`
+- `frontend/__tests__/promptManager.switchConfirm.test.tsx`
 
 ## Done Criteria
 All acceptance scenarios in spec validated manually or via automated tests; no console errors; contract tests passing; performance target achieved.
