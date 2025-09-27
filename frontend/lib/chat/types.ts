@@ -124,4 +124,5 @@ export interface SendChatOptions extends ChatOptionsExtended {
   reasoningEffort?: string;
   verbosity?: string;
   tool_choice?: any;
+  activeSystemPromptId?: string | null;
 }

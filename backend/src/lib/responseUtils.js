@@ -19,6 +19,7 @@ export function addConversationMetadata(responseBody, persistence) {
       active_tools: Array.isArray(persistence.conversationMeta.metadata?.active_tools)
         ? persistence.conversationMeta.metadata.active_tools
         : [],
+      active_system_prompt_id: persistence.conversationMeta.metadata?.active_system_prompt_id || null,
     };
   }
   return responseBody;
@@ -41,6 +42,7 @@ export function getConversationMetadata(persistence) {
         active_tools: Array.isArray(persistence.conversationMeta.metadata?.active_tools)
           ? persistence.conversationMeta.metadata.active_tools
           : [],
+        active_system_prompt_id: persistence.conversationMeta.metadata?.active_system_prompt_id || null,
       }
     };
   }

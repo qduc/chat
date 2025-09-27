@@ -84,7 +84,9 @@ export class ChatClient {
       ...(extendedOptions.toolsEnabled !== undefined && { toolsEnabled: extendedOptions.toolsEnabled }),
       ...(extendedOptions.qualityLevel !== undefined && { qualityLevel: extendedOptions.qualityLevel }),
       // Send effective system prompt as single field
-      ...((options as any).systemPrompt && { system_prompt: (options as any).systemPrompt })
+      ...((options as any).systemPrompt && { system_prompt: (options as any).systemPrompt }),
+      // Send active system prompt ID for persistence
+      ...((options as any).activeSystemPromptId && { active_system_prompt_id: (options as any).activeSystemPromptId })
     };
 
     // Handle reasoning parameters for gpt-5* models except gpt-5-chat
