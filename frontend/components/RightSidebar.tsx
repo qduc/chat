@@ -59,7 +59,19 @@ export function RightSidebar({
   }, [activePromptId, inlineEdits, onEffectivePromptChange, getEffectivePromptContent]);
 
   const handleSelectPrompt = async (promptId: string) => {
-    if (!conversationId) return;
+    if (!conversationId) {
+      // For new chats without conversation ID, just update local state
+      // The prompt will be applied when the first message is sent
+      setSelectedPromptId(promptId);
+      setCurrentView('editor');
+
+      // Trigger effective prompt change for new chats
+      if (onEffectivePromptChange) {
+        const content = getEffectivePromptContent(promptId);
+        onEffectivePromptChange(content);
+      }
+      return;
+    }
 
     const success = await selectPrompt(promptId, conversationId);
     if (success) {
@@ -69,7 +81,17 @@ export function RightSidebar({
   };
 
   const handleClearSelection = async () => {
-    if (!conversationId) return;
+    if (!conversationId) {
+      // For new chats without conversation ID, just update local state
+      setSelectedPromptId(null);
+      setCurrentView('list');
+
+      // Clear effective prompt for new chats
+      if (onEffectivePromptChange) {
+        onEffectivePromptChange('');
+      }
+      return;
+    }
 
     await clearPrompt(conversationId);
     setSelectedPromptId(null);
@@ -264,7 +286,7 @@ export function RightSidebar({
                   <PromptList
                     builtIns={prompts?.built_ins || []}
                     customPrompts={prompts?.custom || []}
-                    activePromptId={activePromptId}
+                    activePromptId={conversationId ? activePromptId : selectedPromptId}
                     hasUnsavedChanges={hasUnsavedChanges}
                     onSelectPrompt={handleSelectPrompt}
                     onEditPrompt={handleEditPrompt}
@@ -289,7 +311,7 @@ export function RightSidebar({
 
             {/* Footer info */}
             <div className="p-3 border-t border-gray-200 dark:border-gray-700 text-xs text-slate-500 dark:text-slate-400">
-              {activePromptId ? (
+              {(conversationId ? activePromptId : selectedPromptId) ? (
                 <span>Active prompt will be used for new messages</span>
               ) : (
                 <span>No active prompt selected</span>
