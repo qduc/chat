@@ -11,6 +11,7 @@ interface RightSidebarProps {
   collapsed?: boolean;
   onToggleCollapse?: () => void;
   onEffectivePromptChange?: (content: string) => void;
+  onActivePromptIdChange?: (promptId: string | null) => void;
   // Active system prompt ID from loaded conversation
   conversationActivePromptId?: string | null;
   conversationSystemPrompt?: string | null;
@@ -22,6 +23,7 @@ export function RightSidebar({
   collapsed = false,
   onToggleCollapse,
   onEffectivePromptChange,
+  onActivePromptIdChange,
   conversationActivePromptId,
   conversationSystemPrompt
 }: RightSidebarProps) {
@@ -115,6 +117,11 @@ export function RightSidebar({
         const content = getEffectivePromptContent(promptId);
         onEffectivePromptChange(content);
       }
+
+      // Set the active prompt ID for new chats
+      if (onActivePromptIdChange) {
+        onActivePromptIdChange(promptId);
+      }
       return;
     }
 
@@ -134,6 +141,11 @@ export function RightSidebar({
       // Clear effective prompt for new chats
       if (onEffectivePromptChange) {
         onEffectivePromptChange('');
+      }
+
+      // Clear the active prompt ID for new chats
+      if (onActivePromptIdChange) {
+        onActivePromptIdChange(null);
       }
       return;
     }

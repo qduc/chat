@@ -887,6 +887,10 @@ export function useChatState() {
       dispatch({ type: 'SET_INLINE_SYSTEM_PROMPT_OVERRIDE', payload: prompt });
     }, []),
 
+    setActiveSystemPromptId: useCallback((id: string | null) => {
+      dispatch({ type: 'SET_ACTIVE_SYSTEM_PROMPT_ID', payload: id });
+    }, []),
+
     setEnabledTools: useCallback((list: string[]) => {
       dispatch({ type: 'SET_ENABLED_TOOLS', payload: list });
     }, []),
