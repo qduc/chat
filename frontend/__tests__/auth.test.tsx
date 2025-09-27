@@ -89,9 +89,9 @@ async function renderWithAuth(children: React.ReactNode) {
 
 // Test component that uses useAuth
 function TestAuthComponent() {
-  const { user, loading, login, logout } = useAuth();
+  const { user, ready, login, logout } = useAuth();
 
-  if (loading) return <div>Loading...</div>;
+  if (!ready) return <div>Loading...</div>;
 
   return (
     <div>

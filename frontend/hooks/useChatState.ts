@@ -553,21 +553,21 @@ const availableTools: Record<string, ToolSpec> = {
 };
 
 export function useChatState() {
-  const { user, loading: authLoading, ready: authReady } = useAuth();
+  const { user, ready: authReady } = useAuth();
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const assistantMsgRef = useRef<ChatMessage | null>(null);
   const inFlightRef = useRef<boolean>(false);
 
   // Sync authentication state from AuthContext
   useEffect(() => {
-    if (!authLoading && authReady) {
+    if (authReady) {
       dispatch({ type: 'SET_USER', payload: user });
     }
-  }, [user, authLoading, authReady]);
+  }, [user, authReady]);
 
   // Load models/providers centrally (moved from ChatHeader local state)
   const loadProvidersAndModels = useCallback(async () => {
-    if (authLoading || !authReady || !user) {
+    if (!authReady || !user) {
       return;
     }
     const apiBase = (process.env.NEXT_PUBLIC_API_BASE as string) ?? 'http://localhost:3001';
@@ -616,15 +616,15 @@ export function useChatState() {
     } catch (e) {
       // ignore
     }
-  }, [authLoading, authReady, state.model, user]);
+  }, [authReady, state.model, user]);
 
   // Call loader on mount
   useEffect(() => {
-    if (authLoading || !authReady) {
+    if (!authReady) {
       return;
     }
     void loadProvidersAndModels();
-  }, [authLoading, authReady, loadProvidersAndModels]);
+  }, [authReady, loadProvidersAndModels]);
 
   // Listen for external provider change events to refresh models
   useEffect(() => {
@@ -641,7 +641,7 @@ export function useChatState() {
 
   // Initialize conversations on mount
   const refreshConversations = useCallback(async () => {
-    if (authLoading || !authReady) {
+    if (!authReady) {
       return;
     }
 
@@ -668,18 +668,18 @@ export function useChatState() {
       }
       dispatch({ type: 'LOAD_CONVERSATIONS_ERROR' });
     }
-  }, [authLoading, authReady, user]);
+  }, [authReady, user]);
 
   // Initialize conversations on first render
   React.useEffect(() => {
-    if (authLoading || !authReady) {
+    if (!authReady) {
       return;
     }
     const timer = setTimeout(() => {
       void refreshConversations();
     }, 0);
     return () => clearTimeout(timer);
-  }, [authLoading, authReady, refreshConversations]);
+  }, [authReady, refreshConversations]);
 
   // Load sidebar collapsed state from localStorage on mount
   React.useEffect(() => {

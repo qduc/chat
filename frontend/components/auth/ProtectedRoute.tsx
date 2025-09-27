@@ -19,10 +19,10 @@ export function ProtectedRoute({
   fallback = null,
   requireAuth = false
 }: ProtectedRouteProps) {
-  const { user, loading } = useAuth();
+  const { user, ready } = useAuth();
 
   // Show loading state while checking authentication
-  if (loading) {
+  if (!ready) {
     return (
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>

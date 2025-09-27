@@ -11,7 +11,7 @@ interface AuthButtonProps {
 }
 
 export function AuthButton({ className = '', onShowLogin, onShowRegister }: AuthButtonProps) {
-  const { user, logout, loading } = useAuth();
+  const { user, logout } = useAuth();
 
   const handleLogout = async () => {
     try {
@@ -20,14 +20,6 @@ export function AuthButton({ className = '', onShowLogin, onShowRegister }: Auth
       console.error('Logout failed:', error);
     }
   };
-
-  if (loading) {
-    return (
-      <div className={`animate-pulse ${className}`}>
-        <div className="h-8 w-8 bg-slate-300 dark:bg-neutral-700 rounded-full"></div>
-      </div>
-    );
-  }
 
   if (user) {
     return (

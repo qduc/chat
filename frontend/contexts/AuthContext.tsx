@@ -8,7 +8,6 @@ import { markAuthReady, resetAuthReady, waitForAuthReady } from '../lib/auth/rea
 
 interface AuthContextType {
   user: User | null;
-  loading: boolean;
   ready: boolean;
   waitForAuth: () => Promise<void>;
   login: (email: string, password: string) => Promise<void>;
@@ -33,7 +32,6 @@ interface AuthProviderProps {
 
 export function AuthProvider({ children }: AuthProviderProps) {
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
   const [ready, setReady] = useState(false);
   const waitForAuth = useCallback(() => waitForAuthReady(), []);
 
@@ -67,7 +65,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
       clearTokens();
       setUser(null);
     } finally {
-      setLoading(false);
       setReady(true);
       markAuthReady();
     }
@@ -82,39 +79,31 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const login = useCallback(async (email: string, password: string) => {
     try {
-      setLoading(true);
       const response = await authApi.login(email, password);
       setUser(response.user);
     } catch (error) {
       setUser(null);
       throw error;
-    } finally {
-      setLoading(false);
     }
   }, []);
 
   const register = useCallback(async (email: string, password: string, displayName?: string) => {
     try {
-      setLoading(true);
       const response = await authApi.register(email, password, displayName);
       setUser(response.user);
     } catch (error) {
       setUser(null);
       throw error;
-    } finally {
-      setLoading(false);
     }
   }, []);
 
   const logout = useCallback(async () => {
     try {
-      setLoading(true);
       await authApi.logout();
     } catch (error) {
       console.warn('Logout request failed:', error);
     } finally {
       setUser(null);
-      setLoading(false);
     }
   }, []);
 
@@ -142,7 +131,6 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const value: AuthContextType = {
     user,
-    loading,
     ready,
     waitForAuth,
     login,
