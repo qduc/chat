@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
-import { makeAuthedApp, ensureTestUser, ensureTestConversation } from './helpers/systemPromptsTestUtils.js';
+import {makeAuthedApp, ensureTestUser, ensureTestConversation,
+  getTestAuthToken
+} from './helpers/systemPromptsTestUtils.js';
 
 const makeApp = makeAuthedApp;
 
@@ -36,6 +38,7 @@ describe('Integration: Delete active prompt clears conversation selection', () =
       // Create and select prompt
       let res = await agent
         .post('/v1/system-prompts')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send({ name: 'Active Prompt', body: 'Will be deleted' });
       assert.equal(res.status, 201);
       const prompt = res.body;
@@ -44,11 +47,13 @@ describe('Integration: Delete active prompt clears conversation selection', () =
       ensureTestConversation('test-conv-123');
       res = await agent
         .post(`/v1/system-prompts/${prompt.id}/select`)
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send({ conversation_id: 'test-conv-123' });
       assert.equal(res.status, 200);
 
       // Delete the prompt
-      res = await agent.delete(`/v1/system-prompts/${prompt.id}`);
+      res = await agent.delete(`/v1/system-prompts/${prompt.id}`)
+        .set('Authorization', `Bearer ${getTestAuthToken()}`);
       assert.equal(res.status, 204);
 
       // Verify conversation metadata was updated to clear selection

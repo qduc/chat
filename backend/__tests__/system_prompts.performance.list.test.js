@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
-import { makeAuthedApp, ensureTestUser } from './helpers/systemPromptsTestUtils.js';
+import {makeAuthedApp, ensureTestUser,
+  getTestAuthToken
+} from './helpers/systemPromptsTestUtils.js';
 
 const makeApp = makeAuthedApp;
 
@@ -31,7 +33,8 @@ describe('Performance: List endpoint', () => {
 
       for (let i = 0; i < iterations; i++) {
         const start = Date.now();
-        const res = await agent.get('/v1/system-prompts');
+        const res = await agent.get('/v1/system-prompts')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`);
         const end = Date.now();
 
         if (res.status === 200) {

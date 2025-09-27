@@ -2,9 +2,9 @@
 import assert from 'node:assert/strict';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
-import {
-  ensureTestUser,
+import {ensureTestUser,
   TEST_USER_ID,
+  getTestAuthToken
 } from './helpers/systemPromptsTestUtils.js';
 import {
   createCustomPrompt,

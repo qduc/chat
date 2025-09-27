@@ -10,13 +10,14 @@ import {
   validatePromptId
 } from '../lib/validation/systemPromptsSchemas.js';
 import { logger } from '../logger.js';
+import { authenticateToken } from '../middleware/auth.js';
 
 export const systemPromptsRouter = Router();
 
 // Base path: /v1/system-prompts
 
 // GET /v1/system-prompts - List built-in and custom prompts
-systemPromptsRouter.get('/v1/system-prompts', async (req, res) => {
+systemPromptsRouter.get('/v1/system-prompts', authenticateToken, async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) {
@@ -48,7 +49,7 @@ systemPromptsRouter.get('/v1/system-prompts', async (req, res) => {
 });
 
 // POST /v1/system-prompts - Create custom prompt
-systemPromptsRouter.post('/v1/system-prompts', async (req, res) => {
+systemPromptsRouter.post('/v1/system-prompts', authenticateToken, async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) {
@@ -72,7 +73,7 @@ systemPromptsRouter.post('/v1/system-prompts', async (req, res) => {
 });
 
 // PATCH /v1/system-prompts/:id - Update custom prompt
-systemPromptsRouter.patch('/v1/system-prompts/:id', async (req, res) => {
+systemPromptsRouter.patch('/v1/system-prompts/:id', authenticateToken, async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) {
@@ -103,7 +104,7 @@ systemPromptsRouter.patch('/v1/system-prompts/:id', async (req, res) => {
 });
 
 // DELETE /v1/system-prompts/:id - Delete custom prompt
-systemPromptsRouter.delete('/v1/system-prompts/:id', async (req, res) => {
+systemPromptsRouter.delete('/v1/system-prompts/:id', authenticateToken, async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) {
@@ -131,7 +132,7 @@ systemPromptsRouter.delete('/v1/system-prompts/:id', async (req, res) => {
 });
 
 // POST /v1/system-prompts/:id/duplicate - Duplicate prompt
-systemPromptsRouter.post('/v1/system-prompts/:id/duplicate', async (req, res) => {
+systemPromptsRouter.post('/v1/system-prompts/:id/duplicate', authenticateToken, async (req, res) => {
   try {
     const userId = req.user?.id;
     if (!userId) {
@@ -159,7 +160,7 @@ systemPromptsRouter.post('/v1/system-prompts/:id/duplicate', async (req, res) =>
 });
 
 // POST /v1/system-prompts/none/select - Clear active prompt selection
-systemPromptsRouter.post('/v1/system-prompts/none/select', async (req, res) => {
+systemPromptsRouter.post('/v1/system-prompts/none/select', authenticateToken, async (req, res) => {
   try {
     const userId = req.user?.id;
     const sessionId = req.sessionId || null;
@@ -187,7 +188,7 @@ systemPromptsRouter.post('/v1/system-prompts/none/select', async (req, res) => {
 });
 
 // POST /v1/system-prompts/:id/select - Select prompt for conversation
-systemPromptsRouter.post('/v1/system-prompts/:id/select', async (req, res) => {
+systemPromptsRouter.post('/v1/system-prompts/:id/select', authenticateToken, async (req, res) => {
   try {
     const userId = req.user?.id;
     const sessionId = req.sessionId || null;

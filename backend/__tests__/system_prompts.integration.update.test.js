@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
-import { makeAuthedApp, ensureTestUser } from './helpers/systemPromptsTestUtils.js';
+import {makeAuthedApp, ensureTestUser,
+  getTestAuthToken
+} from './helpers/systemPromptsTestUtils.js';
 
 const makeApp = makeAuthedApp;
 
@@ -34,6 +36,7 @@ describe('Integration: Update custom prompt', () => {
       // Create prompt
       let res = await agent
         .post('/v1/system-prompts')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send({ name: 'Test', body: 'Original body' });
       assert.equal(res.status, 201);
       const created = res.body;
@@ -45,6 +48,7 @@ describe('Integration: Update custom prompt', () => {
       // Update prompt
       res = await agent
         .patch(`/v1/system-prompts/${created.id}`)
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send({ name: 'Updated Test', body: 'Updated body' });
       assert.equal(res.status, 200);
       const updated = res.body;

@@ -81,4 +81,24 @@ describe('useSystemPrompts localStorage behaviour', () => {
     expect(localStorage.length).toBe(0);
     expect(result.current.inlineEdits[PROMPT_ID]).toBeUndefined();
   });
+
+  test('fetchPrompts gracefully handles missing system prompts (404)', async () => {
+    jest.spyOn(global, 'fetch').mockResolvedValue({
+      ok: false,
+      status: 404,
+      statusText: 'Not Found',
+      json: async () => ({ message: 'No prompts found' })
+    } as unknown as Response);
+
+    const { result } = renderHook(() => useSystemPrompts(USER_ID));
+
+    await waitFor(() => expect(result.current.loading).toBe(false));
+
+    expect(result.current.prompts).toEqual({
+      built_ins: [],
+      custom: [],
+      error: 'No prompts found'
+    });
+    expect(result.current.error).toBeNull();
+  });
 });

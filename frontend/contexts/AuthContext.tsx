@@ -2,7 +2,8 @@
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { User, authApi } from '../lib/auth/api';
-import { getToken, isAuthenticated, getUserFromToken, clearTokens } from '../lib/auth/tokens';
+import { getToken, getUserFromToken, clearTokens } from '../lib/auth/tokens';
+import { verifySession } from '../lib/auth/verification';
 
 interface AuthContextType {
   user: User | null;
@@ -38,28 +39,28 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const initializeAuth = useCallback(async () => {
     try {
-      if (isAuthenticated()) {
-        const token = getToken();
-        if (token) {
-          // Try to get user from token first (faster)
-          const userFromToken = getUserFromToken(token);
-          if (userFromToken) {
-            setUser(userFromToken);
-          }
+      const token = getToken();
+      if (!token) {
+        setUser(null);
+        return;
+      }
 
-          // Then fetch fresh profile from server
-          try {
-            const profile = await authApi.getProfile();
-            setUser(profile);
-          } catch (error) {
-            // If profile fetch fails, fall back to token data or clear auth
-            console.warn('Failed to fetch user profile:', error);
-            if (!userFromToken) {
-              clearTokens();
-              setUser(null);
-            }
-          }
-        }
+      const userFromToken = getUserFromToken(token);
+      if (userFromToken) {
+        setUser(userFromToken);
+      }
+
+      const verification = await verifySession();
+      if (verification.valid && verification.user) {
+        setUser(verification.user);
+      } else if (
+        verification.reason === 'missing-token' ||
+        verification.reason === 'expired' ||
+        verification.reason === 'invalid'
+      ) {
+        setUser(null);
+      } else if (verification.error) {
+        console.warn('Token verification failed:', verification.error);
       }
     } catch (error) {
       console.error('Failed to initialize auth:', error);
@@ -109,14 +110,20 @@ export function AuthProvider({ children }: AuthProviderProps) {
   }, []);
 
   const refreshUser = useCallback(async () => {
-    if (!isAuthenticated()) {
-      setUser(null);
-      return;
-    }
-
     try {
-      const profile = await authApi.getProfile();
-      setUser(profile);
+      const verification = await verifySession();
+      if (verification.valid && verification.user) {
+        setUser(verification.user);
+      } else {
+        setUser(null);
+        if (
+          verification.reason === 'expired' ||
+          verification.reason === 'invalid' ||
+          verification.reason === 'missing-token'
+        ) {
+          clearTokens();
+        }
+      }
     } catch (error) {
       console.error('Failed to refresh user:', error);
       setUser(null);

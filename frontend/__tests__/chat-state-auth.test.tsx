@@ -29,7 +29,10 @@ jest.mock('../lib/auth/tokens', () => ({
   removeRefreshToken: jest.fn(),
   isTokenExpired: jest.fn(() => false),
   getUserFromToken: jest.fn(() => null),
-  isAuthenticated: jest.fn(() => false),
+}));
+
+jest.mock('../lib/auth/verification', () => ({
+  verifySession: jest.fn(() => Promise.resolve({ valid: false, user: null, reason: 'missing-token' })),
 }));
 
 // Mock chat API functions

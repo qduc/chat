@@ -65,6 +65,21 @@ interface UseSystemPromptsReturn {
 }
 
 const STORAGE_PREFIX = 'prompt-inline-';
+const stripTrailingSlash = (value: string) => value.replace(/\/$/, '');
+const API_BASE = stripTrailingSlash(process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001');
+const buildApiUrl = (path: string) => `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
+
+// Helper to get auth headers
+const getAuthHeaders = () => {
+  const headers: Record<string, string> = {};
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('chatforge_auth_token');
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+  }
+  return headers;
+};
 
 export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
   const [prompts, setPrompts] = useState<PromptsListResponse | null>(null);
@@ -100,21 +115,50 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
     setError(null);
 
     try {
-      const response = await fetch('/api/v1/system-prompts', {
+      const response = await fetch(buildApiUrl('/v1/system-prompts'), {
         method: 'GET',
+        headers: getAuthHeaders(),
         credentials: 'include',
       });
+
+      if (response.status === 404) {
+        let fallbackError = 'No system prompts are available yet.';
+
+        try {
+          const errorPayload = await response.json();
+          const derivedMessage = errorPayload?.message || errorPayload?.error;
+          if (derivedMessage && typeof derivedMessage === 'string') {
+            fallbackError = derivedMessage;
+          }
+        } catch (parseError) {
+          console.info('[useSystemPrompts] 404 response without JSON payload', parseError);
+        }
+
+        setPrompts({
+          built_ins: [],
+          custom: [],
+          error: fallbackError
+        });
+        setActivePromptId(null);
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
 
       const data = await response.json();
-      setPrompts(data);
+      const normalizedError = typeof data?.error === 'string' ? data.error : null;
+
+      setPrompts({
+        built_ins: Array.isArray(data?.built_ins) ? data.built_ins : [],
+        custom: Array.isArray(data?.custom) ? data.custom : [],
+        error: normalizedError
+      });
 
       // Show warning if there's a load error
-      if (data.error) {
-        console.warn('[useSystemPrompts] Built-ins load error:', data.error);
+      if (normalizedError) {
+        console.warn('[useSystemPrompts] Built-ins load error:', normalizedError);
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to fetch prompts';
@@ -130,10 +174,11 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
     setError(null);
 
     try {
-      const response = await fetch('/api/v1/system-prompts', {
+      const response = await fetch(buildApiUrl('/v1/system-prompts'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getAuthHeaders(),
         },
         credentials: 'include',
         body: JSON.stringify(data),
@@ -163,10 +208,11 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
     setError(null);
 
     try {
-      const response = await fetch(`/api/v1/system-prompts/${id}`, {
+      const response = await fetch(buildApiUrl(`/v1/system-prompts/${id}`), {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
+          ...getAuthHeaders(),
         },
         credentials: 'include',
         body: JSON.stringify(updates),
@@ -196,8 +242,9 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
     setError(null);
 
     try {
-      const response = await fetch(`/api/v1/system-prompts/${id}`, {
+      const response = await fetch(buildApiUrl(`/v1/system-prompts/${id}`), {
         method: 'DELETE',
+        headers: getAuthHeaders(),
         credentials: 'include',
       });
 
@@ -237,8 +284,9 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
     setError(null);
 
     try {
-      const response = await fetch(`/api/v1/system-prompts/${id}/duplicate`, {
+      const response = await fetch(buildApiUrl(`/v1/system-prompts/${id}/duplicate`), {
         method: 'POST',
+        headers: getAuthHeaders(),
         credentials: 'include',
       });
 
@@ -266,10 +314,11 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
     setError(null);
 
     try {
-      const response = await fetch(`/api/v1/system-prompts/${promptId}/select`, {
+      const response = await fetch(buildApiUrl(`/v1/system-prompts/${promptId}/select`), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getAuthHeaders(),
         },
         credentials: 'include',
         body: JSON.stringify({
@@ -298,10 +347,11 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
     setError(null);
 
     try {
-      const response = await fetch('/api/v1/system-prompts/none/select', {
+      const response = await fetch(buildApiUrl('/v1/system-prompts/none/select'), {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          ...getAuthHeaders(),
         },
         credentials: 'include',
         body: JSON.stringify({ conversation_id: conversationId }),

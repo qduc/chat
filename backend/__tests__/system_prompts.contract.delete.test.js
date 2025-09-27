@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
-import { makeAuthedApp, ensureTestUser, seedCustomPrompt } from './helpers/systemPromptsTestUtils.js';
+import {makeAuthedApp, ensureTestUser, seedCustomPrompt,
+  getTestAuthToken
+} from './helpers/systemPromptsTestUtils.js';
 
 const makeApp = makeAuthedApp;
 
@@ -35,7 +37,8 @@ describe('DELETE /v1/system-prompts/:id - Contract Test', () => {
       seedCustomPrompt({ id: 'test-custom-id', name: 'Prompt to Delete', body: 'Delete me' });
 
       const res = await agent
-        .delete('/v1/system-prompts/test-custom-id');
+        .delete('/v1/system-prompts/test-custom-id')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`);
 
       assert.equal(res.status, 204);
       assert.equal(res.text, '', 'Response body should be empty for 204');
@@ -56,7 +59,8 @@ describe('DELETE /v1/system-prompts/:id - Contract Test', () => {
       const agent = request(app);
 
       const res = await agent
-        .delete('/v1/system-prompts/built:example');
+        .delete('/v1/system-prompts/built:example')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`);
 
       assert.equal(res.status, 400);
 
@@ -87,7 +91,8 @@ describe('DELETE /v1/system-prompts/:id - Contract Test', () => {
       const agent = request(app);
 
       const res = await agent
-        .delete('/v1/system-prompts/non-existent-id');
+        .delete('/v1/system-prompts/non-existent-id')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`);
 
       assert.equal(res.status, 404);
 
@@ -115,7 +120,8 @@ describe('DELETE /v1/system-prompts/:id - Contract Test', () => {
       // This test verifies that when a prompt is deleted,
       // any conversations using it as active_system_prompt_id are updated
       const res = await agent
-        .delete('/v1/system-prompts/test-active-prompt-id');
+        .delete('/v1/system-prompts/test-active-prompt-id')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`);
 
       // The deletion itself should succeed
       assert.equal(res.status, 204);

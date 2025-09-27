@@ -15,14 +15,18 @@ export interface User {
 }
 
 export interface LoginResponse {
-  token: string;
-  refreshToken: string;
+  tokens: {
+    accessToken: string;
+    refreshToken: string;
+  };
   user: User;
 }
 
 export interface RegisterResponse {
-  token: string;
-  refreshToken: string;
+  tokens: {
+    accessToken: string;
+    refreshToken: string;
+  };
   user: User;
 }
 
@@ -30,7 +34,7 @@ export interface AuthApiClient {
   register: (email: string, password: string, displayName?: string) => Promise<RegisterResponse>;
   login: (email: string, password: string) => Promise<LoginResponse>;
   logout: () => Promise<void>;
-  refreshToken: () => Promise<{ token: string; refreshToken: string }>;
+  refreshToken: () => Promise<{ accessToken: string }>;
   getProfile: () => Promise<User>;
 }
 
@@ -57,8 +61,8 @@ class AuthApiClientImpl implements AuthApiClient {
     const data = await response.json();
 
     // Store tokens
-    setToken(data.token);
-    setRefreshToken(data.refreshToken);
+    setToken(data.tokens.accessToken);
+    setRefreshToken(data.tokens.refreshToken);
 
     return data;
   }
@@ -84,8 +88,8 @@ class AuthApiClientImpl implements AuthApiClient {
     const data = await response.json();
 
     // Store tokens
-    setToken(data.token);
-    setRefreshToken(data.refreshToken);
+    setToken(data.tokens.accessToken);
+    setRefreshToken(data.tokens.refreshToken);
 
     return data;
   }
@@ -114,7 +118,7 @@ class AuthApiClientImpl implements AuthApiClient {
     }
   }
 
-  async refreshToken(): Promise<{ token: string; refreshToken: string }> {
+  async refreshToken(): Promise<{ accessToken: string }> {
     const refreshToken = getRefreshToken();
     if (!refreshToken) {
       throw new Error('No refresh token available');
@@ -138,9 +142,8 @@ class AuthApiClientImpl implements AuthApiClient {
 
     const data = await response.json();
 
-    // Store new tokens
-    setToken(data.token);
-    setRefreshToken(data.refreshToken);
+    // Store new access token (refresh token remains the same)
+    setToken(data.accessToken);
 
     return data;
   }
@@ -151,7 +154,7 @@ class AuthApiClientImpl implements AuthApiClient {
       throw new Error('Not authenticated');
     }
 
-    const response = await fetch(`${API_BASE}/v1/auth/profile`, {
+    const response = await fetch(`${API_BASE}/v1/auth/me`, {
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${token}`,
@@ -166,7 +169,7 @@ class AuthApiClientImpl implements AuthApiClient {
         await this.refreshToken();
         // Retry with new token
         const newToken = getToken();
-        const retryResponse = await fetch(`${API_BASE}/v1/auth/profile`, {
+        const retryResponse = await fetch(`${API_BASE}/v1/auth/me`, {
           method: 'GET',
           headers: {
             'Authorization': `Bearer ${newToken}`,
@@ -179,7 +182,8 @@ class AuthApiClientImpl implements AuthApiClient {
           throw new Error('Profile fetch failed after token refresh');
         }
 
-        return retryResponse.json();
+        const retryData = await retryResponse.json();
+        return retryData.user;
       } catch (refreshError) {
         clearTokens();
         throw new Error('Authentication expired');
@@ -191,7 +195,8 @@ class AuthApiClientImpl implements AuthApiClient {
       throw new Error(error.message || 'Failed to fetch profile');
     }
 
-    return response.json();
+    const data = await response.json();
+    return data.user;
   }
 }
 

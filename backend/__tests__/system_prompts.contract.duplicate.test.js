@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
-import { makeAuthedApp, ensureTestUser, seedCustomPrompt } from './helpers/systemPromptsTestUtils.js';
+import {makeAuthedApp, ensureTestUser, seedCustomPrompt,
+  getTestAuthToken
+} from './helpers/systemPromptsTestUtils.js';
 
 const makeApp = makeAuthedApp;
 
@@ -35,7 +37,8 @@ describe('POST /v1/system-prompts/:id/duplicate - Contract Test', () => {
       seedCustomPrompt({ id: 'source-custom-id', name: 'Source Prompt', body: 'Source body' });
 
       const res = await agent
-        .post('/v1/system-prompts/source-custom-id/duplicate');
+        .post('/v1/system-prompts/source-custom-id/duplicate')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`);
 
       assert.equal(res.status, 201);
 
@@ -66,7 +69,8 @@ describe('POST /v1/system-prompts/:id/duplicate - Contract Test', () => {
       const agent = request(app);
 
       const res = await agent
-        .post('/v1/system-prompts/built:example/duplicate');
+        .post('/v1/system-prompts/built:example/duplicate')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`);
 
       assert.equal(res.status, 201);
 
@@ -97,7 +101,8 @@ describe('POST /v1/system-prompts/:id/duplicate - Contract Test', () => {
       const agent = request(app);
 
       const res = await agent
-        .post('/v1/system-prompts/non-existent-id/duplicate');
+        .post('/v1/system-prompts/non-existent-id/duplicate')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`);
 
       assert.equal(res.status, 404);
 
@@ -124,7 +129,8 @@ describe('POST /v1/system-prompts/:id/duplicate - Contract Test', () => {
       seedCustomPrompt({ id: 'existing-common', name: 'Common Name', body: 'Existing custom' });
 
       const res = await agent
-        .post('/v1/system-prompts/prompt-with-common-name/duplicate');
+        .post('/v1/system-prompts/prompt-with-common-name/duplicate')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`);
 
       assert.equal(res.status, 201);
 
@@ -152,7 +158,8 @@ describe('POST /v1/system-prompts/:id/duplicate - Contract Test', () => {
       seedCustomPrompt({ id: 'test-id', name: 'Content Type Prompt', body: 'Check headers' });
 
       const res = await agent
-        .post('/v1/system-prompts/test-id/duplicate');
+        .post('/v1/system-prompts/test-id/duplicate')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`);
 
       if (res.status === 201) {
         assert.ok(res.headers['content-type'].includes('application/json'),

@@ -5,6 +5,26 @@
 const TOKEN_KEY = 'chatforge_auth_token';
 const REFRESH_TOKEN_KEY = 'chatforge_refresh_token';
 
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  if (typeof window === 'undefined') return null;
+
+  const parts = token.split('.');
+  if (parts.length !== 3) {
+    return null;
+  }
+
+  try {
+    const base64Url = parts[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const padding = (4 - (base64.length % 4)) % 4;
+    const padded = padding ? `${base64}${'='.repeat(padding)}` : base64;
+    const decoded = window.atob(padded);
+    return JSON.parse(decoded);
+  } catch (_error) {
+    return null;
+  }
+}
+
 /**
  * Get the access token from localStorage
  */
@@ -67,14 +87,22 @@ export function clearTokens(): void {
  * @returns true if the token is expired or invalid
  */
 export function isTokenExpired(token: string): boolean {
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    const currentTime = Math.floor(Date.now() / 1000);
-    return payload.exp < currentTime;
-  } catch (error) {
-    // If we can't parse the token, consider it expired
+  const payload = decodeJwtPayload(token);
+
+  if (!payload) {
+    if (typeof window !== 'undefined') {
+      removeToken();
+    }
     return true;
   }
+
+  const expiresAt = typeof payload.exp === 'number' ? payload.exp : null;
+  if (!expiresAt) {
+    return false;
+  }
+
+  const currentTime = Math.floor(Date.now() / 1000);
+  return expiresAt < currentTime;
 }
 
 /**
@@ -83,16 +111,25 @@ export function isTokenExpired(token: string): boolean {
  * @returns User info or null if invalid
  */
 export function getUserFromToken(token: string): any | null {
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    return {
-      id: payload.sub || payload.userId,
-      email: payload.email,
-      displayName: payload.displayName,
-    };
-  } catch (error) {
+  const payload = decodeJwtPayload(token);
+  if (!payload) {
     return null;
   }
+
+  const { sub, userId, email, displayName } = payload as Record<string, unknown>;
+  const id = typeof sub === 'string' ? sub : typeof userId === 'string' ? userId : null;
+  const emailValue = typeof email === 'string' ? email : null;
+  const displayNameValue = typeof displayName === 'string' ? displayName : undefined;
+
+  if (!id && !emailValue && displayNameValue === undefined) {
+    return null;
+  }
+
+  return {
+    id: id ?? undefined,
+    email: emailValue ?? undefined,
+    displayName: displayNameValue,
+  };
 }
 
 /**

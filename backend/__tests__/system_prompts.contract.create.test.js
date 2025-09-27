@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
-import { makeAuthedApp, ensureTestUser } from './helpers/systemPromptsTestUtils.js';
+import {makeAuthedApp, ensureTestUser,
+  getTestAuthToken
+} from './helpers/systemPromptsTestUtils.js';
 
 const makeApp = makeAuthedApp;
 
@@ -34,6 +36,7 @@ describe('POST /v1/system-prompts - Contract Test', () => {
 
       const res = await agent
         .post('/v1/system-prompts')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send(payload);
 
       assert.equal(res.status, 201);
@@ -70,6 +73,7 @@ describe('POST /v1/system-prompts - Contract Test', () => {
 
       const res = await agent
         .post('/v1/system-prompts')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send(payload);
 
       assert.equal(res.status, 400);
@@ -100,6 +104,7 @@ describe('POST /v1/system-prompts - Contract Test', () => {
 
       const res = await agent
         .post('/v1/system-prompts')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send(payload);
 
       assert.equal(res.status, 400);
@@ -130,6 +135,7 @@ describe('POST /v1/system-prompts - Contract Test', () => {
 
       const res = await agent
         .post('/v1/system-prompts')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send(payload);
 
       assert.equal(res.status, 400);
@@ -160,6 +166,7 @@ describe('POST /v1/system-prompts - Contract Test', () => {
 
       const res = await agent
         .post('/v1/system-prompts')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send(payload);
 
       if (res.status === 201) {

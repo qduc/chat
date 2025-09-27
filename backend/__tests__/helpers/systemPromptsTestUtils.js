@@ -1,6 +1,8 @@
 import express from 'express';
 import { test, expect } from '@jest/globals';
+import jwt from 'jsonwebtoken';
 import { getDb } from '../../src/db/index.js';
+import { config } from '../../src/env.js';
 
 export const TEST_USER_ID = 'test-user';
 export const TEST_USER_EMAIL = 'test-user@example.com';
@@ -9,12 +11,17 @@ export const TEST_SESSION_ID = 'test-session';
 export function makeAuthedApp(router) {
   const app = express();
   app.use(express.json());
-  app.use((req, _res, next) => {
-    req.user = { id: TEST_USER_ID };
-    next();
-  });
   app.use(router);
   return app;
+}
+
+export function getTestAuthToken() {
+  const secret = config.auth.jwtSecret || 'development-secret-key-change-in-production';
+  return jwt.sign({ userId: TEST_USER_ID }, secret);
+}
+
+export function makeAuthedRequest(agent, method, path) {
+  return agent[method](path).set('Authorization', `Bearer ${getTestAuthToken()}`);
 }
 
 export function ensureTestUser() {

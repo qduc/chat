@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
-import { makeAuthedApp, ensureTestUser, TEST_USER_ID } from './helpers/systemPromptsTestUtils.js';
+import {makeAuthedApp, ensureTestUser, TEST_USER_ID,
+  getTestAuthToken
+} from './helpers/systemPromptsTestUtils.js';
 
 const makeApp = makeAuthedApp;
 
@@ -36,7 +38,8 @@ describe('Integration: List built-ins with empty custom prompts', () => {
       const db = getDb();
   db.prepare('DELETE FROM system_prompts WHERE user_id = @userId').run({ userId: TEST_USER_ID });
 
-      const res = await agent.get('/v1/system-prompts');
+      const res = await agent.get('/v1/system-prompts')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`);
       assert.equal(res.status, 200);
 
       const body = res.body;
@@ -93,7 +96,8 @@ describe('Integration: List built-ins with empty custom prompts', () => {
       const app = makeApp(systemPromptsRouter);
       const agent = request(app);
 
-      const res = await agent.get('/v1/system-prompts');
+      const res = await agent.get('/v1/system-prompts')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`);
 
       // Should still return 200 even if built-ins fail to load
       assert.equal(res.status, 200);
@@ -122,7 +126,8 @@ describe('Integration: List built-ins with empty custom prompts', () => {
       const agent = request(app);
 
       const startTime = Date.now();
-      const res = await agent.get('/v1/system-prompts');
+      const res = await agent.get('/v1/system-prompts')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`);
       const endTime = Date.now();
 
       const responseTime = endTime - startTime;

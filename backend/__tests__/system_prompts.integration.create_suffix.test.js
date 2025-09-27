@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
-import { makeAuthedApp, ensureTestUser } from './helpers/systemPromptsTestUtils.js';
+import {makeAuthedApp, ensureTestUser,
+  getTestAuthToken
+} from './helpers/systemPromptsTestUtils.js';
 
 const makeApp = makeAuthedApp;
 
@@ -34,12 +36,14 @@ describe('Integration: Create prompt with name uniqueness', () => {
       // Create first prompt
       let res = await agent
         .post('/v1/system-prompts')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send({ name: 'Helper', body: 'Original helper' });
   assert.equal(res.status, 201);
 
       // Create second with same name - should get suffix
       res = await agent
         .post('/v1/system-prompts')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send({ name: 'Helper', body: 'Second helper' });
       assert.equal(res.status, 201);
       const second = res.body;
@@ -47,7 +51,8 @@ describe('Integration: Create prompt with name uniqueness', () => {
       assert.equal(second.name, 'Helper (1)', 'Second prompt should have suffix');
 
       // List should contain both
-      res = await agent.get('/v1/system-prompts');
+      res = await agent.get('/v1/system-prompts')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`);
       assert.equal(res.status, 200);
       const list = res.body;
 

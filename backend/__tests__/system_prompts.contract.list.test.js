@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
-import { makeAuthedApp, ensureTestUser } from './helpers/systemPromptsTestUtils.js';
+import {makeAuthedApp, ensureTestUser,
+  getTestAuthToken
+} from './helpers/systemPromptsTestUtils.js';
 
 const makeApp = makeAuthedApp;
 
@@ -30,7 +32,8 @@ describe('GET /v1/system-prompts - Contract Test', () => {
       const app = makeApp(systemPromptsRouter);
       const agent = request(app);
 
-      const res = await agent.get('/v1/system-prompts');
+      const res = await agent.get('/v1/system-prompts')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`);
       assert.equal(res.status, 200);
 
       const body = res.body;
@@ -78,7 +81,8 @@ describe('GET /v1/system-prompts - Contract Test', () => {
       const app = makeApp(systemPromptsRouter);
       const agent = request(app);
 
-      const res = await agent.get('/v1/system-prompts');
+      const res = await agent.get('/v1/system-prompts')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`);
       assert.equal(res.status, 200);
       assert.ok(res.headers['content-type'].includes('application/json'),
                 'Content-Type should be application/json');

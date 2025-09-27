@@ -3,7 +3,7 @@
  */
 
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor, waitForElementToBeRemoved } from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 // Mock token functions
@@ -16,7 +16,11 @@ jest.mock('../lib/auth/tokens', () => ({
   removeRefreshToken: jest.fn(),
   isTokenExpired: jest.fn(() => false),
   getUserFromToken: jest.fn(() => null),
-  isAuthenticated: jest.fn(() => false),
+}));
+
+// Mock verification helper
+jest.mock('../lib/auth/verification', () => ({
+  verifySession: jest.fn(() => Promise.resolve({ valid: false, user: null, reason: 'missing-token' })),
 }));
 
 // Mock the auth API
@@ -37,6 +41,7 @@ import { AuthModal } from '../components/auth/AuthModal';
 import { LoginForm } from '../components/auth/LoginForm';
 import { RegisterForm } from '../components/auth/RegisterForm';
 import { authApi } from '../lib/auth/api';
+import { verifySession } from '../lib/auth/verification';
 
 function AuthButtonWithModal() {
   const [open, setOpen] = React.useState(false);
@@ -61,6 +66,25 @@ function AuthButtonWithModal() {
       />
     </>
   );
+}
+
+async function renderWithAuth(children: React.ReactNode) {
+  let utils: ReturnType<typeof render>;
+
+  await act(async () => {
+    utils = render(
+      <AuthProvider>
+        {children}
+      </AuthProvider>
+    );
+  });
+
+  const loadingNode = screen.queryByText('Loading...');
+  if (loadingNode) {
+    await waitForElementToBeRemoved(() => screen.getByText('Loading...'));
+  }
+
+  return utils!;
 }
 
 // Test component that uses useAuth
@@ -105,16 +129,23 @@ describe('Authentication System', () => {
   });
 
   describe('AuthProvider', () => {
-    it('provides authentication context to child components', () => {
-      render(
-        <AuthProvider>
-          <TestAuthComponent />
-        </AuthProvider>
-      );
+    it('provides authentication context to child components', async () => {
+      await renderWithAuth(<TestAuthComponent />);
 
       expect(screen.getByTestId('user-state')).toHaveTextContent('Not logged in');
       expect(screen.getByTestId('login-btn')).toBeInTheDocument();
       expect(screen.getByTestId('logout-btn')).toBeInTheDocument();
+    });
+
+    it('verifies session with backend on mount', async () => {
+      const tokens = require('../lib/auth/tokens');
+      (tokens.getToken as jest.Mock).mockReturnValue('existing-token');
+
+      await renderWithAuth(<TestAuthComponent />);
+
+      await waitFor(() => {
+        expect(verifySession).toHaveBeenCalled();
+      });
     });
 
     it('throws error when useAuth is used outside AuthProvider', () => {
@@ -135,11 +166,7 @@ describe('Authentication System', () => {
         user: { id: '1', email: 'test@example.com', displayName: 'Test User' }
       });
 
-      render(
-        <AuthProvider>
-          <TestAuthComponent />
-        </AuthProvider>
-      );
+      await renderWithAuth(<TestAuthComponent />);
 
       fireEvent.click(screen.getByTestId('login-btn'));
 
@@ -151,33 +178,21 @@ describe('Authentication System', () => {
 
   describe('AuthButton', () => {
     it('renders sign in and sign up buttons when not authenticated', async () => {
-      render(
-        <AuthProvider>
-          <AuthButtonWithModal />
-        </AuthProvider>
-      );
+      await renderWithAuth(<AuthButtonWithModal />);
 
       expect(await screen.findByText('Sign in')).toBeInTheDocument();
       expect(screen.getByText('Sign up')).toBeInTheDocument();
     });
 
     it('opens auth modal when sign in is clicked', async () => {
-      render(
-        <AuthProvider>
-          <AuthButtonWithModal />
-        </AuthProvider>
-      );
+      await renderWithAuth(<AuthButtonWithModal />);
 
       fireEvent.click(await screen.findByText('Sign in'));
       expect(await screen.findByText('Sign in to ChatForge')).toBeInTheDocument();
     });
 
     it('opens auth modal in register mode when sign up is clicked', async () => {
-      render(
-        <AuthProvider>
-          <AuthButtonWithModal />
-        </AuthProvider>
-      );
+      await renderWithAuth(<AuthButtonWithModal />);
 
       fireEvent.click(await screen.findByText('Sign up'));
       await waitFor(() => {
@@ -245,11 +260,7 @@ describe('Authentication System', () => {
     });
 
     it('shows password mismatch error', async () => {
-      render(
-        <AuthProvider>
-          <RegisterForm />
-        </AuthProvider>
-      );
+      await renderWithAuth(<RegisterForm />);
 
       fireEvent.change(screen.getByLabelText('Email'), {
         target: { value: 'test@example.com' }
@@ -269,11 +280,7 @@ describe('Authentication System', () => {
     });
 
     it('shows password length error', async () => {
-      render(
-        <AuthProvider>
-          <RegisterForm />
-        </AuthProvider>
-      );
+      await renderWithAuth(<RegisterForm />);
 
       fireEvent.change(screen.getByLabelText('Email'), {
         target: { value: 'test@example.com' }

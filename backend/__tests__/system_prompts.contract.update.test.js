@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
-import { makeAuthedApp, ensureTestUser, seedCustomPrompt } from './helpers/systemPromptsTestUtils.js';
+import {makeAuthedApp, ensureTestUser, seedCustomPrompt,
+  getTestAuthToken
+} from './helpers/systemPromptsTestUtils.js';
 
 const makeApp = makeAuthedApp;
 
@@ -41,6 +43,7 @@ describe('PATCH /v1/system-prompts/:id - Contract Test', () => {
 
       const res = await agent
         .patch('/v1/system-prompts/test-id')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send(updatePayload);
 
       assert.equal(res.status, 200);
@@ -75,6 +78,7 @@ describe('PATCH /v1/system-prompts/:id - Contract Test', () => {
 
       const res = await agent
         .patch('/v1/system-prompts/built:example')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send(updatePayload);
 
       assert.equal(res.status, 400);
@@ -111,6 +115,7 @@ describe('PATCH /v1/system-prompts/:id - Contract Test', () => {
 
       const res = await agent
         .patch('/v1/system-prompts/non-existent-id')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send(updatePayload);
 
       assert.equal(res.status, 404);
@@ -142,6 +147,7 @@ describe('PATCH /v1/system-prompts/:id - Contract Test', () => {
 
       const res = await agent
         .patch('/v1/system-prompts/test-id')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send(updatePayload);
 
       assert.equal(res.status, 400);
@@ -169,6 +175,7 @@ describe('PATCH /v1/system-prompts/:id - Contract Test', () => {
 
       const res = await agent
         .patch('/v1/system-prompts/test-id')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send({}); // Empty payload
 
       assert.equal(res.status, 400);

@@ -7,7 +7,9 @@ import {
   makeAuthedApp,
   ensureTestUser,
   ensureTestConversation,
-  seedCustomPrompt
+  seedCustomPrompt,
+  getTestAuthToken,
+  makeAuthedRequest
 } from './helpers/systemPromptsTestUtils.js';
 
 const makeApp = makeAuthedApp;
@@ -48,6 +50,7 @@ describe('POST /v1/system-prompts/:id/select - Contract Test', () => {
 
       const res = await agent
         .post('/v1/system-prompts/test-prompt-id/select')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send(payload);
 
       assert.equal(res.status, 200);
@@ -82,6 +85,7 @@ describe('POST /v1/system-prompts/:id/select - Contract Test', () => {
 
       const res = await agent
         .post('/v1/system-prompts/test-prompt-id/select')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send(payload);
 
       assert.equal(res.status, 200);
@@ -114,6 +118,7 @@ describe('POST /v1/system-prompts/:id/select - Contract Test', () => {
 
       const res = await agent
         .post('/v1/system-prompts/test-prompt-id/select')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send(payload);
 
       assert.equal(res.status, 400);
@@ -146,6 +151,7 @@ describe('POST /v1/system-prompts/:id/select - Contract Test', () => {
 
       const res = await agent
         .post('/v1/system-prompts/non-existent-id/select')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send(payload);
 
       assert.equal(res.status, 404);
@@ -177,6 +183,7 @@ describe('POST /v1/system-prompts/:id/select - Contract Test', () => {
 
       const res = await agent
         .post('/v1/system-prompts/built:example/select')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send(payload);
 
       assert.equal(res.status, 200);
@@ -207,6 +214,7 @@ describe('POST /v1/system-prompts/:id/select - Contract Test', () => {
 
       const res = await agent
         .post('/v1/system-prompts/test-id/select')
+        .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send(payload);
 
       if (res.status === 200) {
