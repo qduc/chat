@@ -56,6 +56,7 @@
 **Server-Side Tool Execution**: Are any tools properly contained server-side with Zod validation? No client-side tool execution?
 
 **Docker-First Development**: Is feature developed using Docker containers and ./dev.sh scripts?
+**State Management Single Source of Truth**: Do frontend changes route all chat/conversation mutations exclusively through useChatState actions (no ad-hoc fetch or duplicate local caches)?
 
 ## Project Structure
 
@@ -224,4 +225,4 @@ directories captured above]
 - [ ] Complexity deviations documented
 
 ---
-*Based on Constitution v2.1.1 - See `/memory/constitution.md`*
+*Based on Constitution v1.1.0 - See `/memory/constitution.md`*

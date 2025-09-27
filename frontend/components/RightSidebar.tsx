@@ -11,6 +11,9 @@ interface RightSidebarProps {
   collapsed?: boolean;
   onToggleCollapse?: () => void;
   onEffectivePromptChange?: (content: string) => void;
+  // Active system prompt ID from loaded conversation
+  conversationActivePromptId?: string | null;
+  conversationSystemPrompt?: string | null;
 }
 
 export function RightSidebar({
@@ -18,13 +21,16 @@ export function RightSidebar({
   conversationId,
   collapsed = false,
   onToggleCollapse,
-  onEffectivePromptChange
+  onEffectivePromptChange,
+  conversationActivePromptId,
+  conversationSystemPrompt
 }: RightSidebarProps) {
   const {
     prompts,
     loading,
     error,
     activePromptId,
+    setActivePromptId,
     hasUnsavedChanges,
     fetchPrompts,
     createPrompt,
@@ -48,16 +54,54 @@ export function RightSidebar({
   const [showSaveAsModal, setShowSaveAsModal] = useState(false);
   const [saveAsInitialName, setSaveAsInitialName] = useState('');
   const [newPromptContent, setNewPromptContent] = useState('');
+  const effectiveSelectedPromptId = conversationId ? activePromptId : selectedPromptId;
 
   // Notify parent of effective prompt content changes
   useEffect(() => {
-    if (activePromptId && onEffectivePromptChange) {
+    if (!onEffectivePromptChange) return;
+
+    if (activePromptId) {
       const content = getEffectivePromptContent(activePromptId);
       onEffectivePromptChange(content);
-    } else if (!activePromptId && onEffectivePromptChange) {
-      onEffectivePromptChange('');
+      return;
     }
-  }, [activePromptId, inlineEdits, onEffectivePromptChange, getEffectivePromptContent]);
+
+    if (conversationId && typeof conversationSystemPrompt === 'string' && conversationSystemPrompt.length > 0) {
+      onEffectivePromptChange(conversationSystemPrompt);
+      return;
+    }
+
+    onEffectivePromptChange('');
+  }, [
+    activePromptId,
+    inlineEdits,
+    onEffectivePromptChange,
+    getEffectivePromptContent,
+    conversationSystemPrompt,
+    conversationId
+  ]);
+
+  // Update active prompt ID when conversation changes
+  useEffect(() => {
+    if (conversationActivePromptId !== undefined) {
+      setActivePromptId(conversationActivePromptId);
+      if (conversationId) {
+        setSelectedPromptId(conversationActivePromptId ?? null);
+        if (conversationActivePromptId) {
+          setNewPromptContent('');
+        } else if (typeof conversationSystemPrompt === 'string') {
+          setNewPromptContent(conversationSystemPrompt);
+        } else {
+          setNewPromptContent('');
+        }
+      }
+    }
+  }, [
+    conversationActivePromptId,
+    conversationSystemPrompt,
+    conversationId,
+    setActivePromptId
+  ]);
 
   const handleSelectPrompt = async (promptId: string) => {
     if (!conversationId) {
@@ -100,15 +144,17 @@ export function RightSidebar({
   };
 
   const handleSavePrompt = async () => {
-    if (!selectedPromptId) return false;
+    if (!effectiveSelectedPromptId) return false;
 
-    const success = await saveInlineEdit(selectedPromptId);
+    const success = await saveInlineEdit(effectiveSelectedPromptId);
     return success;
   };
 
   const handleSaveAsPrompt = async (name: string) => {
-    const prompt = getPromptById(selectedPromptId || '');
-    const content = selectedPromptId ? getEffectivePromptContent(selectedPromptId) : newPromptContent;
+    const prompt = effectiveSelectedPromptId ? getPromptById(effectiveSelectedPromptId) : null;
+    const content = effectiveSelectedPromptId
+      ? getEffectivePromptContent(effectiveSelectedPromptId)
+      : newPromptContent;
 
     if (!content.trim()) return false;
 
@@ -119,8 +165,8 @@ export function RightSidebar({
 
     if (newPrompt) {
       // Clear any inline edits since we've saved as new
-      if (selectedPromptId) {
-        clearInlineEdit(selectedPromptId);
+      if (effectiveSelectedPromptId) {
+        clearInlineEdit(effectiveSelectedPromptId);
       } else {
         // Clear new prompt content if we were creating from scratch
         setNewPromptContent('');
@@ -136,13 +182,13 @@ export function RightSidebar({
   };
 
   const handleDeletePrompt = async () => {
-    if (!selectedPromptId) return;
+    if (!effectiveSelectedPromptId) return;
 
-    const prompt = getPromptById(selectedPromptId);
+    const prompt = getPromptById(effectiveSelectedPromptId);
     if (!prompt || 'read_only' in prompt) return;
 
     if (confirm(`Delete "${prompt.name}"?`)) {
-      const success = await deletePrompt(selectedPromptId);
+      const success = await deletePrompt(effectiveSelectedPromptId);
       if (success) {
         setSelectedPromptId(null);
         if (onEffectivePromptChange) {
@@ -153,21 +199,21 @@ export function RightSidebar({
   };
 
   const handleInlineChange = (content: string) => {
-    if (!selectedPromptId) return;
+    if (!effectiveSelectedPromptId) return;
 
-    const prompt = getPromptById(selectedPromptId);
+    const prompt = getPromptById(effectiveSelectedPromptId);
     if (!prompt) return;
 
     // Clear inline edit if content matches original
     if (content === prompt.body) {
-      clearInlineEdit(selectedPromptId);
+      clearInlineEdit(effectiveSelectedPromptId);
     } else {
-      setInlineEdit(selectedPromptId, content);
+      setInlineEdit(effectiveSelectedPromptId, content);
     }
   };
 
   const handleShowSaveAs = () => {
-    const prompt = getPromptById(selectedPromptId || '');
+    const prompt = effectiveSelectedPromptId ? getPromptById(effectiveSelectedPromptId) : null;
     const baseName = prompt ? `${prompt.name} (Copy)` : 'New Prompt';
     setSaveAsInitialName(baseName);
     setShowSaveAsModal(true);
@@ -186,7 +232,7 @@ export function RightSidebar({
   };
 
   const checkUnsavedChanges = (action: () => void) => {
-    if (selectedPromptId && hasUnsavedChanges(selectedPromptId)) {
+    if (effectiveSelectedPromptId && hasUnsavedChanges(effectiveSelectedPromptId)) {
       setPendingAction(() => action);
       setShowUnsavedModal(true);
     } else {
@@ -195,8 +241,8 @@ export function RightSidebar({
   };
 
   const handleUnsavedDiscard = () => {
-    if (selectedPromptId) {
-      discardInlineEdit(selectedPromptId);
+    if (effectiveSelectedPromptId) {
+      discardInlineEdit(effectiveSelectedPromptId);
     }
     setShowUnsavedModal(false);
     if (pendingAction) {
@@ -206,8 +252,8 @@ export function RightSidebar({
   };
 
   const handleUnsavedSave = async () => {
-    if (selectedPromptId) {
-      const success = await saveInlineEdit(selectedPromptId);
+    if (effectiveSelectedPromptId) {
+      const success = await saveInlineEdit(effectiveSelectedPromptId);
       if (success) {
         setShowUnsavedModal(false);
         if (pendingAction) {
@@ -219,9 +265,9 @@ export function RightSidebar({
   };
 
   const handleUnsavedSaveAsNew = async () => {
-    if (selectedPromptId) {
-      const prompt = getPromptById(selectedPromptId);
-      const inlineContent = inlineEdits[selectedPromptId];
+    if (effectiveSelectedPromptId) {
+      const prompt = getPromptById(effectiveSelectedPromptId);
+      const inlineContent = inlineEdits[effectiveSelectedPromptId];
 
       if (prompt && inlineContent) {
         const newPrompt = await createPrompt({
@@ -230,7 +276,7 @@ export function RightSidebar({
         });
 
         if (newPrompt) {
-          discardInlineEdit(selectedPromptId);
+          discardInlineEdit(effectiveSelectedPromptId);
           setShowUnsavedModal(false);
           if (pendingAction) {
             pendingAction();
@@ -246,11 +292,17 @@ export function RightSidebar({
     setPendingAction(null);
   };
 
-  const selectedPrompt = selectedPromptId ? getPromptById(selectedPromptId) : null;
-  const inlineContent = selectedPromptId ? inlineEdits[selectedPromptId] : undefined;
-  const currentContent = selectedPromptId ? getEffectivePromptContent(selectedPromptId) : newPromptContent;
+  const selectedPrompt = effectiveSelectedPromptId ? getPromptById(effectiveSelectedPromptId) : null;
+  const currentContent = effectiveSelectedPromptId
+    ? getEffectivePromptContent(effectiveSelectedPromptId)
+    : newPromptContent;
   const isBuiltIn = selectedPrompt && 'read_only' in selectedPrompt;
-  const hasChanges = selectedPromptId ? hasUnsavedChanges(selectedPromptId) : newPromptContent.length > 0;
+  const baseInlineContent = conversationId ? (conversationSystemPrompt ?? '') : '';
+  const hasChanges = effectiveSelectedPromptId
+    ? hasUnsavedChanges(effectiveSelectedPromptId)
+    : conversationId
+      ? newPromptContent !== baseInlineContent
+      : newPromptContent.length > 0;
   const existingNames = prompts ? [...prompts.built_ins.map(p => p.name), ...prompts.custom.map(p => p.name)] : [];
 
   return (
@@ -308,7 +360,7 @@ export function RightSidebar({
                     <PromptDropdown
                       builtIns={prompts?.built_ins || []}
                       customPrompts={prompts?.custom || []}
-                      selectedPromptId={conversationId ? activePromptId : selectedPromptId}
+                      selectedPromptId={effectiveSelectedPromptId}
                       hasUnsavedChanges={hasUnsavedChanges}
                       onSelectPrompt={handleSelectPrompt}
                       onClearSelection={handleClearSelection}
@@ -327,14 +379,18 @@ export function RightSidebar({
                       id="prompt-content"
                       value={currentContent}
                       onChange={(e) => {
-                        if (selectedPromptId) {
+                        if (effectiveSelectedPromptId) {
                           handleInlineChange(e.target.value);
                         } else {
                           setNewPromptContent(e.target.value);
                         }
                       }}
                       className="flex-1 p-3 border border-gray-300 dark:border-gray-600 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-                      placeholder={selectedPromptId ? (isBuiltIn ? "This is a built-in prompt. Your edits will be temporary and used only for the current session." : "Edit your prompt content...") : "Enter new prompt content..."}
+                      placeholder={effectiveSelectedPromptId
+                        ? (isBuiltIn
+                          ? "This is a built-in prompt. Your edits will be temporary and used only for the current session."
+                          : "Edit your prompt content...")
+                        : "Enter new prompt content..."}
                       readOnly={false}
                       aria-label="Prompt content"
                     />
@@ -342,7 +398,9 @@ export function RightSidebar({
                     {/* Unsaved changes indicator */}
                     {hasChanges && (
                       <div className="mt-2 p-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded text-sm text-orange-700 dark:text-orange-300">
-                        {selectedPromptId ? "Unsaved changes will be used for new conversations." : "Click 'Save As' to create a new prompt with this content."}
+                        {effectiveSelectedPromptId
+                          ? "Unsaved changes will be used for new conversations."
+                          : "Click 'Save As' to create a new prompt with this content."}
                       </div>
                     )}
                   </div>
@@ -358,7 +416,7 @@ export function RightSidebar({
                         Save As
                       </button>
 
-                      {selectedPromptId && !isBuiltIn && (
+                      {effectiveSelectedPromptId && !isBuiltIn && (
                         <button
                           onClick={handleSavePrompt}
                           disabled={!hasChanges}
@@ -368,7 +426,7 @@ export function RightSidebar({
                         </button>
                       )}
 
-                      {selectedPromptId && !isBuiltIn && (
+                      {effectiveSelectedPromptId && !isBuiltIn && (
                         <button
                           onClick={handleDeletePrompt}
                           className="px-3 py-2 text-sm bg-red-500 text-white rounded hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500"
@@ -384,7 +442,7 @@ export function RightSidebar({
 
             {/* Footer info */}
             <div className="p-3 border-t border-gray-200 dark:border-gray-700 text-xs text-slate-500 dark:text-slate-400">
-              {(conversationId ? activePromptId : selectedPromptId) ? (
+              {effectiveSelectedPromptId ? (
                 <span>Active prompt will be used for new messages</span>
               ) : (
                 <span>No active prompt selected</span>
@@ -398,7 +456,7 @@ export function RightSidebar({
       <UnsavedChangesModal
         isOpen={showUnsavedModal}
         promptName={selectedPrompt?.name || ''}
-        inlineContent={selectedPromptId ? inlineEdits[selectedPromptId] || '' : ''}
+        inlineContent={effectiveSelectedPromptId ? inlineEdits[effectiveSelectedPromptId] || '' : ''}
         onDiscard={handleUnsavedDiscard}
         onSave={handleUnsavedSave}
         onSaveAsNew={handleUnsavedSaveAsNew}

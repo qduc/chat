@@ -54,6 +54,7 @@ export interface ConversationWithMessages {
   reasoning_effort?: string | null;
   verbosity?: string | null;
   system_prompt?: string | null;
+  active_system_prompt_id?: string | null;
   messages: {
     id: number;
     seq: number;

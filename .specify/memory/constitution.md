@@ -1,19 +1,14 @@
 <!--
 Sync Impact Report:
-Version change: Initial → 1.0.0
-Added principles:
-- I. Service Boundary Isolation
-- II. OpenAI API Compatibility
-- III. Test-First Development (NON-NEGOTIABLE)
-- IV. Server-Side Tool Execution
-- V. Docker-First Development
-Added sections:
-- Security Requirements
-- Development Workflow
+Version change: 1.0.0 → 1.1.0
+Modified / Added principles:
+- Added VI. State Management Single Source of Truth
+Added sections: None
+Removed sections: None
 Templates requiring updates:
-✅ Updated: plan-template.md (Constitution Check section alignment)
-✅ Updated: spec-template.md (testable requirements alignment)
-✅ Updated: tasks-template.md (TDD task ordering alignment)
+✅ Updated: .specify/templates/plan-template.md (added Constitution Check item for state management)
+✅ Updated: specs/001-i-want-the/plan.md (version footer + new Constitution Check item optional for future regen)
+⚠ Pending: Existing feature plans other than 001 (regenerate or manually edit if any) to include new check
 Follow-up TODOs: None
 -->
 
@@ -46,6 +41,13 @@ All development must occur within Docker containers using docker-compose.dev.yml
 
 **Rationale**: Ensures consistent development environment, eliminates "works on my machine" issues, and matches production containerized deployment.
 
+### VI. State Management Single Source of Truth
+The chat frontend MUST treat `useChatState` as the sole authority for conversation metadata, message history, prompt selections, and dispatchable actions. UI components (e.g., ChatV2, RightSidebar, MessageList, MessageInput) MUST remain passive presenters: they read derived state and invoke provided actions; they MUST NOT mutate state, duplicate conversation caches, or perform direct network calls that bypass `useChatState`.
+
+All outbound chat-related API interactions (sending messages, selecting/clearing prompts, fetching conversations) MUST originate inside `useChatState` actions to guarantee reducer-first updates and eliminate race conditions between optimistic UI and backend responses.
+
+**Rationale**: Prevents divergent client state, reduces hard-to-reproduce streaming bugs, and centralizes invariants (ordering, dedupe, optimistic merges) in one reducer, improving testability and reliability of SSE/tool orchestration flows.
+
 ## Security Requirements
 
 - API keys must never be exposed to frontend/browser
@@ -70,4 +72,4 @@ This constitution supersedes all other development practices. Amendments require
 
 Use AI_ONBOARDING.md for runtime development guidance and architectural patterns.
 
-**Version**: 1.0.0 | **Ratified**: 2025-09-26 | **Last Amended**: 2025-09-26
+**Version**: 1.1.0 | **Ratified**: 2025-09-26 | **Last Amended**: 2025-09-27

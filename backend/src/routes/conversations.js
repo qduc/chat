@@ -202,9 +202,11 @@ conversationsRouter.get('/v1/conversations/:id', (req, res) => {
     });
 
     const sysPrompt = convo?.metadata?.system_prompt || null;
+    const activePromptId = convo?.metadata?.active_system_prompt_id || null;
     return res.json({
       ...convo,
       system_prompt: sysPrompt,
+      active_system_prompt_id: activePromptId,
       messages: page.messages,
       next_after_seq: page.next_after_seq,
     });

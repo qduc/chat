@@ -233,4 +233,4 @@ frontend/
 - [ ] Complexity deviations documented (N/A currently)
 
 ---
-*Based on Constitution v2.1.1 - See `/memory/constitution.md`*
+*Based on Constitution v1.1.0 - See `/memory/constitution.md`*

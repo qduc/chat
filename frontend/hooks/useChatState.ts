@@ -39,6 +39,8 @@ export interface ChatState {
   systemPrompt: string;
   // Inline system prompt override (from prompt manager)
   inlineSystemPromptOverride: string;
+  // Active system prompt ID from loaded conversation
+  activeSystemPromptId: string | null;
   // Per-tool enablement (list of tool names). Empty array means no explicit selection.
   enabledTools: string[];
 
@@ -78,6 +80,7 @@ export type ChatAction =
   | { type: 'SET_QUALITY_LEVEL'; payload: QualityLevel }
   | { type: 'SET_SYSTEM_PROMPT'; payload: string }
   | { type: 'SET_INLINE_SYSTEM_PROMPT_OVERRIDE'; payload: string }
+  | { type: 'SET_ACTIVE_SYSTEM_PROMPT_ID'; payload: string | null }
   | { type: 'SET_ENABLED_TOOLS'; payload: string[] }
   | { type: 'SET_CONVERSATION_ID'; payload: string | null }
   | { type: 'START_STREAMING'; payload: { abort: AbortController; userMessage: ChatMessage; assistantMessage: ChatMessage } }
@@ -127,6 +130,7 @@ const initialState: ChatState = {
   qualityLevel: 'balanced',
   systemPrompt: '',
   inlineSystemPromptOverride: '',
+  activeSystemPromptId: null,
   enabledTools: [],
   conversations: [],
   nextCursor: null,
@@ -196,6 +200,9 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
     case 'SET_INLINE_SYSTEM_PROMPT_OVERRIDE':
       return { ...state, inlineSystemPromptOverride: action.payload };
+
+    case 'SET_ACTIVE_SYSTEM_PROMPT_ID':
+      return { ...state, activeSystemPromptId: action.payload };
 
     case 'SET_ENABLED_TOOLS':
       return { ...state, enabledTools: action.payload };
@@ -875,6 +882,9 @@ export function useChatState() {
         }
         if (typeof (data as any).system_prompt === 'string') {
           dispatch({ type: 'SET_SYSTEM_PROMPT', payload: (data as any).system_prompt || '' });
+        }
+        if ((data as any).active_system_prompt_id !== undefined) {
+          dispatch({ type: 'SET_ACTIVE_SYSTEM_PROMPT_ID', payload: (data as any).active_system_prompt_id });
         }
       } catch (e: any) {
         // ignore

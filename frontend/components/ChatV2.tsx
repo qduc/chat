@@ -232,6 +232,8 @@ export function ChatV2() {
             collapsed={state.rightSidebarCollapsed}
             onToggleCollapse={actions.toggleRightSidebar}
             onEffectivePromptChange={actions.setInlineSystemPromptOverride}
+            conversationActivePromptId={state.activeSystemPromptId}
+            conversationSystemPrompt={state.systemPrompt}
           />
         </div>
       </div>

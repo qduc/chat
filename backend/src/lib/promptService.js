@@ -279,6 +279,21 @@ async function updateConversationActivePrompt(
   const patch = {};
   if (promptId !== undefined) {
     patch.active_system_prompt_id = promptId;
+
+    // Also resolve and save the system prompt content for historical access
+    if (promptId) {
+      try {
+        const prompt = await getPromptById(promptId, userId);
+        if (prompt?.body) {
+          patch.system_prompt = prompt.body.trim();
+        }
+      } catch (error) {
+        console.warn('[promptService] Failed to resolve system prompt content for saving:', error);
+      }
+    } else {
+      // Clear system prompt content when promptId is null
+      patch.system_prompt = null;
+    }
   }
 
   if (inlineOverride !== undefined) {

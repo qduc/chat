@@ -49,13 +49,11 @@ export class PersistenceConfig {
   }
 
   /**
-   * Extract and normalize request settings from request body
+   * Extract request settings from body input
    * @param {Object} bodyIn - Request body
-   * @returns {Object} Normalized settings
+   * @returns {Object} Parsed request settings
    */
   extractRequestSettings(bodyIn) {
-    // Derive persisted settings from request body
-    // Support both explicit persistence flags and OpenAI-compatible fields
     const persistedStreamingEnabled = bodyIn.streamingEnabled !== undefined
       ? !!bodyIn.streamingEnabled
       : !!bodyIn.stream; // Map OpenAI 'stream' field
@@ -79,6 +77,41 @@ export class PersistenceConfig {
       systemPrompt,
       metadata: systemPrompt ? { system_prompt: systemPrompt } : {},
     };
+  }
+
+  /**
+   * Extract request settings with resolved system prompt from active_system_prompt_id
+   * @param {Object} bodyIn - Request body
+   * @param {string} userId - User ID for resolving custom prompts
+   * @returns {Promise<Object>} Parsed request settings with resolved system prompt
+   */
+  async extractRequestSettingsAsync(bodyIn, userId) {
+    const settings = this.extractRequestSettings(bodyIn);
+
+    // If there's no explicit system prompt but there's an active_system_prompt_id, resolve it
+    if (!settings.systemPrompt && bodyIn.active_system_prompt_id) {
+      try {
+        const { getPromptById } = await import('../promptService.js');
+        const prompt = await getPromptById(bodyIn.active_system_prompt_id, userId);
+        if (prompt?.body) {
+          settings.systemPrompt = prompt.body.trim();
+          settings.metadata = {
+            system_prompt: settings.systemPrompt,
+            active_system_prompt_id: bodyIn.active_system_prompt_id
+          };
+        }
+      } catch (error) {
+        console.warn('[PersistenceConfig] Failed to resolve system prompt:', error);
+      }
+    } else if (settings.systemPrompt && bodyIn.active_system_prompt_id) {
+      // If there's both an explicit system prompt and active_system_prompt_id, save both
+      settings.metadata = {
+        system_prompt: settings.systemPrompt,
+        active_system_prompt_id: bodyIn.active_system_prompt_id
+      };
+    }
+
+    return settings;
   }
 
   /**

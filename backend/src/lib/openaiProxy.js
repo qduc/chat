@@ -241,14 +241,14 @@ function handleProxyError(error, req, res, persistence) {
 // --- Handler Execution ---
 
 async function handleRequest(context, req, res) {
-  const { body, bodyIn, flags, provider, providerId, persistence } = context;
+  const { body, bodyIn, flags, provider, providerId, persistence, userId } = context;
 
   if (flags.hasTools) {
     // Tool orchestration path
     if (flags.stream) {
-      return handleToolsStreaming({ body, bodyIn, config, res, req, persistence, provider });
+      return handleToolsStreaming({ body, bodyIn, config, res, req, persistence, provider, userId });
     } else {
-      return handleToolsJson({ body, bodyIn, config, res, req, persistence, provider });
+      return handleToolsJson({ body, bodyIn, config, res, req, persistence, provider, userId });
     }
   }
 

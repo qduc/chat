@@ -3,7 +3,7 @@ import { addConversationMetadata } from './responseUtils.js';
 import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
 import { createProvider } from './providers/index.js';
 import {
-  buildConversationMessages,
+  buildConversationMessagesAsync,
   executeToolCall,
   appendToPersistence,
   recordFinalToPersistence,
@@ -389,6 +389,7 @@ export async function handleToolsJson({
   persistence,
   providerHttp,
   provider,
+  userId = null,
 }) {
   const providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
   const providerInstance = provider || await createProvider(config, { providerId });
@@ -397,7 +398,7 @@ export async function handleToolsJson({
     generateToolSpecs,
   }) || generateOpenAIToolSpecs();
   // Build initial messages ensuring the active system prompt is preserved
-  const messages = buildConversationMessages({ body, bodyIn, persistence });
+  const messages = await buildConversationMessagesAsync({ body, bodyIn, persistence, userId });
   const orchestrationConfig = OrchestrationConfig.fromRequest(body, config, fallbackToolSpecs);
   const responseHandler = ResponseHandlerFactory.create(orchestrationConfig, res);
 

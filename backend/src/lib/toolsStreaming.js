@@ -4,7 +4,7 @@ import { createOpenAIRequest, writeAndFlush, createChatCompletionChunk } from '.
 import { createProvider } from './providers/index.js';
 import { setupStreamingHeaders } from './streamingHandler.js';
 import {
-  buildConversationMessages,
+  buildConversationMessagesAsync,
   executeToolCall,
   appendToPersistence,
   recordFinalToPersistence,
@@ -30,6 +30,7 @@ export async function handleToolsStreaming({
   req,
   persistence,
   provider,
+  userId = null,
 }) {
   const providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
   const providerInstance = provider || await createProvider(config, { providerId });
@@ -37,7 +38,7 @@ export async function handleToolsStreaming({
     // Setup streaming headers
     setupStreamingHeaders(res);
     // Build conversation history including the active system prompt
-    const conversationHistory = buildConversationMessages({ body, bodyIn, persistence });
+    const conversationHistory = await buildConversationMessagesAsync({ body, bodyIn, persistence, userId });
 
     let iteration = 0;
     let isComplete = false;

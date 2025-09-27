@@ -39,6 +39,7 @@ interface UseSystemPromptsReturn {
 
   // Active selection state
   activePromptId: string | null;
+  setActivePromptId: (promptId: string | null) => void;
 
   // Inline editing state
   inlineEdits: Record<string, string>;
@@ -451,6 +452,7 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
     loading,
     error,
     activePromptId,
+    setActivePromptId,
     inlineEdits,
     hasUnsavedChanges,
 
