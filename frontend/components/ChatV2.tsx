@@ -172,6 +172,9 @@ export function ChatV2() {
           onOpenSettings={() => setIsSettingsOpen(true)}
           onShowLogin={handleShowLogin}
           onShowRegister={handleShowRegister}
+          groups={state.modelGroups}
+          fallbackOptions={state.modelOptions}
+          modelToProvider={state.modelToProvider}
         />
         <div className="flex flex-1 min-h-0">
           <div className="flex flex-col flex-1 relative">

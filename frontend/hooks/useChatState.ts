@@ -1,5 +1,6 @@
 import React, { useReducer, useCallback, useRef, useEffect } from 'react';
 import type { ChatMessage, Role, ConversationMeta } from '../lib/chat';
+import type { Group as TabGroup, Option as ModelOption } from '../components/ui/TabbedSelect';
 import { sendChat, getConversationApi, listConversationsApi, deleteConversationApi, editMessageApi } from '../lib/chat';
 import type { QualityLevel } from '../components/ui/QualitySlider';
 import type { User } from '../lib/auth/api';
@@ -30,6 +31,10 @@ export interface ChatState {
   // Settings
   model: string;
   providerId: string | null;
+  // Model listing fetched from backend providers
+  modelOptions: ModelOption[];
+  modelGroups: TabGroup[] | null;
+  modelToProvider: Record<string, string>;
   useTools: boolean;
   shouldStream: boolean;
   reasoningEffort: string;
@@ -109,7 +114,8 @@ export type ChatAction =
   | { type: 'TOGGLE_SIDEBAR' }
   | { type: 'SET_SIDEBAR_COLLAPSED'; payload: boolean }
   | { type: 'TOGGLE_RIGHT_SIDEBAR' }
-  | { type: 'SET_RIGHT_SIDEBAR_COLLAPSED'; payload: boolean };
+  | { type: 'SET_RIGHT_SIDEBAR_COLLAPSED'; payload: boolean }
+  | { type: 'SET_MODEL_LIST'; payload: { groups: TabGroup[] | null; options: ModelOption[]; modelToProvider: Record<string, string> } };
 
 const initialState: ChatState = {
   // Authentication State
@@ -123,6 +129,9 @@ const initialState: ChatState = {
   previousResponseId: null,
   model: 'gpt-4.1-mini',
   providerId: null,
+  modelOptions: [],
+  modelGroups: null,
+  modelToProvider: {},
   useTools: true,
   shouldStream: true,
   reasoningEffort: 'medium',
@@ -503,6 +512,14 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case 'SET_RIGHT_SIDEBAR_COLLAPSED':
       return { ...state, rightSidebarCollapsed: action.payload };
 
+    case 'SET_MODEL_LIST':
+      return {
+        ...state,
+        modelGroups: action.payload.groups,
+        modelOptions: action.payload.options,
+        modelToProvider: action.payload.modelToProvider || {}
+      };
+
     default:
       return state;
   }
@@ -547,6 +564,69 @@ export function useChatState() {
       dispatch({ type: 'SET_USER', payload: user });
     }
   }, [user, authLoading]);
+
+  // Load models/providers centrally (moved from ChatHeader local state)
+  useEffect(() => {
+    let cancelled = false;
+    const apiBase = (process.env.NEXT_PUBLIC_API_BASE as string) ?? 'http://localhost:3001';
+
+    async function loadProvidersAndModels() {
+      try {
+        const res = await fetch(`${apiBase}/v1/providers`);
+        if (!res.ok) return;
+        const json = await res.json();
+        const providers: any[] = Array.isArray(json.providers) ? json.providers : [];
+        const enabledProviders = providers.filter(p => p?.enabled);
+        if (!enabledProviders.length) return;
+
+        const results = await Promise.allSettled(
+          enabledProviders.map(async (p) => {
+            const r = await fetch(`${apiBase}/v1/providers/${encodeURIComponent(p.id)}/models`);
+            if (!r.ok) throw new Error(`models ${r.status}`);
+            const j = await r.json();
+            const models = Array.isArray(j.models) ? j.models : [];
+            const options: ModelOption[] = models.map((m: any) => ({ value: m.id, label: m.id }));
+            return { provider: p, options };
+          })
+        );
+
+        const gs: TabGroup[] = [];
+        const modelProviderMap: Record<string, string> = {};
+
+        for (let i = 0; i < results.length; i++) {
+          const r: any = results[i];
+          if (r.status === 'fulfilled' && r.value.options.length > 0) {
+            const providerId = r.value.provider.id;
+            gs.push({ id: providerId, label: r.value.provider.name || providerId, options: r.value.options });
+            r.value.options.forEach((option: any) => {
+              modelProviderMap[option.value] = providerId;
+            });
+          }
+        }
+
+        // Flatten options
+        const flat = gs.flatMap(g => g.options);
+
+        if (!cancelled) {
+          if (gs.length === 0) {
+            // leave defaults empty to avoid surprising overrides
+            return;
+          }
+          dispatch({ type: 'SET_MODEL_LIST', payload: { groups: gs, options: flat, modelToProvider: modelProviderMap } });
+
+          // Ensure model belongs to a provider; else pick first
+          if (flat.length > 0 && !flat.some((o: any) => o.value === (initialState.model))) {
+            dispatch({ type: 'SET_MODEL', payload: flat[0].value });
+          }
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    loadProvidersAndModels();
+    return () => { cancelled = true; };
+  }, []);
 
   // Initialize conversations on mount
   const refreshConversations = useCallback(async () => {

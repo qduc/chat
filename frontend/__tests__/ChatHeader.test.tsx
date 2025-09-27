@@ -52,6 +52,9 @@ describe('ChatHeader', () => {
         onNewChat={onNewChat}
         model="gpt-4.1-mini"
         onModelChange={onModelChange}
+        groups={null}
+        fallbackOptions={[{ value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' }]}
+        modelToProvider={{ 'gpt-4.1-mini': 'default' }}
       />
     );
 
