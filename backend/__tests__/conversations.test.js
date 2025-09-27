@@ -6,7 +6,7 @@ import { conversationsRouter } from '../src/routes/conversations.js';
 import request from 'supertest';
 import { sessionResolver } from '../src/middleware/session.js';
 import { config } from '../src/env.js';
-import { safeTestSetup } from './test_utils/database-safety.js';
+import { safeTestSetup } from '../test_support/databaseSafety.js';
 import {
   getDb,
   upsertSession,

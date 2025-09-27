@@ -4,7 +4,7 @@ import express from 'express';
 import { conversationsRouter } from '../src/routes/conversations.js';
 import { sessionResolver } from '../src/middleware/session.js';
 import { config } from '../src/env.js';
-import { safeTestSetup } from './test_utils/database-safety.js';
+import { safeTestSetup } from '../test_support/databaseSafety.js';
 import {
   getDb,
   upsertSession,
@@ -38,6 +38,11 @@ const withServer = async (app, fn) => {
   });
 };
 
+beforeAll(() => {
+  // Safety check: ensure we're using a test database
+  safeTestSetup();
+});
+
 beforeEach(() => {
   config.persistence.enabled = true;
   config.persistence.dbUrl = 'file::memory:';
@@ -55,11 +60,6 @@ describe('PUT /v1/conversations/:id/messages/:messageId/edit', () => {
   test('edits message, forks new conversation, and prunes original tail', async () => {
     // Seed a conversation with two messages
     const convId = 'conv-edit-1';
-
-beforeAll(() => {
-  // Safety check: ensure we're using a test database
-  safeTestSetup();
-});
     createConversation({ id: convId, sessionId, title: 'T', model: 'm1' });
     const u1 = insertUserMessage({ conversationId: convId, content: 'Hello wrld', seq: 1 });
     insertAssistantFinal({ conversationId: convId, content: 'Hi!', seq: 2, finishReason: 'stop' });

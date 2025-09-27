@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { jest } from '@jest/globals';
 
+const streamUtilsModule = new URL('../../src/lib/streamUtils.js', import.meta.url).href;
+const providersModule = new URL('../../src/lib/providers/index.js', import.meta.url).href;
+
 // Mock the dependencies
 let mockProviderIsConfigured = () => Promise.resolve(true);
 let mockCreateOpenAIRequest = () => Promise.resolve({
@@ -15,11 +18,11 @@ let mockCreateOpenAIRequest = () => Promise.resolve({
 });
 
 // Mock the modules
-jest.unstable_mockModule('../../src/lib/streamUtils.js', () => ({
+jest.unstable_mockModule(streamUtilsModule, () => ({
   createOpenAIRequest: (...args) => mockCreateOpenAIRequest(...args),
 }));
 
-jest.unstable_mockModule('../../src/lib/providers/index.js', () => ({
+jest.unstable_mockModule(providersModule, () => ({
   providerIsConfigured: (...args) => mockProviderIsConfigured(...args),
 }));
 

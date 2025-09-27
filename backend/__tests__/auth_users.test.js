@@ -2,7 +2,7 @@ import { describe, expect, test, beforeEach, afterEach, beforeAll } from '@jest/
 import { createUser, getUserByEmail, getUserById, isEmailAvailable, updateLastLogin, linkSessionToUser } from '../src/db/users.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
 import bcrypt from 'bcryptjs';
-import { safeTestSetup } from './test_utils/database-safety.js';
+import { safeTestSetup } from '../test_support/databaseSafety.js';
 
 // Mock environment for testing
 process.env.PERSIST_TRANSCRIPTS = 'true';

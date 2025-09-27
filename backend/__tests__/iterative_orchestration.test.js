@@ -11,7 +11,7 @@ import { config } from '../src/env.js';
 import express from 'express';
 import { chatRouter } from '../src/routes/chat.js';
 import { getDb } from '../src/db/index.js';
-import { safeTestSetup } from './test_utils/database-safety.js';
+import { safeTestSetup } from '../test_support/databaseSafety.js';
 
 // Mock response object for testing
 class MockResponse {

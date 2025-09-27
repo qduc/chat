@@ -8,7 +8,7 @@ import { resetDbCache, getDb } from '../src/db/index.js';
 import { createProvidersRouter } from '../src/routes/providers.js';
 import { getUserContext } from '../src/middleware/auth.js';
 import { config } from '../src/env.js';
-import { safeTestSetup } from './test_utils/database-safety.js';
+import { safeTestSetup } from '../test_support/databaseSafety.js';
 
 // Helper to create test app with authentication middleware
 const createTestApp = () => {

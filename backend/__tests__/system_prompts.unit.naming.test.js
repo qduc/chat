@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
-import { safeTestSetup } from './test_utils/database-safety.js';
+import { safeTestSetup } from '../test_support/databaseSafety.js';
 import {ensureTestUser,
   TEST_USER_ID,
   getTestAuthToken
@@ -28,6 +28,7 @@ afterAll(() => {
 });
 
 beforeEach(() => {
+  ensureTestUser();
   const db = getDb();
   db.prepare('DELETE FROM system_prompts').run();
 });

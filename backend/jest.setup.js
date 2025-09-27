@@ -1,4 +1,5 @@
-import { safeTestSetup } from './__tests__/test_utils/database-safety.js';
+import { beforeEach } from '@jest/globals';
+import { safeTestSetup } from './test_support/databaseSafety.js';
 import { resetDbCache } from './src/db/index.js';
 
 // Ensure test environment flag is set for downstream guards

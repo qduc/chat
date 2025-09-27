@@ -11,7 +11,7 @@ import {
   resetDbCache,
 } from '../src/db/index.js';
 import { config } from '../src/env.js';
-import { safeTestSetup } from './test_utils/database-safety.js';
+import { safeTestSetup } from '../test_support/databaseSafety.js';
 
 // IMPORTANT: Database setup for tests
 // 1. Enable persistence BEFORE calling getDb() to avoid null cache
@@ -46,7 +46,7 @@ describe('DB helpers', () => {
       // Create conversations with deterministic timestamps by manipulating created_at directly
       createConversation({ id: 'c1', sessionId, title: 'one' });
       createConversation({ id: 'c2', sessionId, title: 'two' });
-      
+
       // Set explicit timestamps to ensure deterministic ordering (c2 newer than c1)
       const db = getDb();
       db.prepare(`UPDATE conversations SET created_at = datetime('now', '-1 hour') WHERE id = 'c1'`).run();
@@ -73,7 +73,7 @@ describe('DB helpers', () => {
       // Create conversations with deterministic timestamps
       createConversation({ id: 'c1', sessionId });
       createConversation({ id: 'c2', sessionId });
-      
+
       // Set explicit timestamps to ensure deterministic ordering
       const db = getDb();
       db.prepare(`UPDATE conversations SET created_at = datetime('now', '-1 hour') WHERE id = 'c1'`).run();

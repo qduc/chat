@@ -1,16 +1,19 @@
 import assert from 'node:assert/strict';
 import { jest } from '@jest/globals';
 
+const conversationsModule = new URL('../../src/db/conversations.js', import.meta.url).href;
+const messagesModule = new URL('../../src/db/messages.js', import.meta.url).href;
+
 // Mock the db functions
 let mockCountConversationsBySession = () => 0;
 let mockCountMessagesByConversation = () => 0;
 
 // Mock the db module
-jest.unstable_mockModule('../../src/db/conversations.js', () => ({
+jest.unstable_mockModule(conversationsModule, () => ({
   countConversationsBySession: (...args) => mockCountConversationsBySession(...args),
 }));
 
-jest.unstable_mockModule('../../src/db/messages.js', () => ({
+jest.unstable_mockModule(messagesModule, () => ({
   countMessagesByConversation: (...args) => mockCountMessagesByConversation(...args),
 }));
 

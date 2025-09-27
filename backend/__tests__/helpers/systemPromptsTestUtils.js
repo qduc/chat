@@ -16,6 +16,7 @@ export function makeAuthedApp(router) {
 }
 
 export function getTestAuthToken() {
+  ensureTestUser();
   const secret = config.auth.jwtSecret || 'development-secret-key-change-in-production';
   return jwt.sign({ userId: TEST_USER_ID }, secret);
 }
@@ -45,6 +46,7 @@ export function ensureTestUser() {
 }
 
 export function ensureTestSession() {
+  ensureTestUser();
   const db = getDb();
   db.prepare(
     `INSERT INTO sessions (id, user_id, created_at)
@@ -78,6 +80,7 @@ export function ensureTestConversation(conversationId = 'test-conversation') {
 }
 
 export function seedCustomPrompt({ id, name, body, userId = TEST_USER_ID }) {
+  ensureTestUser();
   const db = getDb();
   db.prepare(
     `INSERT INTO system_prompts (id, user_id, name, body, usage_count, last_used_at, created_at, updated_at)

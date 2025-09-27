@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
-import { safeTestSetup } from './test_utils/database-safety.js';
+import { safeTestSetup } from '../test_support/databaseSafety.js';
 import {makeAuthedApp, ensureTestUser, ensureTestConversation,
   getTestAuthToken
 } from './helpers/systemPromptsTestUtils.js';

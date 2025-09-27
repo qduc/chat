@@ -5,7 +5,7 @@ import request from 'supertest';
 import { jest } from '@jest/globals';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
-import { safeTestSetup } from './test_utils/database-safety.js';
+import { safeTestSetup } from '../test_support/databaseSafety.js';
 
 // Helper to spin up a minimal app
 const makeApp = (router) => {
