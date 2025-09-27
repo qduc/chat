@@ -1,4 +1,5 @@
-import { describe, expect, test, jest } from '@jest/globals';
+import { describe, expect, test, beforeEach, afterEach, jest } from '@jest/globals';
+import jwt from 'jsonwebtoken';
 import {
   authenticateToken,
   optionalAuth,
@@ -6,30 +7,26 @@ import {
   generateRefreshToken,
   verifyRefreshToken
 } from '../src/middleware/auth.js';
-import jwt from 'jsonwebtoken';
+import { config } from '../src/env.js';
+import { createUser } from '../src/db/users.js';
+import { getDb, resetDbCache } from '../src/db/index.js';
 
-// Mock the config
-jest.mock('../src/env.js', () => ({
-  config: {
-    auth: {
-      jwtSecret: 'test-secret-key-for-testing-only',
-      jwtExpiresIn: '15m',
-      jwtRefreshExpiresIn: '7d'
-    }
-  }
-}));
-
-// Mock the user database
-jest.mock('../src/db/users.js', () => ({
-  getUserById: jest.fn()
-}));
-
-import { getUserById } from '../src/db/users.js';
+const JWT_SECRET = config.auth.jwtSecret;
 
 describe('Authentication Middleware', () => {
-  let mockReq, mockRes, mockNext;
+  let mockReq;
+  let mockRes;
+  let mockNext;
+  let db;
 
   beforeEach(() => {
+    resetDbCache();
+    db = getDb();
+    db.exec(`
+      DELETE FROM sessions;
+      DELETE FROM users;
+    `);
+
     mockReq = {
       headers: {},
       header: jest.fn()
@@ -39,7 +36,10 @@ describe('Authentication Middleware', () => {
       json: jest.fn()
     };
     mockNext = jest.fn();
-    jest.clearAllMocks();
+  });
+
+  afterEach(() => {
+    resetDbCache();
   });
 
   describe('authenticateToken', () => {
@@ -70,34 +70,28 @@ describe('Authentication Middleware', () => {
     });
 
     test('should accept valid token and set user', () => {
-      const mockUser = {
-        id: 'user-123',
+      const createdUser = createUser({
         email: 'test@example.com',
-        display_name: 'Test User',
-        email_verified: false
-      };
+        passwordHash: 'hashed-password',
+        displayName: 'Test User'
+      });
 
-      getUserById.mockReturnValue(mockUser);
-
-      const token = jwt.sign({ userId: 'user-123' }, 'test-secret-key-for-testing-only');
+      const token = jwt.sign({ userId: createdUser.id }, JWT_SECRET);
       mockReq.headers.authorization = `Bearer ${token}`;
 
       authenticateToken(mockReq, mockRes, mockNext);
 
-      expect(getUserById).toHaveBeenCalledWith('user-123');
       expect(mockReq.user).toEqual({
-        id: 'user-123',
+        id: createdUser.id,
         email: 'test@example.com',
         displayName: 'Test User',
-        emailVerified: false
+        emailVerified: 0
       });
       expect(mockNext).toHaveBeenCalled();
     });
 
     test('should reject token for non-existent user', () => {
-      getUserById.mockReturnValue(null);
-
-      const token = jwt.sign({ userId: 'user-123' }, 'test-secret-key-for-testing-only');
+      const token = jwt.sign({ userId: 'user-123' }, JWT_SECRET);
       mockReq.headers.authorization = `Bearer ${token}`;
 
       authenticateToken(mockReq, mockRes, mockNext);
@@ -122,25 +116,24 @@ describe('Authentication Middleware', () => {
     });
 
     test('should set user for valid token', () => {
-      const mockUser = {
-        id: 'user-123',
-        email: 'test@example.com',
-        display_name: 'Test User',
-        email_verified: true
-      };
+      const createdUser = createUser({
+        email: 'verified@example.com',
+        passwordHash: 'hashed-password',
+        displayName: 'Verified User'
+      });
 
-      getUserById.mockReturnValue(mockUser);
+      db.prepare('UPDATE users SET email_verified = 1 WHERE id = ?').run(createdUser.id);
 
-      const token = jwt.sign({ userId: 'user-123' }, 'test-secret-key-for-testing-only');
+      const token = jwt.sign({ userId: createdUser.id }, JWT_SECRET);
       mockReq.headers.authorization = `Bearer ${token}`;
 
       optionalAuth(mockReq, mockRes, mockNext);
 
       expect(mockReq.user).toEqual({
-        id: 'user-123',
-        email: 'test@example.com',
-        displayName: 'Test User',
-        emailVerified: true
+        id: createdUser.id,
+        email: 'verified@example.com',
+        displayName: 'Verified User',
+        emailVerified: 1
       });
       expect(mockNext).toHaveBeenCalled();
     });
@@ -167,7 +160,7 @@ describe('Authentication Middleware', () => {
       expect(token).toBeDefined();
       expect(typeof token).toBe('string');
 
-      const decoded = jwt.verify(token, 'test-secret-key-for-testing-only');
+      const decoded = jwt.verify(token, JWT_SECRET);
       expect(decoded.userId).toBe('user-123');
       expect(decoded.email).toBe('test@example.com');
     });
@@ -178,7 +171,7 @@ describe('Authentication Middleware', () => {
       expect(token).toBeDefined();
       expect(typeof token).toBe('string');
 
-      const decoded = jwt.verify(token, 'test-secret-key-for-testing-only');
+      const decoded = jwt.verify(token, JWT_SECRET);
       expect(decoded.userId).toBe('user-123');
       expect(decoded.type).toBe('refresh');
     });

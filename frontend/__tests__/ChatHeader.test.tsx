@@ -1,3 +1,18 @@
+jest.mock('../contexts/AuthContext', () => {
+  const authValue = {
+    user: null,
+    loading: false,
+    login: jest.fn(),
+    register: jest.fn(),
+    logout: jest.fn(),
+    refreshUser: jest.fn(),
+  };
+  return {
+    useAuth: () => authValue,
+    AuthProvider: ({ children }: any) => children,
+  };
+});
+
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { ChatHeader } from '../components/ChatHeader';

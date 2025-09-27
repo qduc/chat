@@ -1,3 +1,18 @@
+jest.mock('../contexts/AuthContext', () => {
+  const authValue = {
+    user: { id: 'test-user', email: 'test@example.com' },
+    loading: false,
+    login: jest.fn(),
+    register: jest.fn(),
+    logout: jest.fn(),
+    refreshUser: jest.fn(),
+  };
+  return {
+    useAuth: () => authValue,
+    AuthProvider: ({ children }: any) => children,
+  };
+});
+
 // Simplified tests for frontend iterative orchestration functionality
 
 // Minimal mocks: only what is used by tests
@@ -16,6 +31,34 @@ const mockSendChat = sendChat as jest.MockedFunction<typeof sendChat>;
 const mockGetToolSpecs = getToolSpecs as jest.MockedFunction<typeof getToolSpecs>;
 const mockList = listConversationsApi as jest.MockedFunction<typeof listConversationsApi>;
 
+const getTimeTool = {
+  type: 'function' as const,
+  function: {
+    name: 'get_time',
+    description: 'Get the current time',
+    parameters: {
+      type: 'object' as const,
+      properties: {},
+      required: [] as string[],
+    },
+  },
+};
+
+const webSearchTool = {
+  type: 'function' as const,
+  function: {
+    name: 'web_search',
+    description: 'Perform a web search',
+    parameters: {
+      type: 'object' as const,
+      properties: {
+        query: { type: 'string', description: 'Search query' },
+      },
+      required: ['query'],
+    },
+  },
+};
+
 describe('Frontend Iterative Orchestration', () => {
   beforeEach(() => {
     // Disable history to avoid network
@@ -23,10 +66,7 @@ describe('Frontend Iterative Orchestration', () => {
 
     // Minimal tool specs for tests
     mockGetToolSpecs.mockResolvedValue({
-      tools: [
-        { type: 'function', function: { name: 'get_time', description: 'Get time', parameters: { type: 'object', properties: {} } } },
-        { type: 'function', function: { name: 'web_search', description: 'Perform a web search', parameters: { type: 'object', properties: { query: { type: 'string', description: 'The search query' } }, required: ['query'] } } }
-      ],
+      tools: [getTimeTool, webSearchTool],
       available_tools: ['get_time', 'web_search']
     } as any);
   });
@@ -46,7 +86,8 @@ describe('Frontend Iterative Orchestration', () => {
       await sendChat({
         messages: [{ role: 'user', content: 'What time is it?' }],
         model: 'gpt-3.5-turbo',
-        tools: [{ type: 'function', function: { name: 'get_time', parameters: { type: 'object', properties: {} } } }],
+        providerId: 'default-provider',
+        tools: [getTimeTool],
         tool_choice: 'auto',
         onEvent: (event: any) => events.push(event)
       });
@@ -67,7 +108,8 @@ describe('Frontend Iterative Orchestration', () => {
       await sendChat({
         messages: [{ role: 'user', content: 'What time is it?' }],
         model: 'gpt-3.5-turbo',
-        tools: [{ type: 'function', function: { name: 'get_time' } }],
+        providerId: 'default-provider',
+        tools: [getTimeTool],
         onEvent: (event: any) => events.push(event)
       });
 
@@ -96,7 +138,8 @@ describe('Frontend Iterative Orchestration', () => {
       await sendChat({
         messages: [{ role: 'user', content: 'Get time then search' }],
         model: 'gpt-3.5-turbo',
-        tools: [ { type: 'function', function: { name: 'get_time' } }, { type: 'function', function: { name: 'web_search' } } ],
+        providerId: 'default-provider',
+        tools: [getTimeTool, webSearchTool],
         onEvent: (event: any) => events.push(event)
       });
 
@@ -164,7 +207,19 @@ describe('Frontend Iterative Orchestration', () => {
       const result = await sendChat({
         messages: [{ role: 'user', content: 'Test' }],
         model: 'gpt-3.5-turbo',
-        tools: [{ type: 'function', function: { name: 'test_tool' } }],
+        providerId: 'default-provider',
+        tools: [{
+          type: 'function',
+          function: {
+            name: 'test_tool',
+            description: 'Test tool',
+            parameters: {
+              type: 'object',
+              properties: {},
+              required: [],
+            },
+          },
+        }],
         onEvent: (event: any) => events.push(event)
       });
 
@@ -179,6 +234,7 @@ describe('Frontend Iterative Orchestration', () => {
       await expect(sendChat({
         messages: [{ role: 'user', content: 'Test' }],
         model: 'gpt-3.5-turbo',
+        providerId: 'default-provider',
         tools: []
       })).rejects.toThrow('Network error');
     });

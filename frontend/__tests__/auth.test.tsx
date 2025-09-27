@@ -38,6 +38,31 @@ import { LoginForm } from '../components/auth/LoginForm';
 import { RegisterForm } from '../components/auth/RegisterForm';
 import { authApi } from '../lib/auth/api';
 
+function AuthButtonWithModal() {
+  const [open, setOpen] = React.useState(false);
+  const [mode, setMode] = React.useState<'login' | 'register'>('login');
+
+  return (
+    <>
+      <AuthButton
+        onShowLogin={() => {
+          setMode('login');
+          setOpen(true);
+        }}
+        onShowRegister={() => {
+          setMode('register');
+          setOpen(true);
+        }}
+      />
+      <AuthModal
+        open={open}
+        onClose={() => setOpen(false)}
+        initialMode={mode}
+      />
+    </>
+  );
+}
+
 // Test component that uses useAuth
 function TestAuthComponent() {
   const { user, loading, login, logout } = useAuth();
@@ -125,36 +150,36 @@ describe('Authentication System', () => {
   });
 
   describe('AuthButton', () => {
-    it('renders sign in and sign up buttons when not authenticated', () => {
+    it('renders sign in and sign up buttons when not authenticated', async () => {
       render(
         <AuthProvider>
-          <AuthButton />
+          <AuthButtonWithModal />
         </AuthProvider>
       );
 
-      expect(screen.getByText('Sign in')).toBeInTheDocument();
+      expect(await screen.findByText('Sign in')).toBeInTheDocument();
       expect(screen.getByText('Sign up')).toBeInTheDocument();
     });
 
-    it('opens auth modal when sign in is clicked', () => {
+    it('opens auth modal when sign in is clicked', async () => {
       render(
         <AuthProvider>
-          <AuthButton />
+          <AuthButtonWithModal />
         </AuthProvider>
       );
 
-      fireEvent.click(screen.getByText('Sign in'));
-      expect(screen.getByText('Sign in to ChatForge')).toBeInTheDocument();
+      fireEvent.click(await screen.findByText('Sign in'));
+      expect(await screen.findByText('Sign in to ChatForge')).toBeInTheDocument();
     });
 
     it('opens auth modal in register mode when sign up is clicked', async () => {
       render(
         <AuthProvider>
-          <AuthButton />
+          <AuthButtonWithModal />
         </AuthProvider>
       );
 
-      fireEvent.click(screen.getByText('Sign up'));
+      fireEvent.click(await screen.findByText('Sign up'));
       await waitFor(() => {
         expect(screen.getByText('Create your account')).toBeInTheDocument();
       });

@@ -1,3 +1,18 @@
+jest.mock('../contexts/AuthContext', () => {
+  const authValue = {
+    user: null,
+    loading: false,
+    login: jest.fn(),
+    register: jest.fn(),
+    logout: jest.fn(),
+    refreshUser: jest.fn(),
+  };
+  return {
+    useAuth: () => authValue,
+    AuthProvider: ({ children }: any) => children,
+  };
+});
+
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatV2 as Chat } from '../components/ChatV2';
@@ -328,12 +343,31 @@ describe('<Chat />', () => {
       model: 'gpt-4o',
       created_at: '2023-01-01',
       messages: [
-        { id: 1, role: 'user', content: 'Original message' },
-        { id: 2, role: 'assistant', content: 'Original response' },
+        {
+          id: 1,
+          seq: 1,
+          role: 'user',
+          status: 'sent',
+          content: 'Original message',
+          created_at: '2023-01-01T00:00:00Z'
+        },
+        {
+          id: 2,
+          seq: 2,
+          role: 'assistant',
+          status: 'sent',
+          content: 'Original response',
+          created_at: '2023-01-01T00:01:00Z'
+        },
       ],
       next_after_seq: null,
     });
     mockedChatLib.editMessageApi.mockResolvedValue({
+      message: {
+        id: '2',
+        seq: 3,
+        content: 'Edited response'
+      },
       new_conversation_id: 'new-conv',
     });
 

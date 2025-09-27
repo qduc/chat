@@ -1,3 +1,18 @@
+jest.mock('../contexts/AuthContext', () => {
+  const authValue = {
+    user: null,
+    loading: false,
+    login: jest.fn(),
+    register: jest.fn(),
+    logout: jest.fn(),
+    refreshUser: jest.fn(),
+  };
+  return {
+    useAuth: () => authValue,
+    AuthProvider: ({ children }: any) => children,
+  };
+});
+
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatV2 as Chat } from '../components/ChatV2';
@@ -134,8 +149,9 @@ describe('Sidebar Collapse Functionality', () => {
     });
 
     // Click collapse button
-    const leftSidebar = screen.getByText('Chat History').closest('aside');
-    const collapseButton = within(leftSidebar).getByTitle('Collapse sidebar');
+  const leftSidebar = screen.getByText('Chat History').closest('aside');
+  expect(leftSidebar).not.toBeNull();
+  const collapseButton = within(leftSidebar as HTMLElement).getByTitle('Collapse sidebar');
     await user.click(collapseButton);
 
     // Verify localStorage.setItem was called with 'true'
@@ -195,8 +211,9 @@ describe('Sidebar Collapse Functionality', () => {
     });
 
     // Collapse the sidebar
-    const leftSidebar = screen.getByText('Chat History').closest('aside');
-    const collapseButton = within(leftSidebar).getByTitle('Collapse sidebar');
+  const leftSidebar = screen.getByText('Chat History').closest('aside');
+  expect(leftSidebar).not.toBeNull();
+  const collapseButton = within(leftSidebar as HTMLElement).getByTitle('Collapse sidebar');
     await user.click(collapseButton);
 
     await waitFor(() => {
@@ -217,8 +234,9 @@ describe('Sidebar Collapse Functionality', () => {
     });
 
     // Collapse the sidebar
-    const leftSidebar = screen.getByText('Chat History').closest('aside');
-    const collapseButton = within(leftSidebar).getByTitle('Collapse sidebar');
+  const leftSidebar = screen.getByText('Chat History').closest('aside');
+  expect(leftSidebar).not.toBeNull();
+  const collapseButton = within(leftSidebar as HTMLElement).getByTitle('Collapse sidebar');
     await user.click(collapseButton);
 
     await waitFor(() => {

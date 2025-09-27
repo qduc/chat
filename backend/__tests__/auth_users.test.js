@@ -13,6 +13,10 @@ describe('User Database Operations', () => {
   beforeEach(() => {
     resetDbCache();
     db = getDb();
+    db.exec(`
+      DELETE FROM sessions;
+      DELETE FROM users;
+    `);
   });
 
   afterEach(() => {
@@ -34,7 +38,7 @@ describe('User Database Operations', () => {
     expect(user.id).toBeDefined();
     expect(user.email).toBe('test@example.com');
     expect(user.display_name).toBe('Test User');
-    expect(user.email_verified).toBe(false);
+  expect(user.email_verified).toBe(0);
     expect(user.password_hash).toBeUndefined(); // Should not return password hash
   });
 

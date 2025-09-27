@@ -1,4 +1,5 @@
 import express from 'express';
+import { test, expect } from '@jest/globals';
 import { getDb } from '../../src/db/index.js';
 
 export const TEST_USER_ID = 'test-user';
@@ -93,3 +94,8 @@ export function seedCustomPrompt({ id, name, body, userId = TEST_USER_ID }) {
     )
     .get({ id });
 }
+
+test('system prompts test utils exports helpers', () => {
+  expect(typeof makeAuthedApp).toBe('function');
+  expect(typeof ensureTestUser).toBe('function');
+});
