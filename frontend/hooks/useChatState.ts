@@ -566,67 +566,72 @@ export function useChatState() {
   }, [user, authLoading]);
 
   // Load models/providers centrally (moved from ChatHeader local state)
-  useEffect(() => {
-    let cancelled = false;
+  const loadProvidersAndModels = useCallback(async () => {
     const apiBase = (process.env.NEXT_PUBLIC_API_BASE as string) ?? 'http://localhost:3001';
+    try {
+      const res = await fetch(`${apiBase}/v1/providers`);
+      if (!res.ok) return;
+      const json = await res.json();
+      const providers: any[] = Array.isArray(json.providers) ? json.providers : [];
+      const enabledProviders = providers.filter(p => p?.enabled);
+      if (!enabledProviders.length) return;
 
-    async function loadProvidersAndModels() {
-      try {
-        const res = await fetch(`${apiBase}/v1/providers`);
-        if (!res.ok) return;
-        const json = await res.json();
-        const providers: any[] = Array.isArray(json.providers) ? json.providers : [];
-        const enabledProviders = providers.filter(p => p?.enabled);
-        if (!enabledProviders.length) return;
+      const results = await Promise.allSettled(
+        enabledProviders.map(async (p) => {
+          const r = await fetch(`${apiBase}/v1/providers/${encodeURIComponent(p.id)}/models`);
+          if (!r.ok) throw new Error(`models ${r.status}`);
+          const j = await r.json();
+          const models = Array.isArray(j.models) ? j.models : [];
+          const options: ModelOption[] = models.map((m: any) => ({ value: m.id, label: m.id }));
+          return { provider: p, options };
+        })
+      );
 
-        const results = await Promise.allSettled(
-          enabledProviders.map(async (p) => {
-            const r = await fetch(`${apiBase}/v1/providers/${encodeURIComponent(p.id)}/models`);
-            if (!r.ok) throw new Error(`models ${r.status}`);
-            const j = await r.json();
-            const models = Array.isArray(j.models) ? j.models : [];
-            const options: ModelOption[] = models.map((m: any) => ({ value: m.id, label: m.id }));
-            return { provider: p, options };
-          })
-        );
+      const gs: TabGroup[] = [];
+      const modelProviderMap: Record<string, string> = {};
 
-        const gs: TabGroup[] = [];
-        const modelProviderMap: Record<string, string> = {};
-
-        for (let i = 0; i < results.length; i++) {
-          const r: any = results[i];
-          if (r.status === 'fulfilled' && r.value.options.length > 0) {
-            const providerId = r.value.provider.id;
-            gs.push({ id: providerId, label: r.value.provider.name || providerId, options: r.value.options });
-            r.value.options.forEach((option: any) => {
-              modelProviderMap[option.value] = providerId;
-            });
-          }
+      for (let i = 0; i < results.length; i++) {
+        const r: any = results[i];
+        if (r.status === 'fulfilled' && r.value.options.length > 0) {
+          const providerId = r.value.provider.id;
+          gs.push({ id: providerId, label: r.value.provider.name || providerId, options: r.value.options });
+          r.value.options.forEach((option: any) => {
+            modelProviderMap[option.value] = providerId;
+          });
         }
-
-        // Flatten options
-        const flat = gs.flatMap(g => g.options);
-
-        if (!cancelled) {
-          if (gs.length === 0) {
-            // leave defaults empty to avoid surprising overrides
-            return;
-          }
-          dispatch({ type: 'SET_MODEL_LIST', payload: { groups: gs, options: flat, modelToProvider: modelProviderMap } });
-
-          // Ensure model belongs to a provider; else pick first
-          if (flat.length > 0 && !flat.some((o: any) => o.value === (initialState.model))) {
-            dispatch({ type: 'SET_MODEL', payload: flat[0].value });
-          }
-        }
-      } catch {
-        // ignore
       }
-    }
 
-    loadProvidersAndModels();
-    return () => { cancelled = true; };
-  }, []);
+      const flat = gs.flatMap(g => g.options);
+      if (gs.length === 0) return;
+
+      dispatch({ type: 'SET_MODEL_LIST', payload: { groups: gs, options: flat, modelToProvider: modelProviderMap } });
+
+      // Ensure current model exists in the new list, otherwise pick first
+      if (flat.length > 0 && !flat.some((o: any) => o.value === state.model)) {
+        dispatch({ type: 'SET_MODEL', payload: flat[0].value });
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [state.model]);
+
+  // Call loader on mount
+  useEffect(() => {
+    void loadProvidersAndModels();
+  }, [loadProvidersAndModels]);
+
+  // Listen for external provider change events to refresh models
+  useEffect(() => {
+    const handler = () => { void loadProvidersAndModels(); };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('chat:providers_changed', handler as EventListener);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('chat:providers_changed', handler as EventListener);
+      }
+    };
+  }, [loadProvidersAndModels]);
 
   // Initialize conversations on mount
   const refreshConversations = useCallback(async () => {
@@ -862,6 +867,11 @@ export function useChatState() {
     setEnabledTools: useCallback((list: string[]) => {
       dispatch({ type: 'SET_ENABLED_TOOLS', payload: list });
     }, []),
+
+    // Model list refresh action (triggered by UI or external events)
+    refreshModelList: useCallback(async () => {
+      await loadProvidersAndModels();
+    }, [loadProvidersAndModels]),
 
     // Chat Actions
     sendMessage: useCallback(async () => {
