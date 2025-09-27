@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { config } from '../env.js';
 import { getDb } from '../db/client.js';
 import { upsertSession } from '../db/sessions.js';
+import { optionalAuth, authenticateToken } from '../middleware/auth.js';
 import {
   createConversation,
   getConversationById,
@@ -16,18 +17,57 @@ import {
   updateMessageContent,
   deleteMessagesAfterSeq,
 } from '../db/messages.js';
+import {
+  migrateSessionConversationsToUser,
+  countMigratableConversations
+} from '../db/migration.js';
 import { v4 as uuidv4 } from 'uuid';
 
 export const conversationsRouter = Router();
 
+// Apply optional authentication to all conversation routes
+conversationsRouter.use(optionalAuth);
+
 function notImplemented(res) {
-  return res
-    .status(501)
-    .json({
-      error: 'not_implemented',
-      message: 'Conversation history is disabled',
-    });
+  return res.status(501).json({ error: 'not_implemented' });
 }
+
+// POST /v1/conversations/migrate (migrate anonymous conversations to authenticated user)
+conversationsRouter.post('/v1/conversations/migrate', authenticateToken, (req, res) => {
+  if (!config.persistence.enabled) return notImplemented(res);
+  try {
+    const userId = req.user.id;
+    const sessionId = req.sessionId;
+
+    if (!sessionId) {
+      return res.status(400).json({
+        error: 'bad_request',
+        message: 'Session ID required for migration'
+      });
+    }
+
+    // Check how many conversations can be migrated
+    const migratableCount = countMigratableConversations(sessionId);
+
+    if (migratableCount === 0) {
+      return res.json({
+        migrated: 0,
+        message: 'No anonymous conversations found to migrate'
+      });
+    }
+
+    // Perform the migration
+    const migratedCount = migrateSessionConversationsToUser(sessionId, userId);
+
+    return res.json({
+      migrated: migratedCount,
+      message: `Successfully migrated ${migratedCount} conversations to your account`
+    });
+  } catch (e) {
+    console.error('[conversations] migrate error', e);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
 
 // GET /v1/conversations (list with cursor+limit)
 conversationsRouter.get('/v1/conversations', (req, res) => {
@@ -36,10 +76,11 @@ conversationsRouter.get('/v1/conversations', (req, res) => {
     const sessionId = req.sessionId;
     const userId = req.user?.id || null; // Get user ID if authenticated
 
-    if (!sessionId && !userId)
+    // Require either authentication or session for conversation access
+    if (!userId && !sessionId)
       return res
         .status(400)
-        .json({ error: 'bad_request', message: 'Missing session or user context' });
+        .json({ error: 'bad_request', message: 'Authentication or session required' });
 
     getDb();
     const { cursor, limit, include_deleted } = req.query || {};
@@ -142,10 +183,11 @@ conversationsRouter.get('/v1/conversations/:id', (req, res) => {
     const sessionId = req.sessionId;
     const userId = req.user?.id || null; // Get user ID if authenticated
 
-    if (!sessionId && !userId)
+    // Require either authentication or session for conversation access
+    if (!userId && !sessionId)
       return res
         .status(400)
-        .json({ error: 'bad_request', message: 'Missing session or user context' });
+        .json({ error: 'bad_request', message: 'Authentication or session required' });
 
     getDb();
     const convo = getConversationById({ id: req.params.id, sessionId, userId }); // Pass user context
@@ -179,10 +221,11 @@ conversationsRouter.delete('/v1/conversations/:id', (req, res) => {
     const sessionId = req.sessionId;
     const userId = req.user?.id || null; // Get user ID if authenticated
 
-    if (!sessionId && !userId)
+    // Require either authentication or session for conversation access
+    if (!userId && !sessionId)
       return res
         .status(400)
-        .json({ error: 'bad_request', message: 'Missing session or user context' });
+        .json({ error: 'bad_request', message: 'Authentication or session required' });
 
     getDb();
     const ok = softDeleteConversation({ id: req.params.id, sessionId, userId }); // Pass user context

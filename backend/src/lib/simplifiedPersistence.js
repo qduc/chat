@@ -43,12 +43,19 @@ export class SimplifiedPersistence {
     this.userId = userId;
 
     // Check if persistence is enabled
-    if (!this.persistenceConfig.isPersistenceEnabled() || (!sessionId && !userId)) {
+    // Prioritize user-based persistence - require either userId OR sessionId
+    if (!this.persistenceConfig.isPersistenceEnabled()) {
       this.persist = false;
       return {};
     }
 
-    // Initialize database connection and session (still needed for session-based users)
+    // For authenticated users, user ID is sufficient for persistence
+    if (!userId && !sessionId) {
+      this.persist = false;
+      return {};
+    }
+
+    // Initialize database connection and session (only if we have sessionId)
     getDb();
     if (sessionId) {
       this.conversationManager.ensureSession(sessionId, {

@@ -41,16 +41,20 @@ export function createConversation({
 export function getConversationById({ id, sessionId, userId = null }) {
   const db = getDb();
 
-  // Support both user-based and session-based access for backward compatibility
+  // Prioritize user-based access - authenticated users get their conversations
   let query, params;
   if (userId) {
     query = `SELECT id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at FROM conversations
-             WHERE id=@id AND (user_id=@user_id OR (user_id IS NULL AND session_id=@session_id)) AND deleted_at IS NULL`;
-    params = { id, user_id: userId, session_id: sessionId };
-  } else {
+             WHERE id=@id AND user_id=@user_id AND deleted_at IS NULL`;
+    params = { id, user_id: userId };
+  } else if (sessionId) {
+    // Fallback to session-based access for anonymous users
     query = `SELECT id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at FROM conversations
              WHERE id=@id AND session_id=@session_id AND user_id IS NULL AND deleted_at IS NULL`;
     params = { id, session_id: sessionId };
+  } else {
+    // No valid identifier
+    return null;
   }
 
   const result = db.prepare(query).get(params);
@@ -60,7 +64,7 @@ export function getConversationById({ id, sessionId, userId = null }) {
     result.tools_enabled = Boolean(result.tools_enabled);
     try {
       result.metadata = result.metadata ? JSON.parse(result.metadata) : {};
-    } catch (_) {
+    } catch {
       result.metadata = {};
     }
   }
@@ -73,15 +77,18 @@ export function updateConversationMetadata({ id, sessionId, userId = null, patch
 
   let selectQuery, selectParams, updateQuery, updateParams;
 
-  // Support both user-based and session-based access for backward compatibility
+  // Prioritize user-based access - authenticated users get their conversations
   if (userId) {
-    selectQuery = `SELECT metadata FROM conversations WHERE id=@id AND (user_id=@userId OR (user_id IS NULL AND session_id=@sessionId)) AND deleted_at IS NULL`;
-    selectParams = { id, userId, sessionId };
-    updateQuery = `UPDATE conversations SET metadata=@metadata, updated_at=@now WHERE id=@id AND (user_id=@userId OR (user_id IS NULL AND session_id=@sessionId)) AND deleted_at IS NULL`;
-  } else {
+    selectQuery = `SELECT metadata FROM conversations WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
+    selectParams = { id, userId };
+    updateQuery = `UPDATE conversations SET metadata=@metadata, updated_at=@now WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
+  } else if (sessionId) {
+    // Fallback to session-based access for anonymous users
     selectQuery = `SELECT metadata FROM conversations WHERE id=@id AND session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
     selectParams = { id, sessionId };
     updateQuery = `UPDATE conversations SET metadata=@metadata, updated_at=@now WHERE id=@id AND session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
+  } else {
+    return false;
   }
 
   const row = db.prepare(selectQuery).get(selectParams);
@@ -97,7 +104,7 @@ export function updateConversationMetadata({ id, sessionId, userId = null, patch
   const now = new Date().toISOString();
 
   if (userId) {
-    updateParams = { id, userId, sessionId, metadata: JSON.stringify(merged), now };
+    updateParams = { id, userId, metadata: JSON.stringify(merged), now };
   } else {
     updateParams = { id, sessionId, metadata: JSON.stringify(merged), now };
   }
@@ -112,13 +119,16 @@ export function updateConversationTitle({ id, sessionId, userId = null, title, p
 
   let query, params;
 
-  // Support both user-based and session-based access for backward compatibility
+  // Prioritize user-based access - authenticated users get their conversations
   if (userId) {
-    query = `UPDATE conversations SET title=@title, provider_id=@provider_id, updated_at=@now WHERE id=@id AND (user_id=@userId OR (user_id IS NULL AND session_id=@sessionId)) AND deleted_at IS NULL`;
-    params = { id, sessionId, userId, title, provider_id, now };
-  } else {
+    query = `UPDATE conversations SET title=@title, provider_id=@provider_id, updated_at=@now WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
+    params = { id, userId, title, provider_id, now };
+  } else if (sessionId) {
+    // Fallback to session-based access for anonymous users
     query = `UPDATE conversations SET title=@title, provider_id=@provider_id, updated_at=@now WHERE id=@id AND session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
     params = { id, sessionId, title, provider_id, now };
+  } else {
+    return;
   }
 
   db.prepare(query).run(params);
@@ -130,13 +140,16 @@ export function updateConversationProviderId({ id, sessionId, userId = null, pro
 
   let query, params;
 
-  // Support both user-based and session-based access for backward compatibility
+  // Prioritize user-based access - authenticated users get their conversations
   if (userId) {
-    query = `UPDATE conversations SET provider_id=@provider_id, updated_at=@now WHERE id=@id AND (user_id=@userId OR (user_id IS NULL AND session_id=@sessionId)) AND deleted_at IS NULL`;
-    params = { id, userId, sessionId, provider_id: providerId, now };
-  } else {
+    query = `UPDATE conversations SET provider_id=@provider_id, updated_at=@now WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
+    params = { id, userId, provider_id: providerId, now };
+  } else if (sessionId) {
+    // Fallback to session-based access for anonymous users
     query = `UPDATE conversations SET provider_id=@provider_id, updated_at=@now WHERE id=@id AND session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
     params = { id, sessionId, provider_id: providerId, now };
+  } else {
+    return false;
   }
 
   const info = db.prepare(query).run(params);
@@ -160,15 +173,19 @@ export function listConversations({ sessionId, userId = null, cursor, limit }) {
 
   let sql, params;
 
-  // Support both user-based and session-based access for backward compatibility
+  // Prioritize user-based access - authenticated users get their conversations
   if (userId) {
     sql = `SELECT id, title, provider_id, model, created_at FROM conversations
-           WHERE (user_id=@userId OR (user_id IS NULL AND session_id=@sessionId)) AND deleted_at IS NULL`;
-    params = { userId, sessionId, cursorCreatedAt, cursorId, limit: safeLimit + 1 };
-  } else {
+           WHERE user_id=@userId AND deleted_at IS NULL`;
+    params = { userId, cursorCreatedAt, cursorId, limit: safeLimit + 1 };
+  } else if (sessionId) {
+    // Fallback to session-based access for anonymous users
     sql = `SELECT id, title, provider_id, model, created_at FROM conversations
            WHERE session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
     params = { sessionId, cursorCreatedAt, cursorId, limit: safeLimit + 1 };
+  } else {
+    // No valid identifier
+    return { items: [], next_cursor: null };
   }
 
   sql = appendCreatedAtCursor(sql, { cursorCreatedAt, cursorId });
@@ -187,13 +204,16 @@ export function softDeleteConversation({ id, sessionId, userId = null }) {
 
   let query, params;
 
-  // Support both user-based and session-based access for backward compatibility
+  // Prioritize user-based access - authenticated users get their conversations
   if (userId) {
-    query = `UPDATE conversations SET deleted_at=@now, updated_at=@now WHERE id=@id AND (user_id=@userId OR (user_id IS NULL AND session_id=@sessionId)) AND deleted_at IS NULL`;
-    params = { id, sessionId, userId, now };
-  } else {
+    query = `UPDATE conversations SET deleted_at=@now, updated_at=@now WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
+    params = { id, userId, now };
+  } else if (sessionId) {
+    // Fallback to session-based access for anonymous users
     query = `UPDATE conversations SET deleted_at=@now, updated_at=@now WHERE id=@id AND session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
     params = { id, sessionId, now };
+  } else {
+    return false;
   }
 
   const info = db.prepare(query).run(params);
@@ -213,15 +233,19 @@ export function listConversationsIncludingDeleted({
 
   let sql, params;
 
-  // Support both user-based and session-based access for backward compatibility
+  // Prioritize user-based access - authenticated users get their conversations
   if (userId) {
     sql = `SELECT id, title, provider_id, model, created_at, deleted_at FROM conversations
-           WHERE (user_id=@userId OR (user_id IS NULL AND session_id=@sessionId))`;
-    params = { userId, sessionId, cursorCreatedAt, cursorId, limit: safeLimit + 1 };
-  } else {
+           WHERE user_id=@userId`;
+    params = { userId, cursorCreatedAt, cursorId, limit: safeLimit + 1 };
+  } else if (sessionId) {
+    // Fallback to session-based access for anonymous users
     sql = `SELECT id, title, provider_id, model, created_at, deleted_at FROM conversations
            WHERE session_id=@sessionId AND user_id IS NULL`;
     params = { sessionId, cursorCreatedAt, cursorId, limit: safeLimit + 1 };
+  } else {
+    // No valid identifier
+    return { items: [], next_cursor: null };
   }
 
   if (!includeDeleted) sql += ` AND deleted_at IS NULL`;
