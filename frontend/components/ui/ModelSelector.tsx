@@ -248,7 +248,7 @@ export default function ModelSelector({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 w-80 mt-2 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 rounded-lg shadow-lg max-h-96 overflow-hidden z-50">
+        <div className="absolute top-full left-0 w-80 mt-2 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 rounded-lg shadow-lg max-h-180 overflow-hidden z-50">
           {/* Provider Tabs */}
           {providerTabs.length > 1 && (
             <div className="flex border-b border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800/50">
@@ -285,7 +285,7 @@ export default function ModelSelector({
           </div>
 
           {/* Model List */}
-          <div className="overflow-y-auto max-h-80">
+          <div className="overflow-y-auto max-h-168">
             {organizedModels.favorites.length > 0 && (
               <div>
                 <div className="px-3 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide bg-slate-50 dark:bg-neutral-800/50">
