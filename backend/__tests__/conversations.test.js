@@ -15,13 +15,6 @@ import {
   resetDbCache,
 } from '../src/db/index.js';
 
-// IMPORTANT: Database setup for tests
-// 1. Enable persistence BEFORE calling getDb() to avoid null cache
-// 2. Always call resetDbCache() after changing persistence config
-// 3. This prevents the common issue where getDb() returns null in tests
-config.persistence.enabled = true;
-config.persistence.dbUrl = 'file::memory:';
-resetDbCache(); // Reset cache after enabling persistence - CRITICAL!
 const sessionId = 'sess1';
 
 beforeAll(() => {
@@ -37,19 +30,17 @@ const makeApp = (useSession = true) => {
   return app;
 };
 
-
 beforeEach(() => {
   // Reset config and database state for each test
   config.persistence.enabled = true;
+  config.persistence.dbUrl = 'file::memory:';
   config.persistence.maxConversationsPerSession = 100;
-  resetDbCache(); // Ensure fresh DB connection with updated config
+  resetDbCache();
   const db = getDb();
-  if (db) {
-    db.exec('DELETE FROM messages; DELETE FROM conversations; DELETE FROM sessions; DELETE FROM providers;');
-    upsertSession(sessionId);
-    db.prepare(`INSERT INTO providers (id, name, provider_type) VALUES (@id, @name, @provider_type)`).run({ id: 'p1', name: 'p1', provider_type: 'openai' });
-    db.prepare(`INSERT INTO providers (id, name, provider_type) VALUES (@id, @name, @provider_type)`).run({ id: 'p2', name: 'p2', provider_type: 'openai' });
-  }
+  db.exec('DELETE FROM messages; DELETE FROM conversations; DELETE FROM sessions; DELETE FROM providers;');
+  upsertSession(sessionId);
+  db.prepare(`INSERT INTO providers (id, name, provider_type) VALUES (@id, @name, @provider_type)`).run({ id: 'p1', name: 'p1', provider_type: 'openai' });
+  db.prepare(`INSERT INTO providers (id, name, provider_type) VALUES (@id, @name, @provider_type)`).run({ id: 'p2', name: 'p2', provider_type: 'openai' });
 });
 
 afterAll(() => {

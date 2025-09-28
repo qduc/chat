@@ -1,4 +1,4 @@
-import { describe, expect, test, beforeEach, afterEach, jest } from '@jest/globals';
+import { describe, expect, test, beforeEach, beforeAll, afterAll, jest } from '@jest/globals';
 import jwt from 'jsonwebtoken';
 import {
   authenticateToken,
@@ -10,22 +10,29 @@ import {
 import { config } from '../src/env.js';
 import { createUser } from '../src/db/users.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
+import { safeTestSetup } from '../test_support/databaseSafety.js';
 
 const JWT_SECRET = config.auth.jwtSecret;
+
+beforeAll(() => {
+  safeTestSetup();
+});
+
+afterAll(() => {
+  resetDbCache();
+});
 
 describe('Authentication Middleware', () => {
   let mockReq;
   let mockRes;
   let mockNext;
-  let db;
 
   beforeEach(() => {
+    config.persistence.enabled = true;
+    config.persistence.dbUrl = 'file::memory:';
     resetDbCache();
-    db = getDb();
-    db.exec(`
-      DELETE FROM sessions;
-      DELETE FROM users;
-    `);
+    const db = getDb();
+    db.exec('DELETE FROM sessions; DELETE FROM users;');
 
     mockReq = {
       headers: {},
@@ -36,10 +43,6 @@ describe('Authentication Middleware', () => {
       json: jest.fn()
     };
     mockNext = jest.fn();
-  });
-
-  afterEach(() => {
-    resetDbCache();
   });
 
   describe('authenticateToken', () => {
@@ -122,6 +125,7 @@ describe('Authentication Middleware', () => {
         displayName: 'Verified User'
       });
 
+      const db = getDb();
       db.prepare('UPDATE users SET email_verified = 1 WHERE id = ?').run(createdUser.id);
 
       const token = jwt.sign({ userId: createdUser.id }, JWT_SECRET);

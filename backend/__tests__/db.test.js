@@ -13,14 +13,6 @@ import {
 import { config } from '../src/env.js';
 import { safeTestSetup } from '../test_support/databaseSafety.js';
 
-// IMPORTANT: Database setup for tests
-// 1. Enable persistence BEFORE calling getDb() to avoid null cache
-// 2. Always call resetDbCache() after changing persistence config
-// 3. This prevents the common issue where getDb() returns null in tests
-config.persistence.enabled = true;
-config.persistence.dbUrl = 'file::memory:';
-resetDbCache(); // Reset cache after enabling persistence - CRITICAL!
-
 const sessionId = 'sess1';
 
 beforeAll(() => {
@@ -29,7 +21,9 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  // Always get fresh db instance in beforeEach - don't cache the reference
+  config.persistence.enabled = true;
+  config.persistence.dbUrl = 'file::memory:';
+  resetDbCache();
   const db = getDb();
   db.exec('DELETE FROM messages; DELETE FROM conversations; DELETE FROM sessions;');
   upsertSession(sessionId);
