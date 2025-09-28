@@ -15,6 +15,11 @@ export function addConversationMetadata(responseBody, persistence) {
       title: persistence.conversationMeta.title,
       model: persistence.conversationMeta.model,
       created_at: persistence.conversationMeta.created_at,
+      tools_enabled: Boolean(persistence.conversationMeta.tools_enabled),
+      active_tools: Array.isArray(persistence.conversationMeta.metadata?.active_tools)
+        ? persistence.conversationMeta.metadata.active_tools
+        : [],
+      active_system_prompt_id: persistence.conversationMeta.metadata?.active_system_prompt_id || null,
     };
   }
   return responseBody;
@@ -33,6 +38,11 @@ export function getConversationMetadata(persistence) {
         title: persistence.conversationMeta.title,
         model: persistence.conversationMeta.model,
         created_at: persistence.conversationMeta.created_at,
+        tools_enabled: Boolean(persistence.conversationMeta.tools_enabled),
+        active_tools: Array.isArray(persistence.conversationMeta.metadata?.active_tools)
+          ? persistence.conversationMeta.metadata.active_tools
+          : [],
+        active_system_prompt_id: persistence.conversationMeta.metadata?.active_system_prompt_id || null,
       }
     };
   }

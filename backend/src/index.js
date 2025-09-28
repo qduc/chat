@@ -3,10 +3,13 @@ import cors from 'cors';
 import { config } from './env.js';
 import { rateLimit } from './middleware/rateLimit.js';
 import { sessionResolver } from './middleware/session.js';
+import { getUserContext } from './middleware/auth.js';
 import { chatRouter } from './routes/chat.js';
 import { healthRouter } from './routes/health.js';
 import { conversationsRouter } from './routes/conversations.js';
 import { providersRouter } from './routes/providers.js';
+import { systemPromptsRouter } from './routes/systemPrompts.js';
+import authRouter from './routes/auth.js';
 import { requestLogger, errorLogger } from './middleware/logger.js';
 import { logger } from './logger.js';
 
@@ -16,32 +19,53 @@ const app = express();
 app.use(cors({
   origin: config.allowedOrigin,
   credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'x-session-id']
 }));
 app.use(express.json({ limit: '1mb' }));
 app.use(sessionResolver);
+app.use(getUserContext);
 app.use(requestLogger);
 app.use(rateLimit);
 
+if (process.env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
+      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+    next();
+  });
+}
+
 app.use(healthRouter);
+app.use('/v1/auth', authRouter);
 app.use(conversationsRouter);
 app.use(providersRouter);
+app.use(systemPromptsRouter);
 app.use(chatRouter);
 
 app.use(errorLogger);
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
   logger.error({ msg: 'Unhandled error', err });
   res.status(500).json({ error: 'internal_server_error' });
 });
 
-// Retention worker (Sprint 3)
-import { getDb, retentionSweep } from './db/index.js';
+// Database initialization and retention worker (Sprint 3)
+import { getDb } from './db/client.js';
+import { retentionSweep } from './db/retention.js';
 
+// Initialize database and run seeders on server startup
 if (config.persistence.enabled && process.env.NODE_ENV !== 'test') {
   try {
-    // Initialize DB once
+    // Initialize DB once - this will run migrations and seeders
     getDb();
+    logger.info({ msg: 'database:initialized', seeders: 'completed' });
+
+    // Set up retention worker
     const intervalMs = 60 * 60 * 1000; // hourly
     setInterval(() => {
       try {
@@ -62,8 +86,10 @@ if (config.persistence.enabled && process.env.NODE_ENV !== 'test') {
       days: config.persistence.retentionDays,
     });
   } catch (e) {
-    logger.error({ msg: 'retention:init_error', err: e });
+    logger.error({ msg: 'database:init_error', err: e });
   }
+} else if (process.env.NODE_ENV !== 'test') {
+  logger.info({ msg: 'database:disabled', persistence: false });
 }
 
 if (process.env.NODE_ENV !== 'test') {

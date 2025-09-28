@@ -32,23 +32,95 @@ EOF
 }
 
 test_backend() {
-    echo "Running backend tests..."
-    npm --prefix backend test
+    echo "Running backend tests inside docker container..."
+    backend_cid="$("${DC[@]}" ps -q backend)"
+    if [ $# -gt 0 ]; then
+      # Normalize args so host paths like `backend/__tests__/...` work
+      # inside the container where the backend package root is mounted at /app.
+      # Strip a leading `backend/` from any non-option arg.
+      normalized_args=()
+      for a in "$@"; do
+        if [[ "$a" != -* ]]; then
+          # Remove leading "backend/" if present
+          normalized_args+=("${a#backend/}")
+        else
+          normalized_args+=("$a")
+        fi
+      done
+
+      # Run only the specified test(s) with ESM support. Use `npm test --` so
+      # the execution occurs in the backend package context and args are
+      # forwarded correctly to Jest.
+      if [ -n "$backend_cid" ]; then
+        if [ -t 0 ] && [ -t 1 ]; then
+          "${DC[@]}" exec backend env NODE_OPTIONS=--experimental-vm-modules npm test -- "${normalized_args[@]}"
+        else
+          "${DC[@]}" exec -T backend env NODE_OPTIONS=--experimental-vm-modules npm test -- "${normalized_args[@]}"
+        fi
+      else
+        if [ -t 0 ] && [ -t 1 ]; then
+          "${DC[@]}" run --rm backend env NODE_OPTIONS=--experimental-vm-modules npm test -- "${normalized_args[@]}"
+        else
+          "${DC[@]}" run --rm -T backend env NODE_OPTIONS=--experimental-vm-modules npm test -- "${normalized_args[@]}"
+        fi
+      fi
+    else
+      # Run all tests as before
+      if [ -n "$backend_cid" ]; then
+        if [ -t 0 ] && [ -t 1 ]; then
+          "${DC[@]}" exec backend env NODE_OPTIONS=--experimental-vm-modules npm test
+        else
+          "${DC[@]}" exec -T backend env NODE_OPTIONS=--experimental-vm-modules npm test
+        fi
+      else
+        if [ -t 0 ] && [ -t 1 ]; then
+          "${DC[@]}" run --rm backend env NODE_OPTIONS=--experimental-vm-modules npm test
+        else
+          "${DC[@]}" run --rm -T backend env NODE_OPTIONS=--experimental-vm-modules npm test
+        fi
+      fi
+    fi
 }
 
 test_frontend() {
-    echo "Running frontend tests..."
-    npm --prefix frontend test
+    extra=()
+    echo "Running frontend tests inside docker container..."
+    # If the frontend service is already running, exec into it; otherwise start a one-off run
+    frontend_cid="$("${DC[@]}" ps -q frontend)"
+    # Forward extra args to `npm test` when provided
+    if [ $# -gt 0 ]; then
+      extra=(-- "$@")
+    fi
+
+    if [ -n "$frontend_cid" ]; then
+      if [ -t 0 ] && [ -t 1 ]; then
+        "${DC[@]}" exec frontend npm test "${extra[@]:-}"
+      else
+        "${DC[@]}" exec -T frontend npm test "${extra[@]:-}"
+      fi
+    else
+      if [ -t 0 ] && [ -t 1 ]; then
+        "${DC[@]}" run --rm frontend npm test "${extra[@]:-}"
+      else
+        "${DC[@]}" run --rm -T frontend npm test "${extra[@]:-}"
+      fi
+    fi
 }
 
 test_all() {
-    echo "Running all tests..."
-    test_backend
-    if [ $? -eq 0 ]; then
-        test_frontend
+    echo "Running all tests inside docker containers..."
+    # Temporarily disable errexit so we can inspect the exit code and decide
+    # whether to run frontend tests after backend tests.
+    set +e
+  # Pass through any args to backend tests
+  test_backend "$@"
+    rc=$?
+    set -e
+    if [ $rc -eq 0 ]; then
+    test_frontend "$@"
     else
         echo "Backend tests failed, skipping frontend tests"
-        exit 1
+        return $rc
     fi
 }
 
@@ -92,13 +164,13 @@ case "$cmd" in
     usage
     ;;
   test)
-      test_all
+    test_all "$@"
       ;;
   test:backend)
-      test_backend
+    test_backend "$@"
       ;;
   test:frontend)
-      test_frontend
+    test_frontend "$@"
       ;;
   migrate)
     # Run migration commands in backend container

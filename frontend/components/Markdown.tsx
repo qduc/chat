@@ -2,13 +2,54 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
 import rehypeHighlight from "rehype-highlight";
+import rehypeKatex from "rehype-katex";
+import "katex/dist/katex.min.css";
 import { useTheme } from "../contexts/ThemeContext";
 import { ClipboardCheck, Clipboard } from 'lucide-react';
 
 interface MarkdownProps {
   text: string;
   className?: string;
+}
+
+const CODE_FENCE_PATTERN = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`]*`)/g;
+const BLOCK_LATEX_PATTERN = /(^|[^\\])\\\[((?:\\.|[\s\S])*?)\\\]/g;
+const INLINE_LATEX_PATTERN = /(^|[^\\])\\\(([\s\S]*?)\\\)/g;
+
+// Normalize common LaTeX delimiters from \(…\)/\[…\] to $…$/$$…$$.
+// Some providers emit the escaped forms by default, and remark-math only parses dollar delimiters.
+function normalizeLatexDelimiters(input: string): string {
+  if (!input) return input;
+
+  const segments = input.split(CODE_FENCE_PATTERN);
+  return segments
+    .map((segment) => {
+      if (!segment) return segment;
+      if (segment.startsWith("```") || segment.startsWith("~~~") || segment.startsWith("`")) {
+        return segment;
+      }
+
+      const withBlocks = segment.replace(
+        BLOCK_LATEX_PATTERN,
+        (match, prefix, body) => {
+          const hasLineBreak = body.includes("\n");
+          const trimmed = body.trim();
+          const normalized = hasLineBreak ? `\n${trimmed}\n` : trimmed;
+          return `${prefix}$$${normalized}$$`;
+        }
+      );
+
+      return withBlocks.replace(
+        INLINE_LATEX_PATTERN,
+        (match, prefix, body) => {
+          const normalized = body.trim();
+          return `${prefix}$${normalized}$`;
+        }
+      );
+    })
+    .join("");
 }
 
 // Library-based Markdown renderer with:
@@ -20,6 +61,54 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
 
+  // Transform thinking blocks and reasoning summaries into collapsible sections
+  // First, handle incomplete thinking blocks by temporarily adding closing tags
+  let textToProcess = normalizeLatexDelimiters(text);
+
+  // Check for incomplete thinking blocks (both <thinking> and <think> variants)
+  // Count opening and closing tags to ensure they match
+  const openingThinkingTags = (textToProcess.match(/<thinking>/g) || []).length;
+  const closingThinkingTags = (textToProcess.match(/<\/thinking>/g) || []).length;
+  const openingThinkTags = (textToProcess.match(/<think>/g) || []).length;
+  const closingThinkTags = (textToProcess.match(/<\/think>/g) || []).length;
+  const hasIncompleteThinking = openingThinkingTags > closingThinkingTags;
+  const hasIncompleteThink = openingThinkTags > closingThinkTags;
+
+  if (hasIncompleteThinking) {
+    // Only add closing tag if we have unmatched opening tags
+    // Find the last <thinking> without a matching </thinking>
+    textToProcess = textToProcess.replace(/<thinking>(?![\s\S]*<\/thinking>)([\s\S]*)$/, '<thinking>$1</thinking>');
+  }
+
+  if (hasIncompleteThink) {
+    // Only add closing tag if we have unmatched opening tags
+    // Find the last <think> without a matching </think>
+    textToProcess = textToProcess.replace(/<think>(?![\s\S]*<\/think>)([\s\S]*)$/, '<think>$1</think>');
+  }
+
+  const processedText = textToProcess
+    .replace(
+      /<thinking>([\s\S]*?)<\/thinking>/g,
+      (match, content) => {
+        // Convert to a custom code block that we can detect
+        return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
+      }
+    )
+    .replace(
+      /<think>([\s\S]*?)<\/think>/g,
+      (match, content) => {
+        // Convert to a custom code block that we can detect (same as thinking)
+        return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
+      }
+    )
+    .replace(
+      /<reasoning_summary>([\s\S]*?)<\/reasoning_summary>/g,
+      (match, content) => {
+        // Convert reasoning summary to thinking block (reuse same rendering logic)
+        return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
+      }
+    );
+
   // Note: Syntax highlighting theme is automatically handled by CSS
   // based on the .dark class applied to the document root
 
@@ -27,8 +116,11 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
     <div className={`${className || ''} ${isDark ? 'dark' : ''}`}>
       <ReactMarkdown
         // Do NOT enable raw HTML to prevent XSS
-        remarkPlugins={[remarkGfm]}
-        rehypePlugins={[[rehypeHighlight, { ignoreMissing: true }]]}
+        remarkPlugins={[remarkGfm, remarkMath]}
+        rehypePlugins={[
+          [rehypeHighlight, { ignoreMissing: true }],
+          rehypeKatex
+        ]}
         components={{
           a: ({ href, children }) => (
             <a
@@ -68,6 +160,12 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
               }
             };
 
+            // If this pre wraps a "thinking" code block, render the child directly to avoid double boxing
+            const childEl = children as any;
+            if (childEl?.props?.className?.includes('language-thinking')) {
+              return childEl;
+            }
+
             return (
               <pre
                 ref={preRef}
@@ -100,6 +198,50 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
             );
           },
           code: function CodeRenderer({ className, children }: { className?: string; children?: React.ReactNode }) {
+            if (className?.includes('language-thinking')) {
+              const [isExpanded, setIsExpanded] = React.useState(false);
+
+              // Height for ~3 lines. Do NOT subtract padding; we remove padding from the height-bearing box.
+              const collapsedHeight = 69; // px
+
+              return (
+                <div className="my-4 border border-slate-200 dark:border-neutral-800 rounded-lg bg-slate-50 dark:bg-neutral-900/50">
+                  <div
+                    className="px-4 py-2 cursor-pointer font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-t-lg"
+                    onClick={() => setIsExpanded(!isExpanded)}
+                  >
+                    💭 Thinking...
+                  </div>
+
+                  {/* Outer area can have padding; inner height box must not. */}
+                  <div className="border-t border-slate-200 dark:border-neutral-800">
+                    <div
+                      className={isExpanded ? "px-4 py-3" : "px-4"}
+                      style={
+                        isExpanded
+                          ? {}
+                          : {
+                              height: `${collapsedHeight}px`,
+                              overflow: "hidden",
+                              display: "flex",
+                              flexDirection: "column",
+                              justifyContent: "flex-end"
+                            }
+                      }
+                    >
+                      {/* Add vertical padding only when expanded to avoid shrinking visible height */}
+                      <div className="whitespace-pre-wrap font-mono text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+                        {children}
+                      </div>
+                    </div>
+
+                    {/* When collapsed, add bottom padding outside the height box for visual spacing */}
+                    {!isExpanded && <div className="px-4 pb-3" />}
+                  </div>
+                </div>
+              );
+            }
+
             return <code className={`${className} bg-slate-50 dark:bg-neutral-900/50`}>{children}</code>;
           },
           hr: () => <hr className="my-4 border-slate-200 dark:border-neutral-800" />,
@@ -130,7 +272,7 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
           ),
         }}
       >
-        {text}
+        {processedText}
       </ReactMarkdown>
     </div>
   );

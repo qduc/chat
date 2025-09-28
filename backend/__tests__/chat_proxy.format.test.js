@@ -1,15 +1,16 @@
 // Format transformation and tool orchestration tests
 import assert from 'node:assert/strict';
 import request from 'supertest';
+import jwt from 'jsonwebtoken';
 import { createChatProxyTestContext, MockUpstream } from '../test_utils/chatProxyTestUtils.js';
-import { getDb, upsertSession, createConversation } from '../src/db/index.js';
+import { getDb, upsertSession, createConversation, updateConversationMetadata } from '../src/db/index.js';
 import { config } from '../src/env.js';
 
-const { makeApp, withServer } = createChatProxyTestContext();
+const { makeApp, upstream } = createChatProxyTestContext();
 
 describe('Format transformation', () => {
   test('converts Responses API non-streaming JSON to Chat Completions shape when hitting /v1/chat/completions', async () => {
-    const app = makeApp();
+  const app = makeApp();
     const res = await request(app)
       .post('/v1/chat/completions')
       .send({ messages: [{ role: 'user', content: 'Hello' }], stream: false });
@@ -22,7 +23,7 @@ describe('Format transformation', () => {
   });
 
   test('converts Responses API streaming events to Chat Completions chunks when hitting /v1/chat/completions', async () => {
-    const app = makeApp();
+  const app = makeApp();
     const res = await request(app)
       .post('/v1/chat/completions')
       .send({ messages: [{ role: 'user', content: 'Hello' }], stream: true });
@@ -67,7 +68,6 @@ describe('Tool orchestration', () => {
 
   test('persistence works with tool requests', async () => {
     const sessionId = 'test-session';
-    const db = getDb();
     upsertSession(sessionId);
     createConversation({ id: 'conv1', sessionId, title: 'Test' });
 
@@ -233,5 +233,94 @@ describe('Tool orchestration', () => {
     assert(!hasToolCalls, 'Should not have tool call events');
     assert(!hasToolOutput, 'Should not have tool output events');
     assert(hasAnyContent, 'Should have regular chat response content');
+  });
+});
+
+describe('System prompt injection', () => {
+  const SESSION_ID = 'session-system-prompts';
+  const CONVERSATION_ID = 'conversation-system-prompts';
+  const USER_ID = 'user-system-prompts';
+  const USER_EMAIL = 'system-prompts@example.com';
+
+  function seedUserSessionAndConversation() {
+    const db = getDb();
+    db.exec('DELETE FROM system_prompts; DELETE FROM sessions; DELETE FROM conversations; DELETE FROM users;');
+
+    db.prepare(`
+      INSERT INTO users (id, email, password_hash, display_name, created_at, updated_at, email_verified)
+      VALUES (@id, @email, 'hashed', 'System Prompts User', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 1)
+      ON CONFLICT(id) DO UPDATE SET email = excluded.email
+    `).run({ id: USER_ID, email: USER_EMAIL });
+
+    upsertSession(SESSION_ID);
+    db.prepare('UPDATE sessions SET user_id=@userId WHERE id=@sessionId')
+      .run({ userId: USER_ID, sessionId: SESSION_ID });
+
+    createConversation({
+      id: CONVERSATION_ID,
+      sessionId: SESSION_ID,
+      userId: USER_ID,
+      title: 'System Prompt Conversation',
+      model: 'gpt-4.1-mini',
+      metadata: {},
+    });
+  }
+
+  function insertCustomPrompt(id, body) {
+    const db = getDb();
+    db.prepare(`
+      INSERT INTO system_prompts (id, user_id, name, body, usage_count, last_used_at, created_at, updated_at)
+      VALUES (@id, @user_id, @name, @body, 0, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT(id) DO UPDATE SET body = excluded.body, updated_at = CURRENT_TIMESTAMP
+    `).run({ id, user_id: USER_ID, name: 'Test Prompt', body });
+  }
+
+  function authHeader() {
+    const token = jwt.sign({ userId: USER_ID, email: USER_EMAIL }, config.auth.jwtSecret);
+    return `Bearer ${token}`;
+  }
+
+  test('processes requests without system prompt when none provided', async () => {
+    seedUserSessionAndConversation();
+
+    const app = makeApp({ mockUser: { id: USER_ID, email: USER_EMAIL } });
+    const res = await request(app)
+      .post('/v1/chat/completions')
+      .set('x-session-id', SESSION_ID)
+      .set('Authorization', authHeader())
+      .send({
+        messages: [{ role: 'user', content: 'Hello there' }],
+        conversation_id: CONVERSATION_ID,
+        stream: false,
+      });
+
+    assert.equal(res.status, 200);
+    const lastRequest = upstream.lastChatRequestBody;
+    assert.ok(lastRequest, 'Should capture upstream request payload');
+    assert.equal(lastRequest.messages[0].role, 'user');
+    assert.equal(lastRequest.messages[0].content, 'Hello there');
+  });
+
+  test('uses system_prompt field for effective prompt content', async () => {
+    seedUserSessionAndConversation();
+
+    const app = makeApp({ mockUser: { id: USER_ID, email: USER_EMAIL } });
+    const res = await request(app)
+      .post('/v1/chat/completions')
+      .set('x-session-id', SESSION_ID)
+      .set('Authorization', authHeader())
+      .send({
+        messages: [{ role: 'user', content: 'Send override example' }],
+        conversation_id: CONVERSATION_ID,
+        system_prompt: 'Use this effective system prompt.',
+        stream: false,
+      });
+
+    assert.equal(res.status, 200);
+    const lastRequest = upstream.lastChatRequestBody;
+    assert.equal(lastRequest.messages[0].role, 'system');
+    assert.equal(lastRequest.messages[0].content, 'Use this effective system prompt.');
+    assert.equal(lastRequest.messages[1].role, 'user');
+    assert.equal(lastRequest.messages[1].content, 'Send override example');
   });
 });

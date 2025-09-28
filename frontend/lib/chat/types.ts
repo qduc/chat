@@ -10,7 +10,7 @@ export interface ChatMessage {
 }
 
 export interface ChatEvent {
-  type: 'text' | 'tool_call' | 'tool_output';
+  type: 'text' | 'reasoning' | 'tool_call' | 'tool_output' | 'final';
   value: any;
 }
 
@@ -18,6 +18,7 @@ export interface ChatResponse {
   content: string;
   responseId?: string;
   conversation?: ConversationMeta;
+  reasoning_summary?: string;
 }
 
 export interface ConversationMeta {
@@ -28,6 +29,7 @@ export interface ConversationMeta {
   created_at: string;
   streaming_enabled?: boolean;
   tools_enabled?: boolean;
+  active_tools?: string[];
   research_mode?: boolean;
   quality_level?: string | null;
   reasoning_effort?: string | null;
@@ -48,11 +50,13 @@ export interface ConversationWithMessages {
   created_at: string;
   streaming_enabled?: boolean;
   tools_enabled?: boolean;
+  active_tools?: string[];
   research_mode?: boolean;
   quality_level?: string | null;
   reasoning_effort?: string | null;
   verbosity?: string | null;
   system_prompt?: string | null;
+  active_system_prompt_id?: string | null;
   messages: {
     id: number;
     seq: number;
@@ -92,6 +96,7 @@ export interface ChatOptions {
   onToken?: (token: string) => void;
   onEvent?: (event: ChatEvent) => void;
   apiBase?: string;
+  responseId?: string; // Previous response ID to maintain conversation context
 }
 
 // Extended options for advanced features
@@ -103,6 +108,7 @@ export interface ChatOptionsExtended extends ChatOptions {
   reasoning?: {
     effort?: string;
     verbosity?: string;
+    summary?: string;
   };
   // Persistence settings
   streamingEnabled?: boolean;
@@ -118,4 +124,5 @@ export interface SendChatOptions extends ChatOptionsExtended {
   reasoningEffort?: string;
   verbosity?: string;
   tool_choice?: any;
+  activeSystemPromptId?: string | null;
 }

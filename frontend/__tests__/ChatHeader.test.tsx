@@ -1,3 +1,20 @@
+jest.mock('../contexts/AuthContext', () => {
+  const authValue = {
+    user: null,
+    loading: false,
+    ready: true,
+    waitForAuth: jest.fn(() => Promise.resolve()),
+    login: jest.fn(),
+    register: jest.fn(),
+    logout: jest.fn(),
+    refreshUser: jest.fn(),
+  };
+  return {
+    useAuth: () => authValue,
+    AuthProvider: ({ children }: any) => children,
+  };
+});
+
 import React from 'react';
 import { render, screen } from '@testing-library/react';
 import { ChatHeader } from '../components/ChatHeader';
@@ -37,6 +54,9 @@ describe('ChatHeader', () => {
         onNewChat={onNewChat}
         model="gpt-4.1-mini"
         onModelChange={onModelChange}
+        groups={null}
+        fallbackOptions={[{ value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' }]}
+        modelToProvider={{ 'gpt-4.1-mini': 'default' }}
       />
     );
 

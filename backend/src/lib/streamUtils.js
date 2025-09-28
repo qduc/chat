@@ -34,8 +34,6 @@ export async function createOpenAIRequest(config, requestBody, options = {}) {
 }
 
 // Optional alias with a more generic name for future call sites
-export const createProviderRequest = createOpenAIRequest;
-
 /**
  * Write data to response and flush if possible
  * @param {Object} res - Express response object
@@ -55,40 +53,11 @@ export function setupStreamingHeaders(res) {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
-  
+
   // Ensure headers are sent immediately so the client can start processing
   // the event stream as soon as chunks arrive. Some proxies/browsers may
   // buffer the response if headers are not flushed explicitly.
   if (typeof res.flushHeaders === 'function') {
     res.flushHeaders();
   }
-}
-
-/**
- * Create a flush function for persistence
- * @param {Object} params - Flush parameters
- * @param {boolean} params.persist - Whether persistence is enabled
- * @param {string|null} params.assistantMessageId - Assistant message ID
- * @param {string} params.buffer - Content buffer (passed by reference)
- * @param {Function} params.appendAssistantContent - Persistence function
- * @returns {Function} Flush function
- */
-export function createFlushFunction({
-  persist,
-  assistantMessageId,
-  buffer,
-  appendAssistantContent,
-  flushedOnce,
-}) {
-  return () => {
-    if (!persist || !assistantMessageId) return;
-    if (buffer.value.length === 0) return;
-    
-    appendAssistantContent({
-      messageId: assistantMessageId,
-      delta: buffer.value,
-    });
-    buffer.value = '';
-    flushedOnce.value = true;
-  };
 }

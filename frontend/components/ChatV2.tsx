@@ -8,10 +8,13 @@ import { MessageList } from './MessageList';
 import { MessageInput } from './MessageInput';
 import { RightSidebar } from './RightSidebar';
 import SettingsModal from './SettingsModal';
+import { AuthModal, AuthMode } from './auth/AuthModal';
 
 export function ChatV2() {
   const { state, actions } = useChatState();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState<AuthMode>('login');
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -24,6 +27,16 @@ export function ChatV2() {
     try {
       await navigator.clipboard.writeText(text);
     } catch (_) {}
+  }, []);
+
+  const handleShowLogin = useCallback(() => {
+    setAuthMode('login');
+    setShowAuthModal(true);
+  }, []);
+
+  const handleShowRegister = useCallback(() => {
+    setAuthMode('register');
+    setShowAuthModal(true);
   }, []);
 
   // Keyboard shortcut for toggling sidebar (Ctrl/Cmd + \)
@@ -149,7 +162,7 @@ export function ChatV2() {
           onToggleCollapse={actions.toggleSidebar}
         />
       )}
-      <div className="flex flex-col flex-1 relative">
+      <div className="flex flex-col flex-1">
         <ChatHeader
           isStreaming={state.status === 'streaming'}
           onNewChat={actions.newChat}
@@ -157,54 +170,77 @@ export function ChatV2() {
           onModelChange={actions.setModel}
           onProviderChange={actions.setProviderId}
           onOpenSettings={() => setIsSettingsOpen(true)}
+          onShowLogin={handleShowLogin}
+          onShowRegister={handleShowRegister}
+          groups={state.modelGroups}
+          fallbackOptions={state.modelOptions}
+          modelToProvider={state.modelToProvider}
         />
-        <MessageList
-          messages={state.messages}
-          pending={{
-            streaming: state.status === 'streaming',
-            error: state.error ?? undefined,
-            abort: state.abort
-          }}
-          conversationId={state.conversationId}
-          editingMessageId={state.editingMessageId}
-          editingContent={state.editingContent}
-          onCopy={handleCopy}
-          onEditMessage={actions.startEdit}
-          onCancelEdit={actions.cancelEdit}
-          onSaveEdit={actions.saveEdit}
-          onApplyLocalEdit={handleApplyLocalEdit}
-          onEditingContentChange={actions.updateEditContent}
-          onRetryLastAssistant={handleRetryLastAssistant}
-        />
-        {/* Removed soft fade to keep a cleaner boundaryless look */}
-  <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-4xl px-6 z-30">
-          <MessageInput
-            input={state.input}
-            pending={{
-              streaming: state.status === 'streaming',
-              error: state.error ?? undefined,
-              abort: state.abort
-            }}
-            onInputChange={actions.setInput}
-            onSend={actions.sendMessage}
-            onStop={actions.stopStreaming}
-            useTools={state.useTools}
-            shouldStream={state.shouldStream}
-            onUseToolsChange={actions.setUseTools}
-            enabledTools={state.enabledTools}
-            onEnabledToolsChange={actions.setEnabledTools}
-            onShouldStreamChange={actions.setShouldStream}
-            model={state.model}
-            qualityLevel={state.qualityLevel}
-            onQualityLevelChange={actions.setQualityLevel}
+        <div className="flex flex-1 min-h-0">
+          <div className="flex flex-col flex-1 relative">
+            <MessageList
+              messages={state.messages}
+              pending={{
+                streaming: state.status === 'streaming',
+                error: state.error ?? undefined,
+                abort: state.abort
+              }}
+              conversationId={state.conversationId}
+              editingMessageId={state.editingMessageId}
+              editingContent={state.editingContent}
+              onCopy={handleCopy}
+              onEditMessage={actions.startEdit}
+              onCancelEdit={actions.cancelEdit}
+              onSaveEdit={actions.saveEdit}
+              onApplyLocalEdit={handleApplyLocalEdit}
+              onEditingContentChange={actions.updateEditContent}
+              onRetryLastAssistant={handleRetryLastAssistant}
+            />
+            {/* Removed soft fade to keep a cleaner boundaryless look */}
+      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-4xl px-6 z-30">
+              <MessageInput
+                input={state.input}
+                pending={{
+                  streaming: state.status === 'streaming',
+                  error: state.error ?? undefined,
+                  abort: state.abort
+                }}
+                onInputChange={actions.setInput}
+                onSend={actions.sendMessage}
+                onStop={actions.stopStreaming}
+                useTools={state.useTools}
+                shouldStream={state.shouldStream}
+                onUseToolsChange={actions.setUseTools}
+                enabledTools={state.enabledTools}
+                onEnabledToolsChange={actions.setEnabledTools}
+                onShouldStreamChange={actions.setShouldStream}
+                model={state.model}
+                qualityLevel={state.qualityLevel}
+                onQualityLevelChange={actions.setQualityLevel}
+              />
+            </div>
+            <SettingsModal
+              open={isSettingsOpen}
+              onClose={() => setIsSettingsOpen(false)}
+            />
+            <AuthModal
+              open={showAuthModal}
+              onClose={() => setShowAuthModal(false)}
+              initialMode={authMode}
+            />
+          </div>
+          <RightSidebar
+            userId={state.user?.id}
+            conversationId={state.conversationId || undefined}
+            collapsed={state.rightSidebarCollapsed}
+            onToggleCollapse={actions.toggleRightSidebar}
+            onEffectivePromptChange={actions.setInlineSystemPromptOverride}
+            onActivePromptIdChange={actions.setActiveSystemPromptId}
+            conversationActivePromptId={state.activeSystemPromptId}
+            conversationSystemPrompt={state.systemPrompt}
           />
         </div>
-        <SettingsModal
-          open={isSettingsOpen}
-          onClose={() => setIsSettingsOpen(false)}
-        />
       </div>
-      <RightSidebar systemPrompt={state.systemPrompt ?? ''} onSystemPromptChange={actions.setSystemPrompt} collapsed={state.rightSidebarCollapsed} onToggleCollapse={actions.toggleRightSidebar} />
     </div>
   );
 }

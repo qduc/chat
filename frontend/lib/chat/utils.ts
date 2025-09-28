@@ -1,3 +1,5 @@
+import { waitForAuthReady } from '../auth/ready';
+
 export class APIError extends Error {
   constructor(
     public status: number,
@@ -78,6 +80,14 @@ export function createRequestInit(body: any, options: { stream?: boolean; signal
     credentials: 'include',
   };
 
+  // Add authentication header if token exists
+  if (typeof window !== 'undefined') {
+    const token = localStorage.getItem('chatforge_auth_token');
+    if (token) {
+      (init.headers as any)['Authorization'] = `Bearer ${token}`;
+    }
+  }
+
   if (options.signal) {
     init.signal = options.signal;
   }
@@ -102,7 +112,22 @@ export async function getDefaultProviderId(apiBase: string = process.env.NEXT_PU
   }
 
   try {
-    const response = await fetch(`${apiBase}/v1/providers`);
+    await waitForAuthReady();
+    const headers: Record<string, string> = {};
+
+    // Add authentication header if token exists
+    if (typeof window !== 'undefined') {
+      const token = localStorage.getItem('chatforge_auth_token');
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+
+    const response = await fetch(`${apiBase}/v1/providers`, {
+      headers,
+      credentials: 'include',
+    });
+
     if (!response.ok) {
       throw new Error(`Failed to fetch providers: ${response.status}`);
     }

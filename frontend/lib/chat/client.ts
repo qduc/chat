@@ -6,6 +6,7 @@ import {
   Role
 } from './types';
 import { SSEParser, createRequestInit, APIError } from './utils';
+import { waitForAuthReady } from '../auth/ready';
 
 const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
 
@@ -15,6 +16,7 @@ interface OpenAIStreamChunkChoiceDelta {
   content?: string;
   tool_calls?: any[];
   tool_output?: any;
+  reasoning?: string;
 }
 
 interface OpenAIStreamChunkChoice {
@@ -38,6 +40,7 @@ export class ChatClient {
   }
 
   private async sendMessageInternal(options: ChatOptions | ChatOptionsExtended): Promise<ChatResponse> {
+    await waitForAuthReady();
     const {
       apiBase = this.apiBase,
       messages,
@@ -67,7 +70,7 @@ export class ChatClient {
   }
 
   private buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: boolean): any {
-    const { messages, model, providerId } = options;
+    const { messages, model, providerId, responseId } = options;
     const extendedOptions = options as ChatOptionsExtended;
 
     const bodyObj: any = {
@@ -75,12 +78,15 @@ export class ChatClient {
       messages,
       stream,
       provider_id: providerId,
+      ...(responseId && { previous_response_id: responseId }),
       ...(extendedOptions.conversationId && { conversation_id: extendedOptions.conversationId }),
       ...(extendedOptions.streamingEnabled !== undefined && { streamingEnabled: extendedOptions.streamingEnabled }),
       ...(extendedOptions.toolsEnabled !== undefined && { toolsEnabled: extendedOptions.toolsEnabled }),
       ...(extendedOptions.qualityLevel !== undefined && { qualityLevel: extendedOptions.qualityLevel }),
-      // Optional system prompt: forwarded for backend persistence and upstream mapping
-      ...((options as any).systemPrompt && { systemPrompt: (options as any).systemPrompt })
+      // Send effective system prompt as single field
+      ...((options as any).systemPrompt && { system_prompt: (options as any).systemPrompt }),
+      // Send active system prompt ID for persistence
+      ...((options as any).activeSystemPromptId && { active_system_prompt_id: (options as any).activeSystemPromptId })
     };
 
     // Handle reasoning parameters for gpt-5* models except gpt-5-chat
@@ -90,6 +96,9 @@ export class ChatClient {
       }
       if (extendedOptions.reasoning.verbosity) {
         bodyObj.verbosity = extendedOptions.reasoning.verbosity;
+      }
+      if (extendedOptions.reasoning.summary) {
+        bodyObj.reasoning_summary = extendedOptions.reasoning.summary;
       }
     }
 
@@ -145,12 +154,24 @@ export class ChatClient {
       title: json._conversation.title,
       model: json._conversation.model,
       created_at: json._conversation.created_at,
+      ...(typeof json._conversation.tools_enabled === 'boolean'
+        ? { tools_enabled: json._conversation.tools_enabled }
+        : {}),
+      ...(Array.isArray(json._conversation.active_tools)
+        ? { active_tools: json._conversation.active_tools }
+        : {}),
     } : undefined;
 
     // Extract content
     let content = '';
     if (json?.choices && Array.isArray(json.choices)) {
-      content = json?.choices?.[0]?.message?.content ?? '';
+      const message = json.choices[0]?.message;
+      content = message?.content ?? '';
+
+      // Handle reasoning content from non-streaming response
+      if (message?.reasoning) {
+        content = `<thinking>${message.reasoning}</thinking>\n\n${content}`;
+      }
     } else {
       content = json?.content ?? json?.message?.content ?? '';
     }
@@ -158,7 +179,8 @@ export class ChatClient {
     return {
       content,
       responseId: json?.id,
-      conversation
+      conversation,
+      reasoning_summary: json?.reasoning_summary
     };
   }
 
@@ -178,6 +200,8 @@ export class ChatClient {
     let content = '';
     let responseId: string | undefined;
     let conversation: ConversationMeta | undefined;
+    let reasoningStarted = false;
+    let reasoning_summary: string | undefined;
 
     try {
       while (true) {
@@ -189,14 +213,22 @@ export class ChatClient {
 
         for (const event of events) {
           if (event.type === 'done') {
-            return { content, responseId, conversation };
+            // If we're in the middle of reasoning, close the thinking tag
+            if (reasoningStarted) {
+              const closingTag = '</thinking>';
+              onToken?.(closingTag);
+              content += closingTag;
+            }
+            return { content, responseId, conversation, reasoning_summary };
           }
 
           if (event.type === 'data' && event.data) {
-            const result = this.processStreamChunk(event.data, onToken, onEvent);
+            const result = this.processStreamChunk(event.data, onToken, onEvent, reasoningStarted);
             if (result.content) content += result.content;
             if (result.responseId) responseId = result.responseId;
             if (result.conversation) conversation = result.conversation;
+            if (result.reasoningStarted !== undefined) reasoningStarted = result.reasoningStarted;
+            if (result.reasoning_summary) reasoning_summary = result.reasoning_summary;
           }
         }
       }
@@ -207,14 +239,15 @@ export class ChatClient {
       }
     }
 
-    return { content, responseId, conversation };
+    return { content, responseId, conversation, reasoning_summary };
   }
 
   private processStreamChunk(
     data: any,
     onToken?: (token: string) => void,
-    onEvent?: (event: any) => void
-  ): { content?: string; responseId?: string; conversation?: ConversationMeta } {
+    onEvent?: (event: any) => void,
+    reasoningStarted?: boolean
+  ): { content?: string; responseId?: string; conversation?: ConversationMeta; reasoningStarted?: boolean; reasoning_summary?: string } {
     // Handle conversation metadata
     if (data._conversation) {
       return {
@@ -223,13 +256,58 @@ export class ChatClient {
           title: data._conversation.title,
           model: data._conversation.model,
           created_at: data._conversation.created_at,
+          ...(typeof data._conversation.tools_enabled === 'boolean'
+            ? { tools_enabled: data._conversation.tools_enabled }
+            : {}),
+          ...(Array.isArray(data._conversation.active_tools)
+            ? { active_tools: data._conversation.active_tools }
+            : {}),
         }
+      };
+    }
+
+    // Handle reasoning_summary if present in the chunk
+    if (data.reasoning_summary) {
+      return {
+        reasoning_summary: data.reasoning_summary
       };
     }
 
     // Handle Chat Completions API stream format
     const chunk = data as OpenAIStreamChunk;
     const delta = chunk.choices?.[0]?.delta;
+
+    if (reasoningStarted && delta?.content) {
+      const closingTag = '</thinking>';
+      onToken?.(closingTag);
+      onToken?.(delta.content);
+      onEvent?.({ type: 'text', value: delta.content });
+
+      return {
+        content: closingTag + delta.content,
+        reasoningStarted: false
+      };
+    }
+
+    if (delta?.reasoning) {
+      let contentToAdd = '';
+
+      // If this is the first reasoning token, open the thinking tag
+      if (!reasoningStarted) {
+        contentToAdd = '<thinking>' + delta.reasoning;
+        reasoningStarted = true;
+      } else {
+        contentToAdd = delta.reasoning;
+      }
+
+      onToken?.(contentToAdd);
+      onEvent?.({ type: 'reasoning', value: delta.reasoning });
+
+      return {
+        content: contentToAdd,
+        reasoningStarted
+      };
+    }
 
     if (delta?.content) {
       onToken?.(delta.content);

@@ -11,19 +11,19 @@ import {
   resetDbCache,
 } from '../src/db/index.js';
 import { config } from '../src/env.js';
-
-// IMPORTANT: Database setup for tests
-// 1. Enable persistence BEFORE calling getDb() to avoid null cache
-// 2. Always call resetDbCache() after changing persistence config
-// 3. This prevents the common issue where getDb() returns null in tests
-config.persistence.enabled = true;
-config.persistence.dbUrl = 'file::memory:';
-resetDbCache(); // Reset cache after enabling persistence - CRITICAL!
+import { safeTestSetup } from '../test_support/databaseSafety.js';
 
 const sessionId = 'sess1';
 
+beforeAll(() => {
+  // Safety check: ensure we're using a test database
+  safeTestSetup();
+});
+
 beforeEach(() => {
-  // Always get fresh db instance in beforeEach - don't cache the reference
+  config.persistence.enabled = true;
+  config.persistence.dbUrl = 'file::memory:';
+  resetDbCache();
   const db = getDb();
   db.exec('DELETE FROM messages; DELETE FROM conversations; DELETE FROM sessions;');
   upsertSession(sessionId);
@@ -40,7 +40,7 @@ describe('DB helpers', () => {
       // Create conversations with deterministic timestamps by manipulating created_at directly
       createConversation({ id: 'c1', sessionId, title: 'one' });
       createConversation({ id: 'c2', sessionId, title: 'two' });
-      
+
       // Set explicit timestamps to ensure deterministic ordering (c2 newer than c1)
       const db = getDb();
       db.prepare(`UPDATE conversations SET created_at = datetime('now', '-1 hour') WHERE id = 'c1'`).run();
@@ -67,7 +67,7 @@ describe('DB helpers', () => {
       // Create conversations with deterministic timestamps
       createConversation({ id: 'c1', sessionId });
       createConversation({ id: 'c2', sessionId });
-      
+
       // Set explicit timestamps to ensure deterministic ordering
       const db = getDb();
       db.prepare(`UPDATE conversations SET created_at = datetime('now', '-1 hour') WHERE id = 'c1'`).run();

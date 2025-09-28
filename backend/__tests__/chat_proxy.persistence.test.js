@@ -37,7 +37,7 @@ describe('Chat proxy persistence', () => {
             .send({ messages: [{ role: 'user', content: 'This should be blocked' }], conversation_id: 'conv1', stream: false });
           assert.equal(res.status, 429, 'Should return 429 when limit exceeded');
           const body = res.body;
-          assert.equal(body.error, 'limit_exceeded', 'Should indicate limit exceeded');
+          assert.equal(body.error, 'message_limit_exceeded', 'Should indicate message limit exceeded');
           assert.ok(body.message, 'Should provide explanatory message to user');
         } finally {
           console.error = originalConsoleError;

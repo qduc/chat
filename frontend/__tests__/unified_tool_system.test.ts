@@ -1,3 +1,20 @@
+jest.mock('../contexts/AuthContext', () => {
+  const authValue = {
+    user: null,
+    loading: false,
+    ready: true,
+    waitForAuth: jest.fn(() => Promise.resolve()),
+    login: jest.fn(),
+    register: jest.fn(),
+    logout: jest.fn(),
+    refreshUser: jest.fn(),
+  };
+  return {
+    useAuth: () => authValue,
+    AuthProvider: ({ children }: any) => children,
+  };
+});
+
 // Tests for unified tool system - backend as single source of truth
 
 import { ToolsClient } from '../lib/chat';

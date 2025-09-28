@@ -1,132 +1,37 @@
-# Copilot Instructions for This Repo
+# Copilot Instructions for ChatForge
 
-## Goal
+## Architecture Snapshot
+- ChatForge splits into `frontend/` (Next.js 15 App Router) and `backend/` (Express 5 ESM); keep responsibilities isolated when wiring features across services.
+- `backend/src/index.js` enforces middleware order (session → logging → rate limit → routers); preserve this sequence when inserting new handlers.
+- SSE is the default transport: `frontend/next.config.ts` disables compression to avoid buffering, so never re-enable gzip when touching Next.js config.
 
-Help an AI coding agent make small, correct changes that keep OpenAI compatibility and streaming intact.
+## Backend Patterns
+- `/v1/chat/completions` always funnels through `proxyOpenAIRequest` (`backend/src/lib/openaiProxy.js`); extend sanitization, orchestration flags, or persistence there instead of patching the router.
+- Tools: the UI sends tool names, `generateOpenAIToolSpecs()` expands them, and handlers live in `backend/src/lib/tools*.js`; implement both streaming (`handleToolsStreaming`) and JSON (`handleToolsJson`) paths for new tools.
+- Persistence uses final-only writes via `SimplifiedPersistence`; stream paths must call `appendContent` for chunks and `recordAssistantFinal` once or persistence tests will fail.
+- Providers resolve via `backend/src/lib/providers/index.js`: DB rows override env config, and the OpenAI provider flips to the Responses API automatically when the base URL targets `api.openai.com`.
+- Env validation sits in `backend/src/env.js`; declare new variables there or the server will exit before listening.
 
----
+## Frontend Patterns
+- `useChatState` (in `frontend/hooks/useChatState.ts`) is the single reducer; always dispatch via `actions.*` returned by the hook rather than mutating state in components.
+- Conversation routing is URL-driven (`ChatV2` watches `?c=`); when adding conversation-aware flows, update `actions.selectConversation` and the URL sync effects together.
+- Streaming utilities live in `frontend/lib/chat/`; extend `ChatClient` and reuse the `SSEParser` for new transport logic while keeping the legacy `sendChat` wrapper intact.
+- UI shells (`ChatSidebar`, `RightSidebar`, `MessageList`, `MessageInput`) expect tool events and errors shaped like the SSE parser output; align new event types with those contracts.
 
-## Architecture (Big Picture)
+## Workflows & Tooling
+- **All development commands must be run in Docker.** Use the `./dev.sh` helper script to manage the Docker environment and run commands without entering containers. Start the Docker dev environment with `./dev.sh up --build` to ensure consistent setup and dependencies.
+- Root scripts: Use `./dev.sh test` for running all tests, `./dev.sh test:backend` for backend tests, `./dev.sh test:frontend` for frontend tests, and `./dev.sh exec backend npm run lint` for linting, which fan out via `--prefix` to each service.
+- Backend tests require `NODE_OPTIONS=--experimental-vm-modules`; `./dev.sh test:backend` already sets it—mirror that when adding bespoke commands.
+- Run SQLite migrations with `./dev.sh migrate [status|up|fresh]`; ensure `PERSIST_TRANSCRIPTS=true` and `DB_URL` are set or the script exits.
+- Frontend dev uses Turbopack; start with `./dev.sh up --build`; API calls default to `/api` and rely on Next.js rewrites to hit the backend.
+- Docker dev helper `./dev.sh up --build` exposes frontend on 3003 and backend on 4001; local Node dev is not supported—always use Docker.
 
-- **Frontend**: Next.js 15, React 19. Calls backend via `NEXT_PUBLIC_API_BASE` (Compose sets `http://localhost:4001`).
-- **Backend**: Express 5, ESM. Exposes OpenAI‑compatible endpoints, proxies to provider, orchestrates server‑side tools, persists conversations (SQLite).
-- **Streaming**: SSE end‑to‑end. Backend may stream extra `_conversation` metadata chunks before `data: [DONE]`.
+## Testing Notes
+- Backend integration helpers live in `backend/test_utils/`; reuse `chatProxyTestUtils` to simulate streaming/tool iterations instead of hand-rolling fetch mocks.
+- Persistence changes should be exercised with `backend/__tests__/persistence/*` and `chat_proxy.persistence.test.js`.
+- Frontend Jest setup is in `frontend/jest.setup.js`; register browser globals there when new components need them.
+- When adjusting SSE flows, add tests under `backend/__tests__/iterative_orchestration.test.js` or `frontend/__tests__/unified_tool_system.test.ts` to cover both streaming and JSON tool paths.
 
----
-
-## Key Paths to Read/Change First
-
-- **Frontend client & SSE**:
-	- `frontend/lib/chat.ts`
-	- `frontend/lib/chat/client.ts`
-	- Hooks: `frontend/hooks/` (e.g. `useChatStream.ts`)
-- **Frontend UI**:
-	- `frontend/components/ChatV2.tsx`
-	- `MessageList.tsx`
-	- `MessageInput.tsx`
-- **Backend request flow**:
-	- `backend/src/lib/openaiProxy.js` (entry)
-	- `streamUtils.js` / `streamingHandler.js` (SSE)
-	- `iterativeOrchestrator.js` and `unifiedToolOrchestrator.js` (tools)
-	- `simplifiedPersistence.js` (DB)
-	- Routes: `backend/src/routes/*`
-- **Tools registry**:
-	- `backend/src/lib/tools.js` (e.g., `get_time`, `web_search`)
-
----
-
-## APIs to Preserve (Shapes/Semantics)
-
-- `POST /v1/chat/completions` (primary):
-	- OpenAI chat schema
-	- Supports: `stream=true`, `tools`, optional `provider_id`, `conversation_id`, `tool_choice`, reasoning controls for supported models
-- Streams include:
-	- Normal OpenAI chunks
-	- Optional `tool_calls` (buffered, consolidated)
-	- `tool_output`
-	- `_conversation` metadata
-	- Always terminate with `data: [DONE]`
-- `GET /v1/tools`: Returns tool specs generated from server registry
-- Conversations: `GET/POST/DELETE /v1/conversations*` (gated by `config.persistence.enabled`, uses SQLite via `backend/src/db/*`)
-
----
-
-## Conventions and Invariants (Project‑Specific)
-
-- Never expose provider API keys to the browser. Backend injects `Authorization` using env/provider DB rows.
-- Keep OpenAI compatibility at the proxy boundary; don’t break request/response fields or streaming format.
-- Frontend relies on `_conversation` events in stream; see `ChatClient.processStreamChunk`.
-- Input sanitation: backend maps `systemPrompt` → leading system message (`sanitizeIncomingBody`), accepts `tools` as names or full specs.
-- Rate limit all new backend endpoints via `rateLimit` and respect `ALLOWED_ORIGIN` CORS.
-- Next.js disables compression for SSE (`frontend/next.config.ts`); don’t re‑enable.
-
----
-
-## Add a Server‑Side Tool (Example)
-
-1. Edit `backend/src/lib/tools.js`:
-	- Provide `validate(args)` and an async `handler`.
-	- The OpenAI spec is auto‑generated by `generateOpenAIToolSpecs()`.
-	- Example: `web_search` uses Tavily; requires `TAVILY_API_KEY`.
-2. Tools are auto-registered and available via both orchestrators:
-	- `unifiedToolOrchestrator`: Single turn, consolidated tool calls
-	- `iterativeOrchestrator`: Multi-turn with AI thinking between calls
-
----
-
-## Run, Test, Lint (Use These Exact Commands)
-
-### Local Dev
-
-- **Backend**:
-	```sh
-	cp backend/.env.example backend/.env && npm --prefix backend install && npm --prefix backend run dev
-	```
-- **Frontend**:
-	```sh
-	cp frontend/.env.example frontend/.env.local && npm --prefix frontend install && npm --prefix frontend run dev
-	```
-
-### Docker Dev (preferred for full-stack)
-
-- **Quick start**: `./dev.sh up --build` (frontend :3003, backend :4001)
-- **Logs**: `./dev.sh logs -f frontend` or `./dev.sh logs -f backend`
-- **Shell access**: `./dev.sh exec backend sh` or `./dev.sh exec frontend sh`
-- **Database migrations**: `./dev.sh migrate up` (run in backend container)
-
-### Tests & Lint
-
-- ```sh
-	npm test                    # run all tests (both frontend & backend)
-	npm --prefix backend test   # backend only
-	npm --prefix frontend test  # frontend only
-	npm run lint               # lint all packages
-	```
-
-### Database Operations
-
-- **Migrations**: `npm --prefix backend run migrate` or `./dev.sh migrate up`
-- **Test DB setup**: Tests auto-create isolated in-memory DBs via `setupTestDatabase()`
-
----
-
-## Gotchas (Seen in Code/Tests)
-
-- **Streaming must flush promptly**: use `setupStreamingHeaders` and `writeAndFlush` paths. Never buffer entire responses.
-- **When persistence is enabled**, only final assistant content is written (`SimplifiedPersistence`), but deltas still stream to clients.
-- **Provider selection** can be passed via body `provider_id` or `x-provider-id` header.
-- **Test databases**: Use `setupTestDatabase()` helper - creates isolated in-memory DBs per test.
-- **ESM imports**: Backend uses `"type": "module"` - use `import/export`, not `require()`.
-- **Next.js compression disabled**: Critical for SSE - see `frontend/next.config.ts`.
-- **Tool orchestration modes**: `unifiedToolOrchestrator` (single turn) vs `iterativeOrchestrator` (multi-turn with thinking).
-
----
-
-## For Deeper Context
-
-See:
-
-- `docs/OVERVIEW.md`
-- `docs/API-SPECS.md`
-- `docs/SECURITY.md`
-- `AI_ONBOARDING.md` (repo root)
+## Reference Docs
+- `AI_ONBOARDING.md` provides the full architecture narrative; skim it before large refactors.
+- API details live in `docs/API-SPECS.md`; mirror that contract when touching routes or client SDKs.

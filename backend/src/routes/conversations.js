@@ -1,41 +1,87 @@
 import { Router } from 'express';
 import { config } from '../env.js';
+import { getDb } from '../db/client.js';
+import { upsertSession } from '../db/sessions.js';
+import { optionalAuth, authenticateToken } from '../middleware/auth.js';
 import {
-  getDb,
-  upsertSession,
   createConversation,
   getConversationById,
   countConversationsBySession,
   listConversations,
-  getMessagesPage,
   softDeleteConversation,
   listConversationsIncludingDeleted,
-  updateMessageContent,
   forkConversationFromMessage,
+} from '../db/conversations.js';
+import {
+  getMessagesPage,
+  updateMessageContent,
   deleteMessagesAfterSeq,
-} from '../db/index.js';
+} from '../db/messages.js';
+import {
+  migrateSessionConversationsToUser,
+  countMigratableConversations
+} from '../db/migration.js';
 import { v4 as uuidv4 } from 'uuid';
 
 export const conversationsRouter = Router();
 
+// Apply optional authentication to all conversation routes
+conversationsRouter.use(optionalAuth);
+
 function notImplemented(res) {
-  return res
-    .status(501)
-    .json({
-      error: 'not_implemented',
-      message: 'Conversation history is disabled',
-    });
+  return res.status(501).json({ error: 'not_implemented' });
 }
+
+// POST /v1/conversations/migrate (migrate anonymous conversations to authenticated user)
+conversationsRouter.post('/v1/conversations/migrate', authenticateToken, (req, res) => {
+  if (!config.persistence.enabled) return notImplemented(res);
+  try {
+    const userId = req.user.id;
+    const sessionId = req.sessionId;
+
+    if (!sessionId) {
+      return res.status(400).json({
+        error: 'bad_request',
+        message: 'Session ID required for migration'
+      });
+    }
+
+    // Check how many conversations can be migrated
+    const migratableCount = countMigratableConversations(sessionId);
+
+    if (migratableCount === 0) {
+      return res.json({
+        migrated: 0,
+        message: 'No anonymous conversations found to migrate'
+      });
+    }
+
+    // Perform the migration
+    const migratedCount = migrateSessionConversationsToUser(sessionId, userId);
+
+    return res.json({
+      migrated: migratedCount,
+      message: `Successfully migrated ${migratedCount} conversations to your account`
+    });
+  } catch (e) {
+    console.error('[conversations] migrate error', e);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
 
 // GET /v1/conversations (list with cursor+limit)
 conversationsRouter.get('/v1/conversations', (req, res) => {
   if (!config.persistence.enabled) return notImplemented(res);
   try {
     const sessionId = req.sessionId;
-    if (!sessionId)
+    const userId = req.user?.id || null; // Get user ID if authenticated
+
+    // Require either authentication or session for conversation access
+    if (!userId && !sessionId)
       return res
         .status(400)
-        .json({ error: 'bad_request', message: 'Missing session id' });
+        .json({ error: 'bad_request', message: 'Authentication or session required' });
+
     getDb();
     const { cursor, limit, include_deleted } = req.query || {};
     const includeDeleted =
@@ -44,11 +90,12 @@ conversationsRouter.get('/v1/conversations', (req, res) => {
     const result = includeDeleted
       ? listConversationsIncludingDeleted({
           sessionId,
+          userId, // Pass user context
           cursor,
           limit,
           includeDeleted: true,
         })
-      : listConversations({ sessionId, cursor, limit });
+      : listConversations({ sessionId, userId, cursor, limit }); // Pass user context
     return res.json(result);
   } catch (e) {
     console.error('[conversations] list error', e);
@@ -61,24 +108,30 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
   if (!config.persistence.enabled) return notImplemented(res);
   try {
     const sessionId = req.sessionId;
-    if (!sessionId)
+    const userId = req.user?.id || null; // Get user ID if authenticated
+
+    if (!sessionId && !userId)
       return res
         .status(400)
-        .json({ error: 'bad_request', message: 'Missing session id' });
+        .json({ error: 'bad_request', message: 'Missing session or user context' });
 
-    // Ensure DB and session row
+    // Ensure DB and session row (still needed for session-based users)
     getDb();
-    upsertSession(sessionId, { userAgent: req.header('user-agent') || null });
+    if (sessionId) {
+      upsertSession(sessionId, { userAgent: req.header('user-agent') || null });
+    }
 
-    // Enforce conversations per session limit
-    const cnt = countConversationsBySession(sessionId);
-    if (cnt >= config.persistence.maxConversationsPerSession) {
-      return res
-        .status(429)
-        .json({
-          error: 'limit_exceeded',
-          message: 'Max conversations per session reached',
-        });
+    // Enforce conversations per session limit (only for session-based access)
+    if (!userId && sessionId) {
+      const cnt = countConversationsBySession(sessionId);
+      if (cnt >= config.persistence.maxConversationsPerSession) {
+        return res
+          .status(429)
+          .json({
+            error: 'limit_exceeded',
+            message: 'Max conversations per session reached',
+          });
+      }
     }
 
     const {
@@ -98,6 +151,7 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
     createConversation({
       id,
       sessionId,
+      userId, // Pass user ID to support user-scoped conversations
       title,
       provider_id,
       model,
@@ -108,7 +162,7 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
       verbosity,
       metadata: sysPrompt ? { system_prompt: sysPrompt } : {}
     });
-    const convo = getConversationById({ id, sessionId });
+    const convo = getConversationById({ id, sessionId, userId }); // Pass user context
     return res.status(201).json(convo);
   } catch (e) {
     console.error('[conversations] create error', e);
@@ -127,13 +181,16 @@ conversationsRouter.get('/v1/conversations/:id', (req, res) => {
   if (!config.persistence.enabled) return notImplemented(res);
   try {
     const sessionId = req.sessionId;
-    if (!sessionId)
+    const userId = req.user?.id || null; // Get user ID if authenticated
+
+    // Require either authentication or session for conversation access
+    if (!userId && !sessionId)
       return res
         .status(400)
-        .json({ error: 'bad_request', message: 'Missing session id' });
+        .json({ error: 'bad_request', message: 'Authentication or session required' });
 
     getDb();
-    const convo = getConversationById({ id: req.params.id, sessionId });
+    const convo = getConversationById({ id: req.params.id, sessionId, userId }); // Pass user context
     if (!convo) return res.status(404).json({ error: 'not_found' });
 
     const after_seq = req.query.after_seq ? Number(req.query.after_seq) : 0;
@@ -145,9 +202,11 @@ conversationsRouter.get('/v1/conversations/:id', (req, res) => {
     });
 
     const sysPrompt = convo?.metadata?.system_prompt || null;
+    const activePromptId = convo?.metadata?.active_system_prompt_id || null;
     return res.json({
       ...convo,
       system_prompt: sysPrompt,
+      active_system_prompt_id: activePromptId,
       messages: page.messages,
       next_after_seq: page.next_after_seq,
     });
@@ -162,12 +221,16 @@ conversationsRouter.delete('/v1/conversations/:id', (req, res) => {
   if (!config.persistence.enabled) return notImplemented(res);
   try {
     const sessionId = req.sessionId;
-    if (!sessionId)
+    const userId = req.user?.id || null; // Get user ID if authenticated
+
+    // Require either authentication or session for conversation access
+    if (!userId && !sessionId)
       return res
         .status(400)
-        .json({ error: 'bad_request', message: 'Missing session id' });
+        .json({ error: 'bad_request', message: 'Authentication or session required' });
+
     getDb();
-    const ok = softDeleteConversation({ id: req.params.id, sessionId });
+    const ok = softDeleteConversation({ id: req.params.id, sessionId, userId }); // Pass user context
     if (!ok) return res.status(404).json({ error: 'not_found' });
     return res.status(204).end();
   } catch (e) {

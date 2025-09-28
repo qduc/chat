@@ -4,6 +4,7 @@ import express from 'express';
 import { conversationsRouter } from '../src/routes/conversations.js';
 import { sessionResolver } from '../src/middleware/session.js';
 import { config } from '../src/env.js';
+import { safeTestSetup } from '../test_support/databaseSafety.js';
 import {
   getDb,
   upsertSession,
@@ -36,6 +37,11 @@ const withServer = async (app, fn) => {
     });
   });
 };
+
+beforeAll(() => {
+  // Safety check: ensure we're using a test database
+  safeTestSetup();
+});
 
 beforeEach(() => {
   config.persistence.enabled = true;

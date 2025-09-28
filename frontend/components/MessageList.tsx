@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import Markdown from './Markdown';
 import type { ChatMessage } from '../lib/chat';
-import type { PendingState } from '../hooks/useChatStream';
+import type { PendingState } from '../hooks/useChatState';
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -55,8 +55,10 @@ export function MessageList({
   // Debug logging
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const editingTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const lastUserMessageRef = useRef<HTMLDivElement | null>(null);
   const [collapsedToolOutputs, setCollapsedToolOutputs] = useState<Record<string, boolean>>({});
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [dynamicBottomPadding, setDynamicBottomPadding] = useState('8rem');
 
   // Handle copy with tooltip feedback
   const handleCopy = (messageId: string, text: string) => {
@@ -75,12 +77,52 @@ export function MessageList({
     ta.style.height = `${ta.scrollHeight + 2}px`;
   };
 
-  const scrollToBottom = () => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+  const scrollUserMessageToTop = () => {
+    lastUserMessageRef.current?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start'
+    });
   };
 
+  // Update dynamic padding based on viewport height and streaming state
   useEffect(() => {
-    scrollToBottom();
+    const updatePadding = () => {
+      const viewportHeight = window.innerHeight;
+
+      // If we're about to start streaming, use 70% of viewport height for better UX
+      if (pending.streaming && messages.length >= 2) {
+        const lastMessage = messages[messages.length - 1];
+        const secondLastMessage = messages[messages.length - 2];
+
+        if (secondLastMessage?.role === 'user' && lastMessage?.role === 'assistant' && !lastMessage.content) {
+          setDynamicBottomPadding(`${Math.round(viewportHeight * 0.8)}px`);
+          return;
+        }
+      }
+
+      // Default padding - enough space for comfortable scrolling
+      setDynamicBottomPadding(`${Math.round(viewportHeight * 0.2)}px`);
+    };
+
+    updatePadding();
+    window.addEventListener('resize', updatePadding);
+
+    return () => window.removeEventListener('resize', updatePadding);
+  }, [pending.streaming, messages.length]);
+
+  useEffect(() => {
+    // If we just started streaming, scroll user message to top for better UX
+    if (pending.streaming && messages.length >= 2) {
+      const lastMessage = messages[messages.length - 1];
+      const secondLastMessage = messages[messages.length - 2];
+
+      // If the pattern is user message followed by empty assistant message (streaming start)
+      if (secondLastMessage?.role === 'user' && lastMessage?.role === 'assistant' && !lastMessage.content) {
+        // Small delay to ensure DOM is updated
+        setTimeout(() => scrollUserMessageToTop(), 50);
+        return;
+      }
+    }
   }, [messages.length, pending.streaming, pending.abort]);
 
   // When editing content changes (including on initial edit open), resize the textarea
@@ -93,7 +135,10 @@ export function MessageList({
 
   return (
     <main className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-neutral-700 scrollbar-track-transparent">
-      <div className="mx-auto max-w-4xl px-6 py-6 pb-32 space-y-6">
+      <div
+        className="mx-auto max-w-4xl px-6 py-6 space-y-6"
+        style={{ paddingBottom: dynamicBottomPadding }}
+      >
         {messages.length === 0 && (
           <div className="rounded-2xl border border-dashed border-slate-300 dark:border-neutral-700 bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-neutral-900/80 dark:to-neutral-800/80 p-8 text-center backdrop-blur-sm shadow-sm">
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-slate-200 dark:bg-neutral-800 flex items-center justify-center shadow-lg">
@@ -110,8 +155,17 @@ export function MessageList({
             ? 'w-full min-h-[100px] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm bg-slate-100 text-black dark:bg-slate-700 dark:text-white border border-slate-200/50 dark:border-neutral-700/50 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical'
             : 'w-full min-h-[100px] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical';
           const isLastAssistant = !isUser && idx === processedMessages.length - 1;
+          // Set ref to the most recent user message (could be last or second-to-last)
+          const isRecentUserMessage = isUser && (
+            idx === processedMessages.length - 1 || // last message is user
+            (idx === processedMessages.length - 2 && processedMessages[processedMessages.length - 1]?.role === 'assistant') // second-to-last is user, last is assistant
+          );
           return (
-            <div key={m.id} className={`flex gap-4 ${isUser ? 'justify-end' : 'justify-start'}`}>
+            <div
+              key={m.id}
+              className={`flex gap-4 ${isUser ? 'justify-end' : 'justify-start'}`}
+              ref={isRecentUserMessage ? lastUserMessageRef : null}
+            >
               {!isUser && (
                 <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-neutral-800 flex items-center justify-center flex-shrink-0 shadow-sm">
                   <Bot className="w-4 h-4 text-slate-700 dark:text-slate-200" />
@@ -125,6 +179,12 @@ export function MessageList({
                             value={editingContent}
                             onChange={(e) => onEditingContentChange(e.target.value)}
                             onInput={resizeEditingTextarea}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                                e.preventDefault();
+                                onApplyLocalEdit();
+                              }
+                            }}
                             className={editTextareaClass}
                             placeholder="Edit your message..."
                             // hide native scrollbar - we'll size the textarea to fit

@@ -4,8 +4,27 @@ import {
   ConversationWithMessages
 } from './types';
 import { handleResponse } from './utils';
+import { getToken } from '../auth/tokens';
+import { waitForAuthReady } from '../auth/ready';
 
 const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
+
+/**
+ * Create request headers with authentication if available
+ */
+function createHeaders(additionalHeaders: Record<string, string> = {}): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...additionalHeaders
+  };
+
+  const token = getToken();
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  return headers;
+}
 
 export interface ConversationCreateOptions {
   title?: string;
@@ -41,9 +60,10 @@ export class ConversationManager {
   constructor(private apiBase: string = defaultApiBase) {}
 
   async create(options: ConversationCreateOptions = {}): Promise<ConversationMeta> {
+    await waitForAuthReady();
     const response = await fetch(`${this.apiBase}/v1/conversations`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: createHeaders(),
       body: JSON.stringify(options),
       credentials: 'include'
     });
@@ -52,6 +72,7 @@ export class ConversationManager {
   }
 
   async list(params: ListConversationsParams = {}): Promise<ConversationsList> {
+    await waitForAuthReady();
     const searchParams = new URLSearchParams();
     if (params.cursor) searchParams.set('cursor', params.cursor);
     if (params.limit) searchParams.set('limit', String(params.limit));
@@ -60,6 +81,7 @@ export class ConversationManager {
       `${this.apiBase}/v1/conversations?${searchParams.toString()}`,
       {
         method: 'GET',
+        headers: createHeaders(),
         credentials: 'include'
       }
     );
@@ -68,6 +90,7 @@ export class ConversationManager {
   }
 
   async get(id: string, params: GetConversationParams = {}): Promise<ConversationWithMessages> {
+    await waitForAuthReady();
     const searchParams = new URLSearchParams();
     if (params.after_seq) searchParams.set('after_seq', String(params.after_seq));
     if (params.limit) searchParams.set('limit', String(params.limit));
@@ -76,6 +99,7 @@ export class ConversationManager {
       `${this.apiBase}/v1/conversations/${id}?${searchParams.toString()}`,
       {
         method: 'GET',
+        headers: createHeaders(),
         credentials: 'include'
       }
     );
@@ -84,8 +108,10 @@ export class ConversationManager {
   }
 
   async delete(id: string): Promise<void> {
+    await waitForAuthReady();
     const response = await fetch(`${this.apiBase}/v1/conversations/${id}`, {
       method: 'DELETE',
+      headers: createHeaders(),
       credentials: 'include'
     });
 
@@ -98,17 +124,29 @@ export class ConversationManager {
     messageId: string,
     content: string
   ): Promise<EditMessageResult> {
+    await waitForAuthReady();
     const response = await fetch(
       `${this.apiBase}/v1/conversations/${conversationId}/messages/${messageId}/edit`,
       {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: createHeaders(),
         body: JSON.stringify({ content }),
         credentials: 'include'
       }
     );
 
     return handleResponse<EditMessageResult>(response);
+  }
+
+  async migrateFromSession(): Promise<{ migrated: number; message: string }> {
+    await waitForAuthReady();
+    const response = await fetch(`${this.apiBase}/v1/conversations/migrate`, {
+      method: 'POST',
+      headers: createHeaders(),
+      credentials: 'include'
+    });
+
+    return handleResponse<{ migrated: number; message: string }>(response);
   }
 
   // Backward-compatible instance method aliases

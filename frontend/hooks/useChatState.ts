@@ -1,10 +1,23 @@
-import React, { useReducer, useCallback, useRef } from 'react';
+import React, { useReducer, useCallback, useRef, useEffect } from 'react';
 import type { ChatMessage, Role, ConversationMeta } from '../lib/chat';
+import type { Group as TabGroup, Option as ModelOption } from '../components/ui/TabbedSelect';
 import { sendChat, getConversationApi, listConversationsApi, deleteConversationApi, editMessageApi } from '../lib/chat';
 import type { QualityLevel } from '../components/ui/QualitySlider';
+import type { User } from '../lib/auth/api';
+import { useAuth } from '../contexts/AuthContext';
+
+export interface PendingState {
+  abort?: AbortController;
+  streaming: boolean;
+  error?: string;
+}
 
 // Unified state structure
 export interface ChatState {
+  // Authentication State
+  user: User | null;
+  isAuthenticated: boolean;
+
   // UI State
   status: 'idle' | 'streaming' | 'loading' | 'error';
   input: string;
@@ -18,13 +31,21 @@ export interface ChatState {
   // Settings
   model: string;
   providerId: string | null;
+  // Model listing fetched from backend providers
+  modelOptions: ModelOption[];
+  modelGroups: TabGroup[] | null;
+  modelToProvider: Record<string, string>;
   useTools: boolean;
   shouldStream: boolean;
   reasoningEffort: string;
   verbosity: string;
   qualityLevel: QualityLevel;
-  // System prompt for the current session
+  // System prompt for the current session (legacy support)
   systemPrompt: string;
+  // Inline system prompt override (from prompt manager)
+  inlineSystemPromptOverride: string;
+  // Active system prompt ID from loaded conversation
+  activeSystemPromptId: string | null;
   // Per-tool enablement (list of tool names). Empty array means no explicit selection.
   enabledTools: string[];
 
@@ -49,6 +70,11 @@ export interface ChatState {
 
 // Action types
 export type ChatAction =
+  // Authentication Actions
+  | { type: 'SET_USER'; payload: User | null }
+  | { type: 'SET_AUTHENTICATED'; payload: boolean }
+
+  // Existing Actions
   | { type: 'SET_INPUT'; payload: string }
   | { type: 'SET_MODEL'; payload: string }
   | { type: 'SET_PROVIDER_ID'; payload: string | null }
@@ -58,6 +84,8 @@ export type ChatAction =
   | { type: 'SET_VERBOSITY'; payload: string }
   | { type: 'SET_QUALITY_LEVEL'; payload: QualityLevel }
   | { type: 'SET_SYSTEM_PROMPT'; payload: string }
+  | { type: 'SET_INLINE_SYSTEM_PROMPT_OVERRIDE'; payload: string }
+  | { type: 'SET_ACTIVE_SYSTEM_PROMPT_ID'; payload: string | null }
   | { type: 'SET_ENABLED_TOOLS'; payload: string[] }
   | { type: 'SET_CONVERSATION_ID'; payload: string | null }
   | { type: 'START_STREAMING'; payload: { abort: AbortController; userMessage: ChatMessage; assistantMessage: ChatMessage } }
@@ -86,9 +114,14 @@ export type ChatAction =
   | { type: 'TOGGLE_SIDEBAR' }
   | { type: 'SET_SIDEBAR_COLLAPSED'; payload: boolean }
   | { type: 'TOGGLE_RIGHT_SIDEBAR' }
-  | { type: 'SET_RIGHT_SIDEBAR_COLLAPSED'; payload: boolean };
+  | { type: 'SET_RIGHT_SIDEBAR_COLLAPSED'; payload: boolean }
+  | { type: 'SET_MODEL_LIST'; payload: { groups: TabGroup[] | null; options: ModelOption[]; modelToProvider: Record<string, string> } };
 
 const initialState: ChatState = {
+  // Authentication State
+  user: null,
+  isAuthenticated: false,
+
   status: 'idle',
   input: '',
   messages: [],
@@ -96,12 +129,17 @@ const initialState: ChatState = {
   previousResponseId: null,
   model: 'gpt-4.1-mini',
   providerId: null,
+  modelOptions: [],
+  modelGroups: null,
+  modelToProvider: {},
   useTools: true,
   shouldStream: true,
   reasoningEffort: 'medium',
   verbosity: 'medium',
   qualityLevel: 'balanced',
   systemPrompt: '',
+  inlineSystemPromptOverride: '',
+  activeSystemPromptId: null,
   enabledTools: [],
   conversations: [],
   nextCursor: null,
@@ -116,6 +154,18 @@ const initialState: ChatState = {
 
 function chatReducer(state: ChatState, action: ChatAction): ChatState {
   switch (action.type) {
+    // Authentication Actions
+    case 'SET_USER':
+      return {
+        ...state,
+        user: action.payload,
+        isAuthenticated: action.payload !== null
+      };
+
+    case 'SET_AUTHENTICATED':
+      return { ...state, isAuthenticated: action.payload };
+
+    // Existing Actions
     case 'SET_INPUT':
       return { ...state, input: action.payload };
 
@@ -156,6 +206,12 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
 
     case 'SET_SYSTEM_PROMPT':
       return { ...state, systemPrompt: action.payload };
+
+    case 'SET_INLINE_SYSTEM_PROMPT_OVERRIDE':
+      return { ...state, inlineSystemPromptOverride: action.payload };
+
+    case 'SET_ACTIVE_SYSTEM_PROMPT_ID':
+      return { ...state, activeSystemPromptId: action.payload };
 
     case 'SET_ENABLED_TOOLS':
       return { ...state, enabledTools: action.payload };
@@ -456,12 +512,20 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
     case 'SET_RIGHT_SIDEBAR_COLLAPSED':
       return { ...state, rightSidebarCollapsed: action.payload };
 
+    case 'SET_MODEL_LIST':
+      return {
+        ...state,
+        modelGroups: action.payload.groups,
+        modelOptions: action.payload.options,
+        modelToProvider: action.payload.modelToProvider || {}
+      };
+
     default:
       return state;
   }
 }
 
-// Available tools (moved from useChatStream)
+// Available tools used for quick lookups by name
 import type { ToolSpec } from '../lib/chat';
 const availableTools: Record<string, ToolSpec> = {
   get_time: {
@@ -489,12 +553,107 @@ const availableTools: Record<string, ToolSpec> = {
 };
 
 export function useChatState() {
+  const { user, ready: authReady } = useAuth();
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const assistantMsgRef = useRef<ChatMessage | null>(null);
   const inFlightRef = useRef<boolean>(false);
 
+  // Sync authentication state from AuthContext
+  useEffect(() => {
+    if (authReady) {
+      dispatch({ type: 'SET_USER', payload: user });
+    }
+  }, [user, authReady]);
+
+  // Load models/providers centrally (moved from ChatHeader local state)
+  const loadProvidersAndModels = useCallback(async () => {
+    if (!authReady || !user) {
+      return;
+    }
+    const apiBase = (process.env.NEXT_PUBLIC_API_BASE as string) ?? 'http://localhost:3001';
+    try {
+      const res = await fetch(`${apiBase}/v1/providers`);
+      if (!res.ok) return;
+      const json = await res.json();
+      const providers: any[] = Array.isArray(json.providers) ? json.providers : [];
+      const enabledProviders = providers.filter(p => p?.enabled);
+      if (!enabledProviders.length) return;
+
+      const results = await Promise.allSettled(
+        enabledProviders.map(async (p) => {
+          const r = await fetch(`${apiBase}/v1/providers/${encodeURIComponent(p.id)}/models`);
+          if (!r.ok) throw new Error(`models ${r.status}`);
+          const j = await r.json();
+          const models = Array.isArray(j.models) ? j.models : [];
+          const options: ModelOption[] = models.map((m: any) => ({ value: m.id, label: m.id }));
+          return { provider: p, options };
+        })
+      );
+
+      const gs: TabGroup[] = [];
+      const modelProviderMap: Record<string, string> = {};
+
+      for (let i = 0; i < results.length; i++) {
+        const r: any = results[i];
+        if (r.status === 'fulfilled' && r.value.options.length > 0) {
+          const providerId = r.value.provider.id;
+          gs.push({ id: providerId, label: r.value.provider.name || providerId, options: r.value.options });
+          r.value.options.forEach((option: any) => {
+            modelProviderMap[option.value] = providerId;
+          });
+        }
+      }
+
+      const flat = gs.flatMap(g => g.options);
+      if (gs.length === 0) return;
+
+      dispatch({ type: 'SET_MODEL_LIST', payload: { groups: gs, options: flat, modelToProvider: modelProviderMap } });
+
+      // Ensure current model exists in the new list, otherwise pick first
+      if (flat.length > 0 && !flat.some((o: any) => o.value === state.model)) {
+        dispatch({ type: 'SET_MODEL', payload: flat[0].value });
+      }
+    } catch (e) {
+      // ignore
+    }
+  }, [authReady, state.model, user]);
+
+  // Call loader on mount
+  useEffect(() => {
+    if (!authReady) {
+      return;
+    }
+    void loadProvidersAndModels();
+  }, [authReady, loadProvidersAndModels]);
+
+  // Listen for external provider change events to refresh models
+  useEffect(() => {
+    const handler = () => { void loadProvidersAndModels(); };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('chat:providers_changed', handler as EventListener);
+    }
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('chat:providers_changed', handler as EventListener);
+      }
+    };
+  }, [loadProvidersAndModels]);
+
   // Initialize conversations on mount
   const refreshConversations = useCallback(async () => {
+    if (!authReady) {
+      return;
+    }
+
+    if (!user) {
+      dispatch({
+        type: 'LOAD_CONVERSATIONS_SUCCESS',
+        payload: { conversations: [], nextCursor: null, replace: true }
+      });
+      dispatch({ type: 'SET_HISTORY_ENABLED', payload: false });
+      return;
+    }
+
     try {
       dispatch({ type: 'LOAD_CONVERSATIONS_START' });
       const list = await listConversationsApi(undefined, { limit: 20 });
@@ -509,15 +668,18 @@ export function useChatState() {
       }
       dispatch({ type: 'LOAD_CONVERSATIONS_ERROR' });
     }
-  }, []);
+  }, [authReady, user]);
 
   // Initialize conversations on first render
   React.useEffect(() => {
+    if (!authReady) {
+      return;
+    }
     const timer = setTimeout(() => {
-      refreshConversations();
+      void refreshConversations();
     }, 0);
     return () => clearTimeout(timer);
-  }, [refreshConversations]);
+  }, [authReady, refreshConversations]);
 
   // Load sidebar collapsed state from localStorage on mount
   React.useEffect(() => {
@@ -534,22 +696,26 @@ export function useChatState() {
   }, []);
 
   // Stream event handler
-  const handleStreamEvent = useCallback((event: any) => {
-    const assistantId = assistantMsgRef.current!.id;
+  const handleStreamToken = useCallback((token: string) => {
+    if (!token) return;
+    const current = assistantMsgRef.current;
+    if (!current) return;
+    const assistantId = current.id;
 
-    if (event.type === 'text') {
-      // Keep a local snapshot for robustness in case state isn't committed yet
-      if (assistantMsgRef.current) {
-        assistantMsgRef.current.content += event.value;
-      }
-      dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token: event.value } });
-    } else if (event.type === 'final') {
-      // For final events, we could update the entire content
-      if (assistantMsgRef.current) {
-        assistantMsgRef.current.content += event.value;
-      }
-      dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token: event.value } });
-    } else if (event.type === 'tool_call') {
+    const nextContent = (current.content ?? '') + token;
+    assistantMsgRef.current = { ...current, content: nextContent };
+    dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token } });
+  }, []);
+
+  const handleStreamEvent = useCallback((event: any) => {
+    const assistantId = assistantMsgRef.current?.id;
+    if (!assistantId) return;
+
+    if (event.type === 'text' || event.type === 'reasoning' || event.type === 'final') {
+      return;
+    }
+
+    if (event.type === 'tool_call') {
       // Let reducer manage tool_calls to avoid duplicates from local snapshot
       dispatch({ type: 'STREAM_TOOL_CALL', payload: { messageId: assistantId, toolCall: event.value } });
     } else if (event.type === 'tool_output') {
@@ -561,34 +727,42 @@ export function useChatState() {
   // Helpers to remove duplicate sendChat setup and error handling
   const buildSendChatConfig = useCallback(
     (messages: ChatMessage[], signal: AbortSignal) => {
-      // Prepend the current session's system prompt if provided
-      const trimmedSystem = (state.systemPrompt || '').trim();
-      const outgoing = trimmedSystem
-        ? ([{ role: 'system', content: trimmedSystem } as any, ...messages])
+      // Use inline override if available, otherwise fall back to system prompt
+      const effectiveSystemPrompt = (state.inlineSystemPromptOverride || state.systemPrompt || '').trim();
+
+      const outgoing = effectiveSystemPrompt
+        ? ([{ role: 'system', content: effectiveSystemPrompt } as any, ...messages])
         : messages;
 
-      return ({
+      const config: any = {
         messages: outgoing.map(m => ({ role: m.role as Role, content: m.content })),
         model: state.model,
-        providerId: state.providerId,
         signal,
         conversationId: state.conversationId || undefined,
-        systemPrompt: trimmedSystem || undefined,
+        systemPrompt: effectiveSystemPrompt || undefined,
+        activeSystemPromptId: state.activeSystemPromptId || undefined,
         shouldStream: state.shouldStream,
         reasoningEffort: state.reasoningEffort,
         verbosity: state.verbosity,
         qualityLevel: state.qualityLevel,
-        ...((state.useTools && state.enabledTools.length > 0)
-          ? {
-              // Send a simplified list of tool names to the backend. Backend will map names -> specs.
-              tools: state.enabledTools,
-              tool_choice: 'auto',
-            }
-          : {}),
         onEvent: handleStreamEvent,
-      });
+        onToken: handleStreamToken,
+      };
+
+      // Only add providerId if it's not null
+      if (state.providerId) {
+        config.providerId = state.providerId;
+      }
+
+      // Add tools if enabled
+      if (state.useTools && state.enabledTools.length > 0) {
+        config.tools = state.enabledTools;
+        config.tool_choice = 'auto';
+      }
+
+      return config;
     },
-    [state, handleStreamEvent]
+    [state, handleStreamEvent, handleStreamToken]
   );
 
   const runSend = useCallback(
@@ -662,6 +836,15 @@ export function useChatState() {
 
   // Actions
   const actions = {
+    // Authentication Actions
+    setUser: useCallback((user: User | null) => {
+      dispatch({ type: 'SET_USER', payload: user });
+    }, []),
+
+    setAuthenticated: useCallback((authenticated: boolean) => {
+      dispatch({ type: 'SET_AUTHENTICATED', payload: authenticated });
+    }, []),
+
     // UI Actions
     setInput: useCallback((input: string) => {
       dispatch({ type: 'SET_INPUT', payload: input });
@@ -700,9 +883,22 @@ export function useChatState() {
       dispatch({ type: 'SET_SYSTEM_PROMPT', payload: prompt });
     }, []),
 
+    setInlineSystemPromptOverride: useCallback((prompt: string) => {
+      dispatch({ type: 'SET_INLINE_SYSTEM_PROMPT_OVERRIDE', payload: prompt });
+    }, []),
+
+    setActiveSystemPromptId: useCallback((id: string | null) => {
+      dispatch({ type: 'SET_ACTIVE_SYSTEM_PROMPT_ID', payload: id });
+    }, []),
+
     setEnabledTools: useCallback((list: string[]) => {
       dispatch({ type: 'SET_ENABLED_TOOLS', payload: list });
     }, []),
+
+    // Model list refresh action (triggered by UI or external events)
+    refreshModelList: useCallback(async () => {
+      await loadProvidersAndModels();
+    }, [loadProvidersAndModels]),
 
     // Chat Actions
     sendMessage: useCallback(async () => {
@@ -792,6 +988,16 @@ export function useChatState() {
         if (data.tools_enabled !== undefined) {
           dispatch({ type: 'SET_USE_TOOLS', payload: data.tools_enabled });
         }
+        const activeTools = Array.isArray((data as any).active_tools)
+          ? (data as any).active_tools
+          : Array.isArray((data as any).metadata?.active_tools)
+            ? (data as any).metadata.active_tools
+            : undefined;
+        if (Array.isArray(activeTools)) {
+          dispatch({ type: 'SET_ENABLED_TOOLS', payload: activeTools });
+        } else if (data.tools_enabled === false) {
+          dispatch({ type: 'SET_ENABLED_TOOLS', payload: [] });
+        }
         if (data.quality_level) {
           dispatch({ type: 'SET_QUALITY_LEVEL', payload: data.quality_level as QualityLevel });
         }
@@ -803,6 +1009,9 @@ export function useChatState() {
         }
         if (typeof (data as any).system_prompt === 'string') {
           dispatch({ type: 'SET_SYSTEM_PROMPT', payload: (data as any).system_prompt || '' });
+        }
+        if ((data as any).active_system_prompt_id !== undefined) {
+          dispatch({ type: 'SET_ACTIVE_SYSTEM_PROMPT_ID', payload: (data as any).active_system_prompt_id });
         }
       } catch (e: any) {
         // ignore

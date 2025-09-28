@@ -12,7 +12,7 @@ const config = {
   testTimeout: 10000, // 10 second timeout for individual tests
 
   // Setup and teardown
-  setupFilesAfterEnv: [],
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
 
   // Verbose output for debugging
   verbose: false,

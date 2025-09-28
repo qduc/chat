@@ -232,3 +232,23 @@ Content-Type: application/json
 
 ###
 
+POST http://localhost:4001/v1/chat/completions
+Content-Type: application/json
+
+{
+  "model": "o4-mini",
+  "messages": [
+    {
+      "role": "user",
+      "content": "hello"
+    }
+  ],
+  "stream": true,
+  "provider_id": "openai",
+  "conversation_id": "d72297a9-b5f9-48fb-91c8-f83926cc7c0d",
+  "qualityLevel": "minimal",
+  "reasoning_summary": "auto"
+}
+
+###
+

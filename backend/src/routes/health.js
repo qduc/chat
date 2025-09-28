@@ -3,7 +3,7 @@ import { config } from '../env.js';
 
 export const healthRouter = Router();
 
-healthRouter.get('/healthz', (req, res) => {
+healthRouter.get(['/health', '/healthz'], (req, res) => {
   res.json({
     status: 'ok',
     uptime: process.uptime(),
