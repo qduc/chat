@@ -15,6 +15,9 @@ interface RightSidebarProps {
   // Active system prompt ID from loaded conversation
   conversationActivePromptId?: string | null;
   conversationSystemPrompt?: string | null;
+  width?: number;
+  collapsedWidth?: number;
+  isResizing?: boolean;
 }
 
 export function RightSidebar({
@@ -25,7 +28,10 @@ export function RightSidebar({
   onEffectivePromptChange,
   onActivePromptIdChange,
   conversationActivePromptId,
-  conversationSystemPrompt
+  conversationSystemPrompt,
+  width = 320,
+  collapsedWidth = 64,
+  isResizing = false
 }: RightSidebarProps) {
   const {
     prompts,
@@ -316,10 +322,20 @@ export function RightSidebar({
       ? newPromptContent !== baseInlineContent
       : newPromptContent.length > 0;
   const existingNames = prompts ? [...prompts.built_ins.map(p => p.name), ...prompts.custom.map(p => p.name)] : [];
+  const computedWidth = collapsed ? collapsedWidth : width;
 
   return (
     <>
-      <aside className={`${collapsed ? 'w-16' : 'w-80'} z-30 flex flex-col bg-white/60 dark:bg-neutral-900/60 backdrop-blur-sm transition-all duration-300 ease-in-out relative border-l border-gray-200 dark:border-gray-700`}>
+      <aside
+        style={{
+          width: `${computedWidth}px`,
+          minWidth: `${computedWidth}px`,
+          flexShrink: 0,
+          transition: isResizing ? 'none' : 'width 0.3s ease-in-out',
+          willChange: isResizing ? 'width' : undefined
+        }}
+        className={`z-30 flex flex-col bg-white/60 dark:bg-neutral-900/60 backdrop-blur-sm relative border-l border-gray-200 dark:border-gray-700`}
+      >
         {/* Collapse/Expand Button */}
         <button
           className="absolute -left-3 top-6 z-10 w-6 h-6 rounded-full bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
