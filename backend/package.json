@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "NODE_ENV=production node src/index.js",
-    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest --verbose",
     "lint": "eslint .",
     "format": "prettier --write .",
     "migrate": "node scripts/migrate.js"
