@@ -589,7 +589,7 @@ describe('toolsJson', () => {
         persistence: mockPersistence
       });
 
-  // client abort simulated by mockReq.on implementation
+      // client abort simulated by mockReq.on implementation
 
       await handlePromise;
 
