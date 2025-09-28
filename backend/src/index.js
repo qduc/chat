@@ -3,7 +3,7 @@ import cors from 'cors';
 import { config } from './env.js';
 import { rateLimit } from './middleware/rateLimit.js';
 import { sessionResolver } from './middleware/session.js';
-import { getUserContext, authenticateToken, optionalAuth } from './middleware/auth.js';
+import { getUserContext } from './middleware/auth.js';
 import { chatRouter } from './routes/chat.js';
 import { healthRouter } from './routes/health.js';
 import { conversationsRouter } from './routes/conversations.js';
@@ -27,6 +27,19 @@ app.use(sessionResolver);
 app.use(getUserContext);
 app.use(requestLogger);
 app.use(rateLimit);
+
+if (process.env.NODE_ENV === 'production') {
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    if (req.secure || req.headers['x-forwarded-proto'] === 'https') {
+      res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    }
+    next();
+  });
+}
 
 app.use(healthRouter);
 app.use('/v1/auth', authRouter);

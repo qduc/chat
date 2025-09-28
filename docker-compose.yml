@@ -8,11 +8,27 @@ services:
     environment:
       - PERSIST_TRANSCRIPTS=1
       - DB_URL=file:/data/prod.db
+      - NODE_ENV=production
     volumes:
       - db_data:/data
     ports:
       - "3001:3001"
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    healthcheck:
+      test:
+        ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(res => { if (res.ok) process.exit(0); process.exit(1); }).catch(() => process.exit(1));"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
     networks:
       - app
   frontend:
@@ -24,11 +40,28 @@ services:
     environment:
       # Direct API calls to mapped backend port (browser -> host -> container)
       - NEXT_PUBLIC_API_BASE=http://localhost:3001
+      - NODE_ENV=production
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     ports:
       - "3000:3000"
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "0.25"
+          memory: 256M
+        reservations:
+          cpus: "0.15"
+          memory: 128M
+    healthcheck:
+      test:
+        ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(res => { if (res.ok) process.exit(0); process.exit(1); }).catch(() => process.exit(1));"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
     networks:
       - app
 
