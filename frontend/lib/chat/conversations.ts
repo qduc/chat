@@ -3,28 +3,11 @@ import {
   ConversationsList,
   ConversationWithMessages
 } from './types';
-import { handleResponse } from './utils';
-import { getToken } from '../auth/tokens';
 import { waitForAuthReady } from '../auth/ready';
+import { httpClient } from '../http/client';
+import { HttpError } from '../http/types';
 
 const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
-
-/**
- * Create request headers with authentication if available
- */
-function createHeaders(additionalHeaders: Record<string, string> = {}): Record<string, string> {
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    ...additionalHeaders
-  };
-
-  const token = getToken();
-  if (token) {
-    headers.Authorization = `Bearer ${token}`;
-  }
-
-  return headers;
-}
 
 export interface ConversationCreateOptions {
   title?: string;
@@ -61,14 +44,18 @@ export class ConversationManager {
 
   async create(options: ConversationCreateOptions = {}): Promise<ConversationMeta> {
     await waitForAuthReady();
-    const response = await fetch(`${this.apiBase}/v1/conversations`, {
-      method: 'POST',
-      headers: createHeaders(),
-      body: JSON.stringify(options),
-      credentials: 'include'
-    });
-
-    return handleResponse<ConversationMeta>(response);
+    try {
+      const response = await httpClient.post<ConversationMeta>(
+        `${this.apiBase}/v1/conversations`,
+        options
+      );
+      return response.data;
+    } catch (error) {
+      if (error instanceof HttpError) {
+        throw new Error(error.message);
+      }
+      throw error;
+    }
   }
 
   async list(params: ListConversationsParams = {}): Promise<ConversationsList> {
@@ -77,16 +64,16 @@ export class ConversationManager {
     if (params.cursor) searchParams.set('cursor', params.cursor);
     if (params.limit) searchParams.set('limit', String(params.limit));
 
-    const response = await fetch(
-      `${this.apiBase}/v1/conversations?${searchParams.toString()}`,
-      {
-        method: 'GET',
-        headers: createHeaders(),
-        credentials: 'include'
+    try {
+      const url = `${this.apiBase}/v1/conversations${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
+      const response = await httpClient.get<ConversationsList>(url);
+      return response.data;
+    } catch (error) {
+      if (error instanceof HttpError) {
+        throw new Error(error.message);
       }
-    );
-
-    return handleResponse<ConversationsList>(response);
+      throw error;
+    }
   }
 
   async get(id: string, params: GetConversationParams = {}): Promise<ConversationWithMessages> {
@@ -95,28 +82,28 @@ export class ConversationManager {
     if (params.after_seq) searchParams.set('after_seq', String(params.after_seq));
     if (params.limit) searchParams.set('limit', String(params.limit));
 
-    const response = await fetch(
-      `${this.apiBase}/v1/conversations/${id}?${searchParams.toString()}`,
-      {
-        method: 'GET',
-        headers: createHeaders(),
-        credentials: 'include'
+    try {
+      const url = `${this.apiBase}/v1/conversations/${id}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
+      const response = await httpClient.get<ConversationWithMessages>(url);
+      return response.data;
+    } catch (error) {
+      if (error instanceof HttpError) {
+        throw new Error(error.message);
       }
-    );
-
-    return handleResponse<ConversationWithMessages>(response);
+      throw error;
+    }
   }
 
   async delete(id: string): Promise<void> {
     await waitForAuthReady();
-    const response = await fetch(`${this.apiBase}/v1/conversations/${id}`, {
-      method: 'DELETE',
-      headers: createHeaders(),
-      credentials: 'include'
-    });
-
-    if (response.status === 204) return;
-    await handleResponse(response);
+    try {
+      await httpClient.delete(`${this.apiBase}/v1/conversations/${id}`);
+    } catch (error) {
+      if (error instanceof HttpError) {
+        throw new Error(error.message);
+      }
+      throw error;
+    }
   }
 
   async editMessage(
@@ -125,28 +112,33 @@ export class ConversationManager {
     content: string
   ): Promise<EditMessageResult> {
     await waitForAuthReady();
-    const response = await fetch(
-      `${this.apiBase}/v1/conversations/${conversationId}/messages/${messageId}/edit`,
-      {
-        method: 'PUT',
-        headers: createHeaders(),
-        body: JSON.stringify({ content }),
-        credentials: 'include'
+    try {
+      const response = await httpClient.put<EditMessageResult>(
+        `${this.apiBase}/v1/conversations/${conversationId}/messages/${messageId}/edit`,
+        { content }
+      );
+      return response.data;
+    } catch (error) {
+      if (error instanceof HttpError) {
+        throw new Error(error.message);
       }
-    );
-
-    return handleResponse<EditMessageResult>(response);
+      throw error;
+    }
   }
 
   async migrateFromSession(): Promise<{ migrated: number; message: string }> {
     await waitForAuthReady();
-    const response = await fetch(`${this.apiBase}/v1/conversations/migrate`, {
-      method: 'POST',
-      headers: createHeaders(),
-      credentials: 'include'
-    });
-
-    return handleResponse<{ migrated: number; message: string }>(response);
+    try {
+      const response = await httpClient.post<{ migrated: number; message: string }>(
+        `${this.apiBase}/v1/conversations/migrate`
+      );
+      return response.data;
+    } catch (error) {
+      if (error instanceof HttpError) {
+        throw new Error(error.message);
+      }
+      throw error;
+    }
   }
 
   // Backward-compatible instance method aliases

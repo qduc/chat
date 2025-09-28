@@ -5,6 +5,8 @@ import { sendChat, getConversationApi, listConversationsApi, deleteConversationA
 import type { QualityLevel } from '../components/ui/QualitySlider';
 import type { User } from '../lib/auth/api';
 import { useAuth } from '../contexts/AuthContext';
+import { httpClient } from '../lib/http/client';
+import { HttpError } from '../lib/http/types';
 
 export interface PendingState {
   abort?: AbortController;
@@ -572,19 +574,15 @@ export function useChatState() {
     }
     const apiBase = (process.env.NEXT_PUBLIC_API_BASE as string) ?? 'http://localhost:3001';
     try {
-      const res = await fetch(`${apiBase}/v1/providers`);
-      if (!res.ok) return;
-      const json = await res.json();
-      const providers: any[] = Array.isArray(json.providers) ? json.providers : [];
+      const response = await httpClient.get<{ providers: any[] }>(`${apiBase}/v1/providers`);
+      const providers: any[] = Array.isArray(response.data.providers) ? response.data.providers : [];
       const enabledProviders = providers.filter(p => p?.enabled);
       if (!enabledProviders.length) return;
 
       const results = await Promise.allSettled(
         enabledProviders.map(async (p) => {
-          const r = await fetch(`${apiBase}/v1/providers/${encodeURIComponent(p.id)}/models`);
-          if (!r.ok) throw new Error(`models ${r.status}`);
-          const j = await r.json();
-          const models = Array.isArray(j.models) ? j.models : [];
+          const modelsResponse = await httpClient.get<{ models: any[] }>(`${apiBase}/v1/providers/${encodeURIComponent(p.id)}/models`);
+          const models = Array.isArray(modelsResponse.data.models) ? modelsResponse.data.models : [];
           const options: ModelOption[] = models.map((m: any) => ({ value: m.id, label: m.id }));
           return { provider: p, options };
         })

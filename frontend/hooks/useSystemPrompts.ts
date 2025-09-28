@@ -1,4 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
+import { httpClient } from '../lib/http/client';
+import { HttpError } from '../lib/http/types';
 
 export interface BuiltInPrompt {
   id: string;
@@ -66,21 +68,6 @@ interface UseSystemPromptsReturn {
 }
 
 const STORAGE_PREFIX = 'prompt-inline-';
-const stripTrailingSlash = (value: string) => value.replace(/\/$/, '');
-const API_BASE = stripTrailingSlash(process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001');
-const buildApiUrl = (path: string) => `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
-
-// Helper to get auth headers
-const getAuthHeaders = () => {
-  const headers: Record<string, string> = {};
-  if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('chatforge_auth_token');
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-  }
-  return headers;
-};
 
 export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
   const [prompts, setPrompts] = useState<PromptsListResponse | null>(null);
@@ -116,23 +103,29 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
     setError(null);
 
     try {
-      const response = await fetch(buildApiUrl('/v1/system-prompts'), {
-        method: 'GET',
-        headers: getAuthHeaders(),
-        credentials: 'include',
+      const response = await httpClient.get<PromptsListResponse>('/v1/system-prompts');
+      const data = response.data;
+      const normalizedError = typeof data?.error === 'string' ? data.error : null;
+
+      setPrompts({
+        built_ins: Array.isArray(data?.built_ins) ? data.built_ins : [],
+        custom: Array.isArray(data?.custom) ? data.custom : [],
+        error: normalizedError || undefined
       });
 
-      if (response.status === 404) {
+      // Show warning if there's a load error
+      if (normalizedError) {
+        console.warn('[useSystemPrompts] Built-ins load error:', normalizedError);
+      }
+    } catch (err) {
+      if (err instanceof HttpError && err.status === 404) {
         let fallbackError = 'No system prompts are available yet.';
 
-        try {
-          const errorPayload = await response.json();
-          const derivedMessage = errorPayload?.message || errorPayload?.error;
-          if (derivedMessage && typeof derivedMessage === 'string') {
+        if (err.data?.message || err.data?.error) {
+          const derivedMessage = err.data.message || err.data.error;
+          if (typeof derivedMessage === 'string') {
             fallbackError = derivedMessage;
           }
-        } catch (parseError) {
-          console.info('[useSystemPrompts] 404 response without JSON payload', parseError);
         }
 
         setPrompts({
@@ -144,25 +137,8 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
         return;
       }
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      const normalizedError = typeof data?.error === 'string' ? data.error : null;
-
-      setPrompts({
-        built_ins: Array.isArray(data?.built_ins) ? data.built_ins : [],
-        custom: Array.isArray(data?.custom) ? data.custom : [],
-        error: normalizedError
-      });
-
-      // Show warning if there's a load error
-      if (normalizedError) {
-        console.warn('[useSystemPrompts] Built-ins load error:', normalizedError);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to fetch prompts';
+      const message = err instanceof HttpError ? err.message :
+                     err instanceof Error ? err.message : 'Failed to fetch prompts';
       setError(message);
       console.error('[useSystemPrompts] Fetch error:', err);
     } finally {
@@ -175,29 +151,16 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
     setError(null);
 
     try {
-      const response = await fetch(buildApiUrl('/v1/system-prompts'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
-        credentials: 'include',
-        body: JSON.stringify(data),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `HTTP ${response.status}`);
-      }
-
-      const newPrompt = await response.json();
+      const response = await httpClient.post<CustomPrompt>('/v1/system-prompts', data);
+      const newPrompt = response.data;
 
       // Refresh prompts list
       await fetchPrompts();
 
       return newPrompt;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to create prompt';
+      const message = err instanceof HttpError ? err.message :
+                     err instanceof Error ? err.message : 'Failed to create prompt';
       setError(message);
       console.error('[useSystemPrompts] Create error:', err);
       return null;
@@ -209,29 +172,16 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
     setError(null);
 
     try {
-      const response = await fetch(buildApiUrl(`/v1/system-prompts/${id}`), {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
-        credentials: 'include',
-        body: JSON.stringify(updates),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `HTTP ${response.status}`);
-      }
-
-      const updatedPrompt = await response.json();
+      const response = await httpClient.patch<CustomPrompt>(`/v1/system-prompts/${id}`, updates);
+      const updatedPrompt = response.data;
 
       // Refresh prompts list
       await fetchPrompts();
 
       return updatedPrompt;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to update prompt';
+      const message = err instanceof HttpError ? err.message :
+                     err instanceof Error ? err.message : 'Failed to update prompt';
       setError(message);
       console.error('[useSystemPrompts] Update error:', err);
       return null;
@@ -243,16 +193,7 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
     setError(null);
 
     try {
-      const response = await fetch(buildApiUrl(`/v1/system-prompts/${id}`), {
-        method: 'DELETE',
-        headers: getAuthHeaders(),
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `HTTP ${response.status}`);
-      }
+      await httpClient.delete(`/v1/system-prompts/${id}`);
 
       // Clear active selection if deleting active prompt
       if (activePromptId === id) {
@@ -273,7 +214,8 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
 
       return true;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to delete prompt';
+      const message = err instanceof HttpError ? err.message :
+                     err instanceof Error ? err.message : 'Failed to delete prompt';
       setError(message);
       console.error('[useSystemPrompts] Delete error:', err);
       return false;
@@ -285,25 +227,16 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
     setError(null);
 
     try {
-      const response = await fetch(buildApiUrl(`/v1/system-prompts/${id}/duplicate`), {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        credentials: 'include',
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `HTTP ${response.status}`);
-      }
-
-      const newPrompt = await response.json();
+      const response = await httpClient.post<CustomPrompt>(`/v1/system-prompts/${id}/duplicate`);
+      const newPrompt = response.data;
 
       // Refresh prompts list
       await fetchPrompts();
 
       return newPrompt;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to duplicate prompt';
+      const message = err instanceof HttpError ? err.message :
+                     err instanceof Error ? err.message : 'Failed to duplicate prompt';
       setError(message);
       console.error('[useSystemPrompts] Duplicate error:', err);
       return null;
@@ -315,28 +248,16 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
     setError(null);
 
     try {
-      const response = await fetch(buildApiUrl(`/v1/system-prompts/${promptId}/select`), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          conversation_id: conversationId,
-          inline_override: inlineOverride
-        }),
+      await httpClient.post(`/v1/system-prompts/${promptId}/select`, {
+        conversation_id: conversationId,
+        inline_override: inlineOverride
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `HTTP ${response.status}`);
-      }
 
       setActivePromptId(promptId);
       return true;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to select prompt';
+      const message = err instanceof HttpError ? err.message :
+                     err instanceof Error ? err.message : 'Failed to select prompt';
       setError(message);
       console.error('[useSystemPrompts] Select error:', err);
       return false;
@@ -348,25 +269,15 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
     setError(null);
 
     try {
-      const response = await fetch(buildApiUrl('/v1/system-prompts/none/select'), {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders(),
-        },
-        credentials: 'include',
-        body: JSON.stringify({ conversation_id: conversationId }),
+      await httpClient.post('/v1/system-prompts/none/select', {
+        conversation_id: conversationId
       });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `HTTP ${response.status}`);
-      }
 
       setActivePromptId(null);
       return true;
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to clear prompt';
+      const message = err instanceof HttpError ? err.message :
+                     err instanceof Error ? err.message : 'Failed to clear prompt';
       setError(message);
       console.error('[useSystemPrompts] Clear error:', err);
       return false;

@@ -3,6 +3,8 @@ import React from 'react';
 import { Cog, Database, Plus, Save, RefreshCw, Trash2, Zap, CheckCircle, XCircle } from 'lucide-react';
 import Modal from './ui/Modal';
 import Toggle from './ui/Toggle';
+import { httpClient } from '../lib/http/client';
+import { HttpError } from '../lib/http/types';
 
 interface SettingsModalProps {
   open: boolean;
@@ -81,17 +83,16 @@ export default function SettingsModal({
     try {
       setLoadingProviders(true);
       setError(null);
-      const res = await fetch(`${apiBase}/v1/providers`);
-      if (!res.ok) throw new Error(`Failed to load providers: ${res.status}`);
-      const json = await res.json();
-      const rows: ProviderRow[] = Array.isArray(json.providers) ? json.providers : [];
+      const response = await httpClient.get<{ providers: ProviderRow[] }>(`${apiBase}/v1/providers`);
+      const rows: ProviderRow[] = Array.isArray(response.data.providers) ? response.data.providers : [];
       setProviders(rows);
       if (rows.length && selectedId) {
         const cur = rows.find((r) => r.id === selectedId);
         if (cur) populateFormFromRow(cur);
       }
     } catch (e: any) {
-      setError(e?.message || 'Failed to load providers');
+      const message = e instanceof HttpError ? e.message : e?.message || 'Failed to load providers';
+      setError(message);
     } finally {
       setLoadingProviders(false);
     }
@@ -128,49 +129,38 @@ export default function SettingsModal({
         metadata: { default_model: form.default_model || null },
       };
       if (form.api_key) payload.api_key = form.api_key;
-      let res: Response;
+
       if (form.id) {
-        res = await fetch(`${apiBase}/v1/providers/${form.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
+        // Update existing provider
+        await httpClient.put(`${apiBase}/v1/providers/${form.id}`, payload);
       } else {
-        // Generate user-friendly ID from name for new providers
+        // Create new provider with retry logic for ID conflicts
         let generatedId = generateIdFromName(form.name);
         let attempt = 0;
         const maxAttempts = 5;
 
         while (attempt < maxAttempts) {
           const idToTry = attempt === 0 ? generatedId : `${generatedId}-${attempt}`;
-          res = await fetch(`${apiBase}/v1/providers`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...payload, id: idToTry }),
-          });
 
-          if (res.ok) {
+          try {
+            await httpClient.post(`${apiBase}/v1/providers`, { ...payload, id: idToTry });
             break; // Success, exit retry loop
-          }
-
-          const err = await res.json().catch(() => ({}));
-          if (res.status === 409 && attempt < maxAttempts - 1) {
-            // Conflict error, try with next suffix
-            attempt++;
-            continue;
-          } else {
-            // Other error or max attempts reached
-            throw new Error(err?.message || `Save failed (${res.status})`);
+          } catch (error) {
+            if (error instanceof HttpError && error.status === 409 && attempt < maxAttempts - 1) {
+              // Conflict error, try with next suffix
+              attempt++;
+              continue;
+            } else {
+              // Other error or max attempts reached
+              throw error;
+            }
           }
         }
       }
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.message || `Save failed (${res.status})`);
-      }
       await fetchProviders();
     } catch (e: any) {
-      setError(e?.message || 'Failed to save provider');
+      const message = e instanceof HttpError ? e.message : e?.message || 'Failed to save provider';
+      setError(message);
     } finally {
       setSaving(false);
     }
@@ -185,12 +175,12 @@ export default function SettingsModal({
     try {
       setSaving(true);
       setError(null);
-      const res = await fetch(`${apiBase}/v1/providers/${target}`, { method: 'DELETE' });
-      if (!(res.status === 204 || res.ok)) throw new Error(`Delete failed (${res.status})`);
+      await httpClient.delete(`${apiBase}/v1/providers/${target}`);
       resetForm();
       await fetchProviders();
     } catch (e: any) {
-      setError(e?.message || 'Failed to delete provider');
+      const message = e instanceof HttpError ? e.message : e?.message || 'Failed to delete provider';
+      setError(message);
     } finally {
       setSaving(false);
     }
@@ -211,16 +201,7 @@ export default function SettingsModal({
 
     try {
       setError(null);
-      const response = await fetch(`${apiBase}/v1/providers/${providerId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData?.message || `Toggle failed (${response.status})`);
-      }
+      await httpClient.put(`${apiBase}/v1/providers/${providerId}`, { enabled });
 
       // Refresh providers to get updated data
       await fetchProviders();
@@ -230,7 +211,8 @@ export default function SettingsModal({
         p.id === providerId ? { ...p, enabled: enabled ? 0 : 1 } : p
       ));
       const provider = providers.find(p => p.id === providerId);
-      setError(`Failed to ${enabled ? 'enable' : 'disable'} ${provider?.name || 'provider'}: ${error?.message || 'Unknown error'}`);
+      const message = error instanceof HttpError ? error.message : error?.message || 'Unknown error';
+      setError(`Failed to ${enabled ? 'enable' : 'disable'} ${provider?.name || 'provider'}: ${message}`);
     } finally {
       // Remove from loading set
       setToggleLoading(prev => {
@@ -289,18 +271,8 @@ export default function SettingsModal({
         };
       }
 
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(testPayload),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData?.message || `Test failed (${res.status})`);
-      }
-
-      const result = await res.json();
+      const response = await httpClient.post(endpoint, testPayload);
+      const result = response.data;
 
       const successResult = {
         success: true,
@@ -309,9 +281,10 @@ export default function SettingsModal({
       setLastTestTime(Date.now());
       setTestResult(successResult);
     } catch (e: any) {
+      const message = e instanceof HttpError ? e.message : e?.message || 'Connection test failed. Please check your configuration.';
       const errorResult = {
         success: false,
-        message: e?.message || 'Connection test failed. Please check your configuration.',
+        message,
       };
       setLastTestTime(Date.now());
       setTestResult(errorResult);
