@@ -5,9 +5,25 @@ import bcrypt from 'bcryptjs';
 import { safeTestSetup } from '../test_support/databaseSafety.js';
 import { config } from '../src/env.js';
 
+// Use a very low bcrypt cost in tests to keep them fast. Production code should
+// still use a higher cost (configured elsewhere).
+const TEST_BCRYPT_ROUNDS = 1;
+
 beforeAll(() => {
-  // Safety check: ensure we're using a test database
+  // Safety check: ensure we're using a test database and initialize it once for
+  // the whole test suite. Creating the DB snapshot/migrations is relatively
+  // expensive, so we warm it up here and reuse the snapshot for each test.
   safeTestSetup();
+
+  // Ensure persistence is enabled and points to in-memory DB
+  config.persistence.enabled = true;
+  config.persistence.dbUrl = 'file::memory:';
+
+  // Reset any previous DB handles and open the DB once. getDb() will create
+  // the snapshot/migrations on first invocation which is faster than doing it
+  // before every test.
+  resetDbCache();
+  getDb();
 });
 
 afterAll(() => {
@@ -16,9 +32,7 @@ afterAll(() => {
 
 describe('User Database Operations', () => {
   beforeEach(() => {
-    config.persistence.enabled = true;
-    config.persistence.dbUrl = 'file::memory:';
-    resetDbCache();
+    // Clear just the tables we modify rather than recreating the DB each time.
     const db = getDb();
     db.exec('DELETE FROM sessions; DELETE FROM users;');
   });
@@ -26,7 +40,7 @@ describe('User Database Operations', () => {
   test('should create a new user', async () => {
     const userData = {
       email: 'test@example.com',
-      passwordHash: await bcrypt.hash('password123', 12),
+    passwordHash: await bcrypt.hash('password123', TEST_BCRYPT_ROUNDS),
       displayName: 'Test User'
     };
 
@@ -42,7 +56,7 @@ describe('User Database Operations', () => {
 
   test('should find user by email', async () => {
     // Create a user first
-    const passwordHash = await bcrypt.hash('password123', 12);
+  const passwordHash = await bcrypt.hash('password123', TEST_BCRYPT_ROUNDS);
     const createdUser = createUser({
       email: 'findme@example.com',
       passwordHash,
@@ -59,7 +73,7 @@ describe('User Database Operations', () => {
 
   test('should find user by ID', async () => {
     // Create a user first
-    const passwordHash = await bcrypt.hash('password123', 12);
+  const passwordHash = await bcrypt.hash('password123', TEST_BCRYPT_ROUNDS);
     const createdUser = createUser({
       email: 'findbyid@example.com',
       passwordHash,
@@ -78,7 +92,7 @@ describe('User Database Operations', () => {
     expect(isEmailAvailable('available@example.com')).toBe(true);
 
     // Create a user
-    const passwordHash = await bcrypt.hash('password123', 12);
+  const passwordHash = await bcrypt.hash('password123', TEST_BCRYPT_ROUNDS);
     createUser({
       email: 'taken@example.com',
       passwordHash,
@@ -91,7 +105,7 @@ describe('User Database Operations', () => {
 
   test('should update last login', async () => {
     // Create a user first
-    const passwordHash = await bcrypt.hash('password123', 12);
+  const passwordHash = await bcrypt.hash('password123', TEST_BCRYPT_ROUNDS);
     const createdUser = createUser({
       email: 'login@example.com',
       passwordHash,
