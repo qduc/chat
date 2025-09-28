@@ -1,41 +1,5 @@
 import { jest } from '@jest/globals';
 
-/**
- * Tests for toolsJson.js - Tool orchestration system for OpenAI API proxy
- *
- * Current coverage: Basic happy paths, tool execution, error handling, streaming
- *
- * Missing test cases (practical improvements):
- *
- * SIMPLE EDGE CASES:
- * - LLM response with null/empty content
- * - LLM response with missing choices array
- * - Tool calls with empty arguments string
- * - Multiple tool calls in single response
- * - Tool call with unknown/unregistered tool name
- *
- * ERROR SCENARIOS:
- * - Malformed JSON in tool call arguments
- * - Provider creation/initialization failures
- * - Persistence layer failures during orchestration
- * - Network timeouts during LLM requests
- *
- * CONFIGURATION EDGE CASES:
- * - Missing required config values (defaultModel, etc.)
- * - Invalid reasoning controls when provider doesn't support them
- * - Tool execution with partial provider failures
- *
- * CLASS-LEVEL TESTS:
- * - OrchestrationConfig.fromRequest() with various inputs
- * - ResponseHandlerFactory.create() selection logic
- * - Individual response handler behavior
- *
- * BOUNDARY CONDITIONS:
- * - Exactly at max iterations limit
- * - Tool output exceeding size limits
- * - Very large conversation message arrays
- */
-
 // Use ESM-compatible, non-hoisted mocks to avoid module resolution during setup
 const toolsModulePath = new URL('../src/lib/tools.js', import.meta.url).href;
 await jest.unstable_mockModule(toolsModulePath, () => ({
