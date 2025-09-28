@@ -1,5 +1,8 @@
 import 'dotenv/config';
 
+// Detect test environments (Jest sets JEST_WORKER_ID; NODE_ENV may be 'test')
+const isTest = process.env.NODE_ENV === 'test' || typeof process.env.JEST_WORKER_ID !== 'undefined';
+
 const required = [
   // Provider config is flexible; default remains OpenAI-compatible
   'DEFAULT_MODEL',
@@ -13,7 +16,8 @@ const required = [
 
 for (const key of required) {
   if (!process.env[key]) {
-    console.warn(`[env] Missing ${key}.`);
+    // Avoid noisy warnings during automated tests
+    if (!isTest) console.warn(`[env] Missing ${key}.`);
   }
 }
 
@@ -37,7 +41,8 @@ export const config = {
       try {
         return process.env.PROVIDER_HEADERS_JSON ? JSON.parse(process.env.PROVIDER_HEADERS_JSON) : undefined;
       } catch {
-        console.warn('[env] Invalid PROVIDER_HEADERS_JSON; expected JSON');
+        // Avoid noisy warnings during automated tests
+        if (!isTest) console.warn('[env] Invalid PROVIDER_HEADERS_JSON; expected JSON');
         return undefined;
       }
     })(),
