@@ -1,34 +1,26 @@
-import { describe, expect, test, beforeEach, afterEach, beforeAll } from '@jest/globals';
+import { describe, expect, test, beforeEach, afterAll, beforeAll } from '@jest/globals';
 import { createUser, getUserByEmail, getUserById, isEmailAvailable, updateLastLogin, linkSessionToUser } from '../src/db/users.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
 import bcrypt from 'bcryptjs';
 import { safeTestSetup } from '../test_support/databaseSafety.js';
-
-// Mock environment for testing
-process.env.PERSIST_TRANSCRIPTS = 'true';
-process.env.DB_URL = 'file::memory:';
+import { config } from '../src/env.js';
 
 beforeAll(() => {
   // Safety check: ensure we're using a test database
   safeTestSetup();
 });
 
+afterAll(() => {
+  resetDbCache();
+});
+
 describe('User Database Operations', () => {
-  let db;
-
   beforeEach(() => {
+    config.persistence.enabled = true;
+    config.persistence.dbUrl = 'file::memory:';
     resetDbCache();
-    db = getDb();
-    db.exec(`
-      DELETE FROM sessions;
-      DELETE FROM users;
-    `);
-  });
-
-  afterEach(() => {
-    if (db) {
-      db.close();
-    }
+    const db = getDb();
+    db.exec('DELETE FROM sessions; DELETE FROM users;');
   });
 
   test('should create a new user', async () => {
@@ -127,6 +119,7 @@ describe('User Database Operations', () => {
     const sessionId = 'test-session-id';
 
     // First create a session
+    const db = getDb();
     db.prepare(`
       INSERT INTO sessions (id, user_id, created_at, last_seen_at)
       VALUES (?, NULL, datetime('now'), datetime('now'))

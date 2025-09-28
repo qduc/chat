@@ -32,11 +32,15 @@ const withServer = async (app, fn) => {
 beforeAll(() => {
   // Safety check: ensure we're using a test database
   safeTestSetup();
+});
+
+beforeEach(() => {
   // Ensure DB enabled for provider storage
   config.persistence.enabled = true;
   config.persistence.dbUrl = 'file::memory:';
   resetDbCache();
-  getDb();
+  const db = getDb();
+  db.exec('DELETE FROM providers;');
 });
 
 afterAll(() => {

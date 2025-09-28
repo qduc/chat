@@ -98,20 +98,13 @@ describe('Iterative Orchestration', () => {
   // Track all MockUpstream instances for cleanup
   const upstreamInstances = new Set();
 
-  // Setup database configuration for tests
   beforeAll(() => {
-  // Safety check: ensure we're using a test database
-  safeTestSetup();
-    // Configure test environment variables
-    process.env.PERSIST_TRANSCRIPTS = 'true';
-    process.env.DB_URL = 'file::memory:';
-    process.env.DEFAULT_MODEL = 'gpt-3.5-turbo';
-    process.env.PORT = '3001';
-    process.env.RATE_LIMIT_WINDOW_SEC = '60';
-    process.env.RATE_LIMIT_MAX = '50';
-    process.env.ALLOWED_ORIGIN = 'http://localhost:3000';
+    // Safety check: ensure we're using a test database
+    safeTestSetup();
+  });
 
-    // Update config object directly since it's already imported
+  beforeEach(async () => {
+    // Configure test environment and database
     config.persistence.enabled = true;
     config.persistence.dbUrl = 'file::memory:';
     config.defaultModel = 'gpt-3.5-turbo';
@@ -119,10 +112,7 @@ describe('Iterative Orchestration', () => {
     config.rate.windowSec = 60;
     config.rate.max = 50;
     config.allowedOrigin = 'http://localhost:3000';
-  });
 
-  beforeEach(async () => {
-    // Reset database cache for clean state
     const { resetDbCache } = await import('../src/db/index.js');
     resetDbCache();
   });
@@ -137,10 +127,6 @@ describe('Iterative Orchestration', () => {
       }
     }
     upstreamInstances.clear();
-
-    // Clean up database connections after each test
-    const { resetDbCache } = await import('../src/db/index.js');
-    resetDbCache();
   });
 
   afterAll(async () => {
@@ -154,9 +140,9 @@ describe('Iterative Orchestration', () => {
     }
     upstreamInstances.clear();
 
-    // Clean up environment variables
-    delete process.env.PERSIST_TRANSCRIPTS;
-    delete process.env.DB_URL;
+    // Clean up database connections
+    const { resetDbCache } = await import('../src/db/index.js');
+    resetDbCache();
     delete process.env.DEFAULT_MODEL;
     delete process.env.PORT;
     delete process.env.RATE_LIMIT_WINDOW_SEC;
