@@ -74,7 +74,7 @@ export function RightSidebar({
       return;
     }
 
-    if (conversationId && typeof conversationSystemPrompt === 'string' && conversationSystemPrompt.length > 0) {
+    if (typeof conversationSystemPrompt === 'string' && conversationSystemPrompt.length > 0) {
       onEffectivePromptChange(conversationSystemPrompt);
       return;
     }
@@ -85,8 +85,7 @@ export function RightSidebar({
     inlineEdits,
     onEffectivePromptChange,
     getEffectivePromptContent,
-    conversationSystemPrompt,
-    conversationId
+    conversationSystemPrompt
   ]);
 
   // Update active prompt ID when conversation changes
@@ -227,6 +226,10 @@ export function RightSidebar({
       clearInlineEdit(effectiveSelectedPromptId);
     } else {
       setInlineEdit(effectiveSelectedPromptId, content);
+    }
+
+    if (onEffectivePromptChange) {
+      onEffectivePromptChange(content);
     }
   };
 
@@ -411,6 +414,9 @@ export function RightSidebar({
                           handleInlineChange(e.target.value);
                         } else {
                           setNewPromptContent(e.target.value);
+                          if (onEffectivePromptChange) {
+                            onEffectivePromptChange(e.target.value);
+                          }
                         }
                       }}
                       className="flex-1 p-3 border border-gray-300 dark:border-gray-600 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"

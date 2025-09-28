@@ -883,6 +883,7 @@ export function useChatState() {
 
     setInlineSystemPromptOverride: useCallback((prompt: string) => {
       dispatch({ type: 'SET_INLINE_SYSTEM_PROMPT_OVERRIDE', payload: prompt });
+      dispatch({ type: 'SET_SYSTEM_PROMPT', payload: prompt });
     }, []),
 
     setActiveSystemPromptId: useCallback((id: string | null) => {
