@@ -48,7 +48,7 @@ function isInMemoryUrl(url) {
 }
 
 function getProjectTmpDir() {
-  const dir = path.join(process.cwd(), 'backend', '.tmp');
+  const dir = path.join('/tmp');
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
   return dir;
 }

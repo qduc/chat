@@ -1,6 +1,7 @@
 jest.mock('../contexts/AuthContext', () => {
+  // Provide a default authenticated user for tests so history/persistence code paths run.
   const authValue = {
-    user: null,
+    user: { id: 'test-user', email: 'test@example.com', name: 'Test User' },
     loading: false,
     ready: true,
     waitForAuth: jest.fn(() => Promise.resolve()),
