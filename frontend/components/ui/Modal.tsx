@@ -34,7 +34,7 @@ export function Modal({ open, onClose, title, children, maxWidthClassName = "max
         aria-hidden="true"
       />
       <div
-        className={`relative w-full ${maxWidthClassName} mx-4 rounded-xl bg-white dark:bg-neutral-900 border border-slate-200/70 dark:border-neutral-800 shadow-2xl`}
+        className={`relative w-full ${maxWidthClassName} mx-2 sm:mx-4 max-h-[90vh] overflow-hidden rounded-xl bg-white dark:bg-neutral-900 border border-slate-200/70 dark:border-neutral-800 shadow-2xl`}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200/70 dark:border-neutral-800">
           <h2 className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">{title}</h2>
@@ -47,7 +47,7 @@ export function Modal({ open, onClose, title, children, maxWidthClassName = "max
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="p-4">
+        <div className="p-3 sm:p-4 overflow-y-auto max-h-[calc(90vh-4rem)]">
           {children}
         </div>
       </div>
