@@ -142,7 +142,7 @@ export async function selectPromptForConversation(
   conversationId,
   { userId, sessionId, inlineOverride = null } = {}
 ) {
-  if (!userId && !sessionId) {
+  if (!userId) {
     throw new PromptServiceError('Conversation context required', {
       status: 400,
       code: 'conversation_context_required'
@@ -173,7 +173,7 @@ export async function selectPromptForConversation(
  * @returns {Object} Clear result
  */
 export async function clearPromptFromConversation(conversationId, { userId, sessionId } = {}) {
-  if (!userId && !sessionId) {
+  if (!userId) {
     throw new PromptServiceError('Conversation context required', {
       status: 400,
       code: 'conversation_context_required'
@@ -318,7 +318,7 @@ async function getConversationPromptContext(conversationId, userId, sessionId) {
   // Import conversations module to get metadata
   const { getConversationById } = await import('../db/conversations.js');
 
-  if (!userId && !sessionId) {
+  if (!userId) {
     return { promptId: null, inlineOverride: null };
   }
 

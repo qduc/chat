@@ -50,7 +50,7 @@ export class SimplifiedPersistence {
     }
 
     // For authenticated users, user ID is sufficient for persistence
-    if (!userId && !sessionId) {
+    if (!userId) {
       this.persist = false;
       return {};
     }
