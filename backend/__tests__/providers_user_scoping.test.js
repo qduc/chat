@@ -19,11 +19,18 @@ const createTestApp = () => {
   return app;
 };
 
-beforeAll(() => {
+// We'll compute a low-cost password hash once for all tests to avoid CPU-heavy
+// bcrypt work on every single test (this is only for test performance).
+let testPasswordHash;
+beforeAll(async () => {
   // Safety check: ensure we're using a test database
   safeTestSetup();
   resetDbCache();
   getDb();
+
+  // Use a very low work factor for tests to speed them up. Production code
+  // should keep a high cost; tests don't need that level of security.
+  testPasswordHash = await bcrypt.hash('password123', 1);
 });
 
 afterAll(() => {
@@ -40,8 +47,9 @@ describe('User-scoped Providers', () => {
     resetDbCache();
     app = createTestApp();
 
-    // Create test users with hashed passwords and unique emails
-    const passwordHash = await bcrypt.hash('password123', 12);
+  // Create test users with hashed passwords and unique emails. Reuse the
+  // precomputed low-cost hash from beforeAll to avoid expensive work per-test.
+  const passwordHash = testPasswordHash;
     const timestamp = Date.now();
 
     user1 = createUser({
@@ -270,14 +278,13 @@ describe('User-scoped Providers', () => {
   });
 
   describe('Provider modification control', () => {
-    let user1EditableData;
 
     beforeEach(async () => {
       // Create test providers with unique IDs
       const timestamp = Date.now() + Math.random();
       user1EditableId = `user1-editable-${timestamp}`;
 
-      const response = await request(app)
+      await request(app)
         .post('/v1/providers')
         .set('Authorization', `Bearer ${token1}`)
         .send({
@@ -286,7 +293,6 @@ describe('User-scoped Providers', () => {
           provider_type: 'openai',
           api_key: 'sk-user1-edit',
         });
-      user1EditableData = response.body;
     });
 
     test('user can update their own provider', async () => {
