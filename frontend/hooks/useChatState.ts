@@ -431,6 +431,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         conversations: state.conversations.filter(c => c.id !== action.payload),
         conversationId: state.conversationId === action.payload ? null : state.conversationId,
+        messages: state.conversationId === action.payload ? [] : state.messages,
       };
 
     case 'START_EDIT':
