@@ -1,1082 +1,820 @@
-import { Readable } from 'node:stream';
+import { PassThrough } from 'node:stream';
 import { BaseAdapter } from './baseAdapter.js';
-import { parseSSEStream } from '../sseParser.js';
 import { createChatCompletionChunk } from '../streamUtils.js';
 
+const RESPONSES_ENDPOINT = '/v1/responses';
+
 const RESERVED_INTERNAL_KEYS = new Set([
-  'conversation_id',
-  'provider_id',
-  'provider',
-  'streamingEnabled',
-  'toolsEnabled',
-  'qualityLevel',
-  'researchMode',
-  'systemPrompt',
-  'system_prompt',
+	'conversation_id',
+	'provider_id',
+	'provider',
+	'streamingEnabled',
+	'toolsEnabled',
+	'qualityLevel',
+	'researchMode',
+	'systemPrompt',
+	'system_prompt',
 ]);
 
-const RESPONSES_ALLOWED_REQUEST_KEYS = new Set([
-  'metadata',
-  'temperature',
-  'top_p',
-  'top_k',
-  'max_output_tokens',
-  'stop',
-  'stream',
-  'response_format',
-  'reasoning',
-  'text',
-  'user',
-  'previous_response_id',
-  'parallel_tool_calls',
+const RESPONSES_PASSTHROUGH_KEYS = new Set([
+	'frequency_penalty',
+	'logit_bias',
+	'logprobs',
+	'metadata',
+	'modalities',
+	'parallel_tool_calls',
+	'prediction',
+	'reasoning_effort',
+	'response_format',
+	'seed',
+	'stop',
+	'store',
+	'store_tokens',
+	'temperature',
+	'tool_choice',
+	'top_k',
+	'top_p',
+	'user',
+	'verbosity',
 ]);
+
+const DEFAULT_FUNCTION_PARAMETERS = { type: 'object', properties: {} };
 
 function omitReservedKeys(payload) {
-  if (!payload || typeof payload !== 'object') return {};
-  const result = {};
-  for (const [key, value] of Object.entries(payload)) {
-    if (RESERVED_INTERNAL_KEYS.has(key)) continue;
-    result[key] = value;
-  }
-  return result;
+	if (!payload || typeof payload !== 'object') return {};
+	const result = {};
+	for (const [key, value] of Object.entries(payload)) {
+		if (RESERVED_INTERNAL_KEYS.has(key)) continue;
+		result[key] = value;
+	}
+	return result;
 }
 
-function asString(value) {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'string') return value;
-  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
-  if (Array.isArray(value)) {
-    return value.map(asString).join('');
-  }
-  if (typeof value === 'object') {
-    if (typeof value.text === 'string') return value.text;
-    if (Array.isArray(value.text)) return value.text.map(asString).join('');
-    if (Array.isArray(value.content)) return value.content.map(asString).join('');
-  }
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return '';
-  }
-}
-
-function extractSystemInstructions(messages) {
-  if (!Array.isArray(messages)) return undefined;
-  const parts = [];
-  for (const msg of messages) {
-    if (!msg || msg.role !== 'system') continue;
-    const content = 'content' in msg ? msg.content : undefined;
-    const str = asString(content);
-    if (str) parts.push(str);
-  }
-  if (parts.length === 0) return undefined;
-  return parts.join('\n\n');
+function defineEndpoint(target) {
+	if (!target || typeof target !== 'object') return target;
+	Object.defineProperty(target, '__endpoint', {
+		value: RESPONSES_ENDPOINT,
+		enumerable: false,
+		configurable: true,
+		writable: false,
+	});
+	return target;
 }
 
 function normalizeToolSpec(tool) {
-  if (!tool) return null;
-  if (typeof tool === 'string') {
-    return {
-      type: 'function',
-      name: tool,
-      description: '',
-      parameters: { type: 'object', properties: {} },
-    };
-  }
-  if (typeof tool !== 'object') return null;
+	if (!tool) return null;
 
-  const type = tool.type || 'function';
-  if (type !== 'function') {
-    return { ...tool, type };
-  }
+	if (typeof tool === 'string') {
+		return {
+			type: 'function',
+			name: tool,
+			parameters: DEFAULT_FUNCTION_PARAMETERS,
+		};
+	}
 
-  const fn = typeof tool.function === 'object' ? tool.function : {};
-  const name = typeof tool.name === 'string' && tool.name
-    ? tool.name
-    : fn.name;
-  if (!name) {
-    return null;
-  }
+	if (typeof tool !== 'object') return null;
 
-  const spec = {
-    type,
-    name,
-  };
+	const type = tool.type || (tool.function ? 'function' : undefined);
+	if (!type) return null;
 
-  const description = tool.description ?? fn.description;
-  if (description !== undefined) {
-    spec.description = description;
-  }
+	if (type !== 'function') {
+		return { ...tool, type };
+	}
 
-  const parameters = tool.parameters ?? fn.parameters;
-  spec.parameters = parameters || { type: 'object', properties: {} };
+	const fn = tool.function && typeof tool.function === 'object' ? tool.function : tool;
+	const name = typeof fn.name === 'string' ? fn.name : tool.name;
+	if (!name) return null;
 
-  const strict = tool.strict ?? fn.strict;
-  if (strict !== undefined) {
-    spec.strict = strict;
-  }
+	const normalized = {
+		type: 'function',
+		name,
+	};
 
-  if (tool.metadata !== undefined) {
-    spec.metadata = tool.metadata;
-  } else if (fn.metadata !== undefined) {
-    spec.metadata = fn.metadata;
-  }
+	if (typeof fn.description === 'string') {
+		normalized.description = fn.description;
+	} else if (typeof tool.description === 'string') {
+		normalized.description = tool.description;
+	}
 
-  return spec;
+	if (fn.parameters && typeof fn.parameters === 'object') {
+		normalized.parameters = fn.parameters;
+	} else if (tool.parameters && typeof tool.parameters === 'object') {
+		normalized.parameters = tool.parameters;
+	} else {
+		normalized.parameters = DEFAULT_FUNCTION_PARAMETERS;
+	}
+
+	return normalized;
 }
 
 function normalizeTools(tools) {
-  if (!Array.isArray(tools)) return undefined;
-  const normalized = tools
-    .map(normalizeToolSpec)
-    .filter(Boolean);
-  return normalized.length > 0 ? normalized : undefined;
+	if (!Array.isArray(tools)) return undefined;
+	const normalized = tools
+		.map(normalizeToolSpec)
+		.filter(Boolean);
+	return normalized.length > 0 ? normalized : undefined;
 }
 
-function normalizeToolChoice(choice) {
-  if (choice === undefined || choice === null) return undefined;
-  if (choice === 'auto' || choice === 'none') return choice;
-  if (typeof choice !== 'object') return choice;
+function mapToolChoice(toolChoice) {
+	if (toolChoice == null) return undefined;
+	if (toolChoice === 'auto' || toolChoice === 'none' || toolChoice === 'required') {
+		return toolChoice;
+	}
 
-  const type = choice.type || 'function';
-  if (type !== 'function') {
-    return { ...choice, type };
-  }
+	if (typeof toolChoice === 'object') {
+		const type = toolChoice.type || toolChoice?.function?.type;
+		const name = toolChoice?.function?.name || toolChoice.name;
+		if (type === 'function' && name) {
+			return { type: 'function', name };
+		}
+	}
 
-  const fn = typeof choice.function === 'object' ? choice.function : {};
-  const name = typeof choice.name === 'string' && choice.name
-    ? choice.name
-    : fn.name;
-  if (!name) {
-    return choice;
-  }
-
-  const normalized = { type, name };
-  if (choice.strict !== undefined) {
-    normalized.strict = choice.strict;
-  } else if (fn.strict !== undefined) {
-    normalized.strict = fn.strict;
-  }
-
-  return normalized;
+	return undefined;
 }
 
-function resolveToolOutput(value) {
-  if (value === null || value === undefined) return '';
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => resolveToolOutput(item));
-  }
-  if (typeof value === 'object') {
-    return value;
-  }
-  return String(value);
+function inferTextPartType(role) {
+	if (role === 'assistant' || role === 'tool') return 'output_text';
+	return 'input_text';
 }
 
-function toResponsesContent(message = {}) {
-  const role = typeof message.role === 'string' ? message.role : 'user';
-  const content = message?.content;
+function normalizeContentPart(part, role) {
+	if (part == null) return null;
 
-  if (role === 'tool') {
-    const payload = {
-      ...(typeof message.tool_call_id === 'string' && message.tool_call_id
-        ? { tool_call_id: message.tool_call_id }
-        : {}),
-      ...(typeof message.name === 'string' && message.name
-        ? { name: message.name }
-        : {}),
-      output: resolveToolOutput(content),
-    };
+	const textType = inferTextPartType(role);
 
-    return [{
-      type: 'output_text',
-      text: JSON.stringify({ tool_result: payload }),
-    }];
-  }
+	if (typeof part === 'string' || typeof part === 'number' || typeof part === 'boolean') {
+		const text = String(part);
+		return text ? { type: textType, text } : null;
+	}
 
-  if (role === 'assistant' && Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
-    const serialized = message.tool_calls.map((toolCall) => {
-      const fn = toolCall?.function || {};
-      let args = fn.arguments;
-      if (args !== undefined && typeof args !== 'string') {
-        try {
-          args = JSON.stringify(fn.arguments ?? {});
-        } catch {
-          args = '{}';
-        }
-      }
+	if (typeof part !== 'object') return null;
 
-      return {
-        id: toolCall?.id || null,
-        type: toolCall?.type || 'function',
-        function: {
-          name: fn.name,
-          arguments: args ?? '{}',
-        },
-      };
-    });
+	if (typeof part.text === 'string') {
+		return { type: textType, text: part.text };
+	}
 
-    return [{
-      type: 'output_text',
-      text: JSON.stringify({ tool_calls: serialized }),
-    }];
-  }
+	if (part.type === 'text' && typeof part.text === 'string') {
+		return { type: textType, text: part.text };
+	}
 
-  const type = role === 'user' ? 'input_text' : 'output_text';
+	if (part.type === 'input_text' || part.type === 'output_text') {
+		if (typeof part.text === 'string' && part.text.length > 0) {
+			return part;
+		}
+		if (typeof part.value === 'string' && part.value.length > 0) {
+			return { type: part.type, text: part.value };
+		}
+	}
 
-  const ensureItem = (value) => {
-    if (value === null || value === undefined) {
-      return null;
-    }
-    if (typeof value === 'string') {
-      return { type, text: value };
-    }
-    if (typeof value === 'object') {
-      if (typeof value.type === 'string') {
-        if (value.text !== undefined) {
-          return {
-            type,
-            text: typeof value.text === 'string' ? value.text : asString(value.text),
-          };
-        }
-        if (value.content !== undefined) {
-          return {
-            type,
-            text: asString(value.content),
-          };
-        }
-      }
-      if (typeof value.text === 'string') {
-        return { type, text: value.text };
-      }
-      if (value.content !== undefined) {
-        return { type, text: asString(value.content) };
-      }
-    }
-    return { type, text: asString(value) };
-  };
+	if (part.type === 'image_url') {
+		const imageUrl = typeof part.image_url === 'string'
+			? part.image_url
+			: (part.image_url?.url || null);
+		if (imageUrl) {
+			return {
+				type: role === 'assistant' ? 'output_image' : 'input_image',
+				image_url: imageUrl,
+			};
+		}
+		return null;
+	}
 
-  const items = Array.isArray(content)
-    ? content.map((part) => ensureItem(part)).filter(Boolean)
-    : [ensureItem(content)].filter(Boolean);
+	if (part.type === 'input_image' || part.type === 'output_image') {
+		return { ...part };
+	}
 
-  return items.length > 0 ? items : [{ type, text: '' }];
+	if (typeof part.content === 'string') {
+		return { type: textType, text: part.content };
+	}
+
+	return null;
 }
 
-function normalizeMessagesToInput(messages = []) {
-  if (!Array.isArray(messages)) return [];
-  const input = [];
-  for (const message of messages) {
-    if (!message || typeof message !== 'object') continue;
-    if (message.role === 'system') continue;
+function normalizeMessage(message) {
+	if (!message || typeof message !== 'object') return null;
+	const role = typeof message.role === 'string' ? message.role : null;
+	if (!role || role === 'tool') return null;
 
-    const content = toResponsesContent(message);
-    if (!content || content.length === 0) continue;
+	const normalized = { role };
 
-    const rawRole = typeof message.role === 'string' ? message.role : undefined;
-    const role = rawRole === 'tool' || rawRole === 'function'
-      ? 'assistant'
-      : rawRole || 'user';
+	let contentParts = [];
+	if (Array.isArray(message.content)) {
+		contentParts = message.content
+			.map((part) => normalizeContentPart(part, role))
+			.filter(Boolean);
+	} else {
+		const normalizedPart = normalizeContentPart(message.content, role);
+		if (normalizedPart) {
+			contentParts = [normalizedPart];
+		}
+	}
 
-    const normalized = { role, content };
+	const hasAssistantToolCalls = role === 'assistant' && Array.isArray(message.tool_calls) && message.tool_calls.length > 0;
 
-    if (typeof message.name === 'string' && message.name) {
-      normalized.name = message.name;
-    }
+	if (contentParts.length > 0) {
+		normalized.content = contentParts;
+	} else if (hasAssistantToolCalls) {
+		normalized.content = [];
+	} else {
+		return null;
+	}
 
-    input.push(normalized);
-  }
-  return input;
+	return normalized;
 }
 
-function collectTextFromOutput(output) {
-  const parts = [];
-  const walk = (node) => {
-    if (node === null || node === undefined) return;
-    if (typeof node === 'string') {
-      parts.push(node);
-      return;
-    }
-    if (typeof node === 'number' || typeof node === 'boolean') {
-      parts.push(String(node));
-      return;
-    }
-    if (Array.isArray(node)) {
-      for (const item of node) {
-        walk(item);
-      }
-      return;
-    }
-    if (typeof node === 'object') {
-      if (typeof node.text === 'string') {
-        parts.push(node.text);
-      }
-      if (Array.isArray(node.text)) {
-        for (const item of node.text) {
-          walk(item);
-        }
-      }
-      if (Array.isArray(node.content)) {
-        for (const item of node.content) {
-          walk(item);
-        }
-      }
-      if (typeof node.delta === 'string') {
-        parts.push(node.delta);
-      }
-    }
-  };
-  walk(output);
-  return parts.join('');
+function stringifyToolContent(message) {
+	if (!message) return '';
+	const collect = [];
+	const rawParts = Array.isArray(message.content) ? message.content : [message.content];
+	for (const raw of rawParts) {
+		if (raw == null) continue;
+		const normalized = normalizeContentPart(raw, 'tool');
+		if (normalized && typeof normalized.text === 'string') {
+			collect.push(normalized.text);
+		} else if (typeof raw === 'string') {
+			collect.push(raw);
+		} else if (typeof raw?.text === 'string') {
+			collect.push(raw.text);
+		} else if (typeof raw?.content === 'string') {
+			collect.push(raw.content);
+		} else if (typeof raw === 'object') {
+			try {
+				collect.push(JSON.stringify(raw));
+			} catch {
+				continue;
+			}
+		}
+	}
+	return collect.join('');
 }
 
-function normalizeTimestamp(value) {
-  if (typeof value === 'number') {
-    return value > 1e12 ? Math.floor(value / 1000) : Math.floor(value);
-  }
-  return Math.floor(Date.now() / 1000);
+function normalizeMessages(messages) {
+	if (!Array.isArray(messages)) return [];
+	const normalized = [];
+	for (const message of messages) {
+		if (message?.role === 'tool') {
+			const toolCallId = typeof message.tool_call_id === 'string' && message.tool_call_id
+				? message.tool_call_id
+				: typeof message.id === 'string' && message.id
+					? message.id
+					: null;
+			if (!toolCallId) continue;
+			const output = stringifyToolContent(message);
+			normalized.push({
+				type: 'function_call_output',
+				call_id: toolCallId,
+				output,
+			});
+			continue;
+		}
+
+		const mapped = normalizeMessage(message);
+		const hasAssistantToolCalls = message?.role === 'assistant' && Array.isArray(message.tool_calls) && message.tool_calls.length > 0;
+		if (hasAssistantToolCalls) {
+			const functionCalls = message.tool_calls
+				.map((call, idx) => mapFunctionCallInput(call, idx))
+				.filter(Boolean);
+			normalized.push(...functionCalls);
+			if (mapped && Array.isArray(mapped.content) && mapped.content.length > 0) {
+				normalized.push(mapped);
+			}
+			continue;
+		}
+
+		if (mapped) {
+			normalized.push(mapped);
+		}
+	}
+	return normalized;
 }
 
-function toJSONString(value) {
-  if (value === null || value === undefined) return undefined;
-  if (typeof value === 'string') return value;
-  try {
-    return JSON.stringify(value);
-  } catch {
-    return undefined;
-  }
+function stringifyArguments(args) {
+	if (args == null) return '{}';
+	if (typeof args === 'string') {
+		return args;
+	}
+	try {
+		return JSON.stringify(args);
+	} catch {
+		return '{}';
+	}
 }
 
-function normalizeToolCallFromOutput(node) {
-  if (!node || typeof node !== 'object') return null;
-
-  const source = node.tool_call && typeof node.tool_call === 'object'
-    ? node.tool_call
-    : node;
-
-  const fn = typeof source.function === 'object' ? source.function : {};
-  const id = source.id || source.tool_call_id || source.call_id;
-  const name = fn.name || source.name;
-  const argsValue = fn.arguments !== undefined ? fn.arguments : source.arguments;
-  const args = toJSONString(argsValue);
-
-  if (!name && args === undefined) {
-    return null;
-  }
-
-  const normalized = {
-    id: id || `tool_${Math.random().toString(36).slice(2, 10)}`,
-    type: 'function',
-    function: {},
-  };
-
-  if (name) normalized.function.name = name;
-  if (args !== undefined) normalized.function.arguments = args;
-  if (fn.metadata) normalized.function.metadata = fn.metadata;
-  if (source.index !== undefined) normalized.index = source.index;
-
-  if (Object.keys(normalized.function).length === 0) {
-    delete normalized.function;
-    return null;
-  }
-
-  return normalized;
+function mapFunctionCallInput(call, index = 0) {
+	if (!call || typeof call !== 'object') return null;
+	const callId = call.id || call.call_id || call.tool_call_id || `call_${index}`;
+	const name = call.name || call.function?.name;
+	if (!callId || !name) return null;
+	const args = call.function?.arguments ?? call.arguments ?? call.args ?? {};
+	return {
+		type: 'function_call',
+		call_id: callId,
+		name,
+		arguments: stringifyArguments(args),
+	};
 }
 
-function extractToolCallsFromOutput(output) {
-  if (!output) return [];
+function mapToolCall(call, index = 0) {
+	if (!call || typeof call !== 'object') return null;
 
-  const collected = [];
-  const seen = new Set();
+	const id = call.id || call.call_id || call.tool_call_id || `call_${index}`;
+	const name = call.name || call.function?.name;
+	const args = call.arguments ?? call.function?.arguments ?? call.args;
 
-  const visit = (node) => {
-    if (!node) return;
-    if (Array.isArray(node)) {
-      for (const item of node) {
-        visit(item);
-      }
-      return;
-    }
-    if (typeof node !== 'object') return;
+	if (!name) return null;
 
-    if (node.type === 'tool_call' || node.type === 'function_call' || node.tool_call || node.function) {
-      const normalized = normalizeToolCallFromOutput(node);
-      if (normalized && !seen.has(normalized.id)) {
-        seen.add(normalized.id);
-        collected.push(normalized);
-      }
-    }
-
-    if (Array.isArray(node.tool_calls)) {
-      for (const call of node.tool_calls) {
-        const normalized = normalizeToolCallFromOutput(call);
-        if (normalized && !seen.has(normalized.id)) {
-          seen.add(normalized.id);
-          collected.push(normalized);
-        }
-      }
-    }
-
-    if (Array.isArray(node.content)) {
-      for (const contentItem of node.content) {
-        visit(contentItem);
-      }
-    }
-
-    if (Array.isArray(node.items)) {
-      for (const item of node.items) {
-        visit(item);
-      }
-    }
-
-    if (node.output) {
-      visit(node.output);
-    }
-
-    if (Array.isArray(node.outputs)) {
-      for (const item of node.outputs) {
-        visit(item);
-      }
-    }
-  };
-
-  visit(output);
-
-  return collected;
+	return {
+		id,
+		type: 'function',
+		function: {
+			name,
+			arguments: stringifyArguments(args),
+		},
+	};
 }
 
-function convertResponsesJson(json, context) {
-  if (!json || typeof json !== 'object') return json;
+function mapToolCalls(response) {
+	if (!response || typeof response !== 'object') return [];
+	const collections = [];
 
-  const response = json.response && typeof json.response === 'object'
-    ? json.response
-    : json;
+	if (Array.isArray(response.tool_calls)) {
+		collections.push(response.tool_calls);
+	}
 
-  const id = response.id || json.id || `resp_${Date.now()}`;
-  const model = response.model || json.model || context.requestedModel || context.getDefaultModel?.() || 'gpt-4.1-mini';
-  const created = normalizeTimestamp(response.created_at || response.created || json.created_at || json.created);
-  const status = response.status || json.status;
-  const statusLower = typeof status === 'string' ? status.toLowerCase() : undefined;
+	if (Array.isArray(response.output)) {
+		for (const item of response.output) {
+			if (Array.isArray(item?.tool_calls)) {
+				collections.push(item.tool_calls);
+			}
+			if (item?.type === 'tool_call' || item?.type === 'function_call') {
+				collections.push([item]);
+			}
+			if (Array.isArray(item?.content)) {
+				collections.push(item.content.filter((part) => part?.type === 'tool_call' || part?.type === 'function_call'));
+			}
+		}
+	}
 
-  const outputSource = response.output ?? json.output ?? response.output_text ?? json.output_text;
-  const assistantContent = collectTextFromOutput(outputSource);
-  const toolCalls = extractToolCallsFromOutput(outputSource);
+	if (response.response && typeof response.response === 'object') {
+		collections.push(mapToolCalls(response.response));
+	}
 
-  let finishReason;
-  if (statusLower === 'completed' || statusLower === 'succeeded') {
-    finishReason = 'stop';
-  } else if (statusLower === 'in_progress') {
-    finishReason = null;
-  } else if (statusLower === 'requires_action') {
-    finishReason = toolCalls.length > 0 ? 'tool_calls' : 'stop';
-  } else if (!status && toolCalls.length > 0) {
-    finishReason = 'tool_calls';
-  } else {
-    finishReason = status || 'stop';
-  }
+	const flattened = collections.flat().filter(Boolean);
+	const mapped = flattened
+		.map((call, idx) => mapToolCall(call, idx))
+		.filter(Boolean);
 
-  // Extract reasoning summary if present
-  const reasoningSummary = response.reasoning_summary ?? json.reasoning_summary;
-
-  const assistantMessage = {
-    role: 'assistant',
-    content: assistantContent,
-    ...(reasoningSummary && { reasoning_content: reasoningSummary }),
-  };
-
-  if (toolCalls.length > 0) {
-    assistantMessage.tool_calls = toolCalls;
-  }
-
-  if (outputSource !== undefined) {
-    assistantMessage.responses_output = outputSource;
-  }
-
-  const mapped = {
-    id,
-    object: 'chat.completion',
-    created,
-    model,
-    choices: [{
-      index: 0,
-      message: assistantMessage,
-      finish_reason: finishReason,
-    }],
-  };
-  if (json.usage || response.usage) {
-    mapped.usage = response.usage || json.usage;
-  }
-
-  if (status !== undefined) {
-    mapped.status = status;
-  }
-
-  if (outputSource !== undefined) {
-    mapped.responses_output = outputSource;
-  }
-
-  const errorInfo = response.error ?? json.error;
-  if (errorInfo) {
-    mapped.error = errorInfo;
-    assistantMessage.error = errorInfo;
-  }
-
-  if (response.incomplete_details || json.incomplete_details) {
-    mapped.incomplete_details = response.incomplete_details || json.incomplete_details;
-  }
-
-  if (response.reasoning) {
-    mapped.reasoning = response.reasoning;
-  }
-
-  return mapped;
+	// Remove duplicates by id when multiple sources overlap
+	const seen = new Map();
+	for (const call of mapped) {
+		if (!seen.has(call.id)) {
+			seen.set(call.id, call);
+		}
+	}
+		return Array.from(seen.values());
 }
 
-function ensureResponseId(state) {
-  if (!state.responseId) {
-    state.responseId = state.fallbackResponseId || `resp_${Date.now()}`;
-  }
-  return state.responseId;
+function extractOutputText(response) {
+	if (!response || typeof response !== 'object') return '';
+
+	if (typeof response.output_text === 'string') {
+		return response.output_text;
+	}
+
+	if (Array.isArray(response.output_text)) {
+		return response.output_text.join('');
+	}
+
+	const collect = (obj) => {
+		let text = '';
+		if (!obj || typeof obj !== 'object') return text;
+
+		if (Array.isArray(obj)) {
+			for (const item of obj) {
+				text += collect(item);
+			}
+			return text;
+		}
+
+		if (typeof obj.text === 'string') {
+			return obj.text;
+		}
+
+		if (Array.isArray(obj.content)) {
+			for (const part of obj.content) {
+				text += collect(part);
+			}
+		}
+
+		if (typeof obj.output_text === 'string') {
+			text += obj.output_text;
+		}
+
+		return text;
+	};
+
+	let text = '';
+	if (Array.isArray(response.output)) {
+		text += collect(response.output);
+	}
+
+	if (!text && response.response) {
+		text += extractOutputText(response.response);
+	}
+
+	return text;
 }
 
-function ensureModel(state) {
-  return state.model || 'gpt-4.1-mini';
+function mapUsage(usage) {
+	if (!usage || typeof usage !== 'object') return undefined;
+
+	const promptTokens = usage.prompt_tokens ?? usage.input_tokens ?? usage.input_token_count ?? usage.prompt_token_count;
+	const completionTokens = usage.completion_tokens ?? usage.output_tokens ?? usage.output_token_count ?? usage.completion_token_count;
+	const totalTokens = usage.total_tokens ?? usage.total_token_count ?? (promptTokens != null && completionTokens != null
+		? promptTokens + completionTokens
+		: undefined);
+	const reasoningTokens = usage.reasoning_tokens ?? usage.reasoning_token_count;
+
+	const mapped = {};
+	if (promptTokens != null) mapped.prompt_tokens = promptTokens;
+	if (completionTokens != null) mapped.completion_tokens = completionTokens;
+	if (totalTokens != null) mapped.total_tokens = totalTokens;
+	if (reasoningTokens != null) mapped.reasoning_tokens = reasoningTokens;
+
+	return Object.keys(mapped).length > 0 ? mapped : undefined;
 }
 
-function ensureToolCallState(state, id) {
-  if (!state.toolCalls) {
-    state.toolCalls = new Map();
-  }
-  if (!state.toolCalls.has(id)) {
-    state.toolCalls.set(id, {
-      id,
-      type: 'function',
-      function: {
-        arguments: '',
-      },
-    });
-  }
-  return state.toolCalls.get(id);
+function inferFinishReason(response, toolCalls) {
+	const status = response?.status || response?.response?.status;
+
+	if (toolCalls && toolCalls.length > 0) {
+		return 'tool_calls';
+	}
+
+	if (status === 'incomplete') {
+		const reason = response?.incomplete_details?.reason || response?.response?.incomplete_details?.reason;
+		if (reason === 'max_output_tokens') return 'length';
+		if (reason === 'content_filter') return 'content_filter';
+		return 'stop';
+	}
+
+	if (status === 'failed') return 'error';
+	if (status === 'cancelled' || status === 'canceled') return 'cancelled';
+
+	return 'stop';
 }
 
-function appendToolCallDelta(event, state) {
-  const payload = (event && typeof event === 'object' && (event.delta || event.tool_call)) || event;
-  if (!payload || typeof payload !== 'object') return null;
+function toChatCompletionResponse(response) {
+	const base = response?.response && typeof response.response === 'object'
+		? response.response
+		: response;
 
-  const toolCallId = payload.id
-    || payload.tool_call_id
-    || payload.call_id
-    || event.tool_call_id
-    || event.call_id;
+	const id = base?.id || response?.id || `resp_${Date.now()}`;
+	const model = response?.model || base?.model;
+	const created = base?.created ?? base?.created_at ?? response?.created ?? Math.floor(Date.now() / 1000);
 
-  if (!toolCallId) return null;
+	const toolCalls = mapToolCalls(response);
+	const text = extractOutputText(response);
+	const finishReason = inferFinishReason(response, toolCalls);
 
-  const entry = ensureToolCallState(state, toolCallId);
+	const message = {
+		role: 'assistant',
+		content: text ?? '',
+	};
 
-  const fn = typeof payload.function === 'object' ? payload.function : {};
-  if (fn.name) {
-    entry.function.name = fn.name;
-  } else if (payload.name && !entry.function.name) {
-    entry.function.name = payload.name;
-  }
+		if (toolCalls.length > 0) {
+			message.tool_calls = toolCalls;
+		if (!message.content) {
+			message.content = '';
+		}
+	}
 
-  if (payload.type) {
-    entry.type = payload.type;
-  }
+	const completion = {
+		id,
+		object: 'chat.completion',
+		created,
+		model,
+		choices: [{
+			index: 0,
+			message,
+			finish_reason: finishReason,
+		}],
+	};
 
-  if (fn.metadata) {
-    entry.function.metadata = { ...(entry.function.metadata || {}), ...fn.metadata };
-  }
+	const usage = mapUsage(response?.usage || base?.usage);
+	if (usage) {
+		completion.usage = usage;
+	}
 
-  const argsValue = fn.arguments !== undefined ? fn.arguments : payload.arguments;
-  let argsDelta;
-  if (argsValue !== undefined) {
-    if (typeof argsValue === 'string') {
-      argsDelta = argsValue;
-    } else {
-      argsDelta = toJSONString(argsValue) ?? '';
-    }
-    entry.function.arguments = (entry.function.arguments || '') + (argsDelta || '');
-  }
+	if (typeof response?.system_fingerprint === 'string') {
+		completion.system_fingerprint = response.system_fingerprint;
+	}
 
-  const chunkToolCall = {
-    id: entry.id,
-    type: entry.type || 'function',
-    function: {},
-  };
-
-  if (entry.function.name) {
-    chunkToolCall.function.name = entry.function.name;
-  }
-  if (argsDelta !== undefined) {
-    chunkToolCall.function.arguments = argsDelta;
-  }
-  if (entry.function.metadata) {
-    chunkToolCall.function.metadata = entry.function.metadata;
-  }
-
-  if (payload.index !== undefined) {
-    chunkToolCall.index = payload.index;
-  } else if (event.output_index !== undefined) {
-    chunkToolCall.index = event.output_index;
-  }
-
-  if (Object.keys(chunkToolCall.function).length === 0) {
-    delete chunkToolCall.function;
-  }
-
-  if (!chunkToolCall.function && argsDelta === undefined && !chunkToolCall.index) {
-    return null;
-  }
-
-  return chunkToolCall;
+	return completion;
 }
 
-function finalizeToolCall(event, state) {
-  const payload = (event && typeof event === 'object' && (event.tool_call || event.delta)) || event;
-  if (!payload || typeof payload !== 'object') return null;
-
-  const toolCallId = payload.id
-    || payload.tool_call_id
-    || payload.call_id
-    || event.tool_call_id
-    || event.call_id;
-
-  if (!toolCallId) return null;
-
-  const entry = ensureToolCallState(state, toolCallId);
-
-  const fn = typeof payload.function === 'object' ? payload.function : {};
-  if (fn.name) {
-    entry.function.name = fn.name;
-  }
-
-  if (fn.metadata) {
-    entry.function.metadata = { ...(entry.function.metadata || {}), ...fn.metadata };
-  }
-
-  const argsValue = fn.arguments !== undefined ? fn.arguments : payload.arguments;
-  if (argsValue !== undefined) {
-    const args = typeof argsValue === 'string' ? argsValue : toJSONString(argsValue) ?? '';
-    entry.function.arguments = args;
-  }
-
-  if (payload.type) {
-    entry.type = payload.type;
-  }
-
-  const normalized = {
-    id: entry.id,
-    type: entry.type || 'function',
-    function: {},
-  };
-
-  if (entry.function.name) {
-    normalized.function.name = entry.function.name;
-  }
-  if (entry.function.arguments !== undefined) {
-    normalized.function.arguments = entry.function.arguments;
-  }
-  if (entry.function.metadata) {
-    normalized.function.metadata = entry.function.metadata;
-  }
-
-  if (payload.index !== undefined) {
-    normalized.index = payload.index;
-  } else if (event.output_index !== undefined) {
-    normalized.index = event.output_index;
-  }
-
-  if (Object.keys(normalized.function).length === 0) {
-    delete normalized.function;
-    return null;
-  }
-
-  if (state.toolCalls && typeof state.toolCalls.delete === 'function') {
-    state.toolCalls.delete(toolCallId);
-  }
-
-  return normalized;
+function defaultModelFromContext(context) {
+	if (context?.model) return context.model;
+	if (typeof context?.getDefaultModel === 'function') {
+		try {
+			return context.getDefaultModel();
+		} catch {
+			return undefined;
+		}
+	}
+	return undefined;
 }
 
-function convertStreamingEvent(event, state) {
-  if (!event || typeof event !== 'object') return null;
+function transformStreamingResponse(response, context = {}) {
+	if (!response || typeof response !== 'object' || !response.body || typeof response.body.on !== 'function') {
+		return response;
+	}
 
-  if (event.response && typeof event.response === 'object') {
-    if (event.response.id) state.responseId = event.response.id;
-    if (event.response.model) state.model = event.response.model;
-  }
-  if (event.response_id) state.responseId = event.response_id;
-  if (event.model) state.model = event.model;
+	const defaultModel = defaultModelFromContext(context);
+	const upstream = response.body;
+	const downstream = new PassThrough();
 
-  switch (event.type) {
-    case 'response.output_text.delta': {
-      const deltaText = typeof event.delta === 'string'
-        ? event.delta
-        : asString(event.delta);
-      if (!deltaText) return null;
-      const chunk = createChatCompletionChunk(
-        ensureResponseId(state),
-        ensureModel(state),
-        { content: deltaText },
-        null,
-      );
-      return chunk;
-    }
-    case 'response.output_text.done': {
-      const hasActiveToolCalls = Boolean(state.toolCalls && state.toolCalls.size > 0);
-      const shouldSignalStop = !hasActiveToolCalls && !state.sentFinalChunk;
-      if (!hasActiveToolCalls && !state.sentFinalChunk) {
-        state.sentFinalChunk = true;
-      }
-      return createChatCompletionChunk(
-        ensureResponseId(state),
-        ensureModel(state),
-        { output_done: true },
-        shouldSignalStop ? 'stop' : null,
-      );
-    }
-    case 'response.tool_call.delta':
-    case 'response.tool_calls.delta':
-    case 'response.function_call_arguments.delta': {
-      const toolCallDelta = appendToolCallDelta(event, state);
-      if (!toolCallDelta) return null;
-      return createChatCompletionChunk(
-        ensureResponseId(state),
-        ensureModel(state),
-        { tool_calls: [toolCallDelta] },
-        null,
-      );
-    }
-    case 'response.tool_call.done':
-    case 'response.tool_calls.done': {
-      const toolCall = finalizeToolCall(event, state);
-      if (!toolCall) return null;
-      return createChatCompletionChunk(
-        ensureResponseId(state),
-        ensureModel(state),
-        { tool_calls: [toolCall] },
-        'tool_calls',
-      );
-    }
-    case 'response.completed': {
-      const alreadySent = Boolean(state.sentFinalChunk);
-      if (!alreadySent) {
-        state.sentFinalChunk = true;
-      }
-      const chunk = createChatCompletionChunk(
-        ensureResponseId(state),
-        ensureModel(state),
-        { completed: true },
-        alreadySent ? null : 'stop',
-      );
-      return chunk;
-    }
-    case 'response.refusal.delta': {
-      const deltaText = typeof event.delta === 'string' ? event.delta : asString(event.delta);
-      if (!deltaText) return null;
-      const chunk = createChatCompletionChunk(
-        ensureResponseId(state),
-        ensureModel(state),
-        { refusal: deltaText },
-        null,
-      );
-      return chunk;
-    }
-    case 'response.error': {
-      state.sentFinalChunk = true;
-      const errorPayload = event.error || event;
-      const chunk = createChatCompletionChunk(
-        ensureResponseId(state),
-        ensureModel(state),
-        { error: errorPayload },
-        'error',
-      );
-      return chunk;
-    }
-    default:
-      return null;
-  }
+	const state = {
+		id: null,
+		model: defaultModel,
+		roleSent: false,
+		finishReason: null,
+		usage: null,
+		completed: false,
+	};
+
+	function ensureRoleChunk() {
+		if (state.roleSent) return;
+		const chunk = createChatCompletionChunk(state.id || `resp_${Date.now()}`, state.model || defaultModel || 'unknown', { role: 'assistant' });
+		downstream.write(`data: ${JSON.stringify(chunk)}\n\n`);
+		state.roleSent = true;
+	}
+
+	function sendContent(text) {
+		if (!text) return;
+		ensureRoleChunk();
+		const chunk = createChatCompletionChunk(state.id || `resp_${Date.now()}`, state.model || defaultModel || 'unknown', { content: text });
+		downstream.write(`data: ${JSON.stringify(chunk)}\n\n`);
+	}
+
+	function sendFinalChunk() {
+		if (state.completed) return;
+		state.completed = true;
+		const chunk = createChatCompletionChunk(state.id || `resp_${Date.now()}`, state.model || defaultModel || 'unknown', {}, state.finishReason || 'stop');
+		if (state.usage) chunk.usage = state.usage;
+		downstream.write(`data: ${JSON.stringify(chunk)}\n\n`);
+	}
+
+	let buffer = '';
+
+	upstream.on('data', (chunk) => {
+		buffer += chunk.toString();
+		const parts = buffer.split(/\n\n/);
+		buffer = parts.pop() || '';
+
+		for (const part of parts) {
+			if (!part) continue;
+			const dataLines = part
+				.split('\n')
+				.filter((line) => line.startsWith('data:'))
+				.map((line) => line.replace(/^data:\s*/, ''));
+
+			if (dataLines.length === 0) continue;
+
+			for (const dataLine of dataLines) {
+				if (dataLine === '[DONE]') {
+					sendFinalChunk();
+					downstream.write('data: [DONE]\n\n');
+					downstream.end();
+					upstream.destroy();
+					return;
+				}
+
+				let payload;
+				try {
+					payload = JSON.parse(dataLine);
+				} catch {
+					continue;
+				}
+
+				if (!payload || typeof payload !== 'object') continue;
+
+				if (payload.response && !state.id) {
+					state.id = payload.response.id || state.id;
+					state.model = payload.response.model || state.model;
+				}
+
+				if (typeof payload.model === 'string' && !state.model) {
+					state.model = payload.model;
+				}
+
+				switch (payload.type) {
+					case 'response.created':
+					case 'response.in_progress':
+						state.id = payload.response?.id || state.id;
+						state.model = payload.response?.model || state.model;
+						break;
+					case 'response.output_text.delta':
+						if (typeof payload.delta === 'string') {
+							sendContent(payload.delta);
+						}
+						break;
+					case 'response.output_text.done':
+						if (typeof payload.text === 'string') {
+							sendContent(payload.text);
+						}
+						break;
+					case 'response.refusal.delta':
+						if (typeof payload.delta === 'string') {
+							sendContent(payload.delta);
+						}
+						break;
+					case 'response.completed': {
+						state.id = payload.response?.id || state.id;
+						state.model = payload.response?.model || state.model;
+						state.finishReason = inferFinishReason(payload.response, []);
+						const usage = mapUsage(payload.response?.usage);
+						if (usage) state.usage = usage;
+						sendFinalChunk();
+						downstream.write('data: [DONE]\n\n');
+						downstream.end();
+						upstream.destroy();
+						break;
+					}
+					case 'response.failed':
+						state.finishReason = 'error';
+						sendFinalChunk();
+						downstream.write('data: [DONE]\n\n');
+						downstream.end();
+						upstream.destroy();
+						break;
+					default:
+						break;
+				}
+			}
+		}
+	});
+
+	upstream.on('end', () => {
+		sendFinalChunk();
+		downstream.write('data: [DONE]\n\n');
+		downstream.end();
+	});
+
+	upstream.on('error', (err) => {
+		downstream.destroy(err);
+	});
+
+	return new Proxy(response, {
+		get(target, prop, receiver) {
+			if (prop === 'body') {
+				return downstream;
+			}
+			if (prop === 'clone' && typeof target.clone === 'function') {
+				return () => transformStreamingResponse(target.clone(), context);
+			}
+			return Reflect.get(target, prop, receiver);
+		},
+	});
 }
 
-function buildStreamingResponse(providerResponse, context) {
-  const upstream = providerResponse?.body;
-  if (!upstream || typeof upstream.on !== 'function') {
-    return providerResponse;
-  }
+function wrapJsonResponse(response) {
+	if (!response || typeof response !== 'object' || typeof response.json !== 'function') {
+		return response;
+	}
 
-  const transformed = new Readable({ read() {} });
-  const state = {
-    responseId: null,
-    model: context.requestedModel || context.getDefaultModel?.() || 'gpt-4.1-mini',
-    fallbackResponseId: context.fallbackResponseId,
-    toolCalls: new Map(),
-    sentFinalChunk: false,
-  };
-  let leftover = '';
-
-  upstream.on('data', (chunk) => {
-    try {
-      leftover = parseSSEStream(
-        chunk,
-        leftover,
-        (event) => {
-          const converted = convertStreamingEvent(event, state);
-          if (!converted) return;
-          transformed.push(`data: ${JSON.stringify(converted)}\n\n`);
-        },
-        () => {
-          transformed.push('data: [DONE]\n\n');
-        },
-        () => {
-          // Ignore JSON parse errors for individual events
-        },
-      );
-    } catch {
-      // Swallow errors to keep parity with passthrough behaviour
-    }
-  });
-
-  upstream.on('end', () => {
-    if (leftover && leftover.trim()) {
-      transformed.push(leftover);
-    }
-    transformed.push(null);
-  });
-
-  upstream.on('error', (err) => {
-    transformed.destroy(err);
-  });
-
-  const headers = (() => {
-    try {
-      const h = new Headers(providerResponse.headers);
-      h.set('content-type', 'text/event-stream');
-      return h;
-    } catch {
-      return providerResponse.headers;
-    }
-  })();
-
-  return {
-    ok: providerResponse.ok,
-    status: providerResponse.status,
-    statusText: providerResponse.statusText,
-    headers,
-    url: providerResponse.url,
-    redirected: providerResponse.redirected,
-    type: providerResponse.type,
-    body: transformed,
-    clone() {
-      throw new Error('Streaming response cannot be cloned');
-    },
-    async json() {
-      throw new Error('Cannot call json() on streaming response');
-    },
-    async text() {
-      const chunks = [];
-      for await (const chunk of transformed) {
-        chunks.push(Buffer.from(chunk));
-      }
-      return Buffer.concat(chunks).toString('utf8');
-    },
-    async arrayBuffer() {
-      const text = await this.text();
-      return Buffer.from(text, 'utf8');
-    },
-  };
+	return new Proxy(response, {
+		get(target, prop, receiver) {
+			if (prop === 'json') {
+				return async () => {
+					const payload = await target.json();
+					if (target.ok) {
+						return toChatCompletionResponse(payload);
+					}
+					return payload;
+				};
+			}
+			if (prop === 'clone' && typeof target.clone === 'function') {
+				return () => wrapJsonResponse(target.clone());
+			}
+			return Reflect.get(target, prop, receiver);
+		},
+	});
 }
 
 export class ResponsesAPIAdapter extends BaseAdapter {
-  constructor(options = {}) {
-    super(options);
-    this.supportsReasoningControls = options.supportsReasoningControls || ((_model) => false);
-    this.getDefaultModel = options.getDefaultModel || (() => undefined);
-  }
+	constructor(options = {}) {
+		super(options);
+		this.supportsReasoningControls = options.supportsReasoningControls || (() => false);
+		this.getDefaultModel = options.getDefaultModel || (() => undefined);
+	}
 
-  translateRequest(internalRequest = {}, context = {}) {
-    const payload = omitReservedKeys(internalRequest);
+	translateRequest(internalRequest = {}, context = {}) {
+		const payload = omitReservedKeys(internalRequest);
 
-    // Extract previous_response_id for message optimization logic
-    const responseId = internalRequest.previous_response_id;
+		const resolveDefaultModel = context.getDefaultModel || this.getDefaultModel;
+		const model = payload.model || (typeof resolveDefaultModel === 'function' ? resolveDefaultModel() : undefined);
+		if (!model) {
+			throw new Error('OpenAI Responses API requires a model');
+		}
 
-    const resolveDefaultModel = context.getDefaultModel || this.getDefaultModel;
-    const model = payload.model || resolveDefaultModel();
-    if (!model) {
-      throw new Error('OpenAI provider requires a model');
-    }
+		const messages = Array.isArray(payload.messages) ? payload.messages : [];
+		const input = normalizeMessages(messages);
+		if (input.length === 0 && typeof payload.input === 'string') {
+			input.push({ role: 'user', content: [{ type: 'input_text', text: payload.input }] });
+		}
 
-    const messages = Array.isArray(payload.messages) ? payload.messages : [];
-    const instructions = extractSystemInstructions(messages);
+		if (input.length === 0) {
+			throw new Error('OpenAI Responses API requires at least one message');
+		}
 
-    // When previous_response_id is provided, only send the latest message for context efficiency
-    let input;
-    if (responseId && messages.length > 0) {
-      // Find the last non-system message (should be the user's new message)
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage && lastMessage.role !== 'system') {
-        input = normalizeMessagesToInput([lastMessage]);
-      } else {
-        // Fallback: find the last non-system message
-        const nonSystemMessages = messages.filter(msg => msg.role !== 'system');
-        input = nonSystemMessages.length > 0
-          ? normalizeMessagesToInput([nonSystemMessages[nonSystemMessages.length - 1]])
-          : normalizeMessagesToInput(messages);
-      }
-    } else {
-      input = normalizeMessagesToInput(messages);
-    }
+		const request = {
+			model,
+			input,
+		};
 
-    if (input.length === 0) {
-      throw new Error('OpenAI provider requires at least one non-system message');
-    }
+		if (payload.previous_response_id) {
+			request.previous_response_id = payload.previous_response_id;
+		}
 
-    const translated = {
-      model,
-      input,
-    };
+		if (payload.stream === true) {
+			request.stream = true;
+		}
 
-    if (instructions) {
-      translated.instructions = instructions;
-    }
+		const tools = normalizeTools(payload.tools);
+		if (tools) {
+			request.tools = tools;
+			const mappedChoice = mapToolChoice(payload.tool_choice);
+			if (mappedChoice) {
+				request.tool_choice = mappedChoice;
+			} else if (payload.tool_choice === 'none' || payload.tool_choice === 'required' || payload.tool_choice === 'auto') {
+				request.tool_choice = payload.tool_choice;
+			}
+		}
 
-    if ('stream' in payload) {
-      translated.stream = Boolean(payload.stream);
-    }
+		if (payload.max_output_tokens != null) {
+			request.max_output_tokens = payload.max_output_tokens;
+		} else if (payload.max_completion_tokens != null) {
+			request.max_output_tokens = payload.max_completion_tokens;
+		} else if (payload.max_tokens != null) {
+			request.max_output_tokens = payload.max_tokens;
+		}
 
-    // Handle reasoning parameters specially
-    const reasoning = {};
-    if (payload.reasoning_effort !== undefined) {
-      reasoning.effort = payload.reasoning_effort;
-    }
-    if (payload.reasoning_summary !== undefined) {
-      reasoning.summary = payload.reasoning_summary;
-    }
+		for (const key of RESPONSES_PASSTHROUGH_KEYS) {
+			if (key === 'tool_choice') continue; // handled separately
+			if (payload[key] !== undefined) {
+				request[key] = payload[key];
+			}
+		}
 
-    // Auto-set reasoning_summary to 'auto' if reasoning is enabled but summary not explicitly set
-    // if (payload.reasoning_effort !== undefined && payload.reasoning_summary === undefined) {
-    //   reasoning.summary = 'auto';
-    // }
+		const supportsReasoningControls = context.supportsReasoningControls || this.supportsReasoningControls;
+		if (!supportsReasoningControls(model)) {
+			delete request.reasoning_effort;
+			delete request.verbosity;
+		}
 
-    // Handle text parameters specially
-    const text = {};
-    if (payload.verbosity !== undefined) {
-      text.verbosity = payload.verbosity;
-    }
+		return defineEndpoint(request);
+	}
 
-    const tools = normalizeTools(payload.tools);
-    if (tools) {
-      translated.tools = tools;
-    }
+	translateResponse(providerResponse, context = {}) {
+		if (typeof providerResponse === 'string') {
+			try {
+				return toChatCompletionResponse(JSON.parse(providerResponse));
+			} catch {
+				return providerResponse;
+			}
+		}
 
-    const toolChoice = normalizeToolChoice(payload.tool_choice);
-    if (toolChoice !== undefined) {
-      translated.tool_choice = toolChoice;
-    }
+		if (!providerResponse || typeof providerResponse !== 'object') {
+			return providerResponse;
+		}
 
-    if (payload.parallel_tool_calls !== undefined) {
-      translated.parallel_tool_calls = Boolean(payload.parallel_tool_calls);
-    }
+		const contentType = providerResponse.headers?.get?.('content-type') || providerResponse.headers?.get?.('Content-Type') || '';
+		const isStream = typeof contentType === 'string' && contentType.includes('text/event-stream');
 
-    for (const [key, value] of Object.entries(payload)) {
-      if (value === undefined) continue;
-      if (key === 'messages' || key === 'model' || key === 'stream' || key === 'tools' || key === 'tool_choice' || key === 'parallel_tool_calls') continue;
-      if (key === 'reasoning_effort' || key === 'reasoning_summary' || key === 'verbosity') continue;
-      if (RESPONSES_ALLOWED_REQUEST_KEYS.has(key)) {
-        translated[key] = value;
-      }
-    }
+		if (isStream && providerResponse.ok) {
+			return transformStreamingResponse(providerResponse, context);
+		}
 
-    // Add reasoning object if it has any properties and model supports it
-    if (Object.keys(reasoning).length > 0 && this.supportsReasoningControls(model)) {
-      translated.reasoning = reasoning;
-    }
+		if (typeof providerResponse.json === 'function') {
+			return wrapJsonResponse(providerResponse);
+		}
 
-    // Add text object if it has any properties and model supports reasoning controls
-    if (Object.keys(text).length > 0 && this.supportsReasoningControls(model)) {
-      translated.text = text;
-    }
+		return providerResponse;
+	}
 
-    context.__isStream = translated.stream === true;
-    context.requestedModel = model;
-    context.fallbackResponseId = payload.id;
-
-    Object.defineProperty(translated, '__endpoint', {
-      value: '/v1/responses',
-      enumerable: false,
-      configurable: false,
-      writable: false,
-    });
-
-    return translated;
-  }
-
-  async translateResponse(providerResponse, context = {}) {
-    if (!providerResponse) return providerResponse;
-
-    if (context.__isStream) {
-      return buildStreamingResponse(providerResponse, context);
-    }
-
-    if (!providerResponse.ok || typeof providerResponse.text !== 'function') {
-      return providerResponse;
-    }
-
-    let raw;
-    try {
-      raw = await providerResponse.text();
-    } catch {
-      return providerResponse;
-    }
-
-    let parsed;
-    try {
-      parsed = raw ? JSON.parse(raw) : {};
-    } catch {
-      // If parsing fails, return original response text
-      return new Response(raw, {
-        status: providerResponse.status,
-        statusText: providerResponse.statusText,
-        headers: providerResponse.headers,
-      });
-    }
-
-    const mapped = convertResponsesJson(parsed, context);
-    const headers = (() => {
-      try {
-        const h = new Headers(providerResponse.headers);
-        h.set('content-type', 'application/json');
-        return h;
-      } catch {
-        return providerResponse.headers;
-      }
-    })();
-
-    return new Response(JSON.stringify(mapped), {
-      status: providerResponse.status,
-      statusText: providerResponse.statusText,
-      headers,
-    });
-  }
-
-  translateStreamChunk(chunk, context = {}) {
-    if (!chunk) return null;
-    if (context.__isStream) {
-      // Streaming translation happens in translateResponse; chunks are already normalized.
-      return chunk;
-    }
-    if (typeof chunk === 'string') {
-      const trimmed = chunk.trim();
-      if (!trimmed) return null;
-      if (trimmed === '[DONE]') return trimmed;
-      try {
-        return JSON.parse(trimmed);
-      } catch {
-        return null;
-      }
-    }
-    return chunk;
-  }
+	translateStreamChunk(chunk, _context = {}) {
+		if (!chunk) return null;
+		if (typeof chunk === 'string') {
+			const trimmed = chunk.trim();
+			if (!trimmed) return null;
+			if (trimmed === '[DONE]') return '[DONE]';
+			try {
+				return JSON.parse(trimmed);
+			} catch {
+				return null;
+			}
+		}
+		return chunk;
+	}
 }
