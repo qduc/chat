@@ -244,10 +244,17 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
   if (!config.persistence.enabled) return notImplemented(res);
   try {
     const sessionId = req.sessionId;
+    const userId = req.user?.id || null;
     if (!sessionId)
       return res
         .status(400)
         .json({ error: 'bad_request', message: 'Missing session id' });
+
+    if (!userId) {
+      return res
+        .status(401)
+        .json({ error: 'unauthorized', message: 'Authentication required' });
+    }
 
     const { content } = req.body || {};
     if (!content || typeof content !== 'string') {
@@ -263,6 +270,7 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
       messageId: req.params.messageId,
       conversationId: req.params.id,
       sessionId,
+      userId,
       content: content.trim(),
     });
 
@@ -271,7 +279,7 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
     }
 
     // Get conversation details for forking
-    const conversation = getConversationById({ id: req.params.id, sessionId });
+    const conversation = getConversationById({ id: req.params.id, sessionId, userId });
     if (!conversation) {
       return res.status(404).json({ error: 'not_found' });
     }
@@ -280,6 +288,7 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
     const newConversationId = forkConversationFromMessage({
       originalConversationId: req.params.id,
       sessionId,
+      userId,
       messageSeq: message.seq,
       title: conversation.title,
       provider_id: conversation.provider_id,
@@ -290,6 +299,7 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
     deleteMessagesAfterSeq({
       conversationId: req.params.id,
       sessionId,
+      userId,
       afterSeq: message.seq,
     });
 

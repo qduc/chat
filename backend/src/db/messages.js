@@ -123,16 +123,26 @@ export function getLastMessage({ conversationId }) {
   return message;
 }
 
-export function updateMessageContent({ messageId, conversationId, sessionId, content }) {
+export function updateMessageContent({ messageId, conversationId, sessionId, userId = null, content }) {
   const db = getDb();
   const now = new Date().toISOString();
 
-  const message = db.prepare(
-    `SELECT m.id, m.conversation_id, m.role, m.seq
+  let query = `SELECT m.id, m.conversation_id, m.role, m.seq
      FROM messages m
      JOIN conversations c ON m.conversation_id = c.id
-     WHERE m.id = @messageId AND c.id = @conversationId AND c.session_id = @sessionId AND c.deleted_at IS NULL`
-  ).get({ messageId, conversationId, sessionId });
+     WHERE m.id = @messageId AND c.id = @conversationId AND c.deleted_at IS NULL`;
+
+  const params = { messageId, conversationId, sessionId, userId };
+
+  if (userId) {
+    query += ` AND c.user_id = @userId`;
+  } else if (sessionId) {
+    query += ` AND c.session_id = @sessionId AND c.user_id IS NULL`;
+  } else {
+    return null;
+  }
+
+  const message = db.prepare(query).get(params);
 
   if (!message) return null;
 
@@ -143,12 +153,21 @@ export function updateMessageContent({ messageId, conversationId, sessionId, con
   return message;
 }
 
-export function deleteMessagesAfterSeq({ conversationId, sessionId, afterSeq }) {
+export function deleteMessagesAfterSeq({ conversationId, sessionId, userId = null, afterSeq }) {
   const db = getDb();
 
-  const conversation = db.prepare(
-    `SELECT id FROM conversations WHERE id = @conversationId AND session_id = @sessionId AND deleted_at IS NULL`
-  ).get({ conversationId, sessionId });
+  let query = `SELECT id FROM conversations WHERE id = @conversationId AND deleted_at IS NULL`;
+  const params = { conversationId, sessionId, userId };
+
+  if (userId) {
+    query += ` AND user_id = @userId`;
+  } else if (sessionId) {
+    query += ` AND session_id = @sessionId AND user_id IS NULL`;
+  } else {
+    return false;
+  }
+
+  const conversation = db.prepare(query).get(params);
 
   if (!conversation) return false;
 

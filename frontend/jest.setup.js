@@ -97,6 +97,28 @@ if (typeof global.Response === 'undefined') {
 			this._rawBody = body;
 			this.status = init.status || 200;
 			this.ok = this.status >= 200 && this.status < 300;
+			const headerEntries = new Map();
+			if (init.headers) {
+				for (const [key, value] of Object.entries(init.headers)) {
+					headerEntries.set(String(key).toLowerCase(), String(value));
+				}
+			} else if (typeof body === 'string') {
+				headerEntries.set('content-type', 'application/json');
+			} else if (body instanceof ReadableStream) {
+				headerEntries.set('content-type', 'text/event-stream');
+			}
+			this.headers = {
+				get: (name) => headerEntries.get(String(name).toLowerCase()) || null,
+				has: (name) => headerEntries.has(String(name).toLowerCase()),
+				set: (name, value) => {
+					headerEntries.set(String(name).toLowerCase(), String(value));
+				},
+				append: (name, value) => {
+					const key = String(name).toLowerCase();
+					const existing = headerEntries.get(key);
+					headerEntries.set(key, existing ? `${existing}, ${value}` : String(value));
+				}
+			};
 			// If body is string, expose a ReadableStream over the encoded string
 			if (typeof body === 'string') {
 				const encoder = new TextEncoder();
@@ -141,6 +163,13 @@ if (typeof global.Response === 'undefined') {
 				return out;
 			}
 			return '';
+		}
+		async blob() {
+			const text = await this.text();
+			if (typeof Blob !== 'undefined') {
+				return new Blob([text], { type: this.headers.get('content-type') || 'text/plain' });
+			}
+			return { size: text.length, type: this.headers.get('content-type') || 'text/plain' };
 		}
 	}
 	global.Response = ResponsePolyfill;

@@ -276,17 +276,18 @@ export function listConversationsIncludingDeleted({
   return { items, next_cursor };
 }
 
-export function forkConversationFromMessage({ originalConversationId, sessionId, messageSeq, title, provider_id, model }) {
+export function forkConversationFromMessage({ originalConversationId, sessionId, userId = null, messageSeq, title, provider_id, model }) {
   const db = getDb();
   const now = new Date().toISOString();
 
   const newConversationId = uuidv4();
   db.prepare(
     `INSERT INTO conversations (id, session_id, user_id, title, provider_id, model, metadata, created_at, updated_at)
-     VALUES (@id, @session_id, NULL, @title, @provider_id, @model, '{}', @now, @now)`
+     VALUES (@id, @session_id, @user_id, @title, @provider_id, @model, '{}', @now, @now)`
   ).run({
     id: newConversationId,
     session_id: sessionId,
+    user_id: userId,
     title: title || null,
     provider_id: provider_id || null,
     model: model || null,

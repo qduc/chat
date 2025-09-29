@@ -121,7 +121,7 @@ describe('ConversationManager', () => {
       .mockResolvedValue(
         new Response(JSON.stringify({ error: 'nope' }), { status: 501 })
       );
-    await expect(conversationManager.create()).rejects.toHaveProperty('status', 501);
+    await expect(conversationManager.create()).rejects.toThrow('HTTP 501: nope');
   });
 
   test('lists conversations with pagination and returns items with next cursor', async () => {
