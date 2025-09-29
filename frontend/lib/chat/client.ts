@@ -19,6 +19,7 @@ interface OpenAIStreamChunkChoiceDelta {
   tool_calls?: any[];
   tool_output?: any;
   reasoning?: string;
+  reasoning_content?: string; // Add reasoning_content
 }
 
 interface OpenAIStreamChunkChoice {
@@ -363,19 +364,22 @@ export class ChatClient {
       };
     }
 
-    if (delta?.reasoning) {
+    // Prioritize reasoning_content, then fall back to reasoning
+    const currentReasoning = delta?.reasoning_content ?? delta?.reasoning;
+
+    if (currentReasoning) {
       let contentToAdd = '';
 
       // If this is the first reasoning token, open the thinking tag
       if (!reasoningStarted) {
-        contentToAdd = '<thinking>' + delta.reasoning;
+        contentToAdd = '<thinking>' + currentReasoning;
         reasoningStarted = true;
       } else {
-        contentToAdd = delta.reasoning;
+        contentToAdd = currentReasoning;
       }
 
       onToken?.(contentToAdd);
-      onEvent?.({ type: 'reasoning', value: delta.reasoning });
+      onEvent?.({ type: 'reasoning', value: currentReasoning });
 
       return {
         content: contentToAdd,
