@@ -559,6 +559,11 @@ export function useChatState() {
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const assistantMsgRef = useRef<ChatMessage | null>(null);
   const inFlightRef = useRef<boolean>(false);
+  const modelRef = useRef(state.model);
+
+  useEffect(() => {
+    modelRef.current = state.model;
+  }, [state.model]);
 
   // Sync authentication state from AuthContext
   useEffect(() => {
@@ -608,13 +613,16 @@ export function useChatState() {
       dispatch({ type: 'SET_MODEL_LIST', payload: { groups: gs, options: flat, modelToProvider: modelProviderMap } });
 
       // Ensure current model exists in the new list, otherwise pick first
-      if (flat.length > 0 && !flat.some((o: any) => o.value === state.model)) {
-        dispatch({ type: 'SET_MODEL', payload: flat[0].value });
+      const currentModel = modelRef.current;
+      if (flat.length > 0 && !flat.some((o: any) => o.value === currentModel)) {
+        const fallbackModel = flat[0].value;
+        modelRef.current = fallbackModel;
+        dispatch({ type: 'SET_MODEL', payload: fallbackModel });
       }
     } catch (e) {
       // ignore
     }
-  }, [authReady, state.model, user]);
+  }, [authReady, user]);
 
   // Call loader on mount
   useEffect(() => {
