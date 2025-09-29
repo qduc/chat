@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { useSystemPrompts } from '../hooks/useSystemPrompts';
 import PromptDropdown from '../app/components/promptManager/PromptDropdown';
 import SaveAsModal from '../app/components/promptManager/SaveAsModal';
@@ -313,6 +313,18 @@ export function RightSidebar({
     setPendingAction(null);
   };
 
+  // Clear the textarea content only (frontend only)
+  const handleClearContent = () => {
+    if (effectiveSelectedPromptId) {
+      handleInlineChange("");
+    } else {
+      setNewPromptContent("");
+      if (onEffectivePromptChange) {
+        onEffectivePromptChange("");
+      }
+    }
+  };
+
   const selectedPrompt = effectiveSelectedPromptId ? getPromptById(effectiveSelectedPromptId) : null;
   const currentContent = effectiveSelectedPromptId
     ? getEffectivePromptContent(effectiveSelectedPromptId)
@@ -402,9 +414,18 @@ export function RightSidebar({
                   <div className="flex-1 flex flex-col min-h-0 px-4">
                     <label
                       htmlFor="prompt-content"
-                      className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                      className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2"
                     >
-                      Content
+                      <span>Content</span>
+                      <button
+                        type="button"
+                        onClick={handleClearContent}
+                        title="Clear content"
+                        className="ml-1 p-1 rounded hover:bg-gray-200 dark:hover:bg-neutral-700/40 text-gray-500 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                        aria-label="Clear content"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </label>
                     <textarea
                       id="prompt-content"
