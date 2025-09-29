@@ -200,15 +200,19 @@ export function ChatV2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchKey]);
 
-  const handleRetryLastAssistant = useCallback(async () => {
+  const handleRetryMessage = useCallback(async (messageId: string) => {
     if (state.status === 'streaming') return;
     if (state.messages.length === 0) return;
 
-    const last = state.messages[state.messages.length - 1];
-    if (last.role !== 'assistant') return;
+    // Find the message index
+    const idx = state.messages.findIndex(m => m.id === messageId);
+    if (idx === -1) return;
 
-    // Remove the last assistant message and regenerate
-    const base = state.messages.slice(0, -1);
+    const message = state.messages[idx];
+    if (message.role !== 'assistant') return;
+
+    // Keep only messages up to (but not including) the message being retried
+    const base = state.messages.slice(0, idx);
     actions.regenerate(base);
   }, [state.messages, state.status, actions]);
 
@@ -324,7 +328,7 @@ export function ChatV2() {
               onSaveEdit={actions.saveEdit}
               onApplyLocalEdit={handleApplyLocalEdit}
               onEditingContentChange={actions.updateEditContent}
-              onRetryLastAssistant={handleRetryLastAssistant}
+              onRetryMessage={handleRetryMessage}
             />
             {/* Removed soft fade to keep a cleaner boundaryless look */}
       <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-4xl px-6 z-30">

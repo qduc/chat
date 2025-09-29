@@ -28,7 +28,7 @@ interface MessageListProps {
   onSaveEdit: () => void;
   onApplyLocalEdit: () => void;
   onEditingContentChange: (content: string) => void;
-  onRetryLastAssistant: () => void;
+  onRetryMessage: (messageId: string) => void;
 }
 
 // Helper function to split messages with tool calls into separate messages
@@ -50,7 +50,7 @@ export function MessageList({
   onSaveEdit,
   onApplyLocalEdit,
   onEditingContentChange,
-  onRetryLastAssistant
+  onRetryMessage
 }: MessageListProps) {
   // Debug logging
   const bottomRef = useRef<HTMLDivElement | null>(null);
@@ -374,10 +374,10 @@ export function MessageList({
                             <span className="sr-only">Edit</span>
                           </button>
                         ) : (
-                          (isLastAssistant && !pending.streaming) && (
+                          !pending.streaming && (
                             <button
                               type="button"
-                              onClick={onRetryLastAssistant}
+                              onClick={() => onRetryMessage(m.id)}
                               title="Regenerate"
                               className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
                             >
