@@ -1,4 +1,5 @@
 import { PassThrough } from 'node:stream';
+import { appendFileSync } from 'node:fs';
 import { BaseAdapter } from './baseAdapter.js';
 import { createChatCompletionChunk } from '../streamUtils.js';
 
@@ -371,7 +372,122 @@ function mapToolCalls(response) {
 			seen.set(call.id, call);
 		}
 	}
-		return Array.from(seen.values());
+	return Array.from(seen.values());
+}
+
+function mapStreamingToolCall(call, index = 0) {
+	if (!call || typeof call !== 'object') return null;
+	const idx = typeof call.index === 'number' ? call.index : index;
+	const id = call.id || call.call_id || call.tool_call_id || `call_${idx}`;
+	const type = call.type === 'function_call' ? 'function' : (call.type || 'function');
+	const fn = call.function && typeof call.function === 'object' ? call.function : {};
+	const name = fn.name || call.name;
+	const argumentsDelta = fn.arguments_delta ?? call.arguments_delta;
+	const argumentsValue = fn.arguments ?? call.arguments ?? call.args;
+
+	if (!name) return null;
+
+	let args = '';
+	if (typeof argumentsDelta === 'string') {
+		args = argumentsDelta;
+	} else if (typeof argumentsValue === 'string') {
+		args = argumentsValue;
+	} else if (argumentsValue != null) {
+		args = stringifyArguments(argumentsValue);
+	}
+
+	const toolCall = {
+		index: idx,
+		id,
+		type,
+		function: {
+			name,
+		},
+	};
+
+	if (args) {
+		toolCall.function.arguments = args;
+	}
+
+	return toolCall;
+}
+
+function collectToolCallsFromPayload(payload) {
+	if (!payload || typeof payload !== 'object') return [];
+	const sources = [];
+
+	const pushCalls = (calls) => {
+		if (Array.isArray(calls)) {
+			sources.push(...calls);
+		}
+	};
+
+	// Handle Responses API streaming events
+	if (payload.type === 'response.output_item.added' && payload.item?.type === 'function_call') {
+		sources.push({
+			type: 'function_call',
+			id: payload.item.call_id,
+			call_id: payload.item.call_id,
+			name: payload.item.name,
+			arguments: payload.item.arguments || '',
+			index: payload.output_index ?? 0,
+		});
+	}
+
+	if (payload.type === 'response.function_call_arguments.delta') {
+		sources.push({
+			type: 'function_call',
+			call_id: payload.item_id,
+			arguments_delta: payload.delta || '',
+			index: payload.output_index ?? 0,
+		});
+	}
+
+	if (payload.type === 'response.output_item.done' && payload.item?.type === 'function_call') {
+		sources.push({
+			type: 'function_call',
+			id: payload.item.call_id,
+			call_id: payload.item.call_id,
+			name: payload.item.name,
+			arguments: payload.item.arguments || '',
+			index: payload.output_index ?? 0,
+		});
+	}
+
+	// Handle Chat Completions API format
+	pushCalls(payload.delta?.tool_calls);
+	pushCalls(payload.tool_calls);
+	pushCalls(payload.required_action?.submit_tool_outputs?.tool_calls);
+	pushCalls(payload.response?.required_action?.submit_tool_outputs?.tool_calls);
+	pushCalls(payload.response?.tool_calls);
+
+	if (Array.isArray(payload.output)) {
+		for (const item of payload.output) {
+			pushCalls(item?.tool_calls);
+			if (Array.isArray(item?.content)) {
+				pushCalls(item.content.filter((part) => Array.isArray(part?.tool_calls)).flatMap((part) => part.tool_calls));
+			}
+		}
+	}
+
+	const mapped = [];
+	const seen = new Map();
+	for (let i = 0; i < sources.length; i += 1) {
+		const candidate = mapStreamingToolCall(sources[i], i);
+		if (!candidate) continue;
+		const key = candidate.id || `${candidate.index}:${candidate.function?.name || ''}`;
+		if (!seen.has(key)) {
+			seen.set(key, candidate);
+			mapped.push(candidate);
+		} else {
+			const existing = seen.get(key);
+			if (candidate.function?.arguments) {
+				existing.function.arguments = (existing.function.arguments || '') + candidate.function.arguments;
+			}
+		}
+	}
+
+	return mapped;
 }
 
 function extractOutputText(response) {
@@ -541,6 +657,7 @@ function transformStreamingResponse(response, context = {}) {
 		finishReason: null,
 		usage: null,
 		completed: false,
+		toolCallsMap: new Map(), // Accumulate tool calls by index
 	};
 
 	function ensureRoleChunk() {
@@ -599,13 +716,83 @@ function transformStreamingResponse(response, context = {}) {
 
 				if (!payload || typeof payload !== 'object') continue;
 
-				if (payload.response && !state.id) {
-					state.id = payload.response.id || state.id;
-					state.model = payload.response.model || state.model;
+				try {
+					appendFileSync('/tmp/responses_stream.log', `${JSON.stringify(payload)}\n`);
+				} catch {
+					// ignore logging errors during debugging
 				}
 
-				if (typeof payload.model === 'string' && !state.model) {
+				const responseData = payload.response && typeof payload.response === 'object' ? payload.response : null;
+				if (responseData) {
+					if (responseData.id) state.id = responseData.id;
+					if (responseData.model) state.model = responseData.model;
+				}
+
+				if (typeof payload.id === 'string') {
+					state.id = payload.id;
+				}
+
+				if (typeof payload.model === 'string') {
 					state.model = payload.model;
+				}
+
+				const toolCallDeltas = collectToolCallsFromPayload(payload);
+				if (toolCallDeltas.length > 0) {
+					state.finishReason = 'tool_calls';
+					ensureRoleChunk();
+
+					// Accumulate tool calls and emit deltas
+					const deltaChunks = [];
+					for (const delta of toolCallDeltas) {
+						const idx = delta.index ?? 0;
+						const existing = state.toolCallsMap.get(idx) || {
+							index: idx,
+							id: delta.id || `call_${idx}`,
+							type: delta.type || 'function',
+							function: { name: '', arguments: '' },
+						};
+
+						// Track what changed for the delta
+						const deltaToEmit = { index: idx, id: existing.id, type: existing.type, function: {} };
+						let hasChanges = false;
+
+						// Update ID if new
+						if (delta.id && delta.id !== existing.id) {
+							existing.id = delta.id;
+							deltaToEmit.id = delta.id;
+							hasChanges = true;
+						}
+
+						// Update function name if new
+						if (delta.function?.name && delta.function.name !== existing.function.name) {
+							existing.function.name = delta.function.name;
+							deltaToEmit.function.name = delta.function.name;
+							hasChanges = true;
+						}
+
+						// Append arguments delta
+						if (delta.function?.arguments) {
+							existing.function.arguments += delta.function.arguments;
+							deltaToEmit.function.arguments = delta.function.arguments;
+							hasChanges = true;
+						}
+
+						state.toolCallsMap.set(idx, existing);
+
+						if (hasChanges) {
+							deltaChunks.push(deltaToEmit);
+						}
+					}
+
+					// Emit accumulated deltas
+					if (deltaChunks.length > 0) {
+						const chunk = createChatCompletionChunk(
+							state.id || `resp_${Date.now()}`,
+							state.model || defaultModel || 'unknown',
+							{ tool_calls: deltaChunks }
+						);
+						downstream.write(`data: ${JSON.stringify(chunk)}\n\n`);
+					}
 				}
 
 				switch (payload.type) {
@@ -620,9 +807,7 @@ function transformStreamingResponse(response, context = {}) {
 						}
 						break;
 					case 'response.output_text.done':
-						if (typeof payload.text === 'string') {
-							sendContent(payload.text);
-						}
+						// Skip - we already streamed all the deltas
 						break;
 					case 'response.refusal.delta':
 						if (typeof payload.delta === 'string') {
@@ -641,6 +826,9 @@ function transformStreamingResponse(response, context = {}) {
 						upstream.destroy();
 						break;
 					}
+					case 'response.required_action':
+						state.finishReason = 'tool_calls';
+						break;
 					case 'response.failed':
 						state.finishReason = 'error';
 						sendFinalChunk();
