@@ -251,7 +251,13 @@ export default function ModelSelector({
         <div className="absolute top-full left-0 w-80 mt-2 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 rounded-lg shadow-lg max-h-180 overflow-hidden z-50">
           {/* Provider Tabs */}
           {providerTabs.length > 1 && (
-            <div className="flex border-b border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800/50">
+            <div
+              className="flex flex-nowrap overflow-x-auto border-b border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800/50"
+              onWheel={(e) => {
+                e.preventDefault();
+                e.currentTarget.scrollLeft += e.deltaY;
+              }}
+            >
               {providerTabs.map((tab) => (
                 <button
                   key={tab.id}
