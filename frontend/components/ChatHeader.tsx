@@ -57,7 +57,7 @@ export function ChatHeader({ model, onModelChange, onProviderChange, onOpenSetti
   };
 
   return (
-    <header className="sticky top-0 z-10 bg-white/60 dark:bg-neutral-900/60 backdrop-blur-md">
+    <header className="sticky top-0 z-40 bg-white/60 dark:bg-neutral-900/60 backdrop-blur-md">
       <div className="px-6 py-4 flex items-center justify-between">
         <div className="flex items-center">
           <ModelSelector
@@ -71,7 +71,6 @@ export function ChatHeader({ model, onModelChange, onProviderChange, onOpenSetti
         </div>
 
         <div className="flex items-center gap-3">
-          <AuthButton onShowLogin={onShowLogin} onShowRegister={onShowRegister} />
           <button
             onClick={onOpenSettings}
             className="w-9 h-9 rounded-lg bg-slate-200 dark:bg-neutral-800 hover:bg-slate-300 dark:hover:bg-neutral-700 flex items-center justify-center shadow-sm transition-colors"
@@ -93,6 +92,7 @@ export function ChatHeader({ model, onModelChange, onProviderChange, onOpenSetti
               <Moon className="w-4 h-4 text-slate-700 dark:text-slate-200" />
             )}
           </button>
+          <AuthButton onShowLogin={onShowLogin} onShowRegister={onShowRegister} />
         </div>
       </div>
     </header>
