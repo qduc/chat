@@ -180,100 +180,51 @@ function toResponsesContent(message = {}) {
   const content = message?.content;
 
   if (role === 'tool') {
-    const template = {};
-    if (typeof message.tool_call_id === 'string' && message.tool_call_id) {
-      template.tool_call_id = message.tool_call_id;
-    }
-    if (typeof message.name === 'string' && message.name) {
-      template.name = message.name;
-    }
-
-    const ensureToolItem = (value) => {
-      if (value === null || value === undefined) return null;
-      if (typeof value === 'object') {
-        if (value.type === 'tool_result') {
-          const merged = { ...value };
-          if (template.tool_call_id && !merged.tool_call_id) {
-            merged.tool_call_id = template.tool_call_id;
-          }
-          if (template.name && !merged.name) {
-            merged.name = template.name;
-          }
-          if (merged.output === undefined) {
-            if (merged.text !== undefined) {
-              merged.output = resolveToolOutput(merged.text);
-              delete merged.text;
-            } else if (merged.content !== undefined) {
-              merged.output = resolveToolOutput(merged.content);
-              delete merged.content;
-            } else {
-              const fallbackSource = value?.text ?? value?.content ?? value;
-              merged.output = resolveToolOutput(fallbackSource);
-            }
-          }
-          merged.type = 'tool_result';
-          return merged;
-        }
-
-        const item = { type: 'tool_result', ...template };
-        if (value.output !== undefined) {
-          item.output = resolveToolOutput(value.output);
-          if (value.is_error !== undefined) {
-            item.is_error = Boolean(value.is_error);
-          }
-          return item;
-        }
-
-        if (value.text !== undefined) {
-          item.output = resolveToolOutput(value.text);
-          return item;
-        }
-
-        if (value.content !== undefined) {
-          item.output = resolveToolOutput(value.content);
-          return item;
-        }
-      }
-
-      return { type: 'tool_result', ...template, output: resolveToolOutput(value) };
+    const payload = {
+      ...(typeof message.tool_call_id === 'string' && message.tool_call_id
+        ? { tool_call_id: message.tool_call_id }
+        : {}),
+      ...(typeof message.name === 'string' && message.name
+        ? { name: message.name }
+        : {}),
+      output: resolveToolOutput(content),
     };
 
-    const items = Array.isArray(content)
-      ? content.map((part) => ensureToolItem(part)).filter(Boolean)
-      : [ensureToolItem(content)].filter(Boolean);
-
-    return items.length > 0
-      ? items
-      : [{ type: 'tool_result', ...template, output: '' }];
+    return [{
+      type: 'output_text',
+      text: JSON.stringify({ tool_result: payload }),
+    }];
   }
 
   if (role === 'assistant' && Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
-    return message.tool_calls.map((toolCall) => {
+    const serialized = message.tool_calls.map((toolCall) => {
       const fn = toolCall?.function || {};
       let args = fn.arguments;
       if (args !== undefined && typeof args !== 'string') {
         try {
-          args = JSON.stringify(args);
+          args = JSON.stringify(fn.arguments ?? {});
         } catch {
           args = '{}';
         }
       }
+
       return {
-        type: 'tool_call',
-        id: toolCall?.id,
+        id: toolCall?.id || null,
+        type: toolCall?.type || 'function',
         function: {
           name: fn.name,
           arguments: args ?? '{}',
         },
       };
     });
+
+    return [{
+      type: 'output_text',
+      text: JSON.stringify({ tool_calls: serialized }),
+    }];
   }
 
-  const type = role === 'user'
-    ? 'input_text'
-    : role === 'assistant'
-      ? 'output_text'
-      : 'output_text';
+  const type = role === 'user' ? 'input_text' : 'output_text';
 
   const ensureItem = (value) => {
     if (value === null || value === undefined) {
@@ -286,13 +237,13 @@ function toResponsesContent(message = {}) {
       if (typeof value.type === 'string') {
         if (value.text !== undefined) {
           return {
-            ...value,
+            type,
             text: typeof value.text === 'string' ? value.text : asString(value.text),
           };
         }
         if (value.content !== undefined) {
           return {
-            ...value,
+            type,
             text: asString(value.content),
           };
         }
@@ -320,13 +271,16 @@ function normalizeMessagesToInput(messages = []) {
   for (const message of messages) {
     if (!message || typeof message !== 'object') continue;
     if (message.role === 'system') continue;
-    const role = typeof message.role === 'string' ? message.role : 'user';
-    const content = toResponsesContent(message);
-    const normalized = { role, content };
 
-    if (role === 'tool' && typeof message.tool_call_id === 'string' && message.tool_call_id) {
-      normalized.tool_call_id = message.tool_call_id;
-    }
+    const content = toResponsesContent(message);
+    if (!content || content.length === 0) continue;
+
+    const rawRole = typeof message.role === 'string' ? message.role : undefined;
+    const role = rawRole === 'tool' || rawRole === 'function'
+      ? 'assistant'
+      : rawRole || 'user';
+
+    const normalized = { role, content };
 
     if (typeof message.name === 'string' && message.name) {
       normalized.name = message.name;
@@ -380,7 +334,6 @@ function collectTextFromOutput(output) {
 
 function normalizeTimestamp(value) {
   if (typeof value === 'number') {
-    // Accept both seconds and milliseconds
     return value > 1e12 ? Math.floor(value / 1000) : Math.floor(value);
   }
   return Math.floor(Date.now() / 1000);
@@ -429,8 +382,6 @@ function normalizeToolCallFromOutput(node) {
     return null;
   }
 
-  state.toolCalls.delete(toolCallId);
-
   return normalized;
 }
 
@@ -450,7 +401,7 @@ function extractToolCallsFromOutput(output) {
     }
     if (typeof node !== 'object') return;
 
-    if (node.type === 'tool_call' || node.tool_call || node.function) {
+    if (node.type === 'tool_call' || node.type === 'function_call' || node.tool_call || node.function) {
       const normalized = normalizeToolCallFromOutput(node);
       if (normalized && !seen.has(normalized.id)) {
         seen.add(normalized.id);
@@ -554,7 +505,6 @@ function convertResponsesJson(json, context) {
       finish_reason: finishReason,
     }],
   };
-
   if (json.usage || response.usage) {
     mapped.usage = response.usage || json.usage;
   }
