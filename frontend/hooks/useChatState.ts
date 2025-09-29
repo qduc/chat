@@ -270,6 +270,15 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
           const idx: number | undefined = typeof incoming.index === 'number' ? incoming.index : undefined;
           const id: string | undefined = incoming.id;
 
+          const resolveTextOffset = (prevOffset: any, nextOffset: any) => {
+            const asNumber = (value: any) => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
+            const prev = asNumber(prevOffset);
+            const next = asNumber(nextOffset);
+            if (prev !== undefined) return prev;
+            if (next !== undefined) return next;
+            return undefined;
+          };
+
           const mergeArgs = (prevFn: any = {}, nextFn: any = {}) => {
             const prevArgs = typeof prevFn.arguments === 'string' ? prevFn.arguments : '';
             const nextArgs = typeof nextFn.arguments === 'string' ? nextFn.arguments : '';
@@ -289,6 +298,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
             out[idx] = {
               ...prev,
               ...incoming,
+              textOffset: resolveTextOffset(prev?.textOffset, incoming?.textOffset),
               function: mergeArgs(prev.function, incoming.function)
             };
             return out;
@@ -301,6 +311,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
               out[found] = {
                 ...prev,
                 ...incoming,
+                textOffset: resolveTextOffset(prev?.textOffset, incoming?.textOffset),
                 function: mergeArgs(prev.function, incoming.function)
               };
               return out;
@@ -314,13 +325,14 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
               out[found] = {
                 ...prev,
                 ...incoming,
+                textOffset: resolveTextOffset(prev?.textOffset, incoming?.textOffset),
                 function: mergeArgs(prev.function, incoming.function)
               };
               return out;
             }
           }
 
-          out.push(incoming);
+          out.push({ ...incoming });
           return out;
         };
 
@@ -723,8 +735,17 @@ export function useChatState() {
     }
 
     if (event.type === 'tool_call') {
+      const currentContentLength = assistantMsgRef.current?.content?.length ?? 0;
+      const toolCallValue = event.value && typeof event.value === 'object'
+        ? {
+            ...event.value,
+            ...(event.value.function ? { function: { ...event.value.function } } : {}),
+            textOffset: currentContentLength,
+          }
+        : event.value;
+
       // Let reducer manage tool_calls to avoid duplicates from local snapshot
-      dispatch({ type: 'STREAM_TOOL_CALL', payload: { messageId: assistantId, toolCall: event.value } });
+      dispatch({ type: 'STREAM_TOOL_CALL', payload: { messageId: assistantId, toolCall: toolCallValue } });
     } else if (event.type === 'tool_output') {
       // Let reducer manage tool_outputs to avoid duplicates from local snapshot
       dispatch({ type: 'STREAM_TOOL_OUTPUT', payload: { messageId: assistantId, toolOutput: event.value } });

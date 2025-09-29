@@ -394,9 +394,23 @@ export class ChatClient {
     }
 
     if (delta?.tool_calls) {
+      let closingContent = '';
+
+      if (reasoningStarted) {
+        const closingTag = '</thinking>';
+        onToken?.(closingTag);
+        closingContent = closingTag;
+        reasoningStarted = false;
+      }
+
       for (const toolCall of delta.tool_calls) {
         onEvent?.({ type: 'tool_call', value: toolCall });
       }
+
+      return {
+        ...(closingContent ? { content: closingContent } : {}),
+        reasoningStarted
+      };
     }
 
     if (delta?.tool_output) {
