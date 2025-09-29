@@ -235,7 +235,7 @@ export default function ModelSelector({
   );
 
   return (
-    <div className={`relative ${className}`} ref={dropdownRef}>
+  <div className={`relative ${className}`} ref={dropdownRef}>
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 rounded-lg hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors min-w-48 w-56"
@@ -248,7 +248,7 @@ export default function ModelSelector({
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 w-80 mt-2 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 rounded-lg shadow-lg max-h-180 overflow-hidden z-50">
+        <div className="absolute top-full left-0 w-80 mt-2 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 rounded-lg shadow-lg max-h-[70vh] overflow-hidden z-50">
           {/* Provider Tabs */}
           {providerTabs.length > 1 && (
             <div
@@ -291,7 +291,7 @@ export default function ModelSelector({
           </div>
 
           {/* Model List */}
-          <div className="overflow-y-auto max-h-168">
+          <div className="overflow-y-auto max-h-[75vh]">
             {organizedModels.favorites.length > 0 && (
               <div>
                 <div className="px-3 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide bg-slate-50 dark:bg-neutral-800/50">
