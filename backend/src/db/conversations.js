@@ -164,6 +164,28 @@ export function updateConversationProviderId({ id, sessionId, userId = null, pro
   return info.changes > 0;
 }
 
+export function updateConversationModel({ id, sessionId, userId = null, model }) {
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  let query, params;
+
+  // Prioritize user-based access - authenticated users get their conversations
+  if (userId) {
+    query = `UPDATE conversations SET model=@model, updated_at=@now WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
+    params = { id, userId, model, now };
+  } else if (sessionId) {
+    // Fallback to session-based access for anonymous users
+    query = `UPDATE conversations SET model=@model, updated_at=@now WHERE id=@id AND session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
+    params = { id, sessionId, model, now };
+  } else {
+    return false;
+  }
+
+  const info = db.prepare(query).run(params);
+  return info.changes > 0;
+}
+
 export function countConversationsBySession(sessionId) {
   const db = getDb();
   const row = db

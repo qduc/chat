@@ -5,6 +5,7 @@ import {
   updateConversationTitle,
   updateConversationMetadata,
   updateConversationProviderId,
+  updateConversationModel,
 } from '../../db/conversations.js';
 import {
   clearAllMessages,
@@ -165,5 +166,16 @@ export class ConversationManager {
    */
   updateProviderId(conversationId, sessionId, userId = null, providerId) {
     updateConversationProviderId({ id: conversationId, sessionId, userId, providerId });
+  }
+
+  /**
+   * Update conversation model
+   * @param {string} conversationId - Conversation ID
+   * @param {string} sessionId - Session ID
+   * @param {string|null} userId - User ID (if authenticated)
+   * @param {string} model - New model
+   */
+  updateModel(conversationId, sessionId, userId = null, model) {
+    updateConversationModel({ id: conversationId, sessionId, userId, model });
   }
 }

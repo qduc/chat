@@ -181,12 +181,13 @@ export class SimplifiedPersistence {
     if (!this.conversationMeta) return;
 
     const incomingSystemPrompt = ConversationTitleService.extractSystemPrompt(bodyIn);
-    const { activeTools: incomingActiveTools = [] } = this.persistenceConfig.extractRequestSettings(bodyIn);
+    const { activeTools: incomingActiveTools = [], model: incomingModel } = this.persistenceConfig.extractRequestSettings(bodyIn);
     const updates = this.persistenceConfig.checkMetadataUpdates(
       this.conversationMeta,
       incomingSystemPrompt,
       this.providerId,
-      incomingActiveTools
+      incomingActiveTools,
+      incomingModel
     );
 
     try {
@@ -203,6 +204,11 @@ export class SimplifiedPersistence {
       if (updates.needsProviderUpdate) {
         this.conversationManager.updateProviderId(this.conversationId, sessionId, userId, updates.providerId);
         this.conversationMeta.providerId = updates.providerId;
+      }
+
+      if (updates.needsModelUpdate) {
+        this.conversationManager.updateModel(this.conversationId, sessionId, userId, updates.model);
+        this.conversationMeta.model = updates.model;
       }
 
       if (updates.needsActiveToolsUpdate) {

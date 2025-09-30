@@ -6,6 +6,7 @@ export {
   updateConversationMetadata,
   updateConversationTitle,
   updateConversationProviderId,
+  updateConversationModel,
   countConversationsBySession,
   listConversations,
   softDeleteConversation,
