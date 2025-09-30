@@ -394,65 +394,122 @@ export function MessageList({
                             const toggleKey = `${m.id}-${toolCall.id ?? segmentIndex}`;
                             const isCollapsed = collapsedToolOutputs[toggleKey] ?? true;
 
+                            // Extract a clean summary from outputs
+                            const getOutputSummary = (outputs: ToolOutput[]) => {
+                              if (!outputs || outputs.length === 0) return null;
+                              
+                              const firstOutput = outputs[0];
+                              const raw = firstOutput.output ?? firstOutput;
+                              
+                              if (typeof raw === 'string') {
+                                // Clean up the string - remove excessive whitespace, limit length
+                                const cleaned = raw.trim().replace(/\s+/g, ' ');
+                                return cleaned.length > 80 ? cleaned.slice(0, 77) + '...' : cleaned;
+                              }
+                              
+                              if (typeof raw === 'object' && raw !== null) {
+                                // Try to extract meaningful fields
+                                if ('result' in raw) return String(raw.result).slice(0, 80);
+                                if ('message' in raw) return String(raw.message).slice(0, 80);
+                                if ('data' in raw && typeof raw.data === 'string') return raw.data.slice(0, 80);
+                                // If it's an array or complex object, just indicate success
+                                return 'Completed successfully';
+                              }
+                              
+                              return null;
+                            };
+
+                            const outputSummary = getOutputSummary(outputs);
+                            const hasDetails = outputs.length > 0 || Object.keys(parsedArgs).length > 0;
+
                             return (
                               <div
                                 key={`tool-${segmentIndex}`}
-                                className="inline-block min-w-fit max-w-[75%] rounded-lg bg-gradient-to-r from-slate-50 to-slate-100/50 dark:from-neutral-800/50 dark:to-neutral-700/30 border border-slate-200 dark:border-neutral-700/50 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
-                                onClick={() => {
-                                  if (!outputs || outputs.length === 0) return;
-                                  setCollapsedToolOutputs((s) => ({ ...s, [toggleKey]: !isCollapsed }));
-                                }}
+                                className="inline-block min-w-fit max-w-[75%] rounded-lg bg-gradient-to-br from-blue-50/80 to-indigo-50/60 dark:from-blue-950/30 dark:to-indigo-950/20 border border-blue-200/60 dark:border-blue-800/40 shadow-sm hover:shadow-md transition-all duration-200"
                               >
-                                <div className="flex items-center gap-2 px-4 py-3">
-                                  <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
+                                <div 
+                                  className={`flex items-center gap-3 px-4 py-3 ${hasDetails ? 'cursor-pointer' : ''}`}
+                                  onClick={() => {
+                                    if (!hasDetails) return;
+                                    setCollapsedToolOutputs((s) => ({ ...s, [toggleKey]: !isCollapsed }));
+                                  }}
+                                >
+                                  <div className="w-7 h-7 flex items-center justify-center flex-shrink-0 rounded-md bg-blue-100/80 dark:bg-blue-900/40">
                                     {getToolIcon(toolName)}
                                   </div>
-                                  <div className="flex flex-col min-w-0 flex-1">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <span className="inline-block font-bold text-xs tracking-wide text-black dark:text-white truncate" title={getToolDisplayName(toolName)} style={{ fontWeight: '600' }}>
+                                  <div className="flex flex-col min-w-0 flex-1 gap-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="font-semibold text-sm text-blue-900 dark:text-blue-100">
                                         {getToolDisplayName(toolName)}
                                       </span>
-                                      {outputs.length > 0 && (
-                                        <ChevronDown className={`w-4 h-4 text-slate-400 dark:text-slate-300 transition-transform flex-shrink-0 ${isCollapsed ? '' : 'rotate-180'}`} />
+                                      {hasDetails && (
+                                        <button
+                                          type="button"
+                                          className="text-xs px-2 py-0.5 rounded bg-blue-100/70 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 hover:bg-blue-200/70 dark:hover:bg-blue-800/60 transition-colors flex items-center gap-1"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setCollapsedToolOutputs((s) => ({ ...s, [toggleKey]: !isCollapsed }));
+                                          }}
+                                        >
+                                          {isCollapsed ? 'Details' : 'Hide'}
+                                          <ChevronDown className={`w-3 h-3 transition-transform ${isCollapsed ? '' : 'rotate-180'}`} />
+                                        </button>
                                       )}
                                     </div>
-                                    {(() => {
-                                      try {
-                                        const txt = JSON.stringify(parsedArgs);
-                                        if (!txt || txt === '{}' || txt === 'null' || txt === 'undefined') return null;
-                                        const short = txt.length > 140 ? txt.slice(0, 137) + '...' : txt;
-                                        return (
-                                          <span className="text-[11px] font-mono text-slate-600 dark:text-slate-400 bg-white/70 dark:bg-neutral-800/70 border border-slate-200/60 dark:border-neutral-700/60 px-2 py-0.5 rounded break-words" title={txt}>
-                                            {short}
-                                          </span>
-                                        );
-                                      } catch {
-                                        return null;
-                                      }
-                                    })()}
+                                    {outputSummary && (
+                                      <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                                        {outputSummary}
+                                      </div>
+                                    )}
                                   </div>
                                 </div>
 
-                                {outputs.length > 0 && (
-                                  <div className="px-4 pb-3" onClick={(e) => e.stopPropagation()}>
-                                    {!isCollapsed ? (
-                                      <div className="space-y-2">
-                                        {outputs.map((out, outIdx) => {
-                                          const raw = out.output ?? out;
-                                          let formatted = '';
-                                          if (typeof raw === 'string') formatted = raw;
-                                          else {
-                                            try { formatted = JSON.stringify(raw, null, 2); } catch { formatted = String(raw); }
-                                          }
-                                          return (
-                                            <div key={outIdx} className="rounded-md bg-white/80 dark:bg-neutral-900/80 border border-slate-200/50 dark:border-neutral-700/30 p-3 text-sm text-slate-700 dark:text-slate-200 whitespace-pre-wrap" onClick={(e) => e.stopPropagation()}>
-                                              {formatted}
-                                            </div>
-                                          );
-                                        })}
+                                {hasDetails && !isCollapsed && (
+                                  <div className="px-4 pb-3 pt-1 space-y-3 border-t border-blue-200/40 dark:border-blue-800/30 bg-white/40 dark:bg-blue-950/20 rounded-b-lg">
+                                    {Object.keys(parsedArgs).length > 0 && (
+                                      <div className="space-y-1">
+                                        <div className="text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">
+                                          Input
+                                        </div>
+                                        <div className="rounded-md bg-slate-50 dark:bg-neutral-900/60 border border-slate-200/50 dark:border-neutral-700/40 p-2.5">
+                                          <pre className="text-[11px] font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
+                                            {JSON.stringify(parsedArgs, null, 2)}
+                                          </pre>
+                                        </div>
                                       </div>
-                                    ) : (
-                                      <div className="text-xs text-slate-500 dark:text-slate-400 mt-1">Click to expand</div>
+                                    )}
+                                    
+                                    {outputs.length > 0 && (
+                                      <div className="space-y-1">
+                                        <div className="text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">
+                                          Output
+                                        </div>
+                                        <div className="space-y-2">
+                                          {outputs.map((out, outIdx) => {
+                                            const raw = out.output ?? out;
+                                            let formatted = '';
+                                            if (typeof raw === 'string') {
+                                              formatted = raw;
+                                            } else {
+                                              try { 
+                                                formatted = JSON.stringify(raw, null, 2); 
+                                              } catch { 
+                                                formatted = String(raw); 
+                                              }
+                                            }
+                                            return (
+                                              <div 
+                                                key={outIdx} 
+                                                className="rounded-md bg-slate-50 dark:bg-neutral-900/60 border border-slate-200/50 dark:border-neutral-700/40 p-2.5 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-neutral-600"
+                                              >
+                                                <pre className="text-[11px] font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
+                                                  {formatted}
+                                                </pre>
+                                              </div>
+                                            );
+                                          })}
+                                        </div>
+                                      </div>
                                     )}
                                   </div>
                                 )}
