@@ -513,7 +513,9 @@ const Message = React.memo<MessageProps>(function Message({
     prev.isStreaming === next.isStreaming &&
     prev.editingMessageId === next.editingMessageId &&
     prev.editingContent === next.editingContent &&
-    prev.pending.streaming === next.pending.streaming
+    prev.pending.streaming === next.pending.streaming &&
+    prev.collapsedToolOutputs === next.collapsedToolOutputs &&
+    prev.copiedMessageId === next.copiedMessageId
   );
 });
 
