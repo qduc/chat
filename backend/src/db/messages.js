@@ -56,12 +56,13 @@ export function finalizeAssistantMessage({
   messageId,
   finishReason = null,
   status = 'final',
+  responseId = null,
 }) {
   const db = getDb();
   const now = new Date().toISOString();
   db.prepare(
-    `UPDATE messages SET status=@status, finish_reason=@finishReason, updated_at=@now WHERE id=@messageId`
-  ).run({ messageId, finishReason, status, now });
+    `UPDATE messages SET status=@status, finish_reason=@finishReason, response_id=@responseId, updated_at=@now WHERE id=@messageId`
+  ).run({ messageId, finishReason, status, responseId, now });
 }
 
 export function markAssistantError({ messageId }) {
@@ -72,15 +73,15 @@ export function markAssistantError({ messageId }) {
   });
 }
 
-export function insertAssistantFinal({ conversationId, content, seq, finishReason = 'stop' }) {
+export function insertAssistantFinal({ conversationId, content, seq, finishReason = 'stop', responseId = null }) {
   const db = getDb();
   const now = new Date().toISOString();
   const info = db
     .prepare(
-      `INSERT INTO messages (conversation_id, role, status, content, seq, finish_reason, created_at, updated_at)
-     VALUES (@conversationId, 'assistant', 'final', @content, @seq, @finishReason, @now, @now)`
+      `INSERT INTO messages (conversation_id, role, status, content, seq, finish_reason, response_id, created_at, updated_at)
+     VALUES (@conversationId, 'assistant', 'final', @content, @seq, @finishReason, @responseId, @now, @now)`
     )
-    .run({ conversationId, content: content || '', seq, finishReason, now });
+    .run({ conversationId, content: content || '', seq, finishReason, responseId, now });
   return { id: info.lastInsertRowid, seq };
 }
 
@@ -121,6 +122,22 @@ export function getLastMessage({ conversationId }) {
     )
     .get({ conversationId });
   return message;
+}
+
+export function getLastAssistantResponseId({ conversationId }) {
+  const db = getDb();
+  const message = db
+    .prepare(
+      `SELECT response_id
+     FROM messages
+     WHERE conversation_id=@conversationId
+       AND role='assistant'
+       AND response_id IS NOT NULL
+     ORDER BY seq DESC
+     LIMIT 1`
+    )
+    .get({ conversationId });
+  return message?.response_id || null;
 }
 
 export function updateMessageContent({ messageId, conversationId, sessionId, userId = null, content }) {

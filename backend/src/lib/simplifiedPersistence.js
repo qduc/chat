@@ -26,6 +26,7 @@ export class SimplifiedPersistence {
     this.errored = false;
     this.conversationMeta = null;
     this.providerId = undefined;
+    this.responseId = null; // Store response_id for OpenAI state management
   }
 
   /**
@@ -232,8 +233,9 @@ export class SimplifiedPersistence {
    * Record final assistant message
    * @param {Object} params - Finalization parameters
    * @param {string|null} params.finishReason - Finish reason
+   * @param {string|null} params.responseId - OpenAI response ID for state management
    */
-  recordAssistantFinal({ finishReason = 'stop' } = {}) {
+  recordAssistantFinal({ finishReason = 'stop', responseId = null } = {}) {
     if (!this.persist || !this.conversationId || this.assistantSeq === null) return;
     if (this.finalized || this.errored) return;
 
@@ -243,11 +245,22 @@ export class SimplifiedPersistence {
         content: this.assistantBuffer,
         seq: this.assistantSeq,
         finishReason,
+        responseId: responseId || this.responseId, // Use provided or stored responseId
       });
       this.finalized = true;
     } catch (error) {
       console.error('[SimplifiedPersistence] Failed to record final assistant message:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Set the response ID for the current response
+   * @param {string} responseId - OpenAI response ID
+   */
+  setResponseId(responseId) {
+    if (responseId && typeof responseId === 'string') {
+      this.responseId = responseId;
     }
   }
 

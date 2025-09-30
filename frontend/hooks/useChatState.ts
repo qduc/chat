@@ -219,7 +219,12 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return { ...state, enabledTools: action.payload };
 
     case 'SET_CONVERSATION_ID':
-      return { ...state, conversationId: action.payload };
+      return {
+        ...state,
+        conversationId: action.payload,
+        // Reset previousResponseId when switching conversations
+        previousResponseId: null
+      };
 
     case 'START_STREAMING':
       return {
@@ -386,6 +391,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         status: 'idle',
         abort: undefined,
+        previousResponseId: action.payload.responseId || state.previousResponseId,
       };
 
     case 'STREAM_ERROR':
@@ -408,6 +414,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         messages: [],
         error: null,
+        previousResponseId: null,
       };
 
     case 'SET_MESSAGES':
@@ -767,6 +774,7 @@ export function useChatState() {
         model: state.model,
         signal,
         conversationId: state.conversationId || undefined,
+        responseId: state.previousResponseId || undefined,
         systemPrompt: effectiveSystemPrompt || undefined,
         activeSystemPromptId: state.activeSystemPromptId || undefined,
         shouldStream: state.shouldStream,

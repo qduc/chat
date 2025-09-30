@@ -24,6 +24,7 @@ export {
   markAssistantErrorBySeq,
   getMessagesPage,
   getLastMessage,
+  getLastAssistantResponseId,
   updateMessageContent,
   deleteMessagesAfterSeq,
   clearAllMessages,

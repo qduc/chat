@@ -1,5 +1,5 @@
 import { tools as toolRegistry } from './tools.js';
-import { getMessagesPage } from '../db/messages.js';
+import { getMessagesPage, getLastAssistantResponseId } from '../db/messages.js';
 import { getConversationMetadata } from './responseUtils.js';
 
 /**
@@ -149,6 +149,81 @@ export async function buildConversationMessagesAsync({ body, bodyIn, persistence
   return prior;
 }
 
+/**
+ * Build conversation messages optimized for Responses API using previous_response_id
+ * Falls back to full history if no response_id is available
+ * @param {Object} params - Parameters object
+ * @param {Object} params.body - Request body
+ * @param {Object} params.bodyIn - Input body
+ * @param {Object} params.persistence - Persistence instance
+ * @param {string} params.userId - User ID for resolving custom prompts
+ * @returns {Promise<{messages: Array, previousResponseId: string|null}>} Messages and response ID
+ */
+export async function buildConversationMessagesOptimized({ body, bodyIn, persistence, userId }) {
+  const sanitizedMessages = Array.isArray(body?.messages) ? [...body.messages] : [];
+  const nonSystemMessages = sanitizedMessages.filter((msg) => msg && msg.role !== 'system');
+  const systemPrompt = await extractSystemPromptAsync({ body, bodyIn, persistence, userId });
+
+  // If messages provided in request, use them (new conversation or explicit history)
+  if (nonSystemMessages.length > 0) {
+    return {
+      messages: systemPrompt
+        ? [{ role: 'system', content: systemPrompt }, ...nonSystemMessages]
+        : nonSystemMessages,
+      previousResponseId: null
+    };
+  }
+
+  // Try to use response_id for existing conversations (Responses API optimization)
+  if (persistence && persistence.persist && persistence.conversationId) {
+    try {
+      const previousResponseId = getLastAssistantResponseId({ conversationId: persistence.conversationId });
+
+      if (previousResponseId) {
+        // We have a response_id - only send the current user message
+        // OpenAI will manage conversation state server-side
+        const userMessages = Array.isArray(bodyIn?.messages)
+          ? bodyIn.messages.filter((m) => m && m.role === 'user')
+          : [];
+
+        const messages = systemPrompt
+          ? [{ role: 'system', content: systemPrompt }, ...userMessages]
+          : userMessages;
+
+        return { messages, previousResponseId };
+      }
+
+      // No response_id yet - fall back to full history for this conversation
+      const page = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
+      const prior = (page?.messages || [])
+        .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+        .map((m) => ({ role: m.role, content: m.content }));
+
+      return {
+        messages: systemPrompt
+          ? [{ role: 'system', content: systemPrompt }, ...prior]
+          : prior,
+        previousResponseId: null
+      };
+    } catch (error) {
+      console.warn('[toolOrchestrationUtils] Failed to get response_id, falling back to full history:', error);
+      // Fall through to bodyIn messages
+    }
+  }
+
+  // No persistence or error - use bodyIn messages
+  const prior = Array.isArray(bodyIn?.messages)
+    ? bodyIn.messages.filter((m) => m && m.role !== 'system')
+    : [];
+
+  return {
+    messages: systemPrompt
+      ? [{ role: 'system', content: systemPrompt }, ...prior]
+      : prior,
+    previousResponseId: null
+  };
+}
+
 export async function executeToolCall(call) {
   const name = call?.function?.name;
   const argsStr = call?.function?.arguments || '{}';
@@ -176,9 +251,9 @@ export function appendToPersistence(persistence, content) {
   persistence.appendContent(content);
 }
 
-export function recordFinalToPersistence(persistence, finishReason) {
+export function recordFinalToPersistence(persistence, finishReason, responseId = null) {
   if (!persistence || !persistence.persist) return;
-  persistence.recordAssistantFinal({ finishReason: finishReason || 'stop' });
+  persistence.recordAssistantFinal({ finishReason: finishReason || 'stop', responseId });
 }
 
 export function emitConversationMetadata(res, persistence) {

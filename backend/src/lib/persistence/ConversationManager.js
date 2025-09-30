@@ -118,6 +118,7 @@ export class ConversationManager {
       content: params.content,
       seq: params.seq,
       finishReason: params.finishReason || 'stop',
+      responseId: params.responseId || null,
     });
   }
 
