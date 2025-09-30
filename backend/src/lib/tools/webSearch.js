@@ -160,10 +160,39 @@ async function handler({
 
     if (!response.ok) {
       const errorBody = await response.text();
-      throw new Error(`Tavily API request failed with status ${response.status}: ${errorBody}`);
-    }
+      let apiErrorMessage = '';
 
-    const results = await response.json();
+      // Parse error details if available
+      try {
+        const errorJson = JSON.parse(errorBody);
+        apiErrorMessage = errorJson.error || errorJson.message || errorBody;
+      } catch {
+        apiErrorMessage = errorBody || 'Unknown error';
+      }
+
+      // 400 Bad Request - LLM can fix these by adjusting parameters
+      if (response.status === 400) {
+        throw new Error(`Invalid request parameters: ${apiErrorMessage}. Please adjust the tool call parameters and try again.`);
+      }
+
+      // 401/403 - Authentication/authorization issues (infra)
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`Tavily API authentication failed: ${apiErrorMessage} (Check TAVILY_API_KEY configuration)`);
+      }
+
+      // 429 - Rate limiting (infra)
+      if (response.status === 429) {
+        throw new Error(`Tavily API rate limit exceeded: ${apiErrorMessage} (API quota exhausted - please try again later)`);
+      }
+
+      // 500+ - Server errors (infra)
+      if (response.status >= 500) {
+        throw new Error(`Tavily service error (${response.status}): ${apiErrorMessage} (Please try again later)`);
+      }
+
+      // Other errors - provide full context
+      throw new Error(`Tavily API request failed with status ${response.status}: ${apiErrorMessage}`);
+    }    const results = await response.json();
     let output = '';
 
     if (results.answer) {
@@ -198,7 +227,23 @@ async function handler({
     return output.trim() || 'No results found.';
   } catch (error) {
     console.error('Error performing web search with Tavily:', error);
-    throw new Error('Failed to fetch search results from Tavily');
+
+    // Re-throw with more context if it's a generic error
+    if (error.message && !error.message.includes('Tavily')) {
+      // Network or fetch errors
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        throw new Error(`Network error while connecting to Tavily API: ${error.message}`);
+      }
+      // JSON parsing errors
+      if (error instanceof SyntaxError) {
+        throw new Error(`Invalid response from Tavily API: ${error.message}`);
+      }
+      // Generic wrapper for unknown errors
+      throw new Error(`Web search failed: ${error.message}`);
+    }
+
+    // Re-throw existing error if it already has good context
+    throw error;
   }
 }
 
