@@ -77,10 +77,10 @@ conversationsRouter.get('/v1/conversations', (req, res) => {
     const userId = req.user?.id || null; // Get user ID if authenticated
 
     // Require either authentication or session for conversation access
-    if (!userId && !sessionId)
+    if (!userId)
       return res
-        .status(400)
-        .json({ error: 'bad_request', message: 'Authentication or session required' });
+        .status(401)
+        .json({ error: 'unauthorized', message: 'Authentication required' });
 
     getDb();
     const { cursor, limit, include_deleted } = req.query || {};
@@ -110,10 +110,10 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
     const sessionId = req.sessionId;
     const userId = req.user?.id || null; // Get user ID if authenticated
 
-    if (!sessionId && !userId)
+    if (!userId)
       return res
-        .status(400)
-        .json({ error: 'bad_request', message: 'Missing session or user context' });
+        .status(401)
+        .json({ error: 'unauthorized', message: 'Missing user context' });
 
     // Ensure DB and session row (still needed for session-based users)
     getDb();
@@ -184,10 +184,10 @@ conversationsRouter.get('/v1/conversations/:id', (req, res) => {
     const userId = req.user?.id || null; // Get user ID if authenticated
 
     // Require either authentication or session for conversation access
-    if (!userId && !sessionId)
+    if (!userId)
       return res
-        .status(400)
-        .json({ error: 'bad_request', message: 'Authentication or session required' });
+        .status(401)
+        .json({ error: 'unauthorized', message: 'Authentication required' });
 
     getDb();
     const convo = getConversationById({ id: req.params.id, sessionId, userId }); // Pass user context
@@ -224,10 +224,10 @@ conversationsRouter.delete('/v1/conversations/:id', (req, res) => {
     const userId = req.user?.id || null; // Get user ID if authenticated
 
     // Require either authentication or session for conversation access
-    if (!userId && !sessionId)
+    if (!userId)
       return res
-        .status(400)
-        .json({ error: 'bad_request', message: 'Authentication or session required' });
+        .status(401)
+        .json({ error: 'unauthorized', message: 'Authentication required' });
 
     getDb();
     const ok = softDeleteConversation({ id: req.params.id, sessionId, userId }); // Pass user context
@@ -244,10 +244,17 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
   if (!config.persistence.enabled) return notImplemented(res);
   try {
     const sessionId = req.sessionId;
+    const userId = req.user?.id || null;
     if (!sessionId)
       return res
         .status(400)
         .json({ error: 'bad_request', message: 'Missing session id' });
+
+    if (!userId) {
+      return res
+        .status(401)
+        .json({ error: 'unauthorized', message: 'Authentication required' });
+    }
 
     const { content } = req.body || {};
     if (!content || typeof content !== 'string') {
@@ -263,6 +270,7 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
       messageId: req.params.messageId,
       conversationId: req.params.id,
       sessionId,
+      userId,
       content: content.trim(),
     });
 
@@ -271,7 +279,7 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
     }
 
     // Get conversation details for forking
-    const conversation = getConversationById({ id: req.params.id, sessionId });
+    const conversation = getConversationById({ id: req.params.id, sessionId, userId });
     if (!conversation) {
       return res.status(404).json({ error: 'not_found' });
     }
@@ -280,6 +288,7 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
     const newConversationId = forkConversationFromMessage({
       originalConversationId: req.params.id,
       sessionId,
+      userId,
       messageSeq: message.seq,
       title: conversation.title,
       provider_id: conversation.provider_id,
@@ -290,6 +299,7 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
     deleteMessagesAfterSeq({
       conversationId: req.params.id,
       sessionId,
+      userId,
       afterSeq: message.seq,
     });
 

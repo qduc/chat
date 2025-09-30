@@ -7,6 +7,8 @@ import {
 } from './types';
 import { SSEParser, createRequestInit, APIError } from './utils';
 import { waitForAuthReady } from '../auth/ready';
+import { httpClient } from '../http/client';
+import { HttpError } from '../http/types';
 
 const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
 
@@ -17,6 +19,7 @@ interface OpenAIStreamChunkChoiceDelta {
   tool_calls?: any[];
   tool_output?: any;
   reasoning?: string;
+  reasoning_content?: string; // Add reasoning_content
 }
 
 interface OpenAIStreamChunkChoice {
@@ -53,19 +56,33 @@ export class ChatClient {
 
     // Build request body
     const bodyObj = this.buildRequestBody(options, stream);
-    const requestInit = createRequestInit(bodyObj, { stream, signal });
 
-    // Make request
-    const response = await fetch(`${apiBase}/v1/chat/completions`, requestInit);
-    if (!response.ok) {
-      await this.handleErrorResponse(response);
-    }
+    try {
+      // Use the HTTP client for both streaming and non-streaming requests
+      // It will handle 401 errors and token refresh automatically
+      const httpResponse = await httpClient.post(
+        `${apiBase}/v1/chat/completions`,
+        bodyObj,
+        {
+          signal,
+          headers: stream
+            ? { 'Accept': 'text/event-stream' }
+            : { 'Accept': 'application/json' }
+        }
+      );
 
-    // Handle response
-    if (stream) {
-      return this.handleStreamingResponse(response, onToken, onEvent);
-    } else {
-      return this.handleNonStreamingResponse(response, onToken, onEvent);
+      if (stream) {
+        // For streaming, httpResponse.data will be the raw Response object
+        return this.handleStreamingResponse(httpResponse.data as Response, onToken, onEvent);
+      } else {
+        // For non-streaming, httpResponse.data will be the parsed JSON
+        return this.processNonStreamingData(httpResponse.data, onToken, onEvent);
+      }
+    } catch (error) {
+      if (error instanceof HttpError) {
+        throw new APIError(error.status, error.message, error.data);
+      }
+      throw error;
     }
   }
 
@@ -111,6 +128,64 @@ export class ChatClient {
     }
 
     return bodyObj;
+  }
+
+  /**
+   * Process non-streaming response data (equivalent to handleNonStreamingResponse but without Response parsing)
+   */
+  private processNonStreamingData(
+    json: any,
+    onToken?: (token: string) => void,
+    onEvent?: (event: any) => void
+  ): ChatResponse {
+    // Process tool_events if present
+    if (json.tool_events && Array.isArray(json.tool_events)) {
+      for (const event of json.tool_events) {
+        if (event.type === 'text') {
+          onEvent?.({ type: 'text', value: event.value });
+          onToken?.(event.value);
+        } else if (event.type === 'tool_call') {
+          onEvent?.({ type: 'tool_call', value: event.value });
+        } else if (event.type === 'tool_output') {
+          onEvent?.({ type: 'tool_output', value: event.value });
+        }
+      }
+    }
+
+    // Extract conversation metadata
+    const conversation = json._conversation ? {
+      id: json._conversation.id,
+      title: json._conversation.title,
+      model: json._conversation.model,
+      created_at: json._conversation.created_at,
+      ...(typeof json._conversation.tools_enabled === 'boolean'
+        ? { tools_enabled: json._conversation.tools_enabled }
+        : {}),
+      ...(Array.isArray(json._conversation.active_tools)
+        ? { active_tools: json._conversation.active_tools }
+        : {}),
+    } : undefined;
+
+    // Extract content
+    let content = '';
+    if (json?.choices && Array.isArray(json.choices)) {
+      const message = json.choices[0]?.message;
+      content = message?.content ?? '';
+
+      // Handle reasoning content from non-streaming response
+      if (message?.reasoning) {
+        content = `<thinking>${message.reasoning}</thinking>\n\n${content}`;
+      }
+    } else {
+      content = json?.content ?? json?.message?.content ?? '';
+    }
+
+    return {
+      content,
+      responseId: json?.id,
+      conversation,
+      reasoning_summary: json?.reasoning_summary
+    };
   }
 
   private async handleErrorResponse(response: Response): Promise<never> {
@@ -289,19 +364,22 @@ export class ChatClient {
       };
     }
 
-    if (delta?.reasoning) {
+    // Prioritize reasoning_content, then fall back to reasoning
+    const currentReasoning = delta?.reasoning_content ?? delta?.reasoning;
+
+    if (currentReasoning) {
       let contentToAdd = '';
 
       // If this is the first reasoning token, open the thinking tag
       if (!reasoningStarted) {
-        contentToAdd = '<thinking>' + delta.reasoning;
+        contentToAdd = '<thinking>' + currentReasoning;
         reasoningStarted = true;
       } else {
-        contentToAdd = delta.reasoning;
+        contentToAdd = currentReasoning;
       }
 
       onToken?.(contentToAdd);
-      onEvent?.({ type: 'reasoning', value: delta.reasoning });
+      onEvent?.({ type: 'reasoning', value: currentReasoning });
 
       return {
         content: contentToAdd,
@@ -316,9 +394,23 @@ export class ChatClient {
     }
 
     if (delta?.tool_calls) {
+      let closingContent = '';
+
+      if (reasoningStarted) {
+        const closingTag = '</thinking>';
+        onToken?.(closingTag);
+        closingContent = closingTag;
+        reasoningStarted = false;
+      }
+
       for (const toolCall of delta.tool_calls) {
         onEvent?.({ type: 'tool_call', value: toolCall });
       }
+
+      return {
+        ...(closingContent ? { content: closingContent } : {}),
+        reasoningStarted
+      };
     }
 
     if (delta?.tool_output) {

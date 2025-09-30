@@ -40,7 +40,13 @@ const { handleToolsJson } = await import('../src/lib/toolsJson.js');
 
 // Import the mocked functions for setup
 const { setupStreamingHeaders, createOpenAIRequest } = await import('../src/lib/streamUtils.js');
-const { buildConversationMessagesAsync, executeToolCall, streamDeltaEvent } = await import('../src/lib/toolOrchestrationUtils.js');
+const {
+  buildConversationMessagesAsync,
+  executeToolCall,
+  streamDeltaEvent,
+  appendToPersistence,
+  recordFinalToPersistence
+} = await import('../src/lib/toolOrchestrationUtils.js');
 const { createProvider } = await import('../src/lib/providers/index.js');
 
 describe('toolsJson', () => {
@@ -247,6 +253,74 @@ describe('toolsJson', () => {
       );
     });
 
+    test('handles multiple tool calls in a single response', async () => {
+      const body = {
+        messages: [{ role: 'user', content: 'Run a couple of tools' }],
+        stream: false,
+        tools: [{ type: 'function', function: { name: 'tool_one' } }]
+      };
+      const bodyIn = {};
+
+      const toolCalls = [
+        {
+          id: 'call_one',
+          type: 'function',
+          function: { name: 'tool_one', arguments: '{}' }
+        },
+        {
+          id: 'call_two',
+          type: 'function',
+          function: { name: 'tool_two', arguments: '' }
+        }
+      ];
+
+      const initialResponse = {
+        choices: [{
+          message: {
+            role: 'assistant',
+            content: 'Working on it...',
+            tool_calls: toolCalls
+          }
+        }]
+      };
+
+      const finalResponse = {
+        choices: [{
+          message: { role: 'assistant', content: 'All done' },
+          finish_reason: 'stop'
+        }]
+      };
+
+      createOpenAIRequest
+        .mockResolvedValueOnce({ json: jest.fn().mockResolvedValue(initialResponse) })
+        .mockResolvedValueOnce({ json: jest.fn().mockResolvedValue(finalResponse) });
+
+      executeToolCall
+        .mockResolvedValueOnce({ name: 'tool_one', output: 'first result' })
+        .mockResolvedValueOnce({ name: 'tool_two', output: { ok: true } });
+
+      await handleToolsJson({
+        body,
+        bodyIn,
+        config: mockConfig,
+        res: mockRes,
+        req: mockReq,
+        persistence: mockPersistence
+      });
+
+      expect(executeToolCall).toHaveBeenNthCalledWith(1, toolCalls[0]);
+      expect(executeToolCall).toHaveBeenNthCalledWith(2, toolCalls[1]);
+
+      const responseArg = mockRes.json.mock.calls[0][0];
+      const toolCallEvents = responseArg.tool_events.filter((event) => event.type === 'tool_call');
+      const toolOutputEvents = responseArg.tool_events.filter((event) => event.type === 'tool_output');
+
+      expect(toolCallEvents).toHaveLength(2);
+      expect(toolCallEvents.map((event) => event.value.id)).toEqual(['call_one', 'call_two']);
+      expect(toolOutputEvents).toHaveLength(2);
+      expect(toolOutputEvents[1].value.output).toEqual({ ok: true });
+    });
+
     test('handles tool execution error', async () => {
       const body = {
         messages: [{ role: 'user', content: 'What time is it?' }],
@@ -445,6 +519,42 @@ describe('toolsJson', () => {
       );
     });
 
+    test('returns empty tool events when assistant message has no content', async () => {
+      appendToPersistence.mockClear();
+      recordFinalToPersistence.mockClear();
+
+      const body = {
+        messages: [{ role: 'user', content: 'Return metadata only' }],
+        stream: false
+      };
+      const bodyIn = {};
+
+      const responseWithoutContent = {
+        choices: [{
+          message: { role: 'assistant', content: null },
+          finish_reason: 'stop'
+        }]
+      };
+
+      createOpenAIRequest.mockResolvedValue({
+        json: jest.fn().mockResolvedValue(responseWithoutContent)
+      });
+
+      await handleToolsJson({
+        body,
+        bodyIn,
+        config: mockConfig,
+        res: mockRes,
+        req: mockReq,
+        persistence: mockPersistence
+      });
+
+      const responseArg = mockRes.json.mock.calls[0][0];
+      expect(responseArg.tool_events).toHaveLength(0);
+      expect(recordFinalToPersistence).not.toHaveBeenCalled();
+      expect(appendToPersistence).not.toHaveBeenCalledWith(mockPersistence, undefined);
+    });
+
     test('handles client abort', async () => {
       const body = {
         messages: [{ role: 'user', content: 'Hello' }],
@@ -479,7 +589,7 @@ describe('toolsJson', () => {
         persistence: mockPersistence
       });
 
-  // client abort simulated by mockReq.on implementation
+      // client abort simulated by mockReq.on implementation
 
       await handlePromise;
 
@@ -527,6 +637,59 @@ describe('toolsJson', () => {
         { providerId: 'custom-provider' }
       );
       expect(mockProvider.getToolsetSpec).toHaveBeenCalled();
+    });
+
+    test('falls back to provider tool specifications when request omits tools', async () => {
+      const body = {
+        messages: [{ role: 'user', content: 'Hello there' }],
+        stream: false
+      };
+      const bodyIn = {};
+
+      const fallbackToolset = [
+        { type: 'function', function: { name: 'provider_only_tool' } }
+      ];
+
+      const mockProvider = {
+        getToolsetSpec: jest.fn(() => fallbackToolset),
+        supportsReasoningControls: jest.fn(() => false)
+      };
+
+      createProvider.mockResolvedValue(mockProvider);
+
+      const mockLLMResponse = {
+        choices: [{
+          message: { role: 'assistant', content: 'Hello world' },
+          finish_reason: 'stop'
+        }]
+      };
+
+      createOpenAIRequest.mockResolvedValue({
+        json: jest.fn().mockResolvedValue(mockLLMResponse)
+      });
+
+      await handleToolsJson({
+        body,
+        bodyIn,
+        config: mockConfig,
+        res: mockRes,
+        req: mockReq,
+        persistence: mockPersistence
+      });
+
+      expect(createOpenAIRequest).toHaveBeenCalledWith(
+        mockConfig,
+        expect.objectContaining({
+          tools: fallbackToolset,
+          tool_choice: 'auto'
+        }),
+        expect.objectContaining({ providerId: undefined })
+      );
+      expect(mockRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          choices: mockLLMResponse.choices
+        })
+      );
     });
 
     test('includes reasoning controls when provider supports them', async () => {

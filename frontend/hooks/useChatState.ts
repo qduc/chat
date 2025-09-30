@@ -5,6 +5,8 @@ import { sendChat, getConversationApi, listConversationsApi, deleteConversationA
 import type { QualityLevel } from '../components/ui/QualitySlider';
 import type { User } from '../lib/auth/api';
 import { useAuth } from '../contexts/AuthContext';
+import { httpClient } from '../lib/http/client';
+import { HttpError } from '../lib/http/types';
 
 export interface PendingState {
   abort?: AbortController;
@@ -268,6 +270,15 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
           const idx: number | undefined = typeof incoming.index === 'number' ? incoming.index : undefined;
           const id: string | undefined = incoming.id;
 
+          const resolveTextOffset = (prevOffset: any, nextOffset: any) => {
+            const asNumber = (value: any) => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
+            const prev = asNumber(prevOffset);
+            const next = asNumber(nextOffset);
+            if (prev !== undefined) return prev;
+            if (next !== undefined) return next;
+            return undefined;
+          };
+
           const mergeArgs = (prevFn: any = {}, nextFn: any = {}) => {
             const prevArgs = typeof prevFn.arguments === 'string' ? prevFn.arguments : '';
             const nextArgs = typeof nextFn.arguments === 'string' ? nextFn.arguments : '';
@@ -287,6 +298,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
             out[idx] = {
               ...prev,
               ...incoming,
+              textOffset: resolveTextOffset(prev?.textOffset, incoming?.textOffset),
               function: mergeArgs(prev.function, incoming.function)
             };
             return out;
@@ -299,6 +311,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
               out[found] = {
                 ...prev,
                 ...incoming,
+                textOffset: resolveTextOffset(prev?.textOffset, incoming?.textOffset),
                 function: mergeArgs(prev.function, incoming.function)
               };
               return out;
@@ -312,13 +325,14 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
               out[found] = {
                 ...prev,
                 ...incoming,
+                textOffset: resolveTextOffset(prev?.textOffset, incoming?.textOffset),
                 function: mergeArgs(prev.function, incoming.function)
               };
               return out;
             }
           }
 
-          out.push(incoming);
+          out.push({ ...incoming });
           return out;
         };
 
@@ -429,6 +443,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         conversations: state.conversations.filter(c => c.id !== action.payload),
         conversationId: state.conversationId === action.payload ? null : state.conversationId,
+        messages: state.conversationId === action.payload ? [] : state.messages,
       };
 
     case 'START_EDIT':
@@ -557,6 +572,11 @@ export function useChatState() {
   const [state, dispatch] = useReducer(chatReducer, initialState);
   const assistantMsgRef = useRef<ChatMessage | null>(null);
   const inFlightRef = useRef<boolean>(false);
+  const modelRef = useRef(state.model);
+
+  useEffect(() => {
+    modelRef.current = state.model;
+  }, [state.model]);
 
   // Sync authentication state from AuthContext
   useEffect(() => {
@@ -572,19 +592,15 @@ export function useChatState() {
     }
     const apiBase = (process.env.NEXT_PUBLIC_API_BASE as string) ?? 'http://localhost:3001';
     try {
-      const res = await fetch(`${apiBase}/v1/providers`);
-      if (!res.ok) return;
-      const json = await res.json();
-      const providers: any[] = Array.isArray(json.providers) ? json.providers : [];
+      const response = await httpClient.get<{ providers: any[] }>(`${apiBase}/v1/providers`);
+      const providers: any[] = Array.isArray(response.data.providers) ? response.data.providers : [];
       const enabledProviders = providers.filter(p => p?.enabled);
       if (!enabledProviders.length) return;
 
       const results = await Promise.allSettled(
         enabledProviders.map(async (p) => {
-          const r = await fetch(`${apiBase}/v1/providers/${encodeURIComponent(p.id)}/models`);
-          if (!r.ok) throw new Error(`models ${r.status}`);
-          const j = await r.json();
-          const models = Array.isArray(j.models) ? j.models : [];
+          const modelsResponse = await httpClient.get<{ models: any[] }>(`${apiBase}/v1/providers/${encodeURIComponent(p.id)}/models`);
+          const models = Array.isArray(modelsResponse.data.models) ? modelsResponse.data.models : [];
           const options: ModelOption[] = models.map((m: any) => ({ value: m.id, label: m.id }));
           return { provider: p, options };
         })
@@ -610,13 +626,16 @@ export function useChatState() {
       dispatch({ type: 'SET_MODEL_LIST', payload: { groups: gs, options: flat, modelToProvider: modelProviderMap } });
 
       // Ensure current model exists in the new list, otherwise pick first
-      if (flat.length > 0 && !flat.some((o: any) => o.value === state.model)) {
-        dispatch({ type: 'SET_MODEL', payload: flat[0].value });
+      const currentModel = modelRef.current;
+      if (flat.length > 0 && !flat.some((o: any) => o.value === currentModel)) {
+        const fallbackModel = flat[0].value;
+        modelRef.current = fallbackModel;
+        dispatch({ type: 'SET_MODEL', payload: fallbackModel });
       }
     } catch (e) {
       // ignore
     }
-  }, [authReady, state.model, user]);
+  }, [authReady, user]);
 
   // Call loader on mount
   useEffect(() => {
@@ -716,8 +735,17 @@ export function useChatState() {
     }
 
     if (event.type === 'tool_call') {
+      const currentContentLength = assistantMsgRef.current?.content?.length ?? 0;
+      const toolCallValue = event.value && typeof event.value === 'object'
+        ? {
+            ...event.value,
+            ...(event.value.function ? { function: { ...event.value.function } } : {}),
+            textOffset: currentContentLength,
+          }
+        : event.value;
+
       // Let reducer manage tool_calls to avoid duplicates from local snapshot
-      dispatch({ type: 'STREAM_TOOL_CALL', payload: { messageId: assistantId, toolCall: event.value } });
+      dispatch({ type: 'STREAM_TOOL_CALL', payload: { messageId: assistantId, toolCall: toolCallValue } });
     } else if (event.type === 'tool_output') {
       // Let reducer manage tool_outputs to avoid duplicates from local snapshot
       dispatch({ type: 'STREAM_TOOL_OUTPUT', payload: { messageId: assistantId, toolOutput: event.value } });
@@ -885,6 +913,7 @@ export function useChatState() {
 
     setInlineSystemPromptOverride: useCallback((prompt: string) => {
       dispatch({ type: 'SET_INLINE_SYSTEM_PROMPT_OVERRIDE', payload: prompt });
+      dispatch({ type: 'SET_SYSTEM_PROMPT', payload: prompt });
     }, []),
 
     setActiveSystemPromptId: useCallback((id: string | null) => {

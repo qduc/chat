@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
 import { useSystemPrompts } from '../hooks/useSystemPrompts';
 import PromptDropdown from '../app/components/promptManager/PromptDropdown';
 import SaveAsModal from '../app/components/promptManager/SaveAsModal';
@@ -15,6 +15,9 @@ interface RightSidebarProps {
   // Active system prompt ID from loaded conversation
   conversationActivePromptId?: string | null;
   conversationSystemPrompt?: string | null;
+  width?: number;
+  collapsedWidth?: number;
+  isResizing?: boolean;
 }
 
 export function RightSidebar({
@@ -25,7 +28,10 @@ export function RightSidebar({
   onEffectivePromptChange,
   onActivePromptIdChange,
   conversationActivePromptId,
-  conversationSystemPrompt
+  conversationSystemPrompt,
+  width = 320,
+  collapsedWidth = 64,
+  isResizing = false
 }: RightSidebarProps) {
   const {
     prompts,
@@ -68,7 +74,7 @@ export function RightSidebar({
       return;
     }
 
-    if (conversationId && typeof conversationSystemPrompt === 'string' && conversationSystemPrompt.length > 0) {
+    if (typeof conversationSystemPrompt === 'string' && conversationSystemPrompt.length > 0) {
       onEffectivePromptChange(conversationSystemPrompt);
       return;
     }
@@ -79,8 +85,7 @@ export function RightSidebar({
     inlineEdits,
     onEffectivePromptChange,
     getEffectivePromptContent,
-    conversationSystemPrompt,
-    conversationId
+    conversationSystemPrompt
   ]);
 
   // Update active prompt ID when conversation changes
@@ -222,6 +227,10 @@ export function RightSidebar({
     } else {
       setInlineEdit(effectiveSelectedPromptId, content);
     }
+
+    if (onEffectivePromptChange) {
+      onEffectivePromptChange(content);
+    }
   };
 
   const handleShowSaveAs = () => {
@@ -304,6 +313,18 @@ export function RightSidebar({
     setPendingAction(null);
   };
 
+  // Clear the textarea content only (frontend only)
+  const handleClearContent = () => {
+    if (effectiveSelectedPromptId) {
+      handleInlineChange("");
+    } else {
+      setNewPromptContent("");
+      if (onEffectivePromptChange) {
+        onEffectivePromptChange("");
+      }
+    }
+  };
+
   const selectedPrompt = effectiveSelectedPromptId ? getPromptById(effectiveSelectedPromptId) : null;
   const currentContent = effectiveSelectedPromptId
     ? getEffectivePromptContent(effectiveSelectedPromptId)
@@ -316,13 +337,23 @@ export function RightSidebar({
       ? newPromptContent !== baseInlineContent
       : newPromptContent.length > 0;
   const existingNames = prompts ? [...prompts.built_ins.map(p => p.name), ...prompts.custom.map(p => p.name)] : [];
+  const computedWidth = collapsed ? collapsedWidth : width;
 
   return (
     <>
-      <aside className={`${collapsed ? 'w-16' : 'w-80'} z-30 flex flex-col bg-white/60 dark:bg-neutral-900/60 backdrop-blur-sm transition-all duration-300 ease-in-out relative border-l border-gray-200 dark:border-gray-700`}>
+      <aside
+        style={{
+          width: `${computedWidth}px`,
+          minWidth: `${computedWidth}px`,
+          flexShrink: 0,
+          transition: isResizing ? 'none' : 'width 0.3s ease-in-out',
+          willChange: isResizing ? 'width' : undefined
+        }}
+        className={`z-30 flex flex-col bg-white/60 dark:bg-neutral-900/60 backdrop-blur-sm relative border-l border-gray-200 dark:border-gray-700`}
+      >
         {/* Collapse/Expand Button */}
         <button
-          className="absolute -left-3 top-6 z-10 w-6 h-6 rounded-full bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
+          className="absolute -left-3 top-6 z-40 w-6 h-6 rounded-full bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300"
           onClick={onToggleCollapse}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
@@ -383,9 +414,18 @@ export function RightSidebar({
                   <div className="flex-1 flex flex-col min-h-0 px-4">
                     <label
                       htmlFor="prompt-content"
-                      className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                      className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2"
                     >
-                      Content
+                      <span>Content</span>
+                      <button
+                        type="button"
+                        onClick={handleClearContent}
+                        title="Clear content"
+                        className="ml-1 p-1 rounded hover:bg-gray-200 dark:hover:bg-neutral-700/40 text-gray-500 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                        aria-label="Clear content"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </label>
                     <textarea
                       id="prompt-content"
@@ -395,6 +435,9 @@ export function RightSidebar({
                           handleInlineChange(e.target.value);
                         } else {
                           setNewPromptContent(e.target.value);
+                          if (onEffectivePromptChange) {
+                            onEffectivePromptChange(e.target.value);
+                          }
                         }
                       }}
                       className="flex-1 p-3 border border-gray-300 dark:border-gray-600 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"

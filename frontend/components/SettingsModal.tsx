@@ -3,6 +3,8 @@ import React from 'react';
 import { Cog, Database, Plus, Save, RefreshCw, Trash2, Zap, CheckCircle, XCircle } from 'lucide-react';
 import Modal from './ui/Modal';
 import Toggle from './ui/Toggle';
+import { httpClient } from '../lib/http/client';
+import { HttpError } from '../lib/http/types';
 
 interface SettingsModalProps {
   open: boolean;
@@ -81,17 +83,16 @@ export default function SettingsModal({
     try {
       setLoadingProviders(true);
       setError(null);
-      const res = await fetch(`${apiBase}/v1/providers`);
-      if (!res.ok) throw new Error(`Failed to load providers: ${res.status}`);
-      const json = await res.json();
-      const rows: ProviderRow[] = Array.isArray(json.providers) ? json.providers : [];
+      const response = await httpClient.get<{ providers: ProviderRow[] }>(`${apiBase}/v1/providers`);
+      const rows: ProviderRow[] = Array.isArray(response.data.providers) ? response.data.providers : [];
       setProviders(rows);
       if (rows.length && selectedId) {
         const cur = rows.find((r) => r.id === selectedId);
         if (cur) populateFormFromRow(cur);
       }
     } catch (e: any) {
-      setError(e?.message || 'Failed to load providers');
+      const message = e instanceof HttpError ? e.message : e?.message || 'Failed to load providers';
+      setError(message);
     } finally {
       setLoadingProviders(false);
     }
@@ -128,49 +129,38 @@ export default function SettingsModal({
         metadata: { default_model: form.default_model || null },
       };
       if (form.api_key) payload.api_key = form.api_key;
-      let res: Response;
+
       if (form.id) {
-        res = await fetch(`${apiBase}/v1/providers/${form.id}`, {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
+        // Update existing provider
+        await httpClient.put(`${apiBase}/v1/providers/${form.id}`, payload);
       } else {
-        // Generate user-friendly ID from name for new providers
+        // Create new provider with retry logic for ID conflicts
         let generatedId = generateIdFromName(form.name);
         let attempt = 0;
         const maxAttempts = 5;
 
         while (attempt < maxAttempts) {
           const idToTry = attempt === 0 ? generatedId : `${generatedId}-${attempt}`;
-          res = await fetch(`${apiBase}/v1/providers`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...payload, id: idToTry }),
-          });
 
-          if (res.ok) {
+          try {
+            await httpClient.post(`${apiBase}/v1/providers`, { ...payload, id: idToTry });
             break; // Success, exit retry loop
-          }
-
-          const err = await res.json().catch(() => ({}));
-          if (res.status === 409 && attempt < maxAttempts - 1) {
-            // Conflict error, try with next suffix
-            attempt++;
-            continue;
-          } else {
-            // Other error or max attempts reached
-            throw new Error(err?.message || `Save failed (${res.status})`);
+          } catch (error) {
+            if (error instanceof HttpError && error.status === 409 && attempt < maxAttempts - 1) {
+              // Conflict error, try with next suffix
+              attempt++;
+              continue;
+            } else {
+              // Other error or max attempts reached
+              throw error;
+            }
           }
         }
       }
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err?.message || `Save failed (${res.status})`);
-      }
       await fetchProviders();
     } catch (e: any) {
-      setError(e?.message || 'Failed to save provider');
+      const message = e instanceof HttpError ? e.message : e?.message || 'Failed to save provider';
+      setError(message);
     } finally {
       setSaving(false);
     }
@@ -185,12 +175,12 @@ export default function SettingsModal({
     try {
       setSaving(true);
       setError(null);
-      const res = await fetch(`${apiBase}/v1/providers/${target}`, { method: 'DELETE' });
-      if (!(res.status === 204 || res.ok)) throw new Error(`Delete failed (${res.status})`);
+      await httpClient.delete(`${apiBase}/v1/providers/${target}`);
       resetForm();
       await fetchProviders();
     } catch (e: any) {
-      setError(e?.message || 'Failed to delete provider');
+      const message = e instanceof HttpError ? e.message : e?.message || 'Failed to delete provider';
+      setError(message);
     } finally {
       setSaving(false);
     }
@@ -211,16 +201,7 @@ export default function SettingsModal({
 
     try {
       setError(null);
-      const response = await fetch(`${apiBase}/v1/providers/${providerId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ enabled })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData?.message || `Toggle failed (${response.status})`);
-      }
+      await httpClient.put(`${apiBase}/v1/providers/${providerId}`, { enabled });
 
       // Refresh providers to get updated data
       await fetchProviders();
@@ -230,7 +211,8 @@ export default function SettingsModal({
         p.id === providerId ? { ...p, enabled: enabled ? 0 : 1 } : p
       ));
       const provider = providers.find(p => p.id === providerId);
-      setError(`Failed to ${enabled ? 'enable' : 'disable'} ${provider?.name || 'provider'}: ${error?.message || 'Unknown error'}`);
+      const message = error instanceof HttpError ? error.message : error?.message || 'Unknown error';
+      setError(`Failed to ${enabled ? 'enable' : 'disable'} ${provider?.name || 'provider'}: ${message}`);
     } finally {
       // Remove from loading set
       setToggleLoading(prev => {
@@ -289,18 +271,8 @@ export default function SettingsModal({
         };
       }
 
-      const res = await fetch(endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(testPayload),
-      });
-
-      if (!res.ok) {
-        const errorData = await res.json().catch(() => ({}));
-        throw new Error(errorData?.message || `Test failed (${res.status})`);
-      }
-
-      const result = await res.json();
+      const response = await httpClient.post(endpoint, testPayload);
+      const result = response.data;
 
       const successResult = {
         success: true,
@@ -309,9 +281,10 @@ export default function SettingsModal({
       setLastTestTime(Date.now());
       setTestResult(successResult);
     } catch (e: any) {
+      const message = e instanceof HttpError ? e.message : e?.message || 'Connection test failed. Please check your configuration.';
       const errorResult = {
         success: false,
-        message: e?.message || 'Connection test failed. Please check your configuration.',
+        message,
       };
       setLastTestTime(Date.now());
       setTestResult(errorResult);
@@ -378,9 +351,9 @@ export default function SettingsModal({
               )}
 
               {/* Main Content - Responsive Grid */}
-              <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 lg:gap-6">
                 {/* Provider List Section */}
-                <div className="lg:col-span-2 space-y-4">
+                <div className="lg:col-span-1 space-y-4">
                   <div className="bg-slate-50/60 dark:bg-neutral-800/30 rounded-lg p-3 border border-slate-200/30 dark:border-neutral-700/30">
                     <div className="flex items-center justify-between mb-3">
                       <div>
@@ -397,7 +370,7 @@ export default function SettingsModal({
                       </button>
                     </div>
 
-                    <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 divide-y divide-slate-200/60 dark:divide-neutral-700 max-h-64 overflow-auto shadow-sm">
+                    <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 divide-y divide-slate-200/60 dark:divide-neutral-700 max-h-48 lg:max-h-64 xl:max-h-80 overflow-auto shadow-sm">
                     {loadingProviders && (
                       <div className="p-3 text-sm text-slate-500 text-center">Loading providers...</div>
                     )}
@@ -411,7 +384,7 @@ export default function SettingsModal({
                     {providers.map((p) => (
                       <div
                         key={p.id}
-                        className={`w-full p-2 sm:p-3 transition-colors ${
+                        className={`w-full p-2.5 lg:p-3 transition-colors ${
                           selectedId === p.id
                             ? 'bg-slate-50 dark:bg-neutral-800/60'
                             : 'hover:bg-slate-50 dark:hover:bg-neutral-900/40'
@@ -465,9 +438,9 @@ export default function SettingsModal({
                 </div>
 
                 {/* Provider Configuration Section */}
-                <div className="lg:col-span-3 bg-slate-50/60 dark:bg-neutral-800/30 rounded-lg p-4 border border-slate-200/30 dark:border-neutral-700/30">
-                  <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-4 shadow-sm">
-                    <div className="flex items-center justify-between mb-5">
+                <div className="lg:col-span-2 bg-slate-50/60 dark:bg-neutral-800/30 rounded-lg p-3 lg:p-4 border border-slate-200/30 dark:border-neutral-700/30">
+                  <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-3 lg:p-4 shadow-sm">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 lg:mb-5 gap-2">
                       <div>
                         <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
                           {form.id ? 'Edit Provider Configuration' : 'Add New Provider'}
@@ -488,7 +461,7 @@ export default function SettingsModal({
                     )}
                   </div>
 
-                  <div className="space-y-3">
+                  <div className="space-y-3 lg:space-y-4">
                     <div className="space-y-1.5">
                       <label htmlFor="provider-name" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                         Provider Name *
@@ -496,7 +469,7 @@ export default function SettingsModal({
                       <input
                         id="provider-name"
                         type="text"
-                        className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                        className="w-full px-3 py-2 lg:py-2.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
                         value={form.name}
                         onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                         placeholder="e.g., OpenAI, Anthropic, Custom Provider"
@@ -511,7 +484,7 @@ export default function SettingsModal({
                       </label>
                       <select
                         id="provider-type"
-                        className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                        className="w-full px-3 py-2 lg:py-2.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
                         value={form.provider_type}
                         onChange={(e) => setForm((f) => ({ ...f, provider_type: e.target.value }))}
                         required
@@ -529,7 +502,7 @@ export default function SettingsModal({
                       <input
                         id="base-url"
                         type="url"
-                        className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                        className="w-full px-3 py-2 lg:py-2.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
                         value={form.base_url}
                         onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
                         placeholder="https://api.openai.com/v1 (auto-filled if empty)"
@@ -546,7 +519,7 @@ export default function SettingsModal({
                       <input
                         id="api-key"
                         type="password"
-                        className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                        className="w-full px-3 py-2 lg:py-2.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
                         value={form.api_key || ''}
                         onChange={(e) => setForm((f) => ({ ...f, api_key: e.target.value }))}
                         placeholder={form.id ? "••••••••••••••••••••" : "sk-proj-abc123... or your provider's API key"}
@@ -568,7 +541,7 @@ export default function SettingsModal({
                       <input
                         id="default-model"
                         type="text"
-                        className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                        className="w-full px-3 py-2 lg:py-2.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
                         value={form.default_model || ''}
                         onChange={(e) => setForm((f) => ({ ...f, default_model: e.target.value }))}
                         placeholder="gpt-4o-mini, claude-3-5-sonnet-20241022, etc."
@@ -611,14 +584,14 @@ export default function SettingsModal({
                       </div>
                     )}
 
-                    <div className="pt-4 border-t border-slate-200/70 dark:border-neutral-800">
-                      <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="pt-3 lg:pt-4 border-t border-slate-200/70 dark:border-neutral-800">
+                      <div className="flex flex-col sm:flex-row gap-2 lg:gap-3">
                         {/* Test Connection Button */}
                         <button
                           type="button"
                           onClick={testProviderConnection}
                           disabled={testing || !form.name || !form.provider_type}
-                          className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg border border-slate-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 hover:bg-slate-50 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                          className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3 lg:px-4 py-2 lg:py-2.5 text-sm font-medium rounded-lg border border-slate-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 hover:bg-slate-50 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
                         >
                           {testing ? (
                             <RefreshCw className="w-4 h-4 animate-spin" />
@@ -633,7 +606,7 @@ export default function SettingsModal({
                           type="button"
                           onClick={onSaveProvider}
                           disabled={saving || !form.name || !form.provider_type || (testResult ? !testResult.success : false)}
-                          className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                          className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3 lg:px-4 py-2 lg:py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
                         >
                           {saving ? (
                             <RefreshCw className="w-4 h-4 animate-spin" />
@@ -645,9 +618,9 @@ export default function SettingsModal({
                       </div>
 
                       {testResult && !testResult.success && (
-                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
-                          <span className="inline-block w-1 h-1 bg-amber-500 rounded-full"></span>
-                          Test connection first to ensure your settings work correctly
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-start gap-1">
+                          <span className="inline-block w-1 h-1 bg-amber-500 rounded-full mt-1.5 flex-shrink-0"></span>
+                          <span>Test connection first to ensure your settings work correctly</span>
                         </p>
                       )}
                     </div>
@@ -664,7 +637,7 @@ export default function SettingsModal({
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-[10001] overflow-y-auto">
           <div className="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
-            <div className="fixed inset-0 bg-slate-500 bg-opacity-75 transition-opacity" onClick={() => setShowDeleteConfirm(false)} />
+            <div className="fixed inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setShowDeleteConfirm(false)} />
             <div className="relative transform overflow-hidden rounded-lg bg-white dark:bg-slate-800 px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
               <div className="sm:flex sm:items-start">
                 <div className="mx-auto flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/20 sm:mx-0 sm:h-10 sm:w-10">

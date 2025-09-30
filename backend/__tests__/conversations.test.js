@@ -14,18 +14,34 @@ import {
   softDeleteConversation,
   resetDbCache,
 } from '../src/db/index.js';
+import { createUser } from '../src/db/users.js';
+import { generateAccessToken } from '../src/middleware/auth.js';
 
 const sessionId = 'sess1';
+let authHeader = null;
+let testUser = null;
 
 beforeAll(() => {
   // Safety check: ensure we're using a test database
   safeTestSetup();
 });
 
-const makeApp = (useSession = true) => {
+// makeApp can opt-in to session resolver and/or test auth injection.
+// New logic: session-based auth was removed from the routes; tests should
+// provide an authenticated user where needed. By default tests will mount
+// a fake auth middleware that assigns req.user.id.
+const makeApp = ({ useSession = true, auth = true } = {}) => {
   const app = express();
   app.use(express.json());
   if (useSession) app.use(sessionResolver);
+  if (auth) {
+    // Inject an Authorization header with a test token so optionalAuth
+    // middleware inside the router will populate req.user.
+    app.use((req, _res, next) => {
+      if (authHeader) req.headers['authorization'] = authHeader;
+      next();
+    });
+  }
   app.use(conversationsRouter);
   return app;
 };
@@ -41,6 +57,11 @@ beforeEach(() => {
   upsertSession(sessionId);
   db.prepare(`INSERT INTO providers (id, name, provider_type) VALUES (@id, @name, @provider_type)`).run({ id: 'p1', name: 'p1', provider_type: 'openai' });
   db.prepare(`INSERT INTO providers (id, name, provider_type) VALUES (@id, @name, @provider_type)`).run({ id: 'p2', name: 'p2', provider_type: 'openai' });
+
+  // Create a test user and generate an access token for authenticated requests
+  testUser = createUser({ email: 'test@example.com', passwordHash: 'pw', displayName: 'Test User' });
+  const token = generateAccessToken(testUser);
+  authHeader = `Bearer ${token}`;
 });
 
 afterAll(() => {
@@ -65,12 +86,15 @@ describe('POST /v1/conversations', () => {
     assert.ok(body.created_at);
   });
 
-  test('enforces max conversations per session with 429', async () => {
+  test('creates multiple conversations for an authenticated user (session limit removed)', async () => {
+    // Session-based conversation limits were removed from the guarded path.
+    // Authenticated users should be able to create conversations.
     config.persistence.maxConversationsPerSession = 1;
     const app = makeApp();
-    await request(app).post('/v1/conversations').set('x-session-id', sessionId).send();
-    const res = await request(app).post('/v1/conversations').set('x-session-id', sessionId).send();
-    assert.equal(res.status, 429);
+    const r1 = await request(app).post('/v1/conversations').set('x-session-id', sessionId).send();
+    const r2 = await request(app).post('/v1/conversations').set('x-session-id', sessionId).send();
+    assert.equal(r1.status, 201);
+    assert.equal(r2.status, 201);
   });
 
   test('returns 501 when persistence is disabled', async () => {
@@ -84,8 +108,8 @@ describe('POST /v1/conversations', () => {
 // --- GET /v1/conversations ---
 describe('GET /v1/conversations', () => {
   test('lists conversations for current session with pagination (cursor, limit)', async () => {
-  createConversation({ id: 'c1', sessionId, title: 'one', provider_id: 'p1' });
-  createConversation({ id: 'c2', sessionId, title: 'two', provider_id: 'p2' });
+  createConversation({ id: 'c1', sessionId, userId: testUser.id, title: 'one', provider_id: 'p1' });
+  createConversation({ id: 'c2', sessionId, userId: testUser.id, title: 'two', provider_id: 'p2' });
     // Make ordering deterministic without relying on wall-clock timing
     const db = getDb();
     db.prepare(`UPDATE conversations SET created_at = datetime('now', '-1 hour') WHERE id = 'c1'`).run();
@@ -124,9 +148,9 @@ describe('GET /v1/conversations', () => {
   });
 
   test('excludes deleted conversations by default; include_deleted=1 returns them', async () => {
-  createConversation({ id: 'c1', sessionId, title: 'one', provider_id: 'p1' });
-  createConversation({ id: 'c2', sessionId, title: 'two', provider_id: 'p2' });
-    softDeleteConversation({ id: 'c1', sessionId });
+  createConversation({ id: 'c1', sessionId, userId: testUser.id, title: 'one', provider_id: 'p1' });
+  createConversation({ id: 'c2', sessionId, userId: testUser.id, title: 'two', provider_id: 'p2' });
+    softDeleteConversation({ id: 'c1', sessionId, userId: testUser.id });
     const app = makeApp();
     const res1 = await request(app).get('/v1/conversations').set('x-session-id', sessionId);
     const body1 = res1.body;
@@ -147,10 +171,11 @@ describe('GET /v1/conversations', () => {
 
 // --- GET /v1/conversations/:id ---
 describe('GET /v1/conversations/:id', () => {
-  test('returns 400 when session id is missing (no session resolver)', async () => {
-    const app = makeApp(false);
+  test('returns 401 when unauthenticated (no auth middleware)', async () => {
+    // If no auth middleware is present the routes should return 401 unauthorized.
+    const app = makeApp({ useSession: false, auth: false });
     const res = await request(app).get('/v1/conversations/abc');
-    assert.equal(res.status, 400);
+    assert.equal(res.status, 401);
   });
 
   test('returns 404 for non-existent conversation', async () => {
@@ -160,7 +185,7 @@ describe('GET /v1/conversations/:id', () => {
   });
 
   test('returns metadata and first page of messages with next_after_seq', async () => {
-  createConversation({ id: 'c1', sessionId, title: 'hi', provider_id: 'p1' });
+  createConversation({ id: 'c1', sessionId, userId: testUser.id, title: 'hi', provider_id: 'p1' });
     const db = getDb();
     const stmt = db.prepare(
       `INSERT INTO messages (conversation_id, role, content, seq) VALUES (@cid, 'user', @c, @s)`
@@ -179,7 +204,7 @@ describe('GET /v1/conversations/:id', () => {
   });
 
   test('supports after_seq and limit query params', async () => {
-  createConversation({ id: 'c1', sessionId, title: 'hi', provider_id: 'p1' });
+  createConversation({ id: 'c1', sessionId, userId: testUser.id, title: 'hi', provider_id: 'p1' });
     const db = getDb();
     const stmt = db.prepare(
       `INSERT INTO messages (conversation_id, role, content, seq) VALUES (@cid, 'user', @c, @s)`
@@ -209,7 +234,7 @@ describe('GET /v1/conversations/:id', () => {
 // --- DELETE /v1/conversations/:id ---
 describe('DELETE /v1/conversations/:id', () => {
   test('soft deletes an existing conversation and returns 204', async () => {
-  createConversation({ id: 'c1', sessionId, provider_id: 'p1' });
+  createConversation({ id: 'c1', sessionId, userId: testUser.id, provider_id: 'p1' });
     const app = makeApp();
     const res = await request(app).delete('/v1/conversations/c1').set('x-session-id', sessionId);
     assert.equal(res.status, 204);
@@ -219,8 +244,8 @@ describe('DELETE /v1/conversations/:id', () => {
   });
 
   test('returns 404 when deleting already deleted conversation', async () => {
-  createConversation({ id: 'c1', sessionId, provider_id: 'p1' });
-    softDeleteConversation({ id: 'c1', sessionId });
+  createConversation({ id: 'c1', sessionId, userId: testUser.id, provider_id: 'p1' });
+    softDeleteConversation({ id: 'c1', sessionId, userId: testUser.id });
     const app = makeApp();
     const res = await request(app).delete('/v1/conversations/c1').set('x-session-id', sessionId);
     assert.equal(res.status, 404);

@@ -181,7 +181,12 @@ describe('Frontend Iterative Orchestration', () => {
       const assistantMessage = result.current.state.messages[1];
       expect(assistantMessage.role).toBe('assistant');
       expect(assistantMessage.content).toBe('Let me help you. Done!');
-      expect(assistantMessage.tool_calls).toEqual([{ id: 'call_123', function: { name: 'get_time' } }]);
+      expect(assistantMessage.tool_calls).toEqual([
+        expect.objectContaining({
+          id: 'call_123',
+          function: { name: 'get_time' }
+        })
+      ]);
       expect(assistantMessage.tool_outputs).toEqual([{ tool_call_id: 'call_123', output: 'time_data' }]);
     });
 

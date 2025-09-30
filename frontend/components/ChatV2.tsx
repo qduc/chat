@@ -1,5 +1,6 @@
 "use client";
 import { useCallback, useEffect, useRef, useState } from 'react';
+import type { PointerEvent as ReactPointerEvent } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useChatState } from '../hooks/useChatState';
 import { ChatSidebar } from './ChatSidebar';
@@ -15,12 +16,21 @@ export function ChatV2() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('login');
+  const DEFAULT_RIGHT_SIDEBAR_WIDTH = 320;
+  const MIN_RIGHT_SIDEBAR_WIDTH = 260;
+  const MAX_RIGHT_SIDEBAR_WIDTH = 560;
+  const [rightSidebarWidth, setRightSidebarWidth] = useState(DEFAULT_RIGHT_SIDEBAR_WIDTH);
+  const [isResizingRightSidebar, setIsResizingRightSidebar] = useState(false);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const initCheckedRef = useRef(false);
   const initLoadingRef = useRef(false);
   const searchKey = searchParams?.toString();
+  const resizeStateRef = useRef({ startX: 0, startWidth: DEFAULT_RIGHT_SIDEBAR_WIDTH });
+  const isResizingRef = useRef(false);
+  const nextWidthRef = useRef(DEFAULT_RIGHT_SIDEBAR_WIDTH);
+  const frameRef = useRef<number | null>(null);
 
   // Simple event handlers - just dispatch actions
   const handleCopy = useCallback(async (text: string) => {
@@ -37,6 +47,126 @@ export function ChatV2() {
   const handleShowRegister = useCallback(() => {
     setAuthMode('register');
     setShowAuthModal(true);
+  }, []);
+
+  useEffect(() => {
+    const storedWidth = typeof window !== 'undefined' ? window.localStorage.getItem('rightSidebarWidth') : null;
+    if (!storedWidth) return;
+    const parsed = Number.parseInt(storedWidth, 10);
+    if (Number.isFinite(parsed)) {
+      const clamped = Math.min(Math.max(parsed, MIN_RIGHT_SIDEBAR_WIDTH), MAX_RIGHT_SIDEBAR_WIDTH);
+      nextWidthRef.current = clamped;
+      setRightSidebarWidth(clamped);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (state.rightSidebarCollapsed) return;
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('rightSidebarWidth', String(rightSidebarWidth));
+  }, [rightSidebarWidth, state.rightSidebarCollapsed]);
+
+  const stopResizing = useCallback(() => {
+    if (!isResizingRef.current) return;
+    isResizingRef.current = false;
+    setIsResizingRightSidebar(false);
+    if (frameRef.current !== null && typeof window !== 'undefined') {
+      window.cancelAnimationFrame(frameRef.current);
+      frameRef.current = null;
+    }
+    setRightSidebarWidth(nextWidthRef.current);
+  }, []);
+
+  const clampRightSidebarWidth = useCallback((value: number) => {
+    return Math.min(Math.max(value, MIN_RIGHT_SIDEBAR_WIDTH), MAX_RIGHT_SIDEBAR_WIDTH);
+  }, [MAX_RIGHT_SIDEBAR_WIDTH, MIN_RIGHT_SIDEBAR_WIDTH]);
+
+  const scheduleWidthUpdate = useCallback((value: number) => {
+    const clamped = clampRightSidebarWidth(value);
+    nextWidthRef.current = clamped;
+
+    if (typeof window === 'undefined') {
+      setRightSidebarWidth(clamped);
+      return;
+    }
+
+    if (frameRef.current !== null) {
+      return;
+    }
+
+    frameRef.current = window.requestAnimationFrame(() => {
+      frameRef.current = null;
+      setRightSidebarWidth(nextWidthRef.current);
+    });
+  }, [clampRightSidebarWidth]);
+
+  const handleResizeMove = useCallback((event: PointerEvent) => {
+    if (!isResizingRef.current) return;
+    const delta = resizeStateRef.current.startX - event.clientX;
+    const nextWidth = resizeStateRef.current.startWidth + delta;
+    scheduleWidthUpdate(nextWidth);
+  }, [scheduleWidthUpdate]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handlePointerMove = (event: PointerEvent) => handleResizeMove(event);
+    const handlePointerUp = () => stopResizing();
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [handleResizeMove, stopResizing]);
+
+  const handleResizeStart = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    if (state.rightSidebarCollapsed) return;
+    resizeStateRef.current = {
+      startX: event.clientX,
+      startWidth: rightSidebarWidth
+    };
+    isResizingRef.current = true;
+    setIsResizingRightSidebar(true);
+  }, [rightSidebarWidth, state.rightSidebarCollapsed]);
+
+  const handleResizeDoubleClick = useCallback(() => {
+    if (state.rightSidebarCollapsed) return;
+    nextWidthRef.current = clampRightSidebarWidth(DEFAULT_RIGHT_SIDEBAR_WIDTH);
+    setRightSidebarWidth(nextWidthRef.current);
+  }, [DEFAULT_RIGHT_SIDEBAR_WIDTH, clampRightSidebarWidth, state.rightSidebarCollapsed]);
+
+  useEffect(() => {
+    if (!state.rightSidebarCollapsed) return;
+    stopResizing();
+  }, [state.rightSidebarCollapsed, stopResizing]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    if (!isResizingRightSidebar) {
+      document.body.style.removeProperty('cursor');
+      document.body.style.removeProperty('user-select');
+      return;
+    }
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    return () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+    };
+  }, [isResizingRightSidebar]);
+
+  useEffect(() => {
+    return () => {
+      if (frameRef.current !== null && typeof window !== 'undefined') {
+        window.cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
+    };
   }, []);
 
   // Keyboard shortcut for toggling sidebar (Ctrl/Cmd + \)
@@ -70,15 +200,19 @@ export function ChatV2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchKey]);
 
-  const handleRetryLastAssistant = useCallback(async () => {
+  const handleRetryMessage = useCallback(async (messageId: string) => {
     if (state.status === 'streaming') return;
     if (state.messages.length === 0) return;
 
-    const last = state.messages[state.messages.length - 1];
-    if (last.role !== 'assistant') return;
+    // Find the message index
+    const idx = state.messages.findIndex(m => m.id === messageId);
+    if (idx === -1) return;
 
-    // Remove the last assistant message and regenerate
-    const base = state.messages.slice(0, -1);
+    const message = state.messages[idx];
+    if (message.role !== 'assistant') return;
+
+    // Keep only messages up to (but not including) the message being retried
+    const base = state.messages.slice(0, idx);
     actions.regenerate(base);
   }, [state.messages, state.status, actions]);
 
@@ -194,7 +328,7 @@ export function ChatV2() {
               onSaveEdit={actions.saveEdit}
               onApplyLocalEdit={handleApplyLocalEdit}
               onEditingContentChange={actions.updateEditContent}
-              onRetryLastAssistant={handleRetryLastAssistant}
+              onRetryMessage={handleRetryMessage}
             />
             {/* Removed soft fade to keep a cleaner boundaryless look */}
       <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-4xl px-6 z-30">
@@ -229,6 +363,16 @@ export function ChatV2() {
               initialMode={authMode}
             />
           </div>
+          {!state.rightSidebarCollapsed && (
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize right sidebar"
+              className={`flex-shrink-0 self-stretch w-1 cursor-col-resize select-none transition-colors duration-150 ${isResizingRightSidebar ? 'bg-blue-400/60 dark:bg-blue-500/50' : 'bg-transparent hover:bg-blue-400/40 dark:hover:bg-blue-500/30'}`}
+              onPointerDown={handleResizeStart}
+              onDoubleClick={handleResizeDoubleClick}
+            />
+          )}
           <RightSidebar
             userId={state.user?.id}
             conversationId={state.conversationId || undefined}
@@ -238,6 +382,8 @@ export function ChatV2() {
             onActivePromptIdChange={actions.setActiveSystemPromptId}
             conversationActivePromptId={state.activeSystemPromptId}
             conversationSystemPrompt={state.systemPrompt}
+            width={rightSidebarWidth}
+            isResizing={isResizingRightSidebar}
           />
         </div>
       </div>

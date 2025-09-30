@@ -86,6 +86,37 @@ describe('ChatClient', () => {
     // Test behavior: Conversation context should be maintained
     expect(fetchMock).toHaveBeenCalled();
   });
+
+  test('closes reasoning before streaming tool calls to prevent orphan thinking tags', async () => {
+    const lines = [
+      'data: {"choices":[{"delta":{"reasoning_content":"I need to check current time"}}]}\n\n',
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"get_time","arguments":""}}]}}]}\n\n',
+      'data: {"choices":[{"delta":{"reasoning_content":"Now that I know the time"}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":"Then current time is 00:00"}}]}\n\n',
+      'data: [DONE]\n\n',
+    ];
+
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response(sseStream(lines), { status: 200 }));
+
+    const tokens: string[] = [];
+    const events: any[] = [];
+
+    const result = await chatClient.sendMessageWithTools({
+      messages: [{ role: 'user' as Role, content: 'hi' }],
+      tools: [],
+      providerId: 'default-provider',
+      onToken: token => tokens.push(token),
+      onEvent: event => events.push(event),
+    });
+
+    const joinedTokens = tokens.join('');
+    expect(joinedTokens).toContain('</thinking><thinking>');
+    expect(result.content).toContain('</thinking><thinking>');
+    const toolCallEvent = events.find(event => event.type === 'tool_call');
+    expect(toolCallEvent).toBeDefined();
+  });
 });
 
 describe('ConversationManager', () => {
@@ -121,7 +152,7 @@ describe('ConversationManager', () => {
       .mockResolvedValue(
         new Response(JSON.stringify({ error: 'nope' }), { status: 501 })
       );
-    await expect(conversationManager.create()).rejects.toHaveProperty('status', 501);
+    await expect(conversationManager.create()).rejects.toThrow('HTTP 501: nope');
   });
 
   test('lists conversations with pagination and returns items with next cursor', async () => {
