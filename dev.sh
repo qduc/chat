@@ -34,6 +34,7 @@ EOF
 test_backend() {
     echo "Running backend tests inside docker container..."
     backend_cid="$("${DC[@]}" ps -q backend)"
+    set +e
     if [ $# -gt 0 ]; then
       # Normalize args so host paths like `backend/__tests__/...` work
       # inside the container where the backend package root is mounted at /app.
@@ -52,34 +53,26 @@ test_backend() {
       # the execution occurs in the backend package context and args are
       # forwarded correctly to Jest.
       if [ -n "$backend_cid" ]; then
-        if [ -t 0 ] && [ -t 1 ]; then
-          "${DC[@]}" exec backend env NODE_OPTIONS=--experimental-vm-modules npm test -- "${normalized_args[@]}"
-        else
-          "${DC[@]}" exec -T backend env NODE_OPTIONS=--experimental-vm-modules npm test -- "${normalized_args[@]}"
-        fi
+        output=$("${DC[@]}" exec -T backend env NODE_OPTIONS=--experimental-vm-modules npm test -- "${normalized_args[@]}" 2>&1)
+        rc=$?
       else
-        if [ -t 0 ] && [ -t 1 ]; then
-          "${DC[@]}" run --rm backend env NODE_OPTIONS=--experimental-vm-modules npm test -- "${normalized_args[@]}"
-        else
-          "${DC[@]}" run --rm -T backend env NODE_OPTIONS=--experimental-vm-modules npm test -- "${normalized_args[@]}"
-        fi
+        output=$("${DC[@]}" run --rm -T backend env NODE_OPTIONS=--experimental-vm-modules npm test -- "${normalized_args[@]}" 2>&1)
+        rc=$?
       fi
     else
       # Run all tests as before
       if [ -n "$backend_cid" ]; then
-        if [ -t 0 ] && [ -t 1 ]; then
-          "${DC[@]}" exec backend env NODE_OPTIONS=--experimental-vm-modules npm test
-        else
-          "${DC[@]}" exec -T backend env NODE_OPTIONS=--experimental-vm-modules npm test
-        fi
+        output=$("${DC[@]}" exec -T backend env NODE_OPTIONS=--experimental-vm-modules npm test 2>&1)
+        rc=$?
       else
-        if [ -t 0 ] && [ -t 1 ]; then
-          "${DC[@]}" run --rm backend env NODE_OPTIONS=--experimental-vm-modules npm test
-        else
-          "${DC[@]}" run --rm -T backend env NODE_OPTIONS=--experimental-vm-modules npm test
-        fi
+        output=$("${DC[@]}" run --rm -T backend env NODE_OPTIONS=--experimental-vm-modules npm test 2>&1)
+        rc=$?
       fi
     fi
+    set -e
+    # Filter output to show only FAIL lines and their details, plus summary
+    echo "$output" | awk '/^FAIL/ {print; flag=1} flag && /^ / {print} /^Test Suites:/ || /^Tests:/ || /^Snapshots:/ || /^Time:/ {print; flag=0}'
+    return $rc
 }
 
 test_frontend() {
@@ -91,20 +84,18 @@ test_frontend() {
     if [ $# -gt 0 ]; then
       extra=(-- "$@")
     fi
-
+    set +e
     if [ -n "$frontend_cid" ]; then
-      if [ -t 0 ] && [ -t 1 ]; then
-        "${DC[@]}" exec frontend npm test "${extra[@]:-}"
-      else
-        "${DC[@]}" exec -T frontend npm test "${extra[@]:-}"
-      fi
+      output=$("${DC[@]}" exec -T frontend npm test "${extra[@]:-}" 2>&1)
+      rc=$?
     else
-      if [ -t 0 ] && [ -t 1 ]; then
-        "${DC[@]}" run --rm frontend npm test "${extra[@]:-}"
-      else
-        "${DC[@]}" run --rm -T frontend npm test "${extra[@]:-}"
-      fi
+      output=$("${DC[@]}" run --rm -T frontend npm test "${extra[@]:-}" 2>&1)
+      rc=$?
     fi
+    set -e
+    # Filter output to show only FAIL lines and their details, plus summary
+    echo "$output" | awk '/^FAIL/ {print; flag=1} flag && /^ / {print} /^Test Suites:/ || /^Tests:/ || /^Snapshots:/ || /^Time:/ {print; flag=0}'
+    return $rc
 }
 
 test_all() {
