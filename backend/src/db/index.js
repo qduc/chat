@@ -40,3 +40,17 @@ export {
   setDefaultProvider,
   deleteProvider,
 } from './providers.js';
+export {
+  insertToolCall,
+  insertToolCalls,
+  getToolCallsByMessageId,
+  getToolCallsByMessageIds,
+  getToolCallsByConversationId,
+  insertToolOutput,
+  insertToolOutputs,
+  getToolOutputsByToolCallId,
+  getToolOutputsByToolCallIds,
+  getToolOutputsByMessageId,
+  getToolOutputsByMessageIds,
+  deleteToolCallsAndOutputsByMessageId,
+} from './toolCalls.js';

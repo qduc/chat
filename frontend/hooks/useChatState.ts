@@ -1011,7 +1011,9 @@ export function useChatState() {
         const msgs = data.messages.map(m => ({
           id: String(m.id),
           role: m.role as Role,
-          content: m.content || ''
+          content: m.content || '',
+          ...(m.tool_calls && { tool_calls: m.tool_calls }),
+          ...(m.tool_outputs && { tool_outputs: m.tool_outputs })
         }));
         dispatch({ type: 'SET_MESSAGES', payload: msgs });
 

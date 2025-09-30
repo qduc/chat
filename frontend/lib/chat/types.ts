@@ -6,7 +6,12 @@ export interface ChatMessage {
   content: string;
   tool_calls?: any[];
   tool_call_id?: string;
-  tool_outputs?: Array<{ tool_call_id?: string; name?: string; output: any }>;
+  tool_outputs?: Array<{
+    tool_call_id?: string;
+    name?: string;
+    output: any;
+    status?: string;
+  }>;
 }
 
 export interface ChatEvent {
@@ -64,6 +69,21 @@ export interface ConversationWithMessages {
     status: string;
     content: string;
     created_at: string;
+    tool_calls?: Array<{
+      id: string;
+      type: 'function';
+      index: number;
+      function: {
+        name: string;
+        arguments: string;
+      };
+      textOffset?: number;
+    }>;
+    tool_outputs?: Array<{
+      tool_call_id: string;
+      output: string;
+      status: string;
+    }>;
   }[];
   next_after_seq: number | null;
 }

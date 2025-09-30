@@ -107,6 +107,76 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
      ORDER BY seq ASC LIMIT @limit`
     )
     .all({ conversationId, afterSeq, limit: sanitizedLimit });
+
+  // Fetch tool calls and outputs for all messages in batch
+  if (messages.length > 0) {
+    const messageIds = messages.map(m => m.id);
+    const placeholders = messageIds.map(() => '?').join(',');
+
+    // Get all tool calls for these messages
+    const toolCalls = db
+      .prepare(
+        `SELECT id, message_id, conversation_id, call_index, tool_name, arguments, text_offset, created_at
+         FROM tool_calls
+         WHERE message_id IN (${placeholders})
+         ORDER BY message_id ASC, call_index ASC`
+      )
+      .all(...messageIds);
+
+    // Get all tool outputs for these messages
+    const toolOutputs = db
+      .prepare(
+        `SELECT id, tool_call_id, message_id, conversation_id, output, status, executed_at
+         FROM tool_outputs
+         WHERE message_id IN (${placeholders})
+         ORDER BY message_id ASC, executed_at ASC`
+      )
+      .all(...messageIds);
+
+    // Group tool calls by message_id
+    const toolCallsByMessage = {};
+    for (const tc of toolCalls) {
+      if (!toolCallsByMessage[tc.message_id]) {
+        toolCallsByMessage[tc.message_id] = [];
+      }
+      // Transform to OpenAI format
+      toolCallsByMessage[tc.message_id].push({
+        id: tc.id,
+        type: 'function',
+        index: tc.call_index,
+        function: {
+          name: tc.tool_name,
+          arguments: tc.arguments
+        },
+        textOffset: tc.text_offset
+      });
+    }
+
+    // Group tool outputs by message_id
+    const toolOutputsByMessage = {};
+    for (const to of toolOutputs) {
+      if (!toolOutputsByMessage[to.message_id]) {
+        toolOutputsByMessage[to.message_id] = [];
+      }
+      // Transform to expected format
+      toolOutputsByMessage[to.message_id].push({
+        tool_call_id: to.tool_call_id,
+        output: to.output,
+        status: to.status
+      });
+    }
+
+    // Attach tool calls and outputs to messages
+    for (const message of messages) {
+      if (toolCallsByMessage[message.id]) {
+        message.tool_calls = toolCallsByMessage[message.id];
+      }
+      if (toolOutputsByMessage[message.id]) {
+        message.tool_outputs = toolOutputsByMessage[message.id];
+      }
+    }
+  }
+
   const next_after_seq =
     messages.length === sanitizedLimit ? messages[messages.length - 1].seq : null;
   return { messages, next_after_seq };
@@ -121,6 +191,52 @@ export function getLastMessage({ conversationId }) {
      ORDER BY seq DESC LIMIT 1`
     )
     .get({ conversationId });
+
+  if (!message) return null;
+
+  // Fetch tool calls for this message
+  const toolCalls = db
+    .prepare(
+      `SELECT id, message_id, conversation_id, call_index, tool_name, arguments, text_offset, created_at
+       FROM tool_calls
+       WHERE message_id = @messageId
+       ORDER BY call_index ASC`
+    )
+    .all({ messageId: message.id });
+
+  // Fetch tool outputs for this message
+  const toolOutputs = db
+    .prepare(
+      `SELECT id, tool_call_id, message_id, conversation_id, output, status, executed_at
+       FROM tool_outputs
+       WHERE message_id = @messageId
+       ORDER BY executed_at ASC`
+    )
+    .all({ messageId: message.id });
+
+  // Transform tool calls to OpenAI format
+  if (toolCalls.length > 0) {
+    message.tool_calls = toolCalls.map(tc => ({
+      id: tc.id,
+      type: 'function',
+      index: tc.call_index,
+      function: {
+        name: tc.tool_name,
+        arguments: tc.arguments
+      },
+      textOffset: tc.text_offset
+    }));
+  }
+
+  // Transform tool outputs to expected format
+  if (toolOutputs.length > 0) {
+    message.tool_outputs = toolOutputs.map(to => ({
+      tool_call_id: to.tool_call_id,
+      output: to.output,
+      status: to.status
+    }));
+  }
+
   return message;
 }
 

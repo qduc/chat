@@ -4,6 +4,7 @@ import {
   ConversationValidator,
   ConversationTitleService,
   PersistenceConfig,
+  ToolCallPersistence,
 } from './persistence/index.js';
 
 /**
@@ -27,6 +28,9 @@ export class SimplifiedPersistence {
     this.conversationMeta = null;
     this.providerId = undefined;
     this.responseId = null; // Store response_id for OpenAI state management
+    this.currentMessageId = null; // Track current assistant message ID for tool call persistence
+    this.toolCalls = []; // Buffer tool calls during streaming
+    this.toolOutputs = []; // Buffer tool outputs during streaming
   }
 
   /**
@@ -246,17 +250,77 @@ export class SimplifiedPersistence {
     if (this.finalized || this.errored) return;
 
     try {
-      this.conversationManager.recordAssistantMessage({
+      const result = this.conversationManager.recordAssistantMessage({
         conversationId: this.conversationId,
         content: this.assistantBuffer,
         seq: this.assistantSeq,
         finishReason,
         responseId: responseId || this.responseId, // Use provided or stored responseId
       });
+
+      // Store message ID for tool call persistence
+      if (result && result.id) {
+        this.currentMessageId = result.id;
+      }
+
+      // Persist any buffered tool calls and outputs
+      this.persistToolCallsAndOutputs();
+
       this.finalized = true;
     } catch (error) {
       console.error('[SimplifiedPersistence] Failed to record final assistant message:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Add tool calls to buffer
+   * @param {Array} toolCalls - Array of tool calls in OpenAI format
+   */
+  addToolCalls(toolCalls) {
+    if (!this.persist || !Array.isArray(toolCalls)) return;
+    this.toolCalls.push(...toolCalls);
+  }
+
+  /**
+   * Add tool outputs to buffer
+   * @param {Array} toolOutputs - Array of tool outputs
+   */
+  addToolOutputs(toolOutputs) {
+    if (!this.persist || !Array.isArray(toolOutputs)) return;
+    this.toolOutputs.push(...toolOutputs);
+  }
+
+  /**
+   * Persist buffered tool calls and outputs to database
+   * Called automatically during recordAssistantFinal
+   */
+  persistToolCallsAndOutputs() {
+    if (!this.persist || !this.conversationId || !this.currentMessageId) return;
+
+    try {
+      if (this.toolCalls.length > 0) {
+        ToolCallPersistence.saveToolCalls({
+          messageId: this.currentMessageId,
+          conversationId: this.conversationId,
+          toolCalls: this.toolCalls
+        });
+      }
+
+      if (this.toolOutputs.length > 0) {
+        ToolCallPersistence.saveToolOutputs({
+          messageId: this.currentMessageId,
+          conversationId: this.conversationId,
+          toolOutputs: this.toolOutputs
+        });
+      }
+
+      // Clear buffers after persisting
+      this.toolCalls = [];
+      this.toolOutputs = [];
+    } catch (error) {
+      console.error('[SimplifiedPersistence] Failed to persist tool calls/outputs:', error);
+      // Don't throw - this is non-fatal for the main flow
     }
   }
 

@@ -112,9 +112,10 @@ export class ConversationManager {
   /**
    * Record final assistant message
    * @param {Object} params - Message parameters
+   * @returns {Object} Result with message ID and sequence
    */
   recordAssistantMessage(params) {
-    insertAssistantFinal({
+    return insertAssistantFinal({
       conversationId: params.conversationId,
       content: params.content,
       seq: params.seq,
