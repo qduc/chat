@@ -41,11 +41,46 @@ chat/
 
 **All development commands run in Docker via `./dev.sh`:**
 
+### Container Management
 ```bash
-./dev.sh up --build    # Start development environment
-./dev.sh test          # Run all tests
-./dev.sh migrate up    # Apply database migrations
-./dev.sh logs -f       # Follow logs
+./dev.sh up              # Start all services
+./dev.sh up --build      # Start and rebuild containers
+./dev.sh up -d           # Start in detached mode
+./dev.sh down            # Stop and remove containers
+./dev.sh restart         # Restart all services
+./dev.sh build           # Build container images
+./dev.sh ps              # Show running services
+```
+
+### Logs and Monitoring
+```bash
+./dev.sh logs -f         # Follow logs from all services
+./dev.sh logs -f frontend # Follow frontend logs only
+./dev.sh logs -f backend  # Follow backend logs only
+./dev.sh logs --tail=100  # Show last 100 log lines
+```
+
+### Running Commands in Containers
+```bash
+./dev.sh exec backend npm test    # Run backend tests
+./dev.sh exec frontend npm run build # Build frontend
+./dev.sh exec backend npm run lint # Run backend linter
+./dev.sh exec backend sh -c "ls -la" # Execute shell commands
+```
+
+### Testing
+```bash
+./dev.sh test                    # Run all tests (backend + frontend)
+./dev.sh test:backend            # Run backend tests only
+./dev.sh test:frontend           # Run frontend tests only
+./dev.sh test:backend __tests__/conversations.test.js # Run specific test file
+```
+
+### Database Migrations
+```bash
+./dev.sh migrate status   # Check migration status
+./dev.sh migrate up       # Apply pending migrations
+./dev.sh migrate fresh    # Reset database and reapply all migrations
 ```
 
 ## Key Architectural Patterns
