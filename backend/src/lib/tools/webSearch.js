@@ -256,7 +256,7 @@ export const webSearchTool = createTool({
     type: 'function',
     function: {
       name: TOOL_NAME,
-      description: 'Perform a web search using Tavily API to get current, up-to-date information from the internet. Supports advanced filtering options including date ranges, domain filtering, topic-specific searches (general/news/finance), and configurable search depth. The default values provide a great starting point for most queries, most of the time you won\'t need to change them. Only specify parameters you need to customize or by user\'s requests',
+      description: 'Perform a web search using Tavily API to get current, up-to-date information from the internet. The default values provide a great starting point for most queries, most of the time you won\'t need to change them. Only specify parameters you need to customize or by user\'s requests',
       parameters: {
         type: 'object',
         properties: {
@@ -269,11 +269,6 @@ export const webSearchTool = createTool({
             enum: ['basic', 'advanced'],
             description: 'The depth of the search. "basic" provides generic content snippets (default, 1 credit). "advanced" retrieves the most relevant sources with better content snippets (2 credits, higher quality results).',
           },
-          topic: {
-            type: 'string',
-            enum: ['general', 'news', 'finance'],
-            description: 'The category of search to perform. "general" for web search (default), "news" for recent news articles, "finance" for financial information.',
-          },
           days: {
             type: 'integer',
             description: 'Number of days back from current date to include results (publish date). Only works with topic="news". Default is 7 days.',
@@ -283,16 +278,6 @@ export const webSearchTool = createTool({
             type: 'string',
             enum: ['day', 'week', 'month', 'year', 'd', 'w', 'm', 'y'],
             description: 'Time range back from current date to filter results by publish date. Accepts "day", "week", "month", "year" or shorthand "d", "w", "m", "y".',
-          },
-          start_date: {
-            type: 'string',
-            description: 'Return all results published after this date (inclusive). Must be in YYYY-MM-DD format (e.g., "2024-01-15").',
-            pattern: '^\\d{4}-\\d{2}-\\d{2}$',
-          },
-          end_date: {
-            type: 'string',
-            description: 'Return all results published before this date (inclusive). Must be in YYYY-MM-DD format (e.g., "2024-12-31").',
-            pattern: '^\\d{4}-\\d{2}-\\d{2}$',
           },
           max_results: {
             type: 'integer',
@@ -304,19 +289,6 @@ export const webSearchTool = createTool({
             type: 'string',
             enum: ['basic', 'advanced'],
             description: 'Include an AI-generated answer to the query based on search results. "basic" provides a quick answer, "advanced" provides a detailed answer (costs more). Omit or set to false to skip answer generation.',
-          },
-          include_raw_content: {
-            type: 'string',
-            enum: ['markdown', 'text'],
-            description: 'Include the cleaned and parsed HTML content of each search result. "markdown" returns content in markdown format, "text" returns plain text (may increase latency). Omit to exclude raw content.',
-          },
-          include_images: {
-            type: 'boolean',
-            description: 'Include a list of query-related images in the response. Default is false.',
-          },
-          include_image_descriptions: {
-            type: 'boolean',
-            description: 'Include descriptive text for each image returned. Only works when include_images is true. Default is false.',
           },
           include_domains: {
             type: 'array',
