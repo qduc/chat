@@ -57,7 +57,7 @@ export function ChatHeader({ model, onModelChange, onProviderChange, onOpenSetti
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white/60 dark:bg-neutral-900/60 backdrop-blur-md">
+    <header className="sticky top-0 z-40 bg-white/95 dark:bg-neutral-900/95">
       <div className="px-6 py-4 flex items-center justify-between">
         <div className="flex items-center">
           <ModelSelector

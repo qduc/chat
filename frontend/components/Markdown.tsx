@@ -199,7 +199,7 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
                       type="button"
                       aria-label={copied ? "Copied" : "Copy code"}
                       onClick={onCopy}
-                      className="inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-neutral-700 bg-white/80 dark:bg-neutral-900/70 backdrop-blur px-2 py-1 text-xs text-slate-700 dark:text-slate-200 shadow hover:bg-white dark:hover:bg-neutral-800 transition-colors"
+                      className="inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-neutral-700 bg-white/95 dark:bg-neutral-900/90 px-2 py-1 text-xs text-slate-700 dark:text-slate-200 shadow hover:bg-white dark:hover:bg-neutral-800 transition-colors"
                     >
                       {copied ? (
                         <ClipboardCheck className="h-4 w-4" />

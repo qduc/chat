@@ -102,7 +102,7 @@ export function MessageInput({
       onSubmit={e => { e.preventDefault(); if (pending.streaming) onStop(); else onSend(); }}
     >
       <div className="px-2">
-        <div className="relative rounded-2xl bg-white/95 dark:bg-neutral-900/95 border border-slate-200 dark:border-neutral-700 shadow-xl backdrop-blur-lg transition-all duration-200">
+        <div className="relative rounded-2xl bg-white/95 dark:bg-neutral-900/95 border border-slate-200 dark:border-neutral-700 shadow-xl transition-shadow duration-200">
           <textarea
             ref={inputRef}
             className="w-full resize-none bg-transparent border-0 outline-none p-4 text-sm placeholder-slate-500 dark:placeholder-slate-400 text-slate-800 dark:text-slate-200"

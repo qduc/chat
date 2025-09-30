@@ -359,7 +359,7 @@ export function RightSidebar({
           transition: isResizing ? 'none' : 'width 0.3s ease-in-out',
           willChange: isResizing ? 'width' : undefined
         }}
-        className={`z-30 flex flex-col bg-white/60 dark:bg-neutral-900/60 backdrop-blur-sm relative border-l border-gray-200 dark:border-gray-700`}
+        className={`z-30 flex flex-col bg-white/95 dark:bg-neutral-900/95 relative border-l border-gray-200 dark:border-gray-700`}
       >
         {/* Collapse/Expand Button */}
         <button

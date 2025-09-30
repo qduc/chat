@@ -350,7 +350,7 @@ const Message = React.memo<MessageProps>(function Message({
                     return (
                       <div
                         key={`tool-${segmentIndex}`}
-                        className="inline-block min-w-fit max-w-[75%] rounded-lg bg-gradient-to-br from-blue-50/80 to-indigo-50/60 dark:from-blue-950/30 dark:to-indigo-950/20 border border-blue-200/60 dark:border-blue-800/40 shadow-sm hover:shadow-md transition-all duration-200"
+                        className="inline-block min-w-fit max-w-[75%] rounded-lg bg-gradient-to-br from-blue-50/80 to-indigo-50/60 dark:from-blue-950/30 dark:to-indigo-950/20 border border-blue-200/60 dark:border-blue-800/40 shadow-sm hover:shadow-md transition-shadow duration-200"
                       >
                         <div
                           className={`flex items-center gap-3 px-4 py-3 ${hasDetails ? 'cursor-pointer' : ''}`}
@@ -446,7 +446,7 @@ const Message = React.memo<MessageProps>(function Message({
             )}
 
             {!isEditing && (message.content || !isUser) && (
-              <div className="mt-1 flex items-center gap-2 opacity-70 group-hover:opacity-100 transition-all text-xs justify-end">
+              <div className="mt-1 flex items-center gap-2 opacity-70 group-hover:opacity-100 transition-opacity text-xs justify-end">
                 {message.content && (
                   <div className="relative">
                     <button
@@ -616,7 +616,10 @@ export function MessageList({
   );
 
   return (
-    <main className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-neutral-700 scrollbar-track-transparent">
+    <main
+      className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-neutral-700 scrollbar-track-transparent"
+      style={{ willChange: 'scroll-position' }}
+    >
       <div
         className="mx-auto max-w-4xl px-6 py-6 space-y-6"
         style={{ paddingBottom: dynamicBottomPadding }}
