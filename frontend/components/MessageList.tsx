@@ -268,8 +268,8 @@ export function MessageList({
           const isUser = m.role === 'user';
           const isEditing = editingMessageId === m.id;
           const editTextareaClass = isUser
-            ? 'w-full min-h-[100px] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm bg-slate-100 text-black dark:bg-slate-700 dark:text-white border border-slate-200/50 dark:border-neutral-700/50 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical'
-            : 'w-full min-h-[100px] rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical';
+            ? 'w-full min-h-[100px] rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-slate-100 text-black dark:bg-slate-700 dark:text-white border border-slate-200/50 dark:border-neutral-700/50 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical'
+            : 'w-full min-h-[100px] rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical';
           // Set ref to the most recent user message (could be last or second-to-last)
           const isRecentUserMessage = isUser && (
             idx === processedMessages.length - 1 || // last message is user
@@ -325,13 +325,13 @@ export function MessageList({
                 ) : (
                   <>
                     {isUser ? (
-                      <div className="rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm bg-slate-100 text-black dark:bg-slate-700 dark:text-white">
+                      <div className="rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-slate-100 text-black dark:bg-slate-700 dark:text-white">
                         {m.content ? <Markdown text={m.content} /> : null}
                       </div>
                     ) : (
                       <div className="space-y-3">
                         {assistantSegments.length === 0 ? (
-                          <div className="rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50">
+                          <div className="rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50">
                             {pending.streaming || pending.abort ? (
                               <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
                                 <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -351,7 +351,7 @@ export function MessageList({
                               return (
                                 <div
                                   key={`text-${segmentIndex}`}
-                                  className="rounded-2xl px-4 py-3 text-sm leading-relaxed shadow-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50"
+                                  className="rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50"
                                 >
                                   <Markdown text={segment.text} />
                                 </div>
@@ -397,16 +397,16 @@ export function MessageList({
                             // Extract a clean summary from outputs
                             const getOutputSummary = (outputs: ToolOutput[]) => {
                               if (!outputs || outputs.length === 0) return null;
-                              
+
                               const firstOutput = outputs[0];
                               const raw = firstOutput.output ?? firstOutput;
-                              
+
                               if (typeof raw === 'string') {
                                 // Clean up the string - remove excessive whitespace, limit length
                                 const cleaned = raw.trim().replace(/\s+/g, ' ');
                                 return cleaned.length > 80 ? cleaned.slice(0, 77) + '...' : cleaned;
                               }
-                              
+
                               if (typeof raw === 'object' && raw !== null) {
                                 // Try to extract meaningful fields
                                 if ('result' in raw) return String(raw.result).slice(0, 80);
@@ -415,7 +415,7 @@ export function MessageList({
                                 // If it's an array or complex object, just indicate success
                                 return 'Completed successfully';
                               }
-                              
+
                               return null;
                             };
 
@@ -427,7 +427,7 @@ export function MessageList({
                                 key={`tool-${segmentIndex}`}
                                 className="inline-block min-w-fit max-w-[75%] rounded-lg bg-gradient-to-br from-blue-50/80 to-indigo-50/60 dark:from-blue-950/30 dark:to-indigo-950/20 border border-blue-200/60 dark:border-blue-800/40 shadow-sm hover:shadow-md transition-all duration-200"
                               >
-                                <div 
+                                <div
                                   className={`flex items-center gap-3 px-4 py-3 ${hasDetails ? 'cursor-pointer' : ''}`}
                                   onClick={() => {
                                     if (!hasDetails) return;
@@ -439,7 +439,7 @@ export function MessageList({
                                   </div>
                                   <div className="flex flex-col min-w-0 flex-1 gap-1">
                                     <div className="flex items-center gap-2">
-                                      <span className="font-semibold text-sm text-blue-900 dark:text-blue-100">
+                                      <span className="font-semibold text-base text-blue-900 dark:text-blue-100">
                                         {getToolDisplayName(toolName)}
                                       </span>
                                       {hasDetails && (
@@ -478,7 +478,7 @@ export function MessageList({
                                         </div>
                                       </div>
                                     )}
-                                    
+
                                     {outputs.length > 0 && (
                                       <div className="space-y-1">
                                         <div className="text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">
@@ -491,15 +491,15 @@ export function MessageList({
                                             if (typeof raw === 'string') {
                                               formatted = raw;
                                             } else {
-                                              try { 
-                                                formatted = JSON.stringify(raw, null, 2); 
-                                              } catch { 
-                                                formatted = String(raw); 
+                                              try {
+                                                formatted = JSON.stringify(raw, null, 2);
+                                              } catch {
+                                                formatted = String(raw);
                                               }
                                             }
                                             return (
-                                              <div 
-                                                key={outIdx} 
+                                              <div
+                                                key={outIdx}
                                                 className="rounded-md bg-slate-50 dark:bg-neutral-900/60 border border-slate-200/50 dark:border-neutral-700/40 p-2.5 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-neutral-600"
                                               >
                                                 <pre className="text-[11px] font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
@@ -582,7 +582,7 @@ export function MessageList({
           );
         })}
         {pending.error && (
-          <div className="flex items-start gap-3 text-sm text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-xl px-4 py-3 shadow-sm">
+          <div className="flex items-start gap-3 text-base text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-xl px-4 py-3 shadow-sm">
             <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
             <div>
               <div className="font-medium mb-1">Error occurred</div>
