@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
+import React from 'react';
 import {
   Bot,
   User as UserIcon,
@@ -154,6 +155,368 @@ function buildAssistantSegments(message: ChatMessage): AssistantSegment[] {
   return segments;
 }
 
+// Memoized individual message component
+interface MessageProps {
+  message: ChatMessage;
+  isStreaming: boolean;
+  conversationId: string | null;
+  editingMessageId: string | null;
+  editingContent: string;
+  onCopy: (text: string) => void;
+  onEditMessage: (messageId: string, content: string) => void;
+  onCancelEdit: () => void;
+  onApplyLocalEdit: () => void;
+  onEditingContentChange: (content: string) => void;
+  onRetryMessage?: (messageId: string) => void;
+  editingTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
+  lastUserMessageRef: React.RefObject<HTMLDivElement | null> | null;
+  resizeEditingTextarea: () => void;
+  collapsedToolOutputs: Record<string, boolean>;
+  setCollapsedToolOutputs: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+  copiedMessageId: string | null;
+  handleCopy: (messageId: string, text: string) => void;
+  pending: PendingState;
+}
+
+const Message = React.memo<MessageProps>(function Message({
+  message,
+  isStreaming,
+  conversationId,
+  editingMessageId,
+  editingContent,
+  onCopy,
+  onEditMessage,
+  onCancelEdit,
+  onApplyLocalEdit,
+  onEditingContentChange,
+  onRetryMessage,
+  editingTextareaRef,
+  lastUserMessageRef,
+  resizeEditingTextarea,
+  collapsedToolOutputs,
+  setCollapsedToolOutputs,
+  copiedMessageId,
+  handleCopy,
+  pending,
+}) {
+  const isUser = message.role === 'user';
+  const isEditing = editingMessageId === message.id;
+  const assistantSegments = !isUser ? buildAssistantSegments(message) : [];
+
+  const editTextareaClass = isUser
+    ? 'w-full min-h-[100px] rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-slate-100 text-black dark:bg-slate-700 dark:text-white border border-slate-200/50 dark:border-neutral-700/50 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical'
+    : 'w-full min-h-[100px] rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical';
+
+  return (
+    <div
+      className={`flex gap-4 ${isUser ? 'justify-end' : 'justify-start'}`}
+      ref={lastUserMessageRef}
+    >
+      {!isUser && (
+        <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-neutral-800 flex items-center justify-center flex-shrink-0 shadow-sm">
+          <Bot className="w-4 h-4 text-slate-700 dark:text-slate-200" />
+        </div>
+      )}
+      <div className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? 'max-w-[50%] order-first' : 'max-w-[95%]'}`}>
+        {isEditing ? (
+          <div className="space-y-2">
+            <textarea
+              ref={editingTextareaRef}
+              value={editingContent}
+              onChange={(e) => onEditingContentChange(e.target.value)}
+              onInput={resizeEditingTextarea}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                  e.preventDefault();
+                  onApplyLocalEdit();
+                }
+              }}
+              className={editTextareaClass}
+              placeholder="Edit your message..."
+              style={{ overflow: 'hidden' }}
+            />
+            <div className="flex gap-2 text-right justify-end">
+              <button
+                onClick={onCancelEdit}
+                className="px-3 py-1.5 text-xs rounded-lg bg-slate-200 hover:bg-slate-300 dark:bg-neutral-700 dark:hover:bg-neutral-600 text-slate-700 dark:text-slate-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={onApplyLocalEdit}
+                disabled={!editingContent.trim()}
+                className="px-3 py-1.5 text-xs rounded-lg bg-slate-600 hover:bg-slate-700 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {isUser ? (
+              <div className="rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-slate-100 text-black dark:bg-slate-700 dark:text-white">
+                {message.content ? <Markdown text={message.content} isStreaming={false} /> : null}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {assistantSegments.length === 0 ? (
+                  <div className="rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50">
+                    {pending.streaming || pending.abort ? (
+                      <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '0ms' }} />
+                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '150ms' }} />
+                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '300ms' }} />
+                      </span>
+                    ) : (
+                      <span className="text-slate-500 dark:text-slate-400 italic">No response content</span>
+                    )}
+                  </div>
+                ) : (
+                  assistantSegments.map((segment, segmentIndex) => {
+                    if (segment.kind === 'text') {
+                      if (!segment.text) {
+                        return null;
+                      }
+                      return (
+                        <div
+                          key={`text-${segmentIndex}`}
+                          className="rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50"
+                        >
+                          <Markdown text={segment.text} isStreaming={isStreaming} />
+                        </div>
+                      );
+                    }
+
+                    const { toolCall, outputs } = segment;
+                    const toolName = toolCall.function?.name;
+                    let parsedArgs = {};
+                    try {
+                      parsedArgs = typeof toolCall.function?.arguments === 'string'
+                        ? JSON.parse(toolCall.function.arguments)
+                        : toolCall.function?.arguments || {};
+                    } catch (e) {
+                      parsedArgs = {};
+                    }
+
+                    const getToolIcon = (name: string) => {
+                      switch (name) {
+                        case 'get_time':
+                          return <Clock className="w-4 h-4 text-black dark:text-white" />;
+                        case 'web_search':
+                          return <Search className="w-4 h-4 text-black dark:text-white" />;
+                        default:
+                          return <Zap className="w-4 h-4 text-black dark:text-white" />;
+                      }
+                    };
+
+                    const getToolDisplayName = (name: string) => {
+                      switch (name) {
+                        case 'get_time':
+                          return 'Check Time';
+                        case 'web_search':
+                          return 'Search Web';
+                        default:
+                          return name;
+                      }
+                    };
+
+                    const toggleKey = `${message.id}-${toolCall.id ?? segmentIndex}`;
+                    const isCollapsed = collapsedToolOutputs[toggleKey] ?? true;
+
+                    const getOutputSummary = (outputs: any[]) => {
+                      if (!outputs || outputs.length === 0) return null;
+
+                      const firstOutput = outputs[0];
+                      const raw = firstOutput.output ?? firstOutput;
+
+                      if (typeof raw === 'string') {
+                        const cleaned = raw.trim().replace(/\s+/g, ' ');
+                        return cleaned.length > 80 ? cleaned.slice(0, 77) + '...' : cleaned;
+                      }
+
+                      if (typeof raw === 'object' && raw !== null) {
+                        if ('result' in raw) return String(raw.result).slice(0, 80);
+                        if ('message' in raw) return String(raw.message).slice(0, 80);
+                        if ('data' in raw && typeof raw.data === 'string') return raw.data.slice(0, 80);
+                        return 'Completed successfully';
+                      }
+
+                      return null;
+                    };
+
+                    const outputSummary = getOutputSummary(outputs);
+                    const hasDetails = outputs.length > 0 || Object.keys(parsedArgs).length > 0;
+
+                    return (
+                      <div
+                        key={`tool-${segmentIndex}`}
+                        className="inline-block min-w-fit max-w-[75%] rounded-lg bg-gradient-to-br from-blue-50/80 to-indigo-50/60 dark:from-blue-950/30 dark:to-indigo-950/20 border border-blue-200/60 dark:border-blue-800/40 shadow-sm hover:shadow-md transition-all duration-200"
+                      >
+                        <div
+                          className={`flex items-center gap-3 px-4 py-3 ${hasDetails ? 'cursor-pointer' : ''}`}
+                          onClick={() => {
+                            if (!hasDetails) return;
+                            setCollapsedToolOutputs((s) => ({ ...s, [toggleKey]: !isCollapsed }));
+                          }}
+                        >
+                          <div className="w-7 h-7 flex items-center justify-center flex-shrink-0 rounded-md bg-blue-100/80 dark:bg-blue-900/40">
+                            {getToolIcon(toolName)}
+                          </div>
+                          <div className="flex flex-col min-w-0 flex-1 gap-1">
+                            <div className="flex items-center gap-2">
+                              <span className="font-semibold text-base text-blue-900 dark:text-blue-100">
+                                {getToolDisplayName(toolName)}
+                              </span>
+                              {hasDetails && (
+                                <button
+                                  type="button"
+                                  className="text-xs px-2 py-0.5 rounded bg-blue-100/70 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 hover:bg-blue-200/70 dark:hover:bg-blue-800/60 transition-colors flex items-center gap-1"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setCollapsedToolOutputs((s) => ({ ...s, [toggleKey]: !isCollapsed }));
+                                  }}
+                                >
+                                  {isCollapsed ? 'Details' : 'Hide'}
+                                  <ChevronDown className={`w-3 h-3 transition-transform ${isCollapsed ? '' : 'rotate-180'}`} />
+                                </button>
+                              )}
+                            </div>
+                            {outputSummary && (
+                              <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                                {outputSummary}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {hasDetails && !isCollapsed && (
+                          <div className="px-4 pb-3 pt-1 space-y-3 border-t border-blue-200/40 dark:border-blue-800/30 bg-white/40 dark:bg-blue-950/20 rounded-b-lg">
+                            {Object.keys(parsedArgs).length > 0 && (
+                              <div className="space-y-1">
+                                <div className="text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">
+                                  Input
+                                </div>
+                                <div className="rounded-md bg-slate-50 dark:bg-neutral-900/60 border border-slate-200/50 dark:border-neutral-700/40 p-2.5">
+                                  <pre className="text-[11px] font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
+                                    {JSON.stringify(parsedArgs, null, 2)}
+                                  </pre>
+                                </div>
+                              </div>
+                            )}
+
+                            {outputs.length > 0 && (
+                              <div className="space-y-1">
+                                <div className="text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">
+                                  Output
+                                </div>
+                                <div className="space-y-2">
+                                  {outputs.map((out: any, outIdx: number) => {
+                                    const raw = out.output ?? out;
+                                    let formatted = '';
+                                    if (typeof raw === 'string') {
+                                      formatted = raw;
+                                    } else {
+                                      try {
+                                        formatted = JSON.stringify(raw, null, 2);
+                                      } catch {
+                                        formatted = String(raw);
+                                      }
+                                    }
+                                    return (
+                                      <div
+                                        key={outIdx}
+                                        className="rounded-md bg-slate-50 dark:bg-neutral-900/60 border border-slate-200/50 dark:border-neutral-700/40 p-2.5 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-neutral-600"
+                                      >
+                                        <pre className="text-[11px] font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
+                                          {formatted}
+                                        </pre>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
+            {!isEditing && (message.content || !isUser) && (
+              <div className="mt-1 flex items-center gap-2 opacity-70 group-hover:opacity-100 transition-all text-xs justify-end">
+                {message.content && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(message.id, message.content)}
+                      title="Copy"
+                      className="p-2 rounded-md bg-white/60 dark:bg-neutral-800/50 hover:bg-white/90 dark:hover:bg-neutral-700/80 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+                    >
+                      <Copy className="w-3 h-3" aria-hidden="true" />
+                      <span className="sr-only">Copy</span>
+                    </button>
+                    {copiedMessageId === message.id && (
+                      <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10 animate-fade-in">
+                        Copied
+                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-2 border-r-2 border-t-2 border-transparent border-t-slate-800 dark:border-t-slate-700"></div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {isUser ? (
+                  message.content && (
+                    <button
+                      type="button"
+                      onClick={() => onEditMessage(message.id, message.content)}
+                      title="Edit"
+                      className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+                    >
+                      <Edit2 className="w-3 h-3" aria-hidden="true" />
+                      <span className="sr-only">Edit</span>
+                    </button>
+                  )
+                ) : (
+                  !pending.streaming && (
+                    <button
+                      type="button"
+                      onClick={() => onRetryMessage && onRetryMessage(message.id)}
+                      title="Regenerate"
+                      className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+                    >
+                      <RefreshCw className="w-3 h-3" aria-hidden="true" />
+                      <span className="sr-only">Regenerate</span>
+                    </button>
+                  )
+                )}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+      {isUser && (
+        <div className="w-8 h-8 rounded-full bg-slate-800 dark:bg-slate-700 flex items-center justify-center flex-shrink-0 shadow-sm">
+          <UserIcon className="w-4 h-4 text-white" />
+        </div>
+      )}
+    </div>
+  );
+}, (prev, next) => {
+  // Only re-render if content changed or streaming state changed
+  return (
+    prev.message.content === next.message.content &&
+    prev.message.tool_calls === next.message.tool_calls &&
+    prev.message.tool_outputs === next.message.tool_outputs &&
+    prev.isStreaming === next.isStreaming &&
+    prev.editingMessageId === next.editingMessageId &&
+    prev.editingContent === next.editingContent &&
+    prev.pending.streaming === next.pending.streaming
+  );
+});
+
 export function MessageList({
   messages,
   pending,
@@ -247,7 +610,10 @@ export function MessageList({
   }, [editingContent, editingMessageId]);
 
   // Split messages with tool calls into separate messages
-  const processedMessages = splitMessagesWithToolCalls(messages);
+  const processedMessages = useMemo(
+    () => splitMessagesWithToolCalls(messages),
+    [messages]
+  );
 
   return (
     <main className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-neutral-700 scrollbar-track-transparent">
@@ -266,319 +632,36 @@ export function MessageList({
         )}
         {processedMessages.map((m, idx) => {
           const isUser = m.role === 'user';
-          const isEditing = editingMessageId === m.id;
-          const editTextareaClass = isUser
-            ? 'w-full min-h-[100px] rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-slate-100 text-black dark:bg-slate-700 dark:text-white border border-slate-200/50 dark:border-neutral-700/50 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical'
-            : 'w-full min-h-[100px] rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical';
+          const isStreaming = pending.streaming && idx === processedMessages.length - 1;
           // Set ref to the most recent user message (could be last or second-to-last)
           const isRecentUserMessage = isUser && (
             idx === processedMessages.length - 1 || // last message is user
             (idx === processedMessages.length - 2 && processedMessages[processedMessages.length - 1]?.role === 'assistant') // second-to-last is user, last is assistant
           );
-          const assistantSegments = !isUser ? buildAssistantSegments(m) : [];
+
           return (
-            <div
+            <Message
               key={m.id}
-              className={`flex gap-4 ${isUser ? 'justify-end' : 'justify-start'}`}
-              ref={isRecentUserMessage ? lastUserMessageRef : null}
-            >
-              {!isUser && (
-                <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-neutral-800 flex items-center justify-center flex-shrink-0 shadow-sm">
-                  <Bot className="w-4 h-4 text-slate-700 dark:text-slate-200" />
-                </div>
-              )}
-              <div className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? 'max-w-[50%] order-first' : 'max-w-[95%]'}`}>
-                {isEditing ? (
-                  <div className="space-y-2">
-                    <textarea
-                            ref={editingTextareaRef}
-                            value={editingContent}
-                            onChange={(e) => onEditingContentChange(e.target.value)}
-                            onInput={resizeEditingTextarea}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                                e.preventDefault();
-                                onApplyLocalEdit();
-                              }
-                            }}
-                            className={editTextareaClass}
-                            placeholder="Edit your message..."
-                            // hide native scrollbar - we'll size the textarea to fit
-                            style={{ overflow: 'hidden' }}
-                    />
-                    <div className="flex gap-2 text-right justify-end">
-                    <button
-                        onClick={onCancelEdit}
-                        className="px-3 py-1.5 text-xs rounded-lg bg-slate-200 hover:bg-slate-300 dark:bg-neutral-700 dark:hover:bg-neutral-600 text-slate-700 dark:text-slate-300 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={onApplyLocalEdit}
-                        disabled={!editingContent.trim()}
-                        className="px-3 py-1.5 text-xs rounded-lg bg-slate-600 hover:bg-slate-700 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                      >
-                        Save
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    {isUser ? (
-                      <div className="rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-slate-100 text-black dark:bg-slate-700 dark:text-white">
-                        {m.content ? <Markdown text={m.content} /> : null}
-                      </div>
-                    ) : (
-                      <div className="space-y-3">
-                        {assistantSegments.length === 0 ? (
-                          <div className="rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50">
-                            {pending.streaming || pending.abort ? (
-                              <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
-                                <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '0ms' }} />
-                                <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '150ms' }} />
-                                <span className="w-1.5 h-1.5 rounded-full bg-current animate-bounce" style={{ animationDelay: '300ms' }} />
-                              </span>
-                            ) : (
-                              <span className="text-slate-500 dark:text-slate-400 italic">No response content</span>
-                            )}
-                          </div>
-                        ) : (
-                          assistantSegments.map((segment, segmentIndex) => {
-                            if (segment.kind === 'text') {
-                              if (!segment.text) {
-                                return null;
-                              }
-                              return (
-                                <div
-                                  key={`text-${segmentIndex}`}
-                                  className="rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50"
-                                >
-                                  <Markdown text={segment.text} />
-                                </div>
-                              );
-                            }
-
-                            const { toolCall, outputs } = segment;
-                            const toolName = toolCall.function?.name;
-                            let parsedArgs = {};
-                            try {
-                              parsedArgs = typeof toolCall.function?.arguments === 'string'
-                                ? JSON.parse(toolCall.function.arguments)
-                                : toolCall.function?.arguments || {};
-                            } catch (e) {
-                              parsedArgs = {};
-                            }
-
-                            const getToolIcon = (name: string) => {
-                              switch (name) {
-                                case 'get_time':
-                                  return <Clock className="w-4 h-4 text-black dark:text-white" />;
-                                case 'web_search':
-                                  return <Search className="w-4 h-4 text-black dark:text-white" />;
-                                default:
-                                  return <Zap className="w-4 h-4 text-black dark:text-white" />;
-                              }
-                            };
-
-                            const getToolDisplayName = (name: string) => {
-                              switch (name) {
-                                case 'get_time':
-                                  return 'Check Time';
-                                case 'web_search':
-                                  return 'Search Web';
-                                default:
-                                  return name;
-                              }
-                            };
-
-                            const toggleKey = `${m.id}-${toolCall.id ?? segmentIndex}`;
-                            const isCollapsed = collapsedToolOutputs[toggleKey] ?? true;
-
-                            // Extract a clean summary from outputs
-                            const getOutputSummary = (outputs: ToolOutput[]) => {
-                              if (!outputs || outputs.length === 0) return null;
-
-                              const firstOutput = outputs[0];
-                              const raw = firstOutput.output ?? firstOutput;
-
-                              if (typeof raw === 'string') {
-                                // Clean up the string - remove excessive whitespace, limit length
-                                const cleaned = raw.trim().replace(/\s+/g, ' ');
-                                return cleaned.length > 80 ? cleaned.slice(0, 77) + '...' : cleaned;
-                              }
-
-                              if (typeof raw === 'object' && raw !== null) {
-                                // Try to extract meaningful fields
-                                if ('result' in raw) return String(raw.result).slice(0, 80);
-                                if ('message' in raw) return String(raw.message).slice(0, 80);
-                                if ('data' in raw && typeof raw.data === 'string') return raw.data.slice(0, 80);
-                                // If it's an array or complex object, just indicate success
-                                return 'Completed successfully';
-                              }
-
-                              return null;
-                            };
-
-                            const outputSummary = getOutputSummary(outputs);
-                            const hasDetails = outputs.length > 0 || Object.keys(parsedArgs).length > 0;
-
-                            return (
-                              <div
-                                key={`tool-${segmentIndex}`}
-                                className="inline-block min-w-fit max-w-[75%] rounded-lg bg-gradient-to-br from-blue-50/80 to-indigo-50/60 dark:from-blue-950/30 dark:to-indigo-950/20 border border-blue-200/60 dark:border-blue-800/40 shadow-sm hover:shadow-md transition-all duration-200"
-                              >
-                                <div
-                                  className={`flex items-center gap-3 px-4 py-3 ${hasDetails ? 'cursor-pointer' : ''}`}
-                                  onClick={() => {
-                                    if (!hasDetails) return;
-                                    setCollapsedToolOutputs((s) => ({ ...s, [toggleKey]: !isCollapsed }));
-                                  }}
-                                >
-                                  <div className="w-7 h-7 flex items-center justify-center flex-shrink-0 rounded-md bg-blue-100/80 dark:bg-blue-900/40">
-                                    {getToolIcon(toolName)}
-                                  </div>
-                                  <div className="flex flex-col min-w-0 flex-1 gap-1">
-                                    <div className="flex items-center gap-2">
-                                      <span className="font-semibold text-base text-blue-900 dark:text-blue-100">
-                                        {getToolDisplayName(toolName)}
-                                      </span>
-                                      {hasDetails && (
-                                        <button
-                                          type="button"
-                                          className="text-xs px-2 py-0.5 rounded bg-blue-100/70 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 hover:bg-blue-200/70 dark:hover:bg-blue-800/60 transition-colors flex items-center gap-1"
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setCollapsedToolOutputs((s) => ({ ...s, [toggleKey]: !isCollapsed }));
-                                          }}
-                                        >
-                                          {isCollapsed ? 'Details' : 'Hide'}
-                                          <ChevronDown className={`w-3 h-3 transition-transform ${isCollapsed ? '' : 'rotate-180'}`} />
-                                        </button>
-                                      )}
-                                    </div>
-                                    {outputSummary && (
-                                      <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                                        {outputSummary}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-
-                                {hasDetails && !isCollapsed && (
-                                  <div className="px-4 pb-3 pt-1 space-y-3 border-t border-blue-200/40 dark:border-blue-800/30 bg-white/40 dark:bg-blue-950/20 rounded-b-lg">
-                                    {Object.keys(parsedArgs).length > 0 && (
-                                      <div className="space-y-1">
-                                        <div className="text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">
-                                          Input
-                                        </div>
-                                        <div className="rounded-md bg-slate-50 dark:bg-neutral-900/60 border border-slate-200/50 dark:border-neutral-700/40 p-2.5">
-                                          <pre className="text-[11px] font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
-                                            {JSON.stringify(parsedArgs, null, 2)}
-                                          </pre>
-                                        </div>
-                                      </div>
-                                    )}
-
-                                    {outputs.length > 0 && (
-                                      <div className="space-y-1">
-                                        <div className="text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">
-                                          Output
-                                        </div>
-                                        <div className="space-y-2">
-                                          {outputs.map((out, outIdx) => {
-                                            const raw = out.output ?? out;
-                                            let formatted = '';
-                                            if (typeof raw === 'string') {
-                                              formatted = raw;
-                                            } else {
-                                              try {
-                                                formatted = JSON.stringify(raw, null, 2);
-                                              } catch {
-                                                formatted = String(raw);
-                                              }
-                                            }
-                                            return (
-                                              <div
-                                                key={outIdx}
-                                                className="rounded-md bg-slate-50 dark:bg-neutral-900/60 border border-slate-200/50 dark:border-neutral-700/40 p-2.5 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-neutral-600"
-                                              >
-                                                <pre className="text-[11px] font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
-                                                  {formatted}
-                                                </pre>
-                                              </div>
-                                            );
-                                          })}
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })
-                        )}
-                      </div>
-                    )}
-
-                    {/* Toolbar below the chat bubble (transparent) */}
-                    {!isEditing && (m.content || !isUser) && (
-                      <div className="mt-1 flex items-center gap-2 opacity-70 group-hover:opacity-100 transition-all text-xs justify-end">
-                        {m.content && (
-                          <div className="relative">
-                            <button
-                              type="button"
-                              onClick={() => handleCopy(m.id, m.content)}
-                              title="Copy"
-                              className="p-2 rounded-md bg-white/60 dark:bg-neutral-800/50 hover:bg-white/90 dark:hover:bg-neutral-700/80 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
-                            >
-                              <Copy className="w-3 h-3" aria-hidden="true" />
-                              <span className="sr-only">Copy</span>
-                            </button>
-                            {copiedMessageId === m.id && (
-                              <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10 animate-fade-in">
-                                Copied
-                                <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-2 border-r-2 border-t-2 border-transparent border-t-slate-800 dark:border-t-slate-700"></div>
-                              </div>
-                            )}
-                          </div>
-                        )}
-
-                        {isUser ? (
-                          m.content && (
-                            <button
-                              type="button"
-                              onClick={() => onEditMessage(m.id, m.content)}
-                              title="Edit"
-                              className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
-                            >
-                              <Edit2 className="w-3 h-3" aria-hidden="true" />
-                              <span className="sr-only">Edit</span>
-                            </button>
-                          )
-                        ) : (
-                          !pending.streaming && (
-                            <button
-                              type="button"
-                              onClick={() => onRetryMessage(m.id)}
-                              title="Regenerate"
-                              className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
-                            >
-                              <RefreshCw className="w-3 h-3" aria-hidden="true" />
-                              <span className="sr-only">Regenerate</span>
-                            </button>
-                          )
-                        )}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-              {isUser && (
-                <div className="w-8 h-8 rounded-full bg-slate-800 dark:bg-slate-700 flex items-center justify-center flex-shrink-0 shadow-sm">
-                  <UserIcon className="w-4 h-4 text-white" />
-                </div>
-              )}
-            </div>
+              message={m}
+              isStreaming={isStreaming}
+              conversationId={conversationId}
+              editingMessageId={editingMessageId}
+              editingContent={editingContent}
+              onCopy={onCopy}
+              onEditMessage={onEditMessage}
+              onCancelEdit={onCancelEdit}
+              onApplyLocalEdit={onApplyLocalEdit}
+              onEditingContentChange={onEditingContentChange}
+              onRetryMessage={onRetryMessage}
+              editingTextareaRef={editingTextareaRef}
+              lastUserMessageRef={isRecentUserMessage ? lastUserMessageRef : null}
+              resizeEditingTextarea={resizeEditingTextarea}
+              collapsedToolOutputs={collapsedToolOutputs}
+              setCollapsedToolOutputs={setCollapsedToolOutputs}
+              copiedMessageId={copiedMessageId}
+              handleCopy={handleCopy}
+              pending={pending}
+            />
           );
         })}
         {pending.error && (

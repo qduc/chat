@@ -92,7 +92,7 @@ export type ChatAction =
   | { type: 'SET_CONVERSATION_ID'; payload: string | null }
   | { type: 'START_STREAMING'; payload: { abort: AbortController; userMessage: ChatMessage; assistantMessage: ChatMessage } }
   | { type: 'REGENERATE_START'; payload: { abort: AbortController; baseMessages: ChatMessage[]; assistantMessage: ChatMessage } }
-  | { type: 'STREAM_TOKEN'; payload: { messageId: string; token: string } }
+  | { type: 'STREAM_TOKEN'; payload: { messageId: string; token: string; fullContent?: string } }
   | { type: 'STREAM_TOOL_CALL'; payload: { messageId: string; toolCall: any } }
   | { type: 'STREAM_TOOL_OUTPUT'; payload: { messageId: string; toolOutput: any } }
   | { type: 'STREAM_COMPLETE'; payload: { responseId?: string } }
@@ -252,7 +252,11 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         const next = state.messages.map(m => {
           if (m.id === action.payload.messageId) {
             updated = true;
-            return { ...m, content: m.content + action.payload.token };
+            // Use fullContent if provided, otherwise append token
+            const newContent = action.payload.fullContent !== undefined
+              ? action.payload.fullContent
+              : (m.content ?? '') + action.payload.token;
+            return { ...m, content: newContent };
           }
           return m;
         });
@@ -260,7 +264,10 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
           // Fallback: update the last assistant message if present
           for (let i = next.length - 1; i >= 0; i--) {
             if (next[i].role === 'assistant') {
-              next[i] = { ...next[i], content: next[i].content + action.payload.token } as any;
+              const newContent = action.payload.fullContent !== undefined
+                ? action.payload.fullContent
+                : (next[i].content ?? '') + action.payload.token;
+              next[i] = { ...next[i], content: newContent } as any;
               break;
             }
           }
@@ -580,6 +587,7 @@ export function useChatState() {
   const assistantMsgRef = useRef<ChatMessage | null>(null);
   const inFlightRef = useRef<boolean>(false);
   const modelRef = useRef(state.model);
+  const throttleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     modelRef.current = state.model;
@@ -728,9 +736,26 @@ export function useChatState() {
     if (!current) return;
     const assistantId = current.id;
 
+    // Immediately update the ref (keeps tokens flowing)
     const nextContent = (current.content ?? '') + token;
     assistantMsgRef.current = { ...current, content: nextContent };
-    dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token } });
+
+    // Throttle React state updates to 60fps
+    if (!throttleTimerRef.current) {
+      throttleTimerRef.current = setTimeout(() => {
+        if (assistantMsgRef.current) {
+          dispatch({
+            type: 'STREAM_TOKEN',
+            payload: {
+              messageId: assistantId,
+              token: '', // Token already in ref
+              fullContent: assistantMsgRef.current.content // Pass full content
+            }
+          });
+        }
+        throttleTimerRef.current = null;
+      }, 16); // ~60fps
+    }
   }, []);
 
   const handleStreamEvent = useCallback((event: any) => {
@@ -827,6 +852,22 @@ export function useChatState() {
           const merged = { ...assistantMsgRef.current };
           if (result?.content) merged.content = result.content;
           dispatch({ type: 'SYNC_ASSISTANT', payload: merged });
+        }
+        // Flush any pending throttled updates before completing
+        if (throttleTimerRef.current) {
+          clearTimeout(throttleTimerRef.current);
+          throttleTimerRef.current = null;
+          // Final sync with accumulated content
+          if (assistantMsgRef.current) {
+            dispatch({
+              type: 'STREAM_TOKEN',
+              payload: {
+                messageId: assistantMsgRef.current.id,
+                token: '',
+                fullContent: assistantMsgRef.current.content
+              }
+            });
+          }
         }
         dispatch({
           type: 'STREAM_COMPLETE',
@@ -981,6 +1022,11 @@ export function useChatState() {
     }, [state, handleStreamEvent, buildSendChatConfig, runSend]),
 
     stopStreaming: useCallback(() => {
+      // Flush any pending throttled updates
+      if (throttleTimerRef.current) {
+        clearTimeout(throttleTimerRef.current);
+        throttleTimerRef.current = null;
+      }
       try { state.abort?.abort(); } catch {}
       inFlightRef.current = false;
       dispatch({ type: 'STOP_STREAMING' });

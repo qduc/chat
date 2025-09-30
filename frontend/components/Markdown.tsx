@@ -1,5 +1,4 @@
-"use client";
-import React from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
@@ -12,6 +11,7 @@ import { ClipboardCheck, Clipboard } from 'lucide-react';
 interface MarkdownProps {
   text: string;
   className?: string;
+  isStreaming?: boolean;
 }
 
 const CODE_FENCE_PATTERN = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`]*`)/g;
@@ -57,57 +57,81 @@ function normalizeLatexDelimiters(input: string): string {
 // - Syntax highlighting via highlight.js (auto-detects or uses language-* class)
 // - Secure by default (no raw HTML rendering)
 // - Accessible links opening in a new tab
-export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
+export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming = false }) => {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
 
+  // Defer syntax highlighting until streaming completes
+  const [shouldHighlight, setShouldHighlight] = useState(!isStreaming);
+
+  useEffect(() => {
+    if (!isStreaming && !shouldHighlight) {
+      // Stream just finished, enable highlighting after brief delay
+      const timer = setTimeout(() => setShouldHighlight(true), 50);
+      return () => clearTimeout(timer);
+    } else if (isStreaming && shouldHighlight) {
+      // Started streaming again, disable highlighting
+      setShouldHighlight(false);
+    }
+  }, [isStreaming, shouldHighlight]);
+
   // Transform thinking blocks and reasoning summaries into collapsible sections
   // First, handle incomplete thinking blocks by temporarily adding closing tags
-  let textToProcess = normalizeLatexDelimiters(text);
+  const processedText = useMemo(() => {
+    let textToProcess = normalizeLatexDelimiters(text);
 
-  // Check for incomplete thinking blocks (both <thinking> and <think> variants)
-  // Count opening and closing tags to ensure they match
-  const openingThinkingTags = (textToProcess.match(/<thinking>/g) || []).length;
-  const closingThinkingTags = (textToProcess.match(/<\/thinking>/g) || []).length;
-  const openingThinkTags = (textToProcess.match(/<think>/g) || []).length;
-  const closingThinkTags = (textToProcess.match(/<\/think>/g) || []).length;
-  const hasIncompleteThinking = openingThinkingTags > closingThinkingTags;
-  const hasIncompleteThink = openingThinkTags > closingThinkTags;
+    // Check for incomplete thinking blocks (both <thinking> and <think> variants)
+    // Count opening and closing tags to ensure they match
+    const openingThinkingTags = (textToProcess.match(/<thinking>/g) || []).length;
+    const closingThinkingTags = (textToProcess.match(/<\/thinking>/g) || []).length;
+    const openingThinkTags = (textToProcess.match(/<think>/g) || []).length;
+    const closingThinkTags = (textToProcess.match(/<\/think>/g) || []).length;
+    const hasIncompleteThinking = openingThinkingTags > closingThinkingTags;
+    const hasIncompleteThink = openingThinkTags > closingThinkTags;
 
-  if (hasIncompleteThinking) {
-    // Only add closing tag if we have unmatched opening tags
-    // Find the last <thinking> without a matching </thinking>
-    textToProcess = textToProcess.replace(/<thinking>(?![\s\S]*<\/thinking>)([\s\S]*)$/, '<thinking>$1</thinking>');
-  }
+    if (hasIncompleteThinking) {
+      // Only add closing tag if we have unmatched opening tags
+      // Find the last <thinking> without a matching </thinking>
+      textToProcess = textToProcess.replace(/<thinking>(?![\s\S]*<\/thinking>)([\s\S]*)$/, '<thinking>$1</thinking>');
+    }
 
-  if (hasIncompleteThink) {
-    // Only add closing tag if we have unmatched opening tags
-    // Find the last <think> without a matching </think>
-    textToProcess = textToProcess.replace(/<think>(?![\s\S]*<\/think>)([\s\S]*)$/, '<think>$1</think>');
-  }
+    if (hasIncompleteThink) {
+      // Only add closing tag if we have unmatched opening tags
+      // Find the last <think> without a matching </think>
+      textToProcess = textToProcess.replace(/<think>(?![\s\S]*<\/think>)([\s\S]*)$/, '<think>$1</think>');
+    }
 
-  const processedText = textToProcess
-    .replace(
-      /<thinking>([\s\S]*?)<\/thinking>/g,
-      (match, content) => {
-        // Convert to a custom code block that we can detect
-        return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
-      }
-    )
-    .replace(
-      /<think>([\s\S]*?)<\/think>/g,
-      (match, content) => {
-        // Convert to a custom code block that we can detect (same as thinking)
-        return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
-      }
-    )
-    .replace(
-      /<reasoning_summary>([\s\S]*?)<\/reasoning_summary>/g,
-      (match, content) => {
-        // Convert reasoning summary to thinking block (reuse same rendering logic)
-        return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
-      }
-    );
+    return textToProcess
+      .replace(
+        /<thinking>([\s\S]*?)<\/thinking>/g,
+        (match, content) => {
+          // Convert to a custom code block that we can detect
+          return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
+        }
+      )
+      .replace(
+        /<think>([\s\S]*?)<\/think>/g,
+        (match, content) => {
+          // Convert to a custom code block that we can detect (same as thinking)
+          return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
+        }
+      )
+      .replace(
+        /<reasoning_summary>([\s\S]*?)<\/reasoning_summary>/g,
+        (match, content) => {
+          // Convert reasoning summary to thinking block (reuse same rendering logic)
+          return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
+        }
+      );
+  }, [text]);
+
+  // Conditional syntax highlighting
+  const rehypePlugins = useMemo(() =>
+    shouldHighlight
+      ? [[rehypeHighlight, { ignoreMissing: true }] as any, rehypeKatex]
+      : [rehypeKatex], // Skip expensive highlighting during stream
+    [shouldHighlight]
+  );
 
   // Note: Syntax highlighting theme is automatically handled by CSS
   // based on the .dark class applied to the document root
@@ -117,10 +141,7 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
       <ReactMarkdown
         // Do NOT enable raw HTML to prevent XSS
         remarkPlugins={[remarkGfm, remarkMath]}
-        rehypePlugins={[
-          [rehypeHighlight, { ignoreMissing: true }],
-          rehypeKatex
-        ]}
+        rehypePlugins={rehypePlugins}
         components={{
           a: ({ href, children }) => (
             <a
@@ -239,6 +260,15 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className }) => {
                     {!isExpanded && <div className="px-4 pb-3" />}
                   </div>
                 </div>
+              );
+            }
+
+            // Show un-highlighted code during streaming
+            if (!shouldHighlight && className?.startsWith('language-')) {
+              return (
+                <code className={`${className} bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-slate-300 px-1 rounded`}>
+                  {children}
+                </code>
               );
             }
 
