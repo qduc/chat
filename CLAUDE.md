@@ -1,1 +1,1 @@
-Refer to @AI_ONBOARDING.md for more detail
+Refer to @AGENTS.md
