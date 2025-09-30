@@ -60,6 +60,47 @@ function buildAssistantSegments(message: ChatMessage): AssistantSegment[] {
     return content ? [{ kind: 'text', text: content }] : [];
   }
 
+  // Helper to resolve outputs for a tool call
+  const resolveOutputs = (call: any): ToolOutput[] => {
+    return toolOutputs.filter((out) => {
+      if (!out) return false;
+      if (out.tool_call_id && call?.id) return out.tool_call_id === call.id;
+      if (out.name && call?.function?.name) return out.name === call.function.name;
+      return false;
+    });
+  };
+
+  // Check if any tool call has a valid textOffset
+  const hasValidTextOffset = toolCalls.some((call: any) =>
+    typeof call?.textOffset === 'number' && Number.isFinite(call.textOffset) && call.textOffset > 0
+  );
+
+  // For loaded conversations (no valid textOffset), show tools first, then content
+  if (!hasValidTextOffset) {
+    const segments: AssistantSegment[] = [];
+
+    // Add all tool calls at the beginning
+    const sortedCalls = toolCalls
+      .map((call: any, idx: number) => ({
+        idx,
+        call,
+        order: typeof call?.index === 'number' ? call.index : idx,
+      }))
+      .sort((a, b) => a.order - b.order);
+
+    for (const entry of sortedCalls) {
+      segments.push({ kind: 'tool_call', toolCall: entry.call, outputs: resolveOutputs(entry.call) });
+    }
+
+    // Add content after tool calls
+    if (content) {
+      segments.push({ kind: 'text', text: content });
+    }
+
+    return segments;
+  }
+
+  // For streaming messages with textOffset, use position-based rendering
   const sortedCalls = toolCalls
     .map((call: any, idx: number) => {
       const offset = typeof call?.textOffset === 'number' && Number.isFinite(call.textOffset)
@@ -81,15 +122,6 @@ function buildAssistantSegments(message: ChatMessage): AssistantSegment[] {
 
   const segments: AssistantSegment[] = [];
   let cursor = 0;
-
-  const resolveOutputs = (call: any): ToolOutput[] => {
-    return toolOutputs.filter((out) => {
-      if (!out) return false;
-      if (out.tool_call_id && call?.id) return out.tool_call_id === call.id;
-      if (out.name && call?.function?.name) return out.name === call.function.name;
-      return false;
-    });
-  };
 
   for (const entry of sortedCalls) {
     const offset = entry.offset ?? content.length;
