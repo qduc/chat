@@ -158,6 +158,16 @@ export function RightSidebar({
     await clearPrompt(conversationId);
     setSelectedPromptId(null);
     setNewPromptContent(''); // Clear new prompt content
+
+    // Explicitly clear the effective prompt to prevent stale content from being used
+    if (onEffectivePromptChange) {
+      onEffectivePromptChange('');
+    }
+
+    // Clear the active prompt ID
+    if (onActivePromptIdChange) {
+      onActivePromptIdChange(null);
+    }
   };
 
   const handleSavePrompt = async () => {
