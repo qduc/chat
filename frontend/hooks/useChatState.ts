@@ -1046,10 +1046,12 @@ export function useChatState() {
         if (data.verbosity) {
           dispatch({ type: 'SET_VERBOSITY', payload: data.verbosity });
         }
-        if (typeof (data as any).system_prompt === 'string') {
+        // Always update system_prompt if present in response (including null)
+        if ('system_prompt' in (data as any)) {
           dispatch({ type: 'SET_SYSTEM_PROMPT', payload: (data as any).system_prompt || '' });
         }
-        if ((data as any).active_system_prompt_id !== undefined) {
+        // Always update active_system_prompt_id if present in response (including null)
+        if ('active_system_prompt_id' in (data as any)) {
           dispatch({ type: 'SET_ACTIVE_SYSTEM_PROMPT_ID', payload: (data as any).active_system_prompt_id });
         }
       } catch (e: any) {
