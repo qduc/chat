@@ -162,6 +162,10 @@ chat/
 **UI components**: Check `frontend/components/` organized by feature
 **Documentation**: Check `docs/` for ADRs and detailed specs
 
+## Instructions for Claude/Copilot AI
+
+- Creating documents after finishing a task is not necessary and should only be done if requested.
+
 ---
 
 This architecture prioritizes **separation of concerns**, **type safety**, and **user data isolation** while maintaining **OpenAI API compatibility** and **production reliability**.
