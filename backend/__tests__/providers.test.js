@@ -180,4 +180,52 @@ describe('Providers connectivity', () => {
     assert.equal(body.success, true);
     assert.ok(typeof body.models === 'number');
   });
+
+  test('GET /v1/providers/:id/models handles upstream 401 gracefully', async () => {
+    // Mock HTTP to simulate 401 unauthorized
+    const mockHttp = jest.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 401,
+      text: async () => 'Unauthorized',
+    });
+
+    const { createProvidersRouter } = await import('../src/routes/providers.js');
+    const app = makeApp(createProvidersRouter({ http: mockHttp }));
+    const agent = request(app);
+
+    // Seed provider
+    const db = getDb();
+    db.exec('DELETE FROM providers;');
+    db.prepare(`INSERT INTO providers (id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
+                VALUES ('p5','p5','openai','bad-key','http://mock',1,1,'{}','{}',datetime('now'),datetime('now'))`).run();
+
+    const res = await agent.get('/v1/providers/p5/models');
+    assert.equal(res.status, 502);
+    const body = res.body;
+    assert.equal(body.error, 'bad_gateway');
+    assert.ok(/Invalid API key/i.test(body.message));
+  });
+
+  test('GET /v1/providers/:id/models handles connection timeout gracefully', async () => {
+    // Mock HTTP to simulate timeout error
+    const timeoutError = new Error('Timeout');
+    timeoutError.code = 'ETIMEDOUT';
+    const mockHttp = jest.fn().mockRejectedValueOnce(timeoutError);
+
+    const { createProvidersRouter } = await import('../src/routes/providers.js');
+    const app = makeApp(createProvidersRouter({ http: mockHttp }));
+    const agent = request(app);
+
+    // Seed provider
+    const db = getDb();
+    db.exec('DELETE FROM providers;');
+    db.prepare(`INSERT INTO providers (id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
+                VALUES ('p6','p6','openai','key','http://unreachable',1,1,'{}','{}',datetime('now'),datetime('now'))`).run();
+
+    const res = await agent.get('/v1/providers/p6/models');
+    assert.equal(res.status, 502);
+    const body = res.body;
+    assert.equal(body.error, 'provider_error');
+    assert.ok(/Connection timeout/i.test(body.message));
+  });
 });

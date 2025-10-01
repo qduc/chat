@@ -154,10 +154,33 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
       ...extra,
     };
 
-    const upstream = await http(url, { method: 'GET', headers });
+    const upstream = await http(url, { 
+      method: 'GET', 
+      headers,
+      timeout: 10000 // 10 second timeout
+    });
+    
     if (!upstream.ok) {
       const text = await upstream.text().catch(() => '');
-      return res.status(502).json({ error: 'bad_gateway', message: `Upstream ${upstream.status}`, detail: text.slice(0, 500) });
+      let errorMessage = 'Failed to fetch models';
+
+      if (upstream.status === 401) {
+        errorMessage = 'Invalid API key. Please check your credentials.';
+      } else if (upstream.status === 403) {
+        errorMessage = 'API key does not have permission to access models.';
+      } else if (upstream.status === 404) {
+        errorMessage = 'Invalid base URL. The /v1/models endpoint was not found.';
+      } else if (upstream.status >= 500) {
+        errorMessage = 'Server error from the provider. Please try again later.';
+      } else {
+        errorMessage = `Provider returned error: ${upstream.status}`;
+      }
+
+      return res.status(502).json({ 
+        error: 'bad_gateway', 
+        message: errorMessage,
+        detail: text.slice(0, 200) 
+      });
     }
 
     const json = await upstream.json().catch(() => ({}));
@@ -173,7 +196,29 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
 
     res.json({ provider: { id: row.id, name: row.name, provider_type: row.provider_type }, models });
   } catch (err) {
-    res.status(500).json({ error: 'internal_server_error', message: err?.message || 'failed to list models' });
+    let errorMessage = 'Failed to retrieve models. Please check your provider configuration.';
+    let statusCode = 502; // Default to bad gateway for provider connectivity issues
+
+    // Check various error conditions for network-related issues
+    if (err.name === 'AbortError' || err.code === 'ETIMEDOUT' || err.message?.includes('timeout')) {
+      errorMessage = 'Connection timeout. Please check your base URL and network connection.';
+    } else if (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED' || err.message?.includes('ENOTFOUND') || err.message?.includes('fetch failed')) {
+      errorMessage = 'Cannot connect to the provider. Please check your base URL.';
+    } else if (err.code === 'ECONNRESET' || err.code === 'ECONNABORTED') {
+      errorMessage = 'Connection to provider was interrupted. Please try again.';
+    } else if (err.name === 'TypeError' && err.message?.includes('fetch')) {
+      errorMessage = 'Network error occurred while connecting to provider.';
+    } else {
+      // For truly internal errors (database issues, etc.), use 500
+      statusCode = 500;
+      errorMessage = 'Internal server error while fetching models.';
+    }
+
+    res.status(statusCode).json({
+      error: statusCode === 500 ? 'internal_server_error' : 'provider_error',
+      message: errorMessage,
+      detail: err?.message || 'Unknown error'
+    });
   }
   });
 
