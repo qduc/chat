@@ -6,8 +6,12 @@ import {
 import { waitForAuthReady } from '../auth/ready';
 import { httpClient } from '../http/client';
 import { HttpError } from '../http/types';
+import { Cache } from './cache';
 
 const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
+
+// Cache TTL: 5 minutes
+const CACHE_TTL_MS = 5 * 60 * 1000;
 
 export interface ConversationCreateOptions {
   title?: string;
@@ -40,6 +44,9 @@ export interface EditMessageResult {
 }
 
 export class ConversationManager {
+  private listCache = new Cache<ConversationsList>(CACHE_TTL_MS);
+  private conversationCache = new Cache<ConversationWithMessages>(CACHE_TTL_MS);
+
   constructor(private apiBase: string = defaultApiBase) {}
 
   async create(options: ConversationCreateOptions = {}): Promise<ConversationMeta> {
@@ -49,6 +56,8 @@ export class ConversationManager {
         `${this.apiBase}/v1/conversations`,
         options
       );
+      // Clear list cache on create
+      this.listCache.clear();
       return response.data;
     } catch (error) {
       if (error instanceof HttpError) {
@@ -64,9 +73,16 @@ export class ConversationManager {
     if (params.cursor) searchParams.set('cursor', params.cursor);
     if (params.limit) searchParams.set('limit', String(params.limit));
 
+    const cacheKey = `list:${searchParams.toString()}`;
+    const cached = this.listCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     try {
       const url = `${this.apiBase}/v1/conversations${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
       const response = await httpClient.get<ConversationsList>(url);
+      this.listCache.set(cacheKey, response.data);
       return response.data;
     } catch (error) {
       if (error instanceof HttpError) {
@@ -82,9 +98,16 @@ export class ConversationManager {
     if (params.after_seq) searchParams.set('after_seq', String(params.after_seq));
     if (params.limit) searchParams.set('limit', String(params.limit));
 
+    const cacheKey = `get:${id}:${searchParams.toString()}`;
+    const cached = this.conversationCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
     try {
       const url = `${this.apiBase}/v1/conversations/${id}${searchParams.toString() ? `?${searchParams.toString()}` : ''}`;
       const response = await httpClient.get<ConversationWithMessages>(url);
+      this.conversationCache.set(cacheKey, response.data);
       return response.data;
     } catch (error) {
       if (error instanceof HttpError) {
@@ -98,6 +121,9 @@ export class ConversationManager {
     await waitForAuthReady();
     try {
       await httpClient.delete(`${this.apiBase}/v1/conversations/${id}`);
+      // Clear caches on delete
+      this.listCache.clear();
+      this.conversationCache.delete(`get:${id}:`);
     } catch (error) {
       if (error instanceof HttpError) {
         throw new Error(error.message);
@@ -117,6 +143,9 @@ export class ConversationManager {
         `${this.apiBase}/v1/conversations/${conversationId}/messages/${messageId}/edit`,
         { content }
       );
+      // Clear conversation cache on edit (creates new conversation)
+      this.conversationCache.clear();
+      this.listCache.clear();
       return response.data;
     } catch (error) {
       if (error instanceof HttpError) {

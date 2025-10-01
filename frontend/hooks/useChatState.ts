@@ -1,7 +1,7 @@
-import React, { useReducer, useCallback, useRef, useEffect } from 'react';
+import React, { useReducer, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { ChatMessage, Role, ConversationMeta } from '../lib/chat';
 import type { Group as TabGroup, Option as ModelOption } from '../components/ui/TabbedSelect';
-import { sendChat, getConversationApi, listConversationsApi, deleteConversationApi, editMessageApi } from '../lib/chat';
+import { sendChat, getConversationApi, listConversationsApi, deleteConversationApi, editMessageApi, ConversationManager } from '../lib/chat';
 import type { QualityLevel } from '../components/ui/QualitySlider';
 import type { User } from '../lib/auth/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -597,6 +597,7 @@ export function useChatState() {
   const assistantMsgRef = useRef<ChatMessage | null>(null);
   const inFlightRef = useRef<boolean>(false);
   const modelRef = useRef(state.model);
+  const conversationManager = useMemo(() => new ConversationManager(), []);
   const throttleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -700,7 +701,7 @@ export function useChatState() {
 
     try {
       dispatch({ type: 'LOAD_CONVERSATIONS_START' });
-      const list = await listConversationsApi(undefined, { limit: 20 });
+      const list = await conversationManager.list({ limit: 20 });
       dispatch({
         type: 'LOAD_CONVERSATIONS_SUCCESS',
         payload: { conversations: list.items, nextCursor: list.next_cursor, replace: true }
@@ -712,7 +713,7 @@ export function useChatState() {
       }
       dispatch({ type: 'LOAD_CONVERSATIONS_ERROR' });
     }
-  }, [authReady, user]);
+  }, [authReady, user, conversationManager]);
 
   // Initialize conversations on first render
   React.useEffect(() => {
@@ -1063,7 +1064,7 @@ export function useChatState() {
       dispatch({ type: 'CANCEL_EDIT' });
 
       try {
-        const data = await getConversationApi(undefined, id, { limit: 200 });
+        const data = await conversationManager.get(id, { limit: 200 });
         const msgs = data.messages.map(m => ({
           id: String(m.id),
           role: m.role as Role,
@@ -1117,14 +1118,14 @@ export function useChatState() {
       } catch (e: any) {
         // ignore
       }
-    }, [state.status]),
+    }, [state.status, conversationManager]),
 
     loadMoreConversations: useCallback(async () => {
       if (!state.nextCursor || state.loadingConversations) return;
 
       dispatch({ type: 'LOAD_CONVERSATIONS_START' });
       try {
-        const list = await listConversationsApi(undefined, { cursor: state.nextCursor, limit: 20 });
+        const list = await conversationManager.list({ cursor: state.nextCursor, limit: 20 });
         dispatch({
           type: 'LOAD_CONVERSATIONS_SUCCESS',
           payload: { conversations: list.items, nextCursor: list.next_cursor }
@@ -1132,16 +1133,16 @@ export function useChatState() {
       } catch (e: any) {
         dispatch({ type: 'LOAD_CONVERSATIONS_ERROR' });
       }
-    }, [state.nextCursor, state.loadingConversations]),
+    }, [state.nextCursor, state.loadingConversations, conversationManager]),
 
     deleteConversation: useCallback(async (id: string) => {
       try {
-        await deleteConversationApi(undefined, id);
+        await conversationManager.delete(id);
         dispatch({ type: 'DELETE_CONVERSATION', payload: id });
       } catch (e: any) {
         // ignore
       }
-    }, []),
+    }, [conversationManager]),
 
     // Editing Actions
     startEdit: useCallback((messageId: string, content: string) => {
