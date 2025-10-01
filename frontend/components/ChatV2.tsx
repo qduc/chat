@@ -10,12 +10,20 @@ import { MessageInput } from './MessageInput';
 import { RightSidebar } from './RightSidebar';
 import SettingsModal from './SettingsModal';
 import { AuthModal, AuthMode } from './auth/AuthModal';
+import { useDocumentTitle } from '../hooks/useDocumentTitle';
 
 export function ChatV2() {
   const { state, actions } = useChatState();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('login');
+  
+  // Update document title based on active conversation
+  useDocumentTitle({
+    conversationId: state.conversationId,
+    currentConversationTitle: state.currentConversationTitle,
+    conversations: state.conversations,
+  });
   const DEFAULT_RIGHT_SIDEBAR_WIDTH = 320;
   const MIN_RIGHT_SIDEBAR_WIDTH = 260;
   const MAX_RIGHT_SIDEBAR_WIDTH = 560;

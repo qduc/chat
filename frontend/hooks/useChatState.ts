@@ -27,6 +27,7 @@ export interface ChatState {
   // Chat State
   messages: ChatMessage[];
   conversationId: string | null;
+  currentConversationTitle: string | null;
   previousResponseId: string | null;
   // ...existing code...
 
@@ -90,6 +91,7 @@ export type ChatAction =
   | { type: 'SET_ACTIVE_SYSTEM_PROMPT_ID'; payload: string | null }
   | { type: 'SET_ENABLED_TOOLS'; payload: string[] }
   | { type: 'SET_CONVERSATION_ID'; payload: string | null }
+  | { type: 'SET_CURRENT_CONVERSATION_TITLE'; payload: string | null }
   | { type: 'START_STREAMING'; payload: { abort: AbortController; userMessage: ChatMessage; assistantMessage: ChatMessage } }
   | { type: 'REGENERATE_START'; payload: { abort: AbortController; baseMessages: ChatMessage[]; assistantMessage: ChatMessage } }
   | { type: 'STREAM_TOKEN'; payload: { messageId: string; token: string; fullContent?: string } }
@@ -128,6 +130,7 @@ const initialState: ChatState = {
   input: '',
   messages: [],
   conversationId: null,
+  currentConversationTitle: null,
   previousResponseId: null,
   model: 'gpt-4.1-mini',
   providerId: null,
@@ -224,6 +227,12 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         conversationId: action.payload,
         // Reset previousResponseId when switching conversations
         previousResponseId: null
+      };
+
+    case 'SET_CURRENT_CONVERSATION_TITLE':
+      return {
+        ...state,
+        currentConversationTitle: action.payload
       };
 
     case 'START_STREAMING':
@@ -501,6 +510,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         messages: [],
         input: '',
         conversationId: null,
+        currentConversationTitle: null,
         previousResponseId: null,
         editingMessageId: null,
         editingContent: '',
@@ -1099,6 +1109,10 @@ export function useChatState() {
         // Always update active_system_prompt_id if present in response (including null)
         if ('active_system_prompt_id' in (data as any)) {
           dispatch({ type: 'SET_ACTIVE_SYSTEM_PROMPT_ID', payload: (data as any).active_system_prompt_id });
+        }
+        // Set the current conversation title if available
+        if (data.title) {
+          dispatch({ type: 'SET_CURRENT_CONVERSATION_TITLE', payload: data.title });
         }
       } catch (e: any) {
         // ignore
