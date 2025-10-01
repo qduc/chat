@@ -10,20 +10,13 @@ import { MessageInput } from './MessageInput';
 import { RightSidebar } from './RightSidebar';
 import SettingsModal from './SettingsModal';
 import { AuthModal, AuthMode } from './auth/AuthModal';
-import { useDocumentTitle } from '../hooks/useDocumentTitle';
 
 export function ChatV2() {
   const { state, actions } = useChatState();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('login');
-  
-  // Update document title based on active conversation
-  useDocumentTitle({
-    conversationId: state.conversationId,
-    currentConversationTitle: state.currentConversationTitle,
-    conversations: state.conversations,
-  });
+
   const DEFAULT_RIGHT_SIDEBAR_WIDTH = 320;
   const MIN_RIGHT_SIDEBAR_WIDTH = 260;
   const MAX_RIGHT_SIDEBAR_WIDTH = 560;
@@ -286,6 +279,15 @@ export function ChatV2() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.conversationId]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const sidebarTitle = state.conversations.find(convo => convo.id === state.conversationId)?.title?.trim();
+    const activeTitle = (state.currentConversationTitle ?? sidebarTitle)?.trim();
+
+    document.title = activeTitle ? `${activeTitle} - ChatForge` : 'ChatForge';
+  }, [state.conversationId, state.conversations, state.currentConversationTitle]);
 
   return (
     <div className="flex h-dvh max-h-dvh bg-gradient-to-br from-slate-50 via-white to-slate-100/40 dark:from-neutral-950 dark:via-neutral-950 dark:to-neutral-900/20">
