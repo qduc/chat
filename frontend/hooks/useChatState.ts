@@ -38,6 +38,7 @@ export interface ChatState {
   modelOptions: ModelOption[];
   modelGroups: TabGroup[] | null;
   modelToProvider: Record<string, string>;
+  isLoadingModels: boolean;
   useTools: boolean;
   shouldStream: boolean;
   reasoningEffort: string;
@@ -119,7 +120,8 @@ export type ChatAction =
   | { type: 'SET_SIDEBAR_COLLAPSED'; payload: boolean }
   | { type: 'TOGGLE_RIGHT_SIDEBAR' }
   | { type: 'SET_RIGHT_SIDEBAR_COLLAPSED'; payload: boolean }
-  | { type: 'SET_MODEL_LIST'; payload: { groups: TabGroup[] | null; options: ModelOption[]; modelToProvider: Record<string, string> } };
+  | { type: 'SET_MODEL_LIST'; payload: { groups: TabGroup[] | null; options: ModelOption[]; modelToProvider: Record<string, string> } }
+  | { type: 'SET_LOADING_MODELS'; payload: boolean };
 
 const initialState: ChatState = {
   // Authentication State
@@ -137,6 +139,7 @@ const initialState: ChatState = {
   modelOptions: [],
   modelGroups: null,
   modelToProvider: {},
+  isLoadingModels: false,
   useTools: true,
   shouldStream: true,
   reasoningEffort: 'medium',
@@ -559,6 +562,9 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         modelToProvider: action.payload.modelToProvider || {}
       };
 
+    case 'SET_LOADING_MODELS':
+      return { ...state, isLoadingModels: action.payload };
+
     default:
       return state;
   }
@@ -618,10 +624,14 @@ export function useChatState() {
     }
     const apiBase = (process.env.NEXT_PUBLIC_API_BASE as string) ?? 'http://localhost:3001';
     try {
+      dispatch({ type: 'SET_LOADING_MODELS', payload: true });
       const response = await httpClient.get<{ providers: any[] }>(`${apiBase}/v1/providers`);
       const providers: any[] = Array.isArray(response.data.providers) ? response.data.providers : [];
       const enabledProviders = providers.filter(p => p?.enabled);
-      if (!enabledProviders.length) return;
+      if (!enabledProviders.length) {
+        dispatch({ type: 'SET_LOADING_MODELS', payload: false });
+        return;
+      }
 
       const results = await Promise.allSettled(
         enabledProviders.map(async (p) => {
@@ -647,7 +657,10 @@ export function useChatState() {
       }
 
       const flat = gs.flatMap(g => g.options);
-      if (gs.length === 0) return;
+      if (gs.length === 0) {
+        dispatch({ type: 'SET_LOADING_MODELS', payload: false });
+        return;
+      }
 
       dispatch({ type: 'SET_MODEL_LIST', payload: { groups: gs, options: flat, modelToProvider: modelProviderMap } });
 
@@ -660,6 +673,8 @@ export function useChatState() {
       }
     } catch (e) {
       // ignore
+    } finally {
+      dispatch({ type: 'SET_LOADING_MODELS', payload: false });
     }
   }, [authReady, user]);
 
@@ -1201,6 +1216,8 @@ export function useChatState() {
     toggleRightSidebar: useCallback(() => {
       dispatch({ type: 'TOGGLE_RIGHT_SIDEBAR' });
     }, []),
+
+    loadProvidersAndModels,
   };
 
   return { state, actions };

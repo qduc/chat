@@ -328,6 +328,8 @@ export function ChatV2() {
           onOpenSettings={() => setIsSettingsOpen(true)}
           onShowLogin={handleShowLogin}
           onShowRegister={handleShowRegister}
+          onRefreshModels={actions.loadProvidersAndModels}
+          isLoadingModels={state.isLoadingModels}
           groups={state.modelGroups}
           fallbackOptions={state.modelOptions}
           modelToProvider={state.modelToProvider}

@@ -157,7 +157,7 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
     const upstream = await http(url, {
       method: 'GET',
       headers,
-      timeout: 10000 // 10 second timeout
+      timeout: 3000 // 3 second timeout
     });
 
     if (!upstream.ok) {
