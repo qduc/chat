@@ -154,12 +154,12 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
       ...extra,
     };
 
-    const upstream = await http(url, { 
-      method: 'GET', 
+    const upstream = await http(url, {
+      method: 'GET',
       headers,
       timeout: 10000 // 10 second timeout
     });
-    
+
     if (!upstream.ok) {
       const text = await upstream.text().catch(() => '');
       let errorMessage = 'Failed to fetch models';
@@ -176,10 +176,10 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
         errorMessage = `Provider returned error: ${upstream.status}`;
       }
 
-      return res.status(502).json({ 
-        error: 'bad_gateway', 
+      return res.status(502).json({
+        error: 'bad_gateway',
         message: errorMessage,
-        detail: text.slice(0, 200) 
+        detail: text.slice(0, 200)
       });
     }
 
@@ -193,6 +193,17 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
     models = models
       .map((m) => (typeof m === 'string' ? { id: m } : m))
       .filter((m) => m && m.id);
+
+    // Filter OpenRouter models to only show those released in the last 1 year
+    if (baseUrl.includes('openrouter.ai')) {
+      const oneYearAgo = Math.floor(Date.now() / 1000) - (365 * 24 * 60 * 60);
+      models = models.filter((m) => {
+        // If no 'created' field, include the model (backwards compatibility)
+        if (!m.created) return true;
+        // Filter out models older than 1 year
+        return m.created >= oneYearAgo;
+      });
+    }
 
     res.json({ provider: { id: row.id, name: row.name, provider_type: row.provider_type }, models });
   } catch (err) {
@@ -293,6 +304,17 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
     models = models
       .map((m) => (typeof m === 'string' ? { id: m } : m))
       .filter((m) => m && m.id);
+
+    // Filter OpenRouter models to only show those released in the last 1 year
+    if (base_url.includes('openrouter.ai')) {
+      const oneYearAgo = Math.floor(Date.now() / 1000) - (365 * 24 * 60 * 60);
+      models = models.filter((m) => {
+        // If no 'created' field, include the model (backwards compatibility)
+        if (!m.created) return true;
+        // Filter out models older than 1 year
+        return m.created >= oneYearAgo;
+      });
+    }
 
     const modelCount = models.length;
     const sampleModels = models.slice(0, 3).map(m => m.id).join(', ');
@@ -397,6 +419,17 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
     models = models
       .map((m) => (typeof m === 'string' ? { id: m } : m))
       .filter((m) => m && m.id);
+
+    // Filter OpenRouter models to only show those released in the last 1 year
+    if (testBaseUrl.includes('openrouter.ai')) {
+      const oneYearAgo = Math.floor(Date.now() / 1000) - (365 * 24 * 60 * 60);
+      models = models.filter((m) => {
+        // If no 'created' field, include the model (backwards compatibility)
+        if (!m.created) return true;
+        // Filter out models older than 1 year
+        return m.created >= oneYearAgo;
+      });
+    }
 
     const modelCount = models.length;
     const sampleModels = models.slice(0, 3).map(m => m.id).join(', ');

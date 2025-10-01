@@ -228,4 +228,80 @@ describe('Providers connectivity', () => {
     assert.equal(body.error, 'provider_error');
     assert.ok(/Connection timeout/i.test(body.message));
   });
+
+  test('GET /v1/providers/:id/models filters OpenRouter models by creation date', async () => {
+    // Create mock models with different creation dates
+    const now = Math.floor(Date.now() / 1000);
+    const oneYearAgo = now - (365 * 24 * 60 * 60);
+    const twoYearsAgo = now - (2 * 365 * 24 * 60 * 60);
+
+    const mockHttp = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: [
+          { id: 'model-recent', created: now - (30 * 24 * 60 * 60) }, // 30 days old
+          { id: 'model-old', created: twoYearsAgo }, // 2 years old (should be filtered)
+          { id: 'model-edge', created: oneYearAgo + 100 }, // Just under 1 year (should be included)
+          { id: 'model-no-date' }, // No created field (should be included)
+        ]
+      }),
+    });
+
+    const { createProvidersRouter } = await import('../src/routes/providers.js');
+    const app = makeApp(createProvidersRouter({ http: mockHttp }));
+    const agent = request(app);
+
+    // Seed OpenRouter provider
+    const db = getDb();
+    db.exec('DELETE FROM providers;');
+    db.prepare(`INSERT INTO providers (id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
+                VALUES ('openrouter','OpenRouter','openai','key123','https://openrouter.ai/api',1,1,'{}','{}',datetime('now'),datetime('now'))`).run();
+
+    const res = await agent.get('/v1/providers/openrouter/models');
+    assert.equal(res.status, 200);
+    const body = res.body;
+    assert.ok(Array.isArray(body.models));
+
+    // Should only include recent, edge case, and no-date models
+    assert.equal(body.models.length, 3);
+    assert.ok(body.models.some((m) => m.id === 'model-recent'));
+    assert.ok(body.models.some((m) => m.id === 'model-edge'));
+    assert.ok(body.models.some((m) => m.id === 'model-no-date'));
+    assert.ok(!body.models.some((m) => m.id === 'model-old'));
+  });
+
+  test('GET /v1/providers/:id/models does not filter non-OpenRouter providers', async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const twoYearsAgo = now - (2 * 365 * 24 * 60 * 60);
+
+    const mockHttp = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        data: [
+          { id: 'model-recent', created: now },
+          { id: 'model-old', created: twoYearsAgo }, // Should NOT be filtered for non-OpenRouter
+        ]
+      }),
+    });
+
+    const { createProvidersRouter } = await import('../src/routes/providers.js');
+    const app = makeApp(createProvidersRouter({ http: mockHttp }));
+    const agent = request(app);
+
+    // Seed regular OpenAI provider
+    const db = getDb();
+    db.exec('DELETE FROM providers;');
+    db.prepare(`INSERT INTO providers (id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
+                VALUES ('openai','OpenAI','openai','key123','https://api.openai.com',1,1,'{}','{}',datetime('now'),datetime('now'))`).run();
+
+    const res = await agent.get('/v1/providers/openai/models');
+    assert.equal(res.status, 200);
+    const body = res.body;
+    assert.ok(Array.isArray(body.models));
+
+    // Should include all models regardless of age
+    assert.equal(body.models.length, 2);
+    assert.ok(body.models.some((m) => m.id === 'model-recent'));
+    assert.ok(body.models.some((m) => m.id === 'model-old'));
+  });
 });
