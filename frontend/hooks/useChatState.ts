@@ -822,7 +822,11 @@ export function useChatState() {
 
       const config: any = {
         messages: outgoing.map(m => ({ role: m.role as Role, content: m.content })),
-        model: state.model,
+        // Prefer the synchronous ref which is updated immediately when the user
+        // selects a model. This avoids a race where a model change dispatch
+        // hasn't flushed to React state yet but an immediate regenerate/send
+        // should use the newly selected model.
+        model: modelRef.current,
         signal,
         conversationId: state.conversationId || undefined,
         responseId: state.previousResponseId || undefined,
@@ -958,6 +962,10 @@ export function useChatState() {
     }, []),
 
     setModel: useCallback((model: string) => {
+      // Update the ref immediately so subsequent actions (like regenerate)
+      // that read modelRef.current will use the newly selected model even if
+      // React state hasn't committed yet.
+      modelRef.current = model;
       dispatch({ type: 'SET_MODEL', payload: model });
     }, []),
 
