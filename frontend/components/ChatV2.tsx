@@ -285,9 +285,21 @@ export function ChatV2() {
 
     const sidebarTitle = state.conversations.find(convo => convo.id === state.conversationId)?.title?.trim();
     const activeTitle = (state.currentConversationTitle ?? sidebarTitle)?.trim();
+    const nextTitle = activeTitle ? `${activeTitle} - ChatForge` : 'ChatForge';
 
-    document.title = activeTitle ? `${activeTitle} - ChatForge` : 'ChatForge';
-  }, [state.conversationId, state.conversations, state.currentConversationTitle]);
+    const applyTitle = () => {
+      document.title = nextTitle;
+    };
+
+    applyTitle();
+
+    if (typeof window === 'undefined') return;
+
+    const frameId = window.requestAnimationFrame(applyTitle);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [pathname, searchKey, state.conversationId, state.conversations, state.currentConversationTitle]);
 
   return (
     <div className="flex h-dvh max-h-dvh bg-gradient-to-br from-slate-50 via-white to-slate-100/40 dark:from-neutral-950 dark:via-neutral-950 dark:to-neutral-900/20">
