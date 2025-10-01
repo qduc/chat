@@ -16,15 +16,59 @@ jest.mock('../contexts/AuthContext', () => {
   };
 });
 
+// Ensure the chat library is mocked before importing components that use it.
+// Provide a manual mock implementation so ConversationManager instance methods
+// (list, get, delete, editMessage, create) delegate to the same mocked functions
+// that tests will set up below.
+jest.mock('../lib/chat', () => {
+  // Create placeholders for functions the tests will override
+  const mock: any = {
+    listConversationsApi: jest.fn(),
+    getConversationApi: jest.fn(),
+    deleteConversationApi: jest.fn(),
+    editMessageApi: jest.fn(),
+    createConversation: jest.fn(),
+    sendChat: jest.fn(),
+    getToolSpecs: jest.fn(),
+  };
+
+  class ConversationManager {
+    constructor() {}
+    async list(...args: any[]) {
+      return mock.listConversationsApi(undefined, ...args);
+    }
+    async get(...args: any[]) {
+      return mock.getConversationApi(undefined, ...args);
+    }
+    async delete(...args: any[]) {
+      return mock.deleteConversationApi(undefined, ...args);
+    }
+    async editMessage(...args: any[]) {
+      return mock.editMessageApi(undefined, ...args);
+    }
+    async create(...args: any[]) {
+      return mock.createConversation(undefined, ...args);
+    }
+  }
+
+  return {
+    __esModule: true,
+    ConversationManager,
+    listConversationsApi: mock.listConversationsApi,
+    getConversationApi: mock.getConversationApi,
+    deleteConversationApi: mock.deleteConversationApi,
+    editMessageApi: mock.editMessageApi,
+    createConversation: mock.createConversation,
+    sendChat: mock.sendChat,
+    getToolSpecs: mock.getToolSpecs,
+  };
+});
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import * as chatLib from '../lib/chat';
+const mockedChatLib = chatLib as jest.Mocked<typeof chatLib>;
 import { ChatV2 as Chat } from '../components/ChatV2';
 import { ThemeProvider } from '../contexts/ThemeContext';
-import * as chatLib from '../lib/chat';
-
-// Mock the chat library functions
-jest.mock('../lib/chat');
-const mockedChatLib = chatLib as jest.Mocked<typeof chatLib>;
 
 // Mock the Markdown component to avoid ES module issues
 jest.mock('../components/Markdown', () => ({
