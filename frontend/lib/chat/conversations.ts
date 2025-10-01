@@ -132,6 +132,10 @@ export class ConversationManager {
     }
   }
 
+  clearListCache() {
+    this.listCache.clear();
+  }
+
   async editMessage(
     conversationId: string,
     messageId: string,

@@ -855,7 +855,11 @@ export function useChatState() {
         // If backend auto-created a conversation, set id and refresh history
         if (result.conversation) {
           dispatch({ type: 'SET_CONVERSATION_ID', payload: result.conversation.id });
-          // Refresh to reflect server ordering/title rather than optimistic add
+          // Clear cached list and refresh to reflect server ordering/title rather than optimistic add
+          try {
+            // Invalidate any cached conversation list in the manager so list() makes a real network request
+            (conversationManager as any)?.clearListCache?.();
+          } catch (_) {}
           void refreshConversations();
         }
         // Sync the assistant message from the latest snapshot and the final content
