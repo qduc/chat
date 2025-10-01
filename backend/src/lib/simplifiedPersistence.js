@@ -154,7 +154,9 @@ export class SimplifiedPersistence {
         try {
           const lastUser = ConversationTitleService.findLastUserMessage(messages);
           if (lastUser) {
-            const generated = await this.titleService.generateTitle(lastUser.content, this.providerId);
+            // Extract the model being used for the chat to use the same model for title generation
+            const { model: chatModel } = this.persistenceConfig.extractRequestSettings(bodyIn);
+            const generated = await this.titleService.generateTitle(lastUser.content, this.providerId, chatModel);
             if (generated) {
               this.conversationManager.updateTitle(this.conversationId, sessionId, userId, generated);
               this.conversationMeta = { ...this.conversationMeta, title: generated };
