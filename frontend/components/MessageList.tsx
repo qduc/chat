@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import React from 'react';
 import {
   Bot,
@@ -176,6 +176,7 @@ interface MessageProps {
   copiedMessageId: string | null;
   handleCopy: (messageId: string, text: string) => void;
   pending: PendingState;
+  streamingStats: { tokensPerSecond: number } | null;
 }
 
 const Message = React.memo<MessageProps>(function Message({
@@ -198,6 +199,7 @@ const Message = React.memo<MessageProps>(function Message({
   copiedMessageId,
   handleCopy,
   pending,
+  streamingStats,
 }) {
   const isUser = message.role === 'user';
   const isEditing = editingMessageId === message.id;
@@ -447,6 +449,13 @@ const Message = React.memo<MessageProps>(function Message({
 
             {!isEditing && (message.content || !isUser) && (
               <div className="mt-1 flex items-center gap-2 opacity-70 group-hover:opacity-100 transition-opacity text-xs justify-end">
+                {/* Show streaming speed for assistant messages */}
+                {!isUser && streamingStats && streamingStats.tokensPerSecond > 0 && (
+                  <div className="px-2 py-1 rounded-md bg-white/60 dark:bg-neutral-800/50 text-slate-600 dark:text-slate-400 text-xs font-mono">
+                    {streamingStats.tokensPerSecond.toFixed(1)} tok/s
+                  </div>
+                )}
+
                 {message.content && (
                   <div className="relative">
                     <button
@@ -515,7 +524,8 @@ const Message = React.memo<MessageProps>(function Message({
     prev.editingContent === next.editingContent &&
     prev.pending.streaming === next.pending.streaming &&
     prev.collapsedToolOutputs === next.collapsedToolOutputs &&
-    prev.copiedMessageId === next.copiedMessageId
+    prev.copiedMessageId === next.copiedMessageId &&
+    prev.streamingStats?.tokensPerSecond === next.streamingStats?.tokensPerSecond
   );
 });
 
@@ -540,6 +550,30 @@ export function MessageList({
   const [collapsedToolOutputs, setCollapsedToolOutputs] = useState<Record<string, boolean>>({});
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [dynamicBottomPadding, setDynamicBottomPadding] = useState('8rem');
+
+  // Streaming statistics
+  const streamingStatsRef = useRef<{
+    startTime: number;
+    tokenCount: number;
+    messageId: string;
+  } | null>(null);
+  const [streamingStats, setStreamingStats] = useState<{ tokensPerSecond: number } | null>(null);
+
+  // Wrapper functions to clear streaming stats when regenerating or editing
+  const handleRetryMessage = useCallback((messageId: string) => {
+    setStreamingStats(null);
+    onRetryMessage(messageId);
+  }, [onRetryMessage]);
+
+  const handleApplyLocalEdit = useCallback(() => {
+    setStreamingStats(null);
+    onApplyLocalEdit();
+  }, [onApplyLocalEdit]);
+
+  const handleSaveEdit = useCallback(() => {
+    setStreamingStats(null);
+    onSaveEdit();
+  }, [onSaveEdit]);
 
   // Handle copy with tooltip feedback
   const handleCopy = (messageId: string, text: string) => {
@@ -611,6 +645,48 @@ export function MessageList({
     resizeEditingTextarea();
   }, [editingContent, editingMessageId]);
 
+  // Track streaming statistics
+  useEffect(() => {
+    if (messages.length === 0) {
+      streamingStatsRef.current = null;
+      setStreamingStats(null);
+      return;
+    }
+
+    const lastMessage = messages[messages.length - 1];
+
+    // Start tracking when a new assistant message appears during streaming
+    if (pending.streaming && lastMessage.role === 'assistant') {
+      // Initialize tracking for new message
+      if (!streamingStatsRef.current || streamingStatsRef.current.messageId !== lastMessage.id) {
+        streamingStatsRef.current = {
+          startTime: Date.now(),
+          tokenCount: 0,
+          messageId: lastMessage.id,
+        };
+      }
+
+      // Estimate token count (rough approximation: ~4 chars per token)
+      const content = lastMessage.content || '';
+      const estimatedTokens = Math.ceil(content.length / 4);
+
+      if (streamingStatsRef.current) {
+        streamingStatsRef.current.tokenCount = estimatedTokens;
+
+        // Calculate tokens per second
+        const elapsedSeconds = (Date.now() - streamingStatsRef.current.startTime) / 1000;
+        if (elapsedSeconds > 0.1) { // Only show after 100ms to avoid division issues
+          const tokensPerSecond = estimatedTokens / elapsedSeconds;
+          setStreamingStats({ tokensPerSecond });
+        }
+      }
+    } else if (!pending.streaming && streamingStatsRef.current) {
+      // Streaming ended - keep the final stats in state but clear the ref
+      // This ensures the stats stay visible after streaming completes
+      streamingStatsRef.current = null;
+    }
+  }, [messages, pending.streaming]);
+
   // Split messages with tool calls into separate messages
   const processedMessages = useMemo(
     () => splitMessagesWithToolCalls(messages),
@@ -638,6 +714,7 @@ export function MessageList({
         {processedMessages.map((m, idx) => {
           const isUser = m.role === 'user';
           const isStreaming = pending.streaming && idx === processedMessages.length - 1;
+          const isLastAssistantMessage = !isUser && idx === processedMessages.length - 1;
           // Set ref to the most recent user message (could be last or second-to-last)
           const isRecentUserMessage = isUser && (
             idx === processedMessages.length - 1 || // last message is user
@@ -655,9 +732,9 @@ export function MessageList({
               onCopy={onCopy}
               onEditMessage={onEditMessage}
               onCancelEdit={onCancelEdit}
-              onApplyLocalEdit={onApplyLocalEdit}
+              onApplyLocalEdit={handleApplyLocalEdit}
               onEditingContentChange={onEditingContentChange}
-              onRetryMessage={onRetryMessage}
+              onRetryMessage={handleRetryMessage}
               editingTextareaRef={editingTextareaRef}
               lastUserMessageRef={isRecentUserMessage ? lastUserMessageRef : null}
               resizeEditingTextarea={resizeEditingTextarea}
@@ -666,6 +743,7 @@ export function MessageList({
               copiedMessageId={copiedMessageId}
               handleCopy={handleCopy}
               pending={pending}
+              streamingStats={isLastAssistantMessage ? streamingStats : null}
             />
           );
         })}
