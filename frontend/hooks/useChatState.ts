@@ -603,12 +603,33 @@ export function useChatState() {
   const assistantMsgRef = useRef<ChatMessage | null>(null);
   const inFlightRef = useRef<boolean>(false);
   const modelRef = useRef(state.model);
+  // Keep synchronous refs for system prompt values so immediate actions
+  // (like regenerate/send) can use the newest prompt without waiting for
+  // React state to flush.
+  const systemPromptRef = useRef(state.systemPrompt);
+  const inlineSystemPromptRef = useRef(state.inlineSystemPromptOverride);
+  // Keep synchronous refs for chat parameters to avoid race conditions
+  const shouldStreamRef = useRef(state.shouldStream);
+  const reasoningEffortRef = useRef(state.reasoningEffort);
+  const verbosityRef = useRef(state.verbosity);
+  const qualityLevelRef = useRef(state.qualityLevel);
   const conversationManager = useMemo(() => new ConversationManager(), []);
   const throttleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     modelRef.current = state.model;
-  }, [state.model]);
+    // Keep prompt refs in sync when state changes (covers updates coming
+    // from other places than our setters, e.g. loading a conversation).
+    // Include prompts in the dependency list so they update as soon as
+    // state changes.
+    systemPromptRef.current = state.systemPrompt;
+    inlineSystemPromptRef.current = state.inlineSystemPromptOverride;
+    // Keep chat parameter refs in sync
+    shouldStreamRef.current = state.shouldStream;
+    reasoningEffortRef.current = state.reasoningEffort;
+    verbosityRef.current = state.verbosity;
+    qualityLevelRef.current = state.qualityLevel;
+  }, [state.model, state.systemPrompt, state.inlineSystemPromptOverride, state.shouldStream, state.reasoningEffort, state.verbosity, state.qualityLevel]);
 
   // Sync authentication state from AuthContext
   useEffect(() => {
@@ -813,8 +834,10 @@ export function useChatState() {
   // Helpers to remove duplicate sendChat setup and error handling
   const buildSendChatConfig = useCallback(
     (messages: ChatMessage[], signal: AbortSignal) => {
-      // Use inline override if available, otherwise fall back to system prompt
-      const effectiveSystemPrompt = (state.inlineSystemPromptOverride || state.systemPrompt || '').trim();
+  // Use inline override if available, otherwise fall back to system prompt.
+  // Read from refs so callers (send/regenerate) get the most recent
+  // value immediately even if React state hasn't committed yet.
+  const effectiveSystemPrompt = ((inlineSystemPromptRef.current || systemPromptRef.current) || '').trim();
 
       const outgoing = effectiveSystemPrompt
         ? ([{ role: 'system', content: effectiveSystemPrompt } as any, ...messages])
@@ -832,10 +855,11 @@ export function useChatState() {
         responseId: state.previousResponseId || undefined,
         systemPrompt: effectiveSystemPrompt || undefined,
         activeSystemPromptId: state.activeSystemPromptId || undefined,
-        shouldStream: state.shouldStream,
-        reasoningEffort: state.reasoningEffort,
-        verbosity: state.verbosity,
-        qualityLevel: state.qualityLevel,
+        // Use refs for chat parameters to ensure immediate updates are used
+        shouldStream: shouldStreamRef.current,
+        reasoningEffort: reasoningEffortRef.current,
+        verbosity: verbosityRef.current,
+        qualityLevel: qualityLevelRef.current,
         onEvent: handleStreamEvent,
         onToken: handleStreamToken,
       };
@@ -978,27 +1002,46 @@ export function useChatState() {
     }, []),
 
     setShouldStream: useCallback((shouldStream: boolean) => {
+      shouldStreamRef.current = shouldStream;
       dispatch({ type: 'SET_SHOULD_STREAM', payload: shouldStream });
     }, []),
 
     setReasoningEffort: useCallback((effort: string) => {
+      reasoningEffortRef.current = effort;
       dispatch({ type: 'SET_REASONING_EFFORT', payload: effort });
     }, []),
 
     setVerbosity: useCallback((verbosity: string) => {
+      verbosityRef.current = verbosity;
       dispatch({ type: 'SET_VERBOSITY', payload: verbosity });
     }, []),
 
 
     setQualityLevel: useCallback((level: QualityLevel) => {
+      // Update refs synchronously for immediate use
+      qualityLevelRef.current = level;
+      // Also update derived refs based on quality level mapping
+      const map: Record<QualityLevel, { reasoningEffort: string; verbosity: string }> = {
+        quick: { reasoningEffort: 'minimal', verbosity: 'low' },
+        balanced: { reasoningEffort: 'medium', verbosity: 'medium' },
+        thorough: { reasoningEffort: 'high', verbosity: 'high' },
+      };
+      const derived = map[level];
+      reasoningEffortRef.current = derived.reasoningEffort;
+      verbosityRef.current = derived.verbosity;
       dispatch({ type: 'SET_QUALITY_LEVEL', payload: level });
     }, []),
 
     setSystemPrompt: useCallback((prompt: string) => {
+      // Update ref synchronously so immediate send/regenerate uses new prompt
+      systemPromptRef.current = prompt;
       dispatch({ type: 'SET_SYSTEM_PROMPT', payload: prompt });
     }, []),
 
     setInlineSystemPromptOverride: useCallback((prompt: string) => {
+      // Update both refs synchronously to ensure immediate use by send/regenerate
+      inlineSystemPromptRef.current = prompt;
+      systemPromptRef.current = prompt;
       dispatch({ type: 'SET_INLINE_SYSTEM_PROMPT_OVERRIDE', payload: prompt });
       dispatch({ type: 'SET_SYSTEM_PROMPT', payload: prompt });
     }, []),
