@@ -448,7 +448,7 @@ const Message = React.memo<MessageProps>(function Message({
             )}
 
             {!isEditing && (message.content || !isUser) && (
-              <div className="mt-1 flex items-center gap-2 opacity-70 group-hover:opacity-100 transition-opacity text-xs justify-end">
+              <div className="mt-1 flex items-center justify-between opacity-70 group-hover:opacity-100 transition-opacity text-xs">
                 {/* Show streaming speed for assistant messages */}
                 {!isUser && streamingStats && streamingStats.tokensPerSecond > 0 && (
                   <div className="px-2 py-1 rounded-md bg-white/60 dark:bg-neutral-800/50 text-slate-600 dark:text-slate-400 text-xs font-mono">
@@ -456,51 +456,53 @@ const Message = React.memo<MessageProps>(function Message({
                   </div>
                 )}
 
-                {message.content && (
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() => handleCopy(message.id, message.content)}
-                      title="Copy"
-                      className="p-2 rounded-md bg-white/60 dark:bg-neutral-800/50 hover:bg-white/90 dark:hover:bg-neutral-700/80 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
-                    >
-                      <Copy className="w-3 h-3" aria-hidden="true" />
-                      <span className="sr-only">Copy</span>
-                    </button>
-                    {copiedMessageId === message.id && (
-                      <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10 animate-fade-in">
-                        Copied
-                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-2 border-r-2 border-t-2 border-transparent border-t-slate-800 dark:border-t-slate-700"></div>
-                      </div>
-                    )}
-                  </div>
-                )}
+                <div className="flex items-center gap-2">
+                  {message.content && (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={() => handleCopy(message.id, message.content)}
+                        title="Copy"
+                        className="p-2 rounded-md bg-white/60 dark:bg-neutral-800/50 hover:bg-white/90 dark:hover:bg-neutral-700/80 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+                      >
+                        <Copy className="w-3 h-3" aria-hidden="true" />
+                        <span className="sr-only">Copy</span>
+                      </button>
+                      {copiedMessageId === message.id && (
+                        <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10 animate-fade-in">
+                          Copied
+                          <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-2 border-r-2 border-t-2 border-transparent border-t-slate-800 dark:border-t-slate-700"></div>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
-                {isUser ? (
-                  message.content && (
-                    <button
-                      type="button"
-                      onClick={() => onEditMessage(message.id, message.content)}
-                      title="Edit"
-                      className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
-                    >
-                      <Edit2 className="w-3 h-3" aria-hidden="true" />
-                      <span className="sr-only">Edit</span>
-                    </button>
-                  )
-                ) : (
-                  !pending.streaming && (
-                    <button
-                      type="button"
-                      onClick={() => onRetryMessage && onRetryMessage(message.id)}
-                      title="Regenerate"
-                      className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
-                    >
-                      <RefreshCw className="w-3 h-3" aria-hidden="true" />
-                      <span className="sr-only">Regenerate</span>
-                    </button>
-                  )
-                )}
+                  {isUser ? (
+                    message.content && (
+                      <button
+                        type="button"
+                        onClick={() => onEditMessage(message.id, message.content)}
+                        title="Edit"
+                        className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+                      >
+                        <Edit2 className="w-3 h-3" aria-hidden="true" />
+                        <span className="sr-only">Edit</span>
+                      </button>
+                    )
+                  ) : (
+                    !pending.streaming && (
+                      <button
+                        type="button"
+                        onClick={() => onRetryMessage && onRetryMessage(message.id)}
+                        title="Regenerate"
+                        className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+                      >
+                        <RefreshCw className="w-3 h-3" aria-hidden="true" />
+                        <span className="sr-only">Regenerate</span>
+                      </button>
+                    )
+                  )}
+                </div>
               </div>
             )}
           </>

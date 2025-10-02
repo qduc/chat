@@ -187,28 +187,36 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
               return childEl;
             }
 
+            // Extract language from code element's className
+            const codeClassName = childEl?.props?.className || '';
+            const languageMatch = codeClassName.match(/language-(\w+)/);
+            const language = languageMatch ? languageMatch[1] : null;
+
             return (
               <pre
                 ref={preRef}
                 className={`md-pre relative my-3 overflow-hidden rounded-lg border border-slate-200 dark:border-neutral-800 bg-slate-50 dark:bg-neutral-900/50`}
               >
-                {/* copy button container (keeps button visually above content) */}
-                <div className="pointer-events-none absolute inset-0 flex justify-end p-2">
-                  <div className="pointer-events-auto">
-                    <button
-                      type="button"
-                      aria-label={copied ? "Copied" : "Copy code"}
-                      onClick={onCopy}
-                      className="inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-neutral-700 bg-white/95 dark:bg-neutral-900/90 px-2 py-1 text-xs text-slate-700 dark:text-slate-200 shadow hover:bg-white dark:hover:bg-neutral-800 transition-colors"
-                    >
-                      {copied ? (
-                        <ClipboardCheck className="h-4 w-4" />
-                      ) : (
-                        <Clipboard className="h-4 w-4" />
-                      )}
-                      <span className="sr-only">{copied ? "Copied" : "Copy"}</span>
-                    </button>
-                  </div>
+                {/* Header with language and copy button */}
+                <div className="flex items-center justify-between px-4 py-2 border-b border-slate-200 dark:border-neutral-800 bg-slate-100 dark:bg-neutral-800/50">
+                  {language && (
+                    <span className="text-xs font-medium text-slate-600 dark:text-slate-400 tracking-wide">
+                      {language}
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    aria-label={copied ? "Copied" : "Copy code"}
+                    onClick={onCopy}
+                    className="inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-neutral-700 bg-white/95 dark:bg-neutral-900/90 px-2 py-1 text-xs text-slate-700 dark:text-slate-200 shadow hover:bg-white dark:hover:bg-neutral-800 transition-colors"
+                  >
+                    {copied ? (
+                      <ClipboardCheck className="h-4 w-4" />
+                    ) : (
+                      <Clipboard className="h-4 w-4" />
+                    )}
+                    <span className="sr-only">{copied ? "Copied" : "Copy"}</span>
+                  </button>
                 </div>
 
                 {/* padded, scrollable code area */}
