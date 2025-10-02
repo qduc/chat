@@ -7,6 +7,7 @@ export {
   updateConversationTitle,
   updateConversationProviderId,
   updateConversationModel,
+  updateConversationSettings,
   countConversationsBySession,
   listConversations,
   softDeleteConversation,

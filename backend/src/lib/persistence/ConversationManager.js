@@ -6,6 +6,7 @@ import {
   updateConversationMetadata,
   updateConversationProviderId,
   updateConversationModel,
+  updateConversationSettings,
 } from '../../db/conversations.js';
 import {
   clearAllMessages,
@@ -178,5 +179,21 @@ export class ConversationManager {
    */
   updateModel(conversationId, sessionId, userId = null, model) {
     updateConversationModel({ id: conversationId, sessionId, userId, model });
+  }
+
+  /**
+   * Update conversation settings (streaming, tools, quality, reasoning, verbosity)
+   * @param {string} conversationId - Conversation ID
+   * @param {string} sessionId - Session ID
+   * @param {string|null} userId - User ID (if authenticated)
+   * @param {Object} settings - Settings to update
+   * @param {boolean} [settings.streamingEnabled] - Enable streaming
+   * @param {boolean} [settings.toolsEnabled] - Enable tools
+   * @param {string} [settings.qualityLevel] - Quality level
+   * @param {string} [settings.reasoningEffort] - Reasoning effort
+   * @param {string} [settings.verbosity] - Verbosity level
+   */
+  updateSettings(conversationId, sessionId, userId = null, settings) {
+    updateConversationSettings({ id: conversationId, sessionId, userId, ...settings });
   }
 }

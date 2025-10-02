@@ -146,7 +146,7 @@ export class PersistenceConfig {
   }
 
   /**
-   * Check if system prompt, provider ID, model, or active tools needs updating
+   * Check if system prompt, provider ID, model, active tools, or settings needs updating
    * @param {Object} existingConvo - Existing conversation metadata
    * @param {string} incomingSystemPrompt - New system prompt
    * @param {string} incomingProviderId - New provider ID

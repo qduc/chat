@@ -106,15 +106,15 @@ export class ChatClient {
       ...(extendedOptions.conversationId && { conversation_id: extendedOptions.conversationId }),
       ...(extendedOptions.streamingEnabled !== undefined && { streamingEnabled: extendedOptions.streamingEnabled }),
       ...(extendedOptions.toolsEnabled !== undefined && { toolsEnabled: extendedOptions.toolsEnabled }),
-      ...(modelSupportsReasoning && extendedOptions.qualityLevel !== undefined && { qualityLevel: extendedOptions.qualityLevel }),
+      ...(extendedOptions.qualityLevel !== undefined && { qualityLevel: extendedOptions.qualityLevel }),
       // Send effective system prompt as single field
       ...((options as any).systemPrompt && { system_prompt: (options as any).systemPrompt }),
       // Send active system prompt ID for persistence
       ...((options as any).activeSystemPromptId && { active_system_prompt_id: (options as any).activeSystemPromptId })
     };
 
-    // Handle reasoning parameters for reasoning-capable models
-    if (modelSupportsReasoning && extendedOptions.reasoning) {
+    // Handle reasoning parameters - send for persistence even if model doesn't support them
+    if (extendedOptions.reasoning) {
       if (extendedOptions.reasoning.effort) {
         bodyObj.reasoning_effort = extendedOptions.reasoning.effort;
       }
@@ -124,6 +124,13 @@ export class ChatClient {
       if (extendedOptions.reasoning.summary) {
         bodyObj.reasoning_summary = extendedOptions.reasoning.summary;
       }
+    }
+    // Also support legacy SendChatOptions fields for backward compatibility
+    if ((options as any).reasoningEffort) {
+      bodyObj.reasoning_effort = (options as any).reasoningEffort;
+    }
+    if ((options as any).verbosity) {
+      bodyObj.verbosity = (options as any).verbosity;
     }
 
     // Handle tools

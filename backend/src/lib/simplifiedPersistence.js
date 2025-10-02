@@ -187,7 +187,8 @@ export class SimplifiedPersistence {
     if (!this.conversationMeta) return;
 
     const incomingSystemPrompt = ConversationTitleService.extractSystemPrompt(bodyIn);
-    const { activeTools: incomingActiveTools = [], model: incomingModel } = this.persistenceConfig.extractRequestSettings(bodyIn);
+    const settings = this.persistenceConfig.extractRequestSettings(bodyIn);
+    const { activeTools: incomingActiveTools = [], model: incomingModel } = settings;
     const updates = this.persistenceConfig.checkMetadataUpdates(
       this.conversationMeta,
       incomingSystemPrompt,
@@ -226,6 +227,33 @@ export class SimplifiedPersistence {
           active_tools: updates.activeTools,
         };
         this.conversationMeta.active_tools = updates.activeTools;
+      }
+
+      // Update conversation settings (streaming, tools, quality, reasoning, verbosity)
+      const settingsToUpdate = {};
+      if (settings.streamingEnabled !== undefined && settings.streamingEnabled !== this.conversationMeta.streaming_enabled) {
+        settingsToUpdate.streamingEnabled = settings.streamingEnabled;
+        this.conversationMeta.streaming_enabled = settings.streamingEnabled;
+      }
+      if (settings.toolsEnabled !== undefined && settings.toolsEnabled !== this.conversationMeta.tools_enabled) {
+        settingsToUpdate.toolsEnabled = settings.toolsEnabled;
+        this.conversationMeta.tools_enabled = settings.toolsEnabled;
+      }
+      if (settings.qualityLevel !== undefined && settings.qualityLevel !== this.conversationMeta.quality_level) {
+        settingsToUpdate.qualityLevel = settings.qualityLevel;
+        this.conversationMeta.quality_level = settings.qualityLevel;
+      }
+      if (settings.reasoningEffort !== undefined && settings.reasoningEffort !== this.conversationMeta.reasoning_effort) {
+        settingsToUpdate.reasoningEffort = settings.reasoningEffort;
+        this.conversationMeta.reasoning_effort = settings.reasoningEffort;
+      }
+      if (settings.verbosity !== undefined && settings.verbosity !== this.conversationMeta.verbosity) {
+        settingsToUpdate.verbosity = settings.verbosity;
+        this.conversationMeta.verbosity = settings.verbosity;
+      }
+
+      if (Object.keys(settingsToUpdate).length > 0) {
+        this.conversationManager.updateSettings(this.conversationId, sessionId, userId, settingsToUpdate);
       }
     } catch (error) {
       // Non-fatal: log and continue
