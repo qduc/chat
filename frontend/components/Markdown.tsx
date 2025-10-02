@@ -227,8 +227,9 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
             );
           },
           code: function CodeRenderer({ className, children }: { className?: string; children?: React.ReactNode }) {
+            const [isExpanded, setIsExpanded] = React.useState(false);
+            
             if (className?.includes('language-thinking')) {
-              const [isExpanded, setIsExpanded] = React.useState(false);
 
               // Height for ~3 lines. Do NOT subtract padding; we remove padding from the height-bearing box.
               const collapsedHeight = 69; // px
