@@ -74,7 +74,7 @@ describe('ChatCompletionsAdapter', () => {
       ]);
     });
 
-    test('drops reasoning controls when provider does not support them', () => {
+    test('passes through reasoning controls from frontend', () => {
       const adapter = createAdapter();
       const result = adapter.translateRequest({
         messages: [{ role: 'user', content: 'hi' }],
@@ -82,14 +82,12 @@ describe('ChatCompletionsAdapter', () => {
         verbosity: 'high',
       });
 
-      expect(result.reasoning_effort).toBeUndefined();
-      expect(result.verbosity).toBeUndefined();
+      expect(result.reasoning_effort).toBe('medium');
+      expect(result.verbosity).toBe('high');
     });
 
-    test('keeps reasoning controls when provider supports them', () => {
-      const adapter = createAdapter({
-        supportsReasoningControls: (model) => model === 'gpt-5.1-mini',
-      });
+    test('handles reasoning controls for any model', () => {
+      const adapter = createAdapter();
       const result = adapter.translateRequest({
         model: 'gpt-5.1-mini',
         messages: [{ role: 'user', content: 'hi' }],

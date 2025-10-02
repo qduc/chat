@@ -4,6 +4,7 @@ import type { PendingState } from '../hooks/useChatState';
 import Toggle from './ui/Toggle';
 import QualitySlider from './ui/QualitySlider';
 import type { QualityLevel } from './ui/QualitySlider';
+import { supportsReasoningControls } from '../lib/chat/modelCapabilities';
 
 interface MessageInputProps {
   input: string;
@@ -47,27 +48,8 @@ export function MessageInput({
   const [localSelected, setLocalSelected] = useState<string[]>(enabledTools);
 
   // Check if model supports thinking/reasoning
-  // For OpenRouter: check if supported_parameters includes "reasoning"
-  // For GPT-5/o3/o4 models (except *-chat variants): use hardcoded logic
   const supportsThinking = useMemo(() => {
-    const modelData = modelCapabilities[model];
-
-    // OpenRouter models: check supported_parameters
-    if (modelData?.supported_parameters) {
-      return Array.isArray(modelData.supported_parameters) &&
-             modelData.supported_parameters.includes('reasoning');
-    }
-
-    // Fallback: hardcoded logic for known thinking models
-    if (model && typeof model === 'string') {
-      const normalized = model.toLowerCase();
-      if ((normalized.startsWith('gpt-5') || normalized.startsWith('o3') || normalized.startsWith('o4'))
-          && !normalized.includes('chat')) {
-        return true;
-      }
-    }
-
-    return false;
+    return supportsReasoningControls(model, modelCapabilities);
   }, [model, modelCapabilities]);
 
   // Auto-grow textarea up to ~200px

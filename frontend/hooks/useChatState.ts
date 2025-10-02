@@ -871,6 +871,7 @@ export function useChatState() {
         reasoningEffort: reasoningEffortRef.current,
         verbosity: verbosityRef.current,
         qualityLevel: qualityLevelRef.current,
+        modelCapabilities: state.modelCapabilities,
         onEvent: handleStreamEvent,
         onToken: handleStreamToken,
       };

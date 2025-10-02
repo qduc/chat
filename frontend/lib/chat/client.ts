@@ -6,6 +6,7 @@ import {
   Role
 } from './types';
 import { SSEParser, createRequestInit, APIError } from './utils';
+import { supportsReasoningControls } from './modelCapabilities';
 import { waitForAuthReady } from '../auth/ready';
 import { httpClient } from '../http/client';
 import { HttpError } from '../http/types';
@@ -90,6 +91,12 @@ export class ChatClient {
     const { messages, model, providerId, responseId } = options;
     const extendedOptions = options as ChatOptionsExtended;
 
+    // Check if model supports reasoning controls
+    const modelSupportsReasoning = supportsReasoningControls(
+      model,
+      (extendedOptions as any).modelCapabilities
+    );
+
     const bodyObj: any = {
       model,
       messages,
@@ -99,15 +106,15 @@ export class ChatClient {
       ...(extendedOptions.conversationId && { conversation_id: extendedOptions.conversationId }),
       ...(extendedOptions.streamingEnabled !== undefined && { streamingEnabled: extendedOptions.streamingEnabled }),
       ...(extendedOptions.toolsEnabled !== undefined && { toolsEnabled: extendedOptions.toolsEnabled }),
-      ...(extendedOptions.qualityLevel !== undefined && { qualityLevel: extendedOptions.qualityLevel }),
+      ...(modelSupportsReasoning && extendedOptions.qualityLevel !== undefined && { qualityLevel: extendedOptions.qualityLevel }),
       // Send effective system prompt as single field
       ...((options as any).systemPrompt && { system_prompt: (options as any).systemPrompt }),
       // Send active system prompt ID for persistence
       ...((options as any).activeSystemPromptId && { active_system_prompt_id: (options as any).activeSystemPromptId })
     };
 
-    // Handle reasoning parameters for gpt-5* models except gpt-5-chat
-    if (typeof model === 'string' && model.startsWith('gpt-5') && extendedOptions.reasoning && !model.startsWith('gpt-5-chat')) {
+    // Handle reasoning parameters for reasoning-capable models
+    if (modelSupportsReasoning && extendedOptions.reasoning) {
       if (extendedOptions.reasoning.effort) {
         bodyObj.reasoning_effort = extendedOptions.reasoning.effort;
       }

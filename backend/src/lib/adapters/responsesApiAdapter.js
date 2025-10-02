@@ -957,14 +957,11 @@ export class ResponsesAPIAdapter extends BaseAdapter {
 			}
 		}
 
-		const supportsReasoningControls = context.supportsReasoningControls || this.supportsReasoningControls;
-		if (supportsReasoningControls(model)) {
-			if (payload.reasoning_effort !== undefined) {
-				request.reasoning = { effort: payload.reasoning_effort };
-			}
-			if (payload.verbosity !== undefined) {
-				request.text = { verbosity: payload.verbosity };
-			}
+		if (payload.reasoning_effort !== undefined) {
+			request.reasoning = { effort: payload.reasoning_effort };
+		}
+		if (payload.verbosity !== undefined) {
+			request.text = { verbosity: payload.verbosity };
 		}
 
 		return defineEndpoint(request);
