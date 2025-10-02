@@ -27,6 +27,7 @@ export {
 } from './chat/conversations';
 export { ToolsClient } from './chat/tools';
 export { APIError, SSEParser, getDefaultProviderId, clearProviderCache } from './chat/utils';
+export { supportsReasoningControls } from './chat/modelCapabilities';
 
 // Legacy function exports for backward compatibility
 // @deprecated Use ConversationManager class instead

@@ -6,11 +6,23 @@ export interface ChatMessage {
   content: string;
   tool_calls?: any[];
   tool_call_id?: string;
-  tool_outputs?: Array<{ tool_call_id?: string; name?: string; output: any }>;
+  tool_outputs?: Array<{
+    tool_call_id?: string;
+    name?: string;
+    output: any;
+    status?: string;
+  }>;
+  usage?: {
+    provider?: string;
+    model?: string;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
 }
 
 export interface ChatEvent {
-  type: 'text' | 'reasoning' | 'tool_call' | 'tool_output' | 'final';
+  type: 'text' | 'reasoning' | 'tool_call' | 'tool_output' | 'usage' | 'final';
   value: any;
 }
 
@@ -19,6 +31,13 @@ export interface ChatResponse {
   responseId?: string;
   conversation?: ConversationMeta;
   reasoning_summary?: string;
+  usage?: {
+    provider?: string;
+    model?: string;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
 }
 
 export interface ConversationMeta {
@@ -64,6 +83,21 @@ export interface ConversationWithMessages {
     status: string;
     content: string;
     created_at: string;
+    tool_calls?: Array<{
+      id: string;
+      type: 'function';
+      index: number;
+      function: {
+        name: string;
+        arguments: string;
+      };
+      textOffset?: number;
+    }>;
+    tool_outputs?: Array<{
+      tool_call_id: string;
+      output: string;
+      status: string;
+    }>;
   }[];
   next_after_seq: number | null;
 }

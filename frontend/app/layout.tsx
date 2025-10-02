@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Chat",
+  title: "ChatForge",
   description: "Simple streaming chat UI",
 };
 

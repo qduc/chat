@@ -161,6 +161,28 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Performance optimizations for scrolling */
+/* Use CSS containment for better scroll performance */
+.message-container {
+  contain: layout style paint;
+}
+
+/* Optimize main scrolling container */
+main {
+  will-change: auto; /* Remove will-change when not scrolling */
+}
+
+/* GPU acceleration for smooth scrolling */
+.scrollbar-thin {
+  transform: translateZ(0);
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Reduce repaints on hover by using CSS containment */
+.group {
+  contain: layout style;
+}
+
 /* Custom scrollbar styles */
 .scrollbar-thin {
   scrollbar-width: thin;

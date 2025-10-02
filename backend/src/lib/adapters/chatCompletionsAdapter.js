@@ -220,14 +220,6 @@ export class ChatCompletionsAdapter extends BaseAdapter {
       }
     }
 
-    const supportsReasoningControls = context.supportsReasoningControls
-      || this.supportsReasoningControls;
-
-    if (!supportsReasoningControls(model)) {
-      delete normalized.reasoning_effort;
-      delete normalized.verbosity;
-    }
-
     return normalized;
   }
 

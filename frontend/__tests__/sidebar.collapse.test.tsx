@@ -26,6 +26,24 @@ import * as chatLib from '../lib/chat';
 jest.mock('../lib/chat');
 const mockedChatLib = chatLib as jest.Mocked<typeof chatLib>;
 
+// The hook uses ConversationManager (class) internally. Ensure the mocked module
+// returns a mocked ConversationManager whose `list` method resolves to the
+// same conversations we expect in tests. This prevents the real ConversationManager
+// from making HTTP calls and keeps the test deterministic.
+mockedChatLib.ConversationManager = jest.fn().mockImplementation(() => ({
+  list: jest.fn().mockResolvedValue({
+    items: [
+      { id: 'conv-1', title: 'Test Conversation', model: 'gpt-4o', created_at: '2023-01-01' },
+    ],
+    next_cursor: null,
+  }),
+  // include no-op placeholders for other instance methods used elsewhere
+  create: jest.fn(),
+  get: jest.fn(),
+  delete: jest.fn(),
+  editMessage: jest.fn(),
+} as any)) as unknown as jest.MockedClass<typeof chatLib.ConversationManager>;
+
 // Mock the Markdown component to avoid ES module issues
 jest.mock('../components/Markdown', () => ({
   __esModule: true,

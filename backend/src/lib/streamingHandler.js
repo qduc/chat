@@ -80,6 +80,7 @@ export async function handleRegularStreaming({
   let leftover = '';
   let finished = false;
   let lastFinishReason = { value: null };
+  let responseId = null; // Track response_id from chunks
 
   // Emit conversation metadata upfront if available so clients receive
   // the conversation id before any model chunks or [DONE]
@@ -107,6 +108,12 @@ export async function handleRegularStreaming({
         (obj) => {
           let deltaContent = null;
           let finishReason = null;
+
+          // Capture response_id from any chunk
+          if (obj?.id && !responseId) {
+            responseId = obj.id;
+            if (persistence) persistence.setResponseId(responseId);
+          }
 
           if (obj?.choices?.[0]?.delta?.content) {
             deltaContent = obj.choices[0].delta.content;

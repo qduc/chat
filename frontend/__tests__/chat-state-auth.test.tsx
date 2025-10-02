@@ -42,6 +42,12 @@ jest.mock('../lib/chat', () => ({
   listConversationsApi: jest.fn().mockRejectedValue(new Error('Not implemented')),
   deleteConversationApi: jest.fn(),
   editMessageApi: jest.fn(),
+  // Provide a minimal ConversationManager mock so components that call `new ConversationManager()` work
+  ConversationManager: jest.fn().mockImplementation(() => ({
+    list: jest.fn().mockResolvedValue({ items: [], next_cursor: null }),
+    get: jest.fn().mockResolvedValue({ messages: [], title: null }),
+    delete: jest.fn().mockResolvedValue(undefined),
+  })),
 }));
 
 // Test component that uses useChatState

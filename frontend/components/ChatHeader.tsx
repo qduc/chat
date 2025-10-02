@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sun, Moon, Settings } from 'lucide-react';
+import { Sun, Moon, Settings, RefreshCw, Loader2 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import ModelSelector from './ui/ModelSelector';
 import { type Group as TabGroup } from './ui/TabbedSelect';
@@ -14,12 +14,14 @@ interface ChatHeaderProps {
   onOpenSettings?: () => void;
   onShowLogin?: () => void;
   onShowRegister?: () => void;
+  onRefreshModels?: () => void;
+  isLoadingModels?: boolean;
   groups?: TabGroup[] | null;
   fallbackOptions?: { value: string; label: string }[];
   modelToProvider?: Record<string, string> | Map<string, string>;
 }
 
-export function ChatHeader({ model, onModelChange, onProviderChange, onOpenSettings, onShowLogin, onShowRegister, groups, fallbackOptions, modelToProvider }: ChatHeaderProps) {
+export function ChatHeader({ model, onModelChange, onProviderChange, onOpenSettings, onShowLogin, onShowRegister, onRefreshModels, isLoadingModels = false, groups, fallbackOptions, modelToProvider }: ChatHeaderProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
 
   type Option = { value: string; label: string };
@@ -57,9 +59,9 @@ export function ChatHeader({ model, onModelChange, onProviderChange, onOpenSetti
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white/60 dark:bg-neutral-900/60 backdrop-blur-md">
+    <header className="sticky top-0 z-40 bg-white/95 dark:bg-neutral-900/95">
       <div className="px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center">
+        <div className="flex items-center gap-2">
           <ModelSelector
             value={model}
             onChange={onModelChange}
@@ -68,6 +70,22 @@ export function ChatHeader({ model, onModelChange, onProviderChange, onOpenSetti
             className="text-lg"
             ariaLabel="Model"
           />
+          {onRefreshModels && (
+            <button
+              onClick={onRefreshModels}
+              disabled={isLoadingModels}
+              className="w-9 h-9 rounded-lg bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700 flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Refresh model list"
+              aria-label="Refresh model list"
+              type="button"
+            >
+              {isLoadingModels ? (
+                <Loader2 className="w-4 h-4 text-slate-600 dark:text-slate-300 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+              )}
+            </button>
+          )}
         </div>
 
         <div className="flex items-center gap-3">

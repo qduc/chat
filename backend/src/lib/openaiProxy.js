@@ -270,6 +270,8 @@ async function handleRequest(context, req, res) {
     if (persistence.persist) {
       let content = '';
       let finishReason = null;
+      let responseId = null;
+
       if (upstreamJson.choices && upstreamJson.choices[0] && upstreamJson.choices[0].message) {
         content = upstreamJson.choices[0].message.content;
       }
@@ -277,8 +279,11 @@ async function handleRequest(context, req, res) {
         ? upstreamJson.choices[0].finish_reason
         : null;
 
+      // Capture response_id from OpenAI for conversation state management
+      responseId = upstreamJson.id || null;
+
       if (content) persistence.appendContent(content);
-      persistence.recordAssistantFinal({ finishReason });
+      persistence.recordAssistantFinal({ finishReason, responseId });
     }
 
     const responseBody = { ...upstreamJson };

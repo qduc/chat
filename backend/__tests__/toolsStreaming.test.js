@@ -2073,8 +2073,9 @@ describe('toolsStreaming', () => {
           prefix: 'iter'
         });
 
-        // Should persist error message
-        expect(appendToPersistence).toHaveBeenCalledWith(
+        // Tool error outputs should NOT be appended to message content
+        // They should be stored separately via addToolOutputs (if method exists)
+        expect(appendToPersistence).not.toHaveBeenCalledWith(
           mockPersistence,
           'Tool get_time failed: Time service unavailable'
         );
@@ -3110,7 +3111,9 @@ describe('toolsStreaming', () => {
           prefix: 'iter'
         });
 
-        expect(appendToPersistence).toHaveBeenCalledWith(mockPersistence, largeOutput);
+        // Tool outputs should NOT be appended to message content
+        // They should be stored separately via addToolOutputs (if method exists)
+        expect(appendToPersistence).not.toHaveBeenCalledWith(mockPersistence, largeOutput);
       });
 
       test('handles special characters in tool arguments', async () => {

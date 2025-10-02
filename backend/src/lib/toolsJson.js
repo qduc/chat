@@ -109,10 +109,18 @@ class StreamingResponseHandler extends ResponseHandler {
   sendToolOutputs(outputs, persistence) {
     for (const output of outputs) {
       this._streamEvent({ tool_output: output });
-      const toolContent = typeof output.output === 'string'
-        ? output.output
-        : JSON.stringify(output.output);
-      appendToPersistence(persistence, toolContent);
+
+      // Buffer tool outputs for persistence (don't append to message content!)
+      if (persistence && persistence.persist && typeof persistence.addToolOutputs === 'function') {
+        const toolContent = typeof output.output === 'string'
+          ? output.output
+          : JSON.stringify(output.output);
+        persistence.addToolOutputs([{
+          tool_call_id: output.tool_call_id,
+          output: toolContent,
+          status: output.status || 'success'
+        }]);
+      }
     }
   }
 
@@ -162,10 +170,18 @@ class JsonResponseHandler extends ResponseHandler {
         type: 'tool_output',
         value: output
       });
-      const toolContent = typeof output.output === 'string'
-        ? output.output
-        : JSON.stringify(output.output);
-      appendToPersistence(persistence, toolContent);
+
+      // Buffer tool outputs for persistence (don't append to message content!)
+      if (persistence && persistence.persist && typeof persistence.addToolOutputs === 'function') {
+        const toolContent = typeof output.output === 'string'
+          ? output.output
+          : JSON.stringify(output.output);
+        persistence.addToolOutputs([{
+          tool_call_id: output.tool_call_id,
+          output: toolContent,
+          status: output.status || 'success'
+        }]);
+      }
     }
   }
 
@@ -458,8 +474,13 @@ export async function handleToolsJson({
       // Send tool calls
       responseHandler.sendToolCalls(toolCalls);
 
+      // Buffer tool calls for persistence
+      if (persistence && persistence.persist && typeof persistence.addToolCalls === 'function') {
+        persistence.addToolCalls(toolCalls);
+      }
+
       // Execute all tools
-  const toolResults = await executeAllTools(toolCalls, responseHandler, persistence);
+      const toolResults = await executeAllTools(toolCalls, responseHandler, persistence);
 
       // Add to conversation for next iteration
       messages.push(message, ...toolResults);

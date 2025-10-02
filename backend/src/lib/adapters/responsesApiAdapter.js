@@ -950,15 +950,18 @@ export class ResponsesAPIAdapter extends BaseAdapter {
 
 		for (const key of RESPONSES_PASSTHROUGH_KEYS) {
 			if (key === 'tool_choice') continue; // handled separately
+			if (key === 'reasoning_effort') continue; // handled separately below
+			if (key === 'verbosity') continue; // handled separately below
 			if (payload[key] !== undefined) {
 				request[key] = payload[key];
 			}
 		}
 
-		const supportsReasoningControls = context.supportsReasoningControls || this.supportsReasoningControls;
-		if (!supportsReasoningControls(model)) {
-			delete request.reasoning_effort;
-			delete request.verbosity;
+		if (payload.reasoning_effort !== undefined) {
+			request.reasoning = { effort: payload.reasoning_effort };
+		}
+		if (payload.verbosity !== undefined) {
+			request.text = { verbosity: payload.verbosity };
 		}
 
 		return defineEndpoint(request);

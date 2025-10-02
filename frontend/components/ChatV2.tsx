@@ -16,6 +16,7 @@ export function ChatV2() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('login');
+
   const DEFAULT_RIGHT_SIDEBAR_WIDTH = 320;
   const MIN_RIGHT_SIDEBAR_WIDTH = 260;
   const MAX_RIGHT_SIDEBAR_WIDTH = 560;
@@ -279,6 +280,27 @@ export function ChatV2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.conversationId]);
 
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+
+    const sidebarTitle = state.conversations.find(convo => convo.id === state.conversationId)?.title?.trim();
+    const activeTitle = (state.currentConversationTitle ?? sidebarTitle)?.trim();
+    const nextTitle = activeTitle ? `${activeTitle} - ChatForge` : 'ChatForge';
+
+    const applyTitle = () => {
+      document.title = nextTitle;
+    };
+
+    applyTitle();
+
+    if (typeof window === 'undefined') return;
+
+    const frameId = window.requestAnimationFrame(applyTitle);
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [pathname, searchKey, state.conversationId, state.conversations, state.currentConversationTitle]);
+
   return (
     <div className="flex h-dvh max-h-dvh bg-gradient-to-br from-slate-50 via-white to-slate-100/40 dark:from-neutral-950 dark:via-neutral-950 dark:to-neutral-900/20">
       {state.historyEnabled && (
@@ -306,6 +328,8 @@ export function ChatV2() {
           onOpenSettings={() => setIsSettingsOpen(true)}
           onShowLogin={handleShowLogin}
           onShowRegister={handleShowRegister}
+          onRefreshModels={actions.loadProvidersAndModels}
+          isLoadingModels={state.isLoadingModels}
           groups={state.modelGroups}
           fallbackOptions={state.modelOptions}
           modelToProvider={state.modelToProvider}
@@ -351,6 +375,7 @@ export function ChatV2() {
                 model={state.model}
                 qualityLevel={state.qualityLevel}
                 onQualityLevelChange={actions.setQualityLevel}
+                modelCapabilities={state.modelCapabilities}
               />
             </div>
             <SettingsModal

@@ -4,6 +4,7 @@ import {
   ConversationValidator,
   ConversationTitleService,
   PersistenceConfig,
+  ToolCallPersistence,
 } from './persistence/index.js';
 
 /**
@@ -26,6 +27,10 @@ export class SimplifiedPersistence {
     this.errored = false;
     this.conversationMeta = null;
     this.providerId = undefined;
+    this.responseId = null; // Store response_id for OpenAI state management
+    this.currentMessageId = null; // Track current assistant message ID for tool call persistence
+    this.toolCalls = []; // Buffer tool calls during streaming
+    this.toolOutputs = []; // Buffer tool outputs during streaming
   }
 
   /**
@@ -149,7 +154,9 @@ export class SimplifiedPersistence {
         try {
           const lastUser = ConversationTitleService.findLastUserMessage(messages);
           if (lastUser) {
-            const generated = await this.titleService.generateTitle(lastUser.content, this.providerId);
+            // Extract the model being used for the chat to use the same model for title generation
+            const { model: chatModel } = this.persistenceConfig.extractRequestSettings(bodyIn);
+            const generated = await this.titleService.generateTitle(lastUser.content, this.providerId, chatModel);
             if (generated) {
               this.conversationManager.updateTitle(this.conversationId, sessionId, userId, generated);
               this.conversationMeta = { ...this.conversationMeta, title: generated };
@@ -180,12 +187,14 @@ export class SimplifiedPersistence {
     if (!this.conversationMeta) return;
 
     const incomingSystemPrompt = ConversationTitleService.extractSystemPrompt(bodyIn);
-    const { activeTools: incomingActiveTools = [] } = this.persistenceConfig.extractRequestSettings(bodyIn);
+    const settings = this.persistenceConfig.extractRequestSettings(bodyIn);
+    const { activeTools: incomingActiveTools = [], model: incomingModel } = settings;
     const updates = this.persistenceConfig.checkMetadataUpdates(
       this.conversationMeta,
       incomingSystemPrompt,
       this.providerId,
-      incomingActiveTools
+      incomingActiveTools,
+      incomingModel
     );
 
     try {
@@ -204,6 +213,11 @@ export class SimplifiedPersistence {
         this.conversationMeta.providerId = updates.providerId;
       }
 
+      if (updates.needsModelUpdate) {
+        this.conversationManager.updateModel(this.conversationId, sessionId, userId, updates.model);
+        this.conversationMeta.model = updates.model;
+      }
+
       if (updates.needsActiveToolsUpdate) {
         this.conversationManager.updateMetadata(this.conversationId, sessionId, userId, {
           active_tools: updates.activeTools
@@ -213,6 +227,33 @@ export class SimplifiedPersistence {
           active_tools: updates.activeTools,
         };
         this.conversationMeta.active_tools = updates.activeTools;
+      }
+
+      // Update conversation settings (streaming, tools, quality, reasoning, verbosity)
+      const settingsToUpdate = {};
+      if (settings.streamingEnabled !== undefined && settings.streamingEnabled !== this.conversationMeta.streaming_enabled) {
+        settingsToUpdate.streamingEnabled = settings.streamingEnabled;
+        this.conversationMeta.streaming_enabled = settings.streamingEnabled;
+      }
+      if (settings.toolsEnabled !== undefined && settings.toolsEnabled !== this.conversationMeta.tools_enabled) {
+        settingsToUpdate.toolsEnabled = settings.toolsEnabled;
+        this.conversationMeta.tools_enabled = settings.toolsEnabled;
+      }
+      if (settings.qualityLevel !== undefined && settings.qualityLevel !== this.conversationMeta.quality_level) {
+        settingsToUpdate.qualityLevel = settings.qualityLevel;
+        this.conversationMeta.quality_level = settings.qualityLevel;
+      }
+      if (settings.reasoningEffort !== undefined && settings.reasoningEffort !== this.conversationMeta.reasoning_effort) {
+        settingsToUpdate.reasoningEffort = settings.reasoningEffort;
+        this.conversationMeta.reasoning_effort = settings.reasoningEffort;
+      }
+      if (settings.verbosity !== undefined && settings.verbosity !== this.conversationMeta.verbosity) {
+        settingsToUpdate.verbosity = settings.verbosity;
+        this.conversationMeta.verbosity = settings.verbosity;
+      }
+
+      if (Object.keys(settingsToUpdate).length > 0) {
+        this.conversationManager.updateSettings(this.conversationId, sessionId, userId, settingsToUpdate);
       }
     } catch (error) {
       // Non-fatal: log and continue
@@ -232,22 +273,94 @@ export class SimplifiedPersistence {
    * Record final assistant message
    * @param {Object} params - Finalization parameters
    * @param {string|null} params.finishReason - Finish reason
+   * @param {string|null} params.responseId - OpenAI response ID for state management
    */
-  recordAssistantFinal({ finishReason = 'stop' } = {}) {
+  recordAssistantFinal({ finishReason = 'stop', responseId = null } = {}) {
     if (!this.persist || !this.conversationId || this.assistantSeq === null) return;
     if (this.finalized || this.errored) return;
 
     try {
-      this.conversationManager.recordAssistantMessage({
+      const result = this.conversationManager.recordAssistantMessage({
         conversationId: this.conversationId,
         content: this.assistantBuffer,
         seq: this.assistantSeq,
         finishReason,
+        responseId: responseId || this.responseId, // Use provided or stored responseId
       });
+
+      // Store message ID for tool call persistence
+      if (result && result.id) {
+        this.currentMessageId = result.id;
+      }
+
+      // Persist any buffered tool calls and outputs
+      this.persistToolCallsAndOutputs();
+
       this.finalized = true;
     } catch (error) {
       console.error('[SimplifiedPersistence] Failed to record final assistant message:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Add tool calls to buffer
+   * @param {Array} toolCalls - Array of tool calls in OpenAI format
+   */
+  addToolCalls(toolCalls) {
+    if (!this.persist || !Array.isArray(toolCalls)) return;
+    this.toolCalls.push(...toolCalls);
+  }
+
+  /**
+   * Add tool outputs to buffer
+   * @param {Array} toolOutputs - Array of tool outputs
+   */
+  addToolOutputs(toolOutputs) {
+    if (!this.persist || !Array.isArray(toolOutputs)) return;
+    this.toolOutputs.push(...toolOutputs);
+  }
+
+  /**
+   * Persist buffered tool calls and outputs to database
+   * Called automatically during recordAssistantFinal
+   */
+  persistToolCallsAndOutputs() {
+    if (!this.persist || !this.conversationId || !this.currentMessageId) return;
+
+    try {
+      if (this.toolCalls.length > 0) {
+        ToolCallPersistence.saveToolCalls({
+          messageId: this.currentMessageId,
+          conversationId: this.conversationId,
+          toolCalls: this.toolCalls
+        });
+      }
+
+      if (this.toolOutputs.length > 0) {
+        ToolCallPersistence.saveToolOutputs({
+          messageId: this.currentMessageId,
+          conversationId: this.conversationId,
+          toolOutputs: this.toolOutputs
+        });
+      }
+
+      // Clear buffers after persisting
+      this.toolCalls = [];
+      this.toolOutputs = [];
+    } catch (error) {
+      console.error('[SimplifiedPersistence] Failed to persist tool calls/outputs:', error);
+      // Don't throw - this is non-fatal for the main flow
+    }
+  }
+
+  /**
+   * Set the response ID for the current response
+   * @param {string} responseId - OpenAI response ID
+   */
+  setResponseId(responseId) {
+    if (responseId && typeof responseId === 'string') {
+      this.responseId = responseId;
     }
   }
 

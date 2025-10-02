@@ -164,6 +164,80 @@ export function updateConversationProviderId({ id, sessionId, userId = null, pro
   return info.changes > 0;
 }
 
+export function updateConversationModel({ id, sessionId, userId = null, model }) {
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  let query, params;
+
+  // Prioritize user-based access - authenticated users get their conversations
+  if (userId) {
+    query = `UPDATE conversations SET model=@model, updated_at=@now WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
+    params = { id, userId, model, now };
+  } else if (sessionId) {
+    // Fallback to session-based access for anonymous users
+    query = `UPDATE conversations SET model=@model, updated_at=@now WHERE id=@id AND session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
+    params = { id, sessionId, model, now };
+  } else {
+    return false;
+  }
+
+  const info = db.prepare(query).run(params);
+  return info.changes > 0;
+}
+
+export function updateConversationSettings({ id, sessionId, userId = null, streamingEnabled, toolsEnabled, qualityLevel, reasoningEffort, verbosity }) {
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  let query;
+
+  // Build update fields dynamically based on what's provided
+  const updates = [];
+  const paramData = { id, now };
+
+  if (streamingEnabled !== undefined) {
+    updates.push('streaming_enabled=@streaming_enabled');
+    paramData.streaming_enabled = streamingEnabled ? 1 : 0;
+  }
+  if (toolsEnabled !== undefined) {
+    updates.push('tools_enabled=@tools_enabled');
+    paramData.tools_enabled = toolsEnabled ? 1 : 0;
+  }
+  if (qualityLevel !== undefined) {
+    updates.push('quality_level=@quality_level');
+    paramData.quality_level = qualityLevel;
+  }
+  if (reasoningEffort !== undefined) {
+    updates.push('reasoning_effort=@reasoning_effort');
+    paramData.reasoning_effort = reasoningEffort;
+  }
+  if (verbosity !== undefined) {
+    updates.push('verbosity=@verbosity');
+    paramData.verbosity = verbosity;
+  }
+
+  // If nothing to update, return early
+  if (updates.length === 0) return false;
+
+  updates.push('updated_at=@now');
+
+  // Prioritize user-based access - authenticated users get their conversations
+  if (userId) {
+    query = `UPDATE conversations SET ${updates.join(', ')} WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
+    paramData.userId = userId;
+  } else if (sessionId) {
+    // Fallback to session-based access for anonymous users
+    query = `UPDATE conversations SET ${updates.join(', ')} WHERE id=@id AND session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
+    paramData.sessionId = sessionId;
+  } else {
+    return false;
+  }
+
+  const info = db.prepare(query).run(paramData);
+  return info.changes > 0;
+}
+
 export function countConversationsBySession(sessionId) {
   const db = getDb();
   const row = db
@@ -280,10 +354,19 @@ export function forkConversationFromMessage({ originalConversationId, sessionId,
   const db = getDb();
   const now = new Date().toISOString();
 
+  // Get the original conversation to copy all metadata
+  const originalConvo = db.prepare(
+    `SELECT * FROM conversations WHERE id = @id AND deleted_at IS NULL`
+  ).get({ id: originalConversationId });
+
+  if (!originalConvo) {
+    throw new Error('Original conversation not found');
+  }
+
   const newConversationId = uuidv4();
   db.prepare(
-    `INSERT INTO conversations (id, session_id, user_id, title, provider_id, model, metadata, created_at, updated_at)
-     VALUES (@id, @session_id, @user_id, @title, @provider_id, @model, '{}', @now, @now)`
+    `INSERT INTO conversations (id, session_id, user_id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at, updated_at)
+     VALUES (@id, @session_id, @user_id, @title, @provider_id, @model, @metadata, @streaming_enabled, @tools_enabled, @quality_level, @reasoning_effort, @verbosity, @now, @now)`
   ).run({
     id: newConversationId,
     session_id: sessionId,
@@ -291,6 +374,12 @@ export function forkConversationFromMessage({ originalConversationId, sessionId,
     title: title || null,
     provider_id: provider_id || null,
     model: model || null,
+    metadata: originalConvo.metadata || '{}',
+    streaming_enabled: originalConvo.streaming_enabled || 0,
+    tools_enabled: originalConvo.tools_enabled || 0,
+    quality_level: originalConvo.quality_level || null,
+    reasoning_effort: originalConvo.reasoning_effort || null,
+    verbosity: originalConvo.verbosity || null,
     now,
   });
 

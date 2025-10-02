@@ -5,7 +5,7 @@ Zero-friction chat UI with pluggable models via an OpenAI-compatible API.
 
 ## Scope
 - Frontend: Next.js/React chat UI with streaming (✅ done), Markdown rendering (✅ done), model selection UI (✅ done), enhanced UI components (✅ done), conversation persistence (🚧 in progress), attachments (future phase).
-- Backend: Node/Express OpenAI-compatible proxy with rate-limit (✅ in-memory done), Responses API support (✅ done), testing infrastructure (✅ done), tool orchestration system (✅ done), database persistence (✅ done), multi-provider routing (single provider), auth (future phase).
+- Backend: Node/Express OpenAI-compatible proxy with rate-limit (✅ in-memory done), Responses API support (✅ done), testing infrastructure (✅ done), tool orchestration system (✅ done), database persistence (✅ done), multi-provider routing (single provider), user authentication (✅ Phase 1 done).
 
 ## Milestones & Status
 1. MVP (text-only, streaming, OpenAI-compatible) – ✅ COMPLETE
@@ -13,8 +13,8 @@ Zero-friction chat UI with pluggable models via an OpenAI-compatible API.
 3. Tool Orchestration System – ✅ COMPLETE (server-side tools, iterative workflows, research mode)
 4. Enhanced UI Components – ✅ COMPLETE (quality controls, floating UI positioning, accessibility)
 5. Database Persistence (SQLite/Postgres) – ✅ COMPLETE (SQLite with migrations)
-6. Multi-model routing + system prompts – ⏳ PLANNED (model selector UI ready, backend static)
-7. Auth + usage limits (per-user) – ⏳ PLANNED (IP limit only currently)
+6. User Authentication (JWT, login/register) – ✅ PHASE 1 COMPLETE (per-user scoping, backward compatible)
+7. Multi-model routing + system prompts – ⏳ PLANNED (model selector UI ready, backend static)
 8. File uploads + attachments – ⏳ PLANNED
 9. Observability + billing hooks – ⏳ PLANNED
 

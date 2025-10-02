@@ -1,7 +1,7 @@
-import React, { useReducer, useCallback, useRef, useEffect } from 'react';
+import React, { useReducer, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { ChatMessage, Role, ConversationMeta } from '../lib/chat';
 import type { Group as TabGroup, Option as ModelOption } from '../components/ui/TabbedSelect';
-import { sendChat, getConversationApi, listConversationsApi, deleteConversationApi, editMessageApi } from '../lib/chat';
+import { sendChat, getConversationApi, listConversationsApi, deleteConversationApi, editMessageApi, ConversationManager } from '../lib/chat';
 import type { QualityLevel } from '../components/ui/QualitySlider';
 import type { User } from '../lib/auth/api';
 import { useAuth } from '../contexts/AuthContext';
@@ -27,6 +27,7 @@ export interface ChatState {
   // Chat State
   messages: ChatMessage[];
   conversationId: string | null;
+  currentConversationTitle: string | null;
   previousResponseId: string | null;
   // ...existing code...
 
@@ -37,6 +38,8 @@ export interface ChatState {
   modelOptions: ModelOption[];
   modelGroups: TabGroup[] | null;
   modelToProvider: Record<string, string>;
+  modelCapabilities: Record<string, any>; // Store model capabilities (e.g., supported_parameters)
+  isLoadingModels: boolean;
   useTools: boolean;
   shouldStream: boolean;
   reasoningEffort: string;
@@ -90,11 +93,13 @@ export type ChatAction =
   | { type: 'SET_ACTIVE_SYSTEM_PROMPT_ID'; payload: string | null }
   | { type: 'SET_ENABLED_TOOLS'; payload: string[] }
   | { type: 'SET_CONVERSATION_ID'; payload: string | null }
+  | { type: 'SET_CURRENT_CONVERSATION_TITLE'; payload: string | null }
   | { type: 'START_STREAMING'; payload: { abort: AbortController; userMessage: ChatMessage; assistantMessage: ChatMessage } }
   | { type: 'REGENERATE_START'; payload: { abort: AbortController; baseMessages: ChatMessage[]; assistantMessage: ChatMessage } }
-  | { type: 'STREAM_TOKEN'; payload: { messageId: string; token: string } }
+  | { type: 'STREAM_TOKEN'; payload: { messageId: string; token: string; fullContent?: string } }
   | { type: 'STREAM_TOOL_CALL'; payload: { messageId: string; toolCall: any } }
   | { type: 'STREAM_TOOL_OUTPUT'; payload: { messageId: string; toolOutput: any } }
+  | { type: 'STREAM_USAGE'; payload: { messageId: string; usage: any } }
   | { type: 'STREAM_COMPLETE'; payload: { responseId?: string } }
   | { type: 'STREAM_ERROR'; payload: string }
   | { type: 'STOP_STREAMING' }
@@ -117,7 +122,8 @@ export type ChatAction =
   | { type: 'SET_SIDEBAR_COLLAPSED'; payload: boolean }
   | { type: 'TOGGLE_RIGHT_SIDEBAR' }
   | { type: 'SET_RIGHT_SIDEBAR_COLLAPSED'; payload: boolean }
-  | { type: 'SET_MODEL_LIST'; payload: { groups: TabGroup[] | null; options: ModelOption[]; modelToProvider: Record<string, string> } };
+  | { type: 'SET_MODEL_LIST'; payload: { groups: TabGroup[] | null; options: ModelOption[]; modelToProvider: Record<string, string>; modelCapabilities: Record<string, any> } }
+  | { type: 'SET_LOADING_MODELS'; payload: boolean };
 
 const initialState: ChatState = {
   // Authentication State
@@ -128,12 +134,15 @@ const initialState: ChatState = {
   input: '',
   messages: [],
   conversationId: null,
+  currentConversationTitle: null,
   previousResponseId: null,
   model: 'gpt-4.1-mini',
   providerId: null,
   modelOptions: [],
   modelGroups: null,
   modelToProvider: {},
+  modelCapabilities: {},
+  isLoadingModels: false,
   useTools: true,
   shouldStream: true,
   reasoningEffort: 'medium',
@@ -219,7 +228,18 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
       return { ...state, enabledTools: action.payload };
 
     case 'SET_CONVERSATION_ID':
-      return { ...state, conversationId: action.payload };
+      return {
+        ...state,
+        conversationId: action.payload,
+        // Reset previousResponseId when switching conversations
+        previousResponseId: null
+      };
+
+    case 'SET_CURRENT_CONVERSATION_TITLE':
+      return {
+        ...state,
+        currentConversationTitle: action.payload
+      };
 
     case 'START_STREAMING':
       return {
@@ -247,7 +267,11 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         const next = state.messages.map(m => {
           if (m.id === action.payload.messageId) {
             updated = true;
-            return { ...m, content: m.content + action.payload.token };
+            // Use fullContent if provided, otherwise append token
+            const newContent = action.payload.fullContent !== undefined
+              ? action.payload.fullContent
+              : (m.content ?? '') + action.payload.token;
+            return { ...m, content: newContent };
           }
           return m;
         });
@@ -255,7 +279,10 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
           // Fallback: update the last assistant message if present
           for (let i = next.length - 1; i >= 0; i--) {
             if (next[i].role === 'assistant') {
-              next[i] = { ...next[i], content: next[i].content + action.payload.token } as any;
+              const newContent = action.payload.fullContent !== undefined
+                ? action.payload.fullContent
+                : (next[i].content ?? '') + action.payload.token;
+              next[i] = { ...next[i], content: newContent } as any;
               break;
             }
           }
@@ -381,11 +408,32 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         return { ...state, messages: next };
       }
 
+    case 'STREAM_USAGE':
+      {
+        const next = state.messages.map(m => {
+          if (m.id === action.payload.messageId) {
+            return { ...m, usage: { ...m.usage, ...action.payload.usage } } as any;
+          }
+          return m;
+        });
+        // Fallback: update last assistant message if ID not matched
+        if (!next.some(m => m.id === action.payload.messageId)) {
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i].role === 'assistant') {
+              next[i] = { ...next[i], usage: { ...next[i].usage, ...action.payload.usage } } as any;
+              break;
+            }
+          }
+        }
+        return { ...state, messages: next };
+      }
+
     case 'STREAM_COMPLETE':
       return {
         ...state,
         status: 'idle',
         abort: undefined,
+        previousResponseId: action.payload.responseId || state.previousResponseId,
       };
 
     case 'STREAM_ERROR':
@@ -408,6 +456,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         messages: [],
         error: null,
+        previousResponseId: null,
       };
 
     case 'SET_MESSAGES':
@@ -487,6 +536,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         messages: [],
         input: '',
         conversationId: null,
+        currentConversationTitle: null,
         previousResponseId: null,
         editingMessageId: null,
         editingContent: '',
@@ -532,8 +582,12 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         modelGroups: action.payload.groups,
         modelOptions: action.payload.options,
-        modelToProvider: action.payload.modelToProvider || {}
+        modelToProvider: action.payload.modelToProvider || {},
+        modelCapabilities: action.payload.modelCapabilities || {}
       };
+
+    case 'SET_LOADING_MODELS':
+      return { ...state, isLoadingModels: action.payload };
 
     default:
       return state;
@@ -573,10 +627,34 @@ export function useChatState() {
   const assistantMsgRef = useRef<ChatMessage | null>(null);
   const inFlightRef = useRef<boolean>(false);
   const modelRef = useRef(state.model);
+  const providerRef = useRef<string | null>(null);
+  // Keep synchronous refs for system prompt values so immediate actions
+  // (like regenerate/send) can use the newest prompt without waiting for
+  // React state to flush.
+  const systemPromptRef = useRef(state.systemPrompt);
+  const inlineSystemPromptRef = useRef(state.inlineSystemPromptOverride);
+  // Keep synchronous refs for chat parameters to avoid race conditions
+  const shouldStreamRef = useRef(state.shouldStream);
+  const reasoningEffortRef = useRef(state.reasoningEffort);
+  const verbosityRef = useRef(state.verbosity);
+  const qualityLevelRef = useRef(state.qualityLevel);
+  const conversationManager = useMemo(() => new ConversationManager(), []);
+  const throttleTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     modelRef.current = state.model;
-  }, [state.model]);
+    // Keep prompt refs in sync when state changes (covers updates coming
+    // from other places than our setters, e.g. loading a conversation).
+    // Include prompts in the dependency list so they update as soon as
+    // state changes.
+    systemPromptRef.current = state.systemPrompt;
+    inlineSystemPromptRef.current = state.inlineSystemPromptOverride;
+    // Keep chat parameter refs in sync
+    shouldStreamRef.current = state.shouldStream;
+    reasoningEffortRef.current = state.reasoningEffort;
+    verbosityRef.current = state.verbosity;
+    qualityLevelRef.current = state.qualityLevel;
+  }, [state.model, state.systemPrompt, state.inlineSystemPromptOverride, state.shouldStream, state.reasoningEffort, state.verbosity, state.qualityLevel]);
 
   // Sync authentication state from AuthContext
   useEffect(() => {
@@ -592,22 +670,27 @@ export function useChatState() {
     }
     const apiBase = (process.env.NEXT_PUBLIC_API_BASE as string) ?? 'http://localhost:3001';
     try {
+      dispatch({ type: 'SET_LOADING_MODELS', payload: true });
       const response = await httpClient.get<{ providers: any[] }>(`${apiBase}/v1/providers`);
       const providers: any[] = Array.isArray(response.data.providers) ? response.data.providers : [];
       const enabledProviders = providers.filter(p => p?.enabled);
-      if (!enabledProviders.length) return;
+      if (!enabledProviders.length) {
+        dispatch({ type: 'SET_LOADING_MODELS', payload: false });
+        return;
+      }
 
       const results = await Promise.allSettled(
         enabledProviders.map(async (p) => {
           const modelsResponse = await httpClient.get<{ models: any[] }>(`${apiBase}/v1/providers/${encodeURIComponent(p.id)}/models`);
           const models = Array.isArray(modelsResponse.data.models) ? modelsResponse.data.models : [];
           const options: ModelOption[] = models.map((m: any) => ({ value: m.id, label: m.id }));
-          return { provider: p, options };
+          return { provider: p, options, models };
         })
       );
 
       const gs: TabGroup[] = [];
       const modelProviderMap: Record<string, string> = {};
+      const modelCapabilitiesMap: Record<string, any> = {};
 
       for (let i = 0; i < results.length; i++) {
         const r: any = results[i];
@@ -617,13 +700,22 @@ export function useChatState() {
           r.value.options.forEach((option: any) => {
             modelProviderMap[option.value] = providerId;
           });
+          // Store model capabilities (e.g., supported_parameters from OpenRouter)
+          r.value.models.forEach((m: any) => {
+            if (m && m.id) {
+              modelCapabilitiesMap[m.id] = m;
+            }
+          });
         }
       }
 
       const flat = gs.flatMap(g => g.options);
-      if (gs.length === 0) return;
+      if (gs.length === 0) {
+        dispatch({ type: 'SET_LOADING_MODELS', payload: false });
+        return;
+      }
 
-      dispatch({ type: 'SET_MODEL_LIST', payload: { groups: gs, options: flat, modelToProvider: modelProviderMap } });
+      dispatch({ type: 'SET_MODEL_LIST', payload: { groups: gs, options: flat, modelToProvider: modelProviderMap, modelCapabilities: modelCapabilitiesMap } });
 
       // Ensure current model exists in the new list, otherwise pick first
       const currentModel = modelRef.current;
@@ -634,6 +726,8 @@ export function useChatState() {
       }
     } catch (e) {
       // ignore
+    } finally {
+      dispatch({ type: 'SET_LOADING_MODELS', payload: false });
     }
   }, [authReady, user]);
 
@@ -675,7 +769,7 @@ export function useChatState() {
 
     try {
       dispatch({ type: 'LOAD_CONVERSATIONS_START' });
-      const list = await listConversationsApi(undefined, { limit: 20 });
+      const list = await conversationManager.list({ limit: 20 });
       dispatch({
         type: 'LOAD_CONVERSATIONS_SUCCESS',
         payload: { conversations: list.items, nextCursor: list.next_cursor, replace: true }
@@ -687,7 +781,7 @@ export function useChatState() {
       }
       dispatch({ type: 'LOAD_CONVERSATIONS_ERROR' });
     }
-  }, [authReady, user]);
+  }, [authReady, user, conversationManager]);
 
   // Initialize conversations on first render
   React.useEffect(() => {
@@ -721,9 +815,26 @@ export function useChatState() {
     if (!current) return;
     const assistantId = current.id;
 
+    // Immediately update the ref (keeps tokens flowing)
     const nextContent = (current.content ?? '') + token;
     assistantMsgRef.current = { ...current, content: nextContent };
-    dispatch({ type: 'STREAM_TOKEN', payload: { messageId: assistantId, token } });
+
+    // Throttle React state updates to 60fps
+    if (!throttleTimerRef.current) {
+      throttleTimerRef.current = setTimeout(() => {
+        if (assistantMsgRef.current) {
+          dispatch({
+            type: 'STREAM_TOKEN',
+            payload: {
+              messageId: assistantId,
+              token: '', // Token already in ref
+              fullContent: assistantMsgRef.current.content // Pass full content
+            }
+          });
+        }
+        throttleTimerRef.current = null;
+      }, 16); // ~60fps
+    }
   }, []);
 
   const handleStreamEvent = useCallback((event: any) => {
@@ -749,14 +860,19 @@ export function useChatState() {
     } else if (event.type === 'tool_output') {
       // Let reducer manage tool_outputs to avoid duplicates from local snapshot
       dispatch({ type: 'STREAM_TOOL_OUTPUT', payload: { messageId: assistantId, toolOutput: event.value } });
+    } else if (event.type === 'usage') {
+      // Store usage metadata in the assistant message
+      dispatch({ type: 'STREAM_USAGE', payload: { messageId: assistantId, usage: event.value } });
     }
   }, []);
 
   // Helpers to remove duplicate sendChat setup and error handling
   const buildSendChatConfig = useCallback(
     (messages: ChatMessage[], signal: AbortSignal) => {
-      // Use inline override if available, otherwise fall back to system prompt
-      const effectiveSystemPrompt = (state.inlineSystemPromptOverride || state.systemPrompt || '').trim();
+  // Use inline override if available, otherwise fall back to system prompt.
+  // Read from refs so callers (send/regenerate) get the most recent
+  // value immediately even if React state hasn't committed yet.
+  const effectiveSystemPrompt = ((inlineSystemPromptRef.current || systemPromptRef.current) || '').trim();
 
       const outgoing = effectiveSystemPrompt
         ? ([{ role: 'system', content: effectiveSystemPrompt } as any, ...messages])
@@ -764,22 +880,29 @@ export function useChatState() {
 
       const config: any = {
         messages: outgoing.map(m => ({ role: m.role as Role, content: m.content })),
-        model: state.model,
+        // Prefer the synchronous ref which is updated immediately when the user
+        // selects a model. This avoids a race where a model change dispatch
+        // hasn't flushed to React state yet but an immediate regenerate/send
+        // should use the newly selected model.
+        model: modelRef.current,
         signal,
         conversationId: state.conversationId || undefined,
+        responseId: state.previousResponseId || undefined,
         systemPrompt: effectiveSystemPrompt || undefined,
         activeSystemPromptId: state.activeSystemPromptId || undefined,
-        shouldStream: state.shouldStream,
-        reasoningEffort: state.reasoningEffort,
-        verbosity: state.verbosity,
-        qualityLevel: state.qualityLevel,
+        // Use refs for chat parameters to ensure immediate updates are used
+        shouldStream: shouldStreamRef.current,
+        reasoningEffort: reasoningEffortRef.current,
+        verbosity: verbosityRef.current,
+        qualityLevel: qualityLevelRef.current,
+        modelCapabilities: state.modelCapabilities,
         onEvent: handleStreamEvent,
         onToken: handleStreamToken,
       };
 
       // Only add providerId if it's not null
       if (state.providerId) {
-        config.providerId = state.providerId;
+        config.providerId = providerRef.current || state.providerId;
       }
 
       // Add tools if enabled
@@ -806,12 +929,23 @@ export function useChatState() {
               type: 'STREAM_TOKEN',
               payload: { messageId: assistantId, token: result.content },
             });
+            // Also store usage data from the result for non-streaming responses
+            if (result.usage) {
+              dispatch({
+                type: 'STREAM_USAGE',
+                payload: { messageId: assistantId, usage: result.usage },
+              });
+            }
           }
         }
         // If backend auto-created a conversation, set id and refresh history
         if (result.conversation) {
           dispatch({ type: 'SET_CONVERSATION_ID', payload: result.conversation.id });
-          // Refresh to reflect server ordering/title rather than optimistic add
+          // Clear cached list and refresh to reflect server ordering/title rather than optimistic add
+          try {
+            // Invalidate any cached conversation list in the manager so list() makes a real network request
+            (conversationManager as any)?.clearListCache?.();
+          } catch (_) {}
           void refreshConversations();
         }
         // Sync the assistant message from the latest snapshot and the final content
@@ -819,6 +953,22 @@ export function useChatState() {
           const merged = { ...assistantMsgRef.current };
           if (result?.content) merged.content = result.content;
           dispatch({ type: 'SYNC_ASSISTANT', payload: merged });
+        }
+        // Flush any pending throttled updates before completing
+        if (throttleTimerRef.current) {
+          clearTimeout(throttleTimerRef.current);
+          throttleTimerRef.current = null;
+          // Final sync with accumulated content
+          if (assistantMsgRef.current) {
+            dispatch({
+              type: 'STREAM_TOKEN',
+              payload: {
+                messageId: assistantMsgRef.current.id,
+                token: '',
+                fullContent: assistantMsgRef.current.content
+              }
+            });
+          }
         }
         dispatch({
           type: 'STREAM_COMPLETE',
@@ -879,10 +1029,15 @@ export function useChatState() {
     }, []),
 
     setModel: useCallback((model: string) => {
+      // Update the ref immediately so subsequent actions (like regenerate)
+      // that read modelRef.current will use the newly selected model even if
+      // React state hasn't committed yet.
+      modelRef.current = model;
       dispatch({ type: 'SET_MODEL', payload: model });
     }, []),
 
     setProviderId: useCallback((providerId: string | null) => {
+      providerRef.current = providerId;
       dispatch({ type: 'SET_PROVIDER_ID', payload: providerId });
     }, []),
 
@@ -891,27 +1046,46 @@ export function useChatState() {
     }, []),
 
     setShouldStream: useCallback((shouldStream: boolean) => {
+      shouldStreamRef.current = shouldStream;
       dispatch({ type: 'SET_SHOULD_STREAM', payload: shouldStream });
     }, []),
 
     setReasoningEffort: useCallback((effort: string) => {
+      reasoningEffortRef.current = effort;
       dispatch({ type: 'SET_REASONING_EFFORT', payload: effort });
     }, []),
 
     setVerbosity: useCallback((verbosity: string) => {
+      verbosityRef.current = verbosity;
       dispatch({ type: 'SET_VERBOSITY', payload: verbosity });
     }, []),
 
 
     setQualityLevel: useCallback((level: QualityLevel) => {
+      // Update refs synchronously for immediate use
+      qualityLevelRef.current = level;
+      // Also update derived refs based on quality level mapping
+      const map: Record<QualityLevel, { reasoningEffort: string; verbosity: string }> = {
+        quick: { reasoningEffort: 'minimal', verbosity: 'low' },
+        balanced: { reasoningEffort: 'medium', verbosity: 'medium' },
+        thorough: { reasoningEffort: 'high', verbosity: 'high' },
+      };
+      const derived = map[level];
+      reasoningEffortRef.current = derived.reasoningEffort;
+      verbosityRef.current = derived.verbosity;
       dispatch({ type: 'SET_QUALITY_LEVEL', payload: level });
     }, []),
 
     setSystemPrompt: useCallback((prompt: string) => {
+      // Update ref synchronously so immediate send/regenerate uses new prompt
+      systemPromptRef.current = prompt;
       dispatch({ type: 'SET_SYSTEM_PROMPT', payload: prompt });
     }, []),
 
     setInlineSystemPromptOverride: useCallback((prompt: string) => {
+      // Update both refs synchronously to ensure immediate use by send/regenerate
+      inlineSystemPromptRef.current = prompt;
+      systemPromptRef.current = prompt;
       dispatch({ type: 'SET_INLINE_SYSTEM_PROMPT_OVERRIDE', payload: prompt });
       dispatch({ type: 'SET_SYSTEM_PROMPT', payload: prompt });
     }, []),
@@ -973,6 +1147,11 @@ export function useChatState() {
     }, [state, handleStreamEvent, buildSendChatConfig, runSend]),
 
     stopStreaming: useCallback(() => {
+      // Flush any pending throttled updates
+      if (throttleTimerRef.current) {
+        clearTimeout(throttleTimerRef.current);
+        throttleTimerRef.current = null;
+      }
       try { state.abort?.abort(); } catch {}
       inFlightRef.current = false;
       dispatch({ type: 'STOP_STREAMING' });
@@ -999,11 +1178,13 @@ export function useChatState() {
       dispatch({ type: 'CANCEL_EDIT' });
 
       try {
-        const data = await getConversationApi(undefined, id, { limit: 200 });
+        const data = await conversationManager.get(id, { limit: 200 });
         const msgs = data.messages.map(m => ({
           id: String(m.id),
           role: m.role as Role,
-          content: m.content || ''
+          content: m.content || '',
+          ...(m.tool_calls && { tool_calls: m.tool_calls }),
+          ...(m.tool_outputs && { tool_outputs: m.tool_outputs })
         }));
         dispatch({ type: 'SET_MESSAGES', payload: msgs });
 
@@ -1036,23 +1217,29 @@ export function useChatState() {
         if (data.verbosity) {
           dispatch({ type: 'SET_VERBOSITY', payload: data.verbosity });
         }
-        if (typeof (data as any).system_prompt === 'string') {
+        // Always update system_prompt if present in response (including null)
+        if ('system_prompt' in (data as any)) {
           dispatch({ type: 'SET_SYSTEM_PROMPT', payload: (data as any).system_prompt || '' });
         }
-        if ((data as any).active_system_prompt_id !== undefined) {
+        // Always update active_system_prompt_id if present in response (including null)
+        if ('active_system_prompt_id' in (data as any)) {
           dispatch({ type: 'SET_ACTIVE_SYSTEM_PROMPT_ID', payload: (data as any).active_system_prompt_id });
+        }
+        // Set the current conversation title if available
+        if (data.title) {
+          dispatch({ type: 'SET_CURRENT_CONVERSATION_TITLE', payload: data.title });
         }
       } catch (e: any) {
         // ignore
       }
-    }, [state.status]),
+    }, [state.status, conversationManager]),
 
     loadMoreConversations: useCallback(async () => {
       if (!state.nextCursor || state.loadingConversations) return;
 
       dispatch({ type: 'LOAD_CONVERSATIONS_START' });
       try {
-        const list = await listConversationsApi(undefined, { cursor: state.nextCursor, limit: 20 });
+        const list = await conversationManager.list({ cursor: state.nextCursor, limit: 20 });
         dispatch({
           type: 'LOAD_CONVERSATIONS_SUCCESS',
           payload: { conversations: list.items, nextCursor: list.next_cursor }
@@ -1060,16 +1247,16 @@ export function useChatState() {
       } catch (e: any) {
         dispatch({ type: 'LOAD_CONVERSATIONS_ERROR' });
       }
-    }, [state.nextCursor, state.loadingConversations]),
+    }, [state.nextCursor, state.loadingConversations, conversationManager]),
 
     deleteConversation: useCallback(async (id: string) => {
       try {
-        await deleteConversationApi(undefined, id);
+        await conversationManager.delete(id);
         dispatch({ type: 'DELETE_CONVERSATION', payload: id });
       } catch (e: any) {
         // ignore
       }
-    }, []),
+    }, [conversationManager]),
 
     // Editing Actions
     startEdit: useCallback((messageId: string, content: string) => {
@@ -1124,6 +1311,8 @@ export function useChatState() {
     toggleRightSidebar: useCallback(() => {
       dispatch({ type: 'TOGGLE_RIGHT_SIDEBAR' });
     }, []),
+
+    loadProvidersAndModels,
   };
 
   return { state, actions };

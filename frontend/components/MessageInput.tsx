@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { Send, Loader2, Gauge, Wrench, Zap } from 'lucide-react';
 import type { PendingState } from '../hooks/useChatState';
 import Toggle from './ui/Toggle';
 import QualitySlider from './ui/QualitySlider';
 import type { QualityLevel } from './ui/QualitySlider';
+import { supportsReasoningControls } from '../lib/chat/modelCapabilities';
 
 interface MessageInputProps {
   input: string;
@@ -20,6 +21,7 @@ interface MessageInputProps {
   model: string;
   qualityLevel: QualityLevel;
   onQualityLevelChange: (level: QualityLevel) => void;
+  modelCapabilities?: Record<string, any>; // Model capabilities from provider
 }
 
 export function MessageInput({
@@ -37,12 +39,18 @@ export function MessageInput({
   model,
   qualityLevel,
   onQualityLevelChange,
+  modelCapabilities = {},
 }: MessageInputProps) {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const toolsDropdownRef = useRef<HTMLDivElement | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [availableTools, setAvailableTools] = useState<{ name: string; description?: string }[]>([]);
   const [localSelected, setLocalSelected] = useState<string[]>(enabledTools);
+
+  // Check if model supports thinking/reasoning
+  const supportsThinking = useMemo(() => {
+    return supportsReasoningControls(model, modelCapabilities);
+  }, [model, modelCapabilities]);
 
   // Auto-grow textarea up to ~200px
   useEffect(() => {
@@ -102,7 +110,7 @@ export function MessageInput({
       onSubmit={e => { e.preventDefault(); if (pending.streaming) onStop(); else onSend(); }}
     >
       <div className="px-2">
-        <div className="relative rounded-2xl bg-white/95 dark:bg-neutral-900/95 border border-slate-200 dark:border-neutral-700 shadow-xl backdrop-blur-lg transition-all duration-200">
+        <div className="relative rounded-2xl bg-white/95 dark:bg-neutral-900/95 border border-slate-200 dark:border-neutral-700 shadow-xl transition-shadow duration-200">
           <textarea
             ref={inputRef}
             className="w-full resize-none bg-transparent border-0 outline-none p-4 text-sm placeholder-slate-500 dark:placeholder-slate-400 text-slate-800 dark:text-slate-200"
@@ -118,7 +126,7 @@ export function MessageInput({
                 {/* model selector moved to header */}
               </div>
 
-              {model?.startsWith('gpt-5') && !model.startsWith('gpt-5-chat') && (
+              {supportsThinking && (
                 <div className="flex items-center">
                   <QualitySlider
                     value={qualityLevel}

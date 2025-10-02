@@ -14,9 +14,10 @@ export class ConversationTitleService {
    * Generate a concise conversation title from user content
    * @param {string} content - User message content
    * @param {string} providerId - Provider ID for API requests
+   * @param {string} [model] - Specific model to use for title generation (defaults to titleModel/defaultModel)
    * @returns {Promise<string|null>} Generated title or null
    */
-  async generateTitle(content, providerId) {
+  async generateTitle(content, providerId, model = null) {
     try {
       const text = String(content || '').trim();
       if (!text) return null;
@@ -27,7 +28,7 @@ export class ConversationTitleService {
         return this.generateFallbackTitle(text);
       }
 
-      const title = await this._requestTitleFromAPI(text, providerId);
+      const title = await this._requestTitleFromAPI(text, providerId, model);
       return title || this.generateFallbackTitle(text);
     } catch (error) {
       // Log error but don't throw - title generation is non-critical
@@ -54,13 +55,14 @@ export class ConversationTitleService {
    * @private
    * @param {string} text - User message content
    * @param {string} providerId - Provider ID for API requests
+   * @param {string} [model] - Specific model to use for title generation
    * @returns {Promise<string|null>} Generated title or null
    */
-  async _requestTitleFromAPI(text, providerId) {
+  async _requestTitleFromAPI(text, providerId, model = null) {
     const promptUser = text.length > 500 ? text.slice(0, 500) + '…' : text;
 
     const requestBody = {
-      model: this.config.titleModel || this.config.defaultModel || 'gpt-4.1-mini',
+      model: model || this.config.titleModel || this.config.defaultModel || 'gpt-4.1-mini',
       temperature: 0.2,
       max_tokens: 20,
       messages: [

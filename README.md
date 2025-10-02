@@ -72,7 +72,13 @@ Visit http://localhost:3003 (dev environment uses different ports)
 
 ```bash
 # Ensure API key is set in backend/.env
-docker compose up --build
+./prod.sh up --build
+
+# Check service health
+./prod.sh health
+
+# View logs
+./prod.sh logs -f
 ```
 
 Visit http://localhost:3000
@@ -85,6 +91,7 @@ chat/
 ├── backend/           # Node.js + Express + SQLite
 ├── docs/              # Architecture documentation and ADRs
 ├── dev.sh             # Development orchestration script
+├── prod.sh            # Production management script
 ├── docker-compose.yml             # Production Docker setup
 ├── docker-compose.dev.yml         # Development Docker setup
 └── package.json       # Root workspace scripts
@@ -215,7 +222,7 @@ npm run test:frontend:watch
 - [API Specs](docs/API-SPECS.md) - API endpoint documentation
 - [Security & Privacy](docs/SECURITY.md) - Security considerations
 - [Progress Log](docs/PROGRESS.md) - Development history
-- [AI Onboarding](AI_ONBOARDING.md) - Guide for AI assistants
+- [AI Onboarding](AGENTS.md) - Guide for AI assistants
 
 ## Roadmap
 

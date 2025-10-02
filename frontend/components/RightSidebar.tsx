@@ -134,6 +134,15 @@ export function RightSidebar({
     if (success) {
       setSelectedPromptId(promptId);
       setNewPromptContent(''); // Clear new prompt content
+      
+      // Immediately update the active prompt ID to fix dropdown binding
+      // The backend call was successful, so we can update the local state
+      setActivePromptId(promptId);
+      
+      // Notify parent component of the change
+      if (onActivePromptIdChange) {
+        onActivePromptIdChange(promptId);
+      }
     }
   };
 
@@ -155,9 +164,24 @@ export function RightSidebar({
       return;
     }
 
-    await clearPrompt(conversationId);
-    setSelectedPromptId(null);
-    setNewPromptContent(''); // Clear new prompt content
+    const success = await clearPrompt(conversationId);
+    if (success) {
+      setSelectedPromptId(null);
+      setNewPromptContent(''); // Clear new prompt content
+
+      // Immediately update the active prompt ID to fix dropdown binding
+      setActivePromptId(null);
+
+      // Explicitly clear the effective prompt to prevent stale content from being used
+      if (onEffectivePromptChange) {
+        onEffectivePromptChange('');
+      }
+
+      // Clear the active prompt ID
+      if (onActivePromptIdChange) {
+        onActivePromptIdChange(null);
+      }
+    }
   };
 
   const handleSavePrompt = async () => {
@@ -349,7 +373,7 @@ export function RightSidebar({
           transition: isResizing ? 'none' : 'width 0.3s ease-in-out',
           willChange: isResizing ? 'width' : undefined
         }}
-        className={`z-30 flex flex-col bg-white/60 dark:bg-neutral-900/60 backdrop-blur-sm relative border-l border-gray-200 dark:border-gray-700`}
+        className={`z-30 flex flex-col bg-white/95 dark:bg-neutral-900/95 relative border-l border-gray-200 dark:border-gray-700`}
       >
         {/* Collapse/Expand Button */}
         <button

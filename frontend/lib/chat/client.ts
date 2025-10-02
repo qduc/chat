@@ -6,6 +6,7 @@ import {
   Role
 } from './types';
 import { SSEParser, createRequestInit, APIError } from './utils';
+import { supportsReasoningControls } from './modelCapabilities';
 import { waitForAuthReady } from '../auth/ready';
 import { httpClient } from '../http/client';
 import { HttpError } from '../http/types';
@@ -90,6 +91,12 @@ export class ChatClient {
     const { messages, model, providerId, responseId } = options;
     const extendedOptions = options as ChatOptionsExtended;
 
+    // Check if model supports reasoning controls
+    const modelSupportsReasoning = supportsReasoningControls(
+      model,
+      (extendedOptions as any).modelCapabilities
+    );
+
     const bodyObj: any = {
       model,
       messages,
@@ -106,8 +113,8 @@ export class ChatClient {
       ...((options as any).activeSystemPromptId && { active_system_prompt_id: (options as any).activeSystemPromptId })
     };
 
-    // Handle reasoning parameters for gpt-5* models except gpt-5-chat
-    if (typeof model === 'string' && model.startsWith('gpt-5') && extendedOptions.reasoning && !model.startsWith('gpt-5-chat')) {
+    // Handle reasoning parameters - send for persistence even if model doesn't support them
+    if (extendedOptions.reasoning) {
       if (extendedOptions.reasoning.effort) {
         bodyObj.reasoning_effort = extendedOptions.reasoning.effort;
       }
@@ -117,6 +124,13 @@ export class ChatClient {
       if (extendedOptions.reasoning.summary) {
         bodyObj.reasoning_summary = extendedOptions.reasoning.summary;
       }
+    }
+    // Also support legacy SendChatOptions fields for backward compatibility
+    if ((options as any).reasoningEffort) {
+      bodyObj.reasoning_effort = (options as any).reasoningEffort;
+    }
+    if ((options as any).verbosity) {
+      bodyObj.verbosity = (options as any).verbosity;
     }
 
     // Handle tools
@@ -180,11 +194,27 @@ export class ChatClient {
       content = json?.content ?? json?.message?.content ?? '';
     }
 
+    // Extract usage metadata
+    const usage: any = {};
+    if (json.provider) usage.provider = json.provider;
+    if (json.model) usage.model = json.model;
+    if (json.usage) {
+      if (json.usage.prompt_tokens !== undefined) usage.prompt_tokens = json.usage.prompt_tokens;
+      if (json.usage.completion_tokens !== undefined) usage.completion_tokens = json.usage.completion_tokens;
+      if (json.usage.total_tokens !== undefined) usage.total_tokens = json.usage.total_tokens;
+    }
+
+    // Emit usage event if we have usage data
+    if (Object.keys(usage).length > 0) {
+      onEvent?.({ type: 'usage', value: usage });
+    }
+
     return {
       content,
       responseId: json?.id,
       conversation,
-      reasoning_summary: json?.reasoning_summary
+      reasoning_summary: json?.reasoning_summary,
+      ...(Object.keys(usage).length > 0 ? { usage } : {})
     };
   }
 
@@ -208,55 +238,7 @@ export class ChatClient {
     onEvent?: (event: any) => void
   ): Promise<ChatResponse> {
     const json = await response.json();
-
-    // Process tool_events if present
-    if (json.tool_events && Array.isArray(json.tool_events)) {
-      for (const event of json.tool_events) {
-        if (event.type === 'text') {
-          onEvent?.({ type: 'text', value: event.value });
-          onToken?.(event.value);
-        } else if (event.type === 'tool_call') {
-          onEvent?.({ type: 'tool_call', value: event.value });
-        } else if (event.type === 'tool_output') {
-          onEvent?.({ type: 'tool_output', value: event.value });
-        }
-      }
-    }
-
-    // Extract conversation metadata
-    const conversation = json._conversation ? {
-      id: json._conversation.id,
-      title: json._conversation.title,
-      model: json._conversation.model,
-      created_at: json._conversation.created_at,
-      ...(typeof json._conversation.tools_enabled === 'boolean'
-        ? { tools_enabled: json._conversation.tools_enabled }
-        : {}),
-      ...(Array.isArray(json._conversation.active_tools)
-        ? { active_tools: json._conversation.active_tools }
-        : {}),
-    } : undefined;
-
-    // Extract content
-    let content = '';
-    if (json?.choices && Array.isArray(json.choices)) {
-      const message = json.choices[0]?.message;
-      content = message?.content ?? '';
-
-      // Handle reasoning content from non-streaming response
-      if (message?.reasoning) {
-        content = `<thinking>${message.reasoning}</thinking>\n\n${content}`;
-      }
-    } else {
-      content = json?.content ?? json?.message?.content ?? '';
-    }
-
-    return {
-      content,
-      responseId: json?.id,
-      conversation,
-      reasoning_summary: json?.reasoning_summary
-    };
+    return this.processNonStreamingData(json, onToken, onEvent);
   }
 
   private async handleStreamingResponse(
@@ -277,6 +259,7 @@ export class ChatClient {
     let conversation: ConversationMeta | undefined;
     let reasoningStarted = false;
     let reasoning_summary: string | undefined;
+    let usage: any | undefined;
 
     try {
       while (true) {
@@ -304,6 +287,7 @@ export class ChatClient {
             if (result.conversation) conversation = result.conversation;
             if (result.reasoningStarted !== undefined) reasoningStarted = result.reasoningStarted;
             if (result.reasoning_summary) reasoning_summary = result.reasoning_summary;
+            if (result.usage) usage = { ...usage, ...result.usage };
           }
         }
       }
@@ -322,7 +306,7 @@ export class ChatClient {
     onToken?: (token: string) => void,
     onEvent?: (event: any) => void,
     reasoningStarted?: boolean
-  ): { content?: string; responseId?: string; conversation?: ConversationMeta; reasoningStarted?: boolean; reasoning_summary?: string } {
+  ): { content?: string; responseId?: string; conversation?: ConversationMeta; reasoningStarted?: boolean; reasoning_summary?: string; usage?: any } {
     // Handle conversation metadata
     if (data._conversation) {
       return {
@@ -346,6 +330,22 @@ export class ChatClient {
       return {
         reasoning_summary: data.reasoning_summary
       };
+    }
+
+    // Handle usage data if present in the chunk
+    if (data.usage || data.provider || data.model) {
+      const usage: any = {};
+      if (data.provider) usage.provider = data.provider;
+      if (data.model) usage.model = data.model;
+      if (data.usage) {
+        if (data.usage.prompt_tokens !== undefined) usage.prompt_tokens = data.usage.prompt_tokens;
+        if (data.usage.completion_tokens !== undefined) usage.completion_tokens = data.usage.completion_tokens;
+        if (data.usage.total_tokens !== undefined) usage.total_tokens = data.usage.total_tokens;
+      }
+
+      if (Object.keys(usage).length > 0) {
+        onEvent?.({ type: 'usage', value: usage });
+      }
     }
 
     // Handle Chat Completions API stream format

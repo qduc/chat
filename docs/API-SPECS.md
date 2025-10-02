@@ -5,7 +5,7 @@
 
 ### POST /v1/responses (Primary)
 The primary chat endpoint supporting conversation continuity.
-- **Auth**: None (MVP) → server injects `Authorization: Bearer <OPENAI_API_KEY>`
+- **Auth**: Optional JWT bearer token (backward compatible with anonymous sessions) → server injects upstream `Authorization: Bearer <OPENAI_API_KEY>`
 - **Request**:
   ```jsonc
   {
@@ -25,7 +25,7 @@ The primary chat endpoint supporting conversation continuity.
 
 ### POST /v1/chat/completions (Compatibility)
 OpenAI-compatible endpoint for standard chat completions.
-- **Auth**: None (MVP) → server injects `Authorization: Bearer <OPENAI_API_KEY>`
+- **Auth**: Optional JWT bearer token (backward compatible with anonymous sessions) → server injects upstream `Authorization: Bearer <OPENAI_API_KEY>`
 - **Request**: Standard OpenAI Chat Completions format with additional optional fields:
   ```jsonc
   {
@@ -92,10 +92,10 @@ Returns system health and configuration.
   ```
 
 ## Rate Limiting
- - **Current**: In-memory per-IP sliding window limiting (configurable via `RATE_LIMIT_WINDOW_SEC` and `RATE_LIMIT_MAX`)
+ - **Current**: In-memory per-IP sliding window limiting (configurable via `RATE_LIMIT_WINDOW_SEC` and `RATE_LIMIT_MAX`), with per-user tracking for authenticated requests
  - **Headers**: Standard rate limit headers in responses
  - **Limits**: Configurable per environment
- - **Planned**: Redis-backed per-user and per-key limits for production scaling
+ - **Planned**: Redis-backed limits for production scaling
 
 ## Server Features
 
@@ -111,8 +111,12 @@ Returns system health and configuration.
 - **Performance**: Request timing and basic metrics
 - **Privacy**: Input masking for sensitive data (planned)
 
+## Completed Features
+ - **Authentication**: JWT-based authentication with user registration, login, and per-user conversation scoping (Phase 1 ✅)
+ - **Backward Compatibility**: Anonymous sessions continue to work alongside authenticated users
+
 ## Planned Enhancements
- - **Authentication**: JWT/API key support with per-user limits
+ - **Provider User Scoping**: Per-user provider configurations (Phase 2.1)
  - **Multi-Provider**: Dynamic routing between multiple LLM providers
  - **Token Accounting**: Usage tracking and billing integration
  - **Observability**: Prometheus metrics and structured logging

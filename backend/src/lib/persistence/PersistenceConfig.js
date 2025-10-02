@@ -146,15 +146,18 @@ export class PersistenceConfig {
   }
 
   /**
-   * Check if system prompt or provider ID needs updating
+   * Check if system prompt, provider ID, model, active tools, or settings needs updating
    * @param {Object} existingConvo - Existing conversation metadata
    * @param {string} incomingSystemPrompt - New system prompt
    * @param {string} incomingProviderId - New provider ID
+   * @param {Array} incomingActiveTools - New active tools
+   * @param {string} incomingModel - New model
    * @returns {Object} Update flags and values
    */
-  checkMetadataUpdates(existingConvo, incomingSystemPrompt, incomingProviderId, incomingActiveTools = []) {
+  checkMetadataUpdates(existingConvo, incomingSystemPrompt, incomingProviderId, incomingActiveTools = [], incomingModel = null) {
     const existingSystemPrompt = existingConvo?.metadata?.system_prompt || null;
     const existingProviderId = existingConvo?.providerId;
+    const existingModel = existingConvo?.model;
     const existingActiveTools = Array.isArray(existingConvo?.metadata?.active_tools)
       ? existingConvo.metadata.active_tools
       : [];
@@ -166,12 +169,15 @@ export class PersistenceConfig {
 
     const needsSystemUpdate = incomingSystemPrompt && incomingSystemPrompt !== existingSystemPrompt;
     const needsProviderUpdate = incomingProviderId && incomingProviderId !== existingProviderId;
+    const needsModelUpdate = incomingModel && incomingModel !== existingModel;
 
     return {
       needsSystemUpdate,
       needsProviderUpdate,
+      needsModelUpdate,
       systemPrompt: incomingSystemPrompt,
       providerId: incomingProviderId,
+      model: incomingModel,
       needsActiveToolsUpdate,
       activeTools: normalizedIncomingTools,
     };

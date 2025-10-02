@@ -13,14 +13,6 @@ services:
     ports:
       - "3001:3001"
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: "0.50"
-          memory: 512M
-        reservations:
-          cpus: "0.25"
-          memory: 256M
     healthcheck:
       test:
         ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(res => { if (res.ok) process.exit(0); process.exit(1); }).catch(() => process.exit(1));"]
@@ -46,14 +38,6 @@ services:
     ports:
       - "3000:3000"
     restart: unless-stopped
-    deploy:
-      resources:
-        limits:
-          cpus: "0.25"
-          memory: 256M
-        reservations:
-          cpus: "0.15"
-          memory: 128M
     healthcheck:
       test:
         ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(res => { if (res.ok) process.exit(0); process.exit(1); }).catch(() => process.exit(1));"]

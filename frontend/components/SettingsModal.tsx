@@ -110,7 +110,7 @@ export default function SettingsModal({
     if (testResult && Date.now() - lastTestTime > 500) {
       setTestResult(null);
     }
-  }, [form.name, form.provider_type, form.base_url, form.api_key, form.default_model]);
+  }, [form.name, form.provider_type, form.base_url, form.api_key, form.default_model, testResult, lastTestTime]);
 
   const onSelectProvider = (r: ProviderRow) => {
     setSelectedId(r.id);
@@ -378,7 +378,7 @@ export default function SettingsModal({
                       <div className="p-6 text-center">
                         <Database className="mx-auto h-10 w-10 text-slate-400 mb-3" />
                         <p className="text-sm font-medium text-slate-600 dark:text-slate-400">No AI providers yet</p>
-                        <p className="text-xs text-slate-500 dark:text-slate-500 mt-1">Click "Add New" to configure your first AI provider</p>
+                        <p className="text-sm text-slate-500 dark:text-slate-500 mt-1">Click &quot;Add New&quot; to configure your first AI provider</p>
                       </div>
                     )}
                     {providers.map((p) => (
@@ -508,7 +508,7 @@ export default function SettingsModal({
                         placeholder="https://api.openai.com/v1 (auto-filled if empty)"
                       />
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Custom API endpoint. Leave empty for OpenAI's default endpoint.
+                        Custom API endpoint. Leave empty for OpenAI&apos;s default endpoint.
                       </p>
                     </div>
 
@@ -649,7 +649,7 @@ export default function SettingsModal({
                   </h3>
                   <div className="mt-2">
                     <p className="text-sm text-slate-500 dark:text-slate-400">
-                      Are you sure you want to permanently delete "{form.name}"? This action cannot be undone.
+                      Are you sure you want to permanently delete &quot;{form.name}&quot;? This action cannot be undone.
                     </p>
                   </div>
                 </div>

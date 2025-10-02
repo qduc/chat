@@ -162,6 +162,11 @@ export async function handleToolsStreaming({
         // Add assistant message with tool calls for the next iteration
         conversationHistory.push({ role: 'assistant', tool_calls: toolCalls });
 
+        // Buffer tool calls for persistence
+        if (persistence && persistence.persist && typeof persistence.addToolCalls === 'function') {
+          persistence.addToolCalls(toolCalls);
+        }
+
         // Execute each tool call and stream tool_output events
         for (const toolCall of toolCalls) {
           try {
@@ -180,7 +185,15 @@ export async function handleToolsStreaming({
             });
 
             const toolContent = typeof output === 'string' ? output : JSON.stringify(output);
-            appendToPersistence(persistence, toolContent);
+
+            // Buffer tool output for persistence (don't append to message content!)
+            if (persistence && persistence.persist && typeof persistence.addToolOutputs === 'function') {
+              persistence.addToolOutputs([{
+                tool_call_id: toolCall.id,
+                output: toolContent,
+                status: 'success'
+              }]);
+            }
 
             conversationHistory.push({
               role: 'tool',
@@ -201,7 +214,16 @@ export async function handleToolsStreaming({
               },
               prefix: 'iter',
             });
-            appendToPersistence(persistence, errorMessage);
+
+            // Buffer error tool output for persistence (don't append to message content!)
+            if (persistence && persistence.persist && typeof persistence.addToolOutputs === 'function') {
+              persistence.addToolOutputs([{
+                tool_call_id: toolCall.id,
+                output: errorMessage,
+                status: 'error'
+              }]);
+            }
+
             conversationHistory.push({
               role: 'tool',
               tool_call_id: toolCall.id,
