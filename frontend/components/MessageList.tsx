@@ -472,7 +472,7 @@ const Message = React.memo<MessageProps>(function Message({
                           <span className="text-slate-500 dark:text-slate-500">•</span>
                         )}
                         {message.usage.prompt_tokens !== undefined && message.usage.completion_tokens !== undefined && (
-                          <span>{message.usage.prompt_tokens + message.usage.completion_tokens} tokens ({message.usage.prompt_tokens} + {message.usage.completion_tokens})</span>
+                            <span>{message.usage.prompt_tokens + message.usage.completion_tokens} tokens ({message.usage.prompt_tokens}↑ + {message.usage.completion_tokens}↓)</span>
                         )}
                       </div>
                     )}

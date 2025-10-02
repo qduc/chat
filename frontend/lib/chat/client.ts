@@ -345,7 +345,6 @@ export class ChatClient {
 
       if (Object.keys(usage).length > 0) {
         onEvent?.({ type: 'usage', value: usage });
-        return { usage };
       }
     }
 
