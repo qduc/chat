@@ -134,6 +134,15 @@ export function RightSidebar({
     if (success) {
       setSelectedPromptId(promptId);
       setNewPromptContent(''); // Clear new prompt content
+      
+      // Immediately update the active prompt ID to fix dropdown binding
+      // The backend call was successful, so we can update the local state
+      setActivePromptId(promptId);
+      
+      // Notify parent component of the change
+      if (onActivePromptIdChange) {
+        onActivePromptIdChange(promptId);
+      }
     }
   };
 
@@ -155,18 +164,23 @@ export function RightSidebar({
       return;
     }
 
-    await clearPrompt(conversationId);
-    setSelectedPromptId(null);
-    setNewPromptContent(''); // Clear new prompt content
+    const success = await clearPrompt(conversationId);
+    if (success) {
+      setSelectedPromptId(null);
+      setNewPromptContent(''); // Clear new prompt content
 
-    // Explicitly clear the effective prompt to prevent stale content from being used
-    if (onEffectivePromptChange) {
-      onEffectivePromptChange('');
-    }
+      // Immediately update the active prompt ID to fix dropdown binding
+      setActivePromptId(null);
 
-    // Clear the active prompt ID
-    if (onActivePromptIdChange) {
-      onActivePromptIdChange(null);
+      // Explicitly clear the effective prompt to prevent stale content from being used
+      if (onEffectivePromptChange) {
+        onEffectivePromptChange('');
+      }
+
+      // Clear the active prompt ID
+      if (onActivePromptIdChange) {
+        onActivePromptIdChange(null);
+      }
     }
   };
 
