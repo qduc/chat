@@ -12,10 +12,17 @@ export interface ChatMessage {
     output: any;
     status?: string;
   }>;
+  usage?: {
+    provider?: string;
+    model?: string;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
 }
 
 export interface ChatEvent {
-  type: 'text' | 'reasoning' | 'tool_call' | 'tool_output' | 'final';
+  type: 'text' | 'reasoning' | 'tool_call' | 'tool_output' | 'usage' | 'final';
   value: any;
 }
 
@@ -24,6 +31,13 @@ export interface ChatResponse {
   responseId?: string;
   conversation?: ConversationMeta;
   reasoning_summary?: string;
+  usage?: {
+    provider?: string;
+    model?: string;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+  };
 }
 
 export interface ConversationMeta {

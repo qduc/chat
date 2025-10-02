@@ -194,11 +194,27 @@ export class ChatClient {
       content = json?.content ?? json?.message?.content ?? '';
     }
 
+    // Extract usage metadata
+    const usage: any = {};
+    if (json.provider) usage.provider = json.provider;
+    if (json.model) usage.model = json.model;
+    if (json.usage) {
+      if (json.usage.prompt_tokens !== undefined) usage.prompt_tokens = json.usage.prompt_tokens;
+      if (json.usage.completion_tokens !== undefined) usage.completion_tokens = json.usage.completion_tokens;
+      if (json.usage.total_tokens !== undefined) usage.total_tokens = json.usage.total_tokens;
+    }
+
+    // Emit usage event if we have usage data
+    if (Object.keys(usage).length > 0) {
+      onEvent?.({ type: 'usage', value: usage });
+    }
+
     return {
       content,
       responseId: json?.id,
       conversation,
-      reasoning_summary: json?.reasoning_summary
+      reasoning_summary: json?.reasoning_summary,
+      ...(Object.keys(usage).length > 0 ? { usage } : {})
     };
   }
 
@@ -222,55 +238,7 @@ export class ChatClient {
     onEvent?: (event: any) => void
   ): Promise<ChatResponse> {
     const json = await response.json();
-
-    // Process tool_events if present
-    if (json.tool_events && Array.isArray(json.tool_events)) {
-      for (const event of json.tool_events) {
-        if (event.type === 'text') {
-          onEvent?.({ type: 'text', value: event.value });
-          onToken?.(event.value);
-        } else if (event.type === 'tool_call') {
-          onEvent?.({ type: 'tool_call', value: event.value });
-        } else if (event.type === 'tool_output') {
-          onEvent?.({ type: 'tool_output', value: event.value });
-        }
-      }
-    }
-
-    // Extract conversation metadata
-    const conversation = json._conversation ? {
-      id: json._conversation.id,
-      title: json._conversation.title,
-      model: json._conversation.model,
-      created_at: json._conversation.created_at,
-      ...(typeof json._conversation.tools_enabled === 'boolean'
-        ? { tools_enabled: json._conversation.tools_enabled }
-        : {}),
-      ...(Array.isArray(json._conversation.active_tools)
-        ? { active_tools: json._conversation.active_tools }
-        : {}),
-    } : undefined;
-
-    // Extract content
-    let content = '';
-    if (json?.choices && Array.isArray(json.choices)) {
-      const message = json.choices[0]?.message;
-      content = message?.content ?? '';
-
-      // Handle reasoning content from non-streaming response
-      if (message?.reasoning) {
-        content = `<thinking>${message.reasoning}</thinking>\n\n${content}`;
-      }
-    } else {
-      content = json?.content ?? json?.message?.content ?? '';
-    }
-
-    return {
-      content,
-      responseId: json?.id,
-      conversation,
-      reasoning_summary: json?.reasoning_summary
-    };
+    return this.processNonStreamingData(json, onToken, onEvent);
   }
 
   private async handleStreamingResponse(
@@ -291,6 +259,7 @@ export class ChatClient {
     let conversation: ConversationMeta | undefined;
     let reasoningStarted = false;
     let reasoning_summary: string | undefined;
+    let usage: any | undefined;
 
     try {
       while (true) {
@@ -318,6 +287,7 @@ export class ChatClient {
             if (result.conversation) conversation = result.conversation;
             if (result.reasoningStarted !== undefined) reasoningStarted = result.reasoningStarted;
             if (result.reasoning_summary) reasoning_summary = result.reasoning_summary;
+            if (result.usage) usage = { ...usage, ...result.usage };
           }
         }
       }
@@ -336,7 +306,7 @@ export class ChatClient {
     onToken?: (token: string) => void,
     onEvent?: (event: any) => void,
     reasoningStarted?: boolean
-  ): { content?: string; responseId?: string; conversation?: ConversationMeta; reasoningStarted?: boolean; reasoning_summary?: string } {
+  ): { content?: string; responseId?: string; conversation?: ConversationMeta; reasoningStarted?: boolean; reasoning_summary?: string; usage?: any } {
     // Handle conversation metadata
     if (data._conversation) {
       return {
@@ -360,6 +330,23 @@ export class ChatClient {
       return {
         reasoning_summary: data.reasoning_summary
       };
+    }
+
+    // Handle usage data if present in the chunk
+    if (data.usage || data.provider || data.model) {
+      const usage: any = {};
+      if (data.provider) usage.provider = data.provider;
+      if (data.model) usage.model = data.model;
+      if (data.usage) {
+        if (data.usage.prompt_tokens !== undefined) usage.prompt_tokens = data.usage.prompt_tokens;
+        if (data.usage.completion_tokens !== undefined) usage.completion_tokens = data.usage.completion_tokens;
+        if (data.usage.total_tokens !== undefined) usage.total_tokens = data.usage.total_tokens;
+      }
+
+      if (Object.keys(usage).length > 0) {
+        onEvent?.({ type: 'usage', value: usage });
+        return { usage };
+      }
     }
 
     // Handle Chat Completions API stream format

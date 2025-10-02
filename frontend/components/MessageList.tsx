@@ -449,10 +449,33 @@ const Message = React.memo<MessageProps>(function Message({
 
             {!isEditing && (message.content || !isUser) && (
               <div className="mt-1 flex items-center justify-between opacity-70 group-hover:opacity-100 transition-opacity text-xs">
-                {/* Show streaming speed for assistant messages */}
-                {!isUser && streamingStats && streamingStats.tokensPerSecond > 0 && (
-                  <div className="px-2 py-1 rounded-md bg-white/60 dark:bg-neutral-800/50 text-slate-600 dark:text-slate-400 text-xs font-mono">
-                    {streamingStats.tokensPerSecond.toFixed(1)} tok/s
+                {/* Show stats for assistant messages */}
+                {!isUser && (
+                  <div className="flex items-center gap-2">
+                    {streamingStats && streamingStats.tokensPerSecond > 0 && (
+                      <div className="px-2 py-1 rounded-md bg-white/60 dark:bg-neutral-800/50 text-slate-600 dark:text-slate-400 text-xs font-mono">
+                        {streamingStats.tokensPerSecond.toFixed(1)} tok/s
+                      </div>
+                    )}
+                    {message.usage && (
+                      <div className="px-2 py-1 rounded-md bg-white/60 dark:bg-neutral-800/50 text-slate-600 dark:text-slate-400 text-xs font-mono flex items-center gap-2">
+                        {message.usage.provider && (
+                          <span className="font-medium">{message.usage.provider}</span>
+                        )}
+                        {message.usage.model && (
+                          <span className="text-slate-500 dark:text-slate-500">•</span>
+                        )}
+                        {message.usage.model && (
+                          <span className="truncate max-w-[200px]" title={message.usage.model}>{message.usage.model}</span>
+                        )}
+                        {(message.usage.prompt_tokens !== undefined || message.usage.completion_tokens !== undefined) && (
+                          <span className="text-slate-500 dark:text-slate-500">•</span>
+                        )}
+                        {message.usage.prompt_tokens !== undefined && message.usage.completion_tokens !== undefined && (
+                          <span>{message.usage.prompt_tokens + message.usage.completion_tokens} tokens ({message.usage.prompt_tokens} + {message.usage.completion_tokens})</span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 
@@ -521,6 +544,7 @@ const Message = React.memo<MessageProps>(function Message({
     prev.message.content === next.message.content &&
     prev.message.tool_calls === next.message.tool_calls &&
     prev.message.tool_outputs === next.message.tool_outputs &&
+    prev.message.usage === next.message.usage &&
     prev.isStreaming === next.isStreaming &&
     prev.editingMessageId === next.editingMessageId &&
     prev.editingContent === next.editingContent &&
@@ -625,7 +649,7 @@ export function MessageList({
     window.addEventListener('resize', updatePadding);
 
     return () => window.removeEventListener('resize', updatePadding);
-  }, [pending.streaming, messages.length]);
+  }, [pending.streaming, messages.length, messages]);
 
   useEffect(() => {
     // If we just started streaming, scroll user message to top for better UX
@@ -640,7 +664,7 @@ export function MessageList({
         return;
       }
     }
-  }, [messages.length, pending.streaming, pending.abort]);
+  }, [messages.length, pending.streaming, pending.abort, messages]);
 
   // When editing content changes (including on initial edit open), resize the textarea
   useEffect(() => {

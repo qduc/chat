@@ -99,6 +99,7 @@ export type ChatAction =
   | { type: 'STREAM_TOKEN'; payload: { messageId: string; token: string; fullContent?: string } }
   | { type: 'STREAM_TOOL_CALL'; payload: { messageId: string; toolCall: any } }
   | { type: 'STREAM_TOOL_OUTPUT'; payload: { messageId: string; toolOutput: any } }
+  | { type: 'STREAM_USAGE'; payload: { messageId: string; usage: any } }
   | { type: 'STREAM_COMPLETE'; payload: { responseId?: string } }
   | { type: 'STREAM_ERROR'; payload: string }
   | { type: 'STOP_STREAMING' }
@@ -400,6 +401,26 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
             if (next[i].role === 'assistant') {
               const to = [ ...((next[i] as any).tool_outputs || []), action.payload.toolOutput ];
               next[i] = { ...(next[i] as any), tool_outputs: to } as any;
+              break;
+            }
+          }
+        }
+        return { ...state, messages: next };
+      }
+
+    case 'STREAM_USAGE':
+      {
+        const next = state.messages.map(m => {
+          if (m.id === action.payload.messageId) {
+            return { ...m, usage: { ...m.usage, ...action.payload.usage } } as any;
+          }
+          return m;
+        });
+        // Fallback: update last assistant message if ID not matched
+        if (!next.some(m => m.id === action.payload.messageId)) {
+          for (let i = next.length - 1; i >= 0; i--) {
+            if (next[i].role === 'assistant') {
+              next[i] = { ...next[i], usage: { ...next[i].usage, ...action.payload.usage } } as any;
               break;
             }
           }
@@ -839,6 +860,9 @@ export function useChatState() {
     } else if (event.type === 'tool_output') {
       // Let reducer manage tool_outputs to avoid duplicates from local snapshot
       dispatch({ type: 'STREAM_TOOL_OUTPUT', payload: { messageId: assistantId, toolOutput: event.value } });
+    } else if (event.type === 'usage') {
+      // Store usage metadata in the assistant message
+      dispatch({ type: 'STREAM_USAGE', payload: { messageId: assistantId, usage: event.value } });
     }
   }, []);
 
@@ -905,6 +929,13 @@ export function useChatState() {
               type: 'STREAM_TOKEN',
               payload: { messageId: assistantId, token: result.content },
             });
+            // Also store usage data from the result for non-streaming responses
+            if (result.usage) {
+              dispatch({
+                type: 'STREAM_USAGE',
+                payload: { messageId: assistantId, usage: result.usage },
+              });
+            }
           }
         }
         // If backend auto-created a conversation, set id and refresh history
