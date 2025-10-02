@@ -38,6 +38,7 @@ export interface ChatState {
   modelOptions: ModelOption[];
   modelGroups: TabGroup[] | null;
   modelToProvider: Record<string, string>;
+  modelCapabilities: Record<string, any>; // Store model capabilities (e.g., supported_parameters)
   isLoadingModels: boolean;
   useTools: boolean;
   shouldStream: boolean;
@@ -120,7 +121,7 @@ export type ChatAction =
   | { type: 'SET_SIDEBAR_COLLAPSED'; payload: boolean }
   | { type: 'TOGGLE_RIGHT_SIDEBAR' }
   | { type: 'SET_RIGHT_SIDEBAR_COLLAPSED'; payload: boolean }
-  | { type: 'SET_MODEL_LIST'; payload: { groups: TabGroup[] | null; options: ModelOption[]; modelToProvider: Record<string, string> } }
+  | { type: 'SET_MODEL_LIST'; payload: { groups: TabGroup[] | null; options: ModelOption[]; modelToProvider: Record<string, string>; modelCapabilities: Record<string, any> } }
   | { type: 'SET_LOADING_MODELS'; payload: boolean };
 
 const initialState: ChatState = {
@@ -139,6 +140,7 @@ const initialState: ChatState = {
   modelOptions: [],
   modelGroups: null,
   modelToProvider: {},
+  modelCapabilities: {},
   isLoadingModels: false,
   useTools: true,
   shouldStream: true,
@@ -559,7 +561,8 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         modelGroups: action.payload.groups,
         modelOptions: action.payload.options,
-        modelToProvider: action.payload.modelToProvider || {}
+        modelToProvider: action.payload.modelToProvider || {},
+        modelCapabilities: action.payload.modelCapabilities || {}
       };
 
     case 'SET_LOADING_MODELS':
@@ -603,6 +606,7 @@ export function useChatState() {
   const assistantMsgRef = useRef<ChatMessage | null>(null);
   const inFlightRef = useRef<boolean>(false);
   const modelRef = useRef(state.model);
+  const providerRef = useRef<string | null>(null);
   // Keep synchronous refs for system prompt values so immediate actions
   // (like regenerate/send) can use the newest prompt without waiting for
   // React state to flush.
@@ -659,12 +663,13 @@ export function useChatState() {
           const modelsResponse = await httpClient.get<{ models: any[] }>(`${apiBase}/v1/providers/${encodeURIComponent(p.id)}/models`);
           const models = Array.isArray(modelsResponse.data.models) ? modelsResponse.data.models : [];
           const options: ModelOption[] = models.map((m: any) => ({ value: m.id, label: m.id }));
-          return { provider: p, options };
+          return { provider: p, options, models };
         })
       );
 
       const gs: TabGroup[] = [];
       const modelProviderMap: Record<string, string> = {};
+      const modelCapabilitiesMap: Record<string, any> = {};
 
       for (let i = 0; i < results.length; i++) {
         const r: any = results[i];
@@ -673,6 +678,12 @@ export function useChatState() {
           gs.push({ id: providerId, label: r.value.provider.name || providerId, options: r.value.options });
           r.value.options.forEach((option: any) => {
             modelProviderMap[option.value] = providerId;
+          });
+          // Store model capabilities (e.g., supported_parameters from OpenRouter)
+          r.value.models.forEach((m: any) => {
+            if (m && m.id) {
+              modelCapabilitiesMap[m.id] = m;
+            }
           });
         }
       }
@@ -683,7 +694,7 @@ export function useChatState() {
         return;
       }
 
-      dispatch({ type: 'SET_MODEL_LIST', payload: { groups: gs, options: flat, modelToProvider: modelProviderMap } });
+      dispatch({ type: 'SET_MODEL_LIST', payload: { groups: gs, options: flat, modelToProvider: modelProviderMap, modelCapabilities: modelCapabilitiesMap } });
 
       // Ensure current model exists in the new list, otherwise pick first
       const currentModel = modelRef.current;
@@ -866,7 +877,7 @@ export function useChatState() {
 
       // Only add providerId if it's not null
       if (state.providerId) {
-        config.providerId = state.providerId;
+        config.providerId = providerRef.current || state.providerId;
       }
 
       // Add tools if enabled
@@ -994,6 +1005,7 @@ export function useChatState() {
     }, []),
 
     setProviderId: useCallback((providerId: string | null) => {
+      providerRef.current = providerId;
       dispatch({ type: 'SET_PROVIDER_ID', payload: providerId });
     }, []),
 

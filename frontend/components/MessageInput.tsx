@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useMemo } from 'react';
 import { Send, Loader2, Gauge, Wrench, Zap } from 'lucide-react';
 import type { PendingState } from '../hooks/useChatState';
 import Toggle from './ui/Toggle';
@@ -20,6 +20,7 @@ interface MessageInputProps {
   model: string;
   qualityLevel: QualityLevel;
   onQualityLevelChange: (level: QualityLevel) => void;
+  modelCapabilities?: Record<string, any>; // Model capabilities from provider
 }
 
 export function MessageInput({
@@ -37,12 +38,37 @@ export function MessageInput({
   model,
   qualityLevel,
   onQualityLevelChange,
+  modelCapabilities = {},
 }: MessageInputProps) {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const toolsDropdownRef = useRef<HTMLDivElement | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [availableTools, setAvailableTools] = useState<{ name: string; description?: string }[]>([]);
   const [localSelected, setLocalSelected] = useState<string[]>(enabledTools);
+
+  // Check if model supports thinking/reasoning
+  // For OpenRouter: check if supported_parameters includes "reasoning"
+  // For GPT-5/o3/o4 models (except *-chat variants): use hardcoded logic
+  const supportsThinking = useMemo(() => {
+    const modelData = modelCapabilities[model];
+
+    // OpenRouter models: check supported_parameters
+    if (modelData?.supported_parameters) {
+      return Array.isArray(modelData.supported_parameters) &&
+             modelData.supported_parameters.includes('reasoning');
+    }
+
+    // Fallback: hardcoded logic for known thinking models
+    if (model && typeof model === 'string') {
+      const normalized = model.toLowerCase();
+      if ((normalized.startsWith('gpt-5') || normalized.startsWith('o3') || normalized.startsWith('o4'))
+          && !normalized.includes('chat')) {
+        return true;
+      }
+    }
+
+    return false;
+  }, [model, modelCapabilities]);
 
   // Auto-grow textarea up to ~200px
   useEffect(() => {
@@ -118,7 +144,7 @@ export function MessageInput({
                 {/* model selector moved to header */}
               </div>
 
-              {model?.startsWith('gpt-5') && !model.startsWith('gpt-5-chat') && (
+              {supportsThinking && (
                 <div className="flex items-center">
                   <QualitySlider
                     value={qualityLevel}
