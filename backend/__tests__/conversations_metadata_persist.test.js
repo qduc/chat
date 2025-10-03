@@ -46,6 +46,18 @@ beforeEach(() => {
     last_login_at: now,
     deleted_at: null
   });
+
+  // Create test provider
+  db.prepare(`
+    INSERT INTO providers (id, user_id, name, provider_type, base_url)
+    VALUES (@id, @userId, @name, @provider_type, @base_url)
+  `).run({
+    id: 'openai',
+    userId: userId,
+    name: 'OpenAI',
+    provider_type: 'openai',
+    base_url: 'https://api.openai.com/v1'
+  });
 });
 
 afterAll(() => {

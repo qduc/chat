@@ -6,6 +6,7 @@ import express from 'express';
 import request from 'supertest';
 import { conversationsRouter } from '../src/routes/conversations.js';
 import { chatRouter } from '../src/routes/chat.js';
+import { createChatProxyTestContext } from '../test_utils/chatProxyTestUtils.js';
 import { sessionResolver } from '../src/middleware/session.js';
 import { config } from '../src/env.js';
 import { safeTestSetup } from '../test_support/databaseSafety.js';
@@ -18,22 +19,22 @@ const TEST_SESSION_ID = 'test-session-model-update';
 let authHeader;
 let testUser;
 
+const { upstream } = createChatProxyTestContext();
+
 beforeAll(() => {
   // Safety check: ensure we're using a test database
   safeTestSetup();
 });
 
-const makeApp = ({ useSession = true, auth = true } = {}) => {
+const makeApp = () => {
   const app = express();
   app.use(express.json());
-  if (useSession) app.use(sessionResolver);
-  if (auth) {
-    // Inject an Authorization header with a test token
-    app.use((req, _res, next) => {
-      if (authHeader) req.headers['authorization'] = authHeader;
-      next();
-    });
-  }
+  app.use(sessionResolver);
+  // Inject an Authorization header with a test token
+  app.use((req, _res, next) => {
+    if (authHeader) req.headers['authorization'] = authHeader;
+    next();
+  });
   app.use(conversationsRouter);
   app.use(chatRouter);
   return app;
@@ -54,7 +55,13 @@ beforeEach(() => {
   authHeader = `Bearer ${token}`;
 
   upsertSession(TEST_SESSION_ID);
-  db.prepare(`INSERT INTO providers (id, user_id, name, provider_type) VALUES (@id, @userId, @name, @provider_type)`).run({ id: 'p1', userId: testUser.id, name: 'p1', provider_type: 'openai' });
+  db.prepare(`INSERT INTO providers (id, user_id, name, provider_type, base_url) VALUES (@id, @userId, @name, @provider_type, @base_url)`).run({
+    id: 'p1',
+    userId: testUser.id,
+    name: 'p1',
+    provider_type: 'openai',
+    base_url: upstream.getUrl()
+  });
 });
 
 afterAll(() => {
@@ -171,9 +178,6 @@ describe('Conversation Model Update', () => {
       .expect(201);
 
     const conversationId = createRes.body.id;
-
-    // Give it a moment to ensure timestamps would be different
-    await new Promise(resolve => setTimeout(resolve, 10));
 
     // Step 2: Send a message with the same model
     await request(app)

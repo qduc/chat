@@ -123,7 +123,7 @@ describe('User Database Operations', () => {
 
   test('should link session to user', async () => {
     // Create a user first
-    const passwordHash = await bcrypt.hash('password123', 12);
+    const passwordHash = await bcrypt.hash('password123', TEST_BCRYPT_ROUNDS);
     const createdUser = createUser({
       email: 'session@example.com',
       passwordHash,
