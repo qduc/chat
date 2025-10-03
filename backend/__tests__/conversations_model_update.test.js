@@ -47,13 +47,14 @@ beforeEach(() => {
   resetDbCache();
   const db = getDb();
   db.exec('DELETE FROM messages; DELETE FROM conversations; DELETE FROM sessions; DELETE FROM providers; DELETE FROM users;');
-  upsertSession(TEST_SESSION_ID);
-  db.prepare(`INSERT INTO providers (id, name, provider_type) VALUES (@id, @name, @provider_type)`).run({ id: 'p1', name: 'p1', provider_type: 'openai' });
 
   // Create a test user and generate an access token for authenticated requests
   testUser = createUser({ email: 'modelupdate@test.com', passwordHash: 'hash', displayName: 'Model Update Test User' });
   const token = generateAccessToken(testUser);
   authHeader = `Bearer ${token}`;
+
+  upsertSession(TEST_SESSION_ID);
+  db.prepare(`INSERT INTO providers (id, user_id, name, provider_type) VALUES (@id, @userId, @name, @provider_type)`).run({ id: 'p1', userId: testUser.id, name: 'p1', provider_type: 'openai' });
 });
 
 afterAll(() => {

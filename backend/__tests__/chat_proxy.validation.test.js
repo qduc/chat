@@ -7,9 +7,12 @@ import { createChatProxyTestContext } from '../test_utils/chatProxyTestUtils.js'
 
 const { makeApp, withServer } = createChatProxyTestContext();
 
+// Mock user for authentication (Phase 4: all requests require auth)
+const mockUser = { id: 'test-user-123', email: 'test@example.com' };
+
 describe('Chat proxy validation', () => {
   test('rejects invalid reasoning_effort value when model supports reasoning', async () => {
-    const app = makeApp();
+    const app = makeApp({ mockUser });
     const res = await request(app)
       .post('/v1/chat/completions')
       .send({ model: 'gpt-5.1-mini', messages: [{ role: 'user', content: 'Hi' }], reasoning_effort: 'extreme', stream: false });
@@ -19,7 +22,7 @@ describe('Chat proxy validation', () => {
 
   test('strips reasoning controls when model does not support reasoning', async () => {
     // Should proceed with 200 even if verbosity value is invalid for non-gpt-5 models
-    const app = makeApp();
+    const app = makeApp({ mockUser });
     const res = await request(app)
       .post('/v1/chat/completions')
       .send({ model: 'gpt-3.5-turbo', messages: [{ role: 'user', content: 'Hi' }], verbosity: 'invalid-value', stream: false });

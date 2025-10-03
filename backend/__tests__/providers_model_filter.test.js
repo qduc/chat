@@ -5,11 +5,23 @@ import request from 'supertest';
 import { jest } from '@jest/globals';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
+import { createUser } from '../src/db/users.js';
+import { generateAccessToken } from '../src/middleware/auth.js';
 import { safeTestSetup } from '../test_support/databaseSafety.js';
+
+// Mock user for authentication (Phase 4: all requests require auth)
+const mockUser = { id: 'test-user-123', email: 'test@example.com' };
+let authHeader;
+let testUserId;
 
 const makeApp = (router) => {
   const app = express();
   app.use(express.json());
+  // Inject Authorization header for authentication
+  app.use((req, _res, next) => {
+    req.headers['authorization'] = authHeader;
+    next();
+  });
   app.use(router);
   return app;
 };
@@ -23,7 +35,17 @@ beforeEach(() => {
   config.persistence.dbUrl = 'file::memory:';
   resetDbCache();
   const db = getDb();
-  db.exec('DELETE FROM providers;');
+  db.exec('DELETE FROM providers; DELETE FROM users;');
+
+  // Create test user for providers (Phase 4: all providers need userId)
+  const user = createUser({
+    email: mockUser.email,
+    passwordHash: 'test-hash',
+    displayName: 'Test User'
+  });
+  testUserId = user.id;
+  const token = generateAccessToken(user);
+  authHeader = `Bearer ${token}`;
 });
 
 afterAll(() => {
@@ -60,9 +82,10 @@ describe('Provider model filtering', () => {
     db.exec('DELETE FROM providers;');
 
     // Create provider with model filter
-    db.prepare(`INSERT INTO providers (id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
-                VALUES ('test-provider','Test','openai','key123','https://api.test.com',1,1,'{}',@metadata,datetime('now'),datetime('now'))`
+    db.prepare(`INSERT INTO providers (id, user_id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
+                VALUES ('test-provider',@user_id,'Test','openai','key123','https://api.test.com',1,1,'{}',@metadata,datetime('now'),datetime('now'))`
     ).run({
+      user_id: testUserId,
       metadata: JSON.stringify({ model_filter: 'gpt-4*; *sonnet*' })
     });
 
@@ -110,9 +133,9 @@ describe('Provider model filtering', () => {
     db.exec('DELETE FROM providers;');
 
     // Create provider without model filter
-    db.prepare(`INSERT INTO providers (id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
-                VALUES ('test-provider','Test','openai','key123','https://api.test.com',1,1,'{}','{}',datetime('now'),datetime('now'))`
-    ).run();
+    db.prepare(`INSERT INTO providers (id, user_id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
+                VALUES ('test-provider',@user_id,'Test','openai','key123','https://api.test.com',1,1,'{}','{}',datetime('now'),datetime('now'))`
+    ).run({ user_id: testUserId });
 
     const res = await agent.get('/v1/providers/test-provider/models');
     assert.equal(res.status, 200);
@@ -185,9 +208,9 @@ describe('Provider model filtering', () => {
     db.exec('DELETE FROM providers;');
 
     // Create provider
-    db.prepare(`INSERT INTO providers (id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
-                VALUES ('test-provider','Test','openai','key123','https://api.test.com',1,1,'{}','{}',datetime('now'),datetime('now'))`
-    ).run();
+    db.prepare(`INSERT INTO providers (id, user_id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
+                VALUES ('test-provider',@user_id,'Test','openai','key123','https://api.test.com',1,1,'{}','{}',datetime('now'),datetime('now'))`
+    ).run({ user_id: testUserId });
 
     const res = await agent.post('/v1/providers/test-provider/test').send({
       metadata: { model_filter: '*sonnet*' }

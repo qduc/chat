@@ -4,6 +4,7 @@ import { chatRouter } from '../src/routes/chat.js';
 import { sessionResolver } from '../src/middleware/session.js';
 import { config } from '../src/env.js';
 import { getDb } from '../src/db/index.js';
+import { generateAccessToken } from '../src/middleware/auth.js';
 
 // Mock upstream server for testing
 export class MockUpstream {
@@ -133,8 +134,20 @@ export const makeApp = (options = {}) => {
   app.use(express.json());
   if (useSession) app.use(sessionResolver);
   if (mockUser) {
+    // Ensure a user with this ID exists so authenticateToken passes
+    try {
+      const db = getDb();
+      const now = new Date().toISOString();
+      db.prepare(`
+        INSERT OR IGNORE INTO users (id, email, password_hash, display_name, created_at, updated_at, email_verified, last_login_at, deleted_at)
+        VALUES (@id, @email, 'test-hash', 'Test User', @now, @now, 1, NULL, NULL)
+      `).run({ id: mockUser.id, email: mockUser.email, now });
+    } catch (_) {
+      // ignore if DB not available
+    }
+    const token = generateAccessToken({ id: mockUser.id, email: mockUser.email });
     app.use((req, _res, next) => {
-      req.user = mockUser;
+      req.headers['authorization'] = `Bearer ${token}`;
       next();
     });
   }

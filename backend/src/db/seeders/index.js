@@ -5,7 +5,7 @@ import openAIProviderSeeder from './001-openai-provider.js';
  * Runs all database seeders in order
  * Seeders are executed in the order they are defined
  */
-export function runSeeders(db) {
+export function runSeeders(db, options = {}) {
   if (!db) {
     console.warn('[seeders] Database not available, skipping seeders');
     return;
@@ -24,7 +24,7 @@ export function runSeeders(db) {
       try {
         if (typeof fn === 'function') {
           console.log(`[seeders] Running ${name}...`);
-          fn(db);
+          fn(db, options);
         } else {
           console.warn(`[seeders] Skipping ${name} - not a function`);
         }

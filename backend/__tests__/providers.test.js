@@ -3,14 +3,36 @@ import assert from 'node:assert/strict';
 import express from 'express';
 import request from 'supertest';
 import { jest } from '@jest/globals';
+import { randomUUID } from 'crypto';
 import { config } from '../src/env.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
+import { generateAccessToken } from '../src/middleware/auth.js';
 import { safeTestSetup } from '../test_support/databaseSafety.js';
+
+const insertTestUser = () => {
+  const db = getDb();
+  const id = randomUUID();
+  const now = new Date().toISOString();
+  const email = `provider-test-${now}@example.com`;
+
+  db.prepare(`
+    INSERT INTO users (id, email, password_hash, display_name, created_at, updated_at, email_verified, last_login_at, deleted_at)
+    VALUES (@id, @email, 'test-hash', 'Provider Tester', @now, @now, 1, NULL, NULL)
+  `).run({ id, email, now });
+
+  return { id, email, displayName: 'Provider Tester' };
+};
 
 // Helper to spin up a minimal app
 const makeApp = (router) => {
   const app = express();
   app.use(express.json());
+  if (authHeader) {
+    app.use((req, _res, next) => {
+      req.headers['authorization'] = authHeader;
+      next();
+    });
+  }
   app.use(router);
   return app;
 };
@@ -29,6 +51,9 @@ const withServer = async (app, fn) => {
   });
 };
 
+let authHeader;
+let testUser;
+
 beforeAll(() => {
   // Safety check: ensure we're using a test database
   safeTestSetup();
@@ -40,7 +65,9 @@ beforeEach(() => {
   config.persistence.dbUrl = 'file::memory:';
   resetDbCache();
   const db = getDb();
-  db.exec('DELETE FROM providers;');
+  db.exec('DELETE FROM providers; DELETE FROM users;');
+  testUser = insertTestUser();
+  authHeader = `Bearer ${generateAccessToken(testUser)}`;
 });
 
 afterAll(() => {
@@ -124,8 +151,8 @@ describe('Providers connectivity', () => {
     // Seed provider
     const db = getDb();
     db.exec('DELETE FROM providers;');
-    db.prepare(`INSERT INTO providers (id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
-                VALUES ('p2','p2','openai','k','http://mock',1,1,'{}','{}',datetime('now'),datetime('now'))`).run();
+    db.prepare(`INSERT INTO providers (id, user_id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
+                VALUES ('p2', @user_id, 'p2','openai','k','http://mock',1,1,'{}','{}',datetime('now'),datetime('now'))`).run({ user_id: testUser.id });
 
     const res = await agent.get('/v1/providers/p2/models');
     assert.equal(res.status, 200);
@@ -168,8 +195,8 @@ describe('Providers connectivity', () => {
     // Seed provider with key
     const db = getDb();
     db.exec('DELETE FROM providers;');
-    db.prepare(`INSERT INTO providers (id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
-                VALUES ('p4','p4','openai','key123','http://mock',1,1,'{}','{}',datetime('now'),datetime('now'))`).run();
+    db.prepare(`INSERT INTO providers (id, user_id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
+                VALUES ('p4', @user_id, 'p4','openai','key123','http://mock',1,1,'{}','{}',datetime('now'),datetime('now'))`).run({ user_id: testUser.id });
 
     const res = await agent.post('/v1/providers/p4/test').send({ base_url: 'http://mock' });
     if (res.status !== 200) {
@@ -196,8 +223,8 @@ describe('Providers connectivity', () => {
     // Seed provider
     const db = getDb();
     db.exec('DELETE FROM providers;');
-    db.prepare(`INSERT INTO providers (id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
-                VALUES ('p5','p5','openai','bad-key','http://mock',1,1,'{}','{}',datetime('now'),datetime('now'))`).run();
+    db.prepare(`INSERT INTO providers (id, user_id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
+                VALUES ('p5', @user_id, 'p5','openai','bad-key','http://mock',1,1,'{}','{}',datetime('now'),datetime('now'))`).run({ user_id: testUser.id });
 
     const res = await agent.get('/v1/providers/p5/models');
     assert.equal(res.status, 502);
@@ -219,8 +246,8 @@ describe('Providers connectivity', () => {
     // Seed provider
     const db = getDb();
     db.exec('DELETE FROM providers;');
-    db.prepare(`INSERT INTO providers (id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
-                VALUES ('p6','p6','openai','key','http://unreachable',1,1,'{}','{}',datetime('now'),datetime('now'))`).run();
+    db.prepare(`INSERT INTO providers (id, user_id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
+                VALUES ('p6', @user_id, 'p6','openai','key','http://unreachable',1,1,'{}','{}',datetime('now'),datetime('now'))`).run({ user_id: testUser.id });
 
     const res = await agent.get('/v1/providers/p6/models');
     assert.equal(res.status, 502);
@@ -254,8 +281,8 @@ describe('Providers connectivity', () => {
     // Seed OpenRouter provider
     const db = getDb();
     db.exec('DELETE FROM providers;');
-    db.prepare(`INSERT INTO providers (id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
-                VALUES ('openrouter','OpenRouter','openai','key123','https://openrouter.ai/api',1,1,'{}','{}',datetime('now'),datetime('now'))`).run();
+    db.prepare(`INSERT INTO providers (id, user_id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
+                VALUES ('openrouter', @user_id, 'OpenRouter','openai','key123','https://openrouter.ai/api',1,1,'{}','{}',datetime('now'),datetime('now'))`).run({ user_id: testUser.id });
 
     const res = await agent.get('/v1/providers/openrouter/models');
     assert.equal(res.status, 200);
@@ -291,8 +318,8 @@ describe('Providers connectivity', () => {
     // Seed regular OpenAI provider
     const db = getDb();
     db.exec('DELETE FROM providers;');
-    db.prepare(`INSERT INTO providers (id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
-                VALUES ('openai','OpenAI','openai','key123','https://api.openai.com',1,1,'{}','{}',datetime('now'),datetime('now'))`).run();
+    db.prepare(`INSERT INTO providers (id, user_id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
+                VALUES ('openai', @user_id, 'OpenAI','openai','key123','https://api.openai.com',1,1,'{}','{}',datetime('now'),datetime('now'))`).run({ user_id: testUser.id });
 
     const res = await agent.get('/v1/providers/openai/models');
     assert.equal(res.status, 200);

@@ -1,12 +1,16 @@
-import { v4 as uuidv4 } from 'uuid';
-
 /**
  * Seeds the first OpenAI provider into the database
  * This seeder creates a default OpenAI provider with standard configuration
  */
-export default function seedOpenAIProvider(db) {
+export default function seedOpenAIProvider(db, options = {}) {
+  const { userId } = options;
+  if (!userId) {
+    console.log('[seeder] Skipping OpenAI provider seeding - no userId provided');
+    return;
+  }
+
   try {
-    const providerId = 'openai';
+    const providerId = `${userId}-openai`;
 
     // Check if this specific provider already exists
     const existingProvider = db
@@ -24,6 +28,7 @@ export default function seedOpenAIProvider(db) {
     const result = db.prepare(`
       INSERT OR IGNORE INTO providers (
         id,
+        user_id,
         name,
         provider_type,
         api_key,
@@ -36,6 +41,7 @@ export default function seedOpenAIProvider(db) {
         updated_at
       ) VALUES (
         @id,
+        @userId,
         @name,
         @provider_type,
         @api_key,
@@ -49,6 +55,7 @@ export default function seedOpenAIProvider(db) {
       )
     `).run({
       id: providerId,
+      userId,
       name: 'OpenAI',
       provider_type: 'openai',
       api_key: null, // Will be set via environment or admin interface
@@ -68,8 +75,8 @@ export default function seedOpenAIProvider(db) {
 
       // Ensure this provider is set as default if no other default exists
       const defaultProviders = db
-        .prepare("SELECT COUNT(1) AS count FROM providers WHERE is_default = 1 AND deleted_at IS NULL")
-        .get();
+        .prepare("SELECT COUNT(1) AS count FROM providers WHERE is_default = 1 AND deleted_at IS NULL AND user_id = @userId")
+        .get({ userId });
 
       if (defaultProviders?.count === 0) {
         db.prepare("UPDATE providers SET is_default = 1 WHERE id = @id").run({ id: providerId });
