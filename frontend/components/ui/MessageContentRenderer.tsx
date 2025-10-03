@@ -1,4 +1,6 @@
 import React from 'react';
+import { createPortal } from 'react-dom';
+import { X } from 'lucide-react';
 import type { MessageContent, ImageContent } from '../../lib/chat/types';
 import { extractTextFromContent, extractImagesFromContent, hasImages } from '../../lib/chat/content-utils';
 import Markdown from '../Markdown';
@@ -14,35 +16,51 @@ export function MessageContentRenderer({ content, isStreaming = false, className
   const textContent = extractTextFromContent(content);
   const imageContents = extractImagesFromContent(content);
   const hasImageContent = hasImages(content);
+  const [selectedImage, setSelectedImage] = React.useState<ImageContent | null>(null);
+
+  const handleImageClick = React.useCallback((image: ImageContent) => {
+    setSelectedImage(image);
+  }, []);
+
+  const handleClosePreview = React.useCallback(() => {
+    setSelectedImage(null);
+  }, []);
 
   return (
-    <div className={`space-y-3 ${className}`}>
-      {/* Render images first if they exist */}
-      {hasImageContent && imageContents.length > 0 && (
-        <div className="space-y-2">
-          <MessageImages images={imageContents} />
-        </div>
-      )}
+    <>
+      <div className={`space-y-3 ${className}`}>
+        {/* Render images first if they exist */}
+        {hasImageContent && imageContents.length > 0 && (
+          <div className="space-y-2">
+            <MessageImages images={imageContents} onImageClick={handleImageClick} />
+          </div>
+        )}
 
-      {/* Render text content */}
-      {textContent && (
-        <Markdown text={textContent} isStreaming={isStreaming} />
-      )}
+        {/* Render text content */}
+        {textContent && (
+          <Markdown text={textContent} isStreaming={isStreaming} />
+        )}
 
-      {/* If no content at all, show placeholder */}
-      {!textContent && !hasImageContent && (
-        <span className="text-slate-500 dark:text-slate-400 italic">No content</span>
+        {/* If no content at all, show placeholder */}
+        {!textContent && !hasImageContent && (
+          <span className="text-slate-500 dark:text-slate-400 italic">No content</span>
+        )}
+      </div>
+
+      {selectedImage && (
+        <ImagePreviewOverlay image={selectedImage} onClose={handleClosePreview} />
       )}
-    </div>
+    </>
   );
 }
 
 interface MessageImagesProps {
   images: ImageContent[];
   className?: string;
+  onImageClick?: (image: ImageContent) => void;
 }
 
-function MessageImages({ images, className = '' }: MessageImagesProps) {
+function MessageImages({ images, className = '', onImageClick }: MessageImagesProps) {
   if (images.length === 0) {
     return null;
   }
@@ -50,7 +68,7 @@ function MessageImages({ images, className = '' }: MessageImagesProps) {
   return (
     <div className={`grid gap-2 ${getGridClass(images.length)} ${className}`}>
       {images.map((image, index) => (
-        <MessageImage key={index} image={image} />
+        <MessageImage key={index} image={image} onClick={onImageClick} />
       ))}
     </div>
   );
@@ -59,9 +77,10 @@ function MessageImages({ images, className = '' }: MessageImagesProps) {
 interface MessageImageProps {
   image: ImageContent;
   className?: string;
+  onClick?: (image: ImageContent) => void;
 }
 
-function MessageImage({ image, className = '' }: MessageImageProps) {
+function MessageImage({ image, className = '', onClick }: MessageImageProps) {
   const [loaded, setLoaded] = React.useState(false);
   const [error, setError] = React.useState(false);
 
@@ -75,8 +94,22 @@ function MessageImage({ image, className = '' }: MessageImageProps) {
     setLoaded(false);
   };
 
+  const handleClick = () => {
+    if (!error && onClick) {
+      onClick(image);
+    }
+  };
+
   return (
-    <div className={`relative rounded-lg overflow-hidden bg-slate-100 dark:bg-neutral-800 ${className}`}>
+    <button
+      type="button"
+      onClick={handleClick}
+      disabled={error}
+      className={`relative block w-full rounded-lg overflow-hidden bg-slate-100 dark:bg-neutral-800 ${
+        error ? 'cursor-not-allowed' : 'cursor-zoom-in'
+      } focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${className}`}
+      aria-label="View image"
+    >
       {!loaded && !error && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-6 h-6 border-2 border-slate-300 dark:border-neutral-600 border-t-slate-600 dark:border-t-neutral-300 rounded-full animate-spin" />
@@ -96,7 +129,7 @@ function MessageImage({ image, className = '' }: MessageImageProps) {
 
       <img
         src={image.image_url.url}
-        alt="Image"
+        alt="Chat message attachment"
         className={`max-w-full h-auto rounded-lg transition-opacity duration-200 ${
           loaded ? 'opacity-100' : 'opacity-0'
         } ${error ? 'hidden' : ''}`}
@@ -105,7 +138,74 @@ function MessageImage({ image, className = '' }: MessageImageProps) {
         onError={handleError}
         loading="lazy"
       />
-    </div>
+    </button>
+  );
+}
+
+interface ImagePreviewOverlayProps {
+  image: ImageContent;
+  onClose: () => void;
+}
+
+function ImagePreviewOverlay({ image, onClose }: ImagePreviewOverlayProps) {
+  React.useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [onClose]);
+
+  const handleBackdropClick = () => {
+    onClose();
+  };
+
+  const stopPropagation = (event: React.MouseEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+  };
+
+  if (typeof document === 'undefined') {
+    return null;
+  }
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+      onClick={handleBackdropClick}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="relative max-h-full max-w-full" onClick={stopPropagation}>
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute -top-3 -right-3 md:-top-4 md:-right-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-lg hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          aria-label="Close image preview"
+        >
+          <X className="h-4 w-4" />
+        </button>
+        <img
+          src={image.image_url.url}
+          alt="Enlarged chat message attachment"
+          className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
+        />
+      </div>
+    </div>,
+    document.body
   );
 }
 
