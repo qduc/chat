@@ -43,10 +43,10 @@ if (process.env.NODE_ENV === 'production') {
 
 app.use(healthRouter);
 app.use('/v1/auth', authRouter);
+app.use(imagesRouter);  // Must be before auth-protected routers
 app.use(conversationsRouter);
 app.use(providersRouter);
 app.use(systemPromptsRouter);
-app.use(imagesRouter);
 app.use(chatRouter);
 
 app.use(errorLogger);
