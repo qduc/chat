@@ -82,7 +82,10 @@ export class ConversationManager {
     // Insert new messages in sequence
     let seq = 1;
     for (const message of messages) {
-      if (message.role === 'user' && typeof message.content === 'string') {
+      // Support both string content and array (mixed content with images)
+      const hasContent = typeof message.content === 'string' || Array.isArray(message.content);
+
+      if (message.role === 'user' && hasContent) {
         insertUserMessage({
           conversationId,
           content: message.content,

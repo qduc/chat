@@ -14,8 +14,10 @@ import {
   ChevronDown
 } from 'lucide-react';
 import Markdown from './Markdown';
+import { MessageContentRenderer } from './ui/MessageContentRenderer';
 import type { ChatMessage } from '../lib/chat';
 import type { PendingState } from '../hooks/useChatState';
+import { extractTextFromContent } from '../lib/chat/content-utils';
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -47,13 +49,14 @@ type AssistantSegment =
 
 function buildAssistantSegments(message: ChatMessage): AssistantSegment[] {
   if (message.role !== 'assistant') {
-    if (message.content) {
-      return [{ kind: 'text', text: message.content }];
+    const textContent = extractTextFromContent(message.content);
+    if (textContent) {
+      return [{ kind: 'text', text: textContent }];
     }
     return [];
   }
 
-  const content = message.content || '';
+  const content = extractTextFromContent(message.content);
   const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
   const toolOutputs = Array.isArray(message.tool_outputs) ? message.tool_outputs : [];
 
@@ -257,7 +260,7 @@ const Message = React.memo<MessageProps>(function Message({
           <>
             {isUser ? (
               <div className="rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-slate-100 text-black dark:bg-slate-700 dark:text-white">
-                {message.content ? <Markdown text={message.content} isStreaming={false} /> : null}
+                <MessageContentRenderer content={message.content} isStreaming={false} />
               </div>
             ) : (
               <div className="space-y-3">
@@ -484,7 +487,7 @@ const Message = React.memo<MessageProps>(function Message({
                     <div className="relative">
                       <button
                         type="button"
-                        onClick={() => handleCopy(message.id, message.content)}
+                        onClick={() => handleCopy(message.id, extractTextFromContent(message.content))}
                         title="Copy"
                         className="p-2 rounded-md bg-white/60 dark:bg-neutral-800/50 hover:bg-white/90 dark:hover:bg-neutral-700/80 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
                       >
@@ -504,7 +507,7 @@ const Message = React.memo<MessageProps>(function Message({
                     message.content && (
                       <button
                         type="button"
-                        onClick={() => onEditMessage(message.id, message.content)}
+                        onClick={() => onEditMessage(message.id, extractTextFromContent(message.content))}
                         title="Edit"
                         className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
                       >
@@ -693,8 +696,8 @@ export function MessageList({
       }
 
       // Estimate token count (rough approximation: ~4 chars per token)
-      const content = lastMessage.content || '';
-      const estimatedTokens = Math.ceil(content.length / 4);
+      const textContent = extractTextFromContent(lastMessage.content);
+      const estimatedTokens = Math.ceil(textContent.length / 4);
 
       if (streamingStatsRef.current) {
         streamingStatsRef.current.tokenCount = estimatedTokens;

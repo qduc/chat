@@ -1,9 +1,84 @@
 export type Role = 'user' | 'assistant' | 'system';
 
+// Image-related types for Vision API support
+export interface ImageContent {
+  type: 'image_url';
+  image_url: {
+    url: string;
+    detail?: 'auto' | 'low' | 'high';
+  };
+}
+
+export interface TextContent {
+  type: 'text';
+  text: string;
+}
+
+export type MessageContent = string | Array<TextContent | ImageContent>;
+
+// Image attachment for local handling (before API conversion)
+export interface ImageAttachment {
+  id: string;
+  file: File;
+  url: string; // blob URL or data URL for preview
+  name: string;
+  size: number;
+  type: string;
+  alt?: string;
+}
+
+// Image configuration and constraints
+export interface ImageConfig {
+  // File constraints
+  maxFileSize: number;           // Default: 10MB
+  maxDimensions: {width: number, height: number}; // Default: 4096x4096
+  maxImagesPerMessage: number;   // Default: 5
+  allowedFormats: string[];      // Default: ['jpeg', 'jpg', 'png', 'webp', 'gif']
+
+  // Storage settings
+  storageProvider: 'local' | 's3'; // Default: 'local' for dev, 's3' for prod
+  localStoragePath: string;      // Default: './data/images'
+  s3Bucket?: string;
+  s3Region?: string;
+  cdnBaseUrl?: string;
+
+  // Processing options
+  enableCompression: boolean;    // Default: true
+  compressionQuality: number;    // Default: 0.8
+  generateThumbnails: boolean;   // Default: true
+
+  // Security settings
+  enableMalwareScanning: boolean; // Default: false for dev, true for prod
+  enableContentModeration: boolean; // Default: false
+
+  // Rate limiting
+  uploadRateLimit: number;       // Default: 10 per minute
+  storageLimitPerUser: number;   // Default: 100MB
+}
+
+// Image validation result
+export interface ImageValidationResult {
+  isValid: boolean;
+  errors: string[];
+  warnings?: string[];
+}
+
+// Image processing state
+export type ImageProcessingState = 'pending' | 'uploading' | 'processing' | 'ready' | 'error';
+
+export interface ImageUploadProgress {
+  imageId: string;
+  state: ImageProcessingState;
+  progress: number; // 0-100
+  error?: string;
+}
+
 export interface ChatMessage {
   id: string;
   role: Role;
-  content: string;
+  content: MessageContent;
+  // Local image attachments (used during composition, converted to content format for API)
+  images?: ImageAttachment[];
   tool_calls?: any[];
   tool_call_id?: string;
   tool_outputs?: Array<{
@@ -81,8 +156,14 @@ export interface ConversationWithMessages {
     seq: number;
     role: Role;
     status: string;
-    content: string;
+    content: MessageContent;
     created_at: string;
+    // Image references stored in database (after upload)
+    images?: Array<{
+      id: string;
+      url: string;
+      alt?: string;
+    }>;
     tool_calls?: Array<{
       id: string;
       type: 'function';
@@ -122,7 +203,7 @@ export interface ToolsResponse {
 
 // Core chat options - simplified and focused
 export interface ChatOptions {
-  messages: { role: Role; content: string }[];
+  messages: { role: Role; content: MessageContent }[];
   model?: string;
   providerId: string;
   stream?: boolean;

@@ -36,7 +36,7 @@ describe('ChatClient', () => {
       new Response(JSON.stringify({ error: 'bad' }), { status: 400 })
     );
     await expect(
-      chatClient.sendMessage({ messages: [{ role: 'user' as Role, content: 'hi' }] })
+      chatClient.sendMessage({ messages: [{ role: 'user' as Role, content: 'hi' }], providerId: 'test-provider' })
     ).rejects.toThrow('HTTP 400: bad');
   });
 
@@ -68,6 +68,7 @@ describe('ChatClient', () => {
     const promise = chatClient.sendMessage({
       messages: [{ role: 'user' as Role, content: 'hi' }],
       signal: abort.signal,
+      providerId: 'test-provider',
     });
     abort.abort();
     await expect(promise).rejects.toThrow();
@@ -82,6 +83,7 @@ describe('ChatClient', () => {
       messages: [{ role: 'user' as Role, content: 'hi' }],
       conversationId: 'abc',
       tools: [],
+      providerId: 'test-provider',
     });
     // Test behavior: Conversation context should be maintained
     expect(fetchMock).toHaveBeenCalled();
