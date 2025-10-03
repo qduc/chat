@@ -1,6 +1,6 @@
 // Tests for mixed content (text + images) support in messages
 import assert from 'node:assert/strict';
-import { getDb, resetDbCache, createConversation, insertUserMessage, getMessagesPage, getLastMessage, updateMessageContent } from '../src/db/index.js';
+import { getDb, resetDbCache, createConversation, insertUserMessage, getMessagesPage, getLastMessage, updateMessageContent, upsertSession } from '../src/db/index.js';
 import { createUser } from '../src/db/users.js';
 import { config } from '../src/env.js';
 import { safeTestSetup } from '../test_support/databaseSafety.js';
@@ -21,7 +21,6 @@ beforeEach(() => {
   db.exec('DELETE FROM conversations');
   db.exec('DELETE FROM sessions');
   db.exec('DELETE FROM users');
-  db.prepare('INSERT INTO sessions (id) VALUES (@id)').run({ id: sessionId });
 
   // Create test user
   testUser = createUser({
@@ -29,6 +28,8 @@ beforeEach(() => {
     passwordHash: 'test-hash',
     displayName: 'Mixed Content Test User'
   });
+
+  upsertSession(sessionId, { userId: testUser.id });
 });
 
 afterAll(() => {

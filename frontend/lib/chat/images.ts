@@ -92,9 +92,7 @@ export class ImagesClient {
       }
 
       const response = await httpClient.post(`${this.apiBase}/v1/images/upload`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
+        // Note: Don't set Content-Type header for FormData - browser will set it with boundary
         // Note: For now we don't have upload progress from httpClient
         // In a production app, you'd want to implement this with XMLHttpRequest
       });

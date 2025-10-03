@@ -132,14 +132,8 @@ describe('User Database Operations', () => {
 
     const sessionId = 'test-session-id';
 
-    // First create a session
     const db = getDb();
-    db.prepare(`
-      INSERT INTO sessions (id, user_id, created_at, last_seen_at)
-      VALUES (?, NULL, datetime('now'), datetime('now'))
-    `).run(sessionId);
-
-    linkSessionToUser(sessionId, createdUser.id);
+    linkSessionToUser(sessionId, createdUser.id, { userAgent: 'jest-test' });
 
     const session = db.prepare(`
       SELECT * FROM sessions WHERE id = ?

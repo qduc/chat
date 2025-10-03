@@ -71,7 +71,7 @@ describe('Tool orchestration', () => {
   test('persistence works with tool requests', async () => {
     const sessionId = 'test-session';
     const app = makeApp({ mockUser });
-    upsertSession(sessionId);
+    upsertSession(sessionId, { userId: mockUser.id });
     createConversation({ id: 'conv1', sessionId, userId: mockUser.id, title: 'Test' });
     const res = await request(app)
       .post('/v1/chat/completions')
@@ -253,7 +253,7 @@ describe('System prompt injection', () => {
       ON CONFLICT(id) DO UPDATE SET email = excluded.email
     `).run({ id: USER_ID, email: USER_EMAIL });
 
-    upsertSession(SESSION_ID);
+    upsertSession(SESSION_ID, { userId: USER_ID });
     db.prepare('UPDATE sessions SET user_id=@userId WHERE id=@sessionId')
       .run({ userId: USER_ID, sessionId: SESSION_ID });
 

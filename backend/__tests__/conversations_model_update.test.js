@@ -54,7 +54,7 @@ beforeEach(() => {
   const token = generateAccessToken(testUser);
   authHeader = `Bearer ${token}`;
 
-  upsertSession(TEST_SESSION_ID);
+  upsertSession(TEST_SESSION_ID, { userId: testUser.id });
   db.prepare(`INSERT INTO providers (id, user_id, name, provider_type, base_url) VALUES (@id, @userId, @name, @provider_type, @base_url)`).run({
     id: 'p1',
     userId: testUser.id,

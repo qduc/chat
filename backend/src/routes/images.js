@@ -185,6 +185,21 @@ router.post('/v1/images/upload', authenticateToken, upload.array('images', IMAGE
 });
 
 /**
+ * GET /v1/images/config
+ * Get image configuration for frontend validation
+ */
+router.get('/v1/images/config', (req, res) => {
+  res.json({
+    maxFileSize: IMAGE_CONFIG.maxFileSize,
+    maxDimensions: IMAGE_CONFIG.maxDimensions,
+    maxImagesPerMessage: IMAGE_CONFIG.maxImagesPerMessage,
+    allowedFormats: IMAGE_CONFIG.allowedFormats,
+    uploadRateLimit: IMAGE_CONFIG.uploadRateLimit,
+    storageLimitPerUser: IMAGE_CONFIG.storageLimitPerUser,
+  });
+});
+
+/**
  * GET /v1/images/:filename
  * Serve uploaded images
  */
@@ -256,21 +271,6 @@ router.get('/v1/images/:filename', async (req, res) => {
       message: 'Failed to serve image'
     });
   }
-});
-
-/**
- * GET /v1/images/config
- * Get image configuration for frontend validation
- */
-router.get('/v1/images/config', (req, res) => {
-  res.json({
-    maxFileSize: IMAGE_CONFIG.maxFileSize,
-    maxDimensions: IMAGE_CONFIG.maxDimensions,
-    maxImagesPerMessage: IMAGE_CONFIG.maxImagesPerMessage,
-    allowedFormats: IMAGE_CONFIG.allowedFormats,
-    uploadRateLimit: IMAGE_CONFIG.uploadRateLimit,
-    storageLimitPerUser: IMAGE_CONFIG.storageLimitPerUser,
-  });
 });
 
 export { router as imagesRouter };

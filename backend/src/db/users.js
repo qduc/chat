@@ -1,6 +1,7 @@
 import { getDb } from './client.js';
 import { randomUUID } from 'crypto';
 import { createDefaultProviders } from './providers.js';
+import { upsertSession } from './sessions.js';
 
 /**
  * Create a new user
@@ -142,15 +143,12 @@ export function updateUser(id, updates) {
  * @param {string} sessionId - Session ID
  * @param {string} userId - User ID
  */
-export function linkSessionToUser(sessionId, userId) {
-  const db = getDb();
-  const now = new Date().toISOString();
+export function linkSessionToUser(sessionId, userId, meta = {}) {
+  if (!sessionId || !userId) return;
 
-  db.prepare(`
-    UPDATE sessions
-    SET user_id = ?, last_seen_at = ?
-    WHERE id = ?
-  `).run(userId, now, sessionId);
+  // Ensure database connection is initialized before delegating.
+  getDb();
+  upsertSession(sessionId, { userId, ...meta });
 }
 
 /**

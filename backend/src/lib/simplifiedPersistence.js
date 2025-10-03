@@ -63,7 +63,7 @@ export class SimplifiedPersistence {
     // Initialize database connection and session (only if we have sessionId)
     getDb();
     if (sessionId) {
-      this.conversationManager.ensureSession(sessionId, {
+      this.conversationManager.ensureSession(sessionId, userId, {
         userAgent: req.header('user-agent') || null,
       });
     }

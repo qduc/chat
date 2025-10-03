@@ -142,9 +142,20 @@ class AuthenticatedHttpClient {
    */
   private buildRequestInit(options: RequestOptions): RequestInit {
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json',
       ...options.headers
     };
+
+    // Only set Content-Type for JSON if body is not FormData
+    // FormData requires browser to set Content-Type with boundary
+    const isFormData = options.body instanceof FormData;
+    if (!isFormData && !headers['Content-Type']) {
+      headers['Content-Type'] = 'application/json';
+    }
+
+    // Remove Content-Type if explicitly set for FormData (browser will handle it)
+    if (isFormData && headers['Content-Type']) {
+      delete headers['Content-Type'];
+    }
 
     // Add authentication header if not skipped and token exists
     if (!options.skipAuth && typeof window !== 'undefined') {
@@ -163,7 +174,10 @@ class AuthenticatedHttpClient {
 
     // Add body for non-GET requests
     if (options.body !== undefined && options.method !== 'GET') {
-      if (typeof options.body === 'string') {
+      if (isFormData) {
+        // Pass FormData directly, browser will handle serialization and Content-Type
+        init.body = options.body;
+      } else if (typeof options.body === 'string') {
         init.body = options.body;
       } else {
         init.body = JSON.stringify(options.body);

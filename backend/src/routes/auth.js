@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import rateLimit from 'express-rate-limit';
@@ -93,7 +94,11 @@ router.post('/register', registerLimiter, async (req, res) => {
 
     // Link session to user if session exists
     if (req.sessionId) {
-      linkSessionToUser(req.sessionId, user.id);
+      const sessionMeta = req.sessionMeta || {
+        userAgent: req.get('User-Agent') || null,
+        ipHash: req.ip ? createHash('sha256').update(req.ip).digest('hex').substring(0, 16) : null,
+      };
+      linkSessionToUser(req.sessionId, user.id, sessionMeta);
     }
 
     res.status(201).json({
@@ -162,7 +167,11 @@ router.post('/login', authLimiter, async (req, res) => {
 
     // Link session to user if session exists
     if (req.sessionId) {
-      linkSessionToUser(req.sessionId, user.id);
+      const sessionMeta = req.sessionMeta || {
+        userAgent: req.get('User-Agent') || null,
+        ipHash: req.ip ? createHash('sha256').update(req.ip).digest('hex').substring(0, 16) : null,
+      };
+      linkSessionToUser(req.sessionId, user.id, sessionMeta);
     }
 
     res.json({

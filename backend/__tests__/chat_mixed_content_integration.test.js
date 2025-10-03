@@ -14,7 +14,7 @@ describe('Mixed Content Integration Tests', () => {
     const db = getDb();
     db.exec('DELETE FROM messages');
     db.exec('DELETE FROM conversations');
-    upsertSession(sessionId);
+    upsertSession(sessionId, { userId: mockUser.id });
   });
 
   test('POST /v1/chat/completions stores and retrieves mixed content with images', async () => {

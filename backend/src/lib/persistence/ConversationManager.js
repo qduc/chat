@@ -27,10 +27,12 @@ export class ConversationManager {
   /**
    * Ensure session exists in database
    * @param {string} sessionId - Session ID
+   * @param {string} userId - User ID
    * @param {Object} sessionData - Additional session data
    */
-  ensureSession(sessionId, sessionData = {}) {
-    upsertSession(sessionId, sessionData);
+  ensureSession(sessionId, userId, sessionData = {}) {
+    if (!sessionId || !userId) return;
+    upsertSession(sessionId, { userId, ...sessionData });
   }
 
   /**

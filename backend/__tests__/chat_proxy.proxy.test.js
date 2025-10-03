@@ -62,7 +62,7 @@ describe('POST /v1/chat/completions (proxy)', () => {
     const app = makeApp({ mockUser });
     const sessionId = 'test-session';
     const db = getDb();
-    upsertSession(sessionId);
+    upsertSession(sessionId, { userId: mockUser.id });
     createConversation({ id: 'conv1', sessionId, userId: mockUser.id, title: 'Test' });
 
     upstream.setError(true);
