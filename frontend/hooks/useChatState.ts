@@ -802,6 +802,11 @@ export function useChatState() {
         dispatch({ type: 'SET_SIDEBAR_COLLAPSED', payload: collapsed });
         const rightCollapsed = localStorage.getItem('rightSidebarCollapsed') === 'true';
         dispatch({ type: 'SET_RIGHT_SIDEBAR_COLLAPSED', payload: rightCollapsed });
+        // Load saved model from localStorage
+        const savedModel = localStorage.getItem('selectedModel');
+        if (savedModel) {
+          dispatch({ type: 'SET_MODEL', payload: savedModel });
+        }
       }
     } catch (e) {
       // ignore storage errors
@@ -1033,6 +1038,14 @@ export function useChatState() {
       // that read modelRef.current will use the newly selected model even if
       // React state hasn't committed yet.
       modelRef.current = model;
+      // Save to localStorage
+      try {
+        if (typeof window !== 'undefined') {
+          localStorage.setItem('selectedModel', model);
+        }
+      } catch (e) {
+        // ignore storage errors
+      }
       dispatch({ type: 'SET_MODEL', payload: model });
     }, []),
 
