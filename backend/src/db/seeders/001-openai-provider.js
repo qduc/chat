@@ -57,7 +57,6 @@ export default function seedOpenAIProvider(db) {
       enabled: 1,
       extra_headers: JSON.stringify({}),
       metadata: JSON.stringify({
-        default_model: 'gpt-4o',
         description: 'Official OpenAI API provider'
       }),
       created_at: now,

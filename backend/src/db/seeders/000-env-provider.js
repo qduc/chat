@@ -21,7 +21,7 @@ export default function seedProviderFromEnv(db) {
       (providerType === 'openai' ? 'OpenAI' : providerType);
     const id = providerType;
     const extraHeaders = JSON.stringify(headersObj || {});
-    const metadata = JSON.stringify({ default_model: config?.defaultModel || null });
+    const metadata = JSON.stringify({ model_filter: config?.modelFilter || null });
 
     db.prepare(`
       INSERT INTO providers (

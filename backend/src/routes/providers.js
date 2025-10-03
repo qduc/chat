@@ -11,6 +11,7 @@ import {
   deleteProvider,
   getDefaultProvider,
 } from '../db/providers.js';
+import { filterModels } from '../lib/modelFilter.js';
 
 export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = {}) {
   const providersRouter = Router();
@@ -205,6 +206,12 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
       });
     }
 
+    // Apply model filter from provider metadata if configured
+    // Note: row.metadata is already parsed by getProviderByIdWithApiKey
+    if (row.metadata && row.metadata.model_filter) {
+      models = filterModels(models, row.metadata.model_filter);
+    }
+
     res.json({ provider: { id: row.id, name: row.name, provider_type: row.provider_type }, models });
   } catch (err) {
     let errorMessage = 'Failed to retrieve models. Please check your provider configuration.';
@@ -314,6 +321,11 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
         // Filter out models older than 1 year
         return m.created >= oneYearAgo;
       });
+    }
+
+    // Apply model filter from metadata if configured
+    if (body.metadata && body.metadata.model_filter) {
+      models = filterModels(models, body.metadata.model_filter);
     }
 
     const modelCount = models.length;
@@ -429,6 +441,11 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
         // Filter out models older than 1 year
         return m.created >= oneYearAgo;
       });
+    }
+
+    // Apply model filter from metadata if configured
+    if (body.metadata && body.metadata.model_filter) {
+      models = filterModels(models, body.metadata.model_filter);
     }
 
     const modelCount = models.length;

@@ -147,15 +147,84 @@ export function updateProvider(id, { name, provider_type, api_key, base_url, ena
 
   // First check if the provider exists and user has permission to update it
   let current;
+  let isGlobalProvider = false;
+
   if (userId) {
-    // User can only update their own providers
+    // Check if user owns this provider
     current = db.prepare(`SELECT * FROM providers WHERE id=@id AND deleted_at IS NULL AND user_id=@userId`).get({ id, userId });
+
+    // If user doesn't own it, check if it's a global provider they can see
+    if (!current) {
+      const globalProvider = db.prepare(`SELECT * FROM providers WHERE id=@id AND deleted_at IS NULL AND user_id IS NULL`).get({ id });
+      if (globalProvider) {
+        // User is trying to update a global provider - create a user-specific copy instead
+        current = globalProvider;
+        isGlobalProvider = true;
+      }
+    }
   } else {
     // Anonymous users can only update global providers
     current = db.prepare(`SELECT * FROM providers WHERE id=@id AND deleted_at IS NULL AND user_id IS NULL`).get({ id });
   }
 
   if (!current) return null; // Provider not found or no permission
+
+  // If user is trying to "update" a global provider, create a user-specific copy instead
+  if (isGlobalProvider && userId) {
+    // Create a new user-specific provider based on the global one
+    const userProviderId = `${userId}-${id}`;
+
+    // Check if user already has a copy of this provider
+    const existingCopy = db.prepare(`SELECT * FROM providers WHERE id=@userProviderId AND user_id=@userId AND deleted_at IS NULL`).get({ userProviderId, userId });
+
+    if (existingCopy) {
+      // Update the existing user copy instead
+      const updateValues = {
+        id: userProviderId,
+        name: name ?? existingCopy.name,
+        provider_type: provider_type ?? existingCopy.provider_type,
+        api_key: api_key ?? existingCopy.api_key,
+        base_url: base_url ?? existingCopy.base_url,
+        enabled: enabled === undefined ? existingCopy.enabled : (enabled ? 1 : 0),
+        is_default: is_default === undefined ? existingCopy.is_default : (is_default ? 1 : 0),
+        extra_headers: JSON.stringify(extra_headers ?? safeJsonParse(existingCopy.extra_headers, {})),
+        metadata: JSON.stringify(metadata ?? safeJsonParse(existingCopy.metadata, {})),
+        userId,
+        now,
+      };
+
+      db.prepare(
+        `UPDATE providers SET
+         name=@name,
+         provider_type=@provider_type,
+         api_key=@api_key,
+         base_url=@base_url,
+         enabled=@enabled,
+         is_default=@is_default,
+         extra_headers=@extra_headers,
+         metadata=@metadata,
+         updated_at=@now
+       WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`
+      ).run(updateValues);
+
+      if (updateValues.is_default) setDefaultProvider(userProviderId, userId);
+      return getProviderById(userProviderId, userId);
+    } else {
+      // Create a new user-specific provider
+      return createProvider({
+        id: userProviderId,
+        name: name ?? current.name,
+        provider_type: provider_type ?? current.provider_type,
+        api_key: api_key ?? current.api_key,
+        base_url: base_url ?? current.base_url,
+        enabled: enabled === undefined ? current.enabled : !!enabled,
+        is_default: is_default === undefined ? current.is_default : !!is_default,
+        extra_headers: extra_headers ?? safeJsonParse(current.extra_headers, {}),
+        metadata: metadata ?? safeJsonParse(current.metadata, {}),
+        user_id: userId,
+      });
+    }
+  }
 
   const values = {
     id,
@@ -169,8 +238,12 @@ export function updateProvider(id, { name, provider_type, api_key, base_url, ena
     metadata: JSON.stringify(metadata ?? safeJsonParse(current.metadata, {})),
     now,
   };
-  db.prepare(
-    `UPDATE providers SET
+
+  // Build the UPDATE query with appropriate user scoping
+  let updateQuery;
+  let updateParams;
+  if (userId) {
+    updateQuery = `UPDATE providers SET
        name=@name,
        provider_type=@provider_type,
        api_key=@api_key,
@@ -180,8 +253,30 @@ export function updateProvider(id, { name, provider_type, api_key, base_url, ena
        extra_headers=@extra_headers,
        metadata=@metadata,
        updated_at=@now
-     WHERE id=@id`
-  ).run(values);
+     WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
+    updateParams = { ...values, userId };
+  } else {
+    updateQuery = `UPDATE providers SET
+       name=@name,
+       provider_type=@provider_type,
+       api_key=@api_key,
+       base_url=@base_url,
+       enabled=@enabled,
+       is_default=@is_default,
+       extra_headers=@extra_headers,
+       metadata=@metadata,
+       updated_at=@now
+     WHERE id=@id AND user_id IS NULL AND deleted_at IS NULL`;
+    updateParams = values;
+  }
+
+  const info = db.prepare(updateQuery).run(updateParams);
+
+  // If no rows were updated, return null (provider not found or no permission)
+  if (info.changes === 0) {
+    return null;
+  }
+
   if (values.is_default) setDefaultProvider(id, userId);
   return getProviderById(id, userId);
 }
@@ -369,7 +464,7 @@ export function createDefaultProviders(userId) {
   ];
 
   const createdProviders = [];
-  
+
   for (const providerConfig of defaultProviders) {
     try {
       const provider = createProvider(providerConfig);
