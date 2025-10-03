@@ -143,6 +143,36 @@ export function MessageInput({
     e.target.value = '';
   };
 
+  const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!onImagesChange) return;
+
+    const items = Array.from(event.clipboardData?.items || []);
+    const files: File[] = [];
+
+    items.forEach(item => {
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file && file.type.startsWith('image/')) {
+          files.push(file);
+        }
+      }
+    });
+
+    if (files.length === 0) {
+      const fileList = Array.from(event.clipboardData?.files || []);
+      fileList.forEach(file => {
+        if (file.type.startsWith('image/')) {
+          files.push(file);
+        }
+      });
+    }
+
+    if (files.length > 0) {
+      event.preventDefault();
+      void handleImageFiles(files);
+    }
+  };
+
 
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -182,6 +212,7 @@ export function MessageInput({
               value={input}
               onChange={e => onInputChange(e.target.value)}
               onKeyDown={handleKey}
+              onPaste={handlePaste}
               rows={1}
             />
             <div className="flex items-center justify-between px-4 pb-4">
