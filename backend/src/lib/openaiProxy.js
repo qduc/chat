@@ -140,7 +140,7 @@ async function buildRequestContext(req) {
   }) || [];
 
   const conversationId = bodyIn.conversation_id || req.header('x-conversation-id');
-  const userId = req.user?.id || null;
+  const userId = req.user.id; // Guaranteed by authenticateToken middleware
   const sessionId = req.sessionId || null;
 
   const body = await sanitizeIncomingBody(bodyIn, {

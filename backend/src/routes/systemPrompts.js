@@ -19,10 +19,7 @@ export const systemPromptsRouter = Router();
 // GET /v1/system-prompts - List built-in and custom prompts
 systemPromptsRouter.get('/v1/system-prompts', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: 'unauthorized', message: 'Authentication required' });
-    }
+    const userId = req.user.id; // Guaranteed by authenticateToken middleware
 
     const result = await promptService.listAllPrompts(userId);
 
@@ -51,10 +48,7 @@ systemPromptsRouter.get('/v1/system-prompts', authenticateToken, async (req, res
 // POST /v1/system-prompts - Create custom prompt
 systemPromptsRouter.post('/v1/system-prompts', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: 'unauthorized', message: 'Authentication required' });
-    }
+    const userId = req.user.id; // Guaranteed by authenticateToken middleware
 
     // Validate request body
     const promptData = validateCreatePrompt(req.body);
@@ -75,10 +69,7 @@ systemPromptsRouter.post('/v1/system-prompts', authenticateToken, async (req, re
 // PATCH /v1/system-prompts/:id - Update custom prompt
 systemPromptsRouter.patch('/v1/system-prompts/:id', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: 'unauthorized', message: 'Authentication required' });
-    }
+    const userId = req.user.id; // Guaranteed by authenticateToken middleware
 
     // Validate prompt ID
     const promptId = validatePromptId(req.params.id);
@@ -106,10 +97,7 @@ systemPromptsRouter.patch('/v1/system-prompts/:id', authenticateToken, async (re
 // DELETE /v1/system-prompts/:id - Delete custom prompt
 systemPromptsRouter.delete('/v1/system-prompts/:id', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: 'unauthorized', message: 'Authentication required' });
-    }
+    const userId = req.user.id; // Guaranteed by authenticateToken middleware
 
     // Validate prompt ID
     const promptId = validatePromptId(req.params.id);
@@ -134,10 +122,7 @@ systemPromptsRouter.delete('/v1/system-prompts/:id', authenticateToken, async (r
 // POST /v1/system-prompts/:id/duplicate - Duplicate prompt
 systemPromptsRouter.post('/v1/system-prompts/:id/duplicate', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user?.id;
-    if (!userId) {
-      return res.status(401).json({ error: 'unauthorized', message: 'Authentication required' });
-    }
+    const userId = req.user.id; // Guaranteed by authenticateToken middleware
 
     // Validate prompt ID
     const sourceId = validatePromptId(req.params.id);
@@ -162,11 +147,8 @@ systemPromptsRouter.post('/v1/system-prompts/:id/duplicate', authenticateToken, 
 // POST /v1/system-prompts/none/select - Clear active prompt selection
 systemPromptsRouter.post('/v1/system-prompts/none/select', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user.id; // Guaranteed by authenticateToken middleware
     const sessionId = req.sessionId || null;
-    if (!userId) {
-      return res.status(401).json({ error: 'unauthorized', message: 'Authentication required' });
-    }
 
     // Validate request body
     const { conversation_id } = validateClearSelection(req.body);
@@ -190,11 +172,8 @@ systemPromptsRouter.post('/v1/system-prompts/none/select', authenticateToken, as
 // POST /v1/system-prompts/:id/select - Select prompt for conversation
 systemPromptsRouter.post('/v1/system-prompts/:id/select', authenticateToken, async (req, res) => {
   try {
-    const userId = req.user?.id;
+    const userId = req.user.id; // Guaranteed by authenticateToken middleware
     const sessionId = req.sessionId || null;
-    if (!userId) {
-      return res.status(401).json({ error: 'unauthorized', message: 'Authentication required' });
-    }
 
     // Validate prompt ID
     const promptId = validatePromptId(req.params.id);

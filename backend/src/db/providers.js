@@ -8,65 +8,40 @@ function safeJsonParse(value, fallback) {
   }
 }
 
-export function listProviders(userId = null) {
-  const db = getDb();
-  let query;
-  let params = {};
-
-  if (userId) {
-    // For authenticated users: show their providers + global providers (user_id IS NULL)
-    // User providers take precedence over global ones with same name/type
-    query = `
-      SELECT id, name, provider_type, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at, user_id,
-             CASE WHEN user_id = @userId THEN 1 ELSE 0 END as is_user_provider
-      FROM providers
-      WHERE deleted_at IS NULL AND (user_id = @userId OR user_id IS NULL)
-      ORDER BY is_user_provider DESC, is_default DESC, updated_at DESC
-    `;
-    params.userId = userId;
-  } else {
-    // For anonymous users: only show global providers
-    query = `
-      SELECT id, name, provider_type, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at, user_id,
-             0 as is_user_provider
-      FROM providers
-      WHERE deleted_at IS NULL AND user_id IS NULL
-      ORDER BY is_default DESC, updated_at DESC
-    `;
+export function listProviders(userId) {
+  if (!userId) {
+    throw new Error('userId is required');
   }
 
-  const rows = db.prepare(query).all(params);
+  const db = getDb();
+  const query = `
+    SELECT id, name, provider_type, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at, user_id
+    FROM providers
+    WHERE deleted_at IS NULL AND user_id = @userId
+    ORDER BY is_default DESC, updated_at DESC
+  `;
+
+  const rows = db.prepare(query).all({ userId });
   return rows.map((r) => ({
     ...r,
     extra_headers: safeJsonParse(r.extra_headers, {}),
     metadata: safeJsonParse(r.metadata, {}),
-    is_user_provider: Boolean(r.is_user_provider),
   }));
 }
 
-export function getProviderById(id, userId = null) {
-  const db = getDb();
-  let query;
-  let params = { id };
-
-  if (userId) {
-    // For authenticated users: can access their own providers or global providers
-    query = `
-      SELECT id, name, provider_type, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at, user_id
-      FROM providers
-      WHERE id=@id AND deleted_at IS NULL AND (user_id = @userId OR user_id IS NULL)
-    `;
-    params.userId = userId;
-  } else {
-    // For anonymous users: only global providers
-    query = `
-      SELECT id, name, provider_type, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at, user_id
-      FROM providers
-      WHERE id=@id AND deleted_at IS NULL AND user_id IS NULL
-    `;
+export function getProviderById(id, userId) {
+  if (!userId) {
+    throw new Error('userId is required');
   }
 
-  const row = db.prepare(query).get(params);
+  const db = getDb();
+  const query = `
+    SELECT id, name, provider_type, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at, user_id
+    FROM providers
+    WHERE id=@id AND deleted_at IS NULL AND user_id = @userId
+  `;
+
+  const row = db.prepare(query).get({ id, userId });
   if (!row) return null;
   return {
     ...row,
@@ -75,29 +50,19 @@ export function getProviderById(id, userId = null) {
   };
 }
 
-export function getProviderByIdWithApiKey(id, userId = null) {
-  const db = getDb();
-  let query;
-  let params = { id };
-
-  if (userId) {
-    // For authenticated users: can access their own providers or global providers
-    query = `
-      SELECT id, name, provider_type, api_key, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at, user_id
-      FROM providers
-      WHERE id=@id AND deleted_at IS NULL AND (user_id = @userId OR user_id IS NULL)
-    `;
-    params.userId = userId;
-  } else {
-    // For anonymous users: only global providers
-    query = `
-      SELECT id, name, provider_type, api_key, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at, user_id
-      FROM providers
-      WHERE id=@id AND deleted_at IS NULL AND user_id IS NULL
-    `;
+export function getProviderByIdWithApiKey(id, userId) {
+  if (!userId) {
+    throw new Error('userId is required');
   }
 
-  const row = db.prepare(query).get(params);
+  const db = getDb();
+  const query = `
+    SELECT id, name, provider_type, api_key, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at, user_id
+    FROM providers
+    WHERE id=@id AND deleted_at IS NULL AND user_id = @userId
+  `;
+
+  const row = db.prepare(query).get({ id, userId });
   if (!row) return null;
   return {
     ...row,
@@ -141,90 +106,18 @@ export function createProvider({
   return getProviderById(pid, user_id);
 }
 
-export function updateProvider(id, { name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata }, userId = null) {
+export function updateProvider(id, { name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata }, userId) {
+  if (!userId) {
+    throw new Error('userId is required');
+  }
+
   const db = getDb();
   const now = new Date().toISOString();
 
-  // First check if the provider exists and user has permission to update it
-  let current;
-  let isGlobalProvider = false;
-
-  if (userId) {
-    // Check if user owns this provider
-    current = db.prepare(`SELECT * FROM providers WHERE id=@id AND deleted_at IS NULL AND user_id=@userId`).get({ id, userId });
-
-    // If user doesn't own it, check if it's a global provider they can see
-    if (!current) {
-      const globalProvider = db.prepare(`SELECT * FROM providers WHERE id=@id AND deleted_at IS NULL AND user_id IS NULL`).get({ id });
-      if (globalProvider) {
-        // User is trying to update a global provider - create a user-specific copy instead
-        current = globalProvider;
-        isGlobalProvider = true;
-      }
-    }
-  } else {
-    // Anonymous users can only update global providers
-    current = db.prepare(`SELECT * FROM providers WHERE id=@id AND deleted_at IS NULL AND user_id IS NULL`).get({ id });
-  }
+  // Check if the provider exists and user owns it
+  const current = db.prepare(`SELECT * FROM providers WHERE id=@id AND deleted_at IS NULL AND user_id=@userId`).get({ id, userId });
 
   if (!current) return null; // Provider not found or no permission
-
-  // If user is trying to "update" a global provider, create a user-specific copy instead
-  if (isGlobalProvider && userId) {
-    // Create a new user-specific provider based on the global one
-    const userProviderId = `${userId}-${id}`;
-
-    // Check if user already has a copy of this provider
-    const existingCopy = db.prepare(`SELECT * FROM providers WHERE id=@userProviderId AND user_id=@userId AND deleted_at IS NULL`).get({ userProviderId, userId });
-
-    if (existingCopy) {
-      // Update the existing user copy instead
-      const updateValues = {
-        id: userProviderId,
-        name: name ?? existingCopy.name,
-        provider_type: provider_type ?? existingCopy.provider_type,
-        api_key: api_key ?? existingCopy.api_key,
-        base_url: base_url ?? existingCopy.base_url,
-        enabled: enabled === undefined ? existingCopy.enabled : (enabled ? 1 : 0),
-        is_default: is_default === undefined ? existingCopy.is_default : (is_default ? 1 : 0),
-        extra_headers: JSON.stringify(extra_headers ?? safeJsonParse(existingCopy.extra_headers, {})),
-        metadata: JSON.stringify(metadata ?? safeJsonParse(existingCopy.metadata, {})),
-        userId,
-        now,
-      };
-
-      db.prepare(
-        `UPDATE providers SET
-         name=@name,
-         provider_type=@provider_type,
-         api_key=@api_key,
-         base_url=@base_url,
-         enabled=@enabled,
-         is_default=@is_default,
-         extra_headers=@extra_headers,
-         metadata=@metadata,
-         updated_at=@now
-       WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`
-      ).run(updateValues);
-
-      if (updateValues.is_default) setDefaultProvider(userProviderId, userId);
-      return getProviderById(userProviderId, userId);
-    } else {
-      // Create a new user-specific provider
-      return createProvider({
-        id: userProviderId,
-        name: name ?? current.name,
-        provider_type: provider_type ?? current.provider_type,
-        api_key: api_key ?? current.api_key,
-        base_url: base_url ?? current.base_url,
-        enabled: enabled === undefined ? current.enabled : !!enabled,
-        is_default: is_default === undefined ? current.is_default : !!is_default,
-        extra_headers: extra_headers ?? safeJsonParse(current.extra_headers, {}),
-        metadata: metadata ?? safeJsonParse(current.metadata, {}),
-        user_id: userId,
-      });
-    }
-  }
 
   const values = {
     id,
@@ -236,14 +129,12 @@ export function updateProvider(id, { name, provider_type, api_key, base_url, ena
     is_default: is_default === undefined ? current.is_default : (is_default ? 1 : 0),
     extra_headers: JSON.stringify(extra_headers ?? safeJsonParse(current.extra_headers, {})),
     metadata: JSON.stringify(metadata ?? safeJsonParse(current.metadata, {})),
+    userId,
     now,
   };
 
-  // Build the UPDATE query with appropriate user scoping
-  let updateQuery;
-  let updateParams;
-  if (userId) {
-    updateQuery = `UPDATE providers SET
+  const info = db.prepare(
+    `UPDATE providers SET
        name=@name,
        provider_type=@provider_type,
        api_key=@api_key,
@@ -253,24 +144,8 @@ export function updateProvider(id, { name, provider_type, api_key, base_url, ena
        extra_headers=@extra_headers,
        metadata=@metadata,
        updated_at=@now
-     WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
-    updateParams = { ...values, userId };
-  } else {
-    updateQuery = `UPDATE providers SET
-       name=@name,
-       provider_type=@provider_type,
-       api_key=@api_key,
-       base_url=@base_url,
-       enabled=@enabled,
-       is_default=@is_default,
-       extra_headers=@extra_headers,
-       metadata=@metadata,
-       updated_at=@now
-     WHERE id=@id AND user_id IS NULL AND deleted_at IS NULL`;
-    updateParams = values;
-  }
-
-  const info = db.prepare(updateQuery).run(updateParams);
+     WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`
+  ).run(values);
 
   // If no rows were updated, return null (provider not found or no permission)
   if (info.changes === 0) {
@@ -281,121 +156,81 @@ export function updateProvider(id, { name, provider_type, api_key, base_url, ena
   return getProviderById(id, userId);
 }
 
-export function setDefaultProvider(id, userId = null) {
+export function setDefaultProvider(id, userId) {
+  if (!userId) {
+    throw new Error('userId is required');
+  }
+
   const db = getDb();
   const tx = db.transaction((pid, uid) => {
-    if (uid) {
-      // For user providers: only clear default for user's providers
-      db.prepare(`UPDATE providers SET is_default=0 WHERE user_id=@uid AND deleted_at IS NULL`).run({ uid });
-      db.prepare(`UPDATE providers SET is_default=1, enabled=1, updated_at=@now WHERE id=@pid AND user_id=@uid AND deleted_at IS NULL`).run({
-        pid,
-        uid,
-        now: new Date().toISOString()
-      });
-    } else {
-      // For global providers: only clear default for global providers
-      db.prepare(`UPDATE providers SET is_default=0 WHERE user_id IS NULL AND deleted_at IS NULL`).run();
-      db.prepare(`UPDATE providers SET is_default=1, enabled=1, updated_at=@now WHERE id=@pid AND user_id IS NULL AND deleted_at IS NULL`).run({
-        pid,
-        now: new Date().toISOString()
-      });
-    }
+    // Clear default for user's providers
+    db.prepare(`UPDATE providers SET is_default=0 WHERE user_id=@uid AND deleted_at IS NULL`).run({ uid });
+    // Set new default
+    db.prepare(`UPDATE providers SET is_default=1, enabled=1, updated_at=@now WHERE id=@pid AND user_id=@uid AND deleted_at IS NULL`).run({
+      pid,
+      uid,
+      now: new Date().toISOString()
+    });
   });
   tx(id, userId);
   return getProviderById(id, userId);
 }
 
-export function deleteProvider(id, userId = null) {
+export function deleteProvider(id, userId) {
+  if (!userId) {
+    throw new Error('userId is required');
+  }
+
   const db = getDb();
   const now = new Date().toISOString();
 
-  let query, params;
-  if (userId) {
-    // User can only delete their own providers
-    query = `UPDATE providers SET deleted_at=@now, updated_at=@now WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
-    params = { id, userId, now };
-  } else {
-    // Anonymous users can only delete global providers
-    query = `UPDATE providers SET deleted_at=@now, updated_at=@now WHERE id=@id AND user_id IS NULL AND deleted_at IS NULL`;
-    params = { id, now };
-  }
+  const info = db.prepare(
+    `UPDATE providers SET deleted_at=@now, updated_at=@now WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`
+  ).run({ id, userId, now });
 
-  const info = db.prepare(query).run(params);
   return info.changes > 0;
 }
 
 /**
  * Check if a user can access a specific provider
- * Users can access their own providers or global providers
+ * Users can only access their own providers
  */
-export function canAccessProvider(id, userId = null) {
-  const db = getDb();
-  let query, params;
-
-  if (userId) {
-    query = `SELECT 1 FROM providers WHERE id=@id AND deleted_at IS NULL AND (user_id=@userId OR user_id IS NULL)`;
-    params = { id, userId };
-  } else {
-    query = `SELECT 1 FROM providers WHERE id=@id AND deleted_at IS NULL AND user_id IS NULL`;
-    params = { id };
+export function canAccessProvider(id, userId) {
+  if (!userId) {
+    throw new Error('userId is required');
   }
 
-  const row = db.prepare(query).get(params);
+  const db = getDb();
+  const row = db.prepare(
+    `SELECT 1 FROM providers WHERE id=@id AND deleted_at IS NULL AND user_id=@userId`
+  ).get({ id, userId });
+
   return !!row;
 }
 
 /**
- * Get the effective default provider for a user
- * Prioritizes user's default provider over global default
+ * Get the default provider for a user
  */
-export function getDefaultProvider(userId = null) {
+export function getDefaultProvider(userId) {
+  if (!userId) {
+    throw new Error('userId is required');
+  }
+
   const db = getDb();
 
-  if (userId) {
-    // First try to find user's default provider
-    const userDefault = db.prepare(`
-      SELECT id, name, provider_type, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at, user_id
-      FROM providers
-      WHERE user_id=@userId AND is_default=1 AND enabled=1 AND deleted_at IS NULL
-    `).get({ userId });
+  // Find user's default provider
+  const userDefault = db.prepare(`
+    SELECT id, name, provider_type, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at, user_id
+    FROM providers
+    WHERE user_id=@userId AND is_default=1 AND enabled=1 AND deleted_at IS NULL
+  `).get({ userId });
 
-    if (userDefault) {
-      return {
-        ...userDefault,
-        extra_headers: safeJsonParse(userDefault.extra_headers, {}),
-        metadata: safeJsonParse(userDefault.metadata, {}),
-      };
-    }
-
-    // Fall back to global default provider
-    const globalDefault = db.prepare(`
-      SELECT id, name, provider_type, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at, user_id
-      FROM providers
-      WHERE user_id IS NULL AND is_default=1 AND enabled=1 AND deleted_at IS NULL
-    `).get();
-
-    if (globalDefault) {
-      return {
-        ...globalDefault,
-        extra_headers: safeJsonParse(globalDefault.extra_headers, {}),
-        metadata: safeJsonParse(globalDefault.metadata, {}),
-      };
-    }
-  } else {
-    // For anonymous users, only use global default
-    const globalDefault = db.prepare(`
-      SELECT id, name, provider_type, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at, user_id
-      FROM providers
-      WHERE user_id IS NULL AND is_default=1 AND enabled=1 AND deleted_at IS NULL
-    `).get();
-
-    if (globalDefault) {
-      return {
-        ...globalDefault,
-        extra_headers: safeJsonParse(globalDefault.extra_headers, {}),
-        metadata: safeJsonParse(globalDefault.metadata, {}),
-      };
-    }
+  if (userDefault) {
+    return {
+      ...userDefault,
+      extra_headers: safeJsonParse(userDefault.extra_headers, {}),
+      metadata: safeJsonParse(userDefault.metadata, {}),
+    };
   }
 
   return null;

@@ -38,26 +38,15 @@ export function createConversation({
   });
 }
 
-export function getConversationById({ id, sessionId, userId = null }) {
-  const db = getDb();
-
-  // Prioritize user-based access - authenticated users get their conversations
-  let query, params;
-  if (userId) {
-    query = `SELECT id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at FROM conversations
-             WHERE id=@id AND user_id=@user_id AND deleted_at IS NULL`;
-    params = { id, user_id: userId };
-  } else if (sessionId) {
-    // Fallback to session-based access for anonymous users
-    query = `SELECT id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at FROM conversations
-             WHERE id=@id AND session_id=@session_id AND user_id IS NULL AND deleted_at IS NULL`;
-    params = { id, session_id: sessionId };
-  } else {
-    // No valid identifier
-    return null;
+export function getConversationById({ id, userId }) {
+  if (!userId) {
+    throw new Error('userId is required');
   }
 
-  const result = db.prepare(query).get(params);
+  const db = getDb();
+  const query = `SELECT id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at FROM conversations
+           WHERE id=@id AND user_id=@user_id AND deleted_at IS NULL`;
+  const result = db.prepare(query).get({ id, user_id: userId });
 
   if (result) {
     result.streaming_enabled = Boolean(result.streaming_enabled);
@@ -80,26 +69,14 @@ export function getConversationById({ id, sessionId, userId = null }) {
   return result;
 }
 
-export function updateConversationMetadata({ id, sessionId, userId = null, patch }) {
-  const db = getDb();
-
-  let selectQuery, selectParams, updateQuery, updateParams;
-
-  // Prioritize user-based access - authenticated users get their conversations
-  if (userId) {
-    selectQuery = `SELECT metadata FROM conversations WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
-    selectParams = { id, userId };
-    updateQuery = `UPDATE conversations SET metadata=@metadata, updated_at=@now WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
-  } else if (sessionId) {
-    // Fallback to session-based access for anonymous users
-    selectQuery = `SELECT metadata FROM conversations WHERE id=@id AND session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
-    selectParams = { id, sessionId };
-    updateQuery = `UPDATE conversations SET metadata=@metadata, updated_at=@now WHERE id=@id AND session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
-  } else {
-    return false;
+export function updateConversationMetadata({ id, userId, patch }) {
+  if (!userId) {
+    throw new Error('userId is required');
   }
 
-  const row = db.prepare(selectQuery).get(selectParams);
+  const db = getDb();
+  const selectQuery = `SELECT metadata FROM conversations WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
+  const row = db.prepare(selectQuery).get({ id, userId });
   if (!row) return false;
 
   let existing = {};
@@ -111,90 +88,57 @@ export function updateConversationMetadata({ id, sessionId, userId = null, patch
   const merged = { ...existing, ...(patch || {}) };
   const now = new Date().toISOString();
 
-  if (userId) {
-    updateParams = { id, userId, metadata: JSON.stringify(merged), now };
-  } else {
-    updateParams = { id, sessionId, metadata: JSON.stringify(merged), now };
-  }
-
-  const res = db.prepare(updateQuery).run(updateParams);
+  const updateQuery = `UPDATE conversations SET metadata=@metadata, updated_at=@now WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
+  const res = db.prepare(updateQuery).run({ id, userId, metadata: JSON.stringify(merged), now });
   return res.changes > 0;
 }
 
-export function updateConversationTitle({ id, sessionId, userId = null, title, provider_id }) {
-  const db = getDb();
-  const now = new Date().toISOString();
-
-  let query, params;
-
-  // Prioritize user-based access - authenticated users get their conversations
-  if (userId) {
-    query = `UPDATE conversations SET title=@title, provider_id=@provider_id, updated_at=@now WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
-    params = { id, userId, title, provider_id, now };
-  } else if (sessionId) {
-    // Fallback to session-based access for anonymous users
-    query = `UPDATE conversations SET title=@title, provider_id=@provider_id, updated_at=@now WHERE id=@id AND session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
-    params = { id, sessionId, title, provider_id, now };
-  } else {
-    return;
+export function updateConversationTitle({ id, userId, title, provider_id }) {
+  if (!userId) {
+    throw new Error('userId is required');
   }
 
-  db.prepare(query).run(params);
+  const db = getDb();
+  const now = new Date().toISOString();
+  const query = `UPDATE conversations SET title=@title, provider_id=@provider_id, updated_at=@now WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
+  db.prepare(query).run({ id, userId, title, provider_id, now });
 }
 
-export function updateConversationProviderId({ id, sessionId, userId = null, providerId }) {
-  const db = getDb();
-  const now = new Date().toISOString();
-
-  let query, params;
-
-  // Prioritize user-based access - authenticated users get their conversations
-  if (userId) {
-    query = `UPDATE conversations SET provider_id=@provider_id, updated_at=@now WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
-    params = { id, userId, provider_id: providerId, now };
-  } else if (sessionId) {
-    // Fallback to session-based access for anonymous users
-    query = `UPDATE conversations SET provider_id=@provider_id, updated_at=@now WHERE id=@id AND session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
-    params = { id, sessionId, provider_id: providerId, now };
-  } else {
-    return false;
+export function updateConversationProviderId({ id, userId, providerId }) {
+  if (!userId) {
+    throw new Error('userId is required');
   }
 
-  const info = db.prepare(query).run(params);
+  const db = getDb();
+  const now = new Date().toISOString();
+  const query = `UPDATE conversations SET provider_id=@provider_id, updated_at=@now WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
+  const info = db.prepare(query).run({ id, userId, provider_id: providerId, now });
   return info.changes > 0;
 }
 
-export function updateConversationModel({ id, sessionId, userId = null, model }) {
-  const db = getDb();
-  const now = new Date().toISOString();
-
-  let query, params;
-
-  // Prioritize user-based access - authenticated users get their conversations
-  if (userId) {
-    query = `UPDATE conversations SET model=@model, updated_at=@now WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
-    params = { id, userId, model, now };
-  } else if (sessionId) {
-    // Fallback to session-based access for anonymous users
-    query = `UPDATE conversations SET model=@model, updated_at=@now WHERE id=@id AND session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
-    params = { id, sessionId, model, now };
-  } else {
-    return false;
+export function updateConversationModel({ id, userId, model }) {
+  if (!userId) {
+    throw new Error('userId is required');
   }
 
-  const info = db.prepare(query).run(params);
+  const db = getDb();
+  const now = new Date().toISOString();
+  const query = `UPDATE conversations SET model=@model, updated_at=@now WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
+  const info = db.prepare(query).run({ id, userId, model, now });
   return info.changes > 0;
 }
 
-export function updateConversationSettings({ id, sessionId, userId = null, streamingEnabled, toolsEnabled, qualityLevel, reasoningEffort, verbosity }) {
+export function updateConversationSettings({ id, userId, streamingEnabled, toolsEnabled, qualityLevel, reasoningEffort, verbosity }) {
+  if (!userId) {
+    throw new Error('userId is required');
+  }
+
   const db = getDb();
   const now = new Date().toISOString();
-
-  let query;
 
   // Build update fields dynamically based on what's provided
   const updates = [];
-  const paramData = { id, now };
+  const paramData = { id, userId, now };
 
   if (streamingEnabled !== undefined) {
     updates.push('streaming_enabled=@streaming_enabled');
@@ -222,18 +166,7 @@ export function updateConversationSettings({ id, sessionId, userId = null, strea
 
   updates.push('updated_at=@now');
 
-  // Prioritize user-based access - authenticated users get their conversations
-  if (userId) {
-    query = `UPDATE conversations SET ${updates.join(', ')} WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
-    paramData.userId = userId;
-  } else if (sessionId) {
-    // Fallback to session-based access for anonymous users
-    query = `UPDATE conversations SET ${updates.join(', ')} WHERE id=@id AND session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
-    paramData.sessionId = sessionId;
-  } else {
-    return false;
-  }
-
+  const query = `UPDATE conversations SET ${updates.join(', ')} WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
   const info = db.prepare(query).run(paramData);
   return info.changes > 0;
 }
@@ -248,27 +181,18 @@ export function countConversationsBySession(sessionId) {
   return row?.c || 0;
 }
 
-export function listConversations({ sessionId, userId = null, cursor, limit }) {
+export function listConversations({ userId, cursor, limit }) {
+  if (!userId) {
+    throw new Error('userId is required');
+  }
+
   const db = getDb();
   const safeLimit = clampLimit(limit, { fallback: 20, min: 1, max: 100 });
   const { cursorCreatedAt, cursorId } = parseCreatedAtCursor(cursor);
 
-  let sql, params;
-
-  // Prioritize user-based access - authenticated users get their conversations
-  if (userId) {
-    sql = `SELECT id, title, provider_id, model, created_at FROM conversations
-           WHERE user_id=@userId AND deleted_at IS NULL`;
-    params = { userId, cursorCreatedAt, cursorId, limit: safeLimit + 1 };
-  } else if (sessionId) {
-    // Fallback to session-based access for anonymous users
-    sql = `SELECT id, title, provider_id, model, created_at FROM conversations
-           WHERE session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
-    params = { sessionId, cursorCreatedAt, cursorId, limit: safeLimit + 1 };
-  } else {
-    // No valid identifier
-    return { items: [], next_cursor: null };
-  }
+  let sql = `SELECT id, title, provider_id, model, created_at FROM conversations
+         WHERE user_id=@userId AND deleted_at IS NULL`;
+  const params = { userId, cursorCreatedAt, cursorId, limit: safeLimit + 1 };
 
   sql = appendCreatedAtCursor(sql, { cursorCreatedAt, cursorId });
   sql += ` ORDER BY datetime(created_at) DESC, id DESC LIMIT @limit`;
@@ -280,55 +204,35 @@ export function listConversations({ sessionId, userId = null, cursor, limit }) {
   return { items, next_cursor };
 }
 
-export function softDeleteConversation({ id, sessionId, userId = null }) {
-  const db = getDb();
-  const now = new Date().toISOString();
-
-  let query, params;
-
-  // Prioritize user-based access - authenticated users get their conversations
-  if (userId) {
-    query = `UPDATE conversations SET deleted_at=@now, updated_at=@now WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
-    params = { id, userId, now };
-  } else if (sessionId) {
-    // Fallback to session-based access for anonymous users
-    query = `UPDATE conversations SET deleted_at=@now, updated_at=@now WHERE id=@id AND session_id=@sessionId AND user_id IS NULL AND deleted_at IS NULL`;
-    params = { id, sessionId, now };
-  } else {
-    return false;
+export function softDeleteConversation({ id, userId }) {
+  if (!userId) {
+    throw new Error('userId is required');
   }
 
-  const info = db.prepare(query).run(params);
+  const db = getDb();
+  const now = new Date().toISOString();
+  const query = `UPDATE conversations SET deleted_at=@now, updated_at=@now WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
+  const info = db.prepare(query).run({ id, userId, now });
   return info.changes > 0;
 }
 
 export function listConversationsIncludingDeleted({
-  sessionId,
-  userId = null,
+  userId,
   cursor,
   limit,
   includeDeleted = false,
 }) {
+  if (!userId) {
+    throw new Error('userId is required');
+  }
+
   const db = getDb();
   const safeLimit = clampLimit(limit, { fallback: 20, min: 1, max: 100 });
   const { cursorCreatedAt, cursorId } = parseCreatedAtCursor(cursor);
 
-  let sql, params;
-
-  // Prioritize user-based access - authenticated users get their conversations
-  if (userId) {
-    sql = `SELECT id, title, provider_id, model, created_at, deleted_at FROM conversations
-           WHERE user_id=@userId`;
-    params = { userId, cursorCreatedAt, cursorId, limit: safeLimit + 1 };
-  } else if (sessionId) {
-    // Fallback to session-based access for anonymous users
-    sql = `SELECT id, title, provider_id, model, created_at, deleted_at FROM conversations
-           WHERE session_id=@sessionId AND user_id IS NULL`;
-    params = { sessionId, cursorCreatedAt, cursorId, limit: safeLimit + 1 };
-  } else {
-    // No valid identifier
-    return { items: [], next_cursor: null };
-  }
+  let sql = `SELECT id, title, provider_id, model, created_at, deleted_at FROM conversations
+         WHERE user_id=@userId`;
+  const params = { userId, cursorCreatedAt, cursorId, limit: safeLimit + 1 };
 
   if (!includeDeleted) sql += ` AND deleted_at IS NULL`;
   sql = appendCreatedAtCursor(sql, { cursorCreatedAt, cursorId });
@@ -350,7 +254,11 @@ export function listConversationsIncludingDeleted({
   return { items, next_cursor };
 }
 
-export function forkConversationFromMessage({ originalConversationId, sessionId, userId = null, messageSeq, title, provider_id, model }) {
+export function forkConversationFromMessage({ originalConversationId, sessionId, userId, messageSeq, title, provider_id, model }) {
+  if (!userId) {
+    throw new Error('userId is required');
+  }
+
   const db = getDb();
   const now = new Date().toISOString();
 

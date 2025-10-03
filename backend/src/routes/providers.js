@@ -12,15 +12,18 @@ import {
   getDefaultProvider,
 } from '../db/providers.js';
 import { filterModels } from '../lib/modelFilter.js';
+import { authenticateToken } from '../middleware/auth.js';
 
 export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = {}) {
   const providersRouter = Router();
 
   // Base path: /v1/providers
+  // Require authentication for all provider routes
+  providersRouter.use(authenticateToken);
 
   providersRouter.get('/v1/providers', (req, res) => {
     try {
-      const userId = req.user?.id || null; // Get user ID from auth context
+      const userId = req.user.id; // Guaranteed by authenticateToken middleware
       const rows = listProviders(userId);
       res.json({ providers: rows });
     } catch (err) {
@@ -31,7 +34,7 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
   // Get the effective default provider for the current user
   providersRouter.get('/v1/providers/default', (req, res) => {
     try {
-      const userId = req.user?.id || null; // Get user ID from auth context
+      const userId = req.user.id; // Guaranteed by authenticateToken middleware
       const defaultProvider = getDefaultProvider(userId);
       if (!defaultProvider) {
         return res.status(404).json({ error: 'not_found', message: 'No default provider configured' });
@@ -44,7 +47,7 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
 
   providersRouter.get('/v1/providers/:id', (req, res) => {
     try {
-      const userId = req.user?.id || null; // Get user ID from auth context
+      const userId = req.user.id; // Guaranteed by authenticateToken middleware
       const row = getProviderById(req.params.id, userId);
       if (!row) return res.status(404).json({ error: 'not_found' });
       res.json(row);
@@ -62,7 +65,7 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
         return res.status(400).json({ error: 'invalid_request', message: 'name and provider_type are required' });
       }
       const id = body.id ? String(body.id) : uuidv4();
-      const userId = req.user?.id || null; // Get user ID from auth context
+      const userId = req.user.id; // Guaranteed by authenticateToken middleware
 
       const created = createProvider({
         id,
@@ -88,7 +91,7 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
   providersRouter.put('/v1/providers/:id', (req, res) => {
     try {
       const body = req.body || {};
-      const userId = req.user?.id || null; // Get user ID from auth context
+      const userId = req.user.id; // Guaranteed by authenticateToken middleware
 
       const updated = updateProvider(req.params.id, {
         name: body.name,
@@ -109,7 +112,7 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
 
   providersRouter.post('/v1/providers/:id/default', (req, res) => {
     try {
-      const userId = req.user?.id || null; // Get user ID from auth context
+      const userId = req.user.id; // Guaranteed by authenticateToken middleware
       const row = setDefaultProvider(req.params.id, userId);
       if (!row) return res.status(404).json({ error: 'not_found' });
       res.json(row);
@@ -120,7 +123,7 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
 
   providersRouter.delete('/v1/providers/:id', (req, res) => {
     try {
-      const userId = req.user?.id || null; // Get user ID from auth context
+      const userId = req.user.id; // Guaranteed by authenticateToken middleware
       const ok = deleteProvider(req.params.id, userId);
       if (!ok) return res.status(404).json({ error: 'not_found' });
       res.status(204).end();
@@ -132,7 +135,7 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
 // List models via provider's API (server-side to avoid exposing keys)
   providersRouter.get('/v1/providers/:id/models', async (req, res) => {
     try {
-      const userId = req.user?.id || null; // Get user ID from auth context
+      const userId = req.user.id; // Guaranteed by authenticateToken middleware
       const row = getProviderByIdWithApiKey(req.params.id, userId);
       if (!row) return res.status(404).json({ error: 'not_found' });
       if (row.enabled === 0) return res.status(400).json({ error: 'disabled', message: 'Provider is disabled' });
@@ -358,7 +361,7 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
     try {
       const providerId = req.params.id;
       const body = req.body || {};
-      const userId = req.user?.id || null; // Get user ID from auth context
+      const userId = req.user.id; // Guaranteed by authenticateToken middleware
 
       // Get the existing provider with API key (with user scoping)
       const existingProvider = getProviderByIdWithApiKey(providerId, userId);

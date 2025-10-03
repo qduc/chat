@@ -2,11 +2,10 @@ import { Router } from 'express';
 import { config } from '../env.js';
 import { getDb } from '../db/client.js';
 import { upsertSession } from '../db/sessions.js';
-import { optionalAuth, authenticateToken } from '../middleware/auth.js';
+import { authenticateToken } from '../middleware/auth.js';
 import {
   createConversation,
   getConversationById,
-  countConversationsBySession,
   listConversations,
   softDeleteConversation,
   listConversationsIncludingDeleted,
@@ -25,15 +24,15 @@ import { v4 as uuidv4 } from 'uuid';
 
 export const conversationsRouter = Router();
 
-// Apply optional authentication to all conversation routes
-conversationsRouter.use(optionalAuth);
+// Apply authentication to all conversation routes
+conversationsRouter.use(authenticateToken);
 
 function notImplemented(res) {
   return res.status(501).json({ error: 'not_implemented' });
 }
 
 // POST /v1/conversations/migrate (migrate anonymous conversations to authenticated user)
-conversationsRouter.post('/v1/conversations/migrate', authenticateToken, (req, res) => {
+conversationsRouter.post('/v1/conversations/migrate', (req, res) => {
   if (!config.persistence.enabled) return notImplemented(res);
   try {
     const userId = req.user.id;
@@ -73,14 +72,7 @@ conversationsRouter.post('/v1/conversations/migrate', authenticateToken, (req, r
 conversationsRouter.get('/v1/conversations', (req, res) => {
   if (!config.persistence.enabled) return notImplemented(res);
   try {
-    const sessionId = req.sessionId;
-    const userId = req.user?.id || null; // Get user ID if authenticated
-
-    // Require either authentication or session for conversation access
-    if (!userId)
-      return res
-        .status(401)
-        .json({ error: 'unauthorized', message: 'Authentication required' });
+    const userId = req.user.id; // Guaranteed by authenticateToken middleware
 
     getDb();
     const { cursor, limit, include_deleted } = req.query || {};
@@ -89,13 +81,12 @@ conversationsRouter.get('/v1/conversations', (req, res) => {
       String(include_deleted).toLowerCase() === 'true';
     const result = includeDeleted
       ? listConversationsIncludingDeleted({
-          sessionId,
-          userId, // Pass user context
+          userId,
           cursor,
           limit,
           includeDeleted: true,
         })
-      : listConversations({ sessionId, userId, cursor, limit }); // Pass user context
+      : listConversations({ userId, cursor, limit });
     return res.json(result);
   } catch (e) {
     console.error('[conversations] list error', e);
@@ -108,30 +99,12 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
   if (!config.persistence.enabled) return notImplemented(res);
   try {
     const sessionId = req.sessionId;
-    const userId = req.user?.id || null; // Get user ID if authenticated
-
-    if (!userId)
-      return res
-        .status(401)
-        .json({ error: 'unauthorized', message: 'Missing user context' });
+    const userId = req.user.id; // Guaranteed by authenticateToken middleware
 
     // Ensure DB and session row (still needed for session-based users)
     getDb();
     if (sessionId) {
       upsertSession(sessionId, { userAgent: req.header('user-agent') || null });
-    }
-
-    // Enforce conversations per session limit (only for session-based access)
-    if (!userId && sessionId) {
-      const cnt = countConversationsBySession(sessionId);
-      if (cnt >= config.persistence.maxConversationsPerSession) {
-        return res
-          .status(429)
-          .json({
-            error: 'limit_exceeded',
-            message: 'Max conversations per session reached',
-          });
-      }
     }
 
     const {
@@ -151,7 +124,7 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
     createConversation({
       id,
       sessionId,
-      userId, // Pass user ID to support user-scoped conversations
+      userId,
       title,
       provider_id,
       model,
@@ -162,7 +135,7 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
       verbosity,
       metadata: sysPrompt ? { system_prompt: sysPrompt } : {}
     });
-    const convo = getConversationById({ id, sessionId, userId }); // Pass user context
+    const convo = getConversationById({ id, userId });
     return res.status(201).json(convo);
   } catch (e) {
     console.error('[conversations] create error', e);
@@ -180,17 +153,10 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
 conversationsRouter.get('/v1/conversations/:id', (req, res) => {
   if (!config.persistence.enabled) return notImplemented(res);
   try {
-    const sessionId = req.sessionId;
-    const userId = req.user?.id || null; // Get user ID if authenticated
-
-    // Require either authentication or session for conversation access
-    if (!userId)
-      return res
-        .status(401)
-        .json({ error: 'unauthorized', message: 'Authentication required' });
+    const userId = req.user.id; // Guaranteed by authenticateToken middleware
 
     getDb();
-    const convo = getConversationById({ id: req.params.id, sessionId, userId }); // Pass user context
+    const convo = getConversationById({ id: req.params.id, userId });
     if (!convo) return res.status(404).json({ error: 'not_found' });
 
     const after_seq = req.query.after_seq ? Number(req.query.after_seq) : 0;
@@ -220,17 +186,10 @@ conversationsRouter.get('/v1/conversations/:id', (req, res) => {
 conversationsRouter.delete('/v1/conversations/:id', (req, res) => {
   if (!config.persistence.enabled) return notImplemented(res);
   try {
-    const sessionId = req.sessionId;
-    const userId = req.user?.id || null; // Get user ID if authenticated
-
-    // Require either authentication or session for conversation access
-    if (!userId)
-      return res
-        .status(401)
-        .json({ error: 'unauthorized', message: 'Authentication required' });
+    const userId = req.user.id; // Guaranteed by authenticateToken middleware
 
     getDb();
-    const ok = softDeleteConversation({ id: req.params.id, sessionId, userId }); // Pass user context
+    const ok = softDeleteConversation({ id: req.params.id, userId });
     if (!ok) return res.status(404).json({ error: 'not_found' });
     return res.status(204).end();
   } catch (e) {
@@ -244,17 +203,7 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
   if (!config.persistence.enabled) return notImplemented(res);
   try {
     const sessionId = req.sessionId;
-    const userId = req.user?.id || null;
-    if (!sessionId)
-      return res
-        .status(400)
-        .json({ error: 'bad_request', message: 'Missing session id' });
-
-    if (!userId) {
-      return res
-        .status(401)
-        .json({ error: 'unauthorized', message: 'Authentication required' });
-    }
+    const userId = req.user.id; // Guaranteed by authenticateToken middleware
 
     const { content } = req.body || {};
     if (!content || typeof content !== 'string') {
@@ -269,7 +218,6 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
     const message = updateMessageContent({
       messageId: req.params.messageId,
       conversationId: req.params.id,
-      sessionId,
       userId,
       content: content.trim(),
     });
@@ -279,7 +227,7 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
     }
 
     // Get conversation details for forking
-    const conversation = getConversationById({ id: req.params.id, sessionId, userId });
+    const conversation = getConversationById({ id: req.params.id, userId });
     if (!conversation) {
       return res.status(404).json({ error: 'not_found' });
     }
@@ -298,7 +246,6 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
     // Delete messages after the edited message in the original conversation
     deleteMessagesAfterSeq({
       conversationId: req.params.id,
-      sessionId,
       userId,
       afterSeq: message.seq,
     });

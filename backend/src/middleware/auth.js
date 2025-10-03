@@ -95,15 +95,12 @@ export function optionalAuth(req, res, next) {
 
 /**
  * Middleware to get user from session or token
- * Prioritizes user auth over session-based access
+ * Now requires authentication - session fallback removed as part of Phase 1
  */
 export function getUserContext(req, res, next) {
-  // First try to get authenticated user
-  optionalAuth(req, res, () => {
-    // If no user auth, check session
-    if (!req.user && req.session?.id) {
-      req.sessionId = req.session.id;
-    }
+  // Require authentication
+  authenticateToken(req, res, () => {
+    // User context is now guaranteed by authenticateToken
     next();
   });
 }

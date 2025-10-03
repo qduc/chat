@@ -99,7 +99,7 @@ export class SimplifiedPersistence {
 
     // If conversation ID provided, try to get existing conversation
     if (conversationId) {
-      convo = this.conversationManager.getConversation(conversationId, sessionId, userId);
+      convo = this.conversationManager.getConversation(conversationId, userId);
       if (!convo) {
         // Invalid conversation ID - will auto-create new one
         conversationId = null;
@@ -126,11 +126,11 @@ export class SimplifiedPersistence {
       const settings = await this.persistenceConfig.extractRequestSettingsAsync(bodyIn, userId);
       conversationId = this.conversationManager.createNewConversation({
         sessionId,
-        userId, // Pass user context
+        userId,
         providerId: this.providerId,
         ...settings
       });
-      convo = this.conversationManager.getConversation(conversationId, sessionId, userId);
+      convo = this.conversationManager.getConversation(conversationId, userId);
     }
 
     this.conversationId = conversationId;
@@ -147,7 +147,7 @@ export class SimplifiedPersistence {
 
     if (messages.length > 0) {
       // Sync message history
-      this.conversationManager.syncMessageHistory(this.conversationId, sessionId, userId, messages);
+      this.conversationManager.syncMessageHistory(this.conversationId, userId, messages);
 
       // Generate title if conversation doesn't have one
       if (!this.conversationMeta?.title) {
@@ -158,7 +158,7 @@ export class SimplifiedPersistence {
             const { model: chatModel } = this.persistenceConfig.extractRequestSettings(bodyIn);
             const generated = await this.titleService.generateTitle(lastUser.content, this.providerId, chatModel);
             if (generated) {
-              this.conversationManager.updateTitle(this.conversationId, sessionId, userId, generated);
+              this.conversationManager.updateTitle(this.conversationId, userId, generated);
               this.conversationMeta = { ...this.conversationMeta, title: generated };
             }
           }
@@ -199,7 +199,7 @@ export class SimplifiedPersistence {
 
     try {
       if (updates.needsSystemUpdate) {
-        this.conversationManager.updateMetadata(this.conversationId, sessionId, userId, {
+        this.conversationManager.updateMetadata(this.conversationId, userId, {
           system_prompt: updates.systemPrompt
         });
         this.conversationMeta.metadata = {
@@ -209,17 +209,17 @@ export class SimplifiedPersistence {
       }
 
       if (updates.needsProviderUpdate) {
-        this.conversationManager.updateProviderId(this.conversationId, sessionId, userId, updates.providerId);
+        this.conversationManager.updateProviderId(this.conversationId, userId, updates.providerId);
         this.conversationMeta.providerId = updates.providerId;
       }
 
       if (updates.needsModelUpdate) {
-        this.conversationManager.updateModel(this.conversationId, sessionId, userId, updates.model);
+        this.conversationManager.updateModel(this.conversationId, userId, updates.model);
         this.conversationMeta.model = updates.model;
       }
 
       if (updates.needsActiveToolsUpdate) {
-        this.conversationManager.updateMetadata(this.conversationId, sessionId, userId, {
+        this.conversationManager.updateMetadata(this.conversationId, userId, {
           active_tools: updates.activeTools
         });
         this.conversationMeta.metadata = {
@@ -253,7 +253,7 @@ export class SimplifiedPersistence {
       }
 
       if (Object.keys(settingsToUpdate).length > 0) {
-        this.conversationManager.updateSettings(this.conversationId, sessionId, userId, settingsToUpdate);
+        this.conversationManager.updateSettings(this.conversationId, userId, settingsToUpdate);
       }
     } catch (error) {
       // Non-fatal: log and continue

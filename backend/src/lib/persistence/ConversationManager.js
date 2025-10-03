@@ -36,12 +36,11 @@ export class ConversationManager {
   /**
    * Get conversation by ID and validate ownership
    * @param {string} conversationId - Conversation ID
-   * @param {string} sessionId - Session ID
-   * @param {string|null} userId - User ID (if authenticated)
+   * @param {string} userId - User ID
    * @returns {Object|null} Conversation object or null if not found
    */
-  getConversation(conversationId, sessionId, userId = null) {
-    return getConversationById({ id: conversationId, sessionId, userId });
+  getConversation(conversationId, userId) {
+    return getConversationById({ id: conversationId, userId });
   }
 
   /**
@@ -73,13 +72,12 @@ export class ConversationManager {
   /**
    * Clear all messages for a conversation and insert new ones
    * @param {string} conversationId - Conversation ID
-   * @param {string} sessionId - Session ID
-   * @param {string|null} userId - User ID (if authenticated)
+   * @param {string} userId - User ID
    * @param {Array} messages - Array of messages to insert
    */
-  syncMessageHistory(conversationId, sessionId, userId = null, messages) {
+  syncMessageHistory(conversationId, userId, messages) {
     // Clear existing messages
-    clearAllMessages({ conversationId, sessionId, userId });
+    clearAllMessages({ conversationId, userId });
 
     // Insert new messages in sequence
     let seq = 1;
@@ -140,52 +138,47 @@ export class ConversationManager {
   /**
    * Update conversation title
    * @param {string} conversationId - Conversation ID
-   * @param {string} sessionId - Session ID
-   * @param {string|null} userId - User ID (if authenticated)
+   * @param {string} userId - User ID
    * @param {string} title - New title
    */
-  updateTitle(conversationId, sessionId, userId = null, title) {
-    updateConversationTitle({ id: conversationId, sessionId, userId, title });
+  updateTitle(conversationId, userId, title) {
+    updateConversationTitle({ id: conversationId, userId, title });
   }
 
   /**
    * Update conversation metadata
    * @param {string} conversationId - Conversation ID
-   * @param {string} sessionId - Session ID
-   * @param {string|null} userId - User ID (if authenticated)
+   * @param {string} userId - User ID
    * @param {Object} metadataPatch - Metadata updates
    */
-  updateMetadata(conversationId, sessionId, userId = null, metadataPatch) {
-    updateConversationMetadata({ id: conversationId, sessionId, userId, patch: metadataPatch });
+  updateMetadata(conversationId, userId, metadataPatch) {
+    updateConversationMetadata({ id: conversationId, userId, patch: metadataPatch });
   }
 
   /**
    * Update conversation provider ID
    * @param {string} conversationId - Conversation ID
-   * @param {string} sessionId - Session ID
-   * @param {string|null} userId - User ID (if authenticated)
+   * @param {string} userId - User ID
    * @param {string} providerId - New provider ID
    */
-  updateProviderId(conversationId, sessionId, userId = null, providerId) {
-    updateConversationProviderId({ id: conversationId, sessionId, userId, providerId });
+  updateProviderId(conversationId, userId, providerId) {
+    updateConversationProviderId({ id: conversationId, userId, providerId });
   }
 
   /**
    * Update conversation model
    * @param {string} conversationId - Conversation ID
-   * @param {string} sessionId - Session ID
-   * @param {string|null} userId - User ID (if authenticated)
+   * @param {string} userId - User ID
    * @param {string} model - New model
    */
-  updateModel(conversationId, sessionId, userId = null, model) {
-    updateConversationModel({ id: conversationId, sessionId, userId, model });
+  updateModel(conversationId, userId, model) {
+    updateConversationModel({ id: conversationId, userId, model });
   }
 
   /**
    * Update conversation settings (streaming, tools, quality, reasoning, verbosity)
    * @param {string} conversationId - Conversation ID
-   * @param {string} sessionId - Session ID
-   * @param {string|null} userId - User ID (if authenticated)
+   * @param {string} userId - User ID
    * @param {Object} settings - Settings to update
    * @param {boolean} [settings.streamingEnabled] - Enable streaming
    * @param {boolean} [settings.toolsEnabled] - Enable tools
@@ -193,7 +186,7 @@ export class ConversationManager {
    * @param {string} [settings.reasoningEffort] - Reasoning effort
    * @param {string} [settings.verbosity] - Verbosity level
    */
-  updateSettings(conversationId, sessionId, userId = null, settings) {
-    updateConversationSettings({ id: conversationId, sessionId, userId, ...settings });
+  updateSettings(conversationId, userId, settings) {
+    updateConversationSettings({ id: conversationId, userId, ...settings });
   }
 }

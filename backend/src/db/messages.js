@@ -256,26 +256,20 @@ export function getLastAssistantResponseId({ conversationId }) {
   return message?.response_id || null;
 }
 
-export function updateMessageContent({ messageId, conversationId, sessionId, userId = null, content }) {
+export function updateMessageContent({ messageId, conversationId, userId, content }) {
+  if (!userId) {
+    throw new Error('userId is required');
+  }
+
   const db = getDb();
   const now = new Date().toISOString();
 
-  let query = `SELECT m.id, m.conversation_id, m.role, m.seq
+  const query = `SELECT m.id, m.conversation_id, m.role, m.seq
      FROM messages m
      JOIN conversations c ON m.conversation_id = c.id
-     WHERE m.id = @messageId AND c.id = @conversationId AND c.deleted_at IS NULL`;
+     WHERE m.id = @messageId AND c.id = @conversationId AND c.deleted_at IS NULL AND c.user_id = @userId`;
 
-  const params = { messageId, conversationId, sessionId, userId };
-
-  if (userId) {
-    query += ` AND c.user_id = @userId`;
-  } else if (sessionId) {
-    query += ` AND c.session_id = @sessionId AND c.user_id IS NULL`;
-  } else {
-    return null;
-  }
-
-  const message = db.prepare(query).get(params);
+  const message = db.prepare(query).get({ messageId, conversationId, userId });
 
   if (!message) return null;
 
@@ -286,21 +280,15 @@ export function updateMessageContent({ messageId, conversationId, sessionId, use
   return message;
 }
 
-export function deleteMessagesAfterSeq({ conversationId, sessionId, userId = null, afterSeq }) {
-  const db = getDb();
-
-  let query = `SELECT id FROM conversations WHERE id = @conversationId AND deleted_at IS NULL`;
-  const params = { conversationId, sessionId, userId };
-
-  if (userId) {
-    query += ` AND user_id = @userId`;
-  } else if (sessionId) {
-    query += ` AND session_id = @sessionId AND user_id IS NULL`;
-  } else {
-    return false;
+export function deleteMessagesAfterSeq({ conversationId, userId, afterSeq }) {
+  if (!userId) {
+    throw new Error('userId is required');
   }
 
-  const conversation = db.prepare(query).get(params);
+  const db = getDb();
+
+  const query = `SELECT id FROM conversations WHERE id = @conversationId AND deleted_at IS NULL AND user_id = @userId`;
+  const conversation = db.prepare(query).get({ conversationId, userId });
 
   if (!conversation) return false;
 
@@ -311,21 +299,15 @@ export function deleteMessagesAfterSeq({ conversationId, sessionId, userId = nul
   return result.changes > 0;
 }
 
-export function clearAllMessages({ conversationId, sessionId, userId = null }) {
-  const db = getDb();
-
-  let query, params;
-
-  // Support both user-based and session-based access for backward compatibility
-  if (userId) {
-    query = `SELECT id FROM conversations WHERE id = @conversationId AND (user_id = @userId OR (user_id IS NULL AND session_id = @sessionId)) AND deleted_at IS NULL`;
-    params = { conversationId, userId, sessionId };
-  } else {
-    query = `SELECT id FROM conversations WHERE id = @conversationId AND session_id = @sessionId AND user_id IS NULL AND deleted_at IS NULL`;
-    params = { conversationId, sessionId };
+export function clearAllMessages({ conversationId, userId }) {
+  if (!userId) {
+    throw new Error('userId is required');
   }
 
-  const conversation = db.prepare(query).get(params);
+  const db = getDb();
+
+  const query = `SELECT id FROM conversations WHERE id = @conversationId AND user_id = @userId AND deleted_at IS NULL`;
+  const conversation = db.prepare(query).get({ conversationId, userId });
 
   if (!conversation) return false;
 
