@@ -1,3 +1,12 @@
+/**
+ * Reference synchronization hook
+ *
+ * Synchronizes critical state values to refs for immediate synchronous access.
+ * This prevents race conditions when values are needed before React state commits.
+ *
+ * @module useRefSync
+ */
+
 import { useEffect, useRef } from 'react';
 import type { ChatState } from '../types';
 
@@ -7,6 +16,16 @@ import type { ChatState } from '../types';
  * This hook keeps refs in sync with React state to avoid race conditions
  * when immediate access to the latest values is needed (e.g., during
  * regenerate/send operations before React state has flushed).
+ *
+ * @param state - Current chat state
+ * @returns Object containing all synchronized refs
+ *
+ * @example
+ * ```typescript
+ * const refs = useRefSync(state);
+ * // Access current model synchronously
+ * const model = refs.modelRef.current;
+ * ```
  */
 export function useRefSync(state: ChatState) {
   const modelRef = useRef(state.model);

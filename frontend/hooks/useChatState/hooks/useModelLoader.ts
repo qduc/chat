@@ -1,12 +1,28 @@
+/**
+ * Model loader hook
+ *
+ * Manages loading and synchronization of provider and model data from the backend.
+ * Handles provider filtering, model capability detection, and model selection state.
+ *
+ * @module useModelLoader
+ */
+
 import { useCallback, useEffect } from 'react';
 import type { ChatAction } from '../types';
 import type { Group as TabGroup, Option as ModelOption } from '../../../components/ui/TabbedSelect';
 import { httpClient } from '../../../lib/http/client';
 
+/**
+ * Props for the useModelLoader hook
+ */
 export interface UseModelLoaderProps {
+  /** Whether authentication is ready */
   authReady: boolean;
+  /** Current authenticated user */
   user: any;
+  /** Ref to current model for synchronous access */
   modelRef: React.RefObject<string>;
+  /** Dispatch function for chat state updates */
   dispatch: React.Dispatch<ChatAction>;
 }
 
@@ -15,6 +31,21 @@ export interface UseModelLoaderProps {
  *
  * Handles fetching provider list, model list per provider,
  * and managing model selection state.
+ *
+ * @param props - Configuration object
+ * @returns Object containing conversation manager and refresh function
+ *
+ * @example
+ * ```typescript
+ * const { loadProvidersAndModels } = useModelLoader({
+ *   authReady,
+ *   user,
+ *   modelRef,
+ *   dispatch
+ * });
+ *
+ * await loadProvidersAndModels();
+ * ```
  */
 export function useModelLoader({ authReady, user, modelRef, dispatch }: UseModelLoaderProps) {
   const loadProvidersAndModels = useCallback(async () => {

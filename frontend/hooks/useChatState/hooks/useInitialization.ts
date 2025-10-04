@@ -1,9 +1,24 @@
+/**
+ * Initialization hook
+ *
+ * Handles application state initialization from localStorage and authentication context.
+ * Syncs sidebar state, model selection, and user authentication on app startup.
+ *
+ * @module useInitialization
+ */
+
 import { useEffect } from 'react';
 import type { ChatAction } from '../types';
 
+/**
+ * Props for the useInitialization hook
+ */
 export interface UseInitializationProps {
+  /** Dispatch function for chat state updates */
   dispatch: React.Dispatch<ChatAction>;
+  /** Whether authentication is ready */
   authReady: boolean;
+  /** Current authenticated user */
   user: any;
 }
 
@@ -11,6 +26,17 @@ export interface UseInitializationProps {
  * Hook for initializing state from localStorage and auth context
  *
  * Handles loading sidebar state, selected model, and syncing auth state.
+ *
+ * @param props - Configuration object
+ *
+ * @example
+ * ```typescript
+ * useInitialization({
+ *   dispatch,
+ *   authReady,
+ *   user
+ * });
+ * ```
  */
 export function useInitialization({ dispatch, authReady, user }: UseInitializationProps) {
   // Sync authentication state from AuthContext

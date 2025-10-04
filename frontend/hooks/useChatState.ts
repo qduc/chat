@@ -1,4 +1,57 @@
-import React, { useReducer, useMemo } from 'react';
+/**
+ * useChatState - Main chat state management hook
+ *
+ * A comprehensive React hook that manages all chat-related state and operations.
+ * This hook has been refactored into a modular architecture with clear separation
+ * of concerns across multiple sub-modules.
+ *
+ * ## Architecture
+ *
+ * The hook is composed of:
+ * - **State Management**: useReducer with domain-specific sub-reducers
+ * - **Action Creators**: Factory functions for creating action objects
+ * - **Custom Hooks**: Specialized hooks for different functionalities
+ * - **Utilities**: Helper functions for streaming, config building, etc.
+ *
+ * ## Key Features
+ *
+ * - 🔐 **Authentication**: User state and auth-aware operations
+ * - 💬 **Chat Operations**: Send, regenerate, streaming support
+ * - 📝 **Conversations**: Load, select, delete, pagination
+ * - ⚙️ **Settings**: Model, provider, tools, reasoning controls
+ * - ✏️ **Editing**: Message edit workflow
+ * - 🖼️ **Images**: Multi-image attachment support
+ * - 🛠️ **Tools**: Server-side tool orchestration
+ *
+ * ## Usage
+ *
+ * ```typescript
+ * const { state, actions } = useChatState();
+ *
+ * // Send a message
+ * await actions.sendMessage();
+ *
+ * // Select a conversation
+ * await actions.selectConversation('conv-123');
+ *
+ * // Update settings
+ * actions.setModel('gpt-4');
+ * actions.setQualityLevel('thorough');
+ * ```
+ *
+ * ## State Structure
+ *
+ * See `ChatState` type in `./useChatState/types.ts` for complete state shape.
+ *
+ * ## Actions
+ *
+ * All actions are available through the `actions` object returned by the hook.
+ * See individual action creator modules for detailed documentation.
+ *
+ * @module useChatState
+ */
+
+import { useReducer, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 
 // Import from refactored modules
@@ -27,6 +80,27 @@ export type { PendingState, ChatState, ChatAction, ToolSpec };
 
 // Note: ChatState, ChatAction, initialState, chatReducer, and utilities are now imported from ./useChatState/
 
+/**
+ * Main chat state management hook
+ *
+ * @returns Object containing state and actions
+ * @returns {ChatState} state - Current chat state
+ * @returns {Object} actions - All available actions
+ *
+ * @example
+ * ```typescript
+ * function ChatComponent() {
+ *   const { state, actions } = useChatState();
+ *
+ *   return (
+ *     <div>
+ *       <button onClick={actions.sendMessage}>Send</button>
+ *       <div>{state.messages.map(msg => ...)}</div>
+ *     </div>
+ *   );
+ * }
+ * ```
+ */
 export function useChatState() {
   const { user, ready: authReady } = useAuth();
   const [state, dispatch] = useReducer(chatReducer, initialState);

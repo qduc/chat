@@ -1,9 +1,23 @@
+/**
+ * Stream handlers hook
+ *
+ * Manages streaming event processing for chat completions including
+ * token updates, tool calls, tool outputs, and usage metadata.
+ * Implements throttling for performance optimization.
+ *
+ * @module useStreamHandlers
+ */
+
 import { useCallback, useRef } from 'react';
 import type { ChatMessage } from '../../../lib/chat';
 import type { ChatAction } from '../types';
 import { extractTextFromContent, stringToMessageContent } from '../../../lib/chat/content-utils';
 
+/**
+ * Props for the useStreamHandlers hook
+ */
 export interface UseStreamHandlersProps {
+  /** Dispatch function for chat state updates */
   dispatch: React.Dispatch<ChatAction>;
 }
 
@@ -12,6 +26,19 @@ export interface UseStreamHandlersProps {
  *
  * Manages stream token updates and stream events (tool calls, tool outputs, usage)
  * with throttling for performance.
+ *
+ * @param props - Configuration object
+ * @returns Object containing refs and handler functions
+ *
+ * @example
+ * ```typescript
+ * const { assistantMsgRef, throttleTimerRef, handleStreamToken, handleStreamEvent } = useStreamHandlers({
+ *   dispatch
+ * });
+ *
+ * handleStreamToken('Hello');
+ * handleStreamEvent({ type: 'tool_call', data: {...} });
+ * ```
  */
 export function useStreamHandlers({ dispatch }: UseStreamHandlersProps) {
   const assistantMsgRef = useRef<ChatMessage | null>(null);

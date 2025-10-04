@@ -1,10 +1,26 @@
+/**
+ * Conversation loader hook
+ *
+ * Manages conversation list loading, pagination, and state management.
+ * Handles both authenticated and unauthenticated states, plus backend
+ * conversation history feature detection.
+ *
+ * @module useConversationLoader
+ */
+
 import { useCallback, useEffect, useMemo } from 'react';
 import type { ChatAction } from '../types';
 import { ConversationManager } from '../../../lib/chat';
 
+/**
+ * Props for the useConversationLoader hook
+ */
 export interface UseConversationLoaderProps {
+  /** Whether authentication is ready */
   authReady: boolean;
+  /** Current authenticated user */
   user: any;
+  /** Dispatch function for chat state updates */
   dispatch: React.Dispatch<ChatAction>;
 }
 
@@ -13,6 +29,21 @@ export interface UseConversationLoaderProps {
  *
  * Handles fetching conversation list, pagination,
  * and managing conversation state.
+ *
+ * @param props - Configuration object
+ * @returns Object containing conversation manager and refresh function
+ *
+ * @example
+ * ```typescript
+ * const { conversationManager, refreshConversations } = useConversationLoader({
+ *   authReady,
+ *   user,
+ *   dispatch
+ * });
+ *
+ * await refreshConversations();
+ * const conv = await conversationManager.get('conv-123');
+ * ```
  */
 export function useConversationLoader({ authReady, user, dispatch }: UseConversationLoaderProps) {
   const conversationManager = useMemo(() => new ConversationManager(), []);

@@ -1,12 +1,28 @@
+/**
+ * Chat helpers hook
+ *
+ * Provides core chat functionality including configuration building and
+ * send operation execution. Handles conversation management, streaming,
+ * tool integration, and response processing.
+ *
+ * @module useChatHelpers
+ */
+
 import { useCallback, useRef } from 'react';
 import type { ChatMessage, Role } from '../../../lib/chat';
 import type { ChatState, ChatAction } from '../types';
 import { sendChat } from '../../../lib/chat';
 import { extractTextFromContent } from '../../../lib/chat/content-utils';
 
+/**
+ * Props for the useChatHelpers hook
+ */
 export interface UseChatHelpersProps {
+  /** Current chat state */
   state: ChatState;
+  /** Dispatch function for chat state updates */
   dispatch: React.Dispatch<ChatAction>;
+  /** Object containing all state refs for synchronous access */
   refs: {
     modelRef: React.RefObject<string>;
     providerRef: React.RefObject<string | null>;
@@ -18,11 +34,17 @@ export interface UseChatHelpersProps {
     verbosityRef: React.RefObject<string>;
     qualityLevelRef: React.RefObject<string>;
   };
+  /** Ref to current assistant message being streamed */
   assistantMsgRef: React.RefObject<ChatMessage | null>;
+  /** Ref to throttle timer for streaming updates */
   throttleTimerRef: React.RefObject<NodeJS.Timeout | null>;
+  /** Conversation manager API client */
   conversationManager: any;
+  /** Handler for streaming events */
   handleStreamEvent: (event: any) => void;
+  /** Handler for streaming tokens */
   handleStreamToken: (token: string) => void;
+  /** Function to refresh conversation list */
   refreshConversations: () => Promise<void>;
 }
 
@@ -30,6 +52,27 @@ export interface UseChatHelpersProps {
  * Hook for chat helper functions
  *
  * Handles building chat configuration and executing send operations.
+ *
+ * @param props - Configuration object
+ * @returns Object containing in-flight ref, config builder, and send function
+ *
+ * @example
+ * ```typescript
+ * const { inFlightRef, buildSendChatConfig, runSend } = useChatHelpers({
+ *   state,
+ *   dispatch,
+ *   refs,
+ *   assistantMsgRef,
+ *   throttleTimerRef,
+ *   conversationManager,
+ *   handleStreamEvent,
+ *   handleStreamToken,
+ *   refreshConversations
+ * });
+ *
+ * const config = buildSendChatConfig(messages, signal);
+ * await runSend(config);
+ * ```
  */
 export function useChatHelpers({
   state,

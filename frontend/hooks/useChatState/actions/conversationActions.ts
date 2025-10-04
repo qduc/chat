@@ -1,14 +1,50 @@
+/**
+ * Conversation management action creators
+ *
+ * Handles conversation lifecycle including selection, loading, deletion,
+ * and pagination. Manages conversation-level settings restoration when
+ * selecting existing conversations.
+ *
+ * @module conversationActions
+ */
+
 import type { Role, ConversationManager } from '../../../lib/chat';
 import type { QualityLevel } from '../../../components/ui/QualitySlider';
 import type { ChatState, ChatAction } from '../types';
 
+/**
+ * Props for creating conversation actions
+ */
 export interface ConversationActionsProps {
+  /** Current chat state */
   state: ChatState;
+  /** Dispatch function for chat state updates */
   dispatch: React.Dispatch<ChatAction>;
+  /** Conversation manager API client */
   conversationManager: ConversationManager;
+  /** Function to stop current streaming */
   stopStreaming: () => void;
 }
 
+/**
+ * Creates conversation action creators
+ *
+ * @param props - Configuration object
+ * @returns Object containing conversation action functions
+ *
+ * @example
+ * ```typescript
+ * const conversationActions = createConversationActions({
+ *   state,
+ *   dispatch,
+ *   conversationManager,
+ *   stopStreaming
+ * });
+ *
+ * await conversationActions.selectConversation('conv-123');
+ * await conversationActions.deleteConversation('conv-456');
+ * ```
+ */
 export function createConversationActions({
   state,
   dispatch,
@@ -16,6 +52,12 @@ export function createConversationActions({
   stopStreaming,
 }: ConversationActionsProps) {
   return {
+    /**
+     * Selects and loads a conversation by ID
+     * Stops any ongoing streaming, loads messages and conversation settings
+     *
+     * @param id - Conversation ID to select
+     */
     selectConversation: async (id: string) => {
       if (state.status === 'streaming') {
         stopStreaming();
@@ -82,6 +124,10 @@ export function createConversationActions({
       }
     },
 
+    /**
+     * Loads more conversations using cursor-based pagination
+     * Only loads if there is a next cursor and not already loading
+     */
     loadMoreConversations: async () => {
       if (!state.nextCursor || state.loadingConversations) return;
 
@@ -97,6 +143,11 @@ export function createConversationActions({
       }
     },
 
+    /**
+     * Deletes a conversation by ID
+     *
+     * @param id - Conversation ID to delete
+     */
     deleteConversation: async (id: string) => {
       try {
         await conversationManager.delete(id);
