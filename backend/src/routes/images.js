@@ -16,7 +16,8 @@ const IMAGE_CONFIG = {
   maxImagesPerMessage: 5,
   allowedFormats: ['jpeg', 'jpg', 'png', 'webp', 'gif'],
   storageProvider: 'local',
-  localStoragePath: './data/images',
+  // Allow overriding storage path via env so it can be mounted to a volume
+  localStoragePath: process.env.IMAGE_STORAGE_PATH || './data/images',
   enableCompression: true,
   compressionQuality: 0.8,
   generateThumbnails: false, // Disable for now

@@ -9,10 +9,14 @@ services:
       - ./backend:/app
       - /app/node_modules
       - db_data:/data
+      # store uploaded images in a separate named volume mounted at /data/images
+      - images_data:/data/images
     ports:
       - "4001:3001"
     environment:
       - NODE_ENV=development
+      # Store uploaded images on persistent docker volume
+      - IMAGE_STORAGE_PATH=/data/images
       # Allow CORS from dev frontend port
       - ALLOWED_ORIGIN=http://localhost:3003
       # Optional: stabilize file watching inside container
@@ -68,4 +72,6 @@ networks:
 
 volumes:
   db_data:
+    driver: local
+  images_data:
     driver: local
