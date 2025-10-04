@@ -97,7 +97,8 @@ export function applyStreamToken(
       const newContent = fullContent !== undefined
         ? fullContent
         : (m.content ?? '') + token;
-      return { ...m, content: newContent };
+      // Only create new object if content actually changed
+      return newContent !== m.content ? { ...m, content: newContent } : m;
     }
     return m;
   });
@@ -109,7 +110,9 @@ export function applyStreamToken(
         const newContent = fullContent !== undefined
           ? fullContent
           : (next[i].content ?? '') + token;
-        next[i] = { ...next[i], content: newContent };
+        if (newContent !== next[i].content) {
+          next[i] = { ...next[i], content: newContent };
+        }
         break;
       }
     }
@@ -126,21 +129,26 @@ export function applyStreamToolCall(
   messageId: string,
   toolCall: any
 ): any[] {
+  let updated = false;
   const next = messages.map(m => {
     if (m.id === messageId) {
+      updated = true;
       const tool_calls = upsertToolCall(m.tool_calls, toolCall);
-      return { ...m, tool_calls };
+      // Only create new object if tool_calls changed
+      return tool_calls !== m.tool_calls ? { ...m, tool_calls } : m;
     }
     return m;
   });
 
   // Fallback in case message id not matched yet
-  if (!next.some(m => m.id === messageId)) {
+  if (!updated) {
     for (let i = next.length - 1; i >= 0; i--) {
       if (next[i].role === 'assistant') {
         const m: any = next[i];
         const tool_calls = upsertToolCall(m.tool_calls, toolCall);
-        next[i] = { ...m, tool_calls };
+        if (tool_calls !== m.tool_calls) {
+          next[i] = { ...m, tool_calls };
+        }
         break;
       }
     }
@@ -161,7 +169,12 @@ export function applyStreamToolOutput(
   const next = messages.map(m => {
     if (m.id === messageId) {
       updated = true;
-      return { ...m, tool_outputs: [...(m.tool_outputs || []), toolOutput] };
+      const tool_outputs = [...(m.tool_outputs || []), toolOutput];
+      // Check if this exact tool output already exists
+      const alreadyExists = m.tool_outputs?.some((to: any) =>
+        JSON.stringify(to) === JSON.stringify(toolOutput)
+      );
+      return alreadyExists ? m : { ...m, tool_outputs };
     }
     return m;
   });
@@ -169,8 +182,14 @@ export function applyStreamToolOutput(
   if (!updated) {
     for (let i = next.length - 1; i >= 0; i--) {
       if (next[i].role === 'assistant') {
-        const to = [...((next[i] as any).tool_outputs || []), toolOutput];
-        next[i] = { ...(next[i] as any), tool_outputs: to };
+        const existing = (next[i] as any).tool_outputs || [];
+        const alreadyExists = existing.some((to: any) =>
+          JSON.stringify(to) === JSON.stringify(toolOutput)
+        );
+        if (!alreadyExists) {
+          const to = [...existing, toolOutput];
+          next[i] = { ...(next[i] as any), tool_outputs: to };
+        }
         break;
       }
     }
@@ -187,18 +206,27 @@ export function applyStreamUsage(
   messageId: string,
   usage: any
 ): any[] {
+  let updated = false;
   const next = messages.map(m => {
     if (m.id === messageId) {
-      return { ...m, usage: { ...m.usage, ...usage } };
+      updated = true;
+      const newUsage = { ...m.usage, ...usage };
+      // Only create a new object if usage actually changed
+      const usageChanged = JSON.stringify(m.usage) !== JSON.stringify(newUsage);
+      return usageChanged ? { ...m, usage: newUsage } : m;
     }
     return m;
   });
 
   // Fallback: update last assistant message if ID not matched
-  if (!next.some(m => m.id === messageId)) {
+  if (!updated) {
     for (let i = next.length - 1; i >= 0; i--) {
       if (next[i].role === 'assistant') {
-        next[i] = { ...next[i], usage: { ...next[i].usage, ...usage } };
+        const newUsage = { ...next[i].usage, ...usage };
+        const usageChanged = JSON.stringify(next[i].usage) !== JSON.stringify(newUsage);
+        if (usageChanged) {
+          next[i] = { ...next[i], usage: newUsage };
+        }
         break;
       }
     }
