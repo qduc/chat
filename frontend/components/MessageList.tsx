@@ -615,7 +615,8 @@ const Message = React.memo<MessageProps>(function Message({
     prev.pending.streaming === next.pending.streaming &&
     prev.collapsedToolOutputs === next.collapsedToolOutputs &&
     prev.copiedMessageId === next.copiedMessageId &&
-    prev.streamingStats?.tokensPerSecond === next.streamingStats?.tokensPerSecond
+    prev.streamingStats?.tokensPerSecond === next.streamingStats?.tokensPerSecond &&
+    prev.editingImages === next.editingImages
   );
 });
 
