@@ -219,6 +219,42 @@ describe('ConversationTitleService', () => {
       assert.ok(result.length <= 80);
       assert.ok(result.endsWith('…'));
     });
+
+    test('should handle mixed content with text and images', async () => {
+      const mixedContent = [
+        { type: 'text', text: 'What do you see' },
+        { type: 'image_url', image_url: { url: 'http://example.com/image.jpg', detail: 'auto' } }
+      ];
+
+      mockProviderIsConfigured = () => Promise.resolve(true);
+      mockCreateOpenAIRequest = () => Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({
+          choices: [{
+            message: {
+              content: 'Image Analysis',
+            },
+          }],
+        }),
+      });
+
+      const result = await titleService.generateTitle(mixedContent, 'test-provider');
+
+      assert.equal(result, 'Image Analysis');
+    });
+
+    test('should fallback for mixed content when API fails', async () => {
+      const mixedContent = [
+        { type: 'text', text: 'What do you see' },
+        { type: 'image_url', image_url: { url: 'http://example.com/image.jpg', detail: 'auto' } }
+      ];
+
+      mockProviderIsConfigured = () => Promise.resolve(false);
+
+      const result = await titleService.generateTitle(mixedContent, 'test-provider');
+
+      assert.equal(result, 'What do you see');
+    });
   });
 
   describe('extractSystemPrompt', () => {
@@ -302,6 +338,82 @@ describe('ConversationTitleService', () => {
       const result = ConversationTitleService.findLastUserMessage(messages);
 
       assert.equal(result.content, 'Valid');
+    });
+
+    test('should find user message with mixed content', () => {
+      const messages = [
+        { role: 'user', content: 'String message' },
+        { role: 'assistant', content: 'Response' },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Mixed content' },
+            { type: 'image_url', image_url: { url: 'http://example.com/image.jpg' } }
+          ]
+        },
+      ];
+
+      const result = ConversationTitleService.findLastUserMessage(messages);
+
+      assert.ok(Array.isArray(result.content));
+      assert.equal(result.content[0].text, 'Mixed content');
+    });
+  });
+
+  describe('extractTextFromContent', () => {
+    test('should return string content as-is', () => {
+      const content = 'Simple text message';
+      const result = ConversationTitleService.extractTextFromContent(content);
+
+      assert.equal(result, 'Simple text message');
+    });
+
+    test('should extract text from mixed content array', () => {
+      const content = [
+        { type: 'text', text: 'What do you see' },
+        { type: 'image_url', image_url: { url: 'http://example.com/image.jpg' } },
+        { type: 'text', text: 'in this picture?' }
+      ];
+
+      const result = ConversationTitleService.extractTextFromContent(content);
+
+      assert.equal(result, 'What do you see in this picture?');
+    });
+
+    test('should handle mixed content with only images', () => {
+      const content = [
+        { type: 'image_url', image_url: { url: 'http://example.com/image.jpg' } }
+      ];
+
+      const result = ConversationTitleService.extractTextFromContent(content);
+
+      assert.equal(result, '');
+    });
+
+    test('should handle empty array', () => {
+      const content = [];
+      const result = ConversationTitleService.extractTextFromContent(content);
+
+      assert.equal(result, '');
+    });
+
+    test('should handle null/undefined content', () => {
+      assert.equal(ConversationTitleService.extractTextFromContent(null), '');
+      assert.equal(ConversationTitleService.extractTextFromContent(undefined), '');
+    });
+
+    test('should filter out invalid text parts', () => {
+      const content = [
+        { type: 'text', text: 'Valid text' },
+        { type: 'text' }, // Missing text property
+        { type: 'text', text: null }, // Null text
+        { type: 'image_url', image_url: { url: 'http://example.com/image.jpg' } },
+        { type: 'text', text: 'More valid text' }
+      ];
+
+      const result = ConversationTitleService.extractTextFromContent(content);
+
+      assert.equal(result, 'Valid text More valid text');
     });
   });
 });

@@ -19,7 +19,7 @@ export class ConversationTitleService {
    */
   async generateTitle(content, providerId, model = null) {
     try {
-      const text = String(content || '').trim();
+      const text = ConversationTitleService.extractTextFromContent(content).trim();
       if (!text) return null;
 
       // Check if provider is configured for API requests
@@ -33,7 +33,7 @@ export class ConversationTitleService {
     } catch (error) {
       // Log error but don't throw - title generation is non-critical
       console.warn('[ConversationTitleService] Title generation failed:', error?.message || error);
-      return this.generateFallbackTitle(String(content || ''));
+      return this.generateFallbackTitle(ConversationTitleService.extractTextFromContent(content));
     }
   }
 
@@ -124,6 +124,26 @@ export class ConversationTitleService {
 
     return [...nonSystemMessages]
       .reverse()
-      .find(m => m && m.role === 'user' && typeof m.content === 'string') || null;
+      .find(m => m && m.role === 'user' && (typeof m.content === 'string' || Array.isArray(m.content))) || null;
+  }
+
+  /**
+   * Extract text content from message content (string or mixed content array)
+   * @param {string|Array} content - Message content
+   * @returns {string} Extracted text content
+   */
+  static extractTextFromContent(content) {
+    if (typeof content === 'string') {
+      return content;
+    }
+
+    if (Array.isArray(content)) {
+      return content
+        .filter(part => part && part.type === 'text' && typeof part.text === 'string')
+        .map(part => part.text)
+        .join(' ');
+    }
+
+    return '';
   }
 }
