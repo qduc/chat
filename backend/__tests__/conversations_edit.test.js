@@ -131,4 +131,106 @@ describe('PUT /v1/conversations/:id/messages/:messageId/edit', () => {
       assert.equal(newBody.messages[0].content, 'Hello world');
     });
   });
+
+  test('edits message with images - preserves image content when text is updated', async () => {
+    // Seed a conversation with a message containing mixed content (text + image)
+    const convId = 'conv-edit-images-1';
+    createConversation({ id: convId, sessionId, userId, title: 'Image Edit Test', model: 'm1' });
+
+    const mixedContent = [
+      { type: 'text', text: 'Check out this imge:' }, // Typo to fix
+      { type: 'image_url', image_url: { url: 'http://localhost:3001/v1/images/test-img-123', detail: 'auto' } }
+    ];
+
+    const u1 = insertUserMessage({ conversationId: convId, content: mixedContent, seq: 1 });
+    insertAssistantFinal({ conversationId: convId, content: 'Nice image!', seq: 2, finishReason: 'stop' });
+
+    const app = makeApp();
+    await withServer(app, async (port) => {
+      // Edit message: fix typo but keep the image
+      const updatedContent = [
+        { type: 'text', text: 'Check out this image:' }, // Fixed typo
+        { type: 'image_url', image_url: { url: 'http://localhost:3001/v1/images/test-img-123', detail: 'auto' } }
+      ];
+
+      const res = await fetch(
+        `http://127.0.0.1:${port}/v1/conversations/${convId}/messages/${u1.id}/edit`,
+        {
+          method: 'PUT',
+          headers: makeAuthHeaders(true),
+          body: JSON.stringify({ content: updatedContent }),
+        }
+      );
+
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.ok(Array.isArray(body.message.content), 'Content should be an array');
+      assert.equal(body.message.content.length, 2);
+      assert.equal(body.message.content[0].type, 'text');
+      assert.equal(body.message.content[0].text, 'Check out this image:');
+      assert.equal(body.message.content[1].type, 'image_url');
+      assert.equal(body.message.content[1].image_url.url, 'http://localhost:3001/v1/images/test-img-123');
+      assert.ok(body.new_conversation_id);
+
+      const newConvId = body.new_conversation_id;
+
+      // Verify new conversation has the updated content with preserved image
+      const resNew = await fetch(
+        `http://127.0.0.1:${port}/v1/conversations/${newConvId}`,
+        { headers: makeAuthHeaders() }
+      );
+      const newBody = await resNew.json();
+      assert.equal(newBody.messages.length, 1);
+
+      const editedMessage = newBody.messages[0];
+      assert.ok(Array.isArray(editedMessage.content), 'Edited message content should be an array');
+      assert.equal(editedMessage.content.length, 2);
+      assert.equal(editedMessage.content[0].type, 'text');
+      assert.equal(editedMessage.content[0].text, 'Check out this image:');
+      assert.equal(editedMessage.content[1].type, 'image_url');
+      assert.equal(editedMessage.content[1].image_url.url, 'http://localhost:3001/v1/images/test-img-123');
+    });
+  });
+
+  test('rejects edit with empty content', async () => {
+    const convId = 'conv-edit-empty';
+    createConversation({ id: convId, sessionId, userId, title: 'Empty', model: 'm1' });
+    const u1 = insertUserMessage({ conversationId: convId, content: 'Original', seq: 1 });
+
+    const app = makeApp();
+    await withServer(app, async (port) => {
+      const res = await fetch(
+        `http://127.0.0.1:${port}/v1/conversations/${convId}/messages/${u1.id}/edit`,
+        {
+          method: 'PUT',
+          headers: makeAuthHeaders(true),
+          body: JSON.stringify({ content: '' }),
+        }
+      );
+      assert.equal(res.status, 400);
+      const body = await res.json();
+      assert.equal(body.error, 'bad_request');
+    });
+  });
+
+  test('rejects edit with invalid content type', async () => {
+    const convId = 'conv-edit-invalid';
+    createConversation({ id: convId, sessionId, userId, title: 'Invalid', model: 'm1' });
+    const u1 = insertUserMessage({ conversationId: convId, content: 'Original', seq: 1 });
+
+    const app = makeApp();
+    await withServer(app, async (port) => {
+      const res = await fetch(
+        `http://127.0.0.1:${port}/v1/conversations/${convId}/messages/${u1.id}/edit`,
+        {
+          method: 'PUT',
+          headers: makeAuthHeaders(true),
+          body: JSON.stringify({ content: 123 }), // Invalid: number instead of string/array
+        }
+      );
+      assert.equal(res.status, 400);
+      const body = await res.json();
+      assert.equal(body.error, 'bad_request');
+    });
+  });
 });

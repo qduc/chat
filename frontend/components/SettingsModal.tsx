@@ -136,7 +136,7 @@ export default function SettingsModal({
         await httpClient.put(`${apiBase}/v1/providers/${form.id}`, payload);
       } else {
         // Create new provider with retry logic for ID conflicts
-        let generatedId = generateIdFromName(form.name);
+        const generatedId = generateIdFromName(form.name);
         let attempt = 0;
         const maxAttempts = 5;
 

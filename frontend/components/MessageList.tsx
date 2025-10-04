@@ -15,9 +15,12 @@ import {
 } from 'lucide-react';
 import Markdown from './Markdown';
 import { MessageContentRenderer } from './ui/MessageContentRenderer';
+import { ImagePreview, ImageUploadZone } from './ui/ImagePreview';
 import type { ChatMessage } from '../lib/chat';
 import type { PendingState } from '../hooks/useChatState';
-import { extractTextFromContent } from '../lib/chat/content-utils';
+import type { MessageContent, ImageAttachment, ImageContent } from '../lib/chat/types';
+import { createMixedContent, extractImagesFromContent, extractTextFromContent } from '../lib/chat/content-utils';
+import { imagesClient } from '../lib/chat/images';
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -29,7 +32,7 @@ interface MessageListProps {
   onEditMessage: (messageId: string, content: string) => void;
   onCancelEdit: () => void;
   onSaveEdit: () => void;
-  onApplyLocalEdit: () => void;
+  onApplyLocalEdit: (messageId: string, content: MessageContent) => void;
   onEditingContentChange: (content: string) => void;
   onRetryMessage: (messageId: string) => void;
 }
@@ -168,7 +171,7 @@ interface MessageProps {
   onCopy: (text: string) => void;
   onEditMessage: (messageId: string, content: string) => void;
   onCancelEdit: () => void;
-  onApplyLocalEdit: () => void;
+  onApplyLocalEdit: (messageId: string) => void;
   onEditingContentChange: (content: string) => void;
   onRetryMessage?: (messageId: string) => void;
   editingTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
@@ -180,15 +183,22 @@ interface MessageProps {
   handleCopy: (messageId: string, text: string) => void;
   pending: PendingState;
   streamingStats: { tokensPerSecond: number } | null;
+  // Image editing support
+  editingImages: ImageAttachment[];
+  onEditingImagesChange: (files: File[]) => void;
+  onRemoveEditingImage: (imageId: string) => void;
+  onEditingPaste: (event: React.ClipboardEvent<HTMLTextAreaElement>) => void;
+  onEditingImageUploadClick: () => void;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
 }
 
 const Message = React.memo<MessageProps>(function Message({
   message,
   isStreaming,
-  conversationId,
+  conversationId: _conversationId,
   editingMessageId,
   editingContent,
-  onCopy,
+  onCopy: _onCopy,
   onEditMessage,
   onCancelEdit,
   onApplyLocalEdit,
@@ -203,14 +213,19 @@ const Message = React.memo<MessageProps>(function Message({
   handleCopy,
   pending,
   streamingStats,
+  editingImages,
+  onEditingImagesChange,
+  onRemoveEditingImage,
+  onEditingPaste,
+  onEditingImageUploadClick,
+  fileInputRef,
 }) {
   const isUser = message.role === 'user';
   const isEditing = editingMessageId === message.id;
   const assistantSegments = !isUser ? buildAssistantSegments(message) : [];
 
-  const editTextareaClass = isUser
-    ? 'w-full min-h-[100px] rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-slate-100 text-black dark:bg-slate-700 dark:text-white border border-slate-200/50 dark:border-neutral-700/50 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical'
-    : 'w-full min-h-[100px] rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-vertical';
+  // For editing, check if we have either text or images
+  const canSaveEdit = editingContent.trim().length > 0 || editingImages.length > 0;
 
   return (
     <div
@@ -224,38 +239,80 @@ const Message = React.memo<MessageProps>(function Message({
       )}
       <div className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? 'max-w-[50%] order-first' : 'max-w-[95%]'}`}>
         {isEditing ? (
-          <div className="space-y-2">
-            <textarea
-              ref={editingTextareaRef}
-              value={editingContent}
-              onChange={(e) => onEditingContentChange(e.target.value)}
-              onInput={resizeEditingTextarea}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                  e.preventDefault();
-                  onApplyLocalEdit();
-                }
-              }}
-              className={editTextareaClass}
-              placeholder="Edit your message..."
-              style={{ overflow: 'hidden' }}
-            />
-            <div className="flex gap-2 text-right justify-end">
-              <button
-                onClick={onCancelEdit}
-                className="px-3 py-1.5 text-xs rounded-lg bg-slate-200 hover:bg-slate-300 dark:bg-neutral-700 dark:hover:bg-neutral-600 text-slate-700 dark:text-slate-300 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={onApplyLocalEdit}
-                disabled={!editingContent.trim()}
-                className="px-3 py-1.5 text-xs rounded-lg bg-slate-600 hover:bg-slate-700 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-              >
-                Save
-              </button>
+          <ImageUploadZone onFiles={onEditingImagesChange} disabled={false} fullPage={false}>
+            <div className="space-y-2 rounded-2xl bg-white/95 dark:bg-neutral-900/95 border border-slate-200 dark:border-neutral-700 shadow-sm p-4">
+              {/* Image Previews */}
+              {editingImages.length > 0 && (
+                <div className="pb-2 border-b border-slate-200 dark:border-neutral-700">
+                  <ImagePreview
+                    images={editingImages}
+                    uploadProgress={[]}
+                    onRemove={onRemoveEditingImage}
+                  />
+                </div>
+              )}
+
+              {/* Hidden file input for image upload */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  if (files.length > 0) {
+                    onEditingImagesChange(files);
+                  }
+                  e.target.value = '';
+                }}
+              />
+
+              <textarea
+                ref={editingTextareaRef}
+                value={editingContent}
+                onChange={(e) => onEditingContentChange(e.target.value)}
+                onInput={resizeEditingTextarea}
+                onPaste={onEditingPaste}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+                    e.preventDefault();
+                    onApplyLocalEdit(message.id);
+                  }
+                }}
+                className="w-full min-h-[100px] resize-vertical bg-transparent border-0 outline-none text-base leading-relaxed text-slate-800 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-400"
+                placeholder="Edit your message... (paste or drop images)"
+                style={{ overflow: 'hidden' }}
+              />
+
+              <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-neutral-700">
+                <button
+                  type="button"
+                  onClick={onEditingImageUploadClick}
+                  className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-300 transition-colors"
+                >
+                  <span className="text-sm">📎</span>
+                  {editingImages.length > 0 ? `${editingImages.length} image${editingImages.length > 1 ? 's' : ''}` : 'Add images'}
+                </button>
+
+                <div className="flex gap-2">
+                  <button
+                    onClick={onCancelEdit}
+                    className="px-3 py-1.5 text-xs rounded-lg bg-slate-200 hover:bg-slate-300 dark:bg-neutral-700 dark:hover:bg-neutral-600 text-slate-700 dark:text-slate-300 transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => onApplyLocalEdit(message.id)}
+                    disabled={!canSaveEdit}
+                    className="px-3 py-1.5 text-xs rounded-lg bg-slate-600 hover:bg-slate-700 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Save
+                  </button>
+                </div>
+              </div>
             </div>
-          </div>
+          </ImageUploadZone>
         ) : (
           <>
             {isUser ? (
@@ -299,7 +356,7 @@ const Message = React.memo<MessageProps>(function Message({
                       parsedArgs = typeof toolCall.function?.arguments === 'string'
                         ? JSON.parse(toolCall.function.arguments)
                         : toolCall.function?.arguments || {};
-                    } catch (e) {
+                    } catch {
                       parsedArgs = {};
                     }
 
@@ -567,7 +624,7 @@ export function MessageList({
   onCopy,
   onEditMessage,
   onCancelEdit,
-  onSaveEdit,
+  onSaveEdit: _,
   onApplyLocalEdit,
   onEditingContentChange,
   onRetryMessage
@@ -588,21 +645,116 @@ export function MessageList({
   } | null>(null);
   const [streamingStats, setStreamingStats] = useState<{ tokensPerSecond: number } | null>(null);
 
+  // Editing images state - tracks images being edited
+  const [editingImages, setEditingImages] = useState<ImageAttachment[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // When entering edit mode, initialize editing images from message content
+  useEffect(() => {
+    if (editingMessageId) {
+      const message = messages.find(m => m.id === editingMessageId);
+      if (message) {
+        const imageContents = extractImagesFromContent(message.content);
+        // Convert ImageContent to ImageAttachment for editing
+        const attachments: ImageAttachment[] = imageContents.map((img, idx) => ({
+          id: `edit-${editingMessageId}-${idx}`,
+          file: new File([], 'image'), // Placeholder file
+          url: img.image_url.url,
+          name: `Image ${idx + 1}`,
+          size: 0,
+          type: 'image/*',
+          downloadUrl: img.image_url.url,
+        }));
+        setEditingImages(attachments);
+      }
+    } else {
+      setEditingImages([]);
+    }
+  }, [editingMessageId, messages]);
+
+  // Handle image upload during editing
+  const handleEditingImageFiles = useCallback(async (files: File[]) => {
+    try {
+      const uploadedImages = await imagesClient.uploadImages(files, () => {});
+      setEditingImages(prev => [...prev, ...uploadedImages]);
+    } catch (error) {
+      console.error('Image upload failed during editing:', error);
+    }
+  }, []);
+
+  // Handle image removal during editing
+  const handleRemoveEditingImage = useCallback((imageId: string) => {
+    const imageToRemove = editingImages.find(img => img.id === imageId);
+    if (imageToRemove && imageToRemove.url.startsWith('blob:')) {
+      imagesClient.revokePreviewUrl(imageToRemove.url);
+    }
+    setEditingImages(prev => prev.filter(img => img.id !== imageId));
+  }, [editingImages]);
+
+  // Handle paste in editing textarea
+  const handleEditingPaste = useCallback((event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const items = Array.from(event.clipboardData?.items || []);
+    const files: File[] = [];
+
+    items.forEach(item => {
+      if (item.kind === 'file') {
+        const file = item.getAsFile();
+        if (file && file.type.startsWith('image/')) {
+          files.push(file);
+        }
+      }
+    });
+
+    if (files.length === 0) {
+      const fileList = Array.from(event.clipboardData?.files || []);
+      fileList.forEach(file => {
+        if (file.type.startsWith('image/')) {
+          files.push(file);
+        }
+      });
+    }
+
+    if (files.length > 0) {
+      event.preventDefault();
+      void handleEditingImageFiles(files);
+    }
+  }, [handleEditingImageFiles]);
+
+  // Handle image upload button click
+  const handleEditingImageUploadClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
+
   // Wrapper functions to clear streaming stats when regenerating or editing
   const handleRetryMessage = useCallback((messageId: string) => {
     setStreamingStats(null);
     onRetryMessage(messageId);
   }, [onRetryMessage]);
 
-  const handleApplyLocalEdit = useCallback(() => {
+  const handleApplyLocalEdit = useCallback((messageId: string) => {
     setStreamingStats(null);
-    onApplyLocalEdit();
-  }, [onApplyLocalEdit]);
 
-  const handleSaveEdit = useCallback(() => {
-    setStreamingStats(null);
-    onSaveEdit();
-  }, [onSaveEdit]);
+    const trimmedText = editingContent.trim();
+
+    // Convert editing images (ImageAttachment) to ImageContent for message storage
+    const imageContents: ImageContent[] = editingImages.map(img => ({
+      type: 'image_url' as const,
+      image_url: {
+        url: img.downloadUrl || img.url,
+        detail: 'auto' as const
+      }
+    }));
+
+    if (!trimmedText && imageContents.length === 0) {
+      return;
+    }
+
+    const nextContent = imageContents.length > 0
+      ? createMixedContent(trimmedText, imageContents)
+      : trimmedText;
+
+    onApplyLocalEdit(messageId, nextContent);
+  }, [editingContent, editingImages, onApplyLocalEdit]);
 
   // Handle copy with tooltip feedback
   const handleCopy = (messageId: string, text: string) => {
@@ -773,6 +925,12 @@ export function MessageList({
               handleCopy={handleCopy}
               pending={pending}
               streamingStats={isLastAssistantMessage ? streamingStats : null}
+              editingImages={editingImages}
+              onEditingImagesChange={handleEditingImageFiles}
+              onRemoveEditingImage={handleRemoveEditingImage}
+              onEditingPaste={handleEditingPaste}
+              onEditingImageUploadClick={handleEditingImageUploadClick}
+              fileInputRef={fileInputRef}
             />
           );
         })}

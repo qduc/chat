@@ -10,6 +10,7 @@ import { MessageInput } from './MessageInput';
 import { RightSidebar } from './RightSidebar';
 import SettingsModal from './SettingsModal';
 import { AuthModal, AuthMode } from './auth/AuthModal';
+import type { MessageContent } from '../lib/chat/types';
 
 export function ChatV2() {
   const { state, actions } = useChatState();
@@ -217,30 +218,26 @@ export function ChatV2() {
     actions.regenerate(base);
   }, [state.messages, state.status, actions]);
 
-  const handleApplyLocalEdit = useCallback(async () => {
-    if (!state.editingMessageId || !state.editingContent.trim()) return;
+  const handleApplyLocalEdit = useCallback(async (messageId: string, updatedContent: MessageContent) => {
     if (state.status === 'streaming') {
       actions.stopStreaming();
     }
 
-    const messageId = state.editingMessageId;
-    const content = state.editingContent.trim();
-
-    // Find the message and create base messages
     const idx = state.messages.findIndex(m => m.id === messageId);
     if (idx === -1) return;
 
-    const updatedMessage = { ...state.messages[idx], content };
-    const baseMessages = [...state.messages.slice(0, idx), updatedMessage];
+    const baseMessages = [
+      ...state.messages.slice(0, idx),
+      { ...state.messages[idx], content: updatedContent }
+    ];
 
     actions.setMessages(baseMessages);
     actions.cancelEdit();
 
-    // If last message is user message, could trigger regeneration here
     if (baseMessages.length && baseMessages[baseMessages.length - 1].role === 'user') {
       actions.regenerate(baseMessages);
     }
-  }, [state.editingMessageId, state.editingContent, state.messages, state.status, actions]);
+  }, [state.messages, state.status, actions]);
 
   // Hydrate conversation from URL (?c=...) on first load
   useEffect(() => {

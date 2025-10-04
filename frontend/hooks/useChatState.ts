@@ -1,6 +1,6 @@
 import React, { useReducer, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { ChatMessage, Role, ConversationMeta } from '../lib/chat';
-import type { ImageAttachment } from '../lib/chat/types';
+import type { ImageAttachment, MessageContent } from '../lib/chat/types';
 import type { Group as TabGroup, Option as ModelOption } from '../components/ui/TabbedSelect';
 import { sendChat, getConversationApi, listConversationsApi, deleteConversationApi, editMessageApi, ConversationManager } from '../lib/chat';
 import type { QualityLevel } from '../components/ui/QualitySlider';
@@ -8,7 +8,7 @@ import type { User } from '../lib/auth/api';
 import { useAuth } from '../contexts/AuthContext';
 import { httpClient } from '../lib/http/client';
 import { HttpError } from '../lib/http/types';
-import { extractTextFromContent, stringToMessageContent, createMixedContent } from '../lib/chat/content-utils';
+import { extractTextFromContent, stringToMessageContent, createMixedContent, extractImagesFromContent } from '../lib/chat/content-utils';
 import { imagesClient } from '../lib/chat/images';
 
 export interface PendingState {
@@ -119,7 +119,7 @@ export type ChatAction =
   | { type: 'START_EDIT'; payload: { messageId: string; content: string } }
   | { type: 'UPDATE_EDIT_CONTENT'; payload: string }
   | { type: 'CANCEL_EDIT' }
-  | { type: 'SAVE_EDIT_SUCCESS'; payload: { messageId: string; content: string; baseMessages: ChatMessage[] } }
+  | { type: 'SAVE_EDIT_SUCCESS'; payload: { messageId: string; content: MessageContent; baseMessages: ChatMessage[] } }
   | { type: 'CLEAR_ERROR' }
   | { type: 'NEW_CHAT' }
   | { type: 'SYNC_ASSISTANT'; payload: ChatMessage }
@@ -1314,26 +1314,35 @@ export function useChatState() {
     }, []),
 
     saveEdit: useCallback(async () => {
-      if (!state.editingMessageId || !state.editingContent.trim()) return;
+      if (!state.editingMessageId) return;
 
       const messageId = state.editingMessageId;
-      const newContent = state.editingContent.trim();
 
-      // Find base messages (up to and including edited message)
       const idx = state.messages.findIndex(m => m.id === messageId);
       if (idx === -1) return;
 
+      const trimmedText = state.editingContent.trim();
+      const targetMessage = state.messages[idx];
+      const existingImages = extractImagesFromContent(targetMessage.content);
+
+      if (!trimmedText && existingImages.length === 0) {
+        return;
+      }
+
+      const nextContent = existingImages.length > 0
+        ? createMixedContent(trimmedText, existingImages)
+        : trimmedText;
+
       const baseMessages = [
         ...state.messages.slice(0, idx),
-        { ...state.messages[idx], content: newContent }
+        { ...targetMessage, content: nextContent }
       ];
 
       dispatch({
         type: 'SAVE_EDIT_SUCCESS',
-        payload: { messageId, content: newContent, baseMessages }
+        payload: { messageId, content: nextContent, baseMessages }
       });
 
-      // If last message is user message, regenerate response
       if (baseMessages.length > 0 && baseMessages[baseMessages.length - 1].role === 'user') {
         // Trigger regeneration (similar to sendMessage but with existing messages)
         // This would be implemented similar to the current regenerateFromBase logic

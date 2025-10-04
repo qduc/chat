@@ -1,7 +1,8 @@
 import {
   ConversationMeta,
   ConversationsList,
-  ConversationWithMessages
+  ConversationWithMessages,
+  MessageContent
 } from './types';
 import { waitForAuthReady } from '../auth/ready';
 import { httpClient } from '../http/client';
@@ -140,7 +141,7 @@ export class ConversationManager {
   async editMessage(
     conversationId: string,
     messageId: string,
-    content: string
+    content: MessageContent
   ): Promise<EditMessageResult> {
     await waitForAuthReady();
     try {
@@ -232,7 +233,7 @@ export async function editMessageApi(
   apiBase = defaultApiBase,
   conversationId: string,
   messageId: string,
-  content: string
+  content: MessageContent
 ): Promise<EditMessageResult> {
   const manager = new ConversationManager(apiBase);
   return manager.editMessage(conversationId, messageId, content);

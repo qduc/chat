@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import type { ChatMessage } from '../lib/chat';
 import { ConversationManager } from '../lib/chat';
-import { extractTextFromContent, stringToMessageContent } from '../lib/chat/content-utils';
+import { extractImagesFromContent, createMixedContent } from '../lib/chat/content-utils';
 
 export interface UseMessageEditingReturn {
   editingMessageId: string | null;
@@ -41,14 +41,29 @@ export function useMessageEditing(): UseMessageEditingReturn {
     if (!editingMessageId || !editingContent.trim()) return;
 
     const messageId = editingMessageId;
-    const newContent = editingContent.trim();
+    const newTextContent = editingContent.trim();
+
+    // Get the original message to preserve its images
+    let originalMessage: ChatMessage | undefined;
+    onMessagesUpdate(prev => {
+      originalMessage = prev.find(m => m.id === messageId);
+      return prev;
+    });
+
+    if (!originalMessage) return;
+
+    // Extract existing images from the original message
+    const existingImages = extractImagesFromContent(originalMessage.content);
+
+    // Create new content that combines updated text with existing images
+    const newContent = existingImages.length > 0
+      ? createMixedContent(newTextContent, existingImages)
+      : newTextContent;
 
     // Optimistically exit edit mode and update message immediately
-    let oldContent = '';
+    const oldContent = originalMessage.content;
     onMessagesUpdate(prev => {
-      const target = prev.find(m => m.id === messageId);
-      oldContent = extractTextFromContent(target?.content || '');
-      return prev.map(m => m.id === messageId ? { ...m, content: stringToMessageContent(newContent) } : m);
+      return prev.map(m => m.id === messageId ? { ...m, content: newContent } : m);
     });
     setEditingMessageId(null);
     setEditingContent('');
@@ -81,9 +96,9 @@ export function useMessageEditing(): UseMessageEditingReturn {
           await onAfterSave(baseMessages);
         } else {
           // Revert optimistic update and restore edit state
-          onMessagesUpdate(prev => prev.map(m => m.id === messageId ? { ...m, content: stringToMessageContent(oldContent) } : m));
+          onMessagesUpdate(prev => prev.map(m => m.id === messageId ? { ...m, content: oldContent } : m));
           setEditingMessageId(messageId);
-          setEditingContent(newContent);
+          setEditingContent(newTextContent);
           console.error('Failed to edit message:', e);
         }
       }
