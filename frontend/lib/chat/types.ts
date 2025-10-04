@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 export type Role = 'user' | 'assistant' | 'system';
 
 // Image-related types for Vision API support
@@ -25,6 +27,10 @@ export interface ImageAttachment {
   size: number;
   type: string;
   alt?: string;
+  downloadUrl?: string;
+  accessToken?: string;
+  expiresAt?: string;
+  expiresIn?: number;
 }
 
 // Image configuration and constraints

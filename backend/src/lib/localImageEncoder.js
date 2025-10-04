@@ -28,7 +28,7 @@ function isLocalImageUrl(url) {
 		if (!LOCAL_HOSTNAMES.has(hostname)) {
 			return false;
 		}
-		if (!parsed.pathname || !parsed.pathname.startsWith('/v1/images/')) {
+		if (!parsed.pathname || (!parsed.pathname.startsWith('/v1/images/') && !parsed.pathname.startsWith('/api/v1/images/'))) {
 			return false;
 		}
 		return true;

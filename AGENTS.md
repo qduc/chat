@@ -87,7 +87,7 @@ chat/
 
 ### Additional Services
 ```bash
-# Adminer database management (available at http://localhost:8080)
+# Adminer database management (available at http://localhost:3080)
 # Provides password-less login for SQLite database inspection
 ```
 
@@ -178,7 +178,7 @@ chat/
 **API clients**: Check `frontend/lib/` for HTTP and chat clients
 **Database schema**: Check migration files in `backend/scripts/`
 **UI components**: Check `frontend/components/` organized by feature
-**Image handling**: Check `frontend/components/ImageUploadZone` and `ImagePreview`
+**Image handling**: Check `frontend/components/ui/ImagePreview.tsx` (exports both `ImagePreview` and `ImageUploadZone`)
 **Documentation**: Check `docs/` for ADRs and detailed specs
 **Linting**: ESLint configs in both `frontend/` and `backend/` directories
 

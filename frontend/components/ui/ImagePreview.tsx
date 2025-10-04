@@ -79,7 +79,8 @@ interface PreviewItemProps {
 }
 
 function PreviewItem({ image, progress, onRemove, onPreview }: PreviewItemProps) {
-  const { src, loading, error } = useSecureImageUrl(image.url);
+  const preferredUrl = image.downloadUrl ?? image.url;
+  const { src, loading, error } = useSecureImageUrl(preferredUrl);
   const isUploading = progress?.state === 'uploading' || progress?.state === 'processing';
   const hasError = progress?.state === 'error' || error;
   const canPreview = !isUploading && !hasError && Boolean(src);

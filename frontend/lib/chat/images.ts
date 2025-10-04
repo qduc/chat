@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
+
 import { httpClient } from '../http/client';
 import type { ImageAttachment, ImageConfig, ImageValidationResult, ImageUploadProgress } from './types';
 
@@ -71,6 +73,15 @@ export class ImagesClient {
       formData.append('images', file);
     });
 
+      const toAbsoluteUrl = (value?: string | null) => {
+        if (!value) return undefined;
+        if (/^https?:\/\//i.test(value)) {
+          return value;
+        }
+        const normalized = value.startsWith('/') ? value : `/${value}`;
+        return `${this.apiBase}${normalized}`;
+      };
+
     // Create progress tracking
     const progressData: ImageUploadProgress[] = files.map((file, index) => ({
       imageId: `temp-${index}`,
@@ -109,7 +120,11 @@ export class ImagesClient {
         return {
           id: img.id,
           file: files[index],
-          url: `${this.apiBase}${img.url}`,
+          url: toAbsoluteUrl(img.url) ?? `${this.apiBase}/v1/images/${img.id}`,
+          downloadUrl: toAbsoluteUrl(img.downloadUrl),
+          accessToken: typeof img.accessToken === 'string' ? img.accessToken : undefined,
+          expiresAt: typeof img.expiresAt === 'string' ? img.expiresAt : undefined,
+          expiresIn: typeof img.expiresIn === 'number' ? img.expiresIn : undefined,
           name: img.originalFilename || img.filename,
           size: img.size,
           type: img.type,
@@ -161,7 +176,7 @@ export class ImagesClient {
     return {
       type: 'image_url' as const,
       image_url: {
-        url: attachment.url,
+        url: attachment.downloadUrl || attachment.url,
         detail,
       },
     };
