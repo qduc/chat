@@ -16,8 +16,12 @@ import { logger } from '../logger.js';
 async function sanitizeIncomingBody(bodyIn, helpers = {}) {
   const body = { ...bodyIn };
 
-  // Use system prompt directly from frontend (already calculated effective prompt)
-  const effectiveSystemPrompt = bodyIn.system_prompt;
+  // Normalize incoming system prompt and prepend current date for model awareness
+  const rawSystemPrompt = typeof bodyIn.system_prompt === 'string'
+    ? bodyIn.system_prompt.trim()
+    : '';
+  const today = new Date().toISOString().split('T')[0];
+  const effectiveSystemPrompt = `Current date: ${today}.${rawSystemPrompt ? ` ${rawSystemPrompt}` : ''}`;
 
   // Inject system prompt as leading system message
   try {
