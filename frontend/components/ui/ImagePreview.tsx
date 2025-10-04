@@ -160,6 +160,7 @@ interface ImageUploadZoneProps {
   className?: string;
   children?: React.ReactNode;
   fullPage?: boolean;
+  clickToUpload?: boolean;
 }
 
 export function ImageUploadZone({
@@ -170,6 +171,7 @@ export function ImageUploadZone({
   className = '',
   children,
   fullPage = false,
+  clickToUpload = true,
 }: ImageUploadZoneProps) {
   const [dragOver, setDragOver] = React.useState(false);
   const dragCounterRef = React.useRef(0);
@@ -287,18 +289,20 @@ export function ImageUploadZone({
         className={`
           relative
           ${dragOver && !disabled && !fullPage ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-600' : ''}
-          ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+          ${disabled ? 'opacity-50 cursor-not-allowed' : clickToUpload ? 'cursor-pointer' : ''}
           ${className}
         `}
       >
-        <input
-          type="file"
-          accept={accept}
-          multiple
-          disabled={disabled}
-          onChange={handleFileInput}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-        />
+        {clickToUpload && (
+          <input
+            type="file"
+            accept={accept}
+            multiple
+            disabled={disabled}
+            onChange={handleFileInput}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+          />
+        )}
         {children}
       </div>
     </>

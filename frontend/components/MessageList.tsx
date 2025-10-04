@@ -19,7 +19,11 @@ import { ImagePreview, ImageUploadZone } from './ui/ImagePreview';
 import type { ChatMessage } from '../lib/chat';
 import type { PendingState } from '../hooks/useChatState';
 import type { MessageContent, ImageAttachment, ImageContent } from '../lib/chat/types';
-import { createMixedContent, extractImagesFromContent, extractTextFromContent } from '../lib/chat/content-utils';
+import {
+  createMixedContent,
+  extractImagesFromContent,
+  extractTextFromContent,
+} from '../lib/chat/content-utils';
 import { imagesClient } from '../lib/chat/images';
 
 interface MessageListProps {
@@ -239,7 +243,7 @@ const Message = React.memo<MessageProps>(function Message({
       )}
       <div className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? 'max-w-[50%] order-first' : 'max-w-[95%]'}`}>
         {isEditing ? (
-          <ImageUploadZone onFiles={onEditingImagesChange} disabled={false} fullPage={false}>
+          <ImageUploadZone onFiles={onEditingImagesChange} disabled={false} fullPage={false} clickToUpload={false}>
             <div className="space-y-2 rounded-2xl bg-white/95 dark:bg-neutral-900/95 border border-slate-200 dark:border-neutral-700 shadow-sm p-4">
               {/* Image Previews */}
               {editingImages.length > 0 && (

@@ -173,10 +173,12 @@ export class ImagesClient {
    * Convert ImageAttachment to ImageContent for API
    */
   attachmentToImageContent(attachment: ImageAttachment, detail: 'auto' | 'low' | 'high' = 'auto') {
+    // Use base URL without tokens for storage - signed URLs will be generated on demand
+    const rawUrl = attachment.url;
     return {
       type: 'image_url' as const,
       image_url: {
-        url: attachment.downloadUrl || attachment.url,
+        url: rawUrl,
         detail,
       },
     };
