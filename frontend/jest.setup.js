@@ -3,6 +3,7 @@ import '@testing-library/jest-dom';
 
 // Set the API base to an empty string for all tests
 process.env.NEXT_PUBLIC_API_BASE = '/api';
+process.env.BACKEND_ORIGIN = process.env.BACKEND_ORIGIN || 'http://localhost:3001';
 
 // Polyfill TextEncoder/TextDecoder for Node/Jest environments
 const util = require('util');

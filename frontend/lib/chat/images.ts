@@ -1,8 +1,10 @@
 import { httpClient } from '../http/client';
 import type { ImageAttachment, ImageConfig, ImageValidationResult, ImageUploadProgress } from './types';
 
+import { resolveApiBase } from '../config/apiBase';
+
 export class ImagesClient {
-  constructor(private apiBase: string = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001') {}
+  constructor(private apiBase: string = resolveApiBase()) {}
 
   /**
    * Get image upload configuration from backend

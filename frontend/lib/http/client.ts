@@ -5,6 +5,7 @@
 import { authApi } from '../auth/api';
 import { getToken, clearTokens, isTokenExpired } from '../auth/tokens';
 import { setAuthReady } from '../auth/ready';
+import { resolveApiBase } from '../config/apiBase';
 import { HttpClientOptions, RequestOptions, HttpResponse, HttpError, QueuedRequest } from './types';
 
 class AuthenticatedHttpClient {
@@ -15,7 +16,7 @@ class AuthenticatedHttpClient {
   private requestQueue: QueuedRequest[] = [];
 
   constructor(options: HttpClientOptions = {}) {
-    this.baseUrl = options.baseUrl || process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:3001';
+  this.baseUrl = options.baseUrl || resolveApiBase();
     this.timeout = options.timeout || 30000;
     this.retries = options.retries || 1;
   }

@@ -3,8 +3,9 @@
  */
 
 import { getToken, setToken, setRefreshToken, clearTokens, getRefreshToken } from './tokens';
+import { resolveApiBase } from '../config/apiBase';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
+const API_BASE = resolveApiBase();
 
 export interface User {
   id: string;

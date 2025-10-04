@@ -44,8 +44,9 @@ export { getToolSpecs } from './chat/tools';
 import { ChatClient } from './chat/client';
 import { SendChatOptions, ChatResponse } from './chat/types';
 import { getDefaultProviderId } from './chat/utils';
+import { resolveApiBase } from './config/apiBase';
 
-const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
+const defaultApiBase = resolveApiBase();
 
 // Legacy sendChat function for backward compatibility
 // @deprecated Use ChatClient.sendMessage() or ChatClient.sendMessageWithTools() instead

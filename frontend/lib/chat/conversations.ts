@@ -7,8 +7,9 @@ import { waitForAuthReady } from '../auth/ready';
 import { httpClient } from '../http/client';
 import { HttpError } from '../http/types';
 import { Cache } from './cache';
+import { resolveApiBase } from '../config/apiBase';
 
-const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
+const defaultApiBase = resolveApiBase();
 
 // Cache TTL: 5 minutes
 const CACHE_TTL_MS = 5 * 60 * 1000;

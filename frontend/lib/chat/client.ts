@@ -10,8 +10,9 @@ import { supportsReasoningControls } from './modelCapabilities';
 import { waitForAuthReady } from '../auth/ready';
 import { httpClient } from '../http/client';
 import { HttpError } from '../http/types';
+import { resolveApiBase } from '../config/apiBase';
 
-const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
+const defaultApiBase = resolveApiBase();
 
 // OpenAI API response format types
 interface OpenAIStreamChunkChoiceDelta {

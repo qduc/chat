@@ -5,6 +5,7 @@ import Modal from './ui/Modal';
 import Toggle from './ui/Toggle';
 import { httpClient } from '../lib/http/client';
 import { HttpError } from '../lib/http/types';
+import { resolveApiBase } from '../lib/config/apiBase';
 
 interface SettingsModalProps {
   open: boolean;
@@ -28,7 +29,7 @@ export default function SettingsModal({
     updated_at?: string;
   };
 
-  const apiBase = (process.env.NEXT_PUBLIC_API_BASE as string) ?? 'http://localhost:3001';
+  const apiBase = React.useMemo(() => resolveApiBase(), []);
   const [providers, setProviders] = React.useState<ProviderRow[]>([]);
   const [loadingProviders, setLoadingProviders] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);

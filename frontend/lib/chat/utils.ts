@@ -1,4 +1,5 @@
 import { waitForAuthReady } from '../auth/ready';
+import { resolveApiBase } from '../config/apiBase';
 
 export class APIError extends Error {
   constructor(
@@ -106,7 +107,7 @@ export interface Provider {
 
 let cachedDefaultProvider: string | null = null;
 
-export async function getDefaultProviderId(apiBase: string = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001'): Promise<string> {
+export async function getDefaultProviderId(apiBase: string = resolveApiBase()): Promise<string> {
   if (cachedDefaultProvider) {
     return cachedDefaultProvider;
   }

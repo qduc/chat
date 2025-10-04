@@ -33,11 +33,11 @@ services:
       context: ./frontend
       target: dev
       args:
-        # Direct API calls to mapped backend port (browser -> host -> container)
-        NEXT_PUBLIC_API_BASE: http://localhost:4001
+        NEXT_PUBLIC_API_BASE: /api
+        BACKEND_ORIGIN: http://backend:3001
     environment:
-      # Direct API calls to mapped backend port (browser -> host -> container)
-      - NEXT_PUBLIC_API_BASE=http://localhost:4001
+      - NEXT_PUBLIC_API_BASE=/api
+      - BACKEND_ORIGIN=http://backend:3001
       - NODE_ENV=development
       # Improve file watching on macOS/WSL
       - CHOKIDAR_USEPOLLING=1
@@ -47,8 +47,26 @@ services:
       - /app/node_modules
     depends_on:
       - backend
+    restart: unless-stopped
+    networks:
+      - app
+  proxy:
+    image: nginx:1.27-alpine
+    depends_on:
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_started
+    volumes:
+      - ./proxy/nginx.conf:/etc/nginx/nginx.conf:ro
     ports:
-      - "3003:3000"
+      - "3003:80"
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
     networks:
       - app

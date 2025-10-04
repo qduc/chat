@@ -679,10 +679,9 @@ export function useChatState() {
     if (!authReady || !user) {
       return;
     }
-    const apiBase = (process.env.NEXT_PUBLIC_API_BASE as string) ?? 'http://localhost:3001';
     try {
       dispatch({ type: 'SET_LOADING_MODELS', payload: true });
-      const response = await httpClient.get<{ providers: any[] }>(`${apiBase}/v1/providers`);
+      const response = await httpClient.get<{ providers: any[] }>('/v1/providers');
       const providers: any[] = Array.isArray(response.data.providers) ? response.data.providers : [];
       const enabledProviders = providers.filter(p => p?.enabled);
       if (!enabledProviders.length) {
@@ -692,7 +691,7 @@ export function useChatState() {
 
       const results = await Promise.allSettled(
         enabledProviders.map(async (p) => {
-          const modelsResponse = await httpClient.get<{ models: any[] }>(`${apiBase}/v1/providers/${encodeURIComponent(p.id)}/models`);
+          const modelsResponse = await httpClient.get<{ models: any[] }>(`/v1/providers/${encodeURIComponent(p.id)}/models`);
           const models = Array.isArray(modelsResponse.data.models) ? modelsResponse.data.models : [];
           const options: ModelOption[] = models.map((m: any) => ({ value: m.id, label: m.id }));
           return { provider: p, options, models };

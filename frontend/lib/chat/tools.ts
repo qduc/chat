@@ -1,7 +1,8 @@
 import { ToolSpec, ToolsResponse } from './types';
 import { httpClient } from '../http/client';
+import { resolveApiBase } from '../config/apiBase';
 
-const defaultApiBase = process.env.NEXT_PUBLIC_API_BASE ?? 'http://localhost:3001';
+const defaultApiBase = resolveApiBase();
 
 export class ToolsClient {
   constructor(private apiBase: string = defaultApiBase) {}

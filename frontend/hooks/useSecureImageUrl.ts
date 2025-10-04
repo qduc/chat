@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { resolveApiBase } from '../lib/config/apiBase';
 import { getToken, isTokenExpired } from '../lib/auth/tokens';
 
 interface SecureImageState {
@@ -39,7 +40,7 @@ export function useSecureImageUrl(rawUrlInput: string | null | undefined): Secur
       return;
     }
 
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? window.location.origin;
+  const apiBase = resolveApiBase();
     let absoluteUrl: string;
 
     try {
