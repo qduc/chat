@@ -31,6 +31,8 @@ export interface UiActionsProps {
  * uiActions.setInput('Hello world');
  * uiActions.setImages([image1, image2]);
  * uiActions.toggleLeftSidebar();
+ * uiActions.toggleSidebar(); // alias for toggleLeftSidebar
+ * uiActions.toggleRightSidebar();
  * ```
  */
 export function createUiActions({ dispatch }: UiActionsProps) {
@@ -53,6 +55,16 @@ export function createUiActions({ dispatch }: UiActionsProps) {
      * Toggles the visibility of the left sidebar (conversations list)
      */
     toggleLeftSidebar: () => dispatch({ type: 'TOGGLE_SIDEBAR' }),
+
+    /**
+     * Toggles the visibility of the left sidebar (alias for toggleLeftSidebar)
+     */
+    toggleSidebar: () => dispatch({ type: 'TOGGLE_SIDEBAR' }),
+
+    /**
+     * Toggles the visibility of the right sidebar
+     */
+    toggleRightSidebar: () => dispatch({ type: 'TOGGLE_RIGHT_SIDEBAR' }),
 
     /**
      * Sets an error message to display to the user
