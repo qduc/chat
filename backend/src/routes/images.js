@@ -1,5 +1,5 @@
 import express from 'express';
-import multer from 'multer';
+import multer from '../lib/multerShim.js';
 import path from 'path';
 import fs from 'fs/promises';
 import { nanoid } from 'nanoid';
