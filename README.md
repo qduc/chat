@@ -133,6 +133,7 @@ chat/
 ```env
 OPENAI_API_KEY=your-api-key-here
 TAVILY_API_KEY=your-tavily-key-here  # Optional: for web_search tool
+EXA_API_KEY=your-exa-key-here       # Optional: for web_search_exa tool
 PORT=3001
 LOG_LEVEL=info
 RATE_LIMIT_MAX=100

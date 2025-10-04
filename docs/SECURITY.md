@@ -8,6 +8,7 @@
 	- `PROVIDER_BASE_URL` / `OPENAI_BASE_URL`
 	- `PROVIDER_API_KEY` / `OPENAI_API_KEY`
 	- `TAVILY_API_KEY` (for web search tool)
+	- `EXA_API_KEY` (for web_search_exa tool)
 	- `DEFAULT_MODEL`
 	- `TITLE_MODEL`
 	- `PORT`

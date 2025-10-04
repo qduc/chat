@@ -1,7 +1,8 @@
 import getTimeTool from './getTime.js';
 import webSearchTool from './webSearch.js';
+import webSearchExaTool from './webSearchExa.js';
 
-const registeredTools = [getTimeTool, webSearchTool];
+const registeredTools = [getTimeTool, webSearchTool, webSearchExaTool];
 
 const toolMap = new Map();
 for (const tool of registeredTools) {
