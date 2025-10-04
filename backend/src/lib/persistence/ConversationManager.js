@@ -27,10 +27,12 @@ export class ConversationManager {
   /**
    * Ensure session exists in database
    * @param {string} sessionId - Session ID
+   * @param {string} userId - User ID
    * @param {Object} sessionData - Additional session data
    */
-  ensureSession(sessionId, sessionData = {}) {
-    upsertSession(sessionId, sessionData);
+  ensureSession(sessionId, userId, sessionData = {}) {
+    if (!sessionId || !userId) return;
+    upsertSession(sessionId, { userId, ...sessionData });
   }
 
   /**
@@ -82,7 +84,10 @@ export class ConversationManager {
     // Insert new messages in sequence
     let seq = 1;
     for (const message of messages) {
-      if (message.role === 'user' && typeof message.content === 'string') {
+      // Support both string content and array (mixed content with images)
+      const hasContent = typeof message.content === 'string' || Array.isArray(message.content);
+
+      if (message.role === 'user' && hasContent) {
         insertUserMessage({
           conversationId,
           content: message.content,

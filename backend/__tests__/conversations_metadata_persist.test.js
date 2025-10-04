@@ -27,7 +27,7 @@ beforeEach(() => {
   resetDbCache();
   const db = getDb();
   db.exec('DELETE FROM messages; DELETE FROM conversations; DELETE FROM sessions; DELETE FROM users;');
-  upsertSession(sessionId);
+  upsertSession(sessionId, { userId });
 
   const now = new Date().toISOString();
 

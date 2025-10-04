@@ -37,12 +37,33 @@ export function sessionResolver(req, res, next) {
 
   req.sessionId = sessionId;
 
-  // Update session in database
+  const userAgent =
+    typeof req.get === 'function'
+      ? req.get('User-Agent')
+      : req.headers?.['user-agent'] || req.headers?.['User-Agent'] || null;
+
+  const rawIp = req.ip
+    || (typeof req.get === 'function' ? req.get('X-Forwarded-For') : undefined)
+    || req.headers?.['x-forwarded-for'];
+  const normalizedIp = Array.isArray(rawIp)
+    ? rawIp[0]
+    : typeof rawIp === 'string'
+      ? rawIp.split(',')[0].trim()
+      : rawIp;
+
+  const sessionMeta = {
+    userAgent,
+    ipHash: normalizedIp
+      ? createHash('sha256').update(normalizedIp).digest('hex').substring(0, 16)
+      : null,
+  };
+  req.sessionMeta = sessionMeta;
+
+  // Update session in database only when user context is available
   try {
-    upsertSession(sessionId, {
-      userAgent: req.get('User-Agent'),
-      ipHash: req.ip ? createHash('sha256').update(req.ip).digest('hex').substring(0, 16) : null
-    });
+    if (req.user && req.user.id) {
+      upsertSession(sessionId, { userId: req.user.id, ...sessionMeta });
+    }
   } catch (error) {
     console.warn('[session] Failed to upsert session:', error.message);
   }

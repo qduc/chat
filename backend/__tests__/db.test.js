@@ -28,7 +28,6 @@ beforeEach(() => {
   resetDbCache();
   const db = getDb();
   db.exec('DELETE FROM messages; DELETE FROM conversations; DELETE FROM sessions; DELETE FROM users;');
-  upsertSession(sessionId);
 
   // Create a test user for conversations (Phase 3: all conversations need userId)
   testUser = createUser({
@@ -36,6 +35,8 @@ beforeEach(() => {
     passwordHash: 'test-hash',
     displayName: 'Test User'
   });
+
+  upsertSession(sessionId, { userId: testUser.id });
 });
 
 afterAll(() => {
@@ -176,4 +177,3 @@ describe('DB helpers', () => {
     });
   });
 });
-

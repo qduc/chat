@@ -1,3 +1,4 @@
+import { createHash } from 'crypto';
 import { Router } from 'express';
 import { config } from '../env.js';
 import { getDb } from '../db/client.js';
@@ -104,7 +105,13 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
     // Ensure DB and session row (still needed for session-based users)
     getDb();
     if (sessionId) {
-      upsertSession(sessionId, { userAgent: req.header('user-agent') || null });
+      const sessionMeta = req.sessionMeta || {
+        userAgent: req.header('user-agent') || null,
+        ipHash: req.ip
+          ? createHash('sha256').update(req.ip).digest('hex').substring(0, 16)
+          : null,
+      };
+      upsertSession(sessionId, { userId, ...sessionMeta });
     }
 
     const {

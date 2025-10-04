@@ -1,4 +1,5 @@
 import { BaseAdapter } from './baseAdapter.js';
+import { convertContentPartImage } from '../localImageEncoder.js';
 
 const OPENAI_ALLOWED_REQUEST_KEYS = new Set([
   'frequency_penalty',
@@ -108,9 +109,9 @@ function normalizeMessage(message) {
   if ('content' in message) {
     const content = message.content;
     if (Array.isArray(content)) {
-      normalized.content = content;
+      normalized.content = content.map((part) => convertContentPartImage(part));
     } else if (content === null || typeof content === 'object') {
-      normalized.content = content;
+      normalized.content = convertContentPartImage(content);
     } else if (content !== undefined) {
       normalized.content = String(content);
     }

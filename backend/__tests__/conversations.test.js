@@ -60,7 +60,7 @@ beforeEach(() => {
   const token = generateAccessToken(testUser);
   authHeader = `Bearer ${token}`;
 
-  upsertSession(sessionId);
+  upsertSession(sessionId, { userId: testUser.id });
   db.prepare(`INSERT INTO providers (id, user_id, name, provider_type) VALUES (@id, @userId, @name, @provider_type)`).run({ id: 'p1', userId: testUser.id, name: 'p1', provider_type: 'openai' });
   db.prepare(`INSERT INTO providers (id, user_id, name, provider_type) VALUES (@id, @userId, @name, @provider_type)`).run({ id: 'p2', userId: testUser.id, name: 'p2', provider_type: 'openai' });
 });

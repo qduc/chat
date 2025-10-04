@@ -24,7 +24,7 @@ describe('Chat proxy persistence', () => {
     try {
       const app = makeApp({ mockUser });
       const db = getDb();
-      upsertSession(sessionId);
+      upsertSession(sessionId, { userId });
       createConversation({ id: 'conv1', sessionId, userId, title: 'Test Limit' });
 
       // Pre-populate one message to reach the limit
@@ -58,7 +58,7 @@ describe('Chat proxy persistence', () => {
     const sessionId = 'test-session';
     const userId = mockUser.id;
     const app = makeApp({ mockUser });
-    upsertSession(sessionId);
+    upsertSession(sessionId, { userId });
     createConversation({ id: 'conv1', sessionId, userId, title: 'Test' });
     const res = await request(app)
       .post('/v1/chat/completions')
@@ -73,7 +73,7 @@ describe('Chat proxy persistence', () => {
     const sessionId = 'test-session';
     const userId = mockUser.id;
     const app = makeApp({ mockUser });
-    upsertSession(sessionId);
+    upsertSession(sessionId, { userId });
     createConversation({ id: 'conv1', sessionId, userId, title: 'Test' });
     // User sends a message
     const chatRes = await request(app)

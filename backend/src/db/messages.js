@@ -23,12 +23,36 @@ export function countMessagesByConversation(conversationId) {
 export function insertUserMessage({ conversationId, content, seq }) {
   const db = getDb();
   const now = new Date().toISOString();
+
+  // Handle mixed content (array) or plain text (string)
+  let textContent = '';
+  let jsonContent = null;
+
+  if (Array.isArray(content)) {
+    // Mixed content format: extract text and store full JSON
+    jsonContent = JSON.stringify(content);
+    // Extract text parts for the content column (backward compatibility)
+    textContent = content
+      .filter(part => part.type === 'text')
+      .map(part => part.text)
+      .join('\n');
+  } else {
+    // Plain text format
+    textContent = content || '';
+  }
+
   const info = db
     .prepare(
-      `INSERT INTO messages (conversation_id, role, status, content, seq, created_at, updated_at)
-     VALUES (@conversationId, 'user', 'final', @content, @seq, @now, @now)`
+      `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, created_at, updated_at)
+     VALUES (@conversationId, 'user', 'final', @content, @contentJson, @seq, @now, @now)`
     )
-    .run({ conversationId, content: content || '', seq, now });
+    .run({
+      conversationId,
+      content: textContent,
+      contentJson: jsonContent,
+      seq,
+      now
+    });
   return { id: info.lastInsertRowid, seq };
 }
 
@@ -102,11 +126,25 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
   const sanitizedLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
   const messages = db
     .prepare(
-      `SELECT id, seq, role, status, content, created_at
+      `SELECT id, seq, role, status, content, content_json, created_at
      FROM messages WHERE conversation_id=@conversationId AND seq > @afterSeq
      ORDER BY seq ASC LIMIT @limit`
     )
     .all({ conversationId, afterSeq, limit: sanitizedLimit });
+
+  // Parse content_json and use it if available, otherwise fall back to content
+  for (const message of messages) {
+    if (message.content_json) {
+      try {
+        message.content = JSON.parse(message.content_json);
+      } catch (e) {
+        // If JSON parsing fails, keep the text content
+        console.warn('Failed to parse content_json for message', message.id, e);
+      }
+    }
+    // Remove content_json from response (internal field)
+    delete message.content_json;
+  }
 
   // Fetch tool calls and outputs for all messages in batch
   if (messages.length > 0) {
@@ -186,13 +224,24 @@ export function getLastMessage({ conversationId }) {
   const db = getDb();
   const message = db
     .prepare(
-      `SELECT id, seq, role, status, content, created_at
+      `SELECT id, seq, role, status, content, content_json, created_at
      FROM messages WHERE conversation_id=@conversationId
      ORDER BY seq DESC LIMIT 1`
     )
     .get({ conversationId });
 
   if (!message) return null;
+
+  // Parse content_json and use it if available, otherwise fall back to content
+  if (message.content_json) {
+    try {
+      message.content = JSON.parse(message.content_json);
+    } catch (e) {
+      console.warn('Failed to parse content_json for message', message.id, e);
+    }
+  }
+  // Remove content_json from response (internal field)
+  delete message.content_json;
 
   // Fetch tool calls for this message
   const toolCalls = db
@@ -273,9 +322,26 @@ export function updateMessageContent({ messageId, conversationId, userId, conten
 
   if (!message) return null;
 
+  // Handle mixed content (array) or plain text (string)
+  let textContent = '';
+  let jsonContent = null;
+
+  if (Array.isArray(content)) {
+    // Mixed content format: extract text and store full JSON
+    jsonContent = JSON.stringify(content);
+    // Extract text parts for the content column (backward compatibility)
+    textContent = content
+      .filter(part => part.type === 'text')
+      .map(part => part.text)
+      .join('\n');
+  } else {
+    // Plain text format
+    textContent = content || '';
+  }
+
   db.prepare(
-    `UPDATE messages SET content = @content, updated_at = @now WHERE id = @messageId`
-  ).run({ messageId, content, now });
+    `UPDATE messages SET content = @content, content_json = @contentJson, updated_at = @now WHERE id = @messageId`
+  ).run({ messageId, content: textContent, contentJson: jsonContent, now });
 
   return message;
 }

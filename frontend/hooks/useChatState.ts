@@ -1,5 +1,6 @@
 import React, { useReducer, useCallback, useRef, useEffect, useMemo } from 'react';
 import type { ChatMessage, Role, ConversationMeta } from '../lib/chat';
+import type { ImageAttachment } from '../lib/chat/types';
 import type { Group as TabGroup, Option as ModelOption } from '../components/ui/TabbedSelect';
 import { sendChat, getConversationApi, listConversationsApi, deleteConversationApi, editMessageApi, ConversationManager } from '../lib/chat';
 import type { QualityLevel } from '../components/ui/QualitySlider';
@@ -7,6 +8,8 @@ import type { User } from '../lib/auth/api';
 import { useAuth } from '../contexts/AuthContext';
 import { httpClient } from '../lib/http/client';
 import { HttpError } from '../lib/http/types';
+import { extractTextFromContent, stringToMessageContent, createMixedContent } from '../lib/chat/content-utils';
+import { imagesClient } from '../lib/chat/images';
 
 export interface PendingState {
   abort?: AbortController;
@@ -23,6 +26,7 @@ export interface ChatState {
   // UI State
   status: 'idle' | 'streaming' | 'loading' | 'error';
   input: string;
+  images: ImageAttachment[];
 
   // Chat State
   messages: ChatMessage[];
@@ -81,6 +85,7 @@ export type ChatAction =
 
   // Existing Actions
   | { type: 'SET_INPUT'; payload: string }
+  | { type: 'SET_IMAGES'; payload: ImageAttachment[] }
   | { type: 'SET_MODEL'; payload: string }
   | { type: 'SET_PROVIDER_ID'; payload: string | null }
   | { type: 'SET_USE_TOOLS'; payload: boolean }
@@ -132,6 +137,7 @@ const initialState: ChatState = {
 
   status: 'idle',
   input: '',
+  images: [],
   messages: [],
   conversationId: null,
   currentConversationTitle: null,
@@ -179,6 +185,8 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
     // Existing Actions
     case 'SET_INPUT':
       return { ...state, input: action.payload };
+    case 'SET_IMAGES':
+      return { ...state, images: action.payload };
 
     case 'SET_MODEL':
       return { ...state, model: action.payload };
@@ -246,6 +254,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         status: 'streaming',
         input: '', // Clear input immediately
+        images: [], // Clear images immediately
         messages: [...state.messages, action.payload.userMessage, action.payload.assistantMessage],
         abort: action.payload.abort,
         error: null,
@@ -256,6 +265,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         status: 'streaming',
         input: '',
+        images: [],
         messages: [...action.payload.baseMessages, action.payload.assistantMessage],
         abort: action.payload.abort,
         error: null,
@@ -535,6 +545,7 @@ function chatReducer(state: ChatState, action: ChatAction): ChatState {
         ...state,
         messages: [],
         input: '',
+        images: [],
         conversationId: null,
         currentConversationTitle: null,
         previousResponseId: null,
@@ -821,7 +832,8 @@ export function useChatState() {
     const assistantId = current.id;
 
     // Immediately update the ref (keeps tokens flowing)
-    const nextContent = (current.content ?? '') + token;
+    const currentText = extractTextFromContent(current.content);
+    const nextContent = stringToMessageContent(currentText + token);
     assistantMsgRef.current = { ...current, content: nextContent };
 
     // Throttle React state updates to 60fps
@@ -833,7 +845,7 @@ export function useChatState() {
             payload: {
               messageId: assistantId,
               token: '', // Token already in ref
-              fullContent: assistantMsgRef.current.content // Pass full content
+              fullContent: extractTextFromContent(assistantMsgRef.current.content) // Pass full content as string
             }
           });
         }
@@ -851,7 +863,7 @@ export function useChatState() {
     }
 
     if (event.type === 'tool_call') {
-      const currentContentLength = assistantMsgRef.current?.content?.length ?? 0;
+      const currentContentLength = extractTextFromContent(assistantMsgRef.current?.content || '').length;
       const toolCallValue = event.value && typeof event.value === 'object'
         ? {
             ...event.value,
@@ -970,7 +982,7 @@ export function useChatState() {
               payload: {
                 messageId: assistantMsgRef.current.id,
                 token: '',
-                fullContent: assistantMsgRef.current.content
+                fullContent: extractTextFromContent(assistantMsgRef.current.content)
               }
             });
           }
@@ -1031,6 +1043,10 @@ export function useChatState() {
     // UI Actions
     setInput: useCallback((input: string) => {
       dispatch({ type: 'SET_INPUT', payload: input });
+    }, []),
+
+    setImages: useCallback((images: ImageAttachment[]) => {
+      dispatch({ type: 'SET_IMAGES', payload: images });
     }, []),
 
     setModel: useCallback((model: string) => {
@@ -1119,11 +1135,25 @@ export function useChatState() {
     // Chat Actions
     sendMessage: useCallback(async () => {
       const input = state.input.trim();
-      if (!input || state.status === 'streaming' || inFlightRef.current) return;
+      const images = state.images;
+
+      // Check if we have either text or images
+      if ((!input && images.length === 0) || state.status === 'streaming' || inFlightRef.current) return;
 
       inFlightRef.current = true;
       const abort = new AbortController();
-      const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: input };
+
+      // Create mixed content from text and images
+      let messageContent;
+      if (images.length > 0) {
+        // Convert ImageAttachment to ImageContent
+        const imageContents = images.map(img => imagesClient.attachmentToImageContent(img));
+        messageContent = createMixedContent(input, imageContents);
+      } else {
+        messageContent = input;
+      }
+
+      const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: messageContent };
       const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
       assistantMsgRef.current = assistantMsg;
 

@@ -376,6 +376,8 @@ export function ChatV2() {
                 qualityLevel={state.qualityLevel}
                 onQualityLevelChange={actions.setQualityLevel}
                 modelCapabilities={state.modelCapabilities}
+                images={state.images}
+                onImagesChange={actions.setImages}
               />
             </div>
             <SettingsModal

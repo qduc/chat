@@ -1,5 +1,7 @@
+import { createHash } from 'crypto';
 import jwt from 'jsonwebtoken';
 import { getUserById } from '../db/users.js';
+import { upsertSession } from '../db/sessions.js';
 import { config } from '../env.js';
 
 /**
@@ -35,6 +37,20 @@ export function authenticateToken(req, res, next) {
       displayName: user.display_name,
       emailVerified: user.email_verified
     };
+
+    if (req.sessionId) {
+      try {
+        const sessionMeta = req.sessionMeta || {
+          userAgent: req.get('User-Agent') || null,
+          ipHash: req.ip
+            ? createHash('sha256').update(req.ip).digest('hex').substring(0, 16)
+            : null,
+        };
+        upsertSession(req.sessionId, { userId: user.id, ...sessionMeta });
+      } catch (sessionErr) {
+        console.warn('[auth] Failed to upsert session during authentication:', sessionErr.message);
+      }
+    }
 
     next();
   } catch (err) {

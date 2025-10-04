@@ -48,6 +48,19 @@ services:
     restart: unless-stopped
     networks:
       - app
+  adminer:
+    image: adminer:latest
+    restart: unless-stopped
+    ports:
+      - "3080:8080"
+    environment:
+      # These make Adminer more permissive
+      ADMINER_DEFAULT_SERVER: "sqlite"
+      ADMINER_DESIGN: "nette"
+    user: 1000:1000
+    volumes:
+      - db_data:/data
+      - ./adminer_login-password-less.php:/var/www/html/plugins-enabled/login-password-less.php
 
 networks:
   app:
