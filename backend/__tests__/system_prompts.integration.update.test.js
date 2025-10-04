@@ -45,9 +45,6 @@ describe('Integration: Update custom prompt', () => {
       const created = res.body;
       const originalUpdatedAt = created.updated_at;
 
-      // Wait a bit to ensure timestamp difference
-      await new Promise(resolve => setTimeout(resolve, 10));
-
       // Update prompt
       res = await agent
         .patch(`/v1/system-prompts/${created.id}`)

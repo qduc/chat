@@ -1,0 +1,81 @@
+### List all providers
+GET http://localhost:3001/v1/providers
+Content-Type: application/json
+
+### Get a specific provider
+GET http://localhost:3001/v1/providers/openai
+Content-Type: application/json
+
+### Get default provider
+GET http://localhost:3001/v1/providers/default
+Content-Type: application/json
+
+### Create a new provider
+POST http://localhost:3001/v1/providers
+Content-Type: application/json
+
+{
+  "id": "test-provider",
+  "name": "Test Provider",
+  "provider_type": "openai",
+  "base_url": "https://api.openai.com",
+  "api_key": "sk-test-key",
+  "enabled": true,
+  "is_default": false,
+  "extra_headers": {},
+  "metadata": {
+    "description": "Test provider for development"
+  }
+}
+
+### Update an existing provider
+PUT http://localhost:3001/v1/providers/test-provider
+Content-Type: application/json
+
+{
+  "name": "Updated Test Provider",
+  "enabled": false,
+  "metadata": {
+    "description": "Updated description"
+  }
+}
+
+### Update provider with API key
+PUT http://localhost:3001/v1/providers/openai
+Content-Type: application/json
+
+{
+  "api_key": "sk-new-api-key",
+  "enabled": true
+}
+
+### Set provider as default
+POST http://localhost:3001/v1/providers/openai/default
+Content-Type: application/json
+
+### Test provider connection (without saving)
+POST http://localhost:3001/v1/providers/test
+Content-Type: application/json
+
+{
+  "name": "Test Connection",
+  "provider_type": "openai",
+  "base_url": "https://api.openai.com",
+  "api_key": "sk-test-key"
+}
+
+### Test existing provider connection with ID
+POST http://localhost:3001/v1/providers/openai/test
+Content-Type: application/json
+
+{
+  "base_url": "https://api.openai.com"
+}
+
+### Get models from a provider
+GET http://localhost:3001/v1/providers/openai/models
+Content-Type: application/json
+
+### Delete a provider
+DELETE http://localhost:3001/v1/providers/test-provider
+Content-Type: application/json

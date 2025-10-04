@@ -197,7 +197,7 @@ export async function clearPromptFromConversation(conversationId, { userId, sess
  */
 export async function getEffectivePromptText(
   conversationId,
-  { userId, sessionId } = {},
+  { userId } = {},
   inlineOverride = null
 ) {
   // If inline override provided, use it directly
@@ -208,8 +208,7 @@ export async function getEffectivePromptText(
   // Get active prompt from conversation metadata
   const { promptId: activePromptId, inlineOverride: storedInline } = await getConversationPromptContext(
     conversationId,
-    userId,
-    sessionId
+    userId
   );
 
   if (storedInline && storedInline.trim()) {
@@ -237,7 +236,7 @@ export async function getEffectivePromptText(
  */
 export async function updateUsageAfterSend(
   conversationId,
-  { userId, sessionId } = {},
+  { userId } = {},
   inlineOverride = null
 ) {
   // Only update usage if no inline override (using stored prompt)
@@ -247,8 +246,7 @@ export async function updateUsageAfterSend(
 
   const { promptId: activePromptId } = await getConversationPromptContext(
     conversationId,
-    userId,
-    sessionId
+    userId
   );
   if (!activePromptId || isBuiltInPromptId(activePromptId)) {
     return; // No prompt or built-in prompt - don't update usage
@@ -304,8 +302,7 @@ async function updateConversationActivePrompt(
 
   await updateConversationMetadata({
     id: conversationId,
-    sessionId: sessionId || null,
-    userId: userId || null,
+    userId,
     patch
   });
 }
@@ -314,7 +311,7 @@ async function updateConversationActivePrompt(
  * Helper to get active prompt from conversation metadata
  * @private
  */
-async function getConversationPromptContext(conversationId, userId, sessionId) {
+async function getConversationPromptContext(conversationId, userId) {
   // Import conversations module to get metadata
   const { getConversationById } = await import('../db/conversations.js');
 
@@ -324,8 +321,7 @@ async function getConversationPromptContext(conversationId, userId, sessionId) {
 
   const conversation = await getConversationById({
     id: conversationId,
-    sessionId: sessionId || null,
-    userId: userId || null
+    userId
   });
   if (!conversation || !conversation.metadata) {
     return { promptId: null, inlineOverride: null };

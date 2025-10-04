@@ -52,3 +52,6 @@ logs/
 backups/
 *.db.backup
 *.db-backup
+
+# upload images
+backend/data/images/

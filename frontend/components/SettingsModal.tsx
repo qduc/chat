@@ -39,7 +39,7 @@ export default function SettingsModal({
     base_url: string;
     enabled: boolean;
     api_key?: string;
-    default_model?: string;
+    model_filter?: string;
   }>({ name: '', provider_type: 'openai', base_url: '', enabled: true });
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -62,7 +62,7 @@ export default function SettingsModal({
 
   const resetForm = React.useCallback(() => {
     setSelectedId(null);
-    setForm({ name: '', provider_type: 'openai', base_url: '', enabled: true, api_key: '', default_model: '' });
+    setForm({ name: '', provider_type: 'openai', base_url: '', enabled: true, api_key: '', model_filter: '' });
     setTestResult(null);
   }, []);
 
@@ -74,7 +74,7 @@ export default function SettingsModal({
       base_url: r.base_url || '',
       enabled: Boolean(r.enabled),
       api_key: '', // not returned by API; allow setting new value
-      default_model: (r.metadata as any)?.default_model || '',
+      model_filter: (r.metadata as any)?.model_filter || '',
     });
     setTestResult(null);
   }, []);
@@ -110,7 +110,7 @@ export default function SettingsModal({
     if (testResult && Date.now() - lastTestTime > 500) {
       setTestResult(null);
     }
-  }, [form.name, form.provider_type, form.base_url, form.api_key, form.default_model, testResult, lastTestTime]);
+  }, [form.name, form.provider_type, form.base_url, form.api_key, form.model_filter, testResult, lastTestTime]);
 
   const onSelectProvider = (r: ProviderRow) => {
     setSelectedId(r.id);
@@ -126,7 +126,7 @@ export default function SettingsModal({
         provider_type: form.provider_type,
         base_url: form.base_url || null,
         enabled: form.enabled,
-        metadata: { default_model: form.default_model || null },
+        metadata: { model_filter: form.model_filter || null },
       };
       if (form.api_key) payload.api_key = form.api_key;
 
@@ -257,7 +257,7 @@ export default function SettingsModal({
           provider_type: form.provider_type,
           base_url: form.base_url || null,
           api_key: form.api_key,
-          metadata: { default_model: form.default_model || null },
+          metadata: { model_filter: form.model_filter || null },
         };
         endpoint = `${apiBase}/v1/providers/test`;
       } else {
@@ -267,7 +267,7 @@ export default function SettingsModal({
           name: form.name,
           provider_type: form.provider_type,
           base_url: form.base_url || null,
-          metadata: { default_model: form.default_model || null },
+          metadata: { model_filter: form.model_filter || null },
         };
       }
 
@@ -534,20 +534,20 @@ export default function SettingsModal({
                     </div>
 
                     <div className="space-y-1.5">
-                      <label htmlFor="default-model" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Default Model
+                      <label htmlFor="model-filter" className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                        Model Filter
                         <span className="text-xs font-normal text-slate-500 dark:text-slate-400 ml-2">(Optional)</span>
                       </label>
                       <input
-                        id="default-model"
+                        id="model-filter"
                         type="text"
                         className="w-full px-3 py-2 lg:py-2.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
-                        value={form.default_model || ''}
-                        onChange={(e) => setForm((f) => ({ ...f, default_model: e.target.value }))}
-                        placeholder="gpt-4o-mini, claude-3-5-sonnet-20241022, etc."
+                        value={form.model_filter || ''}
+                        onChange={(e) => setForm((f) => ({ ...f, model_filter: e.target.value }))}
+                        placeholder="gpt-4*; *sonnet*; gemini/*"
                       />
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        Fallback model if none specified. Use exact model name from provider docs.
+                        Filter models in selector using wildcards. Multiple patterns separated by semicolon (e.g., gpt-4*; *sonnet*; gemini/*).
                       </p>
                     </div>
 

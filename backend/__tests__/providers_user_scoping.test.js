@@ -1,13 +1,11 @@
 import { describe, test, expect, beforeEach, afterEach, beforeAll, afterAll } from '@jest/globals';
 import express from 'express';
 import request from 'supertest';
-import bcrypt from 'bcryptjs';
-import { createUser } from '../src/db/users.js';
+import { randomUUID } from 'crypto';
 import { generateAccessToken } from '../src/middleware/auth.js';
 import { resetDbCache, getDb } from '../src/db/index.js';
 import { createProvidersRouter } from '../src/routes/providers.js';
 import { getUserContext } from '../src/middleware/auth.js';
-import { config } from '../src/env.js';
 import { safeTestSetup } from '../test_support/databaseSafety.js';
 
 // Helper to create test app with authentication middleware
@@ -19,18 +17,24 @@ const createTestApp = () => {
   return app;
 };
 
-// We'll compute a low-cost password hash once for all tests to avoid CPU-heavy
-// bcrypt work on every single test (this is only for test performance).
-let testPasswordHash;
-beforeAll(async () => {
+const insertTestUser = ({ email, displayName }) => {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const id = randomUUID();
+
+  db.prepare(`
+    INSERT INTO users (id, email, password_hash, display_name, created_at, updated_at, email_verified, last_login_at, deleted_at)
+    VALUES (@id, @email, 'test-hash', @display_name, @now, @now, 1, NULL, NULL)
+  `).run({ id, email, display_name: displayName || null, now });
+
+  return { id, email, displayName };
+};
+
+beforeAll(() => {
   // Safety check: ensure we're using a test database
   safeTestSetup();
   resetDbCache();
   getDb();
-
-  // Use a very low work factor for tests to speed them up. Production code
-  // should keep a high cost; tests don't need that level of security.
-  testPasswordHash = await bcrypt.hash('password123', 1);
 });
 
 afterAll(() => {
@@ -40,26 +44,23 @@ afterAll(() => {
 describe('User-scoped Providers', () => {
   let app;
   let user1, user2, token1, token2;
-  let user1PrivateId, globalSharedId, user1EditableId, user1DefaultId, globalDefaultId;
-  let user1ProviderData, user2ProviderData, globalProviderData; // Store provider data for tests
+  let user1PrivateId, user1EditableId, user1DefaultId;
+  let user1ProviderData, user2ProviderData; // Store provider data for tests
 
   beforeEach(async () => {
     resetDbCache();
+    const db = getDb();
+    db.exec('DELETE FROM providers; DELETE FROM users;');
     app = createTestApp();
 
-  // Create test users with hashed passwords and unique emails. Reuse the
-  // precomputed low-cost hash from beforeAll to avoid expensive work per-test.
-  const passwordHash = testPasswordHash;
     const timestamp = Date.now();
 
-    user1 = createUser({
+    user1 = insertTestUser({
       email: `user1-${timestamp}@test.com`,
-      passwordHash,
       displayName: 'User 1'
     });
-    user2 = createUser({
+    user2 = insertTestUser({
       email: `user2-${timestamp}@test.com`,
-      passwordHash,
       displayName: 'User 2'
     });
 
@@ -88,22 +89,6 @@ describe('User-scoped Providers', () => {
       expect(response.status).toBe(201);
       expect(response.body.name).toBe(`User1 OpenAI ${timestamp}`);
       expect(response.body.user_id).toBe(user1.id);
-    });
-
-    test('anonymous user creates global provider', async () => {
-      const timestamp = Date.now() + Math.random();
-      const response = await request(app)
-        .post('/v1/providers')
-        .send({
-          id: `global-openai-${timestamp}`,
-          name: `Global OpenAI ${timestamp}`,
-          provider_type: 'openai',
-          api_key: 'sk-global',
-        });
-
-      expect(response.status).toBe(201);
-      expect(response.body.name).toBe(`Global OpenAI ${timestamp}`);
-      expect(response.body.user_id).toBeNull();
     });
   });
 
@@ -135,20 +120,9 @@ describe('User-scoped Providers', () => {
           api_key: 'sk-user2',
         });
       user2ProviderData = user2Response.body;
-
-      // Global provider (created by anonymous user)
-      const globalResponse = await request(app)
-        .post('/v1/providers')
-        .send({
-          id: `global-provider-${timestamp}`,
-          name: `Global Provider ${timestamp}`,
-          provider_type: 'openai',
-          api_key: 'sk-global',
-        });
-      globalProviderData = globalResponse.body;
     });
 
-    test('user1 sees their own providers + global providers', async () => {
+    test('user1 sees only their own providers', async () => {
       const response = await request(app)
         .get('/v1/providers')
         .set('Authorization', `Bearer ${token1}`);
@@ -156,13 +130,12 @@ describe('User-scoped Providers', () => {
       expect(response.status).toBe(200);
       const providerNames = response.body.providers.map(p => p.name);
 
-      // User1 should see their personal provider, global provider, but NOT user2's provider
+      // User1 should see their personal provider but NOT user2's provider
       expect(providerNames).toContain(user1ProviderData.name);
-      expect(providerNames).toContain(globalProviderData.name);
       expect(providerNames).not.toContain(user2ProviderData.name);
     });
 
-    test('user2 sees their own providers + global providers', async () => {
+    test('user2 sees only their own providers', async () => {
       const response = await request(app)
         .get('/v1/providers')
         .set('Authorization', `Bearer ${token2}`);
@@ -170,48 +143,19 @@ describe('User-scoped Providers', () => {
       expect(response.status).toBe(200);
       const providerNames = response.body.providers.map(p => p.name);
 
-      // User2 should see their personal provider, global provider, but NOT user1's provider
+      // User2 should see their personal provider but NOT user1's provider
       expect(providerNames).toContain(user2ProviderData.name);
-      expect(providerNames).toContain(globalProviderData.name);
       expect(providerNames).not.toContain(user1ProviderData.name);
-    });
-
-    test('anonymous user only sees global providers', async () => {
-      const response = await request(app)
-        .get('/v1/providers');
-
-      expect(response.status).toBe(200);
-      const providerNames = response.body.providers.map(p => p.name);
-
-      // Anonymous user should only see global providers
-      expect(providerNames).toContain(globalProviderData.name);
-      expect(providerNames).not.toContain(user1ProviderData.name);
-      expect(providerNames).not.toContain(user2ProviderData.name);
-    });
-
-    test('providers include is_user_provider flag', async () => {
-      const response = await request(app)
-        .get('/v1/providers')
-        .set('Authorization', `Bearer ${token1}`);
-
-      expect(response.status).toBe(200);
-
-      const user1Provider = response.body.providers.find(p => p.name === user1ProviderData.name);
-      const globalProvider = response.body.providers.find(p => p.name === globalProviderData.name);
-
-      expect(user1Provider.is_user_provider).toBe(true);
-      expect(globalProvider.is_user_provider).toBe(false);
     });
   });
 
   describe('Provider access control', () => {
-    let user1PrivateData, globalSharedData;
+    let user1PrivateData;
 
     beforeEach(async () => {
       // Create test providers with unique IDs
       const timestamp = Date.now() + Math.random();
       user1PrivateId = `user1-private-${timestamp}`;
-      globalSharedId = `global-shared-${timestamp}`;
 
       const user1Response = await request(app)
         .post('/v1/providers')
@@ -223,16 +167,6 @@ describe('User-scoped Providers', () => {
           api_key: 'sk-user1-private',
         });
       user1PrivateData = user1Response.body;
-
-      const globalResponse = await request(app)
-        .post('/v1/providers')
-        .send({
-          id: globalSharedId,
-          name: `Global Shared ${timestamp}`,
-          provider_type: 'openai',
-          api_key: 'sk-global-shared',
-        });
-      globalSharedData = globalResponse.body;
     });
 
     test('user can access their own provider', async () => {
@@ -250,30 +184,6 @@ describe('User-scoped Providers', () => {
         .set('Authorization', `Bearer ${token2}`);
 
       expect(response.status).toBe(404);
-    });
-
-    test('user can access global provider', async () => {
-      const response = await request(app)
-        .get(`/v1/providers/${globalSharedId}`)
-        .set('Authorization', `Bearer ${token1}`);
-
-      expect(response.status).toBe(200);
-      expect(response.body.name).toBe(globalSharedData.name);
-    });
-
-    test('anonymous user cannot access user provider', async () => {
-      const response = await request(app)
-        .get(`/v1/providers/${user1PrivateId}`);
-
-      expect(response.status).toBe(404);
-    });
-
-    test('anonymous user can access global provider', async () => {
-      const response = await request(app)
-        .get(`/v1/providers/${globalSharedId}`);
-
-      expect(response.status).toBe(200);
-      expect(response.body.name).toBe(globalSharedData.name);
     });
   });
 
@@ -336,13 +246,12 @@ describe('User-scoped Providers', () => {
   });
 
   describe('Default provider management', () => {
-    let user1DefaultData, globalDefaultData;
+    let user1DefaultData;
 
     beforeEach(async () => {
-      // Create user and global providers with unique IDs
+      // Create user provider with unique ID
       const timestamp = Date.now() + Math.random();
       user1DefaultId = `user1-default-${timestamp}`;
-      globalDefaultId = `global-default-${timestamp}`;
 
       const user1Response = await request(app)
         .post('/v1/providers')
@@ -354,16 +263,6 @@ describe('User-scoped Providers', () => {
           api_key: 'sk-user1-default',
         });
       user1DefaultData = user1Response.body;
-
-      const globalResponse = await request(app)
-        .post('/v1/providers')
-        .send({
-          id: globalDefaultId,
-          name: `Global Default ${timestamp}`,
-          provider_type: 'openai',
-          api_key: 'sk-global-default',
-        });
-      globalDefaultData = globalResponse.body;
     });
 
     test('user can set their provider as default', async () => {
@@ -373,32 +272,6 @@ describe('User-scoped Providers', () => {
 
       expect(response.status).toBe(200);
       expect(response.body.is_default).toBe(1);
-    });
-
-    test('setting user default does not affect global default', async () => {
-      // Set global default
-      await request(app)
-        .post(`/v1/providers/${globalDefaultId}/default`);
-
-      // Set user default
-      await request(app)
-        .post(`/v1/providers/${user1DefaultId}/default`)
-        .set('Authorization', `Bearer ${token1}`);
-
-      // Check global default is still set for anonymous users
-      const globalResponse = await request(app)
-        .get('/v1/providers/default');
-
-      expect(globalResponse.status).toBe(200);
-      expect(globalResponse.body.name).toBe(globalDefaultData.name);
-
-      // Check user default takes precedence for authenticated user
-      const userResponse = await request(app)
-        .get('/v1/providers/default')
-        .set('Authorization', `Bearer ${token1}`);
-
-      expect(userResponse.status).toBe(200);
-      expect(userResponse.body.name).toBe(user1DefaultData.name);
     });
   });
 });

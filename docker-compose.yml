@@ -6,10 +6,14 @@ services:
       - ./backend/.env
     environment:
       - PERSIST_TRANSCRIPTS=1
+      # Store uploaded images on a Docker volume
+      - IMAGE_STORAGE_PATH=/data/images
       - DB_URL=file:/data/prod.db
       - NODE_ENV=production
     volumes:
       - db_data:/data
+      # store uploaded images in a separate named volume mounted at /data/images
+      - images_data:/data/images
     ports:
       - "3001:3001"
     restart: unless-stopped
@@ -54,4 +58,7 @@ networks:
 
 volumes:
   db_data:
+    driver: local
+  # Optional separate volume if you want to separate DB and images
+  images_data:
     driver: local

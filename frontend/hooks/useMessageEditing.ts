@@ -1,6 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import type { ChatMessage } from '../lib/chat';
 import { ConversationManager } from '../lib/chat';
+import { extractTextFromContent, stringToMessageContent } from '../lib/chat/content-utils';
 
 export interface UseMessageEditingReturn {
   editingMessageId: string | null;
@@ -46,8 +47,8 @@ export function useMessageEditing(): UseMessageEditingReturn {
     let oldContent = '';
     onMessagesUpdate(prev => {
       const target = prev.find(m => m.id === messageId);
-      oldContent = target?.content || '';
-      return prev.map(m => m.id === messageId ? { ...m, content: newContent } : m);
+      oldContent = extractTextFromContent(target?.content || '');
+      return prev.map(m => m.id === messageId ? { ...m, content: stringToMessageContent(newContent) } : m);
     });
     setEditingMessageId(null);
     setEditingContent('');
@@ -80,7 +81,7 @@ export function useMessageEditing(): UseMessageEditingReturn {
           await onAfterSave(baseMessages);
         } else {
           // Revert optimistic update and restore edit state
-          onMessagesUpdate(prev => prev.map(m => m.id === messageId ? { ...m, content: oldContent } : m));
+          onMessagesUpdate(prev => prev.map(m => m.id === messageId ? { ...m, content: stringToMessageContent(oldContent) } : m));
           setEditingMessageId(messageId);
           setEditingContent(newContent);
           console.error('Failed to edit message:', e);

@@ -4,12 +4,14 @@ import request from 'supertest';
 import { createChatProxyTestContext } from '../test_utils/chatProxyTestUtils.js';
 import { getDb, upsertSession, createConversation } from '../src/db/index.js';
 
+const mockUser = { id: 'test-user-123', email: 'test@example.com' };
+
 // Register shared setup/teardown and get helpers
 const { upstream, makeApp, withServer } = createChatProxyTestContext();
 
 describe('POST /v1/chat/completions (proxy)', () => {
   test('proxies non-streaming requests and returns upstream JSON', async () => {
-    const app = makeApp();
+    const app = makeApp({ mockUser });
     const res = await request(app)
       .post('/v1/chat/completions')
       .send({ messages: [{ role: 'user', content: 'Hello' }], stream: false });
@@ -18,7 +20,7 @@ describe('POST /v1/chat/completions (proxy)', () => {
   });
 
   test('streams SSE responses line-by-line until [DONE]', async () => {
-    const app = makeApp();
+    const app = makeApp({ mockUser });
     const res = await request(app)
       .post('/v1/chat/completions')
       .send({ messages: [{ role: 'user', content: 'Hello' }], stream: true });
@@ -30,7 +32,7 @@ describe('POST /v1/chat/completions (proxy)', () => {
 
   test('returns error JSON when upstream fails (status >= 400)', async () => {
     upstream.setError(true);
-    const app = makeApp();
+    const app = makeApp({ mockUser });
     const res = await request(app)
       .post('/v1/chat/completions')
       .send({ messages: [{ role: 'user', content: 'Hello' }], stream: false });
@@ -39,7 +41,7 @@ describe('POST /v1/chat/completions (proxy)', () => {
   });
 
   test('delivers streaming response progressively when stream=true', async () => {
-    const app = makeApp();
+    const app = makeApp({ mockUser });
     const res = await request(app)
       .post('/v1/chat/completions')
       .send({ messages: [{ role: 'user', content: 'Hello' }], stream: true });
@@ -57,14 +59,14 @@ describe('POST /v1/chat/completions (proxy)', () => {
   });
 
   test('user receives error response when upstream stream fails', async () => {
+    const app = makeApp({ mockUser });
     const sessionId = 'test-session';
     const db = getDb();
-    upsertSession(sessionId);
-    createConversation({ id: 'conv1', sessionId, title: 'Test' });
+    upsertSession(sessionId, { userId: mockUser.id });
+    createConversation({ id: 'conv1', sessionId, userId: mockUser.id, title: 'Test' });
 
     upstream.setError(true);
 
-    const app = makeApp();
     const res = await request(app)
       .post('/v1/chat/completions')
       .set('x-session-id', sessionId)

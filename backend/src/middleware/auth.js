@@ -1,5 +1,7 @@
+import { createHash } from 'crypto';
 import jwt from 'jsonwebtoken';
 import { getUserById } from '../db/users.js';
+import { upsertSession } from '../db/sessions.js';
 import { config } from '../env.js';
 
 /**
@@ -35,6 +37,20 @@ export function authenticateToken(req, res, next) {
       displayName: user.display_name,
       emailVerified: user.email_verified
     };
+
+    if (req.sessionId) {
+      try {
+        const sessionMeta = req.sessionMeta || {
+          userAgent: req.get('User-Agent') || null,
+          ipHash: req.ip
+            ? createHash('sha256').update(req.ip).digest('hex').substring(0, 16)
+            : null,
+        };
+        upsertSession(req.sessionId, { userId: user.id, ...sessionMeta });
+      } catch (sessionErr) {
+        console.warn('[auth] Failed to upsert session during authentication:', sessionErr.message);
+      }
+    }
 
     next();
   } catch (err) {
@@ -95,15 +111,12 @@ export function optionalAuth(req, res, next) {
 
 /**
  * Middleware to get user from session or token
- * Prioritizes user auth over session-based access
+ * Now requires authentication - session fallback removed as part of Phase 1
  */
 export function getUserContext(req, res, next) {
-  // First try to get authenticated user
-  optionalAuth(req, res, () => {
-    // If no user auth, check session
-    if (!req.user && req.session?.id) {
-      req.sessionId = req.session.id;
-    }
+  // Require authentication
+  authenticateToken(req, res, () => {
+    // User context is now guaranteed by authenticateToken
     next();
   });
 }

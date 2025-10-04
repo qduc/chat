@@ -51,7 +51,7 @@ export async function resolveProviderSettings(config, options = {}) {
           baseUrl: row.base_url || config?.providerConfig?.baseUrl || config?.openaiBaseUrl,
           apiKey: row.api_key || config?.providerConfig?.apiKey || config?.openaiApiKey,
           headers,
-          defaultModel: metadata?.default_model || config?.defaultModel,
+          defaultModel: config?.defaultModel, // Only use config defaultModel, not from metadata
           responsesApiEnabled,
           raw: row,
         };

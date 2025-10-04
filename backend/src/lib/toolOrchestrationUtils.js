@@ -88,7 +88,7 @@ export function buildConversationMessages({ body, bodyIn, persistence }) {
     try {
       const page = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
       prior = (page?.messages || [])
-        .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+        .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && (typeof m.content === 'string' || Array.isArray(m.content)))
         .map((m) => ({ role: m.role, content: m.content }));
     } catch {
       prior = Array.isArray(bodyIn?.messages)
@@ -131,7 +131,7 @@ export async function buildConversationMessagesAsync({ body, bodyIn, persistence
     try {
       const page = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
       prior = (page?.messages || [])
-        .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+        .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && (typeof m.content === 'string' || Array.isArray(m.content)))
         .map((m) => ({ role: m.role, content: m.content }));
     } catch {
       prior = Array.isArray(bodyIn?.messages)

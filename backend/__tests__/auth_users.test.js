@@ -123,7 +123,7 @@ describe('User Database Operations', () => {
 
   test('should link session to user', async () => {
     // Create a user first
-    const passwordHash = await bcrypt.hash('password123', 12);
+    const passwordHash = await bcrypt.hash('password123', TEST_BCRYPT_ROUNDS);
     const createdUser = createUser({
       email: 'session@example.com',
       passwordHash,
@@ -132,14 +132,8 @@ describe('User Database Operations', () => {
 
     const sessionId = 'test-session-id';
 
-    // First create a session
     const db = getDb();
-    db.prepare(`
-      INSERT INTO sessions (id, user_id, created_at, last_seen_at)
-      VALUES (?, NULL, datetime('now'), datetime('now'))
-    `).run(sessionId);
-
-    linkSessionToUser(sessionId, createdUser.id);
+    linkSessionToUser(sessionId, createdUser.id, { userAgent: 'jest-test' });
 
     const session = db.prepare(`
       SELECT * FROM sessions WHERE id = ?

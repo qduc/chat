@@ -1,5 +1,6 @@
 import { PassThrough } from 'node:stream';
 import { appendFileSync } from 'node:fs';
+import { maybeConvertLocalImageUrl } from '../localImageEncoder.js';
 import { BaseAdapter } from './baseAdapter.js';
 import { createChatCompletionChunk } from '../streamUtils.js';
 
@@ -168,9 +169,10 @@ function normalizeContentPart(part, role) {
 	}
 
 	if (part.type === 'image_url') {
-		const imageUrl = typeof part.image_url === 'string'
+		const imageUrlRaw = typeof part.image_url === 'string'
 			? part.image_url
 			: (part.image_url?.url || null);
+		const imageUrl = imageUrlRaw ? maybeConvertLocalImageUrl(imageUrlRaw) : null;
 		if (imageUrl) {
 			return {
 				type: role === 'assistant' ? 'output_image' : 'input_image',
@@ -181,6 +183,12 @@ function normalizeContentPart(part, role) {
 	}
 
 	if (part.type === 'input_image' || part.type === 'output_image') {
+		if (part.image_url && typeof part.image_url === 'string') {
+			const converted = maybeConvertLocalImageUrl(part.image_url);
+			if (converted !== part.image_url) {
+				return { ...part, image_url: converted };
+			}
+		}
 		return { ...part };
 	}
 

@@ -22,16 +22,15 @@ describe('Chat proxy persistence', () => {
     const userId = mockUser.id;
 
     try {
+      const app = makeApp({ mockUser });
       const db = getDb();
-      upsertSession(sessionId);
+      upsertSession(sessionId, { userId });
       createConversation({ id: 'conv1', sessionId, userId, title: 'Test Limit' });
 
       // Pre-populate one message to reach the limit
       db.prepare(
         `INSERT INTO messages (conversation_id, role, content, seq) VALUES (?, 'user', 'existing message', 1)`
       ).run('conv1');
-
-      const app = makeApp({ mockUser });
       await withServer(app, async (_port) => {
         // Suppress console.error for this specific test
         const originalConsoleError = console.error;
@@ -58,10 +57,9 @@ describe('Chat proxy persistence', () => {
   test('accepts optional conversation_id in body/header and continues streaming', async () => {
     const sessionId = 'test-session';
     const userId = mockUser.id;
-    upsertSession(sessionId);
-    createConversation({ id: 'conv1', sessionId, userId, title: 'Test' });
-
     const app = makeApp({ mockUser });
+    upsertSession(sessionId, { userId });
+    createConversation({ id: 'conv1', sessionId, userId, title: 'Test' });
     const res = await request(app)
       .post('/v1/chat/completions')
       .set('x-session-id', sessionId)
@@ -74,10 +72,9 @@ describe('Chat proxy persistence', () => {
   test('user can retrieve persisted conversation messages after sending a message', async () => {
     const sessionId = 'test-session';
     const userId = mockUser.id;
-    upsertSession(sessionId);
-    createConversation({ id: 'conv1', sessionId, userId, title: 'Test' });
-
     const app = makeApp({ mockUser });
+    upsertSession(sessionId, { userId });
+    createConversation({ id: 'conv1', sessionId, userId, title: 'Test' });
     // User sends a message
     const chatRes = await request(app)
       .post('/v1/chat/completions')

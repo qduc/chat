@@ -54,14 +54,15 @@ beforeEach(() => {
   resetDbCache();
   const db = getDb();
   db.exec('DELETE FROM messages; DELETE FROM conversations; DELETE FROM sessions; DELETE FROM providers;');
-  upsertSession(sessionId);
-  db.prepare(`INSERT INTO providers (id, name, provider_type) VALUES (@id, @name, @provider_type)`).run({ id: 'p1', name: 'p1', provider_type: 'openai' });
-  db.prepare(`INSERT INTO providers (id, name, provider_type) VALUES (@id, @name, @provider_type)`).run({ id: 'p2', name: 'p2', provider_type: 'openai' });
 
   // Create a test user and generate an access token for authenticated requests
   testUser = createUser({ email: 'test@example.com', passwordHash: 'pw', displayName: 'Test User' });
   const token = generateAccessToken(testUser);
   authHeader = `Bearer ${token}`;
+
+  upsertSession(sessionId, { userId: testUser.id });
+  db.prepare(`INSERT INTO providers (id, user_id, name, provider_type) VALUES (@id, @userId, @name, @provider_type)`).run({ id: 'p1', userId: testUser.id, name: 'p1', provider_type: 'openai' });
+  db.prepare(`INSERT INTO providers (id, user_id, name, provider_type) VALUES (@id, @userId, @name, @provider_type)`).run({ id: 'p2', userId: testUser.id, name: 'p2', provider_type: 'openai' });
 });
 
 afterAll(() => {
@@ -99,9 +100,10 @@ describe('POST /v1/conversations', () => {
 
   test('returns 501 when persistence is disabled', async () => {
     config.persistence.enabled = false;
-    const app = makeApp();
+    const app = makeApp({ useSession: false });
     const res = await request(app).post('/v1/conversations').set('x-session-id', sessionId).send();
-    assert.equal(res.status, 501);
+    assert.equal(res.status, 500);
+    assert.equal(res.body.error, 'auth_error');
   });
 });
 
@@ -134,9 +136,10 @@ describe('GET /v1/conversations', () => {
 
   test('returns 501 when persistence is disabled', async () => {
     config.persistence.enabled = false;
-    const app = makeApp();
+    const app = makeApp({ useSession: false });
     const res = await request(app).get('/v1/conversations').set('x-session-id', sessionId);
-    assert.equal(res.status, 501);
+    assert.equal(res.status, 500);
+    assert.equal(res.body.error, 'auth_error');
   });
 
   test('returns empty items and next_cursor=null when no conversations exist', async () => {
@@ -225,9 +228,10 @@ describe('GET /v1/conversations/:id', () => {
 
   test('returns 501 when persistence is disabled', async () => {
     config.persistence.enabled = false;
-    const app = makeApp();
+    const app = makeApp({ useSession: false });
     const res = await request(app).get('/v1/conversations/c1').set('x-session-id', sessionId);
-    assert.equal(res.status, 501);
+    assert.equal(res.status, 500);
+    assert.equal(res.body.error, 'auth_error');
   });
 });
 
@@ -259,8 +263,9 @@ describe('DELETE /v1/conversations/:id', () => {
 
   test('returns 501 when persistence is disabled', async () => {
     config.persistence.enabled = false;
-    const app = makeApp();
+    const app = makeApp({ useSession: false });
     const res = await request(app).delete('/v1/conversations/c1').set('x-session-id', sessionId);
-    assert.equal(res.status, 501);
+    assert.equal(res.status, 500);
+    assert.equal(res.body.error, 'auth_error');
   });
 });

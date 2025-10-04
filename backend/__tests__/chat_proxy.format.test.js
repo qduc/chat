@@ -8,9 +8,11 @@ import { config } from '../src/env.js';
 
 const { makeApp, upstream } = createChatProxyTestContext();
 
+const mockUser = { id: 'chat-format-user', email: 'format@example.com' };
+
 describe('Format transformation', () => {
   test('converts Responses API non-streaming JSON to Chat Completions shape when hitting /v1/chat/completions', async () => {
-  const app = makeApp();
+  const app = makeApp({ mockUser });
     const res = await request(app)
       .post('/v1/chat/completions')
       .send({ messages: [{ role: 'user', content: 'Hello' }], stream: false });
@@ -23,7 +25,7 @@ describe('Format transformation', () => {
   });
 
   test('converts Responses API streaming events to Chat Completions chunks when hitting /v1/chat/completions', async () => {
-  const app = makeApp();
+  const app = makeApp({ mockUser });
     const res = await request(app)
       .post('/v1/chat/completions')
       .send({ messages: [{ role: 'user', content: 'Hello' }], stream: true });
@@ -37,7 +39,7 @@ describe('Format transformation', () => {
 
 describe('Tool orchestration', () => {
   test('handles requests with tools by forcing Chat Completions path', async () => {
-    const app = makeApp();
+    const app = makeApp({ mockUser });
     const res = await request(app)
       .post('/v1/chat/completions')
       .send({
@@ -52,7 +54,7 @@ describe('Tool orchestration', () => {
   });
 
   test('tool orchestration paths are covered in code', async () => {
-    const app = makeApp();
+    const app = makeApp({ mockUser });
     const res = await request(app)
       .post('/v1/chat/completions')
       .send({
@@ -68,10 +70,9 @@ describe('Tool orchestration', () => {
 
   test('persistence works with tool requests', async () => {
     const sessionId = 'test-session';
-    upsertSession(sessionId);
-    createConversation({ id: 'conv1', sessionId, title: 'Test' });
-
-    const app = makeApp();
+    const app = makeApp({ mockUser });
+    upsertSession(sessionId, { userId: mockUser.id });
+    createConversation({ id: 'conv1', sessionId, userId: mockUser.id, title: 'Test' });
     const res = await request(app)
       .post('/v1/chat/completions')
       .set('x-session-id', sessionId)
@@ -125,7 +126,7 @@ describe('Tool orchestration', () => {
     await upstream.start();
 
     try {
-      const app = makeApp();
+      const app = makeApp({ mockUser });
       // Ensure provider resolution uses env-config instead of DB rows
       try { const db = getDb(); db.exec('DELETE FROM providers;'); } catch {}
       const originalBaseUrl = config.openaiBaseUrl;
@@ -178,7 +179,7 @@ describe('Tool orchestration', () => {
     await upstream.start();
 
     try {
-      const app = makeApp();
+      const app = makeApp({ mockUser });
       // Ensure provider resolution uses env-config instead of DB rows
       try { const db = getDb(); db.exec('DELETE FROM providers;'); } catch {}
       const originalBaseUrl = config.openaiBaseUrl;
@@ -215,7 +216,7 @@ describe('Tool orchestration', () => {
   });
 
   test('falls back gracefully when no tools provided', async () => {
-    const app = makeApp();
+    const app = makeApp({ mockUser });
     const res = await request(app)
       .post('/v1/chat/completions')
       .send({ messages: [{ role: 'user', content: 'Hello' }], stream: true });
@@ -252,7 +253,7 @@ describe('System prompt injection', () => {
       ON CONFLICT(id) DO UPDATE SET email = excluded.email
     `).run({ id: USER_ID, email: USER_EMAIL });
 
-    upsertSession(SESSION_ID);
+    upsertSession(SESSION_ID, { userId: USER_ID });
     db.prepare('UPDATE sessions SET user_id=@userId WHERE id=@sessionId')
       .run({ userId: USER_ID, sessionId: SESSION_ID });
 

@@ -2,10 +2,29 @@
 import assert from 'node:assert/strict';
 import express from 'express';
 import { chatRouter } from '../src/routes/chat.js';
+import { generateAccessToken } from '../src/middleware/auth.js';
+import { createUser } from '../src/db/users.js';
+import { safeTestSetup } from '../test_support/databaseSafety.js';
+
+let authHeader;
+
+beforeAll(() => {
+  // Safety check: ensure we're using a test database
+  safeTestSetup();
+  // Create a real user in the DB so auth middleware finds it
+  const user = createUser({ email: 'test@example.com', passwordHash: 'pw', displayName: 'Test' });
+  const token = generateAccessToken(user);
+  authHeader = `Bearer ${token}`;
+});
 
 const makeApp = () => {
   const app = express();
   app.use(express.json());
+  // Inject Authorization header for authentication
+  app.use((req, _res, next) => {
+    req.headers['authorization'] = authHeader;
+    next();
+  });
   app.use(chatRouter);
   return app;
 };

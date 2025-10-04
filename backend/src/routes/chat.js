@@ -2,8 +2,12 @@ import { Router } from 'express';
 import { proxyOpenAIRequest } from '../lib/openaiProxy.js';
 import { generateOpenAIToolSpecs, getAvailableTools } from '../lib/tools.js';
 import { logger } from '../logger.js';
+import { authenticateToken } from '../middleware/auth.js';
 
 export const chatRouter = Router();
+
+// Require authentication for all chat routes
+chatRouter.use(authenticateToken);
 
 chatRouter.post('/v1/chat/completions', proxyOpenAIRequest);
 

@@ -10,10 +10,12 @@ import {
   retentionSweep,
   resetDbCache,
 } from '../src/db/index.js';
+import { createUser } from '../src/db/users.js';
 import { config } from '../src/env.js';
 import { safeTestSetup } from '../test_support/databaseSafety.js';
 
 const sessionId = 'sess1';
+let testUser;
 
 beforeAll(() => {
   // Safety check: ensure we're using a test database
@@ -25,8 +27,16 @@ beforeEach(() => {
   config.persistence.dbUrl = 'file::memory:';
   resetDbCache();
   const db = getDb();
-  db.exec('DELETE FROM messages; DELETE FROM conversations; DELETE FROM sessions;');
-  upsertSession(sessionId);
+  db.exec('DELETE FROM messages; DELETE FROM conversations; DELETE FROM sessions; DELETE FROM users;');
+
+  // Create a test user for conversations (Phase 3: all conversations need userId)
+  testUser = createUser({
+    email: 'test@example.com',
+    passwordHash: 'test-hash',
+    displayName: 'Test User'
+  });
+
+  upsertSession(sessionId, { userId: testUser.id });
 });
 
 afterAll(() => {
@@ -38,8 +48,8 @@ describe('DB helpers', () => {
   describe('listConversations', () => {
     test('orders by created_at DESC and paginates with next_cursor', () => {
       // Create conversations with deterministic timestamps by manipulating created_at directly
-      createConversation({ id: 'c1', sessionId, title: 'one' });
-      createConversation({ id: 'c2', sessionId, title: 'two' });
+      createConversation({ id: 'c1', sessionId, userId: testUser.id, title: 'one' });
+      createConversation({ id: 'c2', sessionId, userId: testUser.id, title: 'two' });
 
       // Set explicit timestamps to ensure deterministic ordering (c2 newer than c1)
       const db = getDb();
@@ -47,14 +57,14 @@ describe('DB helpers', () => {
       db.prepare(`UPDATE conversations SET created_at = datetime('now') WHERE id = 'c2'`).run();
 
       // Test behavior: newest conversation appears first
-      const page1 = listConversations({ sessionId, limit: 1 });
+      const page1 = listConversations({ userId: testUser.id, limit: 1 });
       assert.equal(page1.items.length, 1);
       assert.equal(page1.items[0].id, 'c2');
       assert.ok(page1.next_cursor);
 
       // Test behavior: pagination continues with older conversation
       const page2 = listConversations({
-        sessionId,
+        userId: testUser.id,
         cursor: page1.next_cursor,
         limit: 1,
       });
@@ -65,8 +75,8 @@ describe('DB helpers', () => {
 
     test('applies cursor filter (created_at < cursor) correctly', () => {
       // Create conversations with deterministic timestamps
-      createConversation({ id: 'c1', sessionId });
-      createConversation({ id: 'c2', sessionId });
+      createConversation({ id: 'c1', sessionId, userId: testUser.id });
+      createConversation({ id: 'c2', sessionId, userId: testUser.id });
 
       // Set explicit timestamps to ensure deterministic ordering
       const db = getDb();
@@ -74,9 +84,9 @@ describe('DB helpers', () => {
       db.prepare(`UPDATE conversations SET created_at = datetime('now') WHERE id = 'c2'`).run();
 
       // Test behavior: cursor pagination filters correctly
-      const firstPage = listConversations({ sessionId, limit: 1 });
+      const firstPage = listConversations({ userId: testUser.id, limit: 1 });
       const secondPage = listConversations({
-        sessionId,
+        userId: testUser.id,
         cursor: firstPage.next_cursor,
         limit: 10,
       });
@@ -87,7 +97,7 @@ describe('DB helpers', () => {
 
   describe('getMessagesPage', () => {
     test('returns messages after after_seq with ascending seq ordering', () => {
-      createConversation({ id: 'conv', sessionId });
+      createConversation({ id: 'conv', sessionId, userId: testUser.id });
       const db = getDb();
       const stmt = db.prepare(
         `INSERT INTO messages (conversation_id, role, content, seq) VALUES (@cid, 'user', @c, @s)`
@@ -104,7 +114,7 @@ describe('DB helpers', () => {
     });
 
     test('sets next_after_seq when page is full, null otherwise', () => {
-      createConversation({ id: 'conv', sessionId });
+      createConversation({ id: 'conv', sessionId, userId: testUser.id });
       const db = getDb();
       const stmt = db.prepare(
         `INSERT INTO messages (conversation_id, role, content, seq) VALUES (@cid, 'user', @c, @s)`
@@ -123,7 +133,7 @@ describe('DB helpers', () => {
 
   describe('retentionSweep', () => {
     test('deletes conversations older than cutoff (including messages)', () => {
-      createConversation({ id: 'old', sessionId });
+      createConversation({ id: 'old', sessionId, userId: testUser.id });
       const db = getDb();
       db.prepare(
         `UPDATE conversations SET created_at=datetime('now', '-2 days') WHERE id='old'`
@@ -133,7 +143,7 @@ describe('DB helpers', () => {
       );
       stmt.run({ cid: 'old' });
 
-      createConversation({ id: 'recent', sessionId });
+      createConversation({ id: 'recent', sessionId, userId: testUser.id });
       stmt.run({ cid: 'recent' });
 
       const result = retentionSweep({ days: 1 });
@@ -152,7 +162,7 @@ describe('DB helpers', () => {
     });
 
     test('skips conversations with metadata.pinned=true', () => {
-      createConversation({ id: 'pinned', sessionId });
+      createConversation({ id: 'pinned', sessionId, userId: testUser.id });
       const db = getDb();
       db.prepare(
         `UPDATE conversations SET created_at=datetime('now', '-2 days'), metadata='{"pinned":1}' WHERE id='pinned'`
@@ -167,4 +177,3 @@ describe('DB helpers', () => {
     });
   });
 });
-
