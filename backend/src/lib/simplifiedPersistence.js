@@ -76,9 +76,10 @@ export class SimplifiedPersistence {
     if (result.error) {
       return result;
     }
+    const isNewConversation = result.isNewConversation;
 
     // Process message history and generate title if needed
-    await this._processMessageHistory(sessionId, userId, bodyIn);
+    await this._processMessageHistory(sessionId, userId, bodyIn, isNewConversation);
 
     // Setup for assistant message recording
     this._setupAssistantRecording();
@@ -135,22 +136,22 @@ export class SimplifiedPersistence {
 
     this.conversationId = conversationId;
     this.conversationMeta = convo;
-    return {};
+    return { isNewConversation };
   }
 
   /**
    * Process message history and generate title if needed
    * @private
    */
-  async _processMessageHistory(sessionId, userId, bodyIn) {
+  async _processMessageHistory(sessionId, userId, bodyIn, isNewConversation) {
     const messages = this.persistenceConfig.filterNonSystemMessages(bodyIn.messages || []);
 
     if (messages.length > 0) {
       // Sync message history
       this.conversationManager.syncMessageHistory(this.conversationId, userId, messages);
 
-      // Generate title if conversation doesn't have one
-      if (!this.conversationMeta?.title) {
+      // Generate title only if this is the first message in a new conversation
+      if (isNewConversation) {
         try {
           const lastUser = ConversationTitleService.findLastUserMessage(messages);
           if (lastUser) {
