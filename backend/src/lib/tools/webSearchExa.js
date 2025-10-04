@@ -21,18 +21,10 @@ function validate(args) {
 
   if (args.num_results !== undefined) {
     const numResults = Number(args.num_results);
-    if (!Number.isInteger(numResults) || numResults < 1 || numResults > 20) {
-      throw new Error('num_results must be an integer between 1 and 20');
+    if (!Number.isInteger(numResults) || numResults < 1 || numResults > 100) {
+      throw new Error('num_results must be an integer between 1 and 100');
     }
     validated.num_results = numResults;
-  }
-
-  if (args.page !== undefined) {
-    const page = Number(args.page);
-    if (!Number.isInteger(page) || page < 1) {
-      throw new Error('page must be a positive integer');
-    }
-    validated.page = page;
   }
 
   if (args.use_autoprompt !== undefined) {
@@ -67,76 +59,116 @@ function validate(args) {
     validated.end_published_date = args.end_published_date;
   }
 
+  // Validate text parameter (boolean or object)
+  if (args.text !== undefined) {
+    if (typeof args.text === 'boolean') {
+      validated.text = args.text;
+    } else if (typeof args.text === 'object' && args.text !== null) {
+      validated.text = {};
+      if (args.text.max_characters !== undefined) {
+        const maxChars = Number(args.text.max_characters);
+        if (!Number.isInteger(maxChars) || maxChars < 1) {
+          throw new Error('text.max_characters must be a positive integer');
+        }
+        validated.text.maxCharacters = maxChars;
+      }
+      if (args.text.include_html_tags !== undefined) {
+        validated.text.includeHtmlTags = Boolean(args.text.include_html_tags);
+      }
+    } else {
+      throw new Error('text must be a boolean or an object with optional max_characters and include_html_tags');
+    }
+  }
+
+  // Validate highlights parameter (boolean or object)
+  if (args.highlights !== undefined) {
+    if (typeof args.highlights === 'boolean') {
+      validated.highlights = args.highlights;
+    } else if (typeof args.highlights === 'object' && args.highlights !== null) {
+      validated.highlights = {};
+      if (args.highlights.query !== undefined) {
+        if (typeof args.highlights.query !== 'string' || args.highlights.query.trim().length === 0) {
+          throw new Error('highlights.query must be a non-empty string');
+        }
+        validated.highlights.query = args.highlights.query.trim();
+      }
+      if (args.highlights.num_sentences !== undefined) {
+        const numSentences = Number(args.highlights.num_sentences);
+        if (!Number.isInteger(numSentences) || numSentences < 1) {
+          throw new Error('highlights.num_sentences must be a positive integer');
+        }
+        validated.highlights.numSentences = numSentences;
+      }
+      if (args.highlights.highlights_per_url !== undefined) {
+        const highlightsPerUrl = Number(args.highlights.highlights_per_url);
+        if (!Number.isInteger(highlightsPerUrl) || highlightsPerUrl < 1) {
+          throw new Error('highlights.highlights_per_url must be a positive integer');
+        }
+        validated.highlights.highlightsPerUrl = highlightsPerUrl;
+      }
+    } else {
+      throw new Error('highlights must be a boolean or an object with optional query, num_sentences, and highlights_per_url');
+    }
+  }
+
+  // Validate summary parameter (boolean or object)
+  if (args.summary !== undefined) {
+    if (typeof args.summary === 'boolean') {
+      validated.summary = args.summary;
+    } else if (typeof args.summary === 'object' && args.summary !== null) {
+      validated.summary = {};
+      if (args.summary.query !== undefined) {
+        if (typeof args.summary.query !== 'string' || args.summary.query.trim().length === 0) {
+          throw new Error('summary.query must be a non-empty string');
+        }
+        validated.summary.query = args.summary.query.trim();
+      }
+    } else {
+      throw new Error('summary must be a boolean or an object with optional query');
+    }
+  }
+
   return validated;
 }
 
-function extractSnippet(result) {
-  if (!result) return undefined;
+function formatResultContent(result) {
+  if (!result) return '';
 
-  if (typeof result.highlight === 'string') {
-    return result.highlight;
+  let content = '';
+
+  // Add text content (formatted as markdown by default in Exa API)
+  if (typeof result.text === 'string' && result.text.trim()) {
+    content += `   Text: ${result.text.trim()}\n`;
   }
 
-  if (Array.isArray(result.highlight)) {
-    return result.highlight.join(' ');
+  // Add highlights (array of strings)
+  if (Array.isArray(result.highlights) && result.highlights.length > 0) {
+    content += `   Highlights:\n`;
+    result.highlights.forEach((highlight, idx) => {
+      content += `     ${idx + 1}. ${highlight.trim()}\n`;
+    });
   }
 
-  if (Array.isArray(result.highlights)) {
-    return result.highlights.join(' ');
+  // Add summary (string)
+  if (typeof result.summary === 'string' && result.summary.trim()) {
+    content += `   Summary: ${result.summary.trim()}\n`;
   }
 
-  if (typeof result.summary === 'string') {
-    return result.summary;
-  }
-
-  if (result.summary && typeof result.summary.text === 'string') {
-    return result.summary.text;
-  }
-
-  if (typeof result.snippet === 'string') {
-    return result.snippet;
-  }
-
-  if (typeof result.text === 'string') {
-    return result.text;
-  }
-
-  return undefined;
-}
-
-function extractSummary(data) {
-  if (!data || typeof data !== 'object') return undefined;
-
-  if (typeof data.summary === 'string') {
-    return data.summary;
-  }
-
-  if (data.summary && typeof data.summary === 'object') {
-    if (typeof data.summary.text === 'string') {
-      return data.summary.text;
-    }
-    if (Array.isArray(data.summary.highlights)) {
-      return data.summary.highlights.join(' ');
-    }
-  }
-
-  if (Array.isArray(data.highlights)) {
-    return data.highlights.join(' ');
-  }
-
-  return undefined;
+  return content;
 }
 
 async function handler({
   query,
   type,
   num_results,
-  page,
   use_autoprompt,
   include_domains,
   exclude_domains,
   start_published_date,
   end_published_date,
+  text,
+  highlights,
+  summary,
 }) {
   const apiKey = process.env.EXA_API_KEY;
   if (!apiKey) {
@@ -151,12 +183,24 @@ async function handler({
 
   if (type !== undefined) requestBody.type = type;
   if (num_results !== undefined) requestBody.numResults = num_results;
-  if (page !== undefined) requestBody.page = page;
   if (use_autoprompt !== undefined) requestBody.useAutoprompt = use_autoprompt;
   if (include_domains !== undefined) requestBody.includeDomains = include_domains;
   if (exclude_domains !== undefined) requestBody.excludeDomains = exclude_domains;
   if (start_published_date !== undefined) requestBody.startPublishedDate = start_published_date;
   if (end_published_date !== undefined) requestBody.endPublishedDate = end_published_date;
+
+  // Content retrieval - must be nested inside 'contents' object
+  const hasContentRequest = text !== undefined || highlights !== undefined || summary !== undefined;
+
+  if (hasContentRequest) {
+    requestBody.contents = {};
+    if (text !== undefined) requestBody.contents.text = text;
+    if (highlights !== undefined) requestBody.contents.highlights = highlights;
+    if (summary !== undefined) requestBody.contents.summary = summary;
+  } else {
+    // If no content was requested, default to highlights for better results
+    requestBody.contents = { highlights: true };
+  }
 
   try {
     const response = await fetch(url, {
@@ -201,20 +245,18 @@ async function handler({
     const results = await response.json();
     let output = '';
 
-    const summaryText = extractSummary(results);
-    if (summaryText) {
-      output += `Summary: ${summaryText.trim()}\n\n`;
-    }
-
     if (Array.isArray(results.results) && results.results.length > 0) {
-      output += 'Search Results:\n';
+      output += 'Search Results:\n\n';
       results.results.forEach((result, index) => {
         const title = result.title || result.url || `Result ${index + 1}`;
         output += `${index + 1}. ${title}\n`;
-        const snippet = extractSnippet(result);
-        if (snippet) {
-          output += `   Snippet: ${snippet.trim()}\n`;
+
+        // Extract and display content
+        const content = formatResultContent(result);
+        if (content) {
+          output += content;
         }
+
         if (result.publishedDate) {
           output += `   Published: ${result.publishedDate}\n`;
         }
@@ -224,6 +266,7 @@ async function handler({
         if (result.url) {
           output += `   URL: ${result.url}\n`;
         }
+        output += '\n'; // Add spacing between results
       });
     }
 
@@ -249,14 +292,14 @@ async function handler({
 
 export const webSearchExaTool = createTool({
   name: TOOL_NAME,
-  description: 'Perform a web search using Exa API for high-quality, up-to-date results with control over domains and date ranges.',
+  description: 'Perform a web search using Exa API for high-quality, up-to-date results with control over domains and date ranges. Returns highlights by default.',
   validate,
   handler,
   openAI: {
     type: 'function',
     function: {
       name: TOOL_NAME,
-      description: 'Search the web using the Exa API to retrieve high-quality, current sources. Only specify optional parameters when you need to narrow or customize the search.',
+      description: 'Search the web using the Exa API to retrieve high-quality, current sources. Returns highlights by default. Can optionally retrieve full text content and AI-generated summaries. Only specify optional parameters when you need to customize the search.',
       parameters: {
         type: 'object',
         properties: {
@@ -272,13 +315,8 @@ export const webSearchExaTool = createTool({
           num_results: {
             type: 'integer',
             minimum: 1,
-            maximum: 20,
-            description: 'Maximum number of results to return (1-20). Defaults to Exa standard (typically 10).',
-          },
-          page: {
-            type: 'integer',
-            minimum: 1,
-            description: 'Results page to retrieve when paginating beyond the first page. Defaults to 1.',
+            maximum: 100,
+            description: 'Maximum number of results to return (1-100). Neural search supports up to 100, keyword search up to 10. Defaults to 10.',
           },
           use_autoprompt: {
             type: 'boolean',
@@ -297,12 +335,75 @@ export const webSearchExaTool = createTool({
           start_published_date: {
             type: 'string',
             pattern: '^\\d{4}-\\d{2}-\\d{2}$',
-            description: 'Earliest publication date to include (YYYY-MM-DD).',
+            description: 'Earliest publication date to include (YYYY-MM-DD format).',
           },
           end_published_date: {
             type: 'string',
             pattern: '^\\d{4}-\\d{2}-\\d{2}$',
-            description: 'Latest publication date to include (YYYY-MM-DD).',
+            description: 'Latest publication date to include (YYYY-MM-DD format).',
+          },
+          text: {
+            oneOf: [
+              { type: 'boolean' },
+              {
+                type: 'object',
+                properties: {
+                  max_characters: {
+                    type: 'integer',
+                    minimum: 1,
+                    description: 'Maximum number of characters to return per result.',
+                  },
+                  include_html_tags: {
+                    type: 'boolean',
+                    description: 'If true, returns HTML. If false (default), returns clean markdown.',
+                  },
+                },
+                additionalProperties: false,
+              },
+            ],
+            description: 'Retrieve full text content from each result. Pass true for default text, or an object to configure max_characters and include_html_tags. Text is returned as markdown by default.',
+          },
+          highlights: {
+            oneOf: [
+              { type: 'boolean' },
+              {
+                type: 'object',
+                properties: {
+                  query: {
+                    type: 'string',
+                    description: 'Specific query to use for generating highlights (if different from search query).',
+                  },
+                  num_sentences: {
+                    type: 'integer',
+                    minimum: 1,
+                    description: 'Number of sentences per highlight.',
+                  },
+                  highlights_per_url: {
+                    type: 'integer',
+                    minimum: 1,
+                    description: 'Maximum number of highlights to return per URL.',
+                  },
+                },
+                additionalProperties: false,
+              },
+            ],
+            description: 'Retrieve key excerpts most relevant to your query. Pass true for defaults, or an object to configure query, num_sentences, and highlights_per_url.',
+          },
+          summary: {
+            oneOf: [
+              { type: 'boolean' },
+              {
+                type: 'object',
+                properties: {
+                  query: {
+                    type: 'string',
+                    description: 'Specific query to guide the summary generation.',
+                  },
+                },
+                additionalProperties: false,
+              },
+            ],
+            description: 'Generate AI-powered summaries of each result. Pass true for default summary, or an object with a query to guide summarization.',
           },
         },
         required: ['query'],
