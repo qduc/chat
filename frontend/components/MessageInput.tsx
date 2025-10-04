@@ -186,7 +186,7 @@ export function MessageInput({
   const canSend = input.trim().length > 0 || images.length > 0;
 
   return (
-    <ImageUploadZone onFiles={handleImageFiles} disabled={pending.streaming}>
+  <ImageUploadZone onFiles={handleImageFiles} disabled={pending.streaming} fullPage={true}>
       <form
         className=""
         onSubmit={e => { e.preventDefault(); if (pending.streaming) onStop(); else onSend(); }}

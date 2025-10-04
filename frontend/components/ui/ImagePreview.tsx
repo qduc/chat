@@ -1,4 +1,5 @@
 import React from 'react';
+import ReactDOM from 'react-dom';
 import { X, AlertCircle, Loader2 } from 'lucide-react';
 import type { ImageAttachment, ImageUploadProgress } from '../../lib/chat/types';
 
@@ -92,6 +93,7 @@ interface ImageUploadZoneProps {
   disabled?: boolean;
   className?: string;
   children?: React.ReactNode;
+  fullPage?: boolean;
 }
 
 export function ImageUploadZone({
@@ -101,8 +103,10 @@ export function ImageUploadZone({
   disabled = false,
   className = '',
   children,
+  fullPage = false,
 }: ImageUploadZoneProps) {
   const [dragOver, setDragOver] = React.useState(false);
+  const dragCounterRef = React.useRef(0);
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
@@ -131,6 +135,58 @@ export function ImageUploadZone({
     setDragOver(false);
   };
 
+  // When using fullPage mode we want the overlay to appear when dragging
+  // anywhere on the window and prevent the browser's default drop behaviour
+  // (which opens images). We add global listeners while fullPage is true.
+  React.useEffect(() => {
+    if (!fullPage) return;
+
+    const onWindowDragEnter = (e: DragEvent) => {
+      e.preventDefault();
+      dragCounterRef.current += 1;
+      setDragOver(true);
+    };
+
+    const onWindowDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      setDragOver(true);
+    };
+
+    const onWindowDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      // decrement counter and only hide when we've left completely
+      dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+      if (dragCounterRef.current === 0) {
+        setDragOver(false);
+      }
+    };
+
+    const onWindowDrop = (e: DragEvent) => {
+      // prevent default browser behaviour (opening the file)
+      e.preventDefault();
+      dragCounterRef.current = 0;
+      setDragOver(false);
+      // Do not call onFiles here. The portal overlay (when visible)
+      // will receive the drop and call `onFiles`. This handler only
+      // prevents the browser from opening the dropped file when dropping
+      // outside the overlay.
+    };
+
+    window.addEventListener('dragenter', onWindowDragEnter);
+    window.addEventListener('dragover', onWindowDragOver);
+    window.addEventListener('dragleave', onWindowDragLeave);
+    window.addEventListener('drop', onWindowDrop);
+
+    return () => {
+      window.removeEventListener('dragenter', onWindowDragEnter);
+      window.removeEventListener('dragover', onWindowDragOver);
+      window.removeEventListener('dragleave', onWindowDragLeave);
+      window.removeEventListener('drop', onWindowDrop);
+      dragCounterRef.current = 0;
+      setDragOver(false);
+    };
+  }, [fullPage]);
+
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length > 0) {
@@ -141,26 +197,44 @@ export function ImageUploadZone({
   };
 
   return (
-    <div
-      onDrop={handleDrop}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      className={`
-        relative
-        ${dragOver && !disabled ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-600' : ''}
-        ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
-        ${className}
-      `}
-    >
-      <input
-        type="file"
-        accept={accept}
-        multiple
-        disabled={disabled}
-        onChange={handleFileInput}
-        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-      />
-      {children}
-    </div>
+    <>
+      {fullPage && dragOver && ReactDOM.createPortal(
+        <div
+          onDrop={handleDrop}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-auto"
+          style={{ backgroundColor: 'rgba(2,6,23,0.35)' }}
+        >
+          <div className="text-center p-6 rounded-lg bg-white/90 dark:bg-neutral-900/90 border border-slate-200 dark:border-neutral-700 shadow-lg">
+            <div className="text-lg font-medium text-slate-900 dark:text-slate-100">Drop images here</div>
+            <div className="text-sm text-slate-600 dark:text-slate-300 mt-1">They will be uploaded and attached to your message</div>
+          </div>
+        </div>,
+        document.body,
+      )}
+
+      <div
+        onDrop={!fullPage ? handleDrop : undefined}
+        onDragOver={!fullPage ? handleDragOver : undefined}
+        onDragLeave={!fullPage ? handleDragLeave : undefined}
+        className={`
+          relative
+          ${dragOver && !disabled && !fullPage ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-600' : ''}
+          ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+          ${className}
+        `}
+      >
+        <input
+          type="file"
+          accept={accept}
+          multiple
+          disabled={disabled}
+          onChange={handleFileInput}
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+        />
+        {children}
+      </div>
+    </>
   );
 }
