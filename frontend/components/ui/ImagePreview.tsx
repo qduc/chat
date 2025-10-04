@@ -15,13 +15,23 @@ export function ImagePreview({ images, uploadProgress, onRemove, className = '' 
     return null;
   }
 
+  const [selectedImage, setSelectedImage] = React.useState<ImageAttachment | null>(null);
+
+  const handleImageClick = (image: ImageAttachment, isError: boolean) => {
+    if (isError) return;
+    setSelectedImage(image);
+  };
+
+  const handleClosePreview = () => setSelectedImage(null);
+
   const getProgressForImage = (imageId: string) => {
     return uploadProgress?.find(p => p.imageId === imageId);
   };
 
   return (
-    <div className={`flex flex-wrap gap-2 ${className}`}>
-      {images.map((image) => {
+    <>
+      <div className={`flex flex-wrap gap-2 ${className}`}>
+        {images.map((image) => {
         const progress = getProgressForImage(image.id);
         const isUploading = progress?.state === 'uploading' || progress?.state === 'processing';
         const hasError = progress?.state === 'error';
@@ -32,14 +42,22 @@ export function ImagePreview({ images, uploadProgress, onRemove, className = '' 
             className="relative group rounded-lg overflow-hidden border border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800"
             style={{ width: '80px', height: '80px' }}
           >
-            {/* Image */}
-            <img
-              src={image.url}
-              alt={image.alt || image.name}
-              className={`w-full h-full object-cover transition-opacity ${
-                isUploading ? 'opacity-50' : 'opacity-100'
-              } ${hasError ? 'opacity-30' : ''}`}
-            />
+            {/* Image (clickable to preview) */}
+            <button
+              type="button"
+              onClick={() => handleImageClick(image, !!hasError)}
+              disabled={isUploading || hasError}
+              aria-label={`Preview ${image.name}`}
+              className={`w-full h-full block p-0 m-0 border-0 bg-transparent ${isUploading || hasError ? 'cursor-not-allowed' : 'cursor-zoom-in'}`}
+            >
+              <img
+                src={image.url}
+                alt={image.alt || image.name}
+                className={`w-full h-full object-cover transition-opacity ${
+                  isUploading ? 'opacity-50' : 'opacity-100'
+                } ${hasError ? 'opacity-30' : ''}`}
+              />
+            </button>
 
             {/* Upload Progress Overlay */}
             {isUploading && (
@@ -82,7 +100,33 @@ export function ImagePreview({ images, uploadProgress, onRemove, className = '' 
           </div>
         );
       })}
-    </div>
+      </div>
+      {selectedImage && typeof document !== 'undefined' && ReactDOM.createPortal(
+        <div
+          className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={handleClosePreview}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div className="relative max-h-full max-w-full" onClick={(e) => e.stopPropagation()}>
+            <button
+              type="button"
+              onClick={handleClosePreview}
+              className="absolute -top-3 -right-3 md:-top-4 md:-right-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-lg hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+              aria-label="Close image preview"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <img
+              src={selectedImage!.url}
+              alt={selectedImage!.alt || selectedImage!.name}
+              className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
+            />
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
 
