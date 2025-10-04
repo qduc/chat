@@ -17,10 +17,6 @@ interface SelectedPreview {
 }
 
 export function ImagePreview({ images, uploadProgress, onRemove, className = '' }: ImagePreviewProps) {
-  if (images.length === 0) {
-    return null;
-  }
-
   const [selectedImage, setSelectedImage] = React.useState<SelectedPreview | null>(null);
 
   const handleClosePreview = () => setSelectedImage(null);
@@ -28,6 +24,10 @@ export function ImagePreview({ images, uploadProgress, onRemove, className = '' 
   const getProgressForImage = (imageId: string) => {
     return uploadProgress?.find(p => p.imageId === imageId);
   };
+
+  if (images.length === 0) {  // ← Move after hooks
+    return null;
+  }
 
   return (
     <>
