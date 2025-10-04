@@ -16,17 +16,15 @@ import { logger } from '../logger.js';
 async function sanitizeIncomingBody(bodyIn, helpers = {}) {
   const body = { ...bodyIn };
 
-  // Normalize incoming system prompt and prepend current date for model awareness
+  // Normalize incoming system prompt
   const rawSystemPrompt = typeof bodyIn.system_prompt === 'string'
     ? bodyIn.system_prompt.trim()
     : '';
-  const today = new Date().toISOString().split('T')[0];
-  const effectiveSystemPrompt = `Current date: ${today}.${rawSystemPrompt ? ` ${rawSystemPrompt}` : ''}`;
 
   // Inject system prompt as leading system message
   try {
-    if (typeof effectiveSystemPrompt === 'string' && effectiveSystemPrompt.trim()) {
-      const systemMsg = { role: 'system', content: effectiveSystemPrompt.trim() };
+    if (rawSystemPrompt) {
+      const systemMsg = { role: 'system', content: rawSystemPrompt };
       if (!Array.isArray(body.messages)) body.messages = [];
       if (body.messages.length > 0 && body.messages[0] && body.messages[0].role === 'system') {
         // Replace existing first system message to avoid duplicates

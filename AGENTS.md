@@ -117,9 +117,10 @@ chat/
 ### Frontend Patterns
 
 **State Management Philosophy**:
-- Single source of truth via reducer pattern
+- Single source of truth via reducer pattern (modular architecture with domain-specific sub-reducers)
 - Optimistic updates with server reconciliation
 - URL state synchronization for navigation
+- Separation of concerns: types, reducers, actions, hooks, and utilities in dedicated modules
 
 **API Integration Philosophy**:
 - Centralized HTTP client for consistent error handling
@@ -174,7 +175,13 @@ chat/
 
 **Route definitions**: Look in `backend/src/routes/`
 **Tool implementations**: Look in `backend/src/lib/tools/`
-**State management**: Check `frontend/hooks/` for React hooks (e.g., `useChatState`)
+**State management**: Check `frontend/hooks/useChatState/` for modular state management:
+  - `types.ts` - TypeScript interfaces and types
+  - `initialState.ts` - Default state and constants
+  - `reducers/` - Domain-specific reducers (auth, ui, settings, conversation, stream, edit)
+  - `actions/` - Action creators organized by domain
+  - `hooks/` - Custom hooks for complex logic
+  - `utils/` - Utilities (chatConfigBuilder, streamHelpers, qualityMapping)
 **API clients**: Check `frontend/lib/` for HTTP and chat clients
 **Database schema**: Check migration files in `backend/scripts/`
 **UI components**: Check `frontend/components/` organized by feature
