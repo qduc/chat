@@ -4,7 +4,7 @@ This document provides essential knowledge for AI agents to be immediately produ
 
 ## Project Overview
 
-**ChatForge** is a modern chat application with a Next.js frontend and Node.js backend, designed as an OpenAI API proxy with enhanced features like conversation persistence, tool orchestration, and multi-provider support.
+**ChatForge** is a modern chat application with a Next.js frontend and Node.js backend, designed as an OpenAI API proxy with enhanced features like conversation persistence, tool orchestration, multi-provider support, image handling, and advanced reasoning capabilities.
 
 ## Architecture Overview
 
@@ -36,6 +36,8 @@ chat/
 2. **Server-Side Tool Orchestration**: Tools execute on the backend, not client
 3. **OpenAI API Compatibility**: Backend presents OpenAI-compatible interface while adding features
 4. **Real-time Streaming**: SSE-based streaming for chat and tool execution
+5. **Conversation Settings Persistence**: Complete snapshots of conversation settings (model, provider, tools, reasoning controls) persist across edits and regenerations
+6. **Image Support**: Full image handling with upload, paste, preview, and secure metadata storage
 
 ## Development Workflow
 
@@ -83,6 +85,12 @@ chat/
 ./dev.sh migrate fresh    # Reset database and reapply all migrations
 ```
 
+### Additional Services
+```bash
+# Adminer database management (available at http://localhost:8080)
+# Provides password-less login for SQLite database inspection
+```
+
 ## Key Architectural Patterns
 
 ### Backend Patterns
@@ -101,9 +109,10 @@ chat/
 - Backend expands simplified tool names to full specifications
 
 **Database Philosophy**:
-- User-based data isolation at query level
+- User-based data isolation at query level (enforced with NOT NULL constraints on user_id)
 - Migration-driven schema evolution
 - Automatic cleanup for data retention
+- In-memory caching with TTL support for performance optimization
 
 ### Frontend Patterns
 
@@ -121,6 +130,9 @@ chat/
 - Separation between container and presentational components
 - Tool visualization integrated into message rendering
 - Authentication-aware UI components
+- Image handling with drag-and-drop, paste support, and preview modals
+- Enhanced markdown rendering with language detection and copy functionality
+- Model capabilities dynamically adjust UI based on selected model features
 
 ## Core Conventions
 
@@ -138,29 +150,37 @@ chat/
 
 ### Universal Rules
 
-- **Authentication**: Always check user authentication for data operations
+- **Authentication**: Always check user authentication for data operations (user_id is required and enforced)
 - **Error Handling**: Use structured error responses, sanitize upstream errors
 - **Logging**: Structured logging for debugging and monitoring
 - **Type Safety**: TypeScript strict mode on frontend, JSDoc or validation on backend
 - **Testing**: Write tests before committing, both services must pass
+- **Code Quality**: ESLint configured for both frontend and backend with strict linting rules
 
 ## Important Architectural Decisions
 
 - **Provider Adapters**: System automatically selects appropriate API adapter based on upstream provider URL
 - **Tool Execution**: Always server-side, never client-side
-- **Data Isolation**: All queries filtered by authenticated user
-- **Streaming Protocol**: SSE for real-time updates
+- **Data Isolation**: All queries filtered by authenticated user (enforced at database level)
+- **Streaming Protocol**: SSE for real-time updates with usage metadata tracking
 - **API Compatibility**: Maintains OpenAI API contract while extending functionality
+- **Reverse Proxy**: Supports proxying requests to external services
+- **Image Storage**: Secure image metadata storage with path-based access control
+- **Conversation Snapshots**: Each conversation maintains complete settings snapshot for reproducibility
+- **Reasoning Controls**: Advanced reasoning features available across compatible models
+- **Performance**: In-memory caching, model filtering by provider, and optimized rendering
 
 ## Finding Your Way Around
 
 **Route definitions**: Look in `backend/src/routes/`
 **Tool implementations**: Look in `backend/src/lib/tools/`
-**State management**: Check `frontend/hooks/` for React hooks
+**State management**: Check `frontend/hooks/` for React hooks (e.g., `useChatState`)
 **API clients**: Check `frontend/lib/` for HTTP and chat clients
 **Database schema**: Check migration files in `backend/scripts/`
 **UI components**: Check `frontend/components/` organized by feature
+**Image handling**: Check `frontend/components/ImageUploadZone` and `ImagePreview`
 **Documentation**: Check `docs/` for ADRs and detailed specs
+**Linting**: ESLint configs in both `frontend/` and `backend/` directories
 
 ## Instructions for Claude/Copilot AI
 
