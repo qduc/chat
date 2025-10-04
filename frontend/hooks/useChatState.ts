@@ -644,6 +644,7 @@ export function useChatState() {
   // React state to flush.
   const systemPromptRef = useRef(state.systemPrompt);
   const inlineSystemPromptRef = useRef(state.inlineSystemPromptOverride);
+  const activeSystemPromptIdRef = useRef(state.activeSystemPromptId);
   // Keep synchronous refs for chat parameters to avoid race conditions
   const shouldStreamRef = useRef(state.shouldStream);
   const reasoningEffortRef = useRef(state.reasoningEffort);
@@ -660,12 +661,13 @@ export function useChatState() {
     // state changes.
     systemPromptRef.current = state.systemPrompt;
     inlineSystemPromptRef.current = state.inlineSystemPromptOverride;
+    activeSystemPromptIdRef.current = state.activeSystemPromptId;
     // Keep chat parameter refs in sync
     shouldStreamRef.current = state.shouldStream;
     reasoningEffortRef.current = state.reasoningEffort;
     verbosityRef.current = state.verbosity;
     qualityLevelRef.current = state.qualityLevel;
-  }, [state.model, state.systemPrompt, state.inlineSystemPromptOverride, state.shouldStream, state.reasoningEffort, state.verbosity, state.qualityLevel]);
+  }, [state.model, state.systemPrompt, state.inlineSystemPromptOverride, state.activeSystemPromptId, state.shouldStream, state.reasoningEffort, state.verbosity, state.qualityLevel]);
 
   // Sync authentication state from AuthContext
   useEffect(() => {
@@ -905,7 +907,7 @@ export function useChatState() {
         conversationId: state.conversationId || undefined,
         responseId: state.previousResponseId || undefined,
         systemPrompt: effectiveSystemPrompt || undefined,
-        activeSystemPromptId: state.activeSystemPromptId || undefined,
+        activeSystemPromptId: activeSystemPromptIdRef.current || undefined,
         // Use refs for chat parameters to ensure immediate updates are used
         shouldStream: shouldStreamRef.current,
         reasoningEffort: reasoningEffortRef.current,
@@ -1119,6 +1121,7 @@ export function useChatState() {
     }, []),
 
     setActiveSystemPromptId: useCallback((id: string | null) => {
+      activeSystemPromptIdRef.current = id;
       dispatch({ type: 'SET_ACTIVE_SYSTEM_PROMPT_ID', payload: id });
     }, []),
 
