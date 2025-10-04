@@ -1,636 +1,28 @@
 import React, { useReducer, useCallback, useRef, useEffect, useMemo } from 'react';
-import type { ChatMessage, Role, ConversationMeta } from '../lib/chat';
-import type { ImageAttachment, MessageContent } from '../lib/chat/types';
+import type { ChatMessage, Role } from '../lib/chat';
 import type { Group as TabGroup, Option as ModelOption } from '../components/ui/TabbedSelect';
-import { sendChat, getConversationApi, listConversationsApi, deleteConversationApi, editMessageApi, ConversationManager } from '../lib/chat';
-import type { QualityLevel } from '../components/ui/QualitySlider';
-import type { User } from '../lib/auth/api';
+import { sendChat, ConversationManager } from '../lib/chat';
 import { useAuth } from '../contexts/AuthContext';
 import { httpClient } from '../lib/http/client';
-import { HttpError } from '../lib/http/types';
-import { extractTextFromContent, stringToMessageContent, createMixedContent, extractImagesFromContent } from '../lib/chat/content-utils';
-import { imagesClient } from '../lib/chat/images';
-
-export interface PendingState {
-  abort?: AbortController;
-  streaming: boolean;
-  error?: string;
-}
-
-// Unified state structure
-export interface ChatState {
-  // Authentication State
-  user: User | null;
-  isAuthenticated: boolean;
-
-  // UI State
-  status: 'idle' | 'streaming' | 'loading' | 'error';
-  input: string;
-  images: ImageAttachment[];
-
-  // Chat State
-  messages: ChatMessage[];
-  conversationId: string | null;
-  currentConversationTitle: string | null;
-  previousResponseId: string | null;
-  // ...existing code...
-
-  // Settings
-  model: string;
-  providerId: string | null;
-  // Model listing fetched from backend providers
-  modelOptions: ModelOption[];
-  modelGroups: TabGroup[] | null;
-  modelToProvider: Record<string, string>;
-  modelCapabilities: Record<string, any>; // Store model capabilities (e.g., supported_parameters)
-  isLoadingModels: boolean;
-  useTools: boolean;
-  shouldStream: boolean;
-  reasoningEffort: string;
-  verbosity: string;
-  qualityLevel: QualityLevel;
-  // System prompt for the current session (legacy support)
-  systemPrompt: string;
-  // Inline system prompt override (from prompt manager)
-  inlineSystemPromptOverride: string;
-  // Active system prompt ID from loaded conversation
-  activeSystemPromptId: string | null;
-  // Per-tool enablement (list of tool names). Empty array means no explicit selection.
-  enabledTools: string[];
-
-  // Conversations
-  conversations: ConversationMeta[];
-  nextCursor: string | null;
-  historyEnabled: boolean;
-  loadingConversations: boolean;
-  sidebarCollapsed: boolean;
-  rightSidebarCollapsed: boolean;
-
-  // Message Editing
-  editingMessageId: string | null;
-  editingContent: string;
-
-  // Error handling
-  error: string | null;
-
-  // Internal state
-  abort?: AbortController;
-}
-
-// Action types
-export type ChatAction =
-  // Authentication Actions
-  | { type: 'SET_USER'; payload: User | null }
-  | { type: 'SET_AUTHENTICATED'; payload: boolean }
-
-  // Existing Actions
-  | { type: 'SET_INPUT'; payload: string }
-  | { type: 'SET_IMAGES'; payload: ImageAttachment[] }
-  | { type: 'SET_MODEL'; payload: string }
-  | { type: 'SET_PROVIDER_ID'; payload: string | null }
-  | { type: 'SET_USE_TOOLS'; payload: boolean }
-  | { type: 'SET_SHOULD_STREAM'; payload: boolean }
-  | { type: 'SET_REASONING_EFFORT'; payload: string }
-  | { type: 'SET_VERBOSITY'; payload: string }
-  | { type: 'SET_QUALITY_LEVEL'; payload: QualityLevel }
-  | { type: 'SET_SYSTEM_PROMPT'; payload: string }
-  | { type: 'SET_INLINE_SYSTEM_PROMPT_OVERRIDE'; payload: string }
-  | { type: 'SET_ACTIVE_SYSTEM_PROMPT_ID'; payload: string | null }
-  | { type: 'SET_ENABLED_TOOLS'; payload: string[] }
-  | { type: 'SET_CONVERSATION_ID'; payload: string | null }
-  | { type: 'SET_CURRENT_CONVERSATION_TITLE'; payload: string | null }
-  | { type: 'START_STREAMING'; payload: { abort: AbortController; userMessage: ChatMessage; assistantMessage: ChatMessage } }
-  | { type: 'REGENERATE_START'; payload: { abort: AbortController; baseMessages: ChatMessage[]; assistantMessage: ChatMessage } }
-  | { type: 'STREAM_TOKEN'; payload: { messageId: string; token: string; fullContent?: string } }
-  | { type: 'STREAM_TOOL_CALL'; payload: { messageId: string; toolCall: any } }
-  | { type: 'STREAM_TOOL_OUTPUT'; payload: { messageId: string; toolOutput: any } }
-  | { type: 'STREAM_USAGE'; payload: { messageId: string; usage: any } }
-  | { type: 'STREAM_COMPLETE'; payload: { responseId?: string } }
-  | { type: 'STREAM_ERROR'; payload: string }
-  | { type: 'STOP_STREAMING' }
-  | { type: 'CLEAR_MESSAGES' }
-  | { type: 'SET_MESSAGES'; payload: ChatMessage[] }
-  | { type: 'LOAD_CONVERSATIONS_START' }
-  | { type: 'LOAD_CONVERSATIONS_SUCCESS'; payload: { conversations: ConversationMeta[]; nextCursor: string | null; replace?: boolean } }
-  | { type: 'LOAD_CONVERSATIONS_ERROR' }
-  | { type: 'SET_HISTORY_ENABLED'; payload: boolean }
-  | { type: 'ADD_CONVERSATION'; payload: ConversationMeta }
-  | { type: 'DELETE_CONVERSATION'; payload: string }
-  | { type: 'START_EDIT'; payload: { messageId: string; content: string } }
-  | { type: 'UPDATE_EDIT_CONTENT'; payload: string }
-  | { type: 'CANCEL_EDIT' }
-  | { type: 'SAVE_EDIT_SUCCESS'; payload: { messageId: string; content: MessageContent; baseMessages: ChatMessage[] } }
-  | { type: 'CLEAR_ERROR' }
-  | { type: 'NEW_CHAT' }
-  | { type: 'SYNC_ASSISTANT'; payload: ChatMessage }
-  | { type: 'TOGGLE_SIDEBAR' }
-  | { type: 'SET_SIDEBAR_COLLAPSED'; payload: boolean }
-  | { type: 'TOGGLE_RIGHT_SIDEBAR' }
-  | { type: 'SET_RIGHT_SIDEBAR_COLLAPSED'; payload: boolean }
-  | { type: 'SET_MODEL_LIST'; payload: { groups: TabGroup[] | null; options: ModelOption[]; modelToProvider: Record<string, string>; modelCapabilities: Record<string, any> } }
-  | { type: 'SET_LOADING_MODELS'; payload: boolean };
-
-const initialState: ChatState = {
-  // Authentication State
-  user: null,
-  isAuthenticated: false,
-
-  status: 'idle',
-  input: '',
-  images: [],
-  messages: [],
-  conversationId: null,
-  currentConversationTitle: null,
-  previousResponseId: null,
-  model: 'gpt-4.1-mini',
-  providerId: null,
-  modelOptions: [],
-  modelGroups: null,
-  modelToProvider: {},
-  modelCapabilities: {},
-  isLoadingModels: false,
-  useTools: true,
-  shouldStream: true,
-  reasoningEffort: 'medium',
-  verbosity: 'medium',
-  qualityLevel: 'balanced',
-  systemPrompt: '',
-  inlineSystemPromptOverride: '',
-  activeSystemPromptId: null,
-  enabledTools: [],
-  conversations: [],
-  nextCursor: null,
-  historyEnabled: true,
-  loadingConversations: false,
-  sidebarCollapsed: false,
-  rightSidebarCollapsed: false,
-  editingMessageId: null,
-  editingContent: '',
-  error: null,
-};
-
-function chatReducer(state: ChatState, action: ChatAction): ChatState {
-  switch (action.type) {
-    // Authentication Actions
-    case 'SET_USER':
-      return {
-        ...state,
-        user: action.payload,
-        isAuthenticated: action.payload !== null
-      };
-
-    case 'SET_AUTHENTICATED':
-      return { ...state, isAuthenticated: action.payload };
-
-    // Existing Actions
-    case 'SET_INPUT':
-      return { ...state, input: action.payload };
-    case 'SET_IMAGES':
-      return { ...state, images: action.payload };
-
-    case 'SET_MODEL':
-      return { ...state, model: action.payload };
-
-    case 'SET_PROVIDER_ID':
-      return { ...state, providerId: action.payload };
-
-    case 'SET_USE_TOOLS':
-      return { ...state, useTools: action.payload };
-
-    case 'SET_SHOULD_STREAM':
-      return { ...state, shouldStream: action.payload };
-
-    case 'SET_REASONING_EFFORT':
-      return { ...state, reasoningEffort: action.payload };
-
-    case 'SET_VERBOSITY':
-      return { ...state, verbosity: action.payload };
-
-
-    case 'SET_QUALITY_LEVEL': {
-      // Map quality level to derived settings for backward compatibility
-      const map: Record<QualityLevel, { reasoningEffort: string; verbosity: string }> = {
-        quick: { reasoningEffort: 'minimal', verbosity: 'low' },
-        balanced: { reasoningEffort: 'medium', verbosity: 'medium' },
-        thorough: { reasoningEffort: 'high', verbosity: 'high' },
-      };
-      const derived = map[action.payload];
-      return {
-        ...state,
-        qualityLevel: action.payload,
-        reasoningEffort: derived.reasoningEffort,
-        verbosity: derived.verbosity,
-      };
-    }
-
-    case 'SET_SYSTEM_PROMPT':
-      return { ...state, systemPrompt: action.payload };
-
-    case 'SET_INLINE_SYSTEM_PROMPT_OVERRIDE':
-      return { ...state, inlineSystemPromptOverride: action.payload };
-
-    case 'SET_ACTIVE_SYSTEM_PROMPT_ID':
-      return { ...state, activeSystemPromptId: action.payload };
-
-    case 'SET_ENABLED_TOOLS':
-      return { ...state, enabledTools: action.payload };
-
-    case 'SET_CONVERSATION_ID':
-      return {
-        ...state,
-        conversationId: action.payload,
-        // Reset previousResponseId when switching conversations
-        previousResponseId: null
-      };
-
-    case 'SET_CURRENT_CONVERSATION_TITLE':
-      return {
-        ...state,
-        currentConversationTitle: action.payload
-      };
-
-    case 'START_STREAMING':
-      return {
-        ...state,
-        status: 'streaming',
-        input: '', // Clear input immediately
-        images: [], // Clear images immediately
-        messages: [...state.messages, action.payload.userMessage, action.payload.assistantMessage],
-        abort: action.payload.abort,
-        error: null,
-      };
-
-    case 'REGENERATE_START':
-      return {
-        ...state,
-        status: 'streaming',
-        input: '',
-        images: [],
-        messages: [...action.payload.baseMessages, action.payload.assistantMessage],
-        abort: action.payload.abort,
-        error: null,
-      };
-
-    case 'STREAM_TOKEN':
-      {
-        let updated = false;
-        const next = state.messages.map(m => {
-          if (m.id === action.payload.messageId) {
-            updated = true;
-            // Use fullContent if provided, otherwise append token
-            const newContent = action.payload.fullContent !== undefined
-              ? action.payload.fullContent
-              : (m.content ?? '') + action.payload.token;
-            return { ...m, content: newContent };
-          }
-          return m;
-        });
-        if (!updated) {
-          // Fallback: update the last assistant message if present
-          for (let i = next.length - 1; i >= 0; i--) {
-            if (next[i].role === 'assistant') {
-              const newContent = action.payload.fullContent !== undefined
-                ? action.payload.fullContent
-                : (next[i].content ?? '') + action.payload.token;
-              next[i] = { ...next[i], content: newContent } as any;
-              break;
-            }
-          }
-        }
-        return { ...state, messages: next };
-      }
-
-    case 'STREAM_TOOL_CALL':
-      {
-        const upsertToolCall = (existing: any[] | undefined, incoming: any): any[] => {
-          const out = Array.isArray(existing) ? [...existing] : [];
-          const idx: number | undefined = typeof incoming.index === 'number' ? incoming.index : undefined;
-          const id: string | undefined = incoming.id;
-
-          const resolveTextOffset = (prevOffset: any, nextOffset: any) => {
-            const asNumber = (value: any) => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
-            const prev = asNumber(prevOffset);
-            const next = asNumber(nextOffset);
-            if (prev !== undefined) return prev;
-            if (next !== undefined) return next;
-            return undefined;
-          };
-
-          const mergeArgs = (prevFn: any = {}, nextFn: any = {}) => {
-            const prevArgs = typeof prevFn.arguments === 'string' ? prevFn.arguments : '';
-            const nextArgs = typeof nextFn.arguments === 'string' ? nextFn.arguments : '';
-            const mergedArgs = prevArgs && nextArgs && nextArgs.startsWith(prevArgs)
-              ? nextArgs
-              : (prevArgs + nextArgs);
-            return {
-              ...prevFn,
-              ...nextFn,
-              arguments: mergedArgs
-            };
-          };
-
-          if (typeof idx === 'number') {
-            while (out.length <= idx) out.push(undefined);
-            const prev = out[idx] || {};
-            out[idx] = {
-              ...prev,
-              ...incoming,
-              textOffset: resolveTextOffset(prev?.textOffset, incoming?.textOffset),
-              function: mergeArgs(prev.function, incoming.function)
-            };
-            return out;
-          }
-
-          if (id) {
-            const found = out.findIndex(tc => tc && tc.id === id);
-            if (found >= 0) {
-              const prev = out[found];
-              out[found] = {
-                ...prev,
-                ...incoming,
-                textOffset: resolveTextOffset(prev?.textOffset, incoming?.textOffset),
-                function: mergeArgs(prev.function, incoming.function)
-              };
-              return out;
-            }
-          }
-
-          if (incoming?.function?.name) {
-            const found = out.findIndex(tc => tc?.function?.name === incoming.function.name && !tc?.id);
-            if (found >= 0) {
-              const prev = out[found];
-              out[found] = {
-                ...prev,
-                ...incoming,
-                textOffset: resolveTextOffset(prev?.textOffset, incoming?.textOffset),
-                function: mergeArgs(prev.function, incoming.function)
-              };
-              return out;
-            }
-          }
-
-          out.push({ ...incoming });
-          return out;
-        };
-
-        const next = state.messages.map(m => {
-          if (m.id === action.payload.messageId) {
-            const tool_calls = upsertToolCall((m as any).tool_calls, action.payload.toolCall);
-            return { ...m, tool_calls } as any;
-          }
-          return m;
-        });
-
-        // Fallback in case message id not matched yet
-        if (!next.some(m => m.id === action.payload.messageId)) {
-          for (let i = next.length - 1; i >= 0; i--) {
-            if (next[i].role === 'assistant') {
-              const m: any = next[i];
-              const tool_calls = upsertToolCall(m.tool_calls, action.payload.toolCall);
-              next[i] = { ...m, tool_calls };
-              break;
-            }
-          }
-        }
-
-        return { ...state, messages: next };
-      }
-
-    case 'STREAM_TOOL_OUTPUT':
-      {
-        let updated = false;
-        const next = state.messages.map(m => {
-          if (m.id === action.payload.messageId) {
-            updated = true;
-            return { ...m, tool_outputs: [...(m.tool_outputs || []), action.payload.toolOutput] } as any;
-          }
-          return m;
-        });
-        if (!updated) {
-          for (let i = next.length - 1; i >= 0; i--) {
-            if (next[i].role === 'assistant') {
-              const to = [ ...((next[i] as any).tool_outputs || []), action.payload.toolOutput ];
-              next[i] = { ...(next[i] as any), tool_outputs: to } as any;
-              break;
-            }
-          }
-        }
-        return { ...state, messages: next };
-      }
-
-    case 'STREAM_USAGE':
-      {
-        const next = state.messages.map(m => {
-          if (m.id === action.payload.messageId) {
-            return { ...m, usage: { ...m.usage, ...action.payload.usage } } as any;
-          }
-          return m;
-        });
-        // Fallback: update last assistant message if ID not matched
-        if (!next.some(m => m.id === action.payload.messageId)) {
-          for (let i = next.length - 1; i >= 0; i--) {
-            if (next[i].role === 'assistant') {
-              next[i] = { ...next[i], usage: { ...next[i].usage, ...action.payload.usage } } as any;
-              break;
-            }
-          }
-        }
-        return { ...state, messages: next };
-      }
-
-    case 'STREAM_COMPLETE':
-      return {
-        ...state,
-        status: 'idle',
-        abort: undefined,
-        previousResponseId: action.payload.responseId || state.previousResponseId,
-      };
-
-    case 'STREAM_ERROR':
-      return {
-        ...state,
-        status: 'error',
-        error: action.payload,
-        abort: undefined,
-      };
-
-    case 'STOP_STREAMING':
-      return {
-        ...state,
-        status: 'idle',
-        abort: undefined,
-      };
-
-    case 'CLEAR_MESSAGES':
-      return {
-        ...state,
-        messages: [],
-        error: null,
-        previousResponseId: null,
-      };
-
-    case 'SET_MESSAGES':
-      return { ...state, messages: action.payload };
-
-    case 'LOAD_CONVERSATIONS_START':
-      return { ...state, loadingConversations: true };
-
-    case 'LOAD_CONVERSATIONS_SUCCESS':
-      return {
-        ...state,
-        loadingConversations: false,
-        conversations: action.payload.replace
-          ? action.payload.conversations
-          : [...state.conversations, ...action.payload.conversations],
-        nextCursor: action.payload.nextCursor,
-      };
-
-    case 'LOAD_CONVERSATIONS_ERROR':
-      return { ...state, loadingConversations: false };
-
-    case 'SET_HISTORY_ENABLED':
-      return { ...state, historyEnabled: action.payload };
-
-    case 'ADD_CONVERSATION':
-      return {
-        ...state,
-        conversations: [action.payload, ...state.conversations],
-      };
-
-    case 'DELETE_CONVERSATION':
-      return {
-        ...state,
-        conversations: state.conversations.filter(c => c.id !== action.payload),
-        conversationId: state.conversationId === action.payload ? null : state.conversationId,
-        messages: state.conversationId === action.payload ? [] : state.messages,
-      };
-
-    case 'START_EDIT':
-      return {
-        ...state,
-        editingMessageId: action.payload.messageId,
-        editingContent: action.payload.content,
-      };
-
-    case 'UPDATE_EDIT_CONTENT':
-      return { ...state, editingContent: action.payload };
-
-    case 'CANCEL_EDIT':
-      return { ...state, editingMessageId: null, editingContent: '' };
-
-    case 'SAVE_EDIT_SUCCESS':
-      return {
-        ...state,
-        messages: action.payload.baseMessages,
-        editingMessageId: null,
-        editingContent: '',
-      };
-
-    case 'SYNC_ASSISTANT':
-      return {
-        ...state,
-        messages: state.messages.map(m => {
-          if (m.id !== action.payload.id) return m;
-          // Only sync content to avoid overwriting tool_calls/tool_outputs built during streaming
-          const content = (action.payload as any).content ?? m.content;
-          return { ...m, content };
-        }),
-      };
-
-    case 'CLEAR_ERROR':
-      return { ...state, error: null };
-
-    case 'NEW_CHAT':
-      return {
-        ...state,
-        messages: [],
-        input: '',
-        images: [],
-        conversationId: null,
-        currentConversationTitle: null,
-        previousResponseId: null,
-        editingMessageId: null,
-        editingContent: '',
-        error: null,
-      };
-
-    case 'TOGGLE_SIDEBAR':
-      {
-        const newCollapsed = !state.sidebarCollapsed;
-        // Save to localStorage
-        try {
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('sidebarCollapsed', String(newCollapsed));
-          }
-        } catch (e) {
-          // ignore storage errors
-        }
-        return { ...state, sidebarCollapsed: newCollapsed };
-      }
-
-    case 'SET_SIDEBAR_COLLAPSED':
-      return { ...state, sidebarCollapsed: action.payload };
-
-    case 'TOGGLE_RIGHT_SIDEBAR':
-      {
-        const newCollapsed = !state.rightSidebarCollapsed;
-        // Save to localStorage
-        try {
-          if (typeof window !== 'undefined') {
-            localStorage.setItem('rightSidebarCollapsed', String(newCollapsed));
-          }
-        } catch (e) {
-          // ignore storage errors
-        }
-        return { ...state, rightSidebarCollapsed: newCollapsed };
-      }
-
-    case 'SET_RIGHT_SIDEBAR_COLLAPSED':
-      return { ...state, rightSidebarCollapsed: action.payload };
-
-    case 'SET_MODEL_LIST':
-      return {
-        ...state,
-        modelGroups: action.payload.groups,
-        modelOptions: action.payload.options,
-        modelToProvider: action.payload.modelToProvider || {},
-        modelCapabilities: action.payload.modelCapabilities || {}
-      };
-
-    case 'SET_LOADING_MODELS':
-      return { ...state, isLoadingModels: action.payload };
-
-    default:
-      return state;
-  }
-}
-
-// Available tools used for quick lookups by name
-import type { ToolSpec } from '../lib/chat';
-const availableTools: Record<string, ToolSpec> = {
-  get_time: {
-    type: 'function',
-    function: {
-      name: 'get_time',
-      description: 'Get the current local time of the server',
-  parameters: { type: 'object', properties: {}, required: [] },
-    }
-  },
-  web_search: {
-    type: 'function',
-    function: {
-      name: 'web_search',
-      description: 'Perform a web search for a given query',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'The search query' }
-        },
-        required: ['query']
-      }
-    }
-  }
-};
+import { extractTextFromContent, stringToMessageContent } from '../lib/chat/content-utils';
+
+// Import from refactored modules
+import type { ChatState, ChatAction, PendingState, ToolSpec } from './useChatState/types';
+import { initialState } from './useChatState/initialState';
+import { chatReducer } from './useChatState/reducer';
+import {
+  createAuthActions,
+  createUiActions,
+  createSettingsActions,
+  createChatActions,
+  createConversationActions,
+  createEditActions,
+} from './useChatState/actions';
+
+// Re-export types for backwards compatibility
+export type { PendingState, ChatState, ChatAction, ToolSpec };
+
+// Note: ChatState, ChatAction, initialState, chatReducer, and utilities are now imported from ./useChatState/
 
 export function useChatState() {
   const { user, ready: authReady } = useAuth();
@@ -1031,167 +423,26 @@ export function useChatState() {
   );
 
   // Actions
-  const actions = {
-    // Authentication Actions
-    setUser: useCallback((user: User | null) => {
-      dispatch({ type: 'SET_USER', payload: user });
-    }, []),
+  const actions = useMemo(() => {
+    // Create action objects using the extracted action creators
+    const authActions = createAuthActions({ dispatch });
+    const uiActions = createUiActions({ dispatch });
+    const settingsActions = createSettingsActions({
+      dispatch,
+      modelRef,
+      providerRef,
+      systemPromptRef,
+      inlineSystemPromptRef,
+      activeSystemPromptIdRef,
+      shouldStreamRef,
+      reasoningEffortRef,
+      verbosityRef,
+      qualityLevelRef,
+      loadProvidersAndModels,
+    });
 
-    setAuthenticated: useCallback((authenticated: boolean) => {
-      dispatch({ type: 'SET_AUTHENTICATED', payload: authenticated });
-    }, []),
-
-    // UI Actions
-    setInput: useCallback((input: string) => {
-      dispatch({ type: 'SET_INPUT', payload: input });
-    }, []),
-
-    setImages: useCallback((images: ImageAttachment[]) => {
-      dispatch({ type: 'SET_IMAGES', payload: images });
-    }, []),
-
-    setModel: useCallback((model: string) => {
-      // Update the ref immediately so subsequent actions (like regenerate)
-      // that read modelRef.current will use the newly selected model even if
-      // React state hasn't committed yet.
-      modelRef.current = model;
-      // Save to localStorage
-      try {
-        if (typeof window !== 'undefined') {
-          localStorage.setItem('selectedModel', model);
-        }
-      } catch (e) {
-        // ignore storage errors
-      }
-      dispatch({ type: 'SET_MODEL', payload: model });
-    }, []),
-
-    setProviderId: useCallback((providerId: string | null) => {
-      providerRef.current = providerId;
-      dispatch({ type: 'SET_PROVIDER_ID', payload: providerId });
-    }, []),
-
-    setUseTools: useCallback((useTools: boolean) => {
-      dispatch({ type: 'SET_USE_TOOLS', payload: useTools });
-    }, []),
-
-    setShouldStream: useCallback((shouldStream: boolean) => {
-      shouldStreamRef.current = shouldStream;
-      dispatch({ type: 'SET_SHOULD_STREAM', payload: shouldStream });
-    }, []),
-
-    setReasoningEffort: useCallback((effort: string) => {
-      reasoningEffortRef.current = effort;
-      dispatch({ type: 'SET_REASONING_EFFORT', payload: effort });
-    }, []),
-
-    setVerbosity: useCallback((verbosity: string) => {
-      verbosityRef.current = verbosity;
-      dispatch({ type: 'SET_VERBOSITY', payload: verbosity });
-    }, []),
-
-
-    setQualityLevel: useCallback((level: QualityLevel) => {
-      // Update refs synchronously for immediate use
-      qualityLevelRef.current = level;
-      // Also update derived refs based on quality level mapping
-      const map: Record<QualityLevel, { reasoningEffort: string; verbosity: string }> = {
-        quick: { reasoningEffort: 'minimal', verbosity: 'low' },
-        balanced: { reasoningEffort: 'medium', verbosity: 'medium' },
-        thorough: { reasoningEffort: 'high', verbosity: 'high' },
-      };
-      const derived = map[level];
-      reasoningEffortRef.current = derived.reasoningEffort;
-      verbosityRef.current = derived.verbosity;
-      dispatch({ type: 'SET_QUALITY_LEVEL', payload: level });
-    }, []),
-
-    setSystemPrompt: useCallback((prompt: string) => {
-      // Update ref synchronously so immediate send/regenerate uses new prompt
-      systemPromptRef.current = prompt;
-      dispatch({ type: 'SET_SYSTEM_PROMPT', payload: prompt });
-    }, []),
-
-    setInlineSystemPromptOverride: useCallback((prompt: string) => {
-      // Update both refs synchronously to ensure immediate use by send/regenerate
-      inlineSystemPromptRef.current = prompt;
-      systemPromptRef.current = prompt;
-      dispatch({ type: 'SET_INLINE_SYSTEM_PROMPT_OVERRIDE', payload: prompt });
-      dispatch({ type: 'SET_SYSTEM_PROMPT', payload: prompt });
-    }, []),
-
-    setActiveSystemPromptId: useCallback((id: string | null) => {
-      activeSystemPromptIdRef.current = id;
-      dispatch({ type: 'SET_ACTIVE_SYSTEM_PROMPT_ID', payload: id });
-    }, []),
-
-    setEnabledTools: useCallback((list: string[]) => {
-      dispatch({ type: 'SET_ENABLED_TOOLS', payload: list });
-    }, []),
-
-    // Model list refresh action (triggered by UI or external events)
-    refreshModelList: useCallback(async () => {
-      await loadProvidersAndModels();
-    }, [loadProvidersAndModels]),
-
-    // Chat Actions
-    sendMessage: useCallback(async () => {
-      const input = state.input.trim();
-      const images = state.images;
-
-      // Check if we have either text or images
-      if ((!input && images.length === 0) || state.status === 'streaming' || inFlightRef.current) return;
-
-      inFlightRef.current = true;
-      const abort = new AbortController();
-
-      // Create mixed content from text and images
-      let messageContent;
-      if (images.length > 0) {
-        // Convert ImageAttachment to ImageContent
-        const imageContents = images.map(img => imagesClient.attachmentToImageContent(img));
-        messageContent = createMixedContent(input, imageContents);
-      } else {
-        messageContent = input;
-      }
-
-      const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: messageContent };
-      const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
-      assistantMsgRef.current = assistantMsg;
-
-      dispatch({
-        type: 'START_STREAMING',
-        payload: { abort, userMessage: userMsg, assistantMessage: assistantMsg }
-      });
-
-      // Ensure the START_STREAMING state is applied before streaming events arrive
-      await new Promise(resolve => setTimeout(resolve, 0));
-
-      const config = buildSendChatConfig([...state.messages, userMsg], abort.signal);
-      await runSend(config);
-    }, [state, handleStreamEvent, buildSendChatConfig, runSend]),
-
-    regenerate: useCallback(async (baseMessages: ChatMessage[]) => {
-      if (state.status === 'streaming' || inFlightRef.current) return;
-
-      inFlightRef.current = true;
-      const abort = new AbortController();
-      const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
-      assistantMsgRef.current = assistantMsg;
-
-      dispatch({
-        type: 'REGENERATE_START',
-        payload: { abort, baseMessages, assistantMessage: assistantMsg }
-      });
-
-      // Ensure state commit before events arrive
-      await new Promise(resolve => setTimeout(resolve, 0));
-
-      const config = buildSendChatConfig(baseMessages, abort.signal);
-      await runSend(config);
-    }, [state, handleStreamEvent, buildSendChatConfig, runSend]),
-
-    stopStreaming: useCallback(() => {
+    // Create a stopStreaming function for use by chat and conversation actions
+    const stopStreaming = () => {
       // Flush any pending throttled updates
       if (throttleTimerRef.current) {
         clearTimeout(throttleTimerRef.current);
@@ -1200,174 +451,72 @@ export function useChatState() {
       try { state.abort?.abort(); } catch {}
       inFlightRef.current = false;
       dispatch({ type: 'STOP_STREAMING' });
-    }, [state.abort]),
+    };
 
-    newChat: useCallback(async () => {
-      if (state.status === 'streaming') {
-        actions.stopStreaming();
-      }
+    const chatActions = createChatActions({
+      state,
+      dispatch,
+      inFlightRef,
+      assistantMsgRef,
+      throttleTimerRef,
+      buildSendChatConfig,
+      runSend,
+    });
 
-      // Align with v1 behavior: don't pre-create; first send will autocreate
-      // and the sidebar will refresh on `_conversation` signal.
-      dispatch({ type: 'NEW_CHAT' });
-    }, [state.status]),
-
-    // Conversation Actions
-    selectConversation: useCallback(async (id: string) => {
-      if (state.status === 'streaming') {
-        actions.stopStreaming();
-      }
-
-      dispatch({ type: 'SET_CONVERSATION_ID', payload: id });
-      dispatch({ type: 'CLEAR_MESSAGES' });
-      dispatch({ type: 'CANCEL_EDIT' });
-
-      try {
-        const data = await conversationManager.get(id, { limit: 200 });
-        const msgs = data.messages.map(m => ({
-          id: String(m.id),
-          role: m.role as Role,
-          content: m.content || '',
-          ...(m.tool_calls && { tool_calls: m.tool_calls }),
-          ...(m.tool_outputs && { tool_outputs: m.tool_outputs })
-        }));
-        dispatch({ type: 'SET_MESSAGES', payload: msgs });
-
-        // Apply conversation-level settings from API response
-        if (data.model) {
-          dispatch({ type: 'SET_MODEL', payload: data.model });
+    // Override chatActions' stopStreaming and newChat with stable versions
+    const stableChatActions = {
+      ...chatActions,
+      stopStreaming,
+      newChat: async () => {
+        if (state.status === 'streaming') {
+          stopStreaming();
         }
-        if (data.streaming_enabled !== undefined) {
-          dispatch({ type: 'SET_SHOULD_STREAM', payload: data.streaming_enabled });
-        }
-        if (data.tools_enabled !== undefined) {
-          dispatch({ type: 'SET_USE_TOOLS', payload: data.tools_enabled });
-        }
-        const activeTools = Array.isArray((data as any).active_tools)
-          ? (data as any).active_tools
-          : Array.isArray((data as any).metadata?.active_tools)
-            ? (data as any).metadata.active_tools
-            : undefined;
-        if (Array.isArray(activeTools)) {
-          dispatch({ type: 'SET_ENABLED_TOOLS', payload: activeTools });
-        } else if (data.tools_enabled === false) {
-          dispatch({ type: 'SET_ENABLED_TOOLS', payload: [] });
-        }
-        if (data.quality_level) {
-          dispatch({ type: 'SET_QUALITY_LEVEL', payload: data.quality_level as QualityLevel });
-        }
-        if (data.reasoning_effort) {
-          dispatch({ type: 'SET_REASONING_EFFORT', payload: data.reasoning_effort });
-        }
-        if (data.verbosity) {
-          dispatch({ type: 'SET_VERBOSITY', payload: data.verbosity });
-        }
-        // Always update system_prompt if present in response (including null)
-        if ('system_prompt' in (data as any)) {
-          dispatch({ type: 'SET_SYSTEM_PROMPT', payload: (data as any).system_prompt || '' });
-        }
-        // Always update active_system_prompt_id if present in response (including null)
-        if ('active_system_prompt_id' in (data as any)) {
-          dispatch({ type: 'SET_ACTIVE_SYSTEM_PROMPT_ID', payload: (data as any).active_system_prompt_id });
-        }
-        // Set the current conversation title if available
-        if (data.title) {
-          dispatch({ type: 'SET_CURRENT_CONVERSATION_TITLE', payload: data.title });
-        }
-      } catch (e: any) {
-        // ignore
-      }
-    }, [state.status, conversationManager]),
+        dispatch({ type: 'NEW_CHAT' });
+      },
+    };
 
-    loadMoreConversations: useCallback(async () => {
-      if (!state.nextCursor || state.loadingConversations) return;
+    const conversationActions = createConversationActions({
+      state,
+      dispatch,
+      conversationManager,
+      stopStreaming,
+    });
 
-      dispatch({ type: 'LOAD_CONVERSATIONS_START' });
-      try {
-        const list = await conversationManager.list({ cursor: state.nextCursor, limit: 20 });
-        dispatch({
-          type: 'LOAD_CONVERSATIONS_SUCCESS',
-          payload: { conversations: list.items, nextCursor: list.next_cursor }
-        });
-      } catch (e: any) {
-        dispatch({ type: 'LOAD_CONVERSATIONS_ERROR' });
-      }
-    }, [state.nextCursor, state.loadingConversations, conversationManager]),
+    const editActions = createEditActions({
+      state,
+      dispatch,
+    });
 
-    deleteConversation: useCallback(async (id: string) => {
-      try {
-        await conversationManager.delete(id);
-        dispatch({ type: 'DELETE_CONVERSATION', payload: id });
-      } catch (e: any) {
-        // ignore
-      }
-    }, [conversationManager]),
-
-    // Editing Actions
-    startEdit: useCallback((messageId: string, content: string) => {
-      dispatch({ type: 'START_EDIT', payload: { messageId, content } });
-    }, []),
-
-    updateEditContent: useCallback((content: string) => {
-      dispatch({ type: 'UPDATE_EDIT_CONTENT', payload: content });
-    }, []),
-
-    cancelEdit: useCallback(() => {
-      dispatch({ type: 'CANCEL_EDIT' });
-    }, []),
-
-    saveEdit: useCallback(async () => {
-      if (!state.editingMessageId) return;
-
-      const messageId = state.editingMessageId;
-
-      const idx = state.messages.findIndex(m => m.id === messageId);
-      if (idx === -1) return;
-
-      const trimmedText = state.editingContent.trim();
-      const targetMessage = state.messages[idx];
-      const existingImages = extractImagesFromContent(targetMessage.content);
-
-      if (!trimmedText && existingImages.length === 0) {
-        return;
-      }
-
-      const nextContent = existingImages.length > 0
-        ? createMixedContent(trimmedText, existingImages)
-        : trimmedText;
-
-      const baseMessages = [
-        ...state.messages.slice(0, idx),
-        { ...targetMessage, content: nextContent }
-      ];
-
-      dispatch({
-        type: 'SAVE_EDIT_SUCCESS',
-        payload: { messageId, content: nextContent, baseMessages }
-      });
-
-      if (baseMessages.length > 0 && baseMessages[baseMessages.length - 1].role === 'user') {
-        // Trigger regeneration (similar to sendMessage but with existing messages)
-        // This would be implemented similar to the current regenerateFromBase logic
-      }
-    }, [state.editingMessageId, state.editingContent, state.messages]),
-
-    setMessages: useCallback((messages: ChatMessage[]) => {
-      dispatch({ type: 'SET_MESSAGES', payload: messages });
-    }, []),
-
-    refreshConversations,
-
-    toggleSidebar: useCallback(() => {
-      dispatch({ type: 'TOGGLE_SIDEBAR' });
-    }, []),
-
-    toggleRightSidebar: useCallback(() => {
-      dispatch({ type: 'TOGGLE_RIGHT_SIDEBAR' });
-    }, []),
-
+    return {
+      ...authActions,
+      ...uiActions,
+      ...settingsActions,
+      ...stableChatActions,
+      ...conversationActions,
+      ...editActions,
+      refreshConversations,
+    };
+  }, [
+    dispatch,
+    modelRef,
+    providerRef,
+    systemPromptRef,
+    inlineSystemPromptRef,
+    activeSystemPromptIdRef,
+    shouldStreamRef,
+    reasoningEffortRef,
+    verbosityRef,
+    qualityLevelRef,
     loadProvidersAndModels,
-  };
+    state,
+    inFlightRef,
+    assistantMsgRef,
+    throttleTimerRef,
+    buildSendChatConfig,
+    runSend,
+    conversationManager,
+    refreshConversations,
+  ]);
 
   return { state, actions };
 }
