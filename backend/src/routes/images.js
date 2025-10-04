@@ -5,6 +5,7 @@ import fs from 'fs/promises';
 import { nanoid } from 'nanoid';
 import { authenticateToken } from '../middleware/auth.js';
 import { logger } from '../logger.js';
+import { storeImageMetadata, getImageMetadataForUser } from '../lib/images/metadataStore.js';
 
 const router = express.Router();
 
@@ -25,6 +26,11 @@ const IMAGE_CONFIG = {
 
 // Ensure upload directory exists
 const uploadDir = path.resolve(IMAGE_CONFIG.localStoragePath);
+const IMAGE_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+function isValidImageId(id) {
+  return typeof id === 'string' && IMAGE_ID_PATTERN.test(id);
+}
 
 // Configure multer for file uploads
 const storage = multer.memoryStorage(); // Store in memory for processing
@@ -89,26 +95,35 @@ router.post('/v1/images/upload', authenticateToken, upload.array('images', IMAGE
       const file = files[i];
 
       try {
-        // Generate unique filename
         const imageId = nanoid();
-        const ext = path.extname(file.originalname).toLowerCase();
-        const filename = `${imageId}${ext}`;
-        const filePath = path.join(uploadDir, filename);
+        const ext = path.extname(file.originalname || '').toLowerCase();
+        const storageFilename = `${imageId}${ext}`;
+        const filePath = path.join(uploadDir, storageFilename);
 
-        // Write file to disk
         await fs.writeFile(filePath, file.buffer);
 
-        // Generate URL for frontend access
-        // In production, this would be a CDN URL or proper image service URL
-        const url = `/v1/images/${filename}`;
+        try {
+          storeImageMetadata({
+            id: imageId,
+            userId,
+            storageFilename,
+            originalName: file.originalname,
+            mimeType: file.mimetype,
+            size: file.size,
+          });
+        } catch (metadataError) {
+          // Clean up the file on metadata failure
+          await fs.unlink(filePath).catch(() => {});
+          throw metadataError;
+        }
 
-        // TODO: Store image metadata in database for production use
-        // const imageData = { id: imageId, filename, originalName: file.originalname, url, size: file.size, type: file.mimetype, userId, createdAt: new Date().toISOString() };
+        const url = `/v1/images/${imageId}`;
 
         results.push({
           id: imageId,
           url,
-          filename,
+          filename: storageFilename,
+          originalFilename: file.originalname,
           size: file.size,
           type: file.mimetype,
           alt: file.originalname,
@@ -117,7 +132,7 @@ router.post('/v1/images/upload', authenticateToken, upload.array('images', IMAGE
         logger.info({
           msg: 'images:uploaded',
           imageId,
-          filename,
+          storageFilename,
           size: file.size,
           userId
         });
@@ -200,38 +215,49 @@ router.get('/v1/images/config', (req, res) => {
 });
 
 /**
- * GET /v1/images/:filename
- * Serve uploaded images
+ * GET /v1/images/:imageId
+ * Serve uploaded images (requires authentication and ownership)
  */
-router.get('/v1/images/:filename', async (req, res) => {
+router.get('/v1/images/:imageId', authenticateToken, async (req, res) => {
   try {
-    const { filename } = req.params;
+    const { imageId } = req.params;
+    const userId = req.user.id;
 
-    // Basic security check - prevent directory traversal
-    if (filename.includes('..') || filename.includes('/') || filename.includes('\\')) {
+    if (!isValidImageId(imageId)) {
       return res.status(400).json({
-        error: 'invalid_filename',
-        message: 'Invalid filename'
+        error: 'invalid_image_id',
+        message: 'Invalid image identifier'
       });
     }
 
-    const filePath = path.join(uploadDir, filename);
-
-    // Check if file exists
-    try {
-      await fs.access(filePath);
-    } catch {
+    const metadata = getImageMetadataForUser(imageId, userId);
+    if (!metadata) {
       return res.status(404).json({
         error: 'not_found',
         message: 'Image not found'
       });
     }
 
-    // Get file stats and set appropriate headers
-    const stats = await fs.stat(filePath);
-    const ext = path.extname(filename).toLowerCase();
+    const filePath = path.join(uploadDir, metadata.storageFilename);
 
-    // Set content type based on extension
+    try {
+      await fs.access(filePath);
+    } catch {
+      logger.warn({
+        msg: 'images:file_missing',
+        imageId,
+        filePath,
+        userId,
+      });
+      return res.status(404).json({
+        error: 'not_found',
+        message: 'Image not found'
+      });
+    }
+
+    const stats = await fs.stat(filePath);
+    const ext = path.extname(metadata.storageFilename).toLowerCase();
+
     const contentTypeMap = {
       '.jpg': 'image/jpeg',
       '.jpeg': 'image/jpeg',
@@ -240,22 +266,18 @@ router.get('/v1/images/:filename', async (req, res) => {
       '.gif': 'image/gif',
     };
 
-    const contentType = contentTypeMap[ext] || 'application/octet-stream';
+    const contentType = metadata.mimeType || contentTypeMap[ext] || 'application/octet-stream';
+    const etag = `"${stats.mtime.getTime()}-${stats.size}"`;
 
     res.setHeader('Content-Type', contentType);
     res.setHeader('Content-Length', stats.size);
-    res.setHeader('Cache-Control', 'public, max-age=31536000'); // 1 year cache
-    res.setHeader('ETag', `"${stats.mtime.getTime()}-${stats.size}"`);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.setHeader('ETag', etag);
 
-    // Check if client has cached version
-    const ifNoneMatch = req.headers['if-none-match'];
-    const etag = `"${stats.mtime.getTime()}-${stats.size}"`;
-
-    if (ifNoneMatch === etag) {
+    if (req.headers['if-none-match'] === etag) {
       return res.status(304).end();
     }
 
-    // Stream the file
     const fileBuffer = await fs.readFile(filePath);
     res.send(fileBuffer);
 
@@ -263,7 +285,8 @@ router.get('/v1/images/:filename', async (req, res) => {
     logger.error({
       msg: 'images:serve_error',
       error: error.message,
-      filename: req.params.filename
+      imageId: req.params.imageId,
+      userId: req.user?.id,
     });
 
     res.status(500).json({

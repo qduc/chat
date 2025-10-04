@@ -1,5 +1,6 @@
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
+import { getImageMetadata } from './images/metadataStore.js';
 
 const DEFAULT_STORAGE_PATH = process.env.IMAGE_STORAGE_PATH || './data/images';
 const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1']);
@@ -36,7 +37,7 @@ function isLocalImageUrl(url) {
 	}
 }
 
-function resolveFilename(url) {
+function resolveImageId(url) {
 	try {
 		const parsed = new URL(url, 'http://localhost');
 		const filename = path.basename(parsed.pathname);
@@ -54,13 +55,18 @@ export function maybeConvertLocalImageUrl(imageUrl) {
 		return imageUrl;
 	}
 
-	const filename = resolveFilename(imageUrl);
-	if (!filename) {
+	const imageId = resolveImageId(imageUrl);
+	if (!imageId) {
+		return imageUrl;
+	}
+
+	const metadata = getImageMetadata(imageId);
+	if (!metadata || !metadata.storageFilename) {
 		return imageUrl;
 	}
 
 	const storagePath = path.resolve(DEFAULT_STORAGE_PATH);
-	const filePath = path.join(storagePath, filename);
+	const filePath = path.join(storagePath, metadata.storageFilename);
 
 	if (!existsSync(filePath)) {
 		return imageUrl;
@@ -68,7 +74,7 @@ export function maybeConvertLocalImageUrl(imageUrl) {
 
 	try {
 		const buffer = readFileSync(filePath);
-		const mime = getMimeType(filename);
+		const mime = metadata.mimeType || getMimeType(metadata.storageFilename);
 		return `data:${mime};base64,${buffer.toString('base64')}`;
 	} catch {
 		return imageUrl;

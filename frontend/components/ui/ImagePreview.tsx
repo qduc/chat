@@ -2,6 +2,7 @@ import React from 'react';
 import ReactDOM from 'react-dom';
 import { X, AlertCircle, Loader2 } from 'lucide-react';
 import type { ImageAttachment, ImageUploadProgress } from '../../lib/chat/types';
+import { useSecureImageUrl } from '../../hooks/useSecureImageUrl';
 
 interface ImagePreviewProps {
   images: ImageAttachment[];
@@ -10,17 +11,17 @@ interface ImagePreviewProps {
   className?: string;
 }
 
+interface SelectedPreview {
+  image: ImageAttachment;
+  src: string;
+}
+
 export function ImagePreview({ images, uploadProgress, onRemove, className = '' }: ImagePreviewProps) {
   if (images.length === 0) {
     return null;
   }
 
-  const [selectedImage, setSelectedImage] = React.useState<ImageAttachment | null>(null);
-
-  const handleImageClick = (image: ImageAttachment, isError: boolean) => {
-    if (isError) return;
-    setSelectedImage(image);
-  };
+  const [selectedImage, setSelectedImage] = React.useState<SelectedPreview | null>(null);
 
   const handleClosePreview = () => setSelectedImage(null);
 
@@ -31,75 +32,15 @@ export function ImagePreview({ images, uploadProgress, onRemove, className = '' 
   return (
     <>
       <div className={`flex flex-wrap gap-2 ${className}`}>
-        {images.map((image) => {
-        const progress = getProgressForImage(image.id);
-        const isUploading = progress?.state === 'uploading' || progress?.state === 'processing';
-        const hasError = progress?.state === 'error';
-
-        return (
-          <div
+        {images.map((image) => (
+          <PreviewItem
             key={image.id}
-            className="relative group rounded-lg overflow-hidden border border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800"
-            style={{ width: '80px', height: '80px' }}
-          >
-            {/* Image (clickable to preview) */}
-            <button
-              type="button"
-              onClick={() => handleImageClick(image, !!hasError)}
-              disabled={isUploading || hasError}
-              aria-label={`Preview ${image.name}`}
-              className={`w-full h-full block p-0 m-0 border-0 bg-transparent ${isUploading || hasError ? 'cursor-not-allowed' : 'cursor-zoom-in'}`}
-            >
-              <img
-                src={image.url}
-                alt={image.alt || image.name}
-                className={`w-full h-full object-cover transition-opacity ${
-                  isUploading ? 'opacity-50' : 'opacity-100'
-                } ${hasError ? 'opacity-30' : ''}`}
-              />
-            </button>
-
-            {/* Upload Progress Overlay */}
-            {isUploading && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-                <div className="flex flex-col items-center gap-1">
-                  <Loader2 className="w-4 h-4 text-white animate-spin" />
-                  {progress && (
-                    <div className="text-xs text-white font-medium">
-                      {progress.progress}%
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Error Overlay */}
-            {hasError && (
-              <div className="absolute inset-0 flex items-center justify-center bg-red-500/20">
-                <AlertCircle className="w-4 h-4 text-red-500" />
-              </div>
-            )}
-
-            {/* Remove Button */}
-            {onRemove && !isUploading && (
-              <button
-                type="button"
-                onClick={() => onRemove(image.id)}
-                className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-                aria-label={`Remove ${image.name}`}
-              >
-                <X className="w-3 h-3" />
-              </button>
-            )}
-
-            {/* File Info Tooltip */}
-            <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-              <div className="truncate">{image.name}</div>
-              <div>{(image.size / 1024).toFixed(0)} KB</div>
-            </div>
-          </div>
-        );
-      })}
+            image={image}
+            progress={getProgressForImage(image.id)}
+            onRemove={onRemove}
+            onPreview={(img, src) => setSelectedImage({ image: img, src })}
+          />
+        ))}
       </div>
       {selectedImage && typeof document !== 'undefined' && ReactDOM.createPortal(
         <div
@@ -118,8 +59,8 @@ export function ImagePreview({ images, uploadProgress, onRemove, className = '' 
               <X className="h-4 w-4" />
             </button>
             <img
-              src={selectedImage!.url}
-              alt={selectedImage!.alt || selectedImage!.name}
+              src={selectedImage.src}
+              alt={selectedImage.image.alt || selectedImage.image.name}
               className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
             />
           </div>
@@ -127,6 +68,86 @@ export function ImagePreview({ images, uploadProgress, onRemove, className = '' 
         document.body
       )}
     </>
+  );
+}
+
+interface PreviewItemProps {
+  image: ImageAttachment;
+  progress?: ImageUploadProgress;
+  onRemove?: (id: string) => void;
+  onPreview: (image: ImageAttachment, src: string) => void;
+}
+
+function PreviewItem({ image, progress, onRemove, onPreview }: PreviewItemProps) {
+  const { src, loading, error } = useSecureImageUrl(image.url);
+  const isUploading = progress?.state === 'uploading' || progress?.state === 'processing';
+  const hasError = progress?.state === 'error' || error;
+  const canPreview = !isUploading && !hasError && Boolean(src);
+
+  const handleClick = () => {
+    if (canPreview) {
+      onPreview(image, src);
+    }
+  };
+
+  return (
+    <div
+      className="relative group rounded-lg overflow-hidden border border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800"
+      style={{ width: '80px', height: '80px' }}
+    >
+      <button
+        type="button"
+        onClick={handleClick}
+        disabled={!canPreview}
+        aria-label={`Preview ${image.name}`}
+        className={`w-full h-full block p-0 m-0 border-0 bg-transparent ${canPreview ? 'cursor-zoom-in' : 'cursor-not-allowed'}`}
+      >
+        {src && (
+          <img
+            src={src}
+            alt={image.alt || image.name}
+            className={`w-full h-full object-cover transition-opacity ${
+              loading ? 'opacity-50' : 'opacity-100'
+            } ${hasError ? 'opacity-30' : ''}`}
+          />
+        )}
+      </button>
+
+      {(loading || isUploading) && (
+        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
+          <div className="flex flex-col items-center gap-1">
+            <Loader2 className="w-4 h-4 text-white animate-spin" />
+            {progress && (
+              <div className="text-xs text-white font-medium">
+                {progress.progress}%
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {hasError && (
+        <div className="absolute inset-0 flex items-center justify-center bg-red-500/20">
+          <AlertCircle className="w-4 h-4 text-red-500" />
+        </div>
+      )}
+
+      {onRemove && !isUploading && (
+        <button
+          type="button"
+          onClick={() => onRemove(image.id)}
+          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+          aria-label={`Remove ${image.name}`}
+        >
+          <X className="w-3 h-3" />
+        </button>
+      )}
+
+      <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="truncate">{image.name}</div>
+        <div>{(image.size / 1024).toFixed(0)} KB</div>
+      </div>
+    </div>
   );
 }
 

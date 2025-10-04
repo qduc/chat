@@ -108,7 +108,7 @@ export class ImagesClient {
           id: img.id,
           file: files[index],
           url: `${this.apiBase}${img.url}`,
-          name: img.filename,
+          name: img.originalFilename || img.filename,
           size: img.size,
           type: img.type,
           alt: img.alt,

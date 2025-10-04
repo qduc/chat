@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import type { MessageContent, ImageContent } from '../../lib/chat/types';
 import { extractTextFromContent, extractImagesFromContent, hasImages } from '../../lib/chat/content-utils';
 import Markdown from '../Markdown';
+import { useSecureImageUrl } from '../../hooks/useSecureImageUrl';
 
 interface MessageContentRendererProps {
   content: MessageContent;
@@ -11,15 +12,20 @@ interface MessageContentRendererProps {
   className?: string;
 }
 
+interface SelectedImage {
+  image: ImageContent;
+  src: string;
+}
+
 export function MessageContentRenderer({ content, isStreaming = false, className = '' }: MessageContentRendererProps) {
   // Extract text and images from content
   const textContent = extractTextFromContent(content);
   const imageContents = extractImagesFromContent(content);
   const hasImageContent = hasImages(content);
-  const [selectedImage, setSelectedImage] = React.useState<ImageContent | null>(null);
+  const [selectedImage, setSelectedImage] = React.useState<SelectedImage | null>(null);
 
-  const handleImageClick = React.useCallback((image: ImageContent) => {
-    setSelectedImage(image);
+  const handleImageClick = React.useCallback((image: ImageContent, src: string) => {
+    setSelectedImage({ image, src });
   }, []);
 
   const handleClosePreview = React.useCallback(() => {
@@ -48,7 +54,7 @@ export function MessageContentRenderer({ content, isStreaming = false, className
       </div>
 
       {selectedImage && (
-        <ImagePreviewOverlay image={selectedImage} onClose={handleClosePreview} />
+        <ImagePreviewOverlay image={selectedImage.image} src={selectedImage.src} onClose={handleClosePreview} />
       )}
     </>
   );
@@ -57,7 +63,7 @@ export function MessageContentRenderer({ content, isStreaming = false, className
 interface MessageImagesProps {
   images: ImageContent[];
   className?: string;
-  onImageClick?: (image: ImageContent) => void;
+  onImageClick?: (image: ImageContent, src: string) => void;
 }
 
 function MessageImages({ images, className = '', onImageClick }: MessageImagesProps) {
@@ -77,46 +83,60 @@ function MessageImages({ images, className = '', onImageClick }: MessageImagesPr
 interface MessageImageProps {
   image: ImageContent;
   className?: string;
-  onClick?: (image: ImageContent) => void;
+  onClick?: (image: ImageContent, src: string) => void;
 }
 
 function MessageImage({ image, className = '', onClick }: MessageImageProps) {
+  const rawUrl = typeof (image as any)?.image_url === 'string'
+    ? (image as any).image_url as string
+    : image.image_url?.url ?? '';
+  const { src, loading: fetching, error: fetchError } = useSecureImageUrl(rawUrl);
   const [loaded, setLoaded] = React.useState(false);
-  const [error, setError] = React.useState(false);
+  const [renderError, setRenderError] = React.useState(false);
+
+  React.useEffect(() => {
+    setLoaded(false);
+    setRenderError(false);
+  }, [src]);
+
+  const combinedError = fetchError || renderError;
+  const hasSource = Boolean(src);
 
   const handleLoad = () => {
     setLoaded(true);
-    setError(false);
+    setRenderError(false);
   };
 
   const handleError = () => {
-    setError(true);
+    setRenderError(true);
     setLoaded(false);
   };
 
   const handleClick = () => {
-    if (!error && onClick) {
-      onClick(image);
+    if (!combinedError && hasSource && onClick) {
+      onClick(image, src);
     }
   };
+
+  const showSpinner = (fetching || (!loaded && hasSource)) && !combinedError;
 
   return (
     <button
       type="button"
       onClick={handleClick}
-      disabled={error}
+      disabled={combinedError || !hasSource}
       className={`relative block w-full rounded-lg overflow-hidden bg-slate-100 dark:bg-neutral-800 ${
-        error ? 'cursor-not-allowed' : 'cursor-zoom-in'
+        combinedError || !hasSource ? 'cursor-not-allowed' : 'cursor-zoom-in'
       } focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${className}`}
       aria-label="View image"
     >
-      {!loaded && !error && (
+      {showSpinner && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="w-6 h-6 border-2 border-slate-300 dark:border-neutral-600 border-t-slate-600 dark:border-t-neutral-300 rounded-full animate-spin" />
         </div>
       )}
 
-      {error && (
+      {combinedError && (
         <div className="absolute inset-0 flex items-center justify-center text-slate-500 dark:text-slate-400">
           <div className="text-center">
             <div className="w-8 h-8 mx-auto mb-2 rounded-full bg-slate-200 dark:bg-neutral-700 flex items-center justify-center">
@@ -127,27 +147,30 @@ function MessageImage({ image, className = '', onClick }: MessageImageProps) {
         </div>
       )}
 
-      <img
-        src={image.image_url.url}
-        alt="Chat message attachment"
-        className={`max-w-full h-auto rounded-lg transition-opacity duration-200 ${
-          loaded ? 'opacity-100' : 'opacity-0'
-        } ${error ? 'hidden' : ''}`}
-        style={{ maxHeight: '400px', width: 'auto' }}
-        onLoad={handleLoad}
-        onError={handleError}
-        loading="lazy"
-      />
+      {hasSource && !combinedError && (
+        <img
+          src={src}
+          alt="Chat message attachment"
+          className={`max-w-full h-auto rounded-lg transition-opacity duration-200 ${
+            loaded ? 'opacity-100' : 'opacity-0'
+          }`}
+          style={{ maxHeight: '400px', width: 'auto' }}
+          onLoad={handleLoad}
+          onError={handleError}
+          loading="lazy"
+        />
+      )}
     </button>
   );
 }
 
 interface ImagePreviewOverlayProps {
   image: ImageContent;
+  src: string;
   onClose: () => void;
 }
 
-function ImagePreviewOverlay({ image, onClose }: ImagePreviewOverlayProps) {
+function ImagePreviewOverlay({ image, src, onClose }: ImagePreviewOverlayProps) {
   React.useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -199,7 +222,7 @@ function ImagePreviewOverlay({ image, onClose }: ImagePreviewOverlayProps) {
           <X className="h-4 w-4" />
         </button>
         <img
-          src={image.image_url.url}
+          src={src}
           alt="Enlarged chat message attachment"
           className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
         />
