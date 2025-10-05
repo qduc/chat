@@ -57,20 +57,52 @@ export function streamReducer(state: ChatState, action: ChatAction): ChatState |
 
     case 'STREAM_TOOL_OUTPUT': {
       const { toolMessage } = action.payload;
-      const duplicate = state.messages.some(m =>
-        m.role === 'tool' &&
-        (m as any).tool_call_id === (toolMessage as any).tool_call_id &&
-        JSON.stringify(m.content) === JSON.stringify(toolMessage.content) &&
-        ((m as any).status ?? undefined) === ((toolMessage as any).status ?? undefined)
+
+      // Find the assistant message that contains the tool call
+      const assistantMessage = state.messages.find(m =>
+        m.role === 'assistant' &&
+        Array.isArray(m.tool_calls) &&
+        m.tool_calls.some(tc => tc.id === (toolMessage as any).tool_call_id)
       );
 
-      if (duplicate) {
-        return state;
+      if (!assistantMessage) {
+        // If no assistant message found, still add as separate message for backward compatibility
+        const duplicate = state.messages.some(m =>
+          (m as any).role === 'tool' &&
+          (m as any).tool_call_id === (toolMessage as any).tool_call_id &&
+          JSON.stringify(m.content) === JSON.stringify(toolMessage.content) &&
+          ((m as any).status ?? undefined) === ((toolMessage as any).status ?? undefined)
+        );
+
+        if (duplicate) {
+          return state;
+        }
+
+        return {
+          ...state,
+          messages: [...state.messages, toolMessage]
+        };
       }
+
+      // Attach tool output to the assistant message
+      const toolOutput = {
+        tool_call_id: (toolMessage as any).tool_call_id,
+        output: toolMessage.content,
+        status: (toolMessage as any).status || 'success'
+      };
+
+      const updatedAssistantMessage = {
+        ...assistantMessage,
+        tool_outputs: Array.isArray(assistantMessage.tool_outputs)
+          ? [...assistantMessage.tool_outputs, toolOutput]
+          : [toolOutput]
+      };
 
       return {
         ...state,
-        messages: [...state.messages, toolMessage]
+        messages: state.messages.map(m =>
+          m.id === assistantMessage.id ? updatedAssistantMessage : m
+        )
       };
     }
 

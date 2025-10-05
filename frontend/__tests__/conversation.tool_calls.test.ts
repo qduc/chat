@@ -83,16 +83,14 @@ describe('Tool Calls in Conversations', () => {
                 arguments: '{}'
               }
             }
+          ],
+          tool_outputs: [
+            {
+              tool_call_id: 'call_123',
+              output: '14:30:00 UTC',
+              status: 'success'
+            }
           ]
-        },
-        {
-          id: 3,
-          seq: 3,
-          role: 'tool',
-          status: 'success',
-          content: '14:30:00 UTC',
-          created_at: '2023-01-01T00:01:30Z',
-          tool_call_id: 'call_123'
         },
         {
           id: 4,
@@ -115,7 +113,7 @@ describe('Tool Calls in Conversations', () => {
 
     // Wait for messages to be loaded
     await waitFor(() => {
-      expect(result.current.state.messages.length).toBe(4);
+      expect(result.current.state.messages.length).toBe(3);
     });
 
     // Verify the messages include tool calls and outputs
@@ -130,11 +128,16 @@ describe('Tool Calls in Conversations', () => {
     expect(assistantMessage.tool_calls![0].id).toBe('call_123');
     expect(assistantMessage.tool_calls![0].function.name).toBe('get_time');
 
-    // Tool outputs should be represented as separate tool messages
-    expect(assistantMessage.tool_outputs).toBeUndefined();
-    const toolMsg = result.current.state.messages.find(m => (m as any).role === 'tool' && (m as any).tool_call_id === 'call_123');
-    expect(toolMsg).toBeDefined();
-    expect((toolMsg as any).content).toBe('14:30:00 UTC');
+    // Check tool_outputs are attached to assistant message
+    expect(assistantMessage.tool_outputs).toBeDefined();
+    expect(assistantMessage.tool_outputs).toHaveLength(1);
+    expect(assistantMessage.tool_outputs![0].tool_call_id).toBe('call_123');
+    expect(assistantMessage.tool_outputs![0].output).toBe('14:30:00 UTC');
+    expect(assistantMessage.tool_outputs![0].status).toBe('success');
+
+    // Should not have separate tool messages
+    const toolMsg = result.current.state.messages.find(m => (m as any).role === 'tool');
+    expect(toolMsg).toBeUndefined();
   });
 
   test('loads conversation with multiple tool calls', async () => {
@@ -178,25 +181,19 @@ describe('Tool Calls in Conversations', () => {
                 arguments: '{"query":"AI news"}'
               }
             }
+          ],
+          tool_outputs: [
+            {
+              tool_call_id: 'call_1',
+              output: '14:30:00 UTC',
+              status: 'success'
+            },
+            {
+              tool_call_id: 'call_2',
+              output: 'Latest AI news results...',
+              status: 'success'
+            }
           ]
-        },
-        {
-          id: 3,
-          seq: 3,
-          role: 'tool',
-          status: 'success',
-          content: '14:30:00 UTC',
-          created_at: '2023-01-01T00:01:30Z',
-          tool_call_id: 'call_1'
-        },
-        {
-          id: 4,
-          seq: 4,
-          role: 'tool',
-          status: 'success',
-          content: 'Latest AI news results...',
-          created_at: '2023-01-01T00:01:45Z',
-          tool_call_id: 'call_2'
         },
         {
           id: 5,
@@ -217,7 +214,7 @@ describe('Tool Calls in Conversations', () => {
     });
 
     await waitFor(() => {
-      expect(result.current.state.messages.length).toBe(5);
+      expect(result.current.state.messages.length).toBe(3);
     });
 
     const assistantMessage = result.current.state.messages[1];
@@ -227,13 +224,17 @@ describe('Tool Calls in Conversations', () => {
     expect(assistantMessage.tool_calls![0].function.name).toBe('get_time');
     expect(assistantMessage.tool_calls![1].function.name).toBe('web_search');
 
-    expect(assistantMessage.tool_outputs).toBeUndefined();
-    const tool1 = result.current.state.messages.find(m => (m as any).role === 'tool' && (m as any).tool_call_id === 'call_1');
-    const tool2 = result.current.state.messages.find(m => (m as any).role === 'tool' && (m as any).tool_call_id === 'call_2');
-    expect(tool1).toBeDefined();
-    expect(tool2).toBeDefined();
-    expect((tool1 as any).content).toBe('14:30:00 UTC');
-    expect((tool2 as any).content).toBe('Latest AI news results...');
+    // Check tool outputs attached to assistant message
+    expect(assistantMessage.tool_outputs).toBeDefined();
+    expect(assistantMessage.tool_outputs!).toHaveLength(2);
+    expect(assistantMessage.tool_outputs![0].tool_call_id).toBe('call_1');
+    expect(assistantMessage.tool_outputs![0].output).toBe('14:30:00 UTC');
+    expect(assistantMessage.tool_outputs![1].tool_call_id).toBe('call_2');
+    expect(assistantMessage.tool_outputs![1].output).toBe('Latest AI news results...');
+
+    // Should not have separate tool messages
+    const anyToolMsgs = result.current.state.messages.some(m => (m as any).role === 'tool');
+    expect(anyToolMsgs).toBe(false);
   });
 
   test('loads conversation without tool calls correctly', async () => {
@@ -314,16 +315,14 @@ describe('Tool Calls in Conversations', () => {
                 arguments: '{\"query\":\"test\"}'
               }
             }
+          ],
+          tool_outputs: [
+            {
+              tool_call_id: 'call_error',
+              output: 'Tool execution failed: timeout',
+              status: 'error'
+            }
           ]
-        },
-        {
-          id: 3,
-          seq: 3,
-          role: 'tool',
-          status: 'error',
-          content: 'Tool execution failed: timeout',
-          created_at: '2023-01-01T00:01:15Z',
-          tool_call_id: 'call_error'
         }
       ],
       next_after_seq: null
@@ -336,15 +335,18 @@ describe('Tool Calls in Conversations', () => {
     });
 
     await waitFor(() => {
-      expect(result.current.state.messages.length).toBe(3);
+      expect(result.current.state.messages.length).toBe(2);
     });
 
     const assistantMessage = result.current.state.messages[1];
-    expect(assistantMessage.tool_outputs).toBeUndefined();
+    expect(assistantMessage.tool_outputs).toBeDefined();
+    expect(assistantMessage.tool_outputs!).toHaveLength(1);
+    expect(assistantMessage.tool_outputs![0].tool_call_id).toBe('call_error');
+    expect(assistantMessage.tool_outputs![0].output).toContain('timeout');
+    expect(assistantMessage.tool_outputs![0].status).toBe('error');
 
-    const toolMsg = result.current.state.messages.find(m => (m as any).role === 'tool' && (m as any).tool_call_id === 'call_error');
-    expect(toolMsg).toBeDefined();
-    expect((toolMsg as any).content).toContain('timeout');
-    expect((toolMsg as any).status).toBe('error');
+    // Should not have separate tool messages
+    const anyToolMsgs = result.current.state.messages.some(m => (m as any).role === 'tool');
+    expect(anyToolMsgs).toBe(false);
   });
 });

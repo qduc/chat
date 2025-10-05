@@ -571,7 +571,7 @@ const Message = React.memo<MessageProps>(function Message({
                       </button>
                     )
                   ) : (
-                    !pending.streaming && (
+                    !pending.streaming && (!message.tool_calls || message.tool_calls.length === 0) && (
                       <button
                         type="button"
                         onClick={() => onRetryMessage && onRetryMessage(message.id)}

@@ -172,7 +172,7 @@ describe('Frontend Iterative Orchestration', () => {
       await act(async () => { await result.current.actions.sendMessage(); });
 
       await waitFor(() => {
-        expect(result.current.state.messages.length).toBeGreaterThanOrEqual(4);
+        expect(result.current.state.messages.length).toBeGreaterThanOrEqual(3);
       });
 
       const toolCallMessage = result.current.state.messages[1];
@@ -183,13 +183,17 @@ describe('Frontend Iterative Orchestration', () => {
           function: { name: 'get_time' }
         })
       ]);
-      expect(toolCallMessage.tool_outputs).toBeUndefined();
-
-      const toolMessage = result.current.state.messages.find(m => m.role === 'tool');
-      expect(toolMessage).toEqual(expect.objectContaining({
+      expect(toolCallMessage.tool_outputs).toBeDefined();
+      expect(toolCallMessage.tool_outputs).toHaveLength(1);
+      expect(toolCallMessage.tool_outputs![0]).toEqual({
         tool_call_id: 'call_123',
-        content: 'time_data'
-      }));
+        output: 'time_data',
+        status: 'success'
+      });
+
+      // Should not have separate tool messages
+      const toolMessage = result.current.state.messages.find(m => (m as any).role === 'tool');
+      expect(toolMessage).toBeUndefined();
 
       const finalAssistantMessage = [...result.current.state.messages].reverse().find(m => m.role === 'assistant');
       expect(finalAssistantMessage).toBeDefined();
