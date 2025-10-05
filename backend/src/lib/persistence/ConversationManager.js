@@ -16,6 +16,7 @@ import {
   getAllMessagesForSync,
   updateMessageContent,
   deleteMessagesAfterSeq,
+  insertToolMessage,
 } from '../../db/messages.js';
 import {
   insertToolCalls,
@@ -25,6 +26,7 @@ import {
   replaceAssistantArtifacts,
   getToolCallsByMessageId,
   getToolOutputsByMessageId,
+  deleteToolCallsAndOutputsByMessageId,
 } from '../../db/toolCalls.js';
 import { v4 as uuidv4 } from 'uuid';
 import { computeMessageDiff, diffAssistantArtifacts } from '../utils/messageDiff.js';
@@ -135,18 +137,39 @@ export class ConversationManager {
 
       // UPDATE modified messages
       for (const msg of diff.toUpdate) {
-        // Update message content
-        updateMessageContent({
-          messageId: msg.id,
+        if (msg.role === 'tool') {
+          updateMessageContent({
+            messageId: msg.id,
+            conversationId,
+            userId,
+            content: msg.content,
+            status: msg.status || 'success'
+          });
+          this._replaceToolOutputs({ messageId: msg.id, conversationId, message: msg });
+        } else {
+          // Update message content
+          updateMessageContent({
+            messageId: msg.id,
+            conversationId,
+            userId,
+            content: msg.content
+          });
+
+          // Handle tool metadata updates for assistant messages
+          if (msg.role === 'assistant') {
+            this._syncAssistantArtifacts(msg.id, conversationId, msg);
+          }
+        }
+      }
+
+      // DELETE from tail only (perform before insertions to avoid removing new rows)
+      if (diff.toDelete.length > 0) {
+        const firstDeleteSeq = diff.toDelete[0].seq;
+        deleteMessagesAfterSeq({
           conversationId,
           userId,
-          content: msg.content
+          afterSeq: Math.max(0, firstDeleteSeq - 1)
         });
-
-        // Handle tool metadata updates for assistant messages
-        if (msg.role === 'assistant') {
-          this._syncAssistantArtifacts(msg.id, conversationId, msg);
-        }
       }
 
       // INSERT new messages
@@ -172,17 +195,20 @@ export class ConversationManager {
           if (result?.id) {
             this._insertAssistantArtifacts(result.id, conversationId, msg);
           }
-        }
-      }
+        } else if (msg.role === 'tool') {
+          const toolContent = this._stringifyToolOutput(msg.content);
+          const toolStatus = msg.status || 'success';
+          const result = insertToolMessage({
+            conversationId,
+            content: toolContent,
+            seq: nextSeq++,
+            status: toolStatus,
+          });
 
-      // DELETE from tail only
-      if (diff.toDelete.length > 0) {
-        const firstDeleteSeq = diff.toDelete[0].seq;
-        deleteMessagesAfterSeq({
-          conversationId,
-          userId,
-          afterSeq: firstDeleteSeq - 1
-        });
+          if (result?.id) {
+            this._persistToolOutputs(result.id, conversationId, msg, toolContent, toolStatus);
+          }
+        }
       }
     });
 
@@ -197,11 +223,35 @@ export class ConversationManager {
    * @private
    */
   _syncAssistantArtifacts(messageId, conversationId, message) {
+    const hasIncomingToolCalls = Array.isArray(message.tool_calls);
+    const hasIncomingToolOutputs = Array.isArray(message.tool_outputs);
+
+    if (!hasIncomingToolCalls && !hasIncomingToolOutputs) {
+      console.log('[ConversationManager] Skipping tool artifact sync (no incoming metadata)', {
+        conversationId,
+        messageId
+      });
+      return; // No tool metadata supplied, preserve existing records
+    }
+
     const existingToolCalls = getToolCallsByMessageId(messageId);
     const existingToolOutputs = getToolOutputsByMessageId(messageId);
 
-    const nextToolCalls = message.tool_calls || [];
-    const nextToolOutputs = message.tool_outputs || [];
+    const nextToolCalls = hasIncomingToolCalls ? message.tool_calls : existingToolCalls;
+    const nextToolOutputs = hasIncomingToolOutputs ? message.tool_outputs : existingToolOutputs;
+
+    console.log('[ConversationManager] Syncing tool artifacts', {
+      conversationId,
+      messageId,
+      incoming: {
+        toolCalls: Array.isArray(message.tool_calls) ? message.tool_calls.length : 'preserve',
+        toolOutputs: Array.isArray(message.tool_outputs) ? message.tool_outputs.length : 'preserve'
+      },
+      existing: {
+        toolCalls: existingToolCalls.length,
+        toolOutputs: existingToolOutputs.length
+      }
+    });
 
     // Try granular diff first
     const artifactDiff = diffAssistantArtifacts({
@@ -213,6 +263,11 @@ export class ConversationManager {
 
     if (artifactDiff.fallback) {
       // Fall back to replace strategy
+      console.log('[ConversationManager] Tool artifact diff fallback triggered', {
+        conversationId,
+        messageId,
+        reason: artifactDiff.reason || 'unknown'
+      });
       replaceAssistantArtifacts({
         messageId,
         conversationId,
@@ -224,6 +279,11 @@ export class ConversationManager {
 
     // Apply granular updates
     for (const tc of artifactDiff.toolCallsToUpdate) {
+      console.log('[ConversationManager] Updating tool call', {
+        id: tc.id,
+        conversationId,
+        messageId
+      });
       updateToolCall({
         id: tc.id,
         toolName: tc.function?.name || tc.tool_name,
@@ -232,6 +292,11 @@ export class ConversationManager {
     }
 
     for (const to of artifactDiff.toolOutputsToUpdate) {
+      console.log('[ConversationManager] Updating tool output', {
+        id: to.id,
+        conversationId,
+        messageId
+      });
       updateToolOutput({
         id: to.id,
         output: to.output,
@@ -241,6 +306,11 @@ export class ConversationManager {
 
     // Insert new tool calls/outputs
     if (artifactDiff.toolCallsToInsert.length > 0) {
+      console.log('[ConversationManager] Inserting tool calls', {
+        conversationId,
+        messageId,
+        count: artifactDiff.toolCallsToInsert.length
+      });
       insertToolCalls({
         messageId,
         conversationId,
@@ -249,6 +319,11 @@ export class ConversationManager {
     }
 
     if (artifactDiff.toolOutputsToInsert.length > 0) {
+      console.log('[ConversationManager] Inserting tool outputs', {
+        conversationId,
+        messageId,
+        count: artifactDiff.toolOutputsToInsert.length
+      });
       insertToolOutputs({
         messageId,
         conversationId,
@@ -279,6 +354,58 @@ export class ConversationManager {
         conversationId,
         toolOutputs: message.tool_outputs,
       });
+    }
+  }
+
+  _persistToolOutputs(messageId, conversationId, message, fallbackContent, fallbackStatus) {
+    const outputs = this._normalizeToolOutputs(message, fallbackContent, fallbackStatus);
+    if (outputs.length === 0) return;
+
+    insertToolOutputs({
+      messageId,
+      conversationId,
+      toolOutputs: outputs,
+    });
+  }
+
+  _replaceToolOutputs({ messageId, conversationId, message }) {
+    deleteToolCallsAndOutputsByMessageId(messageId);
+    const fallbackContent = this._stringifyToolOutput(message.content);
+    const fallbackStatus = message.status || 'success';
+    this._persistToolOutputs(messageId, conversationId, message, fallbackContent, fallbackStatus);
+  }
+
+  _normalizeToolOutputs(message, fallbackContent, fallbackStatus) {
+    if (Array.isArray(message.tool_outputs) && message.tool_outputs.length > 0) {
+      return message.tool_outputs.map(output => ({
+        tool_call_id: output.tool_call_id || message.tool_call_id,
+        output: this._stringifyToolOutput(output.output ?? fallbackContent),
+        status: output.status || fallbackStatus || 'success'
+      })).filter(output => !!output.tool_call_id);
+    }
+
+    if (message.tool_call_id) {
+      return [{
+        tool_call_id: message.tool_call_id,
+        output: fallbackContent,
+        status: fallbackStatus || 'success'
+      }];
+    }
+
+    return [];
+  }
+
+  _stringifyToolOutput(content) {
+    if (typeof content === 'string') {
+      return content;
+    }
+    if (content === undefined || content === null) {
+      return '';
+    }
+    try {
+      return JSON.stringify(content);
+    } catch {
+      return String(content);
     }
   }
 
@@ -319,6 +446,19 @@ export class ConversationManager {
           // Insert tool metadata if present in the incoming message
           if (result?.id) {
             this._insertAssistantArtifacts(result.id, conversationId, message);
+          }
+        } else if (message.role === 'tool') {
+          const toolContent = this._stringifyToolOutput(message.content);
+          const toolStatus = message.status || 'success';
+          const result = insertToolMessage({
+            conversationId,
+            content: toolContent,
+            seq: seq++,
+            status: toolStatus,
+          });
+
+          if (result?.id) {
+            this._persistToolOutputs(result.id, conversationId, message, toolContent, toolStatus);
           }
         }
       }

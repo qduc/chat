@@ -33,7 +33,6 @@ export async function handleToolsStreaming({
   provider,
   userId = null,
 }) {
-  console.log('[previous_response_id] handleToolsStreaming invoked');
   const providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
   const providerInstance = provider || await createProvider(config, { providerId });
   try {
@@ -41,7 +40,6 @@ export async function handleToolsStreaming({
     setupStreamingHeaders(res);
     // Build conversation history including the active system prompt
     // Use optimized version to leverage previous_response_id when available
-    console.log('[previous_response_id] About to call buildConversationMessagesOptimized');
     const { messages: conversationHistory, previousResponseId } = await buildConversationMessagesOptimized({
       body,
       bodyIn,
@@ -49,7 +47,6 @@ export async function handleToolsStreaming({
       userId,
       provider: providerInstance
     });
-    console.log('[previous_response_id] buildConversationMessagesOptimized returned:', { previousResponseId });
 
     let iteration = 0;
     let isComplete = false;
@@ -78,12 +75,6 @@ export async function handleToolsStreaming({
         if (body.reasoning_effort) requestBody.reasoning_effort = body.reasoning_effort;
         if (body.verbosity) requestBody.verbosity = body.verbosity;
       }
-
-      console.log('[previous_response_id] toolsStreaming creating request', {
-        iteration,
-        previousResponseId,
-        hasPreviousResponseIdInBody: !!requestBody.previous_response_id
-      });
 
       const upstream = await createOpenAIRequest(config, requestBody, { providerId });
 
@@ -117,7 +108,6 @@ export async function handleToolsStreaming({
                 // Capture response_id from any chunk
                 if (obj?.id && !responseId) {
                   responseId = obj.id;
-                  console.log('[previous_response_id] Response ID captured from tool streaming:', responseId);
                   if (persistence) persistence.setResponseId(responseId);
                 }
 

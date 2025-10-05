@@ -7,7 +7,6 @@ import type { ChatState, ChatAction } from '../types';
 import {
   applyStreamToken,
   applyStreamToolCall,
-  applyStreamToolOutput,
   applyStreamUsage
 } from '../utils/streamHelpers';
 
@@ -56,15 +55,24 @@ export function streamReducer(state: ChatState, action: ChatAction): ChatState |
         )
       };
 
-    case 'STREAM_TOOL_OUTPUT':
+    case 'STREAM_TOOL_OUTPUT': {
+      const { toolMessage } = action.payload;
+      const duplicate = state.messages.some(m =>
+        m.role === 'tool' &&
+        (m as any).tool_call_id === (toolMessage as any).tool_call_id &&
+        JSON.stringify(m.content) === JSON.stringify(toolMessage.content) &&
+        ((m as any).status ?? undefined) === ((toolMessage as any).status ?? undefined)
+      );
+
+      if (duplicate) {
+        return state;
+      }
+
       return {
         ...state,
-        messages: applyStreamToolOutput(
-          state.messages,
-          action.payload.messageId,
-          action.payload.toolOutput
-        )
+        messages: [...state.messages, toolMessage]
       };
+    }
 
     case 'STREAM_USAGE':
       return {
@@ -97,6 +105,12 @@ export function streamReducer(state: ChatState, action: ChatAction): ChatState |
         ...state,
         status: 'idle',
         abort: undefined,
+      };
+
+    case 'APPEND_MESSAGE':
+      return {
+        ...state,
+        messages: [...state.messages, action.payload],
       };
 
     case 'CLEAR_MESSAGES':

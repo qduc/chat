@@ -109,13 +109,22 @@ export function useChatState() {
   const refs = useRefSync(state);
   const { loadProvidersAndModels } = useModelLoader({ authReady, user, modelRef: refs.modelRef, dispatch });
   const { conversationManager, refreshConversations } = useConversationLoader({ authReady, user, dispatch });
-  const { assistantMsgRef, throttleTimerRef, handleStreamToken, handleStreamEvent } = useStreamHandlers({ dispatch });
+  const {
+    assistantMsgRef,
+    throttleTimerRef,
+    toolCallMessageIdRef,
+    toolCallContentLengthRef,
+    handleStreamToken,
+    handleStreamEvent,
+  } = useStreamHandlers({ dispatch });
   const { inFlightRef, buildSendChatConfig, runSend } = useChatHelpers({
     state,
     dispatch,
     refs,
     assistantMsgRef,
     throttleTimerRef,
+    toolCallMessageIdRef,
+    toolCallContentLengthRef,
     conversationManager,
     handleStreamEvent,
     handleStreamToken,
@@ -151,6 +160,9 @@ export function useChatState() {
         clearTimeout(throttleTimerRef.current);
         throttleTimerRef.current = null;
       }
+      assistantMsgRef.current = null;
+      toolCallMessageIdRef.current = null;
+      toolCallContentLengthRef.current = 0;
       try { state.abort?.abort(); } catch {}
       inFlightRef.current = false;
       dispatch({ type: 'STOP_STREAMING' });
@@ -162,6 +174,8 @@ export function useChatState() {
       inFlightRef,
       assistantMsgRef,
       throttleTimerRef,
+      toolCallMessageIdRef,
+      toolCallContentLengthRef,
       buildSendChatConfig,
       runSend,
     });

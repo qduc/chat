@@ -99,7 +99,27 @@ export function useChatHelpers({
         : messages;
 
       const config: any = {
-        messages: outgoing.map(m => ({ role: m.role as Role, content: m.content })),
+        messages: outgoing.map(m => {
+          const base: any = {
+            role: m.role as Role,
+            content: m.content,
+          };
+
+          if (Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
+            base.tool_calls = m.tool_calls;
+          }
+          if (Array.isArray(m.tool_outputs) && m.tool_outputs.length > 0) {
+            base.tool_outputs = m.tool_outputs;
+          }
+          if (m.tool_call_id) {
+            base.tool_call_id = m.tool_call_id;
+          }
+          if ((m as any).status !== undefined) {
+            base.status = (m as any).status;
+          }
+
+          return base;
+        }),
         // Prefer the synchronous ref which is updated immediately when the user
         // selects a model. This avoids a race where a model change dispatch
         // hasn't flushed to React state yet but an immediate regenerate/send

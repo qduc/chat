@@ -209,7 +209,18 @@ export interface ToolsResponse {
 
 // Core chat options - simplified and focused
 export interface ChatOptions {
-  messages: { role: Role; content: MessageContent }[];
+  messages: Array<{
+    role: Role;
+    content: MessageContent;
+    tool_calls?: any[];
+    tool_outputs?: Array<{
+      tool_call_id?: string;
+      output: any;
+      status?: string;
+    }>;
+    tool_call_id?: string;
+    status?: string;
+  }>;
   model?: string;
   providerId: string;
   stream?: boolean;

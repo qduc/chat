@@ -51,6 +51,7 @@ await jest.unstable_mockModule(streamingHandlerPath, () => ({
 const toolOrchestrationUtilsPath = new URL('../src/lib/toolOrchestrationUtils.js', import.meta.url).href;
 await jest.unstable_mockModule(toolOrchestrationUtilsPath, () => ({
   buildConversationMessagesAsync: jest.fn(),
+  buildConversationMessagesOptimized: jest.fn(),
   executeToolCall: jest.fn(),
   appendToPersistence: jest.fn(),
   recordFinalToPersistence: jest.fn(),
@@ -68,6 +69,7 @@ const { createOpenAIRequest, writeAndFlush, createChatCompletionChunk } = await 
 const { setupStreamingHeaders } = await import('../src/lib/streamingHandler.js');
 const {
   buildConversationMessagesAsync,
+  buildConversationMessagesOptimized,
   executeToolCall,
   streamDeltaEvent,
   appendToPersistence,
@@ -88,6 +90,12 @@ describe('toolsStreaming', () => {
     buildConversationMessagesAsync.mockResolvedValue([
       { role: 'user', content: 'Hello' }
     ]);
+    if (buildConversationMessagesOptimized) {
+      buildConversationMessagesOptimized.mockResolvedValue({
+        messages: [{ role: 'user', content: 'Hello' }],
+        previousResponseId: null
+      });
+    }
 
     createProvider.mockResolvedValue({
       getToolsetSpec: jest.fn(() => [
@@ -3433,6 +3441,12 @@ describe('toolsStreaming', () => {
         }
 
         buildConversationMessagesAsync.mockResolvedValue(largeHistory);
+        if (buildConversationMessagesOptimized) {
+          buildConversationMessagesOptimized.mockResolvedValue({
+            messages: largeHistory,
+            previousResponseId: null
+          });
+        }
 
         const mockUpstream = {
           ok: true,

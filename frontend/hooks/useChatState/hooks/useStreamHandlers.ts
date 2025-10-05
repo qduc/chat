@@ -43,6 +43,8 @@ export interface UseStreamHandlersProps {
 export function useStreamHandlers({ dispatch }: UseStreamHandlersProps) {
   const assistantMsgRef = useRef<ChatMessage | null>(null);
   const throttleTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const toolCallMessageIdRef = useRef<string | null>(null);
+  const toolCallContentLengthRef = useRef<number>(0);
 
   const handleStreamToken = useCallback((token: string) => {
     if (!token) return;
@@ -53,7 +55,12 @@ export function useStreamHandlers({ dispatch }: UseStreamHandlersProps) {
     // Immediately update the ref (keeps tokens flowing)
     const currentText = extractTextFromContent(current.content);
     const nextContent = stringToMessageContent(currentText + token);
-    assistantMsgRef.current = { ...current, content: nextContent };
+    const updated = { ...current, content: nextContent };
+    assistantMsgRef.current = updated;
+
+    if (!toolCallMessageIdRef.current) {
+      toolCallContentLengthRef.current = extractTextFromContent(updated.content).length;
+    }
 
     // Throttle React state updates to 60fps
     if (!throttleTimerRef.current) {
@@ -74,15 +81,18 @@ export function useStreamHandlers({ dispatch }: UseStreamHandlersProps) {
   }, [dispatch]);
 
   const handleStreamEvent = useCallback((event: any) => {
-    const assistantId = assistantMsgRef.current?.id;
-    if (!assistantId) return;
+    const currentAssistantId = assistantMsgRef.current?.id;
+    if (!currentAssistantId) return;
 
     if (event.type === 'text' || event.type === 'reasoning' || event.type === 'final') {
       return;
     }
 
     if (event.type === 'tool_call') {
-      const currentContentLength = extractTextFromContent(assistantMsgRef.current?.content || '').length;
+      const toolMessageId = toolCallMessageIdRef.current ?? currentAssistantId;
+      const currentContentLength = toolCallMessageIdRef.current
+        ? toolCallContentLengthRef.current
+        : extractTextFromContent(assistantMsgRef.current?.content || '').length;
       const toolCallValue = event.value && typeof event.value === 'object'
         ? {
             ...event.value,
@@ -91,20 +101,56 @@ export function useStreamHandlers({ dispatch }: UseStreamHandlersProps) {
           }
         : event.value;
 
+      toolCallContentLengthRef.current = currentContentLength;
+
       // Let reducer manage tool_calls to avoid duplicates from local snapshot
-      dispatch({ type: 'STREAM_TOOL_CALL', payload: { messageId: assistantId, toolCall: toolCallValue } });
+      dispatch({ type: 'STREAM_TOOL_CALL', payload: { messageId: toolMessageId, toolCall: toolCallValue } });
+
+      if (!toolCallMessageIdRef.current) {
+        toolCallMessageIdRef.current = toolMessageId;
+        const finalAssistantMessage: ChatMessage = {
+          id: crypto.randomUUID(),
+          role: 'assistant',
+          content: '',
+        };
+        assistantMsgRef.current = finalAssistantMessage;
+        dispatch({ type: 'APPEND_MESSAGE', payload: finalAssistantMessage });
+      }
     } else if (event.type === 'tool_output') {
-      // Let reducer manage tool_outputs to avoid duplicates from local snapshot
-      dispatch({ type: 'STREAM_TOOL_OUTPUT', payload: { messageId: assistantId, toolOutput: event.value } });
+      const output = event.value || {};
+      const outputContent = output.output;
+      let normalizedContent: string;
+      if (typeof outputContent === 'string') {
+        normalizedContent = outputContent;
+      } else if (outputContent !== undefined) {
+        normalizedContent = JSON.stringify(outputContent);
+      } else {
+        normalizedContent = '';
+      }
+
+      const toolMessage: ChatMessage = {
+        id: crypto.randomUUID(),
+        role: 'tool',
+        content: normalizedContent,
+        tool_call_id: output.tool_call_id,
+      };
+
+      if (output.status) {
+        (toolMessage as any).status = output.status;
+      }
+
+      dispatch({ type: 'STREAM_TOOL_OUTPUT', payload: { toolMessage } });
     } else if (event.type === 'usage') {
       // Store usage metadata in the assistant message
-      dispatch({ type: 'STREAM_USAGE', payload: { messageId: assistantId, usage: event.value } });
+      dispatch({ type: 'STREAM_USAGE', payload: { messageId: currentAssistantId, usage: event.value } });
     }
   }, [dispatch]);
 
   return {
     assistantMsgRef,
     throttleTimerRef,
+    toolCallMessageIdRef,
+    toolCallContentLengthRef,
     handleStreamToken,
     handleStreamEvent,
   };

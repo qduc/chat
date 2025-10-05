@@ -144,6 +144,20 @@ class StreamingResponseHandler extends ResponseHandler {
   }
 }
 
+function summarizeMessagesForLog(messages) {
+  if (!Array.isArray(messages)) return [];
+  return messages.map((msg, idx) => ({
+    idx,
+    role: msg?.role,
+    hasToolCalls: Array.isArray(msg?.tool_calls) && msg.tool_calls.length > 0,
+    toolCallCount: Array.isArray(msg?.tool_calls) ? msg.tool_calls.length : 0,
+    toolOutputCount: Array.isArray(msg?.tool_outputs) ? msg.tool_outputs.length : 0,
+    toolCallIds: Array.isArray(msg?.tool_calls) ? msg.tool_calls.map(tc => tc?.id) : undefined,
+    toolOutputIds: Array.isArray(msg?.tool_outputs) ? msg.tool_outputs.map(out => out?.tool_call_id) : undefined,
+    contentPreview: typeof msg?.content === 'string' ? msg.content.slice(0, 80) : '[non-string]',
+  }));
+}
+
 /**
  * JSON response handler (collects events)
  */
@@ -254,12 +268,6 @@ async function callLLM({ messages, config, bodyParams, providerId, providerHttp,
     if (bodyParams.verbosity) requestBody.verbosity = bodyParams.verbosity;
   }
 
-  console.log('[previous_response_id] callLLM creating request', {
-    isFirstIteration,
-    previousResponseId,
-    hasPreviousResponseIdInBody: !!requestBody.previous_response_id
-  });
-
   const response = await createOpenAIRequest(config, requestBody, { providerId, http: providerHttp });
 
   if (bodyParams.stream) {
@@ -312,6 +320,14 @@ async function executeAllTools(toolCalls, responseHandler, persistence) {
   }
 
   // Send all tool outputs through response handler
+  console.log('[toolsJson] Sending tool outputs to response handler', {
+    count: toolOutputs.length,
+    outputs: toolOutputs.map(({ tool_call_id, name, output }) => ({
+      tool_call_id,
+      name,
+      outputPreview: typeof output === 'string' ? output.slice(0, 120) : '[non-string]',
+    })),
+  });
   responseHandler.sendToolOutputs(toolOutputs, persistence);
   return toolResults;
 }
@@ -446,6 +462,11 @@ export async function handleToolsJson({
     userId,
     provider: providerInstance
   });
+  console.log('[toolsJson] Prepared messages for upstream call', {
+    conversationId: persistence?.conversationId || null,
+    previousResponseId,
+    messageSummaries: summarizeMessagesForLog(messages)
+  });
   const orchestrationConfig = OrchestrationConfig.fromRequest(body, config, fallbackToolSpecs);
   const responseHandler = ResponseHandlerFactory.create(orchestrationConfig, res);
 
@@ -510,6 +531,19 @@ export async function handleToolsJson({
       }
 
       // Send tool calls
+      if (toolCalls.length > 0) {
+        console.log('[toolsJson] Tool calls detected from model', {
+          conversationId: persistence?.conversationId || null,
+          iteration,
+          toolCalls: toolCalls.map((tc) => ({
+            id: tc.id,
+            name: tc.function?.name,
+            argPreview: typeof tc.function?.arguments === 'string'
+              ? tc.function.arguments.slice(0, 120)
+              : '[non-string]'
+          })),
+        });
+      }
       responseHandler.sendToolCalls(toolCalls);
 
       // Buffer tool calls for persistence
@@ -519,9 +553,25 @@ export async function handleToolsJson({
 
       // Execute all tools
       const toolResults = await executeAllTools(toolCalls, responseHandler, persistence);
+      if (toolResults.length > 0) {
+        console.log('[toolsJson] Tool results produced', {
+          conversationId: persistence?.conversationId || null,
+          iteration,
+          resultsSummary: toolResults.map((result) => ({
+            tool_call_id: result.tool_call_id,
+            contentPreview: typeof result.content === 'string' ? result.content.slice(0, 120) : '[non-string]',
+          })),
+        });
+      }
 
       // Add to conversation for next iteration
       messages.push(message, ...toolResults);
+      console.log('[toolsJson] Messages extended after tool execution', {
+        conversationId: persistence?.conversationId || null,
+        iteration,
+        totalMessages: messages.length,
+        messageSummaries: summarizeMessagesForLog(messages.slice(-Math.min(messages.length, 6))),
+      });
       iteration++;
     }
 

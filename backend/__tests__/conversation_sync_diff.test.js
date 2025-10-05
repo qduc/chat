@@ -138,21 +138,21 @@ describe('Diff-Based Conversation Sync', () => {
                 arguments: '{"city":"NYC"}'
               }
             }
-          ],
-          tool_outputs: [
-            {
-              tool_call_id: 'call_123',
-              output: 'Sunny, 72F',
-              status: 'success'
-            }
           ]
+        },
+        {
+          role: 'tool',
+          tool_call_id: 'call_123',
+          content: 'Sunny, 72F',
+          status: 'success'
         }
       ];
       manager.syncMessageHistoryDiff(conversationId, userId, messages1);
 
       const synced1 = getAllMessagesForSync({ conversationId });
+      expect(synced1).toHaveLength(3);
       expect(synced1[1].tool_calls).toHaveLength(1);
-      expect(synced1[1].tool_outputs).toHaveLength(1);
+      expect(synced1[2].tool_call_id).toBe('call_123');
 
       // Update message content but keep tool metadata
       const messages2 = [
@@ -170,23 +170,22 @@ describe('Diff-Based Conversation Sync', () => {
                 arguments: '{"city":"NYC"}'
               }
             }
-          ],
-          tool_outputs: [
-            {
-              tool_call_id: 'call_123',
-              output: 'Sunny, 72F',
-              status: 'success'
-            }
           ]
+        },
+        {
+          role: 'tool',
+          tool_call_id: 'call_123',
+          content: 'Sunny, 72F',
+          status: 'success'
         }
       ];
       manager.syncMessageHistoryDiff(conversationId, userId, messages2);
 
       const synced2 = getAllMessagesForSync({ conversationId });
-      expect(synced2).toHaveLength(2);
+      expect(synced2).toHaveLength(3);
       expect(synced2[1].content).toBe('Let me check that for you');
       expect(synced2[1].tool_calls).toHaveLength(1);
-      expect(synced2[1].tool_outputs).toHaveLength(1);
+      expect(synced2[2].tool_call_id).toBe('call_123');
     });
 
     it('should handle truncated history (suffix alignment)', () => {
@@ -206,7 +205,7 @@ describe('Diff-Based Conversation Sync', () => {
       manager.syncMessageHistoryDiff(conversationId, userId, messages2);
 
       const synced = getAllMessagesForSync({ conversationId });
-      expect(synced).toHaveLength(3); // Should preserve all 3
+      expect(synced).toHaveLength(2);
     });
 
     it('should handle mixed operations (update + insert + delete)', () => {

@@ -172,22 +172,28 @@ describe('Frontend Iterative Orchestration', () => {
       await act(async () => { await result.current.actions.sendMessage(); });
 
       await waitFor(() => {
-        const assistantMessage = result.current.state.messages[1];
-        expect(assistantMessage).toBeDefined();
-        expect(assistantMessage.tool_calls).toBeDefined();
-        expect(assistantMessage.tool_outputs).toBeDefined();
+        expect(result.current.state.messages.length).toBeGreaterThanOrEqual(4);
       });
 
-      const assistantMessage = result.current.state.messages[1];
-      expect(assistantMessage.role).toBe('assistant');
-      expect(assistantMessage.content).toBe('Let me help you. Done!');
-      expect(assistantMessage.tool_calls).toEqual([
+      const toolCallMessage = result.current.state.messages[1];
+      expect(toolCallMessage.role).toBe('assistant');
+      expect(toolCallMessage.tool_calls).toEqual([
         expect.objectContaining({
           id: 'call_123',
           function: { name: 'get_time' }
         })
       ]);
-      expect(assistantMessage.tool_outputs).toEqual([{ tool_call_id: 'call_123', output: 'time_data' }]);
+      expect(toolCallMessage.tool_outputs).toBeUndefined();
+
+      const toolMessage = result.current.state.messages.find(m => m.role === 'tool');
+      expect(toolMessage).toEqual(expect.objectContaining({
+        tool_call_id: 'call_123',
+        content: 'time_data'
+      }));
+
+      const finalAssistantMessage = [...result.current.state.messages].reverse().find(m => m.role === 'assistant');
+      expect(finalAssistantMessage).toBeDefined();
+      expect(finalAssistantMessage?.content).toBe('Let me help you. Done!');
     });
 
     it('should handle errors gracefully', async () => {

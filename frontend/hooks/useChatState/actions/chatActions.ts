@@ -28,6 +28,10 @@ export interface ChatActionsProps {
   assistantMsgRef: React.MutableRefObject<ChatMessage | null>;
   /** Ref to throttle timer for streaming updates */
   throttleTimerRef: React.MutableRefObject<NodeJS.Timeout | null>;
+  /** Ref tracking tool-call assistant message id */
+  toolCallMessageIdRef: React.MutableRefObject<string | null>;
+  /** Ref tracking tool-call assistant content length */
+  toolCallContentLengthRef: React.MutableRefObject<number>;
   /** Function to build chat configuration */
   buildSendChatConfig: (messages: ChatMessage[], signal: AbortSignal) => any;
   /** Function to execute the chat request */
@@ -63,6 +67,8 @@ export function createChatActions({
   inFlightRef,
   assistantMsgRef,
   throttleTimerRef,
+  toolCallMessageIdRef,
+  toolCallContentLengthRef,
   buildSendChatConfig,
   runSend,
 }: ChatActionsProps) {
@@ -95,6 +101,8 @@ export function createChatActions({
       const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: messageContent };
       const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
       assistantMsgRef.current = assistantMsg;
+      toolCallMessageIdRef.current = null;
+      toolCallContentLengthRef.current = 0;
 
       dispatch({
         type: 'START_STREAMING',
@@ -120,6 +128,8 @@ export function createChatActions({
       const abort = new AbortController();
       const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
       assistantMsgRef.current = assistantMsg;
+      toolCallMessageIdRef.current = null;
+      toolCallContentLengthRef.current = 0;
 
       dispatch({
         type: 'REGENERATE_START',

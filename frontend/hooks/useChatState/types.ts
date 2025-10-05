@@ -114,11 +114,14 @@ export type ChatAction =
   | { type: 'REGENERATE_START'; payload: { abort: AbortController; baseMessages: ChatMessage[]; assistantMessage: ChatMessage } }
   | { type: 'STREAM_TOKEN'; payload: { messageId: string; token: string; fullContent?: string } }
   | { type: 'STREAM_TOOL_CALL'; payload: { messageId: string; toolCall: any } }
-  | { type: 'STREAM_TOOL_OUTPUT'; payload: { messageId: string; toolOutput: any } }
+  | { type: 'STREAM_TOOL_OUTPUT'; payload: { toolMessage: ChatMessage } }
   | { type: 'STREAM_USAGE'; payload: { messageId: string; usage: any } }
   | { type: 'STREAM_COMPLETE'; payload: { responseId?: string } }
   | { type: 'STREAM_ERROR'; payload: string }
   | { type: 'STOP_STREAMING' }
+
+  // Message mutation helpers
+  | { type: 'APPEND_MESSAGE'; payload: ChatMessage }
 
   // Message Actions
   | { type: 'CLEAR_MESSAGES' }

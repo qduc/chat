@@ -255,7 +255,6 @@ async function handleRequest(context, req, res) {
   }
 
   // Plain proxy path
-  console.log('[previous_response_id] Plain proxy path - checking for previous_response_id optimization');
 
   // Try to use previous_response_id optimization for existing conversations
   let requestBody = { ...body };
@@ -271,7 +270,6 @@ async function handleRequest(context, req, res) {
     requestBody.messages = messages;
     if (previousResponseId) {
       requestBody.previous_response_id = previousResponseId;
-      console.log('[previous_response_id] Added previous_response_id to plain proxy request:', previousResponseId);
     }
   }
 

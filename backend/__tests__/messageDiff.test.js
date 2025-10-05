@@ -4,8 +4,6 @@
 
 import {
   computeMessageDiff,
-  findAlignment,
-  messagesMatchForAlignment,
   messagesEqual,
   normalizeContent,
   toolCallsEqual,
@@ -39,40 +37,6 @@ describe('Message Diff Utility', () => {
       expect(normalizeContent('')).toBe('');
       expect(normalizeContent(null)).toBe('');
       expect(normalizeContent(undefined)).toBe('');
-    });
-  });
-
-  describe('messagesMatchForAlignment', () => {
-    it('should match messages with same role and content', () => {
-      const msg1 = { role: 'user', content: 'hello' };
-      const msg2 = { role: 'user', content: 'hello' };
-      expect(messagesMatchForAlignment(msg1, msg2)).toBe(true);
-    });
-
-    it('should not match messages with different roles', () => {
-      const msg1 = { role: 'user', content: 'hello' };
-      const msg2 = { role: 'assistant', content: 'hello' };
-      expect(messagesMatchForAlignment(msg1, msg2)).toBe(false);
-    });
-
-    it('should not match messages with different content', () => {
-      const msg1 = { role: 'user', content: 'hello' };
-      const msg2 = { role: 'user', content: 'goodbye' };
-      expect(messagesMatchForAlignment(msg1, msg2)).toBe(false);
-    });
-
-    it('should match messages with array content', () => {
-      const content = [{ type: 'text', text: 'hello' }];
-      const msg1 = { role: 'user', content };
-      const msg2 = { role: 'user', content };
-      expect(messagesMatchForAlignment(msg1, msg2)).toBe(true);
-    });
-
-    it('should handle content_json field', () => {
-      const content = JSON.stringify([{ type: 'text', text: 'hello' }]);
-      const msg1 = { role: 'user', content_json: content };
-      const msg2 = { role: 'user', content };
-      expect(messagesMatchForAlignment(msg1, msg2)).toBe(true);
     });
   });
 
@@ -188,6 +152,26 @@ describe('Message Diff Utility', () => {
       expect(messagesEqual(msg1, msg2)).toBe(true);
     });
 
+    it('should treat missing tool metadata as unchanged', () => {
+      const msgWithTools = {
+        role: 'assistant',
+        content: 'Tool run complete',
+        tool_calls: [
+          { function: { name: 'get_date', arguments: '{}' } }
+        ],
+        tool_outputs: [
+          { tool_call_id: 'call_123', output: '2025-10-05', status: 'success' }
+        ]
+      };
+
+      const incomingWithoutMetadata = {
+        role: 'assistant',
+        content: 'Tool run complete'
+      };
+
+      expect(messagesEqual(msgWithTools, incomingWithoutMetadata)).toBe(true);
+    });
+
     it('should not match messages with different tool call counts', () => {
       const msg1 = {
         role: 'assistant',
@@ -202,97 +186,6 @@ describe('Message Diff Utility', () => {
         tool_calls: []
       };
       expect(messagesEqual(msg1, msg2)).toBe(false);
-    });
-  });
-
-  describe('findAlignment', () => {
-    it('should align empty incoming array', () => {
-      const existing = [
-        { role: 'user', content: 'a' },
-        { role: 'assistant', content: 'b' }
-      ];
-      const incoming = [];
-
-      const result = findAlignment(existing, incoming);
-      expect(result.valid).toBe(true);
-      expect(result.overlapStart).toBe(2);
-      expect(result.overlapLength).toBe(0);
-    });
-
-    it('should align empty existing array', () => {
-      const existing = [];
-      const incoming = [
-        { role: 'user', content: 'a' }
-      ];
-
-      const result = findAlignment(existing, incoming);
-      expect(result.valid).toBe(true);
-      expect(result.overlapStart).toBe(0);
-      expect(result.overlapLength).toBe(0);
-    });
-
-    it('should find perfect alignment', () => {
-      const existing = [
-        { role: 'user', content: 'a' },
-        { role: 'assistant', content: 'b' }
-      ];
-      const incoming = [
-        { role: 'user', content: 'a' },
-        { role: 'assistant', content: 'b' }
-      ];
-
-      const result = findAlignment(existing, incoming);
-      expect(result.valid).toBe(true);
-      expect(result.overlapStart).toBe(0);
-      expect(result.overlapLength).toBe(2);
-    });
-
-    it('should find suffix alignment (truncated history)', () => {
-      const existing = [
-        { role: 'user', content: 'a' },
-        { role: 'assistant', content: 'b' },
-        { role: 'user', content: 'c' }
-      ];
-      const incoming = [
-        { role: 'assistant', content: 'b' },
-        { role: 'user', content: 'c' }
-      ];
-
-      const result = findAlignment(existing, incoming);
-      expect(result.valid).toBe(true);
-      expect(result.overlapStart).toBe(1);
-      expect(result.overlapLength).toBe(2);
-    });
-
-    it('should reject insufficient overlap', () => {
-      const existing = [
-        { role: 'user', content: 'a' },
-        { role: 'assistant', content: 'b' },
-        { role: 'user', content: 'c' },
-        { role: 'assistant', content: 'd' },
-        { role: 'user', content: 'e' }
-      ];
-      const incoming = [
-        { role: 'user', content: 'e' }
-      ];
-
-      const result = findAlignment(existing, incoming);
-      expect(result.valid).toBe(false);
-      expect(result.reason).toMatch(/Insufficient (content )?overlap/);
-    });
-
-    it('should reject misaligned messages', () => {
-      const existing = [
-        { role: 'user', content: 'a' },
-        { role: 'assistant', content: 'b' }
-      ];
-      const incoming = [
-        { role: 'user', content: 'x' },
-        { role: 'assistant', content: 'y' }
-      ];
-
-      const result = findAlignment(existing, incoming);
-      expect(result.valid).toBe(false);
     });
   });
 
@@ -411,23 +304,9 @@ describe('Message Diff Utility', () => {
 
       const result = computeMessageDiff(existing, incoming);
       expect(result.fallback).toBe(false);
-      expect(result.anchorOffset).toBe(1);
-      expect(result.unchanged).toHaveLength(3); // 1 before overlap + 2 in overlap
-    });
-
-    it('should trigger fallback on alignment failure', () => {
-      const existing = [
-        { id: 1, seq: 1, role: 'user', content: 'a' },
-        { id: 2, seq: 2, role: 'assistant', content: 'b' }
-      ];
-      const incoming = [
-        { role: 'user', content: 'x' },
-        { role: 'assistant', content: 'y' }
-      ];
-
-      const result = computeMessageDiff(existing, incoming);
-      expect(result.fallback).toBe(true);
-      expect(result.reason).toBeDefined();
+      expect(result.toInsert).toHaveLength(2);
+      expect(result.toDelete).toHaveLength(3);
+      expect(result.unchanged).toHaveLength(0);
     });
 
     it('should handle mixed insert/update/delete', () => {

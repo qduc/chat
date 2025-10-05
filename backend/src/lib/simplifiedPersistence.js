@@ -4,7 +4,6 @@ import {
   ConversationValidator,
   ConversationTitleService,
   PersistenceConfig,
-  ToolCallPersistence,
 } from './persistence/index.js';
 
 /**
@@ -280,14 +279,6 @@ export class SimplifiedPersistence {
     if (!this.persist || !this.conversationId || this.assistantSeq === null) return;
     if (this.finalized || this.errored) return;
 
-    console.log('[previous_response_id] recordAssistantFinal called', {
-      conversationId: this.conversationId,
-      seq: this.assistantSeq,
-      providedResponseId: responseId,
-      storedResponseId: this.responseId,
-      finalResponseId: responseId || this.responseId
-    });
-
     try {
       const result = this.conversationManager.recordAssistantMessage({
         conversationId: this.conversationId,
@@ -300,11 +291,19 @@ export class SimplifiedPersistence {
       // Store message ID for tool call persistence
       if (result && result.id) {
         this.currentMessageId = result.id;
+        console.log('[SimplifiedPersistence] Assistant message recorded', {
+          conversationId: this.conversationId,
+          messageId: this.currentMessageId,
+          seq: this.assistantSeq
+        });
       }
 
       // Persist any buffered tool calls and outputs
       this.persistToolCallsAndOutputs();
 
+      // Prepare for future iterations
+      this.assistantSeq = this.conversationManager.getNextSequence(this.conversationId);
+      this.assistantBuffer = '';
       this.finalized = true;
     } catch (error) {
       console.error('[SimplifiedPersistence] Failed to record final assistant message:', error);
@@ -317,7 +316,13 @@ export class SimplifiedPersistence {
    * @param {Array} toolCalls - Array of tool calls in OpenAI format
    */
   addToolCalls(toolCalls) {
-    if (!this.persist || !Array.isArray(toolCalls)) return;
+    if (!this.persist || !Array.isArray(toolCalls) || toolCalls.length === 0) return;
+    console.log('[SimplifiedPersistence] Buffering tool calls', {
+      conversationId: this.conversationId,
+      messageSeq: this.assistantSeq,
+      callIds: toolCalls.map(tc => tc?.id),
+      count: toolCalls.length
+    });
     this.toolCalls.push(...toolCalls);
   }
 
@@ -326,7 +331,16 @@ export class SimplifiedPersistence {
    * @param {Array} toolOutputs - Array of tool outputs
    */
   addToolOutputs(toolOutputs) {
-    if (!this.persist || !Array.isArray(toolOutputs)) return;
+    if (!this.persist || !Array.isArray(toolOutputs) || toolOutputs.length === 0) return;
+    console.log('[SimplifiedPersistence] Buffering tool outputs', {
+      conversationId: this.conversationId,
+      messageSeq: this.assistantSeq,
+      entries: toolOutputs.map(out => ({
+        tool_call_id: out?.tool_call_id,
+        status: out?.status || 'success'
+      })),
+      count: toolOutputs.length
+    });
     this.toolOutputs.push(...toolOutputs);
   }
 
@@ -335,32 +349,10 @@ export class SimplifiedPersistence {
    * Called automatically during recordAssistantFinal
    */
   persistToolCallsAndOutputs() {
-    if (!this.persist || !this.conversationId || !this.currentMessageId) return;
-
-    try {
-      if (this.toolCalls.length > 0) {
-        ToolCallPersistence.saveToolCalls({
-          messageId: this.currentMessageId,
-          conversationId: this.conversationId,
-          toolCalls: this.toolCalls
-        });
-      }
-
-      if (this.toolOutputs.length > 0) {
-        ToolCallPersistence.saveToolOutputs({
-          messageId: this.currentMessageId,
-          conversationId: this.conversationId,
-          toolOutputs: this.toolOutputs
-        });
-      }
-
-      // Clear buffers after persisting
-      this.toolCalls = [];
-      this.toolOutputs = [];
-    } catch (error) {
-      console.error('[SimplifiedPersistence] Failed to persist tool calls/outputs:', error);
-      // Don't throw - this is non-fatal for the main flow
-    }
+    if (!this.persist) return;
+    // Tool data will be synced from the client-provided history on the next request.
+    this.toolCalls = [];
+    this.toolOutputs = [];
   }
 
   /**
@@ -368,14 +360,8 @@ export class SimplifiedPersistence {
    * @param {string} responseId - OpenAI response ID
    */
   setResponseId(responseId) {
-    console.log('[previous_response_id] setResponseId called', {
-      responseId,
-      conversationId: this.conversationId,
-      isValid: !!(responseId && typeof responseId === 'string')
-    });
     if (responseId && typeof responseId === 'string') {
       this.responseId = responseId;
-      console.log('[previous_response_id] responseId stored for future use');
     }
   }
 

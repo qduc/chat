@@ -158,47 +158,6 @@ export function applyStreamToolCall(
 }
 
 /**
- * Updates a message with a tool output
- */
-export function applyStreamToolOutput(
-  messages: any[],
-  messageId: string,
-  toolOutput: any
-): any[] {
-  let updated = false;
-  const next = messages.map(m => {
-    if (m.id === messageId) {
-      updated = true;
-      const tool_outputs = [...(m.tool_outputs || []), toolOutput];
-      // Check if this exact tool output already exists
-      const alreadyExists = m.tool_outputs?.some((to: any) =>
-        JSON.stringify(to) === JSON.stringify(toolOutput)
-      );
-      return alreadyExists ? m : { ...m, tool_outputs };
-    }
-    return m;
-  });
-
-  if (!updated) {
-    for (let i = next.length - 1; i >= 0; i--) {
-      if (next[i].role === 'assistant') {
-        const existing = (next[i] as any).tool_outputs || [];
-        const alreadyExists = existing.some((to: any) =>
-          JSON.stringify(to) === JSON.stringify(toolOutput)
-        );
-        if (!alreadyExists) {
-          const to = [...existing, toolOutput];
-          next[i] = { ...(next[i] as any), tool_outputs: to };
-        }
-        break;
-      }
-    }
-  }
-
-  return next;
-}
-
-/**
  * Updates a message with usage metadata
  */
 export function applyStreamUsage(

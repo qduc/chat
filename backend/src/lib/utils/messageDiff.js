@@ -13,54 +13,41 @@
  * @returns {Object} Diff result with insert/update/delete operations
  */
 export function computeMessageDiff(existing, incoming) {
-  // Step 1: Alignment - Find longest matching suffix
-  const alignment = findAlignment(existing, incoming);
-
-  if (!alignment.valid) {
-    return { fallback: true, reason: alignment.reason };
-  }
-
-  // Step 2: Classify changes
   const toInsert = [];
   const toUpdate = [];
   const toDelete = [];
   const unchanged = [];
 
-  const { overlapStart, overlapLength } = alignment;
+  const minLength = Math.min(existing.length, incoming.length);
 
-  // Messages before overlap are preserved (truncated history case)
-  for (let i = 0; i < overlapStart; i++) {
-    unchanged.push(existing[i]);
-  }
-
-  // Process overlapping window
-  for (let i = 0; i < overlapLength; i++) {
-    const existingMsg = existing[overlapStart + i];
+  for (let i = 0; i < minLength; i++) {
+    const existingMsg = existing[i];
     const incomingMsg = incoming[i];
 
     if (messagesEqual(existingMsg, incomingMsg)) {
       unchanged.push(existingMsg);
-    } else {
-      // Same position but different content - update
-      toUpdate.push({
-        id: existingMsg.id,
-        seq: existingMsg.seq,
-        ...incomingMsg
-      });
+      continue;
     }
+
+    if (existingMsg.role !== incomingMsg.role) {
+      toDelete.push(existingMsg);
+      toInsert.push(incomingMsg);
+      continue;
+    }
+
+    toUpdate.push({
+      id: existingMsg.id,
+      seq: existingMsg.seq,
+      ...incomingMsg
+    });
   }
 
-  // Messages after overlap in incoming array - insert
-  for (let i = overlapLength; i < incoming.length; i++) {
+  for (let i = minLength; i < incoming.length; i++) {
     toInsert.push(incoming[i]);
   }
 
-  // Messages after overlap in existing array - delete
-  const deleteAfterSeq = overlapStart + overlapLength - 1;
-  if (deleteAfterSeq < existing.length - 1) {
-    for (let i = overlapStart + overlapLength; i < existing.length; i++) {
-      toDelete.push(existing[i]);
-    }
+  for (let i = minLength; i < existing.length; i++) {
+    toDelete.push(existing[i]);
   }
 
   return {
@@ -69,7 +56,7 @@ export function computeMessageDiff(existing, incoming) {
     toDelete,
     unchanged,
     fallback: false,
-    anchorOffset: overlapStart
+    anchorOffset: 0
   };
 }
 
@@ -81,97 +68,8 @@ export function computeMessageDiff(existing, incoming) {
  * @param {Array} incoming - Messages from frontend
  * @returns {Object} Alignment result
  */
-export function findAlignment(existing, incoming) {
-  // Empty cases
-  if (incoming.length === 0) {
-    return { valid: true, overlapStart: existing.length, overlapLength: 0 };
-  }
-
-  if (existing.length === 0) {
-    return { valid: true, overlapStart: 0, overlapLength: 0 };
-  }
-
-  // Try to find longest matching suffix based on ROLES (not content)
-  // This allows us to detect updates within the aligned window
-  let maxMatchLength = 0;
-  let bestStart = -1;
-  let bestContentMatchCount = 0;
-
-  // Try each possible starting position in existing array
-  for (let start = 0; start < existing.length; start++) {
-    const remainingExisting = existing.length - start;
-    const maxPossibleMatch = Math.min(remainingExisting, incoming.length);
-
-    let matchLength = 0;
-    let contentMatchCount = 0;
-    for (let i = 0; i < maxPossibleMatch; i++) {
-      // Only match on role for alignment purposes
-      if (existing[start + i].role === incoming[i].role) {
-        matchLength++;
-        // Also track content matches for validation
-        if (messagesMatchForAlignment(existing[start + i], incoming[i])) {
-          contentMatchCount++;
-        }
-      } else {
-        break; // Contiguous match required
-      }
-    }
-
-    if (matchLength > maxMatchLength) {
-      maxMatchLength = matchLength;
-      bestStart = start;
-      bestContentMatchCount = contentMatchCount;
-    }
-  }
-
-  // Validation 1: Require minimum overlap percentage based on role alignment
-  const MIN_OVERLAP_PERCENT = 0.8;
-  const requiredOverlap = Math.ceil(Math.min(existing.length, incoming.length) * MIN_OVERLAP_PERCENT);
-
-  if (maxMatchLength < requiredOverlap) {
-    return {
-      valid: false,
-      reason: `Insufficient overlap: found ${maxMatchLength}, required ${requiredOverlap}`
-    };
-  }
-
-  // Validation 2: Require at least some content matches to prevent completely bogus alignments
-  // If ALL content differs, this is likely a completely different conversation
-  const MIN_CONTENT_MATCH_PERCENT = 0.3; // At least 30% of messages should have matching content
-  const requiredContentMatches = Math.ceil(maxMatchLength * MIN_CONTENT_MATCH_PERCENT);
-
-  if (bestContentMatchCount < requiredContentMatches) {
-    return {
-      valid: false,
-      reason: `Insufficient content overlap: found ${bestContentMatchCount} content matches, required ${requiredContentMatches}`
-    };
-  }
-
-  return {
-    valid: true,
-    overlapStart: bestStart,
-    overlapLength: maxMatchLength
-  };
-}
-
-/**
- * Check if two messages match for alignment purposes
- * Uses role + content matching (ignores metadata)
- * @param {Object} existing - Message from database
- * @param {Object} incoming - Message from frontend
- * @returns {boolean} True if messages match
- */
-export function messagesMatchForAlignment(existing, incoming) {
-  if (existing.role !== incoming.role) {
-    return false;
-  }
-
-  // Handle both string content and array content (images)
-  const existingContent = normalizeContent(existing.content || existing.content_json);
-  const incomingContent = normalizeContent(incoming.content);
-
-  return existingContent === incomingContent;
-}
+// messagesMatchForAlignment and findAlignment were removed as the diff now
+// performs straightforward positional comparisons.
 
 /**
  * Check if two messages are completely equal (including metadata)
@@ -195,7 +93,8 @@ export function messagesEqual(msg1, msg2) {
 
   // Tool calls comparison
   const toolCalls1 = msg1.tool_calls || [];
-  const toolCalls2 = msg2.tool_calls || [];
+  const toolCalls2Raw = msg2.tool_calls;
+  const toolCalls2 = toolCalls2Raw === undefined ? toolCalls1 : (toolCalls2Raw || []);
 
   if (toolCalls1.length !== toolCalls2.length) {
     return false;
@@ -209,7 +108,8 @@ export function messagesEqual(msg1, msg2) {
 
   // Tool outputs comparison
   const toolOutputs1 = msg1.tool_outputs || [];
-  const toolOutputs2 = msg2.tool_outputs || [];
+  const toolOutputs2Raw = msg2.tool_outputs;
+  const toolOutputs2 = toolOutputs2Raw === undefined ? toolOutputs1 : (toolOutputs2Raw || []);
 
   if (toolOutputs1.length !== toolOutputs2.length) {
     return false;

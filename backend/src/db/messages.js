@@ -98,12 +98,6 @@ export function markAssistantError({ messageId }) {
 }
 
 export function insertAssistantFinal({ conversationId, content, seq, finishReason = 'stop', responseId = null }) {
-  console.log('[previous_response_id] insertAssistantFinal called', {
-    conversationId,
-    seq,
-    responseId,
-    hasResponseId: !!responseId
-  });
   const db = getDb();
   const now = new Date().toISOString();
   const info = db
@@ -112,7 +106,25 @@ export function insertAssistantFinal({ conversationId, content, seq, finishReaso
      VALUES (@conversationId, 'assistant', 'final', @content, @seq, @finishReason, @responseId, @now, @now)`
     )
     .run({ conversationId, content: content || '', seq, finishReason, responseId, now });
-  console.log('[previous_response_id] Assistant message stored with response_id:', responseId);
+  return { id: info.lastInsertRowid, seq };
+}
+
+export function insertToolMessage({ conversationId, content, seq, status = 'success' }) {
+  const db = getDb();
+  const now = new Date().toISOString();
+  const info = db
+    .prepare(
+      `INSERT INTO messages (conversation_id, role, status, content, seq, created_at, updated_at)
+     VALUES (@conversationId, 'tool', @status, @content, @seq, @now, @now)`
+    )
+    .run({
+      conversationId,
+      status,
+      content: typeof content === 'string' ? content : JSON.stringify(content ?? ''),
+      seq,
+      now
+    });
+
   return { id: info.lastInsertRowid, seq };
 }
 
@@ -217,7 +229,20 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
         message.tool_calls = toolCallsByMessage[message.id];
       }
       if (toolOutputsByMessage[message.id]) {
-        message.tool_outputs = toolOutputsByMessage[message.id];
+        if (message.role === 'tool') {
+          const [firstOutput] = toolOutputsByMessage[message.id];
+          if (firstOutput) {
+            message.tool_call_id = firstOutput.tool_call_id;
+            message.status = firstOutput.status || message.status;
+            message.tool_outputs = [{
+              tool_call_id: firstOutput.tool_call_id,
+              output: firstOutput.output,
+              status: firstOutput.status
+            }];
+          }
+        } else {
+          message.tool_outputs = toolOutputsByMessage[message.id];
+        }
       }
     }
   }
@@ -297,7 +322,6 @@ export function getLastMessage({ conversationId }) {
 }
 
 export function getLastAssistantResponseId({ conversationId }) {
-  console.log('[previous_response_id] getLastAssistantResponseId called for conversationId:', conversationId);
   const db = getDb();
   const message = db
     .prepare(
@@ -311,15 +335,10 @@ export function getLastAssistantResponseId({ conversationId }) {
     )
     .get({ conversationId });
   const responseId = message?.response_id || null;
-  console.log('[previous_response_id] getLastAssistantResponseId result:', {
-    conversationId,
-    responseId,
-    found: !!responseId
-  });
   return responseId;
 }
 
-export function updateMessageContent({ messageId, conversationId, userId, content }) {
+export function updateMessageContent({ messageId, conversationId, userId, content, status }) {
   if (!userId) {
     throw new Error('userId is required');
   }
@@ -353,9 +372,22 @@ export function updateMessageContent({ messageId, conversationId, userId, conten
     textContent = content || '';
   }
 
-  db.prepare(
-    `UPDATE messages SET content = @content, content_json = @contentJson, updated_at = @now WHERE id = @messageId`
-  ).run({ messageId, content: textContent, contentJson: jsonContent, now });
+  const updateSql = status !== undefined
+    ? `UPDATE messages SET content = @content, content_json = @contentJson, status = @status, updated_at = @now WHERE id = @messageId`
+    : `UPDATE messages SET content = @content, content_json = @contentJson, updated_at = @now WHERE id = @messageId`;
+
+  const params = {
+    messageId,
+    content: textContent,
+    contentJson: jsonContent,
+    now,
+  };
+
+  if (status !== undefined) {
+    params.status = status;
+  }
+
+  db.prepare(updateSql).run(params);
 
   return message;
 }

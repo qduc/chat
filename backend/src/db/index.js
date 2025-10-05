@@ -23,6 +23,7 @@ export {
   finalizeAssistantMessage,
   markAssistantError,
   insertAssistantFinal,
+  insertToolMessage,
   markAssistantErrorBySeq,
   getMessagesPage,
   getLastMessage,
