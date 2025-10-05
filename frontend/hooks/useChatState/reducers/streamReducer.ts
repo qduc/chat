@@ -145,6 +145,26 @@ export function streamReducer(state: ChatState, action: ChatAction): ChatState |
         messages: [...state.messages, action.payload],
       };
 
+    case 'UPDATE_MESSAGE_SEQ': {
+      // Update seq for the last user message and the assistant message
+      const { userSeq, assistantSeq, assistantId } = action.payload;
+      const updatedMessages = state.messages.map((msg, index) => {
+        // Update the second-to-last message (user message) with userSeq
+        if (index === state.messages.length - 2 && msg.role === 'user') {
+          return { ...msg, seq: userSeq };
+        }
+        // Update the last message (assistant) or by assistantId
+        if ((index === state.messages.length - 1 || msg.id === assistantId) && msg.role === 'assistant') {
+          return { ...msg, seq: assistantSeq };
+        }
+        return msg;
+      });
+      return {
+        ...state,
+        messages: updatedMessages
+      };
+    }
+
     case 'CLEAR_MESSAGES':
       return {
         ...state,

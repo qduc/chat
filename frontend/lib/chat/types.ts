@@ -140,6 +140,7 @@ export interface ConversationMeta {
   reasoning_effort?: string | null;
   verbosity?: string | null;
   system_prompt?: string | null;
+  seq?: number | null;
 }
 
 export interface ConversationsList {

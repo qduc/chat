@@ -101,12 +101,13 @@ export class ChatClient {
 
     const outgoingMessages = messageToSend ? [messageToSend] : [];
 
-    // Find the last message with a seq number to send as the seq parameter
+    // Use seq from options if provided, otherwise try to calculate from messages
     // This tells the backend which messages already exist
-    const lastSeq = normalizedMessages
-      .filter((msg) => msg.seq !== undefined && msg.seq !== null)
-      .map((msg) => msg.seq as number)
-      .reduce((max, seq) => Math.max(max, seq), 0);
+    const lastSeq = (options as any).seq ??
+      normalizedMessages
+        .filter((msg) => (msg as any).seq !== undefined && (msg as any).seq !== null)
+        .map((msg) => (msg as any).seq as number)
+        .reduce((max, seq) => Math.max(max, seq), 0);
 
     console.log(`Last seq=${lastSeq}`)
     const bodyObj: any = {
@@ -190,6 +191,9 @@ export class ChatClient {
         : {}),
       ...(Array.isArray(json._conversation.active_tools)
         ? { active_tools: json._conversation.active_tools }
+        : {}),
+      ...(json._conversation.seq !== undefined
+        ? { seq: json._conversation.seq }
         : {}),
     } : undefined;
 
@@ -370,6 +374,9 @@ export class ChatClient {
             : {}),
           ...(Array.isArray(data._conversation.active_tools)
             ? { active_tools: data._conversation.active_tools }
+            : {}),
+          ...(data._conversation.seq !== undefined
+            ? { seq: data._conversation.seq }
             : {}),
         }
       };

@@ -122,6 +122,7 @@ export type ChatAction =
 
   // Message mutation helpers
   | { type: 'APPEND_MESSAGE'; payload: ChatMessage }
+  | { type: 'UPDATE_MESSAGE_SEQ'; payload: { userSeq: number; assistantSeq: number; assistantId?: string } }
 
   // Message Actions
   | { type: 'CLEAR_MESSAGES' }

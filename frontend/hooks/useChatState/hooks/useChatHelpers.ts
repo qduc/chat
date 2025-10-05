@@ -105,6 +105,13 @@ export function useChatHelpers({
 
       const outgoing = [messageToSend];
 
+      // Calculate the last sequence number from all messages in the conversation
+      const lastSeq = messages
+        .filter((msg) => msg.seq !== undefined && msg.seq !== null)
+        .map((msg) => Number(msg.seq)) // Ensure it's a number
+        .reduce((max, seq) => Math.max(max, seq), 0);
+      console.log('[useChatHelpers] Calculated lastSeq:', lastSeq, 'from', messages.length, 'total messages');
+
       const config: any = {
         messages: outgoing.map(m => {
           const base: any = {
@@ -127,6 +134,8 @@ export function useChatHelpers({
 
           return base;
         }),
+        // Include the calculated sequence number for backend persistence
+        ...(lastSeq > 0 && { seq: lastSeq }),
         // Prefer the synchronous ref which is updated immediately when the user
         // selects a model. This avoids a race where a model change dispatch
         // hasn't flushed to React state yet but an immediate regenerate/send
@@ -184,7 +193,7 @@ export function useChatHelpers({
               });
             }
             // Update the ref with seq for non-streaming responses
-            if (result?.conversation?.seq !== undefined && assistantMsgRef.current) {
+            if (result?.conversation?.seq !== undefined && result?.conversation?.seq !== null && assistantMsgRef.current) {
               assistantMsgRef.current = {
                 ...assistantMsgRef.current,
                 seq: result.conversation.seq
@@ -201,13 +210,28 @@ export function useChatHelpers({
             (conversationManager as any)?.clearListCache?.();
           } catch {}
           void refreshConversations();
+
+          // Update the user message with its seq (assistantSeq - 1)
+          // The user message is the second-to-last message in state.messages
+          if (result?.conversation?.seq !== undefined && result?.conversation?.seq !== null) {
+            const assistantSeq = result.conversation.seq;
+            const userSeq = assistantSeq - 1;
+            dispatch({
+              type: 'UPDATE_MESSAGE_SEQ',
+              payload: {
+                userSeq,
+                assistantSeq,
+                assistantId: assistantMsgRef.current?.id
+              }
+            });
+          }
         }
         // Sync the assistant message from the latest snapshot and the final content
         if (assistantMsgRef.current) {
           const merged = { ...assistantMsgRef.current };
           if (result?.content) merged.content = result.content;
           // Add seq from conversation metadata if available
-          if (result?.conversation?.seq !== undefined) {
+          if (result?.conversation?.seq !== undefined && result?.conversation?.seq !== null) {
             merged.seq = result.conversation.seq;
           }
           dispatch({ type: 'SYNC_ASSISTANT', payload: merged });
