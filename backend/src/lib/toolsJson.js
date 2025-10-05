@@ -188,14 +188,22 @@ class JsonResponseHandler extends ResponseHandler {
 
   sendFinalResponse(response, persistence) {
     const message = response?.choices?.[0]?.message;
+    const finishReason = response?.choices?.[0]?.finish_reason || 'stop';
+    const responseId = response?.id || null;
+
+    if (responseId && persistence && typeof persistence.setResponseId === 'function') {
+      persistence.setResponseId(responseId);
+    }
+
     if (message?.content) {
       this.collectedEvents.push({
         type: 'text',
         value: message.content
       });
       appendToPersistence(persistence, message.content);
-      recordFinalToPersistence(persistence, response?.choices?.[0]?.finish_reason || 'stop');
     }
+
+    recordFinalToPersistence(persistence, finishReason, responseId);
 
     const responseWithEvents = {
       ...response,
@@ -313,6 +321,10 @@ async function executeAllTools(toolCalls, responseHandler, persistence) {
  */
 async function streamResponse(llmResponse, res, persistence, model) {
   if (!llmResponse.body) {
+    if (llmResponse?.id && persistence && typeof persistence.setResponseId === 'function') {
+      persistence.setResponseId(llmResponse.id);
+    }
+
     // Non-streaming response, convert to streaming format
     const message = llmResponse?.choices?.[0]?.message;
     if (message?.content) {
@@ -373,6 +385,9 @@ async function streamResponse(llmResponse, res, persistence, model) {
 
             try {
               const obj = JSON.parse(payload);
+              if (obj?.id && persistence && typeof persistence.setResponseId === 'function') {
+                persistence.setResponseId(obj.id);
+              }
               const delta = obj?.choices?.[0]?.delta?.content;
               if (delta) {
                 appendToPersistence(persistence, delta);
@@ -472,9 +487,14 @@ export async function handleToolsJson({
       if (!toolCalls.length) {
         // No tools needed - this is the final response
         if (orchestrationConfig.streamingEnabled) {
+          const responseId = response?.id || null;
+          if (responseId && persistence && typeof persistence.setResponseId === 'function') {
+            persistence.setResponseId(responseId);
+          }
+
           const finishReason = await responseHandler.sendFinalResponse(response, persistence);
 
-          recordFinalToPersistence(persistence, finishReason);
+          recordFinalToPersistence(persistence, finishReason, responseId || (persistence?.responseId ?? null));
 
           return res.end();
         } else {
@@ -519,9 +539,14 @@ export async function handleToolsJson({
     const maxIterMsg = '\n\n[Maximum iterations reached]';
 
     if (orchestrationConfig.streamingEnabled) {
+      const responseId = finalResponse?.id || null;
+      if (responseId && persistence && typeof persistence.setResponseId === 'function') {
+        persistence.setResponseId(responseId);
+      }
+
       const finishReason = await responseHandler.sendFinalResponse(finalResponse, persistence);
       responseHandler.sendThinkingContent(maxIterMsg, persistence);
-      recordFinalToPersistence(persistence, finishReason);
+      recordFinalToPersistence(persistence, finishReason, responseId || (persistence?.responseId ?? null));
       return res.end();
     } else {
       const responseWithEvents = responseHandler.sendFinalResponse(finalResponse, persistence);
