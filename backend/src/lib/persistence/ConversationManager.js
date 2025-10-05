@@ -15,9 +15,22 @@ import {
   markAssistantErrorBySeq,
   getNextSeq,
   getMessagesPage,
+  getAllMessagesForSync,
+  updateMessageContent,
+  deleteMessagesAfterSeq,
 } from '../../db/messages.js';
-import { insertToolCalls, insertToolOutputs } from '../../db/toolCalls.js';
+import {
+  insertToolCalls,
+  insertToolOutputs,
+  updateToolCall,
+  updateToolOutput,
+  replaceAssistantArtifacts,
+  getToolCallsByMessageId,
+  getToolOutputsByMessageId,
+} from '../../db/toolCalls.js';
 import { v4 as uuidv4 } from 'uuid';
+import { computeMessageDiff, diffAssistantArtifacts } from '../utils/messageDiff.js';
+import { getDb } from '../../db/client.js';
 
 /**
  * Handles core conversation persistence operations
@@ -75,11 +88,209 @@ export class ConversationManager {
 
   /**
    * Clear all messages for a conversation and insert new ones
+   * @deprecated Use syncMessageHistoryDiff instead. Will be removed in v2.0
    * @param {string} conversationId - Conversation ID
    * @param {string} userId - User ID
    * @param {Array} messages - Array of messages to insert
    */
   syncMessageHistory(conversationId, userId, messages) {
+    console.warn('syncMessageHistory is deprecated. Consider using syncMessageHistoryDiff for better performance.');
+    return this._legacySyncMessageHistory(conversationId, userId, messages);
+  }
+
+  /**
+   * Sync message history using diff-based approach
+   * Falls back to legacy clear-and-rewrite if alignment is unsafe
+   * @param {string} conversationId - Conversation ID
+   * @param {string} userId - User ID
+   * @param {Array} messages - Array of messages to insert
+   */
+  syncMessageHistoryDiff(conversationId, userId, messages) {
+    // 1. Load existing messages once
+    const existing = getAllMessagesForSync({ conversationId });
+
+    // 2. Compute diff (may signal fallback)
+    const diff = computeMessageDiff(existing, messages);
+
+    // 3. Fall back if alignment failed or safety checks require it
+    if (diff.fallback) {
+      console.warn(`Message sync falling back to legacy mode: ${diff.reason}`);
+      return this._legacySyncMessageHistory(conversationId, userId, messages);
+    }
+
+    // 4. Apply changes transactionally with existing seq anchors
+    this._applyMessageDiff(conversationId, userId, diff);
+  }
+
+  /**
+   * Apply message diff transactionally
+   * @param {string} conversationId - Conversation ID
+   * @param {string} userId - User ID
+   * @param {Object} diff - Diff result from computeMessageDiff
+   * @private
+   */
+  _applyMessageDiff(conversationId, userId, diff) {
+    const db = getDb();
+    const transaction = db.transaction(() => {
+      // Messages before diff.anchorOffset are already identical and skipped
+
+      // UPDATE modified messages
+      for (const msg of diff.toUpdate) {
+        // Update message content
+        updateMessageContent({
+          messageId: msg.id,
+          conversationId,
+          userId,
+          content: msg.content
+        });
+
+        // Handle tool metadata updates for assistant messages
+        if (msg.role === 'assistant') {
+          this._syncAssistantArtifacts(msg.id, conversationId, msg);
+        }
+      }
+
+      // INSERT new messages
+      let nextSeq = getNextSeq(conversationId);
+      for (const msg of diff.toInsert) {
+        const hasContent = typeof msg.content === 'string' || Array.isArray(msg.content);
+
+        if (msg.role === 'user' && hasContent) {
+          insertUserMessage({
+            conversationId,
+            content: msg.content,
+            seq: nextSeq++,
+          });
+        } else if (msg.role === 'assistant' && typeof msg.content === 'string') {
+          const result = insertAssistantFinal({
+            conversationId,
+            content: msg.content,
+            seq: nextSeq++,
+            finishReason: 'stop',
+          });
+
+          // Insert tool metadata if present
+          if (result?.id) {
+            this._insertAssistantArtifacts(result.id, conversationId, msg);
+          }
+        }
+      }
+
+      // DELETE from tail only
+      if (diff.toDelete.length > 0) {
+        const firstDeleteSeq = diff.toDelete[0].seq;
+        deleteMessagesAfterSeq({
+          conversationId,
+          userId,
+          afterSeq: firstDeleteSeq - 1
+        });
+      }
+    });
+
+    transaction();
+  }
+
+  /**
+   * Sync assistant message artifacts (tool calls/outputs)
+   * @param {number} messageId - Message ID
+   * @param {string} conversationId - Conversation ID
+   * @param {Object} message - Message with tool metadata
+   * @private
+   */
+  _syncAssistantArtifacts(messageId, conversationId, message) {
+    const existingToolCalls = getToolCallsByMessageId(messageId);
+    const existingToolOutputs = getToolOutputsByMessageId(messageId);
+
+    const nextToolCalls = message.tool_calls || [];
+    const nextToolOutputs = message.tool_outputs || [];
+
+    // Try granular diff first
+    const artifactDiff = diffAssistantArtifacts({
+      existingToolCalls,
+      existingToolOutputs,
+      nextToolCalls,
+      nextToolOutputs
+    });
+
+    if (artifactDiff.fallback) {
+      // Fall back to replace strategy
+      replaceAssistantArtifacts({
+        messageId,
+        conversationId,
+        toolCalls: nextToolCalls,
+        toolOutputs: nextToolOutputs
+      });
+      return;
+    }
+
+    // Apply granular updates
+    for (const tc of artifactDiff.toolCallsToUpdate) {
+      updateToolCall({
+        id: tc.id,
+        toolName: tc.function?.name || tc.tool_name,
+        arguments: tc.function?.arguments || tc.arguments
+      });
+    }
+
+    for (const to of artifactDiff.toolOutputsToUpdate) {
+      updateToolOutput({
+        id: to.id,
+        output: to.output,
+        status: to.status
+      });
+    }
+
+    // Insert new tool calls/outputs
+    if (artifactDiff.toolCallsToInsert.length > 0) {
+      insertToolCalls({
+        messageId,
+        conversationId,
+        toolCalls: artifactDiff.toolCallsToInsert
+      });
+    }
+
+    if (artifactDiff.toolOutputsToInsert.length > 0) {
+      insertToolOutputs({
+        messageId,
+        conversationId,
+        toolOutputs: artifactDiff.toolOutputsToInsert
+      });
+    }
+  }
+
+  /**
+   * Insert assistant message artifacts (tool calls/outputs)
+   * @param {number} messageId - Message ID
+   * @param {string} conversationId - Conversation ID
+   * @param {Object} message - Message with tool metadata
+   * @private
+   */
+  _insertAssistantArtifacts(messageId, conversationId, message) {
+    if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+      insertToolCalls({
+        messageId,
+        conversationId,
+        toolCalls: message.tool_calls,
+      });
+    }
+
+    if (Array.isArray(message.tool_outputs) && message.tool_outputs.length > 0) {
+      insertToolOutputs({
+        messageId,
+        conversationId,
+        toolOutputs: message.tool_outputs,
+      });
+    }
+  }
+
+  /**
+   * Legacy sync implementation (clear-and-rewrite)
+   * @param {string} conversationId - Conversation ID
+   * @param {string} userId - User ID
+   * @param {Array} messages - Array of messages to insert
+   * @private
+   */
+  _legacySyncMessageHistory(conversationId, userId, messages) {
     const preservedAssistants = this._loadExistingAssistantToolData(conversationId);
 
     // Clear existing messages

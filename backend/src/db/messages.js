@@ -383,3 +383,20 @@ export function clearAllMessages({ conversationId, userId }) {
 
   return result.changes > 0;
 }
+
+export function getAllMessagesForSync({ conversationId }) {
+  const allMessages = [];
+  let afterSeq = 0;
+
+  while (true) {
+    const page = getMessagesPage({ conversationId, afterSeq, limit: 200 });
+    const pageMessages = page?.messages || [];
+
+    allMessages.push(...pageMessages);
+
+    if (!page?.next_after_seq) break;
+    afterSeq = page.next_after_seq;
+  }
+
+  return allMessages;
+}
