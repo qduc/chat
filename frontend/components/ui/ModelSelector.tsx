@@ -388,7 +388,7 @@ export default function ModelSelector({
                 </div>
                 {organizedModels.favorites.map(model => (
                   <ModelItem
-                    key={`fav-${model.value}`}
+                    key={`fav-${model.providerId}-${model.value}`}
                     model={model}
                     isSelected={model.value === value}
                     isFavorite={favorites.has(model.value)}
@@ -406,7 +406,7 @@ export default function ModelSelector({
                 </div>
                 {organizedModels.recent.map(model => (
                   <ModelItem
-                    key={`recent-${model.value}`}
+                    key={`recent-${model.providerId}-${model.value}`}
                     model={model}
                     isSelected={model.value === value}
                     isFavorite={favorites.has(model.value)}
@@ -426,7 +426,7 @@ export default function ModelSelector({
                 )}
                 {organizedModels.other.slice(0, visibleCount).map(model => (
                   <ModelItem
-                    key={`other-${model.value}`}
+                    key={`other-${model.providerId}-${model.value}`}
                     model={model}
                     isSelected={model.value === value}
                     isFavorite={favorites.has(model.value)}
