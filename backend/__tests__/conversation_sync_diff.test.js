@@ -385,69 +385,27 @@ describe('Diff-Based Conversation Sync', () => {
     });
   });
 
-  describe('performance comparison', () => {
-    it('should be more efficient than legacy sync for large conversations', () => {
-      // Create a large conversation
-      const messages = [];
-      for (let i = 0; i < 100; i++) {
-        messages.push({ role: 'user', content: `Message ${i}` });
-        messages.push({ role: 'assistant', content: `Response ${i}` });
-      }
-
+  describe('fallback behavior', () => {
+    it('should use clear-and-rewrite fallback when alignment fails', () => {
       // Initial sync
-      manager.syncMessageHistoryDiff(conversationId, userId, messages);
-
-      // Append 1 message and measure diff-based update
-      messages.push({ role: 'user', content: 'New message' });
-
-      const diffStart = Date.now();
-      manager.syncMessageHistoryDiff(conversationId, userId, messages);
-      const diffTime = Date.now() - diffStart;
-
-      // Create new conversation for legacy comparison
-      const legacyConvId = manager.createNewConversation({
-        sessionId,
-        userId,
-        model: 'gpt-4',
-        providerId: 'default-provider',
-        streamingEnabled: true,
-        toolsEnabled: false
-      });
-
-      // Initial legacy sync
-      manager.syncMessageHistory(legacyConvId, userId, messages.slice(0, -1));
-
-      // Measure legacy update (append 1 message)
-      const legacyStart = Date.now();
-      manager.syncMessageHistory(legacyConvId, userId, messages);
-      const legacyTime = Date.now() - legacyStart;
-
-      console.log(`Diff-based: ${diffTime}ms, Legacy: ${legacyTime}ms`);
-
-      // Both should complete in reasonable time
-      expect(diffTime).toBeLessThan(1000);
-      expect(legacyTime).toBeLessThan(1000);
-
-      // Verify both produce correct results
-      const diffSynced = getAllMessagesForSync({ conversationId });
-      const legacySynced = getAllMessagesForSync({ conversationId: legacyConvId });
-      expect(diffSynced).toHaveLength(messages.length);
-      expect(legacySynced).toHaveLength(messages.length);
-    });
-  });
-
-  describe('_legacySyncMessageHistory', () => {
-    it('should still work via deprecated syncMessageHistory method', () => {
-      const messages = [
+      const messages1 = [
         { role: 'user', content: 'Hello' },
-        { role: 'assistant', content: 'Hi!' }
+        { role: 'assistant', content: 'Hi there!' }
       ];
+      manager.syncMessageHistoryDiff(conversationId, userId, messages1);
 
-      // Use deprecated method (should still work)
-      manager.syncMessageHistory(conversationId, userId, messages);
+      // Completely different messages should trigger fallback
+      const messages2 = [
+        { role: 'user', content: 'Completely different topic' },
+        { role: 'assistant', content: 'Yes, totally unrelated' }
+      ];
+      manager.syncMessageHistoryDiff(conversationId, userId, messages2);
 
+      // Should still sync correctly via fallback
       const synced = getAllMessagesForSync({ conversationId });
       expect(synced).toHaveLength(2);
+      expect(synced[0].content).toBe('Completely different topic');
+      expect(synced[1].content).toBe('Yes, totally unrelated');
     });
   });
 });

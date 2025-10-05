@@ -147,8 +147,8 @@ export class SimplifiedPersistence {
     const messages = this.persistenceConfig.filterNonSystemMessages(bodyIn.messages || []);
 
     if (messages.length > 0) {
-      // Sync message history
-      this.conversationManager.syncMessageHistory(this.conversationId, userId, messages);
+      // Sync message history using diff-based approach with automatic fallback
+      this.conversationManager.syncMessageHistoryDiff(this.conversationId, userId, messages);
 
       // Generate title only if this is the first message in a new conversation
       if (isNewConversation) {
