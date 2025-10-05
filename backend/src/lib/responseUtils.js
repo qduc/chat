@@ -20,6 +20,7 @@ export function addConversationMetadata(responseBody, persistence) {
         ? persistence.conversationMeta.metadata.active_tools
         : [],
       active_system_prompt_id: persistence.conversationMeta.metadata?.active_system_prompt_id || null,
+      seq: persistence.assistantSeq || null,
     };
   }
   return responseBody;
@@ -43,6 +44,7 @@ export function getConversationMetadata(persistence) {
           ? persistence.conversationMeta.metadata.active_tools
           : [],
         active_system_prompt_id: persistence.conversationMeta.metadata?.active_system_prompt_id || null,
+        seq: persistence.assistantSeq || null,
       }
     };
   }

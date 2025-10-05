@@ -81,6 +81,7 @@ export interface ChatMessage {
   id: string;
   role: Role;
   content: MessageContent;
+  seq?: number; // Message sequence number from backend
   // Local image attachments (used during composition, converted to content format for API)
   images?: ImageAttachment[];
   tool_calls?: any[];

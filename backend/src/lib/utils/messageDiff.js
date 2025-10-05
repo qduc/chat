@@ -30,6 +30,7 @@ export function computeMessageDiff(existing, incoming) {
     }
 
     if (existingMsg.role !== incomingMsg.role) {
+      console.log('Role mismatch detected, existing role:', existingMsg.role, 'incoming role:', incomingMsg.role)
       toDelete.push(existingMsg);
       toInsert.push(incomingMsg);
       continue;
@@ -47,6 +48,7 @@ export function computeMessageDiff(existing, incoming) {
   }
 
   for (let i = minLength; i < existing.length; i++) {
+    console.log('Deleting message at index', i, existing[i])
     toDelete.push(existing[i]);
   }
 

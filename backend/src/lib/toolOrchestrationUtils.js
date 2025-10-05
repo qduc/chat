@@ -26,6 +26,20 @@ function debugLogMessages(label, messages, persistence) {
   }
 }
 
+/**
+ * Normalizes the provided message object by ensuring required properties are present
+ * and filtering valid optional properties based on predefined rules.
+ *
+ * @param {Object} message - The message object to normalize.
+ * @param {string} message.role - The role of the message (valid values: 'user', 'assistant', 'tool').
+ * @param {string} [message.content] - The content of the message.
+ * @param {Array} [message.tool_calls] - List of tool calls associated with the message.
+ * @param {Array} [message.tool_outputs] - List of tool outputs associated with the message.
+ * @param {string} [message.tool_call_id] - The identifier of the associated tool call, if any.
+ * @param {string} [message.status] - The status of the message.
+ *
+ * @return {Object|null} Returns the normalized message object if valid; otherwise, returns null.
+ */
 function normalizeStoredMessage(message) {
   if (!message) return null;
   if (!['user', 'assistant', 'tool'].includes(message.role)) return null;
@@ -284,10 +298,14 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
       const page = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
       const prior = [];
 
+      console.log('[toolOrchestrationUtils] Retrieved ' + page?.messages?.length + ' messages for conversation ' + persistence.conversationId);
+
       for (const m of page?.messages || []) {
         const normalized = normalizeStoredMessage(m);
         if (normalized) prior.push(normalized);
       }
+
+      console.log('[toolOrchestrationUtils] After normalization: ' + prior.length + ' messages left');
 
       const messagesWithSystem = systemPrompt
         ? [{ role: 'system', content: systemPrompt }, ...prior]
@@ -309,10 +327,14 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
       const page = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
       const prior = [];
 
+      console.log('[toolOrchestrationUtils] Retrieved ' + page?.messages?.length + ' messages for conversation ' + persistence.conversationId);
+
       for (const m of page?.messages || []) {
         const normalized = normalizeStoredMessage(m);
         if (normalized) prior.push(normalized);
       }
+
+      console.log('[toolOrchestrationUtils] After normalization: ' + prior.length + ' messages left');
 
       const messages = systemPrompt
         ? [{ role: 'system', content: systemPrompt }, ...prior]

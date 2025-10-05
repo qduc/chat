@@ -73,6 +73,7 @@ export function createConversationActions({
           id: String(m.id),
           role: m.role as Role,
           content: m.content || '',
+          ...(m.seq !== undefined && { seq: m.seq }),
           ...(m.tool_calls && { tool_calls: m.tool_calls }),
           ...(m.tool_outputs && { tool_outputs: m.tool_outputs })
         }));

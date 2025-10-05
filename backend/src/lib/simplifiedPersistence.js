@@ -148,10 +148,11 @@ export class SimplifiedPersistence {
    */
   async _processMessageHistory(sessionId, userId, bodyIn, isNewConversation) {
     const messages = this.persistenceConfig.filterNonSystemMessages(bodyIn.messages || []);
+    const seq = typeof bodyIn.seq === 'number' ? bodyIn.seq : 0;
 
     if (messages.length > 0) {
       // Sync message history using diff-based approach with automatic fallback
-      this.conversationManager.syncMessageHistoryDiff(this.conversationId, userId, messages);
+      this.conversationManager.syncMessageHistoryDiff(this.conversationId, userId, messages, seq);
 
       // Generate title only if this is the first message in a new conversation
       if (isNewConversation) {

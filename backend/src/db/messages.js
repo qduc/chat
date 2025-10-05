@@ -244,6 +244,18 @@ export function markAssistantErrorBySeq({ conversationId, seq }) {
   return { id: info.lastInsertRowid, seq };
 }
 
+/**
+ * Fetches a paginated list of messages from a conversation, with optional metadata
+ * such as tool calls and outputs attached to each message.
+ *
+ * @param {Object} options - The options for fetching the messages page.
+ * @param {string} options.conversationId - The unique identifier of the conversation.
+ * @param {number} [options.afterSeq=0] - The sequence number after which messages will be fetched.
+ * @param {number} [options.limit=50] - The maximum number of messages to fetch. The value is clamped between 1 and 200.
+ * @return {Object} An object containing the fetched messages and pagination metadata.
+ * @return {Array<Object>} return.messages - The list of messages retrieved, each containing various attributes and related metadata.
+ * @return {number|null} return.next_after_seq - The sequence number for fetching further messages, or null if no further messages are available.
+ */
 export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
   const db = getDb();
   const sanitizedLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);

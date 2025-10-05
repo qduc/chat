@@ -183,6 +183,13 @@ export function useChatHelpers({
                 payload: { messageId: assistantId, usage: result.usage },
               });
             }
+            // Update the ref with seq for non-streaming responses
+            if (result?.conversation?.seq !== undefined && assistantMsgRef.current) {
+              assistantMsgRef.current = {
+                ...assistantMsgRef.current,
+                seq: result.conversation.seq
+              };
+            }
           }
         }
         // If backend auto-created a conversation, set id and refresh history
@@ -199,6 +206,10 @@ export function useChatHelpers({
         if (assistantMsgRef.current) {
           const merged = { ...assistantMsgRef.current };
           if (result?.content) merged.content = result.content;
+          // Add seq from conversation metadata if available
+          if (result?.conversation?.seq !== undefined) {
+            merged.seq = result.conversation.seq;
+          }
           dispatch({ type: 'SYNC_ASSISTANT', payload: merged });
         }
         // Flush any pending throttled updates before completing

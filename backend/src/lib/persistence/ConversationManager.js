@@ -92,10 +92,14 @@ export class ConversationManager {
    * @param {string} conversationId - Conversation ID
    * @param {string} userId - User ID
    * @param {Array} messages - Array of messages to insert
+   * @param {number} afterSeq - Only sync messages after this sequence number (0 = all messages)
    */
-  syncMessageHistoryDiff(conversationId, userId, messages) {
-    // 1. Load existing messages once
-    const existing = getAllMessagesForSync({ conversationId });
+  syncMessageHistoryDiff(conversationId, userId, messages, afterSeq = 0) {
+    // 1. Load existing messages after the specified sequence number
+    const allExisting = getAllMessagesForSync({ conversationId });
+    const existing = afterSeq > 0
+      ? allExisting.filter(msg => msg.seq > afterSeq)
+      : allExisting;
 
     // 2. Compute diff (may signal fallback)
     const diff = computeMessageDiff(existing, messages);
@@ -103,7 +107,7 @@ export class ConversationManager {
     // 3. Fall back to clear-and-rewrite if alignment failed or safety checks require it
     if (diff.fallback) {
       console.warn(`[MessageSync] Fallback to clear-and-rewrite for conversation ${conversationId}: ${diff.reason}`);
-      this._fallbackClearAndRewrite(conversationId, userId, messages);
+      this._fallbackClearAndRewrite(conversationId, userId, messages, afterSeq);
       return;
     }
 
@@ -421,16 +425,17 @@ export class ConversationManager {
    * @param {string} conversationId - Conversation ID
    * @param {string} userId - User ID
    * @param {Array} messages - Array of messages to insert
+   * @param {number} afterSeq - Only delete and rewrite messages after this sequence number
    * @private
    */
-  _fallbackClearAndRewrite(conversationId, userId, messages) {
+  _fallbackClearAndRewrite(conversationId, userId, messages, afterSeq = 0) {
     const db = getDb();
     const transaction = db.transaction(() => {
-      // Delete all messages (cascades to tool_calls and tool_outputs)
-      deleteMessagesAfterSeq({ conversationId, userId, afterSeq: 0 });
+      // Delete messages after the specified sequence (cascades to tool_calls and tool_outputs)
+      deleteMessagesAfterSeq({ conversationId, userId, afterSeq });
 
-      // Insert all messages fresh
-      let seq = 1;
+      // Insert all messages fresh starting from afterSeq + 1
+      let seq = afterSeq + 1;
       for (const message of messages) {
         const hasUserContent = typeof message.content === 'string' || Array.isArray(message.content);
         const hasAssistantContent = message.content !== undefined && message.content !== null;
