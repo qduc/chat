@@ -1,9 +1,11 @@
 import { Readable } from 'node:stream';
+import { logUpstreamRequest } from '../logging/upstreamLogger.js';
 import { BaseProvider } from './baseProvider.js';
 import { ChatCompletionsAdapter } from '../adapters/chatCompletionsAdapter.js';
 import { ResponsesAPIAdapter } from '../adapters/responsesApiAdapter.js';
 
 const FALLBACK_MODEL = 'gpt-4.1-mini';
+
 
 function wrapStreamingResponse(response) {
   if (!response || !response.body) return response;
@@ -120,6 +122,14 @@ export class OpenAIProvider extends BaseProvider {
 
     if (this.apiKey && !headers.Authorization) {
       headers.Authorization = `Bearer ${this.apiKey}`;
+    }
+
+    // Log the exact upstream request for debugging using centralized logger
+    try {
+      logUpstreamRequest({ url, headers, body: translatedRequest });
+    } catch (err) {
+      // logger should be best-effort; don't let logging break requests
+      console.error('Failed to log upstream request:', err?.message || err);
     }
 
     const response = await client(url, {
