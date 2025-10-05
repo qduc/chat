@@ -98,6 +98,12 @@ export function markAssistantError({ messageId }) {
 }
 
 export function insertAssistantFinal({ conversationId, content, seq, finishReason = 'stop', responseId = null }) {
+  console.log('[previous_response_id] insertAssistantFinal called', {
+    conversationId,
+    seq,
+    responseId,
+    hasResponseId: !!responseId
+  });
   const db = getDb();
   const now = new Date().toISOString();
   const info = db
@@ -106,6 +112,7 @@ export function insertAssistantFinal({ conversationId, content, seq, finishReaso
      VALUES (@conversationId, 'assistant', 'final', @content, @seq, @finishReason, @responseId, @now, @now)`
     )
     .run({ conversationId, content: content || '', seq, finishReason, responseId, now });
+  console.log('[previous_response_id] Assistant message stored with response_id:', responseId);
   return { id: info.lastInsertRowid, seq };
 }
 
@@ -290,6 +297,7 @@ export function getLastMessage({ conversationId }) {
 }
 
 export function getLastAssistantResponseId({ conversationId }) {
+  console.log('[previous_response_id] getLastAssistantResponseId called for conversationId:', conversationId);
   const db = getDb();
   const message = db
     .prepare(
@@ -302,7 +310,13 @@ export function getLastAssistantResponseId({ conversationId }) {
      LIMIT 1`
     )
     .get({ conversationId });
-  return message?.response_id || null;
+  const responseId = message?.response_id || null;
+  console.log('[previous_response_id] getLastAssistantResponseId result:', {
+    conversationId,
+    responseId,
+    found: !!responseId
+  });
+  return responseId;
 }
 
 export function updateMessageContent({ messageId, conversationId, userId, content }) {

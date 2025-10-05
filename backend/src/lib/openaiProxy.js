@@ -255,7 +255,27 @@ async function handleRequest(context, req, res) {
   }
 
   // Plain proxy path
-  const upstream = await createOpenAIRequest(config, body, { providerId });
+  console.log('[previous_response_id] Plain proxy path - checking for previous_response_id optimization');
+
+  // Try to use previous_response_id optimization for existing conversations
+  let requestBody = { ...body };
+  if (persistence && persistence.persist && persistence.conversationId) {
+    const { buildConversationMessagesOptimized } = await import('./toolOrchestrationUtils.js');
+    const { messages, previousResponseId } = await buildConversationMessagesOptimized({
+      body,
+      bodyIn,
+      persistence,
+      userId,
+      provider
+    });
+    requestBody.messages = messages;
+    if (previousResponseId) {
+      requestBody.previous_response_id = previousResponseId;
+      console.log('[previous_response_id] Added previous_response_id to plain proxy request:', previousResponseId);
+    }
+  }
+
+  const upstream = await createOpenAIRequest(config, requestBody, { providerId });
   if (!upstream.ok) {
     const { status, errorJson } = await handleUpstreamError(upstream, persistence);
     return res.status(status).json(errorJson);

@@ -5,6 +5,7 @@ import { createProvider } from './providers/index.js';
 import { setupStreamingHeaders } from './streamingHandler.js';
 import {
   buildConversationMessagesAsync,
+  buildConversationMessagesOptimized,
   executeToolCall,
   appendToPersistence,
   recordFinalToPersistence,
@@ -32,13 +33,23 @@ export async function handleToolsStreaming({
   provider,
   userId = null,
 }) {
+  console.log('[previous_response_id] handleToolsStreaming invoked');
   const providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
   const providerInstance = provider || await createProvider(config, { providerId });
   try {
     // Setup streaming headers
     setupStreamingHeaders(res);
     // Build conversation history including the active system prompt
-    const conversationHistory = await buildConversationMessagesAsync({ body, bodyIn, persistence, userId });
+    // Use optimized version to leverage previous_response_id when available
+    console.log('[previous_response_id] About to call buildConversationMessagesOptimized');
+    const { messages: conversationHistory, previousResponseId } = await buildConversationMessagesOptimized({
+      body,
+      bodyIn,
+      persistence,
+      userId,
+      provider: providerInstance
+    });
+    console.log('[previous_response_id] buildConversationMessagesOptimized returned:', { previousResponseId });
 
     let iteration = 0;
     let isComplete = false;
@@ -59,12 +70,20 @@ export async function handleToolsStreaming({
         messages: conversationHistory,
         stream: true,
         ...(toolsToSend && { tools: toolsToSend, tool_choice: body.tool_choice || 'auto' }),
+        // Include previous_response_id for first iteration if available (Responses API optimization)
+        ...(iteration === 1 && previousResponseId && { previous_response_id: previousResponseId }),
       };
       // Include reasoning controls only if supported by provider
       if (providerInstance.supportsReasoningControls(requestBody.model)) {
         if (body.reasoning_effort) requestBody.reasoning_effort = body.reasoning_effort;
         if (body.verbosity) requestBody.verbosity = body.verbosity;
       }
+
+      console.log('[previous_response_id] toolsStreaming creating request', {
+        iteration,
+        previousResponseId,
+        hasPreviousResponseIdInBody: !!requestBody.previous_response_id
+      });
 
       const upstream = await createOpenAIRequest(config, requestBody, { providerId });
 
@@ -77,6 +96,7 @@ export async function handleToolsStreaming({
       let leftoverIter = '';
       const toolCallMap = new Map(); // index -> accumulated tool call
       let gotAnyNonToolDelta = false;
+      let responseId = null; // Capture response_id for persistence
 
       await new Promise((resolve, reject) => {
         // Add timeout to prevent hanging
@@ -94,6 +114,13 @@ export async function handleToolsStreaming({
               chunk,
               leftoverIter,
               (obj) => {
+                // Capture response_id from any chunk
+                if (obj?.id && !responseId) {
+                  responseId = obj.id;
+                  console.log('[previous_response_id] Response ID captured from tool streaming:', responseId);
+                  if (persistence) persistence.setResponseId(responseId);
+                }
+
                 const choice = obj?.choices?.[0];
                 const delta = choice?.delta || {};
 

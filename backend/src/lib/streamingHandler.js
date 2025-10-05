@@ -112,6 +112,7 @@ export async function handleRegularStreaming({
           // Capture response_id from any chunk
           if (obj?.id && !responseId) {
             responseId = obj.id;
+            console.log('[previous_response_id] Response ID received from stream:', responseId);
             if (persistence) persistence.setResponseId(responseId);
           }
 

@@ -4,6 +4,7 @@ import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
 import { createProvider } from './providers/index.js';
 import {
   buildConversationMessagesAsync,
+  buildConversationMessagesOptimized,
   executeToolCall,
   appendToPersistence,
   recordFinalToPersistence,
@@ -230,18 +231,26 @@ class JsonResponseHandler extends ResponseHandler {
 /**
  * Make a request to the AI model
  */
-async function callLLM({ messages, config, bodyParams, providerId, providerHttp, provider }) {
+async function callLLM({ messages, config, bodyParams, providerId, providerHttp, provider, previousResponseId = null, isFirstIteration = false }) {
   const requestBody = {
     model: bodyParams.model || config.defaultModel,
     messages,
     stream: bodyParams.stream || false,
-    ...(bodyParams.tools && { tools: bodyParams.tools, tool_choice: bodyParams.tool_choice || 'auto' })
+    ...(bodyParams.tools && { tools: bodyParams.tools, tool_choice: bodyParams.tool_choice || 'auto' }),
+    // Include previous_response_id only on first iteration if available (Responses API optimization)
+    ...(isFirstIteration && previousResponseId && { previous_response_id: previousResponseId }),
   };
   // Include reasoning controls only when the provider supports them
   if (provider?.supportsReasoningControls(requestBody.model)) {
     if (bodyParams.reasoning_effort) requestBody.reasoning_effort = bodyParams.reasoning_effort;
     if (bodyParams.verbosity) requestBody.verbosity = bodyParams.verbosity;
   }
+
+  console.log('[previous_response_id] callLLM creating request', {
+    isFirstIteration,
+    previousResponseId,
+    hasPreviousResponseIdInBody: !!requestBody.previous_response_id
+  });
 
   const response = await createOpenAIRequest(config, requestBody, { providerId, http: providerHttp });
 
@@ -414,7 +423,14 @@ export async function handleToolsJson({
     generateToolSpecs,
   }) || generateOpenAIToolSpecs();
   // Build initial messages ensuring the active system prompt is preserved
-  const messages = await buildConversationMessagesAsync({ body, bodyIn, persistence, userId });
+  // Use optimized version to leverage previous_response_id when available
+  const { messages, previousResponseId } = await buildConversationMessagesOptimized({
+    body,
+    bodyIn,
+    persistence,
+    userId,
+    provider: providerInstance
+  });
   const orchestrationConfig = OrchestrationConfig.fromRequest(body, config, fallbackToolSpecs);
   const responseHandler = ResponseHandlerFactory.create(orchestrationConfig, res);
 
@@ -447,6 +463,8 @@ export async function handleToolsJson({
         providerId,
         providerHttp,
         provider: providerInstance,
+        previousResponseId,
+        isFirstIteration: iteration === 0,
       });
       const message = response?.choices?.[0]?.message;
       const toolCalls = message?.tool_calls || [];

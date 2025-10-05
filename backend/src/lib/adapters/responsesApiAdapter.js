@@ -930,7 +930,10 @@ export class ResponsesAPIAdapter extends BaseAdapter {
 		};
 
 		if (payload.previous_response_id) {
+			console.log('[previous_response_id] Adding previous_response_id to Responses API request:', payload.previous_response_id);
 			request.previous_response_id = payload.previous_response_id;
+		} else {
+			console.log('[previous_response_id] No previous_response_id in payload, sending full context');
 		}
 
 		if (payload.stream === true) {

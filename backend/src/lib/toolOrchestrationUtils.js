@@ -253,9 +253,18 @@ export async function buildConversationMessagesAsync({ body, bodyIn, persistence
  * @param {Object} params.bodyIn - Input body
  * @param {Object} params.persistence - Persistence instance
  * @param {string} params.userId - User ID for resolving custom prompts
+ * @param {Object} params.provider - Provider instance (optional, to check if Responses API is supported)
  * @returns {Promise<{messages: Array, previousResponseId: string|null}>} Messages and response ID
  */
-export async function buildConversationMessagesOptimized({ body, bodyIn, persistence, userId }) {
+export async function buildConversationMessagesOptimized({ body, bodyIn, persistence, userId, provider = null }) {
+  console.log('[previous_response_id] buildConversationMessagesOptimized called', {
+    hasPersistence: !!(persistence && persistence.persist && persistence.conversationId),
+    conversationId: persistence?.conversationId,
+    nonSystemMessagesCount: Array.isArray(body?.messages) ? body.messages.filter((msg) => msg && msg.role !== 'system').length : 0,
+    hasProvider: !!provider,
+    usesResponsesAPI: provider?.shouldUseResponsesAPI?.() ?? null
+  });
+
   const sanitizedMessages = Array.isArray(body?.messages) ? [...body.messages] : [];
   const nonSystemMessages = sanitizedMessages.filter((msg) => msg && msg.role !== 'system');
   const systemPrompt = await extractSystemPromptAsync({ body, bodyIn, persistence, userId });
@@ -263,6 +272,7 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
 
   // If messages provided in request, use them (new conversation or explicit history)
   if (nonSystemMessages.length > 0 && !hasPersistence) {
+    console.log('[previous_response_id] Using request messages (no persistence)');
     const messages = systemPrompt
       ? [{ role: 'system', content: systemPrompt }, ...nonSystemMessages]
       : nonSystemMessages;
@@ -274,25 +284,41 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
   }
 
   // Try to use response_id for existing conversations (Responses API optimization)
-  if (persistence && persistence.persist && persistence.conversationId) {
+  // Only use this optimization if provider supports Responses API
+  const supportsResponsesAPI = provider?.shouldUseResponsesAPI?.() ?? false;
+
+  if (persistence && persistence.persist && persistence.conversationId && supportsResponsesAPI) {
+    console.log('[previous_response_id] Attempting to use previous_response_id optimization');
     try {
       const previousResponseId = getLastAssistantResponseId({ conversationId: persistence.conversationId });
 
       if (previousResponseId) {
-        // We have a response_id - only send the current user message
+        console.log('[previous_response_id] Found previous_response_id, using optimized path:', previousResponseId);
+        // We have a response_id - only send the latest user message
         // OpenAI will manage conversation state server-side
-        const userMessages = Array.isArray(bodyIn?.messages)
+        const allUserMessages = Array.isArray(bodyIn?.messages)
           ? bodyIn.messages.filter((m) => m && m.role === 'user')
           : [];
 
-        const messages = systemPrompt
-          ? [{ role: 'system', content: systemPrompt }, ...userMessages]
-          : userMessages;
+        // Take only the last user message (the new one being sent)
+        const latestUserMessage = allUserMessages.length > 0
+          ? [allUserMessages[allUserMessages.length - 1]]
+          : [];
 
+        const messages = systemPrompt
+          ? [{ role: 'system', content: systemPrompt }, ...latestUserMessage]
+          : latestUserMessage;
+
+        console.log('[previous_response_id] Returning optimized messages:', {
+          messageCount: messages.length,
+          userMessageCount: latestUserMessage.length,
+          previousResponseId
+        });
         debugLogMessages('buildConversationMessagesOptimized(previousResponseId)', messages, persistence);
         return { messages, previousResponseId };
       }
 
+      console.log('[previous_response_id] No previous_response_id found, falling back to full history');
       // No response_id yet - fall back to full history for this conversation
       const page = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
       const messages = [];
@@ -390,6 +416,11 @@ export function appendToPersistence(persistence, content) {
 
 export function recordFinalToPersistence(persistence, finishReason, responseId = null) {
   if (!persistence || !persistence.persist) return;
+  console.log('[previous_response_id] recordFinalToPersistence called', {
+    finishReason,
+    providedResponseId: responseId,
+    persistedResponseId: persistence?.responseId
+  });
   persistence.recordAssistantFinal({ finishReason: finishReason || 'stop', responseId });
 }
 

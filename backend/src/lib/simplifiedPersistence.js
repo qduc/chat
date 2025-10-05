@@ -280,6 +280,14 @@ export class SimplifiedPersistence {
     if (!this.persist || !this.conversationId || this.assistantSeq === null) return;
     if (this.finalized || this.errored) return;
 
+    console.log('[previous_response_id] recordAssistantFinal called', {
+      conversationId: this.conversationId,
+      seq: this.assistantSeq,
+      providedResponseId: responseId,
+      storedResponseId: this.responseId,
+      finalResponseId: responseId || this.responseId
+    });
+
     try {
       const result = this.conversationManager.recordAssistantMessage({
         conversationId: this.conversationId,
@@ -360,8 +368,14 @@ export class SimplifiedPersistence {
    * @param {string} responseId - OpenAI response ID
    */
   setResponseId(responseId) {
+    console.log('[previous_response_id] setResponseId called', {
+      responseId,
+      conversationId: this.conversationId,
+      isValid: !!(responseId && typeof responseId === 'string')
+    });
     if (responseId && typeof responseId === 'string') {
       this.responseId = responseId;
+      console.log('[previous_response_id] responseId stored for future use');
     }
   }
 
