@@ -526,12 +526,6 @@ const Message = React.memo<MessageProps>(function Message({
                         {message.usage.provider && (
                           <span className="font-medium">{message.usage.provider}</span>
                         )}
-                        {message.usage.model && (
-                          <span className="text-slate-500 dark:text-slate-500">•</span>
-                        )}
-                        {message.usage.model && (
-                          <span className="truncate max-w-[200px]" title={message.usage.model}>{message.usage.model}</span>
-                        )}
                         {(message.usage.prompt_tokens !== undefined || message.usage.completion_tokens !== undefined) && (
                           <span className="text-slate-500 dark:text-slate-500">•</span>
                         )}
