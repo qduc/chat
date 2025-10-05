@@ -31,6 +31,41 @@ describe('ChatClient', () => {
     chatClient = new ChatClient();
   });
 
+  test('sends only the latest user message to the backend', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch').mockImplementation((_url, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      expect(body.messages).toHaveLength(1);
+      expect(body.messages[0]).toMatchObject({ role: 'user', content: 'latest message' });
+
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: 'ok'
+                }
+              }
+            ]
+          }),
+          { status: 200 }
+        )
+      );
+    });
+
+    await chatClient.sendMessage({
+      messages: [
+        { role: 'user' as Role, content: 'first message' },
+        { role: 'assistant' as Role, content: 'assistant reply' },
+        { role: 'user' as Role, content: 'latest message' }
+      ],
+      stream: false,
+      providerId: 'test-provider'
+    });
+
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
   test('throws on non-OK responses with message from JSON', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ error: 'bad' }), { status: 400 })

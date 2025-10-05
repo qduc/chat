@@ -89,9 +89,21 @@ export class ChatClient {
     const { messages, model, providerId, responseId } = options;
     const extendedOptions = options as ChatOptionsExtended;
 
+    const normalizedMessages = Array.isArray(messages)
+      ? messages.filter((message): message is ChatOptions['messages'][number] => !!message)
+      : [];
+
+    const latestUserMessage = [...normalizedMessages]
+      .reverse()
+      .find((message) => message.role === 'user');
+
+    const messageToSend = latestUserMessage ?? normalizedMessages[normalizedMessages.length - 1];
+
+    const outgoingMessages = messageToSend ? [messageToSend] : [];
+
     const bodyObj: any = {
       model,
-      messages,
+      ...(outgoingMessages.length > 0 ? { messages: outgoingMessages } : {}),
       stream,
       provider_id: providerId,
       ...(responseId && { previous_response_id: responseId }),

@@ -43,9 +43,16 @@ export function buildChatConfig(
   // Use inline override if available, otherwise fall back to system prompt.
   const effectiveSystemPrompt = ((refs.inlineSystemPromptRef || refs.systemPromptRef) || '').trim();
 
-  const outgoing = effectiveSystemPrompt
-    ? ([{ role: 'system', content: effectiveSystemPrompt } as any, ...messages])
-    : messages;
+  const latestUserMessage = [...messages]
+    .reverse()
+    .find((m) => m.role === 'user');
+  const messageToSend = latestUserMessage ?? messages[messages.length - 1];
+
+  if (!messageToSend) {
+    throw new Error('No message available to send.');
+  }
+
+  const outgoing = [messageToSend];
 
   const config: any = {
     messages: outgoing.map(m => ({ role: m.role as Role, content: m.content })),
