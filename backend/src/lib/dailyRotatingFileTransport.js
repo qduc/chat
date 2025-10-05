@@ -1,6 +1,7 @@
 import { createWriteStream } from 'fs';
 import { mkdir } from 'fs/promises';
 import { dirname } from 'path';
+import { inspect } from 'util';
 import build from 'pino-abstract-transport';
 
 export default async function (options) {
@@ -40,7 +41,7 @@ export default async function (options) {
   return build(async function (source) {
     for await (const obj of source) {
       const stream = await getOrCreateStream();
-      stream.write(JSON.stringify(obj) + '\n');
+      stream.write(inspect(obj, { depth: null, colors: false }) + '\n');
     }
   });
 }

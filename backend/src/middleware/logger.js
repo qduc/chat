@@ -32,7 +32,7 @@ export function requestLogger(req, res, next) {
     return originalSend(body);
   };
 
-  logger.info({
+  logger.debug({
     msg: 'request:start',
     req: {
       id: req.id,
@@ -47,7 +47,7 @@ export function requestLogger(req, res, next) {
     const end = process.hrtime.bigint();
     const durationMs = Number(end - start) / 1e6;
 
-    const logLevel = res.statusCode >= 400 ? 'error' : 'info';
+    const logLevel = res.statusCode >= 400 ? 'error' : 'debug';
     const logData = {
       msg: 'request:end',
       req: {
