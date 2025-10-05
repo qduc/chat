@@ -292,8 +292,20 @@ async function handleRequest(context, req, res) {
       let finishReason = null;
       let responseId = null;
 
+      let contentHandled = false;
+
       if (upstreamJson.choices && upstreamJson.choices[0] && upstreamJson.choices[0].message) {
         content = upstreamJson.choices[0].message.content;
+        if (persistence.persist) {
+          const message = upstreamJson.choices[0].message;
+          if (message.content !== undefined) {
+            persistence.setAssistantContent(message.content);
+            contentHandled = true;
+          }
+          if (Array.isArray(message.reasoning_details)) {
+            persistence.setReasoningDetails(message.reasoning_details);
+          }
+        }
       }
       finishReason = upstreamJson.choices && upstreamJson.choices[0]
         ? upstreamJson.choices[0].finish_reason
@@ -302,7 +314,15 @@ async function handleRequest(context, req, res) {
       // Capture response_id from OpenAI for conversation state management
       responseId = upstreamJson.id || null;
 
-      if (content) persistence.appendContent(content);
+      if (content && persistence.persist && !contentHandled) {
+        persistence.setAssistantContent(content);
+      }
+      if (persistence.persist) {
+        const reasoningTokens = upstreamJson?.usage?.reasoning_tokens ?? upstreamJson?.usage?.reasoning_token_count ?? null;
+        if (reasoningTokens != null) {
+          persistence.setReasoningTokens(reasoningTokens);
+        }
+      }
       persistence.recordAssistantFinal({ finishReason, responseId });
     }
 

@@ -30,6 +30,10 @@ export class SimplifiedPersistence {
     this.currentMessageId = null; // Track current assistant message ID for tool call persistence
     this.toolCalls = []; // Buffer tool calls during streaming
     this.toolOutputs = []; // Buffer tool outputs during streaming
+    this.assistantContentJson = null; // Preserve structured assistant content when available
+    this.reasoningDetails = null; // Structured reasoning blocks captured from providers
+    this.reasoningTextBuffer = ''; // Accumulate reasoning text during streaming when structured data absent
+    this.reasoningTokens = null; // Reasoning token usage metadata
   }
 
   /**
@@ -177,6 +181,10 @@ export class SimplifiedPersistence {
     this.persist = true;
     this.assistantSeq = this.conversationManager.getNextSequence(this.conversationId);
     this.assistantBuffer = '';
+    this.assistantContentJson = null;
+    this.reasoningDetails = null;
+    this.reasoningTextBuffer = '';
+    this.reasoningTokens = null;
   }
 
   /**
@@ -260,13 +268,173 @@ export class SimplifiedPersistence {
       console.warn('[SimplifiedPersistence] Metadata update failed:', error?.message || error);
     }
   }
+
+  _clone(value) {
+    if (value === undefined || value === null) return value;
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch {
+      return value;
+    }
+  }
+
+  _extractTextFromMixedContent(content) {
+    if (!Array.isArray(content)) return '';
+    const segments = [];
+    for (const part of content) {
+      if (!part) continue;
+      if (typeof part === 'string') {
+        segments.push(part);
+        continue;
+      }
+      if (typeof part === 'object') {
+        if (typeof part.text === 'string') {
+          segments.push(part.text);
+          continue;
+        }
+        if (typeof part.value === 'string') {
+          segments.push(part.value);
+          continue;
+        }
+        if (typeof part.content === 'string') {
+          segments.push(part.content);
+        }
+      }
+    }
+    return segments.join('');
+  }
+
+  setAssistantContent(content) {
+    if (!this.persist || content === undefined) return;
+
+    if (Array.isArray(content)) {
+      this.assistantContentJson = this._clone(content);
+      this.assistantBuffer = this._extractTextFromMixedContent(content);
+      return;
+    }
+
+    if (typeof content === 'string') {
+      this.assistantContentJson = null;
+      this.assistantBuffer = content;
+      return;
+    }
+
+    if (content === null) {
+      this.assistantContentJson = null;
+      this.assistantBuffer = '';
+      return;
+    }
+
+    if (typeof content === 'object') {
+      this.assistantContentJson = this._clone(content);
+      if (Array.isArray(content.content)) {
+        this.assistantBuffer = this._extractTextFromMixedContent(content.content);
+      } else if (typeof content.text === 'string') {
+        this.assistantBuffer = content.text;
+      } else if (typeof content.value === 'string') {
+        this.assistantBuffer = content.value;
+      } else if (typeof content.output_text === 'string') {
+        this.assistantBuffer = content.output_text;
+      } else {
+        this.assistantBuffer = '';
+      }
+    }
+  }
+
+  appendReasoningText(delta) {
+    if (!this.persist || !delta) return;
+    this.reasoningTextBuffer += delta;
+  }
+
+  setReasoningDetails(details) {
+    if (!this.persist || details === undefined) return;
+
+    if (details === null) {
+      this.reasoningDetails = null;
+      return;
+    }
+
+    if (Array.isArray(details)) {
+      this.reasoningDetails = this._clone(details);
+      return;
+    }
+
+    if (typeof details === 'object') {
+      const cloned = this._clone(details);
+      if (!Array.isArray(this.reasoningDetails)) {
+        this.reasoningDetails = [];
+      }
+      this.reasoningDetails.push(cloned);
+    }
+  }
+
+  setReasoningTokens(value) {
+    if (!this.persist || value === undefined) return;
+    if (value === null) {
+      this.reasoningTokens = null;
+      return;
+    }
+
+    const asNumber = Number(value);
+    if (!Number.isFinite(asNumber)) return;
+    this.reasoningTokens = Math.max(0, Math.trunc(asNumber));
+  }
+
+  _finalizeReasoningDetails() {
+    if (Array.isArray(this.reasoningDetails)) {
+      return this._clone(this.reasoningDetails);
+    }
+
+    if (this.reasoningDetails && typeof this.reasoningDetails === 'object') {
+      return [this._clone(this.reasoningDetails)];
+    }
+
+    if (typeof this.reasoningTextBuffer === 'string' && this.reasoningTextBuffer.trim()) {
+      return [{ type: 'text', text: this.reasoningTextBuffer }];
+    }
+
+    return null;
+  }
   /**
    * Buffer assistant content (no immediate DB write)
    * @param {string} delta - Content delta to add
    */
   appendContent(delta) {
-    if (!this.persist) return;
-    this.assistantBuffer += delta || '';
+    if (!this.persist || delta == null) return;
+
+    if (Array.isArray(delta)) {
+      const cloned = this._clone(delta) || [];
+
+      if (Array.isArray(this.assistantContentJson)) {
+        this.assistantContentJson.push(...cloned);
+      } else if (this.assistantContentJson && typeof this.assistantContentJson === 'object') {
+        // Existing structured content that's not an array; convert to array to preserve data
+        this.assistantContentJson = [this._clone(this.assistantContentJson), ...cloned];
+      } else {
+        this.assistantContentJson = cloned;
+      }
+
+      const text = this._extractTextFromMixedContent(cloned);
+      if (text) {
+        this.assistantBuffer += text;
+      }
+      return;
+    }
+
+    if (typeof delta === 'string') {
+      this.assistantBuffer += delta;
+      return;
+    }
+
+    if (typeof delta === 'object') {
+      if (typeof delta.text === 'string') {
+        this.assistantBuffer += delta.text;
+      } else if (typeof delta.value === 'string') {
+        this.assistantBuffer += delta.value;
+      } else if (typeof delta.content === 'string') {
+        this.assistantBuffer += delta.content;
+      }
+    }
   }
 
   /**
@@ -282,10 +450,12 @@ export class SimplifiedPersistence {
     try {
       const result = this.conversationManager.recordAssistantMessage({
         conversationId: this.conversationId,
-        content: this.assistantBuffer,
+        content: this.assistantContentJson ?? this.assistantBuffer,
         seq: this.assistantSeq,
         finishReason,
         responseId: responseId || this.responseId, // Use provided or stored responseId
+        reasoningDetails: this._finalizeReasoningDetails(),
+        reasoningTokens: this.reasoningTokens,
       });
 
       // Store message ID for tool call persistence
@@ -304,6 +474,10 @@ export class SimplifiedPersistence {
       // Prepare for future iterations
       this.assistantSeq = this.conversationManager.getNextSequence(this.conversationId);
       this.assistantBuffer = '';
+      this.assistantContentJson = null;
+      this.reasoningDetails = null;
+      this.reasoningTextBuffer = '';
+      this.reasoningTokens = null;
       this.finalized = true;
     } catch (error) {
       console.error('[SimplifiedPersistence] Failed to record final assistant message:', error);

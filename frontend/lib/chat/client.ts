@@ -5,8 +5,7 @@ import {
   ConversationMeta,
   Role
 } from './types';
-import { SSEParser, createRequestInit, APIError } from './utils';
-import { supportsReasoningControls } from './modelCapabilities';
+import { SSEParser, APIError } from './utils';
 import { waitForAuthReady } from '../auth/ready';
 import { httpClient } from '../http/client';
 import { HttpError } from '../http/types';
@@ -48,8 +47,6 @@ export class ChatClient {
     await waitForAuthReady();
     const {
       apiBase = this.apiBase,
-      messages,
-      model,
       stream = true,
       signal,
       onEvent,
@@ -91,12 +88,6 @@ export class ChatClient {
   private buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: boolean): any {
     const { messages, model, providerId, responseId } = options;
     const extendedOptions = options as ChatOptionsExtended;
-
-    // Check if model supports reasoning controls
-    const modelSupportsReasoning = supportsReasoningControls(
-      model,
-      (extendedOptions as any).modelCapabilities
-    );
 
     const bodyObj: any = {
       model,
@@ -183,6 +174,9 @@ export class ChatClient {
 
     // Extract content
     let content = '';
+    let reasoningDetails: any[] | undefined;
+    let reasoningTokens: number | undefined;
+
     if (json?.choices && Array.isArray(json.choices)) {
       const message = json.choices[0]?.message;
       content = message?.content ?? '';
@@ -191,8 +185,15 @@ export class ChatClient {
       if (message?.reasoning) {
         content = `<thinking>${message.reasoning}</thinking>\n\n${content}`;
       }
+
+      if (Array.isArray(message?.reasoning_details)) {
+        reasoningDetails = message.reasoning_details;
+      }
     } else {
       content = json?.content ?? json?.message?.content ?? '';
+      if (Array.isArray(json?.reasoning_details)) {
+        reasoningDetails = json.reasoning_details;
+      }
     }
 
     // Extract usage metadata
@@ -203,6 +204,10 @@ export class ChatClient {
       if (json.usage.prompt_tokens !== undefined) usage.prompt_tokens = json.usage.prompt_tokens;
       if (json.usage.completion_tokens !== undefined) usage.completion_tokens = json.usage.completion_tokens;
       if (json.usage.total_tokens !== undefined) usage.total_tokens = json.usage.total_tokens;
+      if (json.usage.reasoning_tokens !== undefined) {
+        usage.reasoning_tokens = json.usage.reasoning_tokens;
+        reasoningTokens = json.usage.reasoning_tokens;
+      }
     }
 
     // Emit usage event if we have usage data
@@ -215,6 +220,8 @@ export class ChatClient {
       responseId: json?.id,
       conversation,
       reasoning_summary: json?.reasoning_summary,
+      ...(reasoningDetails ? { reasoning_details: reasoningDetails } : {}),
+      ...(reasoningTokens !== undefined ? { reasoning_tokens: reasoningTokens } : {}),
       ...(Object.keys(usage).length > 0 ? { usage } : {})
     };
   }
@@ -261,6 +268,8 @@ export class ChatClient {
     let reasoningStarted = false;
     let reasoning_summary: string | undefined;
     let usage: any | undefined;
+    let reasoning_details: any[] | undefined;
+    let reasoning_tokens: number | undefined;
 
     try {
       while (true) {
@@ -278,7 +287,16 @@ export class ChatClient {
               onToken?.(closingTag);
               content += closingTag;
             }
-            return { content, responseId, conversation, reasoning_summary };
+
+            return {
+              content,
+              responseId,
+              conversation,
+              reasoning_summary,
+              ...(reasoning_details ? { reasoning_details } : {}),
+              ...(reasoning_tokens !== undefined ? { reasoning_tokens } : {}),
+              ...(usage ? { usage } : {})
+            };
           }
 
           if (event.type === 'data' && event.data) {
@@ -289,6 +307,8 @@ export class ChatClient {
             if (result.reasoningStarted !== undefined) reasoningStarted = result.reasoningStarted;
             if (result.reasoning_summary) reasoning_summary = result.reasoning_summary;
             if (result.usage) usage = { ...usage, ...result.usage };
+            if (result.reasoningDetails) reasoning_details = result.reasoningDetails;
+            if (result.reasoningTokens !== undefined) reasoning_tokens = result.reasoningTokens;
           }
         }
       }
@@ -299,7 +319,15 @@ export class ChatClient {
       }
     }
 
-    return { content, responseId, conversation, reasoning_summary };
+    return {
+      content,
+      responseId,
+      conversation,
+      reasoning_summary,
+      ...(reasoning_details ? { reasoning_details } : {}),
+      ...(reasoning_tokens !== undefined ? { reasoning_tokens } : {}),
+      ...(usage ? { usage } : {})
+    };
   }
 
   private processStreamChunk(
@@ -307,7 +335,7 @@ export class ChatClient {
     onToken?: (token: string) => void,
     onEvent?: (event: any) => void,
     reasoningStarted?: boolean
-  ): { content?: string; responseId?: string; conversation?: ConversationMeta; reasoningStarted?: boolean; reasoning_summary?: string; usage?: any } {
+  ): { content?: string; responseId?: string; conversation?: ConversationMeta; reasoningStarted?: boolean; reasoning_summary?: string; usage?: any; reasoningDetails?: any[]; reasoningTokens?: number } {
     // Handle conversation metadata
     if (data._conversation) {
       return {
@@ -333,6 +361,8 @@ export class ChatClient {
       };
     }
 
+    const result: { content?: string; usage?: any; reasoningStarted?: boolean; reasoningDetails?: any[]; reasoningTokens?: number } = {};
+
     // Handle usage data if present in the chunk
     if (data.usage || data.provider || data.model) {
       const usage: any = {};
@@ -342,11 +372,24 @@ export class ChatClient {
         if (data.usage.prompt_tokens !== undefined) usage.prompt_tokens = data.usage.prompt_tokens;
         if (data.usage.completion_tokens !== undefined) usage.completion_tokens = data.usage.completion_tokens;
         if (data.usage.total_tokens !== undefined) usage.total_tokens = data.usage.total_tokens;
+        if (data.usage.reasoning_tokens !== undefined) {
+          usage.reasoning_tokens = data.usage.reasoning_tokens;
+          result.reasoningTokens = data.usage.reasoning_tokens;
+        }
       }
 
       if (Object.keys(usage).length > 0) {
         onEvent?.({ type: 'usage', value: usage });
+        result.usage = usage;
       }
+    }
+
+    if (Array.isArray((data as any).reasoning_details)) {
+      result.reasoningDetails = (data as any).reasoning_details;
+    }
+
+    if (typeof (data as any).reasoning_tokens === 'number') {
+      result.reasoningTokens = (data as any).reasoning_tokens;
     }
 
     // Handle Chat Completions API stream format
@@ -360,6 +403,7 @@ export class ChatClient {
       onEvent?.({ type: 'text', value: delta.content });
 
       return {
+        ...result,
         content: closingTag + delta.content,
         reasoningStarted: false
       };
@@ -383,6 +427,7 @@ export class ChatClient {
       onEvent?.({ type: 'reasoning', value: currentReasoning });
 
       return {
+        ...result,
         content: contentToAdd,
         reasoningStarted
       };
@@ -391,7 +436,7 @@ export class ChatClient {
     if (delta?.content) {
       onToken?.(delta.content);
       onEvent?.({ type: 'text', value: delta.content });
-      return { content: delta.content };
+      return { ...result, content: delta.content };
     }
 
     if (delta?.tool_calls) {
@@ -409,6 +454,7 @@ export class ChatClient {
       }
 
       return {
+        ...result,
         ...(closingContent ? { content: closingContent } : {}),
         reasoningStarted
       };
@@ -418,6 +464,6 @@ export class ChatClient {
       onEvent?.({ type: 'tool_output', value: delta.tool_output });
     }
 
-    return {};
+    return result;
   }
 }

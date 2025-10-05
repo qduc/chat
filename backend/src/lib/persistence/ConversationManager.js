@@ -152,7 +152,9 @@ export class ConversationManager {
             messageId: msg.id,
             conversationId,
             userId,
-            content: msg.content
+            content: msg.content,
+            reasoningDetails: msg.reasoning_details,
+            reasoningTokens: msg.reasoning_tokens,
           });
 
           // Handle tool metadata updates for assistant messages
@@ -175,20 +177,23 @@ export class ConversationManager {
       // INSERT new messages
       let nextSeq = getNextSeq(conversationId);
       for (const msg of diff.toInsert) {
-        const hasContent = typeof msg.content === 'string' || Array.isArray(msg.content);
+        const hasUserContent = typeof msg.content === 'string' || Array.isArray(msg.content);
+        const hasAssistantContent = msg.content !== undefined && msg.content !== null;
 
-        if (msg.role === 'user' && hasContent) {
+        if (msg.role === 'user' && hasUserContent) {
           insertUserMessage({
             conversationId,
             content: msg.content,
             seq: nextSeq++,
           });
-        } else if (msg.role === 'assistant' && typeof msg.content === 'string') {
+        } else if (msg.role === 'assistant' && hasAssistantContent) {
           const result = insertAssistantFinal({
             conversationId,
             content: msg.content,
             seq: nextSeq++,
             finishReason: 'stop',
+            reasoningDetails: msg.reasoning_details,
+            reasoningTokens: msg.reasoning_tokens,
           });
 
           // Insert tool metadata if present
@@ -427,20 +432,23 @@ export class ConversationManager {
       // Insert all messages fresh
       let seq = 1;
       for (const message of messages) {
-        const hasContent = typeof message.content === 'string' || Array.isArray(message.content);
+        const hasUserContent = typeof message.content === 'string' || Array.isArray(message.content);
+        const hasAssistantContent = message.content !== undefined && message.content !== null;
 
-        if (message.role === 'user' && hasContent) {
+        if (message.role === 'user' && hasUserContent) {
           insertUserMessage({
             conversationId,
             content: message.content,
             seq: seq++,
           });
-        } else if (message.role === 'assistant' && typeof message.content === 'string') {
+        } else if (message.role === 'assistant' && hasAssistantContent) {
           const result = insertAssistantFinal({
             conversationId,
             content: message.content,
             seq: seq++,
             finishReason: 'stop',
+            reasoningDetails: message.reasoning_details,
+            reasoningTokens: message.reasoning_tokens,
           });
 
           // Insert tool metadata if present in the incoming message
@@ -488,6 +496,8 @@ export class ConversationManager {
       seq: params.seq,
       finishReason: params.finishReason || 'stop',
       responseId: params.responseId || null,
+      reasoningDetails: params.reasoningDetails,
+      reasoningTokens: params.reasoningTokens,
     });
   }
 

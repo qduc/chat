@@ -121,6 +121,23 @@ export function messagesEqual(msg1, msg2) {
     }
   }
 
+  const reasoningDetails1 = Array.isArray(msg1.reasoning_details) ? msg1.reasoning_details : [];
+  const reasoningDetails2Raw = msg2.reasoning_details;
+  const reasoningDetails2 = reasoningDetails2Raw === undefined
+    ? reasoningDetails1
+    : (Array.isArray(reasoningDetails2Raw) ? reasoningDetails2Raw : []);
+
+  if (!reasoningDetailsEqual(reasoningDetails1, reasoningDetails2)) {
+    return false;
+  }
+
+  const tokens1 = msg1.reasoning_tokens ?? null;
+  const tokens2 = reasoningDetails2Raw === undefined ? tokens1 : (msg2.reasoning_tokens ?? null);
+
+  if (tokens1 !== tokens2) {
+    return false;
+  }
+
   return true;
 }
 
@@ -196,6 +213,29 @@ export function toolOutputsEqual(to1, to2) {
   }
 
   return to1.output === to2.output;
+}
+
+function reasoningDetailsEqual(listA, listB) {
+  if (listA.length !== listB.length) {
+    return false;
+  }
+
+  for (let i = 0; i < listA.length; i++) {
+    const a = listA[i];
+    const b = listB[i];
+    try {
+      if (JSON.stringify(a) !== JSON.stringify(b)) {
+        return false;
+      }
+    } catch {
+      // Fallback to strict equality if serialization fails
+      if (a !== b) {
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 /**

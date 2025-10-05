@@ -161,9 +161,20 @@ export function streamReducer(state: ChatState, action: ChatAction): ChatState |
         ...state,
         messages: state.messages.map(m => {
           if (m.id !== action.payload.id) return m;
-          // Only sync content to avoid overwriting tool_calls/tool_outputs built during streaming
-          const content = (action.payload as any).content ?? m.content;
-          return { ...m, content };
+          // Only sync content and metadata that may have been finalized server-side
+          const payload: any = action.payload;
+          const content = payload.content ?? m.content;
+          const reasoning_details = payload.reasoning_details ?? m.reasoning_details;
+          const reasoning_tokens = payload.reasoning_tokens ?? m.reasoning_tokens;
+          const usage = payload.usage ? { ...m.usage, ...payload.usage } : m.usage;
+
+          return {
+            ...m,
+            content,
+            ...(reasoning_details !== undefined ? { reasoning_details } : {}),
+            ...(reasoning_tokens !== undefined ? { reasoning_tokens } : {}),
+            ...(usage !== m.usage ? { usage } : {})
+          };
         }),
       };
 

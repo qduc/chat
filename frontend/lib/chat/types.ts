@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 export type Role = 'user' | 'assistant' | 'system';
 
 // Image-related types for Vision API support
@@ -99,7 +97,10 @@ export interface ChatMessage {
     prompt_tokens?: number;
     completion_tokens?: number;
     total_tokens?: number;
+    reasoning_tokens?: number;
   };
+  reasoning_details?: any[];
+  reasoning_tokens?: number | null;
 }
 
 export interface ChatEvent {
@@ -118,7 +119,10 @@ export interface ChatResponse {
     prompt_tokens?: number;
     completion_tokens?: number;
     total_tokens?: number;
+    reasoning_tokens?: number;
   };
+  reasoning_details?: any[];
+  reasoning_tokens?: number | null;
 }
 
 export interface ConversationMeta {
@@ -185,6 +189,8 @@ export interface ConversationWithMessages {
       output: string;
       status: string;
     }>;
+    reasoning_details?: any[];
+    reasoning_tokens?: number | null;
   }[];
   next_after_seq: number | null;
 }

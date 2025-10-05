@@ -1,9 +1,5 @@
 import { parseSSEStream } from './sseParser.js';
-import {
-  createChatCompletionChunk,
-  writeAndFlush,
-  setupStreamingHeaders,
-} from './streamUtils.js';
+import { writeAndFlush } from './streamUtils.js';
 import { getConversationMetadata } from './responseUtils.js';
 
 export { setupStreamingHeaders } from './streamUtils.js';
@@ -78,7 +74,6 @@ export async function handleRegularStreaming({
   persistence,
 }) {
   let leftover = '';
-  let finished = false;
   let lastFinishReason = { value: null };
   let responseId = null; // Track response_id from chunks
 
@@ -106,7 +101,6 @@ export async function handleRegularStreaming({
         chunk,
         leftover,
         (obj) => {
-          let deltaContent = null;
           let finishReason = null;
 
           // Capture response_id from any chunk
@@ -115,17 +109,41 @@ export async function handleRegularStreaming({
             if (persistence) persistence.setResponseId(responseId);
           }
 
-          if (obj?.choices?.[0]?.delta?.content) {
-            deltaContent = obj.choices[0].delta.content;
-            finishReason = obj.choices[0].finish_reason;
+          const choice = obj?.choices?.[0];
+          const delta = choice?.delta;
+
+          if (delta) {
+            const deltaContent = delta.content;
+            if (deltaContent !== undefined) {
+              persistence.appendContent(deltaContent);
+            }
+
+            const reasoningText = delta.reasoning_content ?? delta.reasoning;
+            if (reasoningText) {
+              persistence.appendReasoningText(reasoningText);
+            }
+
+            if (Array.isArray(delta.reasoning_details) && delta.reasoning_details.length > 0) {
+              persistence.setReasoningDetails(delta.reasoning_details);
+            }
+
+            finishReason = choice?.finish_reason ?? finishReason;
           }
 
-          if (deltaContent) persistence.appendContent(deltaContent);
-          if (finishReason) lastFinishReason.value = finishReason;
+          if (obj?.usage?.reasoning_tokens != null) {
+            persistence.setReasoningTokens(obj.usage.reasoning_tokens);
+          }
+
+          const message = choice?.message;
+          if (message?.reasoning_details) {
+            persistence.setReasoningDetails(message.reasoning_details);
+          }
+
+          if (finishReason) {
+            lastFinishReason.value = finishReason;
+          }
         },
-        () => {
-          finished = true;
-        },
+        () => {},
         () => {}
       );
     } catch (e) {

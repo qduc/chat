@@ -217,7 +217,10 @@ class JsonResponseHandler extends ResponseHandler {
       appendToPersistence(persistence, message.content);
     }
 
-    recordFinalToPersistence(persistence, finishReason, responseId);
+    // Only record final message if there's content or tool events
+    if (message?.content || this.collectedEvents.length > 0) {
+      recordFinalToPersistence(persistence, finishReason, responseId);
+    }
 
     const responseWithEvents = {
       ...response,

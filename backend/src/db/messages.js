@@ -1,5 +1,86 @@
 import { getDb } from './client.js';
 
+function extractTextFromMixedContent(content) {
+  if (!Array.isArray(content)) return '';
+  const segments = [];
+  for (const part of content) {
+    if (!part) continue;
+    if (typeof part === 'string') {
+      segments.push(part);
+      continue;
+    }
+    if (typeof part === 'object') {
+      if (typeof part.text === 'string') {
+        segments.push(part.text);
+        continue;
+      }
+      if (typeof part.value === 'string') {
+        segments.push(part.value);
+        continue;
+      }
+      if (typeof part.content === 'string') {
+        segments.push(part.content);
+      }
+    }
+  }
+  return segments.join('');
+}
+
+function normalizeMessageContent(content) {
+  if (Array.isArray(content)) {
+    return {
+      textContent: extractTextFromMixedContent(content),
+      jsonContent: JSON.stringify(content),
+    };
+  }
+
+  if (typeof content === 'string') {
+    return { textContent: content, jsonContent: null };
+  }
+
+  if (content && typeof content === 'object') {
+    try {
+      return {
+        textContent: '',
+        jsonContent: JSON.stringify(content),
+      };
+    } catch {
+      return { textContent: '', jsonContent: null };
+    }
+  }
+
+  return { textContent: '', jsonContent: null };
+}
+
+function serializeReasoningDetails(details) {
+  if (details === undefined) return { json: undefined };
+  if (details === null) return { json: null };
+
+  try {
+    return { json: JSON.stringify(details) };
+  } catch {
+    return { json: null };
+  }
+}
+
+function normalizeReasoningTokens(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const asNumber = Number(value);
+  if (!Number.isFinite(asNumber)) return null;
+  return Math.max(0, Math.trunc(asNumber));
+}
+
+function parseJsonField(raw, messageId, fieldName) {
+  if (raw == null) return null;
+  try {
+    return JSON.parse(raw);
+  } catch (error) {
+    console.warn(`Failed to parse ${fieldName} for message ${messageId}`, error);
+    return null;
+  }
+}
+
 export function getNextSeq(conversationId) {
   const db = getDb();
   const row = db
@@ -97,15 +178,38 @@ export function markAssistantError({ messageId }) {
   });
 }
 
-export function insertAssistantFinal({ conversationId, content, seq, finishReason = 'stop', responseId = null }) {
+export function insertAssistantFinal({
+  conversationId,
+  content,
+  seq,
+  finishReason = 'stop',
+  responseId = null,
+  reasoningDetails = undefined,
+  reasoningTokens = undefined,
+}) {
   const db = getDb();
   const now = new Date().toISOString();
+
+  const { textContent, jsonContent } = normalizeMessageContent(content);
+  const { json: reasoningJson } = serializeReasoningDetails(reasoningDetails);
+  const normalizedTokens = normalizeReasoningTokens(reasoningTokens);
+
   const info = db
     .prepare(
-      `INSERT INTO messages (conversation_id, role, status, content, seq, finish_reason, response_id, created_at, updated_at)
-     VALUES (@conversationId, 'assistant', 'final', @content, @seq, @finishReason, @responseId, @now, @now)`
+      `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, finish_reason, response_id, reasoning_details, reasoning_tokens, created_at, updated_at)
+     VALUES (@conversationId, 'assistant', 'final', @content, @contentJson, @seq, @finishReason, @responseId, @reasoningDetails, @reasoningTokens, @now, @now)`
     )
-    .run({ conversationId, content: content || '', seq, finishReason, responseId, now });
+    .run({
+      conversationId,
+      content: textContent || '',
+      contentJson: jsonContent,
+      seq,
+      finishReason,
+      responseId,
+      reasoningDetails: reasoningJson === undefined ? null : reasoningJson,
+      reasoningTokens: normalizedTokens ?? null,
+      now,
+    });
   return { id: info.lastInsertRowid, seq };
 }
 
@@ -145,7 +249,7 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
   const sanitizedLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
   const messages = db
     .prepare(
-      `SELECT id, seq, role, status, content, content_json, created_at
+      `SELECT id, seq, role, status, content, content_json, reasoning_details, reasoning_tokens, created_at
      FROM messages WHERE conversation_id=@conversationId AND seq > @afterSeq
      ORDER BY seq ASC LIMIT @limit`
     )
@@ -154,15 +258,23 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
   // Parse content_json and use it if available, otherwise fall back to content
   for (const message of messages) {
     if (message.content_json) {
-      try {
-        message.content = JSON.parse(message.content_json);
-      } catch (e) {
-        // If JSON parsing fails, keep the text content
-        console.warn('Failed to parse content_json for message', message.id, e);
+      const parsedContent = parseJsonField(message.content_json, message.id, 'content_json');
+      if (parsedContent !== null) {
+        message.content = parsedContent;
       }
     }
-    // Remove content_json from response (internal field)
     delete message.content_json;
+
+    if (message.reasoning_details) {
+      const parsedReasoning = parseJsonField(message.reasoning_details, message.id, 'reasoning_details');
+      message.reasoning_details = parsedReasoning ?? null;
+    } else {
+      message.reasoning_details = null;
+    }
+
+    if (message.reasoning_tokens != null) {
+      message.reasoning_tokens = Number(message.reasoning_tokens);
+    }
   }
 
   // Fetch tool calls and outputs for all messages in batch
@@ -256,7 +368,7 @@ export function getLastMessage({ conversationId }) {
   const db = getDb();
   const message = db
     .prepare(
-      `SELECT id, seq, role, status, content, content_json, created_at
+      `SELECT id, seq, role, status, content, content_json, reasoning_details, reasoning_tokens, created_at
      FROM messages WHERE conversation_id=@conversationId
      ORDER BY seq DESC LIMIT 1`
     )
@@ -266,14 +378,24 @@ export function getLastMessage({ conversationId }) {
 
   // Parse content_json and use it if available, otherwise fall back to content
   if (message.content_json) {
-    try {
-      message.content = JSON.parse(message.content_json);
-    } catch (e) {
-      console.warn('Failed to parse content_json for message', message.id, e);
+    const parsedContent = parseJsonField(message.content_json, message.id, 'content_json');
+    if (parsedContent !== null) {
+      message.content = parsedContent;
     }
   }
   // Remove content_json from response (internal field)
   delete message.content_json;
+
+  if (message.reasoning_details) {
+    const parsedReasoning = parseJsonField(message.reasoning_details, message.id, 'reasoning_details');
+    message.reasoning_details = parsedReasoning ?? null;
+  } else {
+    message.reasoning_details = null;
+  }
+
+  if (message.reasoning_tokens != null) {
+    message.reasoning_tokens = Number(message.reasoning_tokens);
+  }
 
   // Fetch tool calls for this message
   const toolCalls = db
@@ -338,7 +460,15 @@ export function getLastAssistantResponseId({ conversationId }) {
   return responseId;
 }
 
-export function updateMessageContent({ messageId, conversationId, userId, content, status }) {
+export function updateMessageContent({
+  messageId,
+  conversationId,
+  userId,
+  content,
+  status,
+  reasoningDetails,
+  reasoningTokens,
+}) {
   if (!userId) {
     throw new Error('userId is required');
   }
@@ -355,27 +485,11 @@ export function updateMessageContent({ messageId, conversationId, userId, conten
 
   if (!message) return null;
 
-  // Handle mixed content (array) or plain text (string)
-  let textContent = '';
-  let jsonContent = null;
+  const { textContent, jsonContent } = normalizeMessageContent(content);
+  const { json: reasoningJson } = serializeReasoningDetails(reasoningDetails);
+  const normalizedTokens = normalizeReasoningTokens(reasoningTokens);
 
-  if (Array.isArray(content)) {
-    // Mixed content format: extract text and store full JSON
-    jsonContent = JSON.stringify(content);
-    // Extract text parts for the content column (backward compatibility)
-    textContent = content
-      .filter(part => part.type === 'text')
-      .map(part => part.text)
-      .join('\n');
-  } else {
-    // Plain text format
-    textContent = content || '';
-  }
-
-  const updateSql = status !== undefined
-    ? `UPDATE messages SET content = @content, content_json = @contentJson, status = @status, updated_at = @now WHERE id = @messageId`
-    : `UPDATE messages SET content = @content, content_json = @contentJson, updated_at = @now WHERE id = @messageId`;
-
+  const updates = ['content = @content', 'content_json = @contentJson', 'updated_at = @now'];
   const params = {
     messageId,
     content: textContent,
@@ -384,8 +498,21 @@ export function updateMessageContent({ messageId, conversationId, userId, conten
   };
 
   if (status !== undefined) {
+    updates.push('status = @status');
     params.status = status;
   }
+
+  if (reasoningJson !== undefined) {
+    updates.push('reasoning_details = @reasoningDetails');
+    params.reasoningDetails = reasoningJson;
+  }
+
+  if (normalizedTokens !== undefined) {
+    updates.push('reasoning_tokens = @reasoningTokens');
+    params.reasoningTokens = normalizedTokens;
+  }
+
+  const updateSql = `UPDATE messages SET ${updates.join(', ')} WHERE id = @messageId`;
 
   db.prepare(updateSql).run(params);
 
