@@ -7,7 +7,6 @@ describe('web_search_exa tool', () => {
       query: '  latest ai news  ',
       type: 'NEURAL',
       num_results: '5',
-      page: '2',
       use_autoprompt: 'true',
       include_domains: [' arxiv.org ', 'openreview.net'],
       exclude_domains: ['example.com '],
@@ -18,7 +17,6 @@ describe('web_search_exa tool', () => {
     assert.equal(validated.query, 'latest ai news');
     assert.equal(validated.type, 'neural');
     assert.equal(validated.num_results, 5);
-    assert.equal(validated.page, 2);
     assert.equal(validated.use_autoprompt, true);
     assert.deepEqual(validated.include_domains, ['arxiv.org', 'openreview.net']);
     assert.deepEqual(validated.exclude_domains, ['example.com']);
