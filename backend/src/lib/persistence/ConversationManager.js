@@ -14,7 +14,9 @@ import {
   insertAssistantFinal,
   markAssistantErrorBySeq,
   getNextSeq,
+  getMessagesPage,
 } from '../../db/messages.js';
+import { insertToolCalls, insertToolOutputs } from '../../db/toolCalls.js';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -78,11 +80,14 @@ export class ConversationManager {
    * @param {Array} messages - Array of messages to insert
    */
   syncMessageHistory(conversationId, userId, messages) {
+    const preservedAssistants = this._loadExistingAssistantToolData(conversationId);
+
     // Clear existing messages
     clearAllMessages({ conversationId, userId });
 
-    // Insert new messages in sequence
+    // Insert new messages in sequence, preserving tool data for assistant messages
     let seq = 1;
+    let assistantIndex = 0;
     for (const message of messages) {
       // Support both string content and array (mixed content with images)
       const hasContent = typeof message.content === 'string' || Array.isArray(message.content);
@@ -94,14 +99,59 @@ export class ConversationManager {
           seq: seq++,
         });
       } else if (message.role === 'assistant' && typeof message.content === 'string') {
-        insertAssistantFinal({
+        const result = insertAssistantFinal({
           conversationId,
           content: message.content,
           seq: seq++,
           finishReason: 'stop',
         });
+
+        const preserved = preservedAssistants[assistantIndex++] || null;
+        if (preserved && result?.id) {
+          if (Array.isArray(preserved.tool_calls) && preserved.tool_calls.length > 0) {
+            insertToolCalls({
+              messageId: result.id,
+              conversationId,
+              toolCalls: preserved.tool_calls,
+            });
+          }
+
+          if (Array.isArray(preserved.tool_outputs) && preserved.tool_outputs.length > 0) {
+            insertToolOutputs({
+              messageId: result.id,
+              conversationId,
+              toolOutputs: preserved.tool_outputs,
+            });
+          }
+        }
       }
     }
+  }
+
+  _loadExistingAssistantToolData(conversationId) {
+    if (!conversationId) return [];
+
+    const assistantData = [];
+    let afterSeq = 0;
+
+    while (true) {
+      const page = getMessagesPage({ conversationId, afterSeq, limit: 200 });
+      const pageMessages = page?.messages || [];
+
+      for (const message of pageMessages) {
+        if (message.role === 'assistant') {
+          assistantData.push({
+            tool_calls: Array.isArray(message.tool_calls) ? message.tool_calls : [],
+            tool_outputs: Array.isArray(message.tool_outputs) ? message.tool_outputs : [],
+          });
+        }
+      }
+
+      if (!page?.next_after_seq) break;
+      afterSeq = page.next_after_seq;
+    }
+
+    return assistantData;
   }
 
   /**

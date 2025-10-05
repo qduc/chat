@@ -2,6 +2,30 @@ import { tools as toolRegistry } from './tools.js';
 import { getMessagesPage, getLastAssistantResponseId } from '../db/messages.js';
 import { getConversationMetadata } from './responseUtils.js';
 
+function debugLogMessages(label, messages, persistence) {
+  try {
+    const conversationId = persistence?.conversationId;
+    const condensed = Array.isArray(messages)
+      ? messages.map((msg) => ({
+          role: msg?.role,
+          hasToolCalls: Array.isArray(msg?.tool_calls) && msg.tool_calls.length > 0,
+          toolCallIds: Array.isArray(msg?.tool_calls) ? msg.tool_calls.map((tc) => tc?.id) : undefined,
+          toolCallCount: Array.isArray(msg?.tool_calls) ? msg.tool_calls.length : 0,
+          toolOutputs: Array.isArray(msg?.tool_outputs)
+            ? msg.tool_outputs.map((out) => ({ tool_call_id: out?.tool_call_id }))
+            : undefined,
+        }))
+      : null;
+    console.log(`[toolOrchestrationUtils] ${label}`, {
+      conversationId,
+      messageCount: Array.isArray(messages) ? messages.length : null,
+      messages: condensed,
+    });
+  } catch (error) {
+    console.warn('[toolOrchestrationUtils] Failed to log messages', error);
+  }
+}
+
 /**
  * Resolve system prompt content from active system prompt ID
  * @param {string} activePromptId - The active system prompt ID
@@ -76,20 +100,56 @@ export function buildConversationMessages({ body, bodyIn, persistence }) {
   const sanitizedMessages = Array.isArray(body?.messages) ? [...body.messages] : [];
   const nonSystemMessages = sanitizedMessages.filter((msg) => msg && msg.role !== 'system');
   const systemPrompt = extractSystemPrompt({ body, bodyIn, persistence });
+  const hasPersistence = !!(persistence && persistence.persist && persistence.conversationId);
 
-  if (nonSystemMessages.length > 0) {
-    return systemPrompt
+  if (nonSystemMessages.length > 0 && !hasPersistence) {
+    const result = systemPrompt
       ? [{ role: 'system', content: systemPrompt }, ...nonSystemMessages]
       : nonSystemMessages;
+    debugLogMessages('buildConversationMessages(request)', result, persistence);
+    return result;
   }
 
   let prior = [];
   if (persistence && persistence.persist && persistence.conversationId) {
     try {
       const page = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
-      prior = (page?.messages || [])
-        .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && (typeof m.content === 'string' || Array.isArray(m.content)))
-        .map((m) => ({ role: m.role, content: m.content }));
+      const messages = [];
+
+      for (const m of page?.messages || []) {
+        if (!m || !(m.role === 'user' || m.role === 'assistant')) continue;
+        if (!(typeof m.content === 'string' || Array.isArray(m.content))) continue;
+
+        // Build the message object
+        const msg = { role: m.role, content: m.content };
+
+        // Include tool_calls if present on assistant messages
+        if (m.role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
+          msg.tool_calls = m.tool_calls.map(tc => ({
+            id: tc.id,
+            type: tc.type || 'function',
+            function: {
+              name: tc.function.name,
+              arguments: tc.function.arguments || '{}' // Ensure valid JSON
+            }
+          }));
+        }
+
+        messages.push(msg);
+
+        // Add tool response messages after assistant messages with tool calls
+        if (m.role === 'assistant' && Array.isArray(m.tool_outputs) && m.tool_outputs.length > 0) {
+          for (const output of m.tool_outputs) {
+            messages.push({
+              role: 'tool',
+              tool_call_id: output.tool_call_id,
+              content: output.output
+            });
+          }
+        }
+      }
+
+      prior = messages;
     } catch {
       prior = Array.isArray(bodyIn?.messages)
         ? bodyIn.messages.filter((m) => m && m.role !== 'system')
@@ -99,11 +159,11 @@ export function buildConversationMessages({ body, bodyIn, persistence }) {
     prior = bodyIn.messages.filter((m) => m && m.role !== 'system');
   }
 
-  if (systemPrompt) {
-    return [{ role: 'system', content: systemPrompt }, ...prior];
-  }
-
-  return prior;
+  const result = systemPrompt
+    ? [{ role: 'system', content: systemPrompt }, ...prior]
+    : prior;
+  debugLogMessages('buildConversationMessages(persistence)', result, persistence);
+  return result;
 }
 
 /**
@@ -119,20 +179,56 @@ export async function buildConversationMessagesAsync({ body, bodyIn, persistence
   const sanitizedMessages = Array.isArray(body?.messages) ? [...body.messages] : [];
   const nonSystemMessages = sanitizedMessages.filter((msg) => msg && msg.role !== 'system');
   const systemPrompt = await extractSystemPromptAsync({ body, bodyIn, persistence, userId });
+  const hasPersistence = !!(persistence && persistence.persist && persistence.conversationId);
 
-  if (nonSystemMessages.length > 0) {
-    return systemPrompt
+  if (nonSystemMessages.length > 0 && !hasPersistence) {
+    const result = systemPrompt
       ? [{ role: 'system', content: systemPrompt }, ...nonSystemMessages]
       : nonSystemMessages;
+    debugLogMessages('buildConversationMessagesAsync(request)', result, persistence);
+    return result;
   }
 
   let prior = [];
   if (persistence && persistence.persist && persistence.conversationId) {
     try {
       const page = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
-      prior = (page?.messages || [])
-        .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && (typeof m.content === 'string' || Array.isArray(m.content)))
-        .map((m) => ({ role: m.role, content: m.content }));
+      const messages = [];
+
+      for (const m of page?.messages || []) {
+        if (!m || !(m.role === 'user' || m.role === 'assistant')) continue;
+        if (!(typeof m.content === 'string' || Array.isArray(m.content))) continue;
+
+        // Build the message object
+        const msg = { role: m.role, content: m.content };
+
+        // Include tool_calls if present on assistant messages
+        if (m.role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
+          msg.tool_calls = m.tool_calls.map(tc => ({
+            id: tc.id,
+            type: tc.type || 'function',
+            function: {
+              name: tc.function.name,
+              arguments: tc.function.arguments || '{}' // Ensure valid JSON
+            }
+          }));
+        }
+
+        messages.push(msg);
+
+        // Add tool response messages after assistant messages with tool calls
+        if (m.role === 'assistant' && Array.isArray(m.tool_outputs) && m.tool_outputs.length > 0) {
+          for (const output of m.tool_outputs) {
+            messages.push({
+              role: 'tool',
+              tool_call_id: output.tool_call_id,
+              content: output.output
+            });
+          }
+        }
+      }
+
+      prior = messages;
     } catch {
       prior = Array.isArray(bodyIn?.messages)
         ? bodyIn.messages.filter((m) => m && m.role !== 'system')
@@ -142,11 +238,11 @@ export async function buildConversationMessagesAsync({ body, bodyIn, persistence
     prior = bodyIn.messages.filter((m) => m && m.role !== 'system');
   }
 
-  if (systemPrompt) {
-    return [{ role: 'system', content: systemPrompt }, ...prior];
-  }
-
-  return prior;
+  const result = systemPrompt
+    ? [{ role: 'system', content: systemPrompt }, ...prior]
+    : prior;
+  debugLogMessages('buildConversationMessagesAsync(persistence)', result, persistence);
+  return result;
 }
 
 /**
@@ -163,13 +259,16 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
   const sanitizedMessages = Array.isArray(body?.messages) ? [...body.messages] : [];
   const nonSystemMessages = sanitizedMessages.filter((msg) => msg && msg.role !== 'system');
   const systemPrompt = await extractSystemPromptAsync({ body, bodyIn, persistence, userId });
+  const hasPersistence = !!(persistence && persistence.persist && persistence.conversationId);
 
   // If messages provided in request, use them (new conversation or explicit history)
-  if (nonSystemMessages.length > 0) {
+  if (nonSystemMessages.length > 0 && !hasPersistence) {
+    const messages = systemPrompt
+      ? [{ role: 'system', content: systemPrompt }, ...nonSystemMessages]
+      : nonSystemMessages;
+    debugLogMessages('buildConversationMessagesOptimized(request)', messages, persistence);
     return {
-      messages: systemPrompt
-        ? [{ role: 'system', content: systemPrompt }, ...nonSystemMessages]
-        : nonSystemMessages,
+      messages,
       previousResponseId: null
     };
   }
@@ -190,19 +289,55 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
           ? [{ role: 'system', content: systemPrompt }, ...userMessages]
           : userMessages;
 
+        debugLogMessages('buildConversationMessagesOptimized(previousResponseId)', messages, persistence);
         return { messages, previousResponseId };
       }
 
       // No response_id yet - fall back to full history for this conversation
       const page = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
-      const prior = (page?.messages || [])
-        .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
-        .map((m) => ({ role: m.role, content: m.content }));
+      const messages = [];
 
+      for (const m of page?.messages || []) {
+        if (!m || !(m.role === 'user' || m.role === 'assistant')) continue;
+        if (typeof m.content !== 'string') continue;
+
+        // Build the message object
+        const msg = { role: m.role, content: m.content };
+
+        // Include tool_calls if present on assistant messages
+        if (m.role === 'assistant' && Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
+          msg.tool_calls = m.tool_calls.map(tc => ({
+            id: tc.id,
+            type: tc.type || 'function',
+            function: {
+              name: tc.function.name,
+              arguments: tc.function.arguments || '{}' // Ensure valid JSON
+            }
+          }));
+        }
+
+        messages.push(msg);
+
+        // Add tool response messages after assistant messages with tool calls
+        if (m.role === 'assistant' && Array.isArray(m.tool_outputs) && m.tool_outputs.length > 0) {
+          for (const output of m.tool_outputs) {
+            messages.push({
+              role: 'tool',
+              tool_call_id: output.tool_call_id,
+              content: output.output
+            });
+          }
+        }
+      }
+
+      const prior = messages;
+
+      const messagesWithSystem = systemPrompt
+        ? [{ role: 'system', content: systemPrompt }, ...prior]
+        : prior;
+      debugLogMessages('buildConversationMessagesOptimized(persistence)', messagesWithSystem, persistence);
       return {
-        messages: systemPrompt
-          ? [{ role: 'system', content: systemPrompt }, ...prior]
-          : prior,
+        messages: messagesWithSystem,
         previousResponseId: null
       };
     } catch (error) {
@@ -216,10 +351,12 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
     ? bodyIn.messages.filter((m) => m && m.role !== 'system')
     : [];
 
+  const messages = systemPrompt
+    ? [{ role: 'system', content: systemPrompt }, ...prior]
+    : prior;
+  debugLogMessages('buildConversationMessagesOptimized(bodyIn)', messages, persistence);
   return {
-    messages: systemPrompt
-      ? [{ role: 'system', content: systemPrompt }, ...prior]
-      : prior,
+    messages,
     previousResponseId: null
   };
 }

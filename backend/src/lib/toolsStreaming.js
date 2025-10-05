@@ -149,26 +149,35 @@ export async function handleToolsStreaming({
       const toolCalls = Array.from(toolCallMap.values());
 
       if (toolCalls.length > 0) {
+        // Normalize tool calls: ensure arguments is valid JSON (convert empty string to '{}')
+        const normalizedToolCalls = toolCalls.map(tc => ({
+          ...tc,
+          function: {
+            ...tc.function,
+            arguments: tc.function.arguments || '{}'
+          }
+        }));
+
         // Emit a single consolidated tool_calls chunk (buffered deltas)
         const toolCallChunk = createChatCompletionChunk(
           bodyIn.id || 'chatcmpl-' + Date.now(),
           body.model || config.defaultModel,
-          { tool_calls: toolCalls }
+          { tool_calls: normalizedToolCalls }
         );
         writeAndFlush(res, `data: ${JSON.stringify(toolCallChunk)}
 
 `);
 
         // Add assistant message with tool calls for the next iteration
-        conversationHistory.push({ role: 'assistant', tool_calls: toolCalls });
+        conversationHistory.push({ role: 'assistant', tool_calls: normalizedToolCalls });
 
         // Buffer tool calls for persistence
         if (persistence && persistence.persist && typeof persistence.addToolCalls === 'function') {
-          persistence.addToolCalls(toolCalls);
+          persistence.addToolCalls(normalizedToolCalls);
         }
 
         // Execute each tool call and stream tool_output events
-        for (const toolCall of toolCalls) {
+        for (const toolCall of normalizedToolCalls) {
           try {
             const { name, output } = await executeToolCall(toolCall);
             streamDeltaEvent({

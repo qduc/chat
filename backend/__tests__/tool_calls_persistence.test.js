@@ -1,8 +1,9 @@
 import { describe, test, beforeEach, expect } from '@jest/globals';
 import { resetDbCache, getDb } from '../src/db/client.js';
 import { createConversation } from '../src/db/conversations.js';
-import { insertAssistantFinal, getMessagesPage } from '../src/db/messages.js';
+import { insertAssistantFinal, insertUserMessage, getMessagesPage } from '../src/db/messages.js';
 import { insertToolCalls, insertToolOutputs, getToolCallsByMessageId, getToolOutputsByMessageId } from '../src/db/toolCalls.js';
+import { buildConversationMessagesAsync } from '../src/lib/toolOrchestrationUtils.js';
 
 const TEST_SESSION_ID = 'test-session-tool-persist';
 const TEST_USER_ID = 'test-user-tool-persist';
@@ -165,5 +166,108 @@ describe('Tool Calls Persistence Integration', () => {
     expect(message.tool_outputs[0].tool_call_id).toBe('call_456');
     expect(message.tool_outputs[0].output).toBe('14:30:00 UTC');
     expect(message.tool_outputs[0].status).toBe('success');
+  });
+
+  test('buildConversationMessagesAsync reconstructs tool messages with role:tool', async () => {
+    const conversationId = 'conv-tool-reconstruct';
+    createConversation({
+      id: conversationId,
+      sessionId: TEST_SESSION_ID,
+      userId: TEST_USER_ID,
+    });
+
+    // Insert initial user message
+    insertUserMessage({
+      conversationId,
+      content: 'What is the time?',
+      seq: 1,
+    });
+
+    // Insert assistant message with tool call
+    const result = insertAssistantFinal({
+      conversationId,
+      content: 'Let me check the time.',
+      seq: 2,
+      finishReason: 'stop',
+    });
+
+    const messageId = result.id;
+
+    // Insert tool calls
+    insertToolCalls({
+      messageId,
+      conversationId,
+      toolCalls: [{
+        id: 'call_abc123',
+        type: 'function',
+        function: {
+          name: 'get_time',
+          arguments: '{"timezone":"UTC"}'
+        }
+      }]
+    });
+
+    // Insert tool outputs
+    insertToolOutputs({
+      messageId,
+      conversationId,
+      toolOutputs: [{
+        tool_call_id: 'call_abc123',
+        output: '{"iso":"2025-10-05T12:00:00.000Z"}',
+        status: 'success'
+      }]
+    });
+
+    // Insert a follow-up user message (simulating continuing the conversation)
+    insertUserMessage({
+      conversationId,
+      content: 'Thanks, what about tomorrow?',
+      seq: 3,
+    });
+
+    // Build conversation messages using buildConversationMessagesAsync
+    const persistence = {
+      persist: true,
+      conversationId,
+    };
+
+    const messages = await buildConversationMessagesAsync({
+      body: {},
+      bodyIn: {},
+      persistence,
+      userId: TEST_USER_ID,
+    });
+
+    // Expected structure:
+    // [
+    //   { role: 'user', content: 'What is the time?' },
+    //   { role: 'assistant', content: 'Let me check the time.', tool_calls: [...] },
+    //   { role: 'tool', tool_call_id: 'call_abc123', content: '...' },
+    //   { role: 'user', content: 'Thanks, what about tomorrow?' }
+    // ]
+
+    expect(messages).toHaveLength(4);
+
+    // Verify user message
+    expect(messages[0].role).toBe('user');
+    expect(messages[0].content).toBe('What is the time?');
+
+    // Verify assistant message with tool_calls
+    expect(messages[1].role).toBe('assistant');
+    expect(messages[1].content).toBe('Let me check the time.');
+    expect(messages[1].tool_calls).toBeDefined();
+    expect(messages[1].tool_calls).toHaveLength(1);
+    expect(messages[1].tool_calls[0].id).toBe('call_abc123');
+    expect(messages[1].tool_calls[0].function.name).toBe('get_time');
+    expect(messages[1].tool_calls[0].function.arguments).toBe('{"timezone":"UTC"}');
+
+    // Verify tool message (THIS IS THE FIX!)
+    expect(messages[2].role).toBe('tool');
+    expect(messages[2].tool_call_id).toBe('call_abc123');
+    expect(messages[2].content).toBe('{"iso":"2025-10-05T12:00:00.000Z"}');
+
+    // Verify follow-up user message
+    expect(messages[3].role).toBe('user');
+    expect(messages[3].content).toBe('Thanks, what about tomorrow?');
   });
 });
