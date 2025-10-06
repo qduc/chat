@@ -16,6 +16,7 @@ ChatForge is a full-stack AI chat application featuring a Next.js 15 frontend an
 - **🔌 Multi-Provider Support** - OpenAI-compatible interface supporting multiple AI providers with automatic API adapter selection
 - **🎨 Modern UI** - React 19 with quality controls, markdown rendering, syntax highlighting, and responsive design
 - **🗂️ Prompt Management** - Built-in and custom system prompts with conversation-aware selection
+- **🔒 Message Intent Schema** - Explicit intent envelopes for deterministic message operations with optimistic locking (see [docs/message-intent-schema.md](docs/message-intent-schema.md))
 - **🧪 Comprehensive Testing** - Jest test suites for both frontend and backend with integration utilities
 - **🐳 Docker Ready** - Development and production Docker configurations with hot reload support
 
@@ -226,6 +227,8 @@ npm run test:frontend:watch
 - [Overview](docs/OVERVIEW.md) - High-level architecture overview
 - [Tech Stack](docs/TECH-STACK.md) - Detailed technology decisions
 - [API Specs](docs/API-SPECS.md) - API endpoint documentation
+- [Message Intent Schema](docs/message-intent-schema.md) - Intent envelope specification
+- [Message Intent Implementation](docs/message-intent-implementation.md) - Implementation guide and usage examples
 - [Security & Privacy](docs/SECURITY.md) - Security considerations
 - [Progress Log](docs/PROGRESS.md) - Development history
 - [AI Onboarding](AGENTS.md) - Guide for AI assistants

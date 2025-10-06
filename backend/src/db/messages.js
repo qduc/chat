@@ -585,3 +585,34 @@ export function getAllMessagesForSync({ conversationId }) {
 
   return allMessages;
 }
+
+export function getMessageByIdAndSeq({ messageId, conversationId, expectedSeq }) {
+  const db = getDb();
+  const message = db
+    .prepare(
+      `SELECT id, seq, role, status, content, content_json, created_at
+     FROM messages 
+     WHERE id = @messageId 
+       AND conversation_id = @conversationId`
+    )
+    .get({ messageId, conversationId });
+
+  if (!message) return null;
+
+  // If expectedSeq is provided, validate it matches
+  if (expectedSeq !== undefined && message.seq !== expectedSeq) {
+    return null;
+  }
+
+  // Parse content_json and use it if available, otherwise fall back to content
+  if (message.content_json) {
+    const parsedContent = parseJsonField(message.content_json, message.id, 'content_json');
+    if (parsedContent !== null) {
+      message.content = parsedContent;
+    }
+  }
+  // Remove content_json from response (internal field)
+  delete message.content_json;
+
+  return message;
+}
