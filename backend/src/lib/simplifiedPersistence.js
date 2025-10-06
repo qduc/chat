@@ -34,6 +34,9 @@ export class SimplifiedPersistence {
     this.reasoningDetails = null; // Structured reasoning blocks captured from providers
     this.reasoningTextBuffer = ''; // Accumulate reasoning text during streaming when structured data absent
     this.reasoningTokens = null; // Reasoning token usage metadata
+    this.userMessageId = null; // Persisted user message ID from latest sync
+    this.assistantMessageId = null; // Persisted assistant message ID for the current turn
+    this._latestSyncMappings = [];
   }
 
   /**
@@ -49,6 +52,9 @@ export class SimplifiedPersistence {
   async initialize({ conversationId, sessionId, userId = null, req, bodyIn }) {
     // Store user context for later use
     this.userId = userId;
+  this.userMessageId = null;
+  this.assistantMessageId = null;
+  this._latestSyncMappings = [];
 
     // Check if persistence is enabled
     // Prioritize user-based persistence - require either userId OR sessionId
@@ -156,7 +162,12 @@ export class SimplifiedPersistence {
 
     if (messages.length > 0) {
       // Sync message history using diff-based approach with automatic fallback
-      this.conversationManager.syncMessageHistoryDiff(this.conversationId, userId, messages, seq);
+  const syncResult = this.conversationManager.syncMessageHistoryDiff(this.conversationId, userId, messages, seq);
+      this._latestSyncMappings = Array.isArray(syncResult?.idMappings) ? syncResult.idMappings : [];
+
+      // Track the most recent persisted user message ID for response metadata
+      const latestUserMapping = [...this._latestSyncMappings].reverse().find(mapping => mapping.role === 'user');
+  this.userMessageId = latestUserMapping?.persistedId != null ? String(latestUserMapping.persistedId) : null;
 
       // Generate title only if this is the first message in a new conversation
       if (isNewConversation) {
@@ -190,6 +201,7 @@ export class SimplifiedPersistence {
     this.reasoningDetails = null;
     this.reasoningTextBuffer = '';
     this.reasoningTokens = null;
+    this.assistantMessageId = null;
   }
 
   /**
@@ -466,6 +478,7 @@ export class SimplifiedPersistence {
       // Store message ID for tool call persistence
       if (result && result.id) {
         this.currentMessageId = result.id;
+        this.assistantMessageId = String(result.id);
         console.log('[SimplifiedPersistence] Assistant message recorded', {
           conversationId: this.conversationId,
           messageId: this.currentMessageId,

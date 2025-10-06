@@ -18,78 +18,42 @@ export function computeMessageDiff(existing, incoming) {
   const toDelete = [];
   const unchanged = [];
 
-  const minLength = Math.min(existing.length, incoming.length);
+  const existingById = new Map();
+  const matchedIds = new Set();
 
-  console.log('[MessageDiff] Starting diff computation:', {
-    existingCount: existing.length,
-    incomingCount: incoming.length,
-    minLength,
-    existing: existing.map(m => ({ role: m.role, seq: m.seq, content: typeof m.content === 'string' ? m.content.substring(0, 50) : 'complex' })),
-    incoming: incoming.map(m => ({ role: m.role, seq: m.seq, content: typeof m.content === 'string' ? m.content.substring(0, 50) : 'complex' }))
-  });
-
-  for (let i = 0; i < minLength; i++) {
-    const existingMsg = existing[i];
-    const incomingMsg = incoming[i];
-
-    const areEqual = messagesEqual(existingMsg, incomingMsg);
-    console.log(`[MessageDiff] Comparing index ${i}:`, {
-      existing: { role: existingMsg.role, seq: existingMsg.seq },
-      incoming: { role: incomingMsg.role, seq: incomingMsg.seq },
-      areEqual
-    });
-
-    if (areEqual) {
-      unchanged.push(existingMsg);
-      continue;
+  for (const message of existing) {
+    if (message?.id != null) {
+      existingById.set(String(message.id), message);
     }
+  }
 
-    if (existingMsg.role !== incomingMsg.role) {
-      console.log('[MessageDiff] Role mismatch detected:', {
-        existingRole: existingMsg.role,
-        incomingRole: incomingMsg.role,
-        action: 'delete + insert'
-      });
-      toDelete.push(existingMsg);
-      toInsert.push(incomingMsg);
-      continue;
+  for (const incomingMessage of incoming) {
+    const key = incomingMessage?.id != null ? String(incomingMessage.id) : null;
+
+    if (key && existingById.has(key)) {
+      const existingMessage = existingById.get(key);
+      matchedIds.add(key);
+
+      if (messagesEqual(existingMessage, incomingMessage)) {
+        unchanged.push(existingMessage);
+      } else {
+        toUpdate.push({
+          ...incomingMessage,
+          id: existingMessage.id,
+          seq: existingMessage.seq
+        });
+      }
+    } else {
+      toInsert.push(incomingMessage);
     }
-
-    console.log('[MessageDiff] Content mismatch, will update:', {
-      existingSeq: existingMsg.seq,
-      incomingSeq: incomingMsg.seq
-    });
-    toUpdate.push({
-      id: existingMsg.id,
-      seq: existingMsg.seq,
-      ...incomingMsg
-    });
   }
 
-  for (let i = minLength; i < incoming.length; i++) {
-    console.log('[MessageDiff] Extra incoming message to insert:', {
-      index: i,
-      role: incoming[i].role,
-      seq: incoming[i].seq
-    });
-    toInsert.push(incoming[i]);
+  for (const existingMessage of existing) {
+    const key = existingMessage?.id != null ? String(existingMessage.id) : null;
+    if (!key || !matchedIds.has(key)) {
+      toDelete.push(existingMessage);
+    }
   }
-
-  for (let i = minLength; i < existing.length; i++) {
-    console.log('[MessageDiff] Extra existing message to delete:', {
-      index: i,
-      role: existing[i].role,
-      seq: existing[i].seq
-    });
-    toDelete.push(existing[i]);
-  }
-
-  console.log('[MessageDiff] Diff result:', {
-    unchanged: unchanged.length,
-    toUpdate: toUpdate.length,
-    toInsert: toInsert.length,
-    toDelete: toDelete.length
-  });
 
   return {
     toInsert,

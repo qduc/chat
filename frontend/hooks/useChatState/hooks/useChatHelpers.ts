@@ -9,7 +9,7 @@
  */
 
 import { useCallback, useRef } from 'react';
-import type { ChatMessage, Role } from '../../../lib/chat';
+import type { ChatMessage } from '../../../lib/chat';
 import type { ChatState, ChatAction } from '../types';
 import { sendChat } from '../../../lib/chat';
 import { extractTextFromContent } from '../../../lib/chat/content-utils';
@@ -103,62 +103,17 @@ export function useChatHelpers({
         throw new Error('No message available to send.');
       }
 
-      // If the message doesn't have a seq, calculate it from existing messages
-      // This happens when sending a new message in an existing conversation
-      console.log('[DEBUG] Seq calculation check:', {
-        messageId: messageToSend.id,
-        currentSeq: messageToSend.seq,
-        seqIsUndefined: messageToSend.seq === undefined,
-        seqIsNull: messageToSend.seq === null,
-        willCalculate: messageToSend.seq === undefined || messageToSend.seq === null
-      });
-
-      if (messageToSend.seq === undefined || messageToSend.seq === null) {
-        // Find the max seq from all existing messages (excluding the new one)
-        const existingMessages = messages.filter(m => m.id !== messageToSend.id);
-        const maxSeq = existingMessages
-          .map(m => m.seq)
-          .filter((seq): seq is number => typeof seq === 'number' && seq > 0)
-          .reduce((max, current) => Math.max(max, current), 0);
-
-        // New message seq = maxSeq + 1 (or 1 if no existing messages)
-        const calculatedSeq = maxSeq > 0 ? maxSeq + 1 : 1;
-
-        console.log('[DEBUG] Calculated seq for new message:', {
-          maxSeq,
-          calculatedSeq,
-          existingMessagesCount: existingMessages.length
-        });
-
-        // Add seq to the message
-        messageToSend.seq = calculatedSeq;
-        console.log('[DEBUG] Seq after calculation:', messageToSend.seq);
-      } else {
-        console.log('[DEBUG] Skipping seq calculation, using existing seq:', messageToSend.seq);
-      }
-
       const outgoing = [messageToSend];
-
-      // DEBUG: Check seq before building config
-      console.log('[DEBUG] Message to send:', {
-        id: messageToSend.id,
-        role: messageToSend.role,
-        seq: messageToSend.seq,
-        hasSeq: messageToSend.seq !== undefined
-      });
 
       const config: any = {
         messages: outgoing.map(m => {
           const base: any = {
-            role: m.role as Role,
+            role: m.role,
             content: m.content,
           };
 
           if (m.seq !== undefined && m.seq !== null) {
             base.seq = m.seq;
-            console.log('[DEBUG] Adding seq to outgoing message:', m.seq);
-          } else {
-            console.log('[DEBUG] No seq on message - will be omitted from request');
           }
           if (Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
             base.tool_calls = m.tool_calls;
@@ -213,6 +168,11 @@ export function useChatHelpers({
 
   const runSend = useCallback(
     async (config: Parameters<typeof sendChat>[0]) => {
+      const sentUserMessage = Array.isArray(config?.messages)
+        ? config.messages.find(m => m?.role === 'user')
+        : undefined;
+      const tempUserId = sentUserMessage?.id;
+
       try {
         const result = await sendChat(config);
         // For non-streaming requests, ensure the assistant message is populated
@@ -249,32 +209,36 @@ export function useChatHelpers({
             (conversationManager as any)?.clearListCache?.();
           } catch {}
           void refreshConversations();
-
-          // Update message seq values based on conversation's next seq
-          // conversation.seq is the NEXT seq (for future messages), so:
-          // - assistant seq = nextSeq - 1 (last message inserted)
-          // - user seq = nextSeq - 2 (second-to-last message)
-          if (result?.conversation?.seq !== undefined && result?.conversation?.seq !== null) {
-            const nextSeq = result.conversation.seq;
-            const assistantSeq = nextSeq - 1;
-            const userSeq = nextSeq - 2;
-
-            console.log('[DEBUG] Updating message seq from conversation.seq:', {
-              conversationNextSeq: nextSeq,
-              calculatedAssistantSeq: assistantSeq,
-              calculatedUserSeq: userSeq
-            });
-
-            dispatch({
-              type: 'UPDATE_MESSAGE_SEQ',
-              payload: {
-                userSeq,
-                assistantSeq,
-                assistantId: assistantMsgRef.current?.id
-              }
-            });
-          }
         }
+
+        if (result?.conversation?.user_message_id && tempUserId) {
+          const persistedId = String(result.conversation.user_message_id);
+          dispatch({
+            type: 'SYNC_MESSAGE_ID',
+            payload: {
+              role: 'user',
+              tempId: tempUserId,
+              persistedId
+            }
+          });
+        }
+
+        const assistantTempId = assistantMsgRef.current?.id;
+        if (result?.conversation?.assistant_message_id && assistantTempId) {
+          const persistedAssistantId = String(result.conversation.assistant_message_id);
+          dispatch({
+            type: 'SYNC_MESSAGE_ID',
+            payload: {
+              role: 'assistant',
+              tempId: assistantTempId,
+              persistedId: persistedAssistantId
+            }
+          });
+          assistantMsgRef.current = assistantMsgRef.current
+            ? { ...assistantMsgRef.current, id: persistedAssistantId }
+            : assistantMsgRef.current;
+        }
+
         // Sync the assistant message from the latest snapshot and the final content
         if (assistantMsgRef.current) {
           const merged = { ...assistantMsgRef.current };

@@ -29,7 +29,7 @@ import {
   deleteToolCallsAndOutputsByMessageId,
 } from '../../db/toolCalls.js';
 import { v4 as uuidv4 } from 'uuid';
-import { computeMessageDiff, diffAssistantArtifacts } from '../utils/messageDiff.js';
+import { computeMessageDiff, diffAssistantArtifacts, messagesEqual } from '../utils/messageDiff.js';
 import { getDb } from '../../db/client.js';
 
 /**
@@ -95,36 +95,94 @@ export class ConversationManager {
    * @param {number} afterSeq - Only sync messages after this sequence number (0 = all messages)
    */
   syncMessageHistoryDiff(conversationId, userId, messages, afterSeq = 0) {
-    // 1. Load existing messages after the specified sequence number
+    const normalized = Array.isArray(messages)
+      ? messages.map(message => this._normalizeIncomingMessage(message))
+      : [];
+
     const allExisting = getAllMessagesForSync({ conversationId });
-    const existing = afterSeq > 0
-      ? allExisting.filter(msg => msg.seq > afterSeq)
-      : allExisting;
-
-    // 2. Compute diff (may signal fallback)
-    const diff = computeMessageDiff(existing, messages);
-
-    // 3. Fall back to clear-and-rewrite if alignment failed or safety checks require it
-    if (diff.fallback) {
-      console.warn(`[MessageSync] Fallback to clear-and-rewrite for conversation ${conversationId}: ${diff.reason}`);
-      this._fallbackClearAndRewrite(conversationId, userId, messages, afterSeq);
-      return;
+    const existingById = new Map();
+    for (const message of allExisting) {
+      if (message?.id != null) {
+        existingById.set(String(message.id), message);
+      }
     }
 
-    // 4. Log alignment metrics for monitoring
+    const matchedExisting = [];
+    const incomingTail = [];
+    const explicitUpdates = [];
+    const unmatchedExistingQueue = [...allExisting];
+
+    const removeFromQueueById = key => {
+      const index = unmatchedExistingQueue.findIndex(msg => String(msg.id) === key);
+      if (index >= 0) {
+        unmatchedExistingQueue.splice(index, 1);
+      }
+    };
+
+    for (const incomingMessage of normalized) {
+      let key = incomingMessage?.id != null ? String(incomingMessage.id) : null;
+      let existingMessage = key ? existingById.get(key) : null;
+
+      if (existingMessage) {
+        removeFromQueueById(String(existingMessage.id));
+      } else if (incomingMessage?.__generatedId) {
+        const candidate = unmatchedExistingQueue[0];
+        if (candidate && candidate.role === incomingMessage.role) {
+          existingMessage = candidate;
+          key = String(candidate.id);
+          unmatchedExistingQueue.shift();
+        }
+      }
+
+      if (existingMessage) {
+        matchedExisting.push(existingMessage);
+
+        if (!messagesEqual(existingMessage, incomingMessage)) {
+          explicitUpdates.push({
+            ...incomingMessage,
+            id: existingMessage.id,
+            seq: existingMessage.seq
+          });
+        }
+      } else {
+        incomingTail.push(incomingMessage);
+      }
+    }
+
+    let anchorSeq = afterSeq || 0;
+    if (matchedExisting.length > 0) {
+      const highestMatchedSeq = matchedExisting.reduce((max, msg) => Math.max(max, msg.seq || 0), anchorSeq);
+      anchorSeq = Math.max(anchorSeq, highestMatchedSeq);
+    } else if (incomingTail.length > 0 && allExisting.length > 0) {
+      anchorSeq = Math.max(anchorSeq, allExisting[allExisting.length - 1].seq || 0);
+    }
+
+    const existingTail = anchorSeq > 0
+      ? allExisting.filter(msg => msg.seq > anchorSeq)
+      : allExisting;
+
+    const diff = computeMessageDiff(existingTail, incomingTail);
+    if (explicitUpdates.length > 0) {
+      diff.toUpdate.push(...explicitUpdates);
+    }
+
+    if (diff.fallback) {
+      console.warn(`[MessageSync] Fallback to clear-and-rewrite for conversation ${conversationId}: ${diff.reason}`);
+      return this._fallbackClearAndRewrite(conversationId, userId, normalized, anchorSeq);
+    }
+
     const stats = {
-      existing: existing.length,
-      incoming: messages.length,
+      existing: existingTail.length,
+      incoming: incomingTail.length,
       inserted: diff.toInsert.length,
       updated: diff.toUpdate.length,
       deleted: diff.toDelete.length,
       unchanged: diff.unchanged.length,
-      anchorOffset: diff.anchorOffset
+      anchorSeq
     };
     console.log(`[MessageSync] Diff-based sync for conversation ${conversationId}:`, stats);
 
-    // 5. Apply changes transactionally with existing seq anchors
-    this._applyMessageDiff(conversationId, userId, diff);
+    return this._applyMessageDiff(conversationId, userId, diff, anchorSeq);
   }
 
   /**
@@ -134,13 +192,17 @@ export class ConversationManager {
    * @param {Object} diff - Diff result from computeMessageDiff
    * @private
    */
-  _applyMessageDiff(conversationId, userId, diff) {
+  _applyMessageDiff(conversationId, userId, diff, anchorSeq = 0) {
     const db = getDb();
-    const transaction = db.transaction(() => {
-      // Messages before diff.anchorOffset are already identical and skipped
+    const idMappings = [];
+    const insertedMessages = [];
+    const updatedMessages = [];
+    const deletedMessages = [];
 
-      // UPDATE modified messages
+    const transaction = db.transaction(() => {
       for (const msg of diff.toUpdate) {
+        updatedMessages.push({ role: msg.role, id: msg.id, seq: msg.seq });
+
         if (msg.role === 'tool') {
           updateMessageContent({
             messageId: msg.id,
@@ -151,7 +213,6 @@ export class ConversationManager {
           });
           this._replaceToolOutputs({ messageId: msg.id, conversationId, message: msg });
         } else {
-          // Update message content
           updateMessageContent({
             messageId: msg.id,
             conversationId,
@@ -161,14 +222,12 @@ export class ConversationManager {
             reasoningTokens: msg.reasoning_tokens,
           });
 
-          // Handle tool metadata updates for assistant messages
           if (msg.role === 'assistant') {
             this._syncAssistantArtifacts(msg.id, conversationId, msg);
           }
         }
       }
 
-      // DELETE from tail only (perform before insertions to avoid removing new rows)
       if (diff.toDelete.length > 0) {
         const firstDeleteSeq = diff.toDelete[0].seq;
         deleteMessagesAfterSeq({
@@ -176,20 +235,28 @@ export class ConversationManager {
           userId,
           afterSeq: Math.max(0, firstDeleteSeq - 1)
         });
+
+        for (const msg of diff.toDelete) {
+          deletedMessages.push({ role: msg.role, id: msg.id, seq: msg.seq });
+        }
       }
 
-      // INSERT new messages
       let nextSeq = getNextSeq(conversationId);
       for (const msg of diff.toInsert) {
         const hasUserContent = typeof msg.content === 'string' || Array.isArray(msg.content);
         const hasAssistantContent = msg.content !== undefined && msg.content !== null;
+        const tempId = msg._clientTempId ?? msg.id ?? null;
 
         if (msg.role === 'user' && hasUserContent) {
-          insertUserMessage({
+          const result = insertUserMessage({
             conversationId,
             content: msg.content,
             seq: nextSeq++,
           });
+          if (result?.id) {
+            insertedMessages.push({ role: 'user', id: result.id, seq: result.seq });
+            idMappings.push({ role: 'user', tempId, persistedId: result.id, seq: result.seq });
+          }
         } else if (msg.role === 'assistant' && hasAssistantContent) {
           const result = insertAssistantFinal({
             conversationId,
@@ -200,9 +267,10 @@ export class ConversationManager {
             reasoningTokens: msg.reasoning_tokens,
           });
 
-          // Insert tool metadata if present
           if (result?.id) {
             this._insertAssistantArtifacts(result.id, conversationId, msg);
+            insertedMessages.push({ role: 'assistant', id: result.id, seq: result.seq });
+            idMappings.push({ role: 'assistant', tempId, persistedId: result.id, seq: result.seq });
           }
         } else if (msg.role === 'tool') {
           const toolContent = this._stringifyToolOutput(msg.content);
@@ -216,12 +284,16 @@ export class ConversationManager {
 
           if (result?.id) {
             this._persistToolOutputs(result.id, conversationId, msg, toolContent, toolStatus);
+            insertedMessages.push({ role: 'tool', id: result.id, seq: result.seq });
+            idMappings.push({ role: 'tool', tempId, persistedId: result.id, seq: result.seq });
           }
         }
       }
     });
 
     transaction();
+
+    return { idMappings, insertedMessages, updatedMessages, deletedMessages, anchorSeq };
   }
 
   /**
@@ -430,22 +502,37 @@ export class ConversationManager {
    */
   _fallbackClearAndRewrite(conversationId, userId, messages, afterSeq = 0) {
     const db = getDb();
+    const idMappings = [];
+    const insertedMessages = [];
+    const deletedMessages = [];
+
+    const existingToDelete = afterSeq > 0
+      ? getAllMessagesForSync({ conversationId }).filter(msg => msg.seq > afterSeq)
+      : getAllMessagesForSync({ conversationId });
+
+    for (const msg of existingToDelete) {
+      deletedMessages.push({ role: msg.role, id: msg.id, seq: msg.seq });
+    }
+
     const transaction = db.transaction(() => {
-      // Delete messages after the specified sequence (cascades to tool_calls and tool_outputs)
       deleteMessagesAfterSeq({ conversationId, userId, afterSeq });
 
-      // Insert all messages fresh starting from afterSeq + 1
       let seq = afterSeq + 1;
       for (const message of messages) {
         const hasUserContent = typeof message.content === 'string' || Array.isArray(message.content);
         const hasAssistantContent = message.content !== undefined && message.content !== null;
+        const tempId = message._clientTempId ?? message.id ?? null;
 
         if (message.role === 'user' && hasUserContent) {
-          insertUserMessage({
+          const result = insertUserMessage({
             conversationId,
             content: message.content,
             seq: seq++,
           });
+          if (result?.id) {
+            insertedMessages.push({ role: 'user', id: result.id, seq: result.seq });
+            idMappings.push({ role: 'user', tempId, persistedId: result.id, seq: result.seq });
+          }
         } else if (message.role === 'assistant' && hasAssistantContent) {
           const result = insertAssistantFinal({
             conversationId,
@@ -456,9 +543,10 @@ export class ConversationManager {
             reasoningTokens: message.reasoning_tokens,
           });
 
-          // Insert tool metadata if present in the incoming message
           if (result?.id) {
             this._insertAssistantArtifacts(result.id, conversationId, message);
+            insertedMessages.push({ role: 'assistant', id: result.id, seq: result.seq });
+            idMappings.push({ role: 'assistant', tempId, persistedId: result.id, seq: result.seq });
           }
         } else if (message.role === 'tool') {
           const toolContent = this._stringifyToolOutput(message.content);
@@ -472,12 +560,32 @@ export class ConversationManager {
 
           if (result?.id) {
             this._persistToolOutputs(result.id, conversationId, message, toolContent, toolStatus);
+            insertedMessages.push({ role: 'tool', id: result.id, seq: result.seq });
+            idMappings.push({ role: 'tool', tempId, persistedId: result.id, seq: result.seq });
           }
         }
       }
     });
 
     transaction();
+    return { idMappings, insertedMessages, deletedMessages, updatedMessages: [], anchorSeq: afterSeq };
+  }
+
+  _normalizeIncomingMessage(message) {
+    if (!message || typeof message !== 'object') {
+      return message;
+    }
+
+    const normalized = { ...message };
+    const providedId = normalized.id ?? null;
+    normalized._clientTempId = providedId ?? null;
+    normalized.__generatedId = !providedId;
+
+    if (!providedId) {
+      normalized.id = uuidv4();
+    }
+
+    return normalized;
   }
 
   /**

@@ -3,6 +3,7 @@
  */
 
 import type { ChatMessage, ConversationMeta, ToolSpec } from '../../lib/chat';
+import type { Role } from '../../lib/chat/types';
 import type { ImageAttachment, MessageContent } from '../../lib/chat/types';
 import type { Group as TabGroup, Option as ModelOption } from '../../components/ui/TabbedSelect';
 import type { QualityLevel } from '../../components/ui/QualitySlider';
@@ -122,7 +123,7 @@ export type ChatAction =
 
   // Message mutation helpers
   | { type: 'APPEND_MESSAGE'; payload: ChatMessage }
-  | { type: 'UPDATE_MESSAGE_SEQ'; payload: { userSeq: number; assistantSeq: number; assistantId?: string } }
+  | { type: 'SYNC_MESSAGE_ID'; payload: { role: Role; tempId: string; persistedId: string } }
 
   // Message Actions
   | { type: 'CLEAR_MESSAGES' }

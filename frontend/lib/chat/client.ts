@@ -196,6 +196,12 @@ export class ChatClient {
       ...(json._conversation.seq !== undefined
         ? { seq: json._conversation.seq }
         : {}),
+      ...(json._conversation.user_message_id !== undefined
+        ? { user_message_id: json._conversation.user_message_id }
+        : {}),
+      ...(json._conversation.assistant_message_id !== undefined
+        ? { assistant_message_id: json._conversation.assistant_message_id }
+        : {}),
     } : undefined;
 
     // Extract content
@@ -378,6 +384,12 @@ export class ChatClient {
             : {}),
           ...(data._conversation.seq !== undefined
             ? { seq: data._conversation.seq }
+            : {}),
+          ...(data._conversation.user_message_id !== undefined
+            ? { user_message_id: data._conversation.user_message_id }
+            : {}),
+          ...(data._conversation.assistant_message_id !== undefined
+            ? { assistant_message_id: data._conversation.assistant_message_id }
             : {}),
         }
       };

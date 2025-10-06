@@ -45,11 +45,16 @@ describe('Diff-Based Conversation Sync', () => {
   describe('syncMessageHistoryDiff', () => {
     it('should handle fresh conversation (insert only)', () => {
       const messages = [
-        { role: 'user', content: 'Hello' },
-        { role: 'assistant', content: 'Hi there!' }
+        { id: 'user-temp', role: 'user', content: 'Hello' },
+        { id: 'assistant-temp', role: 'assistant', content: 'Hi there!' }
       ];
 
-      manager.syncMessageHistoryDiff(conversationId, userId, messages);
+      const result = manager.syncMessageHistoryDiff(conversationId, userId, messages);
+
+      const userMapping = result.idMappings.find(mapping => mapping.role === 'user');
+      expect(userMapping).toBeDefined();
+      expect(userMapping.tempId).toBe('user-temp');
+      expect(typeof userMapping.persistedId === 'number' || typeof userMapping.persistedId === 'string').toBe(true);
 
       const synced = getAllMessagesForSync({ conversationId });
       expect(synced).toHaveLength(2);

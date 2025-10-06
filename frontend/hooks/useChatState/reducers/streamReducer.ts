@@ -13,15 +13,6 @@ import {
 export function streamReducer(state: ChatState, action: ChatAction): ChatState | null {
   switch (action.type) {
     case 'START_STREAMING':
-      // DEBUG: Check if existing messages have seq before spreading
-      console.log('[DEBUG] START_STREAMING - existing messages:', state.messages.map(m => ({
-        id: m.id,
-        role: m.role,
-        seq: m.seq,
-        hasSeq: m.seq !== undefined
-      })));
-      console.log('[DEBUG] START_STREAMING - new user message seq:', action.payload.userMessage.seq);
-
       return {
         ...state,
         status: 'streaming',
@@ -172,23 +163,27 @@ export function streamReducer(state: ChatState, action: ChatAction): ChatState |
         messages: [...state.messages, action.payload],
       };
 
-    case 'UPDATE_MESSAGE_SEQ': {
-      // Update seq for the last user message and the assistant message
-      const { userSeq, assistantSeq, assistantId } = action.payload;
-      const updatedMessages = state.messages.map((msg, index) => {
-        // Update the second-to-last message (user message) with userSeq
-        if (index === state.messages.length - 2 && msg.role === 'user') {
-          return { ...msg, seq: userSeq };
-        }
-        // Update the last message (assistant) or by assistantId
-        if ((index === state.messages.length - 1 || msg.id === assistantId) && msg.role === 'assistant') {
-          return { ...msg, seq: assistantSeq };
+    case 'SYNC_MESSAGE_ID': {
+      const { role, tempId, persistedId } = action.payload;
+      let changed = false;
+      const updatedMessages = state.messages.map(msg => {
+        if (msg.id === tempId && msg.role === role) {
+          changed = true;
+          return { ...msg, id: persistedId };
         }
         return msg;
       });
+
+      if (!changed) {
+        return state;
+      }
+
+      const nextEditingId = state.editingMessageId === tempId ? persistedId : state.editingMessageId;
+
       return {
         ...state,
-        messages: updatedMessages
+        messages: updatedMessages,
+        editingMessageId: nextEditingId
       };
     }
 
@@ -201,13 +196,6 @@ export function streamReducer(state: ChatState, action: ChatAction): ChatState |
       };
 
     case 'SET_MESSAGES':
-      // DEBUG: Verify seq is preserved in reducer
-      console.log('[DEBUG] SET_MESSAGES reducer - incoming payload:', action.payload.map(m => ({
-        id: m.id,
-        role: m.role,
-        seq: m.seq,
-        hasSeq: m.seq !== undefined
-      })));
       return { ...state, messages: action.payload };
 
     case 'SYNC_ASSISTANT':

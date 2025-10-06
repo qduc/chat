@@ -141,6 +141,8 @@ export interface ConversationMeta {
   verbosity?: string | null;
   system_prompt?: string | null;
   seq?: number | null;
+  user_message_id?: string | number | null;
+  assistant_message_id?: string | number | null;
 }
 
 export interface ConversationsList {
@@ -218,6 +220,7 @@ export interface ToolsResponse {
 // Core chat options - simplified and focused
 export interface ChatOptions {
   messages: Array<{
+    id?: string;
     role: Role;
     content: MessageContent;
     seq?: number; // Message sequence number for existing messages
