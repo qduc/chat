@@ -9,6 +9,7 @@ import { httpClient } from '../http/client';
 import { HttpError } from '../http/types';
 import { Cache } from './cache';
 import { resolveApiBase } from '../config/apiBase';
+import { createEditMessageIntent } from './intent';
 
 const defaultApiBase = resolveApiBase();
 
@@ -141,13 +142,22 @@ export class ConversationManager {
   async editMessage(
     conversationId: string,
     messageId: string,
-    content: MessageContent
+    content: MessageContent,
+    expectedSeq: number
   ): Promise<EditMessageResult> {
     await waitForAuthReady();
     try {
+      // Create intent envelope for edit_message
+      const intentEnvelope = createEditMessageIntent({
+        conversationId,
+        messageId,
+        expectedSeq,
+        content
+      });
+
       const response = await httpClient.put<EditMessageResult>(
         `${this.apiBase}/v1/conversations/${conversationId}/messages/${messageId}/edit`,
-        { content }
+        intentEnvelope
       );
       // Clear conversation cache on edit (creates new conversation)
       this.conversationCache.clear();
@@ -233,8 +243,9 @@ export async function editMessageApi(
   apiBase = defaultApiBase,
   conversationId: string,
   messageId: string,
-  content: MessageContent
+  content: MessageContent,
+  expectedSeq: number
 ): Promise<EditMessageResult> {
   const manager = new ConversationManager(apiBase);
-  return manager.editMessage(conversationId, messageId, content);
+  return manager.editMessage(conversationId, messageId, content, expectedSeq);
 }

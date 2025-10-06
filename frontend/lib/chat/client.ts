@@ -10,6 +10,7 @@ import { waitForAuthReady } from '../auth/ready';
 import { httpClient } from '../http/client';
 import { HttpError } from '../http/types';
 import { resolveApiBase } from '../config/apiBase';
+import { createAppendMessageIntent } from './intent';
 
 const defaultApiBase = resolveApiBase();
 
@@ -112,13 +113,12 @@ export class ChatClient {
       });
     }
 
-    const bodyObj: any = {
+    // Build completion parameters for the intent envelope
+    const completionParams: any = {
       model,
-      ...(outgoingMessages.length > 0 ? { messages: outgoingMessages } : {}),
       stream,
       provider_id: providerId,
       ...(responseId && { previous_response_id: responseId }),
-      ...(extendedOptions.conversationId && { conversation_id: extendedOptions.conversationId }),
       ...(extendedOptions.streamingEnabled !== undefined && { streamingEnabled: extendedOptions.streamingEnabled }),
       ...(extendedOptions.toolsEnabled !== undefined && { toolsEnabled: extendedOptions.toolsEnabled }),
       ...(extendedOptions.qualityLevel !== undefined && { qualityLevel: extendedOptions.qualityLevel }),
@@ -131,32 +131,59 @@ export class ChatClient {
     // Handle reasoning parameters - send for persistence even if model doesn't support them
     if (extendedOptions.reasoning) {
       if (extendedOptions.reasoning.effort) {
-        bodyObj.reasoning_effort = extendedOptions.reasoning.effort;
+        completionParams.reasoning_effort = extendedOptions.reasoning.effort;
       }
       if (extendedOptions.reasoning.verbosity) {
-        bodyObj.verbosity = extendedOptions.reasoning.verbosity;
+        completionParams.verbosity = extendedOptions.reasoning.verbosity;
       }
       if (extendedOptions.reasoning.summary) {
-        bodyObj.reasoning_summary = extendedOptions.reasoning.summary;
+        completionParams.reasoning_summary = extendedOptions.reasoning.summary;
       }
     }
     // Also support legacy SendChatOptions fields for backward compatibility
     if ((options as any).reasoningEffort) {
-      bodyObj.reasoning_effort = (options as any).reasoningEffort;
+      completionParams.reasoning_effort = (options as any).reasoningEffort;
     }
     if ((options as any).verbosity) {
-      bodyObj.verbosity = (options as any).verbosity;
+      completionParams.verbosity = (options as any).verbosity;
     }
 
     // Handle tools
     if (extendedOptions.tools && Array.isArray(extendedOptions.tools) && extendedOptions.tools.length > 0) {
-      bodyObj.tools = extendedOptions.tools;
+      completionParams.tools = extendedOptions.tools;
       if (extendedOptions.toolChoice !== undefined) {
-        bodyObj.tool_choice = extendedOptions.toolChoice;
+        completionParams.tool_choice = extendedOptions.toolChoice;
       }
     }
 
-    return bodyObj;
+    // Extract intent parameters from messages with seq
+    let afterMessageId: string | undefined;
+    let afterSeq: number | undefined;
+    
+    // Find the last message in state that has a seq (this is the message we're appending after)
+    for (let i = normalizedMessages.length - 1; i >= 0; i--) {
+      const msg = normalizedMessages[i];
+      if (msg.seq !== undefined && msg.id) {
+        afterMessageId = String(msg.id);
+        afterSeq = msg.seq;
+        break;
+      }
+    }
+
+    // Create intent envelope for append_message
+    const intentEnvelope = createAppendMessageIntent({
+      conversationId: extendedOptions.conversationId,
+      afterMessageId,
+      afterSeq,
+      truncateAfter: false, // For normal appends, we don't truncate
+      messages: outgoingMessages.map(m => ({
+        role: 'user' as const,
+        content: m.content
+      })),
+      completion: completionParams
+    });
+
+    return intentEnvelope;
   }
 
   /**
