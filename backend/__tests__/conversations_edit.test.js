@@ -6,6 +6,7 @@ import { sessionResolver } from '../src/middleware/session.js';
 import { generateAccessToken } from '../src/middleware/auth.js';
 import { config } from '../src/env.js';
 import { safeTestSetup } from '../test_support/databaseSafety.js';
+import { createEditIntent } from '../test_utils/intentTestHelpers.js';
 import {
   getDb,
   upsertSession,
@@ -94,20 +95,29 @@ describe('PUT /v1/conversations/:id/messages/:messageId/edit', () => {
 
     const app = makeApp();
     await withServer(app, async (port) => {
-      // Edit first user message content (fix typo)
+      // Edit first user message content (fix typo) using intent envelope
+      const intentEnvelope = createEditIntent({
+        messageId: u1.id,
+        expectedSeq: 1,
+        content: 'Hello world',
+        conversationId: convId
+      });
+
       const res = await fetch(
         `http://127.0.0.1:${port}/v1/conversations/${convId}/messages/${u1.id}/edit`,
         {
           method: 'PUT',
           headers: makeAuthHeaders(true),
-          body: JSON.stringify({ content: 'Hello world' }),
+          body: JSON.stringify(intentEnvelope),
         }
       );
       assert.equal(res.status, 200);
       const body = await res.json();
-      assert.equal(body.message.content, 'Hello world');
-      assert.ok(body.new_conversation_id);
-      const newConvId = body.new_conversation_id;
+      // Phase 4: Intent responses have different structure
+      assert.equal(body.success, true);
+      assert.ok(body.client_operation);
+      assert.ok(body.fork_conversation_id);
+      const newConvId = body.fork_conversation_id;
 
       // Original conversation should have pruned messages after the edited one
       const resOrig = await fetch(
@@ -153,26 +163,30 @@ describe('PUT /v1/conversations/:id/messages/:messageId/edit', () => {
         { type: 'image_url', image_url: { url: 'http://localhost:3001/v1/images/test-img-123', detail: 'auto' } }
       ];
 
+      const intentEnvelope = createEditIntent({
+        messageId: u1.id,
+        expectedSeq: 1,
+        content: updatedContent,
+        conversationId: convId
+      });
+
       const res = await fetch(
         `http://127.0.0.1:${port}/v1/conversations/${convId}/messages/${u1.id}/edit`,
         {
           method: 'PUT',
           headers: makeAuthHeaders(true),
-          body: JSON.stringify({ content: updatedContent }),
+          body: JSON.stringify(intentEnvelope),
         }
       );
 
       assert.equal(res.status, 200);
       const body = await res.json();
-      assert.ok(Array.isArray(body.message.content), 'Content should be an array');
-      assert.equal(body.message.content.length, 2);
-      assert.equal(body.message.content[0].type, 'text');
-      assert.equal(body.message.content[0].text, 'Check out this image:');
-      assert.equal(body.message.content[1].type, 'image_url');
-      assert.equal(body.message.content[1].image_url.url, 'http://localhost:3001/v1/images/test-img-123');
-      assert.ok(body.new_conversation_id);
+      // Phase 4: Intent responses have different structure
+      assert.equal(body.success, true);
+      assert.ok(body.client_operation);
+      assert.ok(body.fork_conversation_id);
 
-      const newConvId = body.new_conversation_id;
+      const newConvId = body.fork_conversation_id;
 
       // Verify new conversation has the updated content with preserved image
       const resNew = await fetch(
@@ -199,17 +213,25 @@ describe('PUT /v1/conversations/:id/messages/:messageId/edit', () => {
 
     const app = makeApp();
     await withServer(app, async (port) => {
+      const intentEnvelope = createEditIntent({
+        messageId: u1.id,
+        expectedSeq: 1,
+        content: '',
+        conversationId: convId
+      });
+
       const res = await fetch(
         `http://127.0.0.1:${port}/v1/conversations/${convId}/messages/${u1.id}/edit`,
         {
           method: 'PUT',
           headers: makeAuthHeaders(true),
-          body: JSON.stringify({ content: '' }),
+          body: JSON.stringify(intentEnvelope),
         }
       );
       assert.equal(res.status, 400);
       const body = await res.json();
-      assert.equal(body.error, 'bad_request');
+      // Phase 4: Now returns validation_error since intent middleware validates first
+      assert.equal(body.error, 'validation_error');
     });
   });
 
@@ -220,17 +242,25 @@ describe('PUT /v1/conversations/:id/messages/:messageId/edit', () => {
 
     const app = makeApp();
     await withServer(app, async (port) => {
+      const intentEnvelope = createEditIntent({
+        messageId: u1.id,
+        expectedSeq: 1,
+        content: 123, // Invalid: number instead of string/array
+        conversationId: convId
+      });
+
       const res = await fetch(
         `http://127.0.0.1:${port}/v1/conversations/${convId}/messages/${u1.id}/edit`,
         {
           method: 'PUT',
           headers: makeAuthHeaders(true),
-          body: JSON.stringify({ content: 123 }), // Invalid: number instead of string/array
+          body: JSON.stringify(intentEnvelope),
         }
       );
       assert.equal(res.status, 400);
       const body = await res.json();
-      assert.equal(body.error, 'bad_request');
+      // Phase 4: Now returns validation_error since intent middleware validates first
+      assert.equal(body.error, 'validation_error');
     });
   });
 });

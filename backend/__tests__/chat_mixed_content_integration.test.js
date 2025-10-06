@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createChatProxyTestContext } from '../test_utils/chatProxyTestUtils.js';
 import { getDb, upsertSession, createConversation, getMessagesPage } from '../src/db/index.js';
+import { createAppendIntent } from '../test_utils/intentTestHelpers.js';
 
 const mockUser = { id: 'test-user-mixed', email: 'mixed@example.com' };
 const { upstream, makeApp } = createChatProxyTestContext();
@@ -35,19 +36,21 @@ describe('Mixed Content Integration Tests', () => {
       { type: 'text', text: 'What do you see?' }
     ];
 
-    // Send chat request with mixed content
+    // Send chat request with mixed content using intent envelope
+    const intentEnvelope = createAppendIntent({
+      messages: [{ role: 'user', content: mixedContent }],
+      conversationId,
+      stream: false
+    });
+
     const chatRes = await request(app)
       .post('/v1/chat/completions')
       .set('x-session-id', sessionId)
-      .send({
-        messages: [{ role: 'user', content: mixedContent }],
-        conversation_id: conversationId,
-        stream: false
-      });
+      .send(intentEnvelope);
 
     assert.equal(chatRes.status, 200);
-    assert.ok(chatRes.body.choices);
-    assert.ok(chatRes.body.choices[0].message);
+    assert.equal(chatRes.body.success, true);
+    assert.ok(chatRes.body.client_operation);
 
     // Verify message was persisted with mixed content
     const messagesPage = getMessagesPage({ conversationId });
@@ -85,15 +88,17 @@ describe('Mixed Content Integration Tests', () => {
       { type: 'text', text: 'Differences?' }
     ];
 
-    // Send chat request
+    // Send chat request using intent envelope
+    const intentEnvelope = createAppendIntent({
+      messages: [{ role: 'user', content: multiImageContent }],
+      conversationId,
+      stream: false
+    });
+
     await request(app)
       .post('/v1/chat/completions')
       .set('x-session-id', sessionId)
-      .send({
-        messages: [{ role: 'user', content: multiImageContent }],
-        conversation_id: conversationId,
-        stream: false
-      });
+      .send(intentEnvelope);
 
     // Verify persistence via database directly (since GET API endpoint requires auth setup)
     const messagesPage = getMessagesPage({ conversationId });
@@ -111,15 +116,17 @@ describe('Mixed Content Integration Tests', () => {
     const conversationId = 'conv-text-only';
     createConversation({ id: conversationId, sessionId, userId: mockUser.id });
 
-    // Send plain text message
+    // Send plain text message using intent envelope
+    const intentEnvelope = createAppendIntent({
+      messages: [{ role: 'user', content: 'Hello, world!' }],
+      conversationId,
+      stream: false
+    });
+
     const chatRes = await request(app)
       .post('/v1/chat/completions')
       .set('x-session-id', sessionId)
-      .send({
-        messages: [{ role: 'user', content: 'Hello, world!' }],
-        conversation_id: conversationId,
-        stream: false
-      });
+      .send(intentEnvelope);
 
     assert.equal(chatRes.status, 200);
 
@@ -141,15 +148,17 @@ describe('Mixed Content Integration Tests', () => {
       { type: 'image_url', image_url: { url: 'http://localhost:3001/v1/images/stream-img' } }
     ];
 
-    // Send streaming request with mixed content
+    // Send streaming request with mixed content using intent envelope
+    const intentEnvelope = createAppendIntent({
+      messages: [{ role: 'user', content: mixedContent }],
+      conversationId,
+      stream: true
+    });
+
     const chatRes = await request(app)
       .post('/v1/chat/completions')
       .set('x-session-id', sessionId)
-      .send({
-        messages: [{ role: 'user', content: mixedContent }],
-        conversation_id: conversationId,
-        stream: true
-      });
+      .send(intentEnvelope);
 
     assert.equal(chatRes.status, 200);
     assert.ok(chatRes.text.includes('data:'));
@@ -174,15 +183,17 @@ describe('Mixed Content Integration Tests', () => {
       { type: 'image_url', image_url: { url: 'http://localhost:3001/v1/images/upstream-test' } }
     ];
 
-    // Send request
+    // Send request using intent envelope
+    const intentEnvelope = createAppendIntent({
+      messages: [{ role: 'user', content: mixedContent }],
+      conversationId,
+      stream: false
+    });
+
     await request(app)
       .post('/v1/chat/completions')
       .set('x-session-id', sessionId)
-      .send({
-        messages: [{ role: 'user', content: mixedContent }],
-        conversation_id: conversationId,
-        stream: false
-      });
+      .send(intentEnvelope);
 
     // Verify upstream received mixed content format
     const lastRequest = upstream.lastChatRequestBody;
