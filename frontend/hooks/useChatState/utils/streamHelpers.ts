@@ -90,6 +90,7 @@ export function applyStreamToken(
   fullContent?: string
 ): any[] {
   let updated = false;
+  let contentChanged = false;
   const next = messages.map(m => {
     if (m.id === messageId) {
       updated = true;
@@ -98,7 +99,11 @@ export function applyStreamToken(
         ? fullContent
         : (m.content ?? '') + token;
       // Only create new object if content actually changed
-      return newContent !== m.content ? { ...m, content: newContent } : m;
+      if (newContent !== m.content) {
+        contentChanged = true;
+        return { ...m, content: newContent };
+      }
+      return m;
     }
     return m;
   });
@@ -112,13 +117,15 @@ export function applyStreamToken(
           : (next[i].content ?? '') + token;
         if (newContent !== next[i].content) {
           next[i] = { ...next[i], content: newContent };
+          contentChanged = true;
         }
         break;
       }
     }
   }
 
-  return next;
+  // Return original array if nothing changed
+  return contentChanged ? next : messages;
 }
 
 /**
@@ -130,12 +137,17 @@ export function applyStreamToolCall(
   toolCall: any
 ): any[] {
   let updated = false;
+  let toolCallsChanged = false;
   const next = messages.map(m => {
     if (m.id === messageId) {
       updated = true;
       const tool_calls = upsertToolCall(m.tool_calls, toolCall);
       // Only create new object if tool_calls changed
-      return tool_calls !== m.tool_calls ? { ...m, tool_calls } : m;
+      if (tool_calls !== m.tool_calls) {
+        toolCallsChanged = true;
+        return { ...m, tool_calls };
+      }
+      return m;
     }
     return m;
   });
@@ -148,13 +160,15 @@ export function applyStreamToolCall(
         const tool_calls = upsertToolCall(m.tool_calls, toolCall);
         if (tool_calls !== m.tool_calls) {
           next[i] = { ...m, tool_calls };
+          toolCallsChanged = true;
         }
         break;
       }
     }
   }
 
-  return next;
+  // Return original array if nothing changed
+  return toolCallsChanged ? next : messages;
 }
 
 /**
@@ -166,13 +180,18 @@ export function applyStreamUsage(
   usage: any
 ): any[] {
   let updated = false;
+  let usageChanged = false;
   const next = messages.map(m => {
     if (m.id === messageId) {
       updated = true;
       const newUsage = { ...m.usage, ...usage };
       // Only create a new object if usage actually changed
-      const usageChanged = JSON.stringify(m.usage) !== JSON.stringify(newUsage);
-      return usageChanged ? { ...m, usage: newUsage } : m;
+      const changed = JSON.stringify(m.usage) !== JSON.stringify(newUsage);
+      if (changed) {
+        usageChanged = true;
+        return { ...m, usage: newUsage };
+      }
+      return m;
     }
     return m;
   });
@@ -182,14 +201,16 @@ export function applyStreamUsage(
     for (let i = next.length - 1; i >= 0; i--) {
       if (next[i].role === 'assistant') {
         const newUsage = { ...next[i].usage, ...usage };
-        const usageChanged = JSON.stringify(next[i].usage) !== JSON.stringify(newUsage);
-        if (usageChanged) {
+        const changed = JSON.stringify(next[i].usage) !== JSON.stringify(newUsage);
+        if (changed) {
           next[i] = { ...next[i], usage: newUsage };
+          usageChanged = true;
         }
         break;
       }
     }
   }
 
-  return next;
+  // Return original array if nothing changed
+  return usageChanged ? next : messages;
 }

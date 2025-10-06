@@ -43,26 +43,38 @@ export function streamReducer(state: ChatState, action: ChatAction): ChatState |
         error: null,
       };
 
-    case 'STREAM_TOKEN':
+    case 'STREAM_TOKEN': {
+      const updatedMessages = applyStreamToken(
+        state.messages,
+        action.payload.messageId,
+        action.payload.token,
+        action.payload.fullContent
+      );
+      // Only create new state if messages actually changed
+      if (updatedMessages === state.messages) {
+        return state;
+      }
       return {
         ...state,
-        messages: applyStreamToken(
-          state.messages,
-          action.payload.messageId,
-          action.payload.token,
-          action.payload.fullContent
-        )
+        messages: updatedMessages
       };
+    }
 
-    case 'STREAM_TOOL_CALL':
+    case 'STREAM_TOOL_CALL': {
+      const updatedMessages = applyStreamToolCall(
+        state.messages,
+        action.payload.messageId,
+        action.payload.toolCall
+      );
+      // Only create new state if messages actually changed
+      if (updatedMessages === state.messages) {
+        return state;
+      }
       return {
         ...state,
-        messages: applyStreamToolCall(
-          state.messages,
-          action.payload.messageId,
-          action.payload.toolCall
-        )
+        messages: updatedMessages
       };
+    }
 
     case 'STREAM_TOOL_OUTPUT': {
       const { toolMessage } = action.payload;
@@ -115,15 +127,21 @@ export function streamReducer(state: ChatState, action: ChatAction): ChatState |
       };
     }
 
-    case 'STREAM_USAGE':
+    case 'STREAM_USAGE': {
+      const updatedMessages = applyStreamUsage(
+        state.messages,
+        action.payload.messageId,
+        action.payload.usage
+      );
+      // Only create new state if messages actually changed
+      if (updatedMessages === state.messages) {
+        return state;
+      }
       return {
         ...state,
-        messages: applyStreamUsage(
-          state.messages,
-          action.payload.messageId,
-          action.payload.usage
-        )
+        messages: updatedMessages
       };
+    }
 
     case 'STREAM_COMPLETE':
       return {

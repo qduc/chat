@@ -35,7 +35,7 @@ export function ChatHeader({ model, onModelChange, onProviderChange, onOpenSetti
   const effectiveGroups = groups ?? (fallbackOptions ? [{ id: 'default', label: 'Models', options: fallbackOptions }] : [{ id: 'default', label: 'Models', options: defaultOpenAIModels }]);
   const effectiveFallback = fallbackOptions ?? defaultOpenAIModels;
 
-  const lastProviderIdRef = React.useRef<string | undefined>();
+  const lastProviderIdRef = React.useRef<string | undefined>(undefined);
 
   // Notify parent when provider changes based on selected model
   React.useEffect(() => {

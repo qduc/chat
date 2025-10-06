@@ -32,6 +32,8 @@ export interface ChatActionsProps {
   toolCallMessageIdRef: React.MutableRefObject<string | null>;
   /** Ref tracking tool-call assistant content length */
   toolCallContentLengthRef: React.MutableRefObject<number>;
+  /** Ref tracking last usage to deduplicate events */
+  lastUsageRef: React.MutableRefObject<string | null>;
   /** Function to build chat configuration */
   buildSendChatConfig: (messages: ChatMessage[], signal: AbortSignal) => any;
   /** Function to execute the chat request */
@@ -69,6 +71,7 @@ export function createChatActions({
   throttleTimerRef,
   toolCallMessageIdRef,
   toolCallContentLengthRef,
+  lastUsageRef,
   buildSendChatConfig,
   runSend,
 }: ChatActionsProps) {
@@ -111,6 +114,7 @@ export function createChatActions({
       assistantMsgRef.current = assistantMsg;
       toolCallMessageIdRef.current = null;
       toolCallContentLengthRef.current = 0;
+      lastUsageRef.current = null;
 
       dispatch({
         type: 'START_STREAMING',
@@ -138,6 +142,7 @@ export function createChatActions({
       assistantMsgRef.current = assistantMsg;
       toolCallMessageIdRef.current = null;
       toolCallContentLengthRef.current = 0;
+      lastUsageRef.current = null;
 
       dispatch({
         type: 'REGENERATE_START',

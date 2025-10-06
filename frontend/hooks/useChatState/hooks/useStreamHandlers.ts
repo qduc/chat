@@ -45,6 +45,7 @@ export function useStreamHandlers({ dispatch }: UseStreamHandlersProps) {
   const throttleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const toolCallMessageIdRef = useRef<string | null>(null);
   const toolCallContentLengthRef = useRef<number>(0);
+  const lastUsageRef = useRef<string | null>(null);
 
   const handleStreamToken = useCallback((token: string) => {
     if (!token) return;
@@ -142,7 +143,12 @@ export function useStreamHandlers({ dispatch }: UseStreamHandlersProps) {
       dispatch({ type: 'STREAM_TOOL_OUTPUT', payload: { toolMessage } });
     } else if (event.type === 'usage') {
       // Store usage metadata in the assistant message
-      dispatch({ type: 'STREAM_USAGE', payload: { messageId: currentAssistantId, usage: event.value } });
+      // Deduplicate usage events by comparing serialized values
+      const usageKey = JSON.stringify(event.value);
+      if (usageKey !== lastUsageRef.current) {
+        lastUsageRef.current = usageKey;
+        dispatch({ type: 'STREAM_USAGE', payload: { messageId: currentAssistantId, usage: event.value } });
+      }
     }
   }, [dispatch]);
 
@@ -151,6 +157,7 @@ export function useStreamHandlers({ dispatch }: UseStreamHandlersProps) {
     throttleTimerRef,
     toolCallMessageIdRef,
     toolCallContentLengthRef,
+    lastUsageRef,
     handleStreamToken,
     handleStreamEvent,
   };

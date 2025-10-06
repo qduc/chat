@@ -1,4 +1,4 @@
-export type Role = 'user' | 'assistant' | 'system';
+export type Role = 'user' | 'assistant' | 'system' | 'tool';
 
 // Image-related types for Vision API support
 export interface ImageContent {

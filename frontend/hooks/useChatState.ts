@@ -114,6 +114,7 @@ export function useChatState() {
     throttleTimerRef,
     toolCallMessageIdRef,
     toolCallContentLengthRef,
+    lastUsageRef,
     handleStreamToken,
     handleStreamEvent,
   } = useStreamHandlers({ dispatch });
@@ -123,8 +124,6 @@ export function useChatState() {
     refs,
     assistantMsgRef,
     throttleTimerRef,
-    toolCallMessageIdRef,
-    toolCallContentLengthRef,
     conversationManager,
     handleStreamEvent,
     handleStreamToken,
@@ -163,6 +162,7 @@ export function useChatState() {
       assistantMsgRef.current = null;
       toolCallMessageIdRef.current = null;
       toolCallContentLengthRef.current = 0;
+      lastUsageRef.current = null;
       try { state.abort?.abort(); } catch {}
       inFlightRef.current = false;
       dispatch({ type: 'STOP_STREAMING' });
@@ -176,6 +176,7 @@ export function useChatState() {
       throttleTimerRef,
       toolCallMessageIdRef,
       toolCallContentLengthRef,
+      lastUsageRef,
       buildSendChatConfig,
       runSend,
     });
