@@ -105,6 +105,14 @@ export function useChatHelpers({
 
       // If the message doesn't have a seq, calculate it from existing messages
       // This happens when sending a new message in an existing conversation
+      console.log('[DEBUG] Seq calculation check:', {
+        messageId: messageToSend.id,
+        currentSeq: messageToSend.seq,
+        seqIsUndefined: messageToSend.seq === undefined,
+        seqIsNull: messageToSend.seq === null,
+        willCalculate: messageToSend.seq === undefined || messageToSend.seq === null
+      });
+
       if (messageToSend.seq === undefined || messageToSend.seq === null) {
         // Find the max seq from all existing messages (excluding the new one)
         const existingMessages = messages.filter(m => m.id !== messageToSend.id);
@@ -124,6 +132,9 @@ export function useChatHelpers({
 
         // Add seq to the message
         messageToSend.seq = calculatedSeq;
+        console.log('[DEBUG] Seq after calculation:', messageToSend.seq);
+      } else {
+        console.log('[DEBUG] Skipping seq calculation, using existing seq:', messageToSend.seq);
       }
 
       const outgoing = [messageToSend];
@@ -239,11 +250,21 @@ export function useChatHelpers({
           } catch {}
           void refreshConversations();
 
-          // Update the user message with its seq (assistantSeq - 1)
-          // The user message is the second-to-last message in state.messages
+          // Update message seq values based on conversation's next seq
+          // conversation.seq is the NEXT seq (for future messages), so:
+          // - assistant seq = nextSeq - 1 (last message inserted)
+          // - user seq = nextSeq - 2 (second-to-last message)
           if (result?.conversation?.seq !== undefined && result?.conversation?.seq !== null) {
-            const assistantSeq = result.conversation.seq;
-            const userSeq = assistantSeq - 1;
+            const nextSeq = result.conversation.seq;
+            const assistantSeq = nextSeq - 1;
+            const userSeq = nextSeq - 2;
+
+            console.log('[DEBUG] Updating message seq from conversation.seq:', {
+              conversationNextSeq: nextSeq,
+              calculatedAssistantSeq: assistantSeq,
+              calculatedUserSeq: userSeq
+            });
+
             dispatch({
               type: 'UPDATE_MESSAGE_SEQ',
               payload: {

@@ -20,22 +20,45 @@ export function computeMessageDiff(existing, incoming) {
 
   const minLength = Math.min(existing.length, incoming.length);
 
+  console.log('[MessageDiff] Starting diff computation:', {
+    existingCount: existing.length,
+    incomingCount: incoming.length,
+    minLength,
+    existing: existing.map(m => ({ role: m.role, seq: m.seq, content: typeof m.content === 'string' ? m.content.substring(0, 50) : 'complex' })),
+    incoming: incoming.map(m => ({ role: m.role, seq: m.seq, content: typeof m.content === 'string' ? m.content.substring(0, 50) : 'complex' }))
+  });
+
   for (let i = 0; i < minLength; i++) {
     const existingMsg = existing[i];
     const incomingMsg = incoming[i];
 
-    if (messagesEqual(existingMsg, incomingMsg)) {
+    const areEqual = messagesEqual(existingMsg, incomingMsg);
+    console.log(`[MessageDiff] Comparing index ${i}:`, {
+      existing: { role: existingMsg.role, seq: existingMsg.seq },
+      incoming: { role: incomingMsg.role, seq: incomingMsg.seq },
+      areEqual
+    });
+
+    if (areEqual) {
       unchanged.push(existingMsg);
       continue;
     }
 
     if (existingMsg.role !== incomingMsg.role) {
-      console.log('Role mismatch detected, existing role:', existingMsg.role, 'incoming role:', incomingMsg.role)
+      console.log('[MessageDiff] Role mismatch detected:', {
+        existingRole: existingMsg.role,
+        incomingRole: incomingMsg.role,
+        action: 'delete + insert'
+      });
       toDelete.push(existingMsg);
       toInsert.push(incomingMsg);
       continue;
     }
 
+    console.log('[MessageDiff] Content mismatch, will update:', {
+      existingSeq: existingMsg.seq,
+      incomingSeq: incomingMsg.seq
+    });
     toUpdate.push({
       id: existingMsg.id,
       seq: existingMsg.seq,
@@ -44,13 +67,29 @@ export function computeMessageDiff(existing, incoming) {
   }
 
   for (let i = minLength; i < incoming.length; i++) {
+    console.log('[MessageDiff] Extra incoming message to insert:', {
+      index: i,
+      role: incoming[i].role,
+      seq: incoming[i].seq
+    });
     toInsert.push(incoming[i]);
   }
 
   for (let i = minLength; i < existing.length; i++) {
-    console.log('Deleting message at index', i, existing[i])
+    console.log('[MessageDiff] Extra existing message to delete:', {
+      index: i,
+      role: existing[i].role,
+      seq: existing[i].seq
+    });
     toDelete.push(existing[i]);
   }
+
+  console.log('[MessageDiff] Diff result:', {
+    unchanged: unchanged.length,
+    toUpdate: toUpdate.length,
+    toInsert: toInsert.length,
+    toDelete: toDelete.length
+  });
 
   return {
     toInsert,
