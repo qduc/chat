@@ -188,12 +188,12 @@ export function createEditMessageIntent(params: {
  * Check if a response is an intent success response
  */
 export function isIntentSuccessResponse(data: any): data is IntentSuccessResponse {
-  return data && data.success === true && 'client_operation' in data && 'operations' in data;
+  return !!data && data.success === true && 'client_operation' in data && 'operations' in data;
 }
 
 /**
  * Check if a response is an intent error response
  */
 export function isIntentErrorResponse(data: any): data is IntentErrorResponse {
-  return data && data.success === false && 'error_code' in data;
+  return !!data && data.success === false && 'error_code' in data;
 }
