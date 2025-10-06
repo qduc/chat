@@ -3,6 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 
 const LOG_PREFIX = 'upstream-requests-';
+const RESPONSE_LOG_PREFIX = 'upstream-responses-';
 const RETENTION_DAYS = Number(process.env.UPSTREAM_LOG_RETENTION_DAYS || 7);
 
 function resolveLogDir() {
@@ -48,6 +49,8 @@ function cleanupOldLogs(logDir) {
 const LOG_DIR = resolveLogDir();
 
 export function logUpstreamRequest({ url, headers, body }) {
+  if (process.env.NODE_ENV === 'test') return;
+
   const logEntry = `[${new Date().toISOString()}] UPSTREAM REQUEST\n${JSON.stringify({
     url,
     method: 'POST',
@@ -66,6 +69,28 @@ export function logUpstreamRequest({ url, headers, body }) {
   }
 }
 
+export function logUpstreamResponse({ url, status, headers, body }) {
+  if (process.env.NODE_ENV === 'test') return;
+
+  const logEntry = `[${new Date().toISOString()}] UPSTREAM RESPONSE\n${JSON.stringify({
+    url,
+    status,
+    headers: { ...headers, 'set-cookie': headers?.['set-cookie'] ? '[REDACTED]' : undefined },
+    body,
+  }, null, 2)}\n\n`;
+
+  try {
+    cleanupOldLogs(LOG_DIR);
+    const dateStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
+    const filename = `${RESPONSE_LOG_PREFIX}${dateStr}.log`;
+    const filePath = path.join(LOG_DIR, filename);
+    appendFileSync(filePath, logEntry);
+  } catch (err) {
+    console.error('Failed to write to upstream response log file:', err?.message || err);
+  }
+}
+
 export default {
   logUpstreamRequest,
+  logUpstreamResponse,
 };

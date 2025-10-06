@@ -1,5 +1,5 @@
 import { Readable } from 'node:stream';
-import { logUpstreamRequest } from '../logging/upstreamLogger.js';
+import { logUpstreamRequest, logUpstreamResponse } from '../logging/upstreamLogger.js';
 import { BaseProvider } from './baseProvider.js';
 import { ChatCompletionsAdapter } from '../adapters/chatCompletionsAdapter.js';
 import { ResponsesAPIAdapter } from '../adapters/responsesApiAdapter.js';
@@ -137,6 +137,29 @@ export class OpenAIProvider extends BaseProvider {
       headers,
       body: JSON.stringify(translatedRequest),
     });
+
+    // Log the upstream response for debugging
+    try {
+      let responseBody = null;
+      if (!translatedRequest?.stream && response.clone) {
+        // For non-streaming responses, capture the body
+        const responseClone = response.clone();
+        if (typeof responseClone.text === 'function') {
+          responseBody = await responseClone.text();
+        }
+      }
+      logUpstreamResponse({
+        url,
+        status: response.status,
+        headers: response.headers && typeof response.headers.entries === 'function'
+          ? Object.fromEntries(response.headers.entries())
+          : {},
+        body: responseBody
+      });
+    } catch (err) {
+      // logger should be best-effort; don't let logging break responses
+      console.error('Failed to log upstream response:', err?.message || err);
+    }
 
     if (translatedRequest?.stream) {
       return wrapStreamingResponse(response);
