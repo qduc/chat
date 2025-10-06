@@ -3,13 +3,26 @@ import { proxyOpenAIRequest } from '../lib/openaiProxy.js';
 import { generateOpenAIToolSpecs, getAvailableTools } from '../lib/tools.js';
 import { logger } from '../logger.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { 
+  detectIntentEnvelope, 
+  validateAppendIntent, 
+  transformIntentToLegacy,
+  wrapIntentResponse
+} from '../lib/intentMiddleware.js';
 
 export const chatRouter = Router();
 
 // Require authentication for all chat routes
 chatRouter.use(authenticateToken);
 
-chatRouter.post('/v1/chat/completions', proxyOpenAIRequest);
+// POST /v1/chat/completions with optional intent envelope support
+chatRouter.post('/v1/chat/completions', 
+  detectIntentEnvelope,
+  validateAppendIntent,
+  transformIntentToLegacy,
+  wrapIntentResponse,
+  proxyOpenAIRequest
+);
 
 // Tool specifications endpoint
 chatRouter.get('/v1/tools', (req, res) => {

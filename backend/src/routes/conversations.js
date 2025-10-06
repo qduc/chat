@@ -22,6 +22,12 @@ import {
   countMigratableConversations
 } from '../db/migration.js';
 import { v4 as uuidv4 } from 'uuid';
+import { 
+  detectIntentEnvelope, 
+  validateEditIntent, 
+  transformIntentToLegacy,
+  wrapIntentResponse
+} from '../lib/intentMiddleware.js';
 
 export const conversationsRouter = Router();
 
@@ -206,7 +212,12 @@ conversationsRouter.delete('/v1/conversations/:id', (req, res) => {
 });
 
 // PUT /v1/conversations/:id/messages/:messageId/edit (edit message and fork conversation)
-conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, res) => {
+conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit',
+  detectIntentEnvelope,
+  validateEditIntent,
+  transformIntentToLegacy,
+  wrapIntentResponse,
+  (req, res) => {
   if (!config.persistence.enabled) return notImplemented(res);
   try {
     const sessionId = req.sessionId;
@@ -262,10 +273,44 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
       return res.status(404).json({ error: 'not_found' });
     }
 
+    // Track the updated message for intent response
+    if (req.operationsTracker) {
+      req.operationsTracker.addUpdated(message.id, message.seq, message.role);
+    }
+
     // Get conversation details for forking
     const conversation = getConversationById({ id: req.params.id, userId });
     if (!conversation) {
       return res.status(404).json({ error: 'not_found' });
+    }
+
+    // Get all messages after the edited message (for tracking deletions)
+    if (req.operationsTracker) {
+      const messagesToDelete = [];
+      let afterSeq = message.seq;
+      while (true) {
+        const page = getMessagesPage({
+          conversationId: req.params.id,
+          afterSeq,
+          limit: 100
+        });
+        
+        if (!page.messages || page.messages.length === 0) {
+          break;
+        }
+        
+        messagesToDelete.push(...page.messages);
+        
+        if (!page.next_after_seq) {
+          break;
+        }
+        afterSeq = page.next_after_seq;
+      }
+      
+      // Track deleted messages
+      for (const msg of messagesToDelete) {
+        req.operationsTracker.addDeleted(msg.id, msg.seq, msg.role);
+      }
     }
 
     // Fork conversation from the edited message
