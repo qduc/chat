@@ -69,6 +69,15 @@ export function createConversationActions({
 
       try {
         const data = await conversationManager.get(id, { limit: 200 });
+
+        // DEBUG: Check if backend returned seq values
+        console.log('[DEBUG] Backend messages:', data.messages.map(m => ({
+          id: m.id,
+          role: m.role,
+          seq: m.seq,
+          hasSeq: m.seq !== undefined
+        })));
+
         const msgs = data.messages.map(m => ({
           id: String(m.id),
           role: m.role as Role,
@@ -77,6 +86,15 @@ export function createConversationActions({
           ...(m.tool_calls && { tool_calls: m.tool_calls }),
           ...(m.tool_outputs && { tool_outputs: m.tool_outputs })
         }));
+
+        // DEBUG: Check if seq was copied to local messages
+        console.log('[DEBUG] Local messages after load:', msgs.map(m => ({
+          id: m.id,
+          role: m.role,
+          seq: m.seq,
+          hasSeq: m.seq !== undefined
+        })));
+
         dispatch({ type: 'SET_MESSAGES', payload: msgs });
 
         // Apply conversation-level settings from API response

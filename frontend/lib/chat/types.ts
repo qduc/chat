@@ -220,6 +220,7 @@ export interface ChatOptions {
   messages: Array<{
     role: Role;
     content: MessageContent;
+    seq?: number; // Message sequence number for existing messages
     tool_calls?: any[];
     tool_outputs?: Array<{
       tool_call_id?: string;

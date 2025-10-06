@@ -13,6 +13,15 @@ import {
 export function streamReducer(state: ChatState, action: ChatAction): ChatState | null {
   switch (action.type) {
     case 'START_STREAMING':
+      // DEBUG: Check if existing messages have seq before spreading
+      console.log('[DEBUG] START_STREAMING - existing messages:', state.messages.map(m => ({
+        id: m.id,
+        role: m.role,
+        seq: m.seq,
+        hasSeq: m.seq !== undefined
+      })));
+      console.log('[DEBUG] START_STREAMING - new user message seq:', action.payload.userMessage.seq);
+
       return {
         ...state,
         status: 'streaming',
@@ -174,6 +183,13 @@ export function streamReducer(state: ChatState, action: ChatAction): ChatState |
       };
 
     case 'SET_MESSAGES':
+      // DEBUG: Verify seq is preserved in reducer
+      console.log('[DEBUG] SET_MESSAGES reducer - incoming payload:', action.payload.map(m => ({
+        id: m.id,
+        role: m.role,
+        seq: m.seq,
+        hasSeq: m.seq !== undefined
+      })));
       return { ...state, messages: action.payload };
 
     case 'SYNC_ASSISTANT':

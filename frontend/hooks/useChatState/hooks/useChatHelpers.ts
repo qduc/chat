@@ -103,14 +103,38 @@ export function useChatHelpers({
         throw new Error('No message available to send.');
       }
 
+      // If the message doesn't have a seq, calculate it from existing messages
+      // This happens when sending a new message in an existing conversation
+      if (messageToSend.seq === undefined || messageToSend.seq === null) {
+        // Find the max seq from all existing messages (excluding the new one)
+        const existingMessages = messages.filter(m => m.id !== messageToSend.id);
+        const maxSeq = existingMessages
+          .map(m => m.seq)
+          .filter((seq): seq is number => typeof seq === 'number' && seq > 0)
+          .reduce((max, current) => Math.max(max, current), 0);
+
+        // New message seq = maxSeq + 1 (or 1 if no existing messages)
+        const calculatedSeq = maxSeq > 0 ? maxSeq + 1 : 1;
+
+        console.log('[DEBUG] Calculated seq for new message:', {
+          maxSeq,
+          calculatedSeq,
+          existingMessagesCount: existingMessages.length
+        });
+
+        // Add seq to the message
+        messageToSend.seq = calculatedSeq;
+      }
+
       const outgoing = [messageToSend];
 
-      // Calculate the last sequence number from all messages in the conversation
-      const lastSeq = messages
-        .filter((msg) => msg.seq !== undefined && msg.seq !== null)
-        .map((msg) => Number(msg.seq)) // Ensure it's a number
-        .reduce((max, seq) => Math.max(max, seq), 0);
-      console.log('[useChatHelpers] Calculated lastSeq:', lastSeq, 'from', messages.length, 'total messages');
+      // DEBUG: Check seq before building config
+      console.log('[DEBUG] Message to send:', {
+        id: messageToSend.id,
+        role: messageToSend.role,
+        seq: messageToSend.seq,
+        hasSeq: messageToSend.seq !== undefined
+      });
 
       const config: any = {
         messages: outgoing.map(m => {
@@ -119,6 +143,12 @@ export function useChatHelpers({
             content: m.content,
           };
 
+          if (m.seq !== undefined && m.seq !== null) {
+            base.seq = m.seq;
+            console.log('[DEBUG] Adding seq to outgoing message:', m.seq);
+          } else {
+            console.log('[DEBUG] No seq on message - will be omitted from request');
+          }
           if (Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
             base.tool_calls = m.tool_calls;
           }
@@ -134,8 +164,6 @@ export function useChatHelpers({
 
           return base;
         }),
-        // Include the calculated sequence number for backend persistence
-        ...(lastSeq > 0 && { seq: lastSeq }),
         // Prefer the synchronous ref which is updated immediately when the user
         // selects a model. This avoids a race where a model change dispatch
         // hasn't flushed to React state yet but an immediate regenerate/send

@@ -99,17 +99,19 @@ export class ChatClient {
 
     const messageToSend = latestUserMessage ?? normalizedMessages[normalizedMessages.length - 1];
 
-    const outgoingMessages = messageToSend ? [messageToSend] : [];
+    // Simply spread all properties from messageToSend - this includes seq if it exists
+    const outgoingMessages = messageToSend ? [{ ...messageToSend }] : [];
 
-    // Use seq from options if provided, otherwise try to calculate from messages
-    // This tells the backend which messages already exist
-    const lastSeq = (options as any).seq ??
-      normalizedMessages
-        .filter((msg) => (msg as any).seq !== undefined && (msg as any).seq !== null)
-        .map((msg) => (msg as any).seq as number)
-        .reduce((max, seq) => Math.max(max, seq), 0);
+    // DEBUG: Check what's being sent to backend
+    if (outgoingMessages.length > 0) {
+      console.log('[DEBUG] Final outgoing message to backend:', {
+        role: outgoingMessages[0].role,
+        seq: outgoingMessages[0].seq,
+        hasSeq: outgoingMessages[0].seq !== undefined,
+        allKeys: Object.keys(outgoingMessages[0])
+      });
+    }
 
-    console.log(`Last seq=${lastSeq}`)
     const bodyObj: any = {
       model,
       ...(outgoingMessages.length > 0 ? { messages: outgoingMessages } : {}),
@@ -117,7 +119,6 @@ export class ChatClient {
       provider_id: providerId,
       ...(responseId && { previous_response_id: responseId }),
       ...(extendedOptions.conversationId && { conversation_id: extendedOptions.conversationId }),
-      ...(lastSeq > 0 && { seq: lastSeq }),
       ...(extendedOptions.streamingEnabled !== undefined && { streamingEnabled: extendedOptions.streamingEnabled }),
       ...(extendedOptions.toolsEnabled !== undefined && { toolsEnabled: extendedOptions.toolsEnabled }),
       ...(extendedOptions.qualityLevel !== undefined && { qualityLevel: extendedOptions.qualityLevel }),

@@ -148,7 +148,11 @@ export class SimplifiedPersistence {
    */
   async _processMessageHistory(sessionId, userId, bodyIn, isNewConversation) {
     const messages = this.persistenceConfig.filterNonSystemMessages(bodyIn.messages || []);
-    const seq = typeof bodyIn.seq === 'number' ? bodyIn.seq : 0;
+    const maxSeq = messages
+      .map(msg => msg.seq)
+      .filter(seq => typeof seq === 'number' && seq > 0)
+      .reduce((max, current) => Math.max(max, current), 0);
+    const seq = Math.max(0, maxSeq - 1);
 
     if (messages.length > 0) {
       // Sync message history using diff-based approach with automatic fallback
