@@ -42,9 +42,10 @@ describe('Regenerate Message Duplication Bug', () => {
 
   it('should not duplicate user message when regenerating assistant response', () => {
     // STEP 1: Initial message exchange (like first "hi")
-    // Frontend sends: [{role: 'user', content: 'hi', seq: 1}]
+    // Frontend sends: [{id: 'user-msg-1', role: 'user', content: 'hi', seq: 1}]
+    const userMessageId = 'user-msg-1';
     const initialMessages = [
-      { role: 'user', content: 'hi', seq: 1 }
+      { id: userMessageId, role: 'user', content: 'hi', seq: 1 }
     ];
 
     // Backend processes with afterSeq = max(0, 1-1) = 0
@@ -68,19 +69,19 @@ describe('Regenerate Message Duplication Bug', () => {
     expect(messages[1].seq).toBe(2);
 
     // STEP 2: User clicks regenerate
-    // Frontend sends same user message: [{role: 'user', content: 'hi', seq: 1}]
+    // Frontend sends same user message with same ID: [{id: 'user-msg-1', role: 'user', content: 'hi', seq: 1}]
     const regenerateMessages = [
-      { role: 'user', content: 'hi', seq: 1 }
+      { id: userMessageId, role: 'user', content: 'hi', seq: 1 }
     ];
 
     // Backend processes with afterSeq = max(0, 1-1) = 0
     manager.syncMessageHistoryDiff(conversationId, userId, regenerateMessages, 0);
 
-    // Verify: Should still have only 1 user message
+    // Verify: Should still have only 1 user message (matched by client ID)
     messages = getAllMessagesForSync({ conversationId });
     const userMessages = messages.filter(m => m.role === 'user');
 
-    // BUG: This will fail if user message is duplicated
+    // With client IDs, the message is matched and not duplicated
     expect(userMessages).toHaveLength(1);
     expect(userMessages[0].content).toBe('hi');
     expect(userMessages[0].seq).toBe(1);

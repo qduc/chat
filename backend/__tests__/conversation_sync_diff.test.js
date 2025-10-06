@@ -391,21 +391,23 @@ describe('Diff-Based Conversation Sync', () => {
 
   describe('fallback behavior', () => {
     it('should use clear-and-rewrite fallback when alignment fails', () => {
-      // Initial sync
+      // Initial sync with stable IDs
+      const id1 = 'stable-id-1';
+      const id2 = 'stable-id-2';
       const messages1 = [
-        { role: 'user', content: 'Hello' },
-        { role: 'assistant', content: 'Hi there!' }
+        { id: id1, role: 'user', content: 'Hello' },
+        { id: id2, role: 'assistant', content: 'Hi there!' }
       ];
       manager.syncMessageHistoryDiff(conversationId, userId, messages1);
 
-      // Completely different messages should trigger fallback
+      // Completely different messages with same IDs should update
       const messages2 = [
-        { role: 'user', content: 'Completely different topic' },
-        { role: 'assistant', content: 'Yes, totally unrelated' }
+        { id: id1, role: 'user', content: 'Completely different topic' },
+        { id: id2, role: 'assistant', content: 'Yes, totally unrelated' }
       ];
       manager.syncMessageHistoryDiff(conversationId, userId, messages2);
 
-      // Should still sync correctly via fallback
+      // Should update existing messages by ID
       const synced = getAllMessagesForSync({ conversationId });
       expect(synced).toHaveLength(2);
       expect(synced[0].content).toBe('Completely different topic');

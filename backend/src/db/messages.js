@@ -101,7 +101,7 @@ export function countMessagesByConversation(conversationId) {
   return row?.c || 0;
 }
 
-export function insertUserMessage({ conversationId, content, seq }) {
+export function insertUserMessage({ conversationId, content, seq, clientMessageId = null }) {
   const db = getDb();
   const now = new Date().toISOString();
 
@@ -124,17 +124,18 @@ export function insertUserMessage({ conversationId, content, seq }) {
 
   const info = db
     .prepare(
-      `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, created_at, updated_at)
-     VALUES (@conversationId, 'user', 'final', @content, @contentJson, @seq, @now, @now)`
+      `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, client_message_id, created_at, updated_at)
+     VALUES (@conversationId, 'user', 'final', @content, @contentJson, @seq, @clientMessageId, @now, @now)`
     )
     .run({
       conversationId,
       content: textContent,
       contentJson: jsonContent,
       seq,
+      clientMessageId,
       now
     });
-  return { id: info.lastInsertRowid, seq };
+  return { id: info.lastInsertRowid, seq, clientMessageId };
 }
 
 export function createAssistantDraft({ conversationId, seq }) {
@@ -186,6 +187,7 @@ export function insertAssistantFinal({
   responseId = null,
   reasoningDetails = undefined,
   reasoningTokens = undefined,
+  clientMessageId = null,
 }) {
   const db = getDb();
   const now = new Date().toISOString();
@@ -196,8 +198,8 @@ export function insertAssistantFinal({
 
   const info = db
     .prepare(
-      `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, finish_reason, response_id, reasoning_details, reasoning_tokens, created_at, updated_at)
-     VALUES (@conversationId, 'assistant', 'final', @content, @contentJson, @seq, @finishReason, @responseId, @reasoningDetails, @reasoningTokens, @now, @now)`
+      `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, finish_reason, response_id, reasoning_details, reasoning_tokens, client_message_id, created_at, updated_at)
+     VALUES (@conversationId, 'assistant', 'final', @content, @contentJson, @seq, @finishReason, @responseId, @reasoningDetails, @reasoningTokens, @clientMessageId, @now, @now)`
     )
     .run({
       conversationId,
@@ -208,28 +210,30 @@ export function insertAssistantFinal({
       responseId,
       reasoningDetails: reasoningJson === undefined ? null : reasoningJson,
       reasoningTokens: normalizedTokens ?? null,
+      clientMessageId,
       now,
     });
-  return { id: info.lastInsertRowid, seq };
+  return { id: info.lastInsertRowid, seq, clientMessageId };
 }
 
-export function insertToolMessage({ conversationId, content, seq, status = 'success' }) {
+export function insertToolMessage({ conversationId, content, seq, status = 'success', clientMessageId = null }) {
   const db = getDb();
   const now = new Date().toISOString();
   const info = db
     .prepare(
-      `INSERT INTO messages (conversation_id, role, status, content, seq, created_at, updated_at)
-     VALUES (@conversationId, 'tool', @status, @content, @seq, @now, @now)`
+      `INSERT INTO messages (conversation_id, role, status, content, seq, client_message_id, created_at, updated_at)
+     VALUES (@conversationId, 'tool', @status, @content, @seq, @clientMessageId, @now, @now)`
     )
     .run({
       conversationId,
       status,
       content: typeof content === 'string' ? content : JSON.stringify(content ?? ''),
       seq,
+      clientMessageId,
       now
     });
 
-  return { id: info.lastInsertRowid, seq };
+  return { id: info.lastInsertRowid, seq, clientMessageId };
 }
 
 export function markAssistantErrorBySeq({ conversationId, seq }) {
@@ -261,7 +265,7 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
   const sanitizedLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
   const messages = db
     .prepare(
-      `SELECT id, seq, role, status, content, content_json, reasoning_details, reasoning_tokens, created_at
+      `SELECT id, seq, role, status, content, content_json, reasoning_details, reasoning_tokens, client_message_id, created_at
      FROM messages WHERE conversation_id=@conversationId AND seq > @afterSeq
      ORDER BY seq ASC LIMIT @limit`
     )
@@ -470,6 +474,23 @@ export function getLastAssistantResponseId({ conversationId }) {
     .get({ conversationId });
   const responseId = message?.response_id || null;
   return responseId;
+}
+
+export function getMessageByClientId({ conversationId, clientMessageId, userId }) {
+  if (!userId) {
+    throw new Error('userId is required');
+  }
+
+  const db = getDb();
+  const query = `SELECT m.id, m.conversation_id, m.role, m.seq, m.client_message_id
+     FROM messages m
+     JOIN conversations c ON m.conversation_id = c.id
+     WHERE m.client_message_id = @clientMessageId
+       AND c.id = @conversationId
+       AND c.deleted_at IS NULL
+       AND c.user_id = @userId`;
+
+  return db.prepare(query).get({ clientMessageId, conversationId, userId });
 }
 
 export function updateMessageContent({

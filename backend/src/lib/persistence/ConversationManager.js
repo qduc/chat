@@ -100,39 +100,20 @@ export class ConversationManager {
       : [];
 
     const allExisting = getAllMessagesForSync({ conversationId });
-    const existingById = new Map();
+    const existingByClientId = new Map();
     for (const message of allExisting) {
-      if (message?.id != null) {
-        existingById.set(String(message.id), message);
+      if (message?.client_message_id != null) {
+        existingByClientId.set(String(message.client_message_id), message);
       }
     }
 
     const matchedExisting = [];
     const incomingTail = [];
     const explicitUpdates = [];
-    const unmatchedExistingQueue = [...allExisting];
-
-    const removeFromQueueById = key => {
-      const index = unmatchedExistingQueue.findIndex(msg => String(msg.id) === key);
-      if (index >= 0) {
-        unmatchedExistingQueue.splice(index, 1);
-      }
-    };
 
     for (const incomingMessage of normalized) {
-      let key = incomingMessage?.id != null ? String(incomingMessage.id) : null;
-      let existingMessage = key ? existingById.get(key) : null;
-
-      if (existingMessage) {
-        removeFromQueueById(String(existingMessage.id));
-      } else if (incomingMessage?.__generatedId) {
-        const candidate = unmatchedExistingQueue[0];
-        if (candidate && candidate.role === incomingMessage.role) {
-          existingMessage = candidate;
-          key = String(candidate.id);
-          unmatchedExistingQueue.shift();
-        }
-      }
+      const clientMessageId = incomingMessage?.id != null ? String(incomingMessage.id) : null;
+      const existingMessage = clientMessageId ? existingByClientId.get(clientMessageId) : null;
 
       if (existingMessage) {
         matchedExisting.push(existingMessage);
@@ -245,17 +226,18 @@ export class ConversationManager {
       for (const msg of diff.toInsert) {
         const hasUserContent = typeof msg.content === 'string' || Array.isArray(msg.content);
         const hasAssistantContent = msg.content !== undefined && msg.content !== null;
-        const tempId = msg._clientTempId ?? msg.id ?? null;
+        const clientMessageId = msg.id ?? null;
 
         if (msg.role === 'user' && hasUserContent) {
           const result = insertUserMessage({
             conversationId,
             content: msg.content,
             seq: nextSeq++,
+            clientMessageId,
           });
           if (result?.id) {
             insertedMessages.push({ role: 'user', id: result.id, seq: result.seq });
-            idMappings.push({ role: 'user', tempId, persistedId: result.id, seq: result.seq });
+            idMappings.push({ role: 'user', clientMessageId, persistedId: result.id, seq: result.seq });
           }
         } else if (msg.role === 'assistant' && hasAssistantContent) {
           const result = insertAssistantFinal({
@@ -265,12 +247,13 @@ export class ConversationManager {
             finishReason: 'stop',
             reasoningDetails: msg.reasoning_details,
             reasoningTokens: msg.reasoning_tokens,
+            clientMessageId,
           });
 
           if (result?.id) {
             this._insertAssistantArtifacts(result.id, conversationId, msg);
             insertedMessages.push({ role: 'assistant', id: result.id, seq: result.seq });
-            idMappings.push({ role: 'assistant', tempId, persistedId: result.id, seq: result.seq });
+            idMappings.push({ role: 'assistant', clientMessageId, persistedId: result.id, seq: result.seq });
           }
         } else if (msg.role === 'tool') {
           const toolContent = this._stringifyToolOutput(msg.content);
@@ -280,12 +263,13 @@ export class ConversationManager {
             content: toolContent,
             seq: nextSeq++,
             status: toolStatus,
+            clientMessageId,
           });
 
           if (result?.id) {
             this._persistToolOutputs(result.id, conversationId, msg, toolContent, toolStatus);
             insertedMessages.push({ role: 'tool', id: result.id, seq: result.seq });
-            idMappings.push({ role: 'tool', tempId, persistedId: result.id, seq: result.seq });
+            idMappings.push({ role: 'tool', clientMessageId, persistedId: result.id, seq: result.seq });
           }
         }
       }
@@ -521,17 +505,18 @@ export class ConversationManager {
       for (const message of messages) {
         const hasUserContent = typeof message.content === 'string' || Array.isArray(message.content);
         const hasAssistantContent = message.content !== undefined && message.content !== null;
-        const tempId = message._clientTempId ?? message.id ?? null;
+        const clientMessageId = message.id ?? null;
 
         if (message.role === 'user' && hasUserContent) {
           const result = insertUserMessage({
             conversationId,
             content: message.content,
             seq: seq++,
+            clientMessageId,
           });
           if (result?.id) {
             insertedMessages.push({ role: 'user', id: result.id, seq: result.seq });
-            idMappings.push({ role: 'user', tempId, persistedId: result.id, seq: result.seq });
+            idMappings.push({ role: 'user', clientMessageId, persistedId: result.id, seq: result.seq });
           }
         } else if (message.role === 'assistant' && hasAssistantContent) {
           const result = insertAssistantFinal({
@@ -541,12 +526,13 @@ export class ConversationManager {
             finishReason: 'stop',
             reasoningDetails: message.reasoning_details,
             reasoningTokens: message.reasoning_tokens,
+            clientMessageId,
           });
 
           if (result?.id) {
             this._insertAssistantArtifacts(result.id, conversationId, message);
             insertedMessages.push({ role: 'assistant', id: result.id, seq: result.seq });
-            idMappings.push({ role: 'assistant', tempId, persistedId: result.id, seq: result.seq });
+            idMappings.push({ role: 'assistant', clientMessageId, persistedId: result.id, seq: result.seq });
           }
         } else if (message.role === 'tool') {
           const toolContent = this._stringifyToolOutput(message.content);
@@ -556,12 +542,13 @@ export class ConversationManager {
             content: toolContent,
             seq: seq++,
             status: toolStatus,
+            clientMessageId,
           });
 
           if (result?.id) {
             this._persistToolOutputs(result.id, conversationId, message, toolContent, toolStatus);
             insertedMessages.push({ role: 'tool', id: result.id, seq: result.seq });
-            idMappings.push({ role: 'tool', tempId, persistedId: result.id, seq: result.seq });
+            idMappings.push({ role: 'tool', clientMessageId, persistedId: result.id, seq: result.seq });
           }
         }
       }
@@ -578,9 +565,8 @@ export class ConversationManager {
 
     const normalized = { ...message };
     const providedId = normalized.id ?? null;
-    normalized._clientTempId = providedId ?? null;
-    normalized.__generatedId = !providedId;
 
+    // Generate UUID if client didn't provide one
     if (!providedId) {
       normalized.id = uuidv4();
     }
