@@ -174,12 +174,16 @@ export class ChatClient {
 
     console.debug('buildRequestBody: afterMessageId', afterMessageId, 'afterSeq', afterSeq);
 
+    // Determine if we should truncate after the insertion point
+    // This is true when we're regenerating (have _regenerateTarget) or explicitly requested
+    const shouldTruncate = !!(options as any)._regenerateTarget || (options as any).truncateAfter;
+
     // Create intent envelope for append_message
     const intentEnvelope = createAppendMessageIntent({
       conversationId: extendedOptions.conversationId,
       afterMessageId,
       afterSeq,
-      truncateAfter: false, // For normal appends, we don't truncate
+      truncateAfter: shouldTruncate,
       messages: outgoingMessages.map(m => ({
         role: 'user' as const,
         content: m.content

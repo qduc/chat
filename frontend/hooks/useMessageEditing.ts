@@ -68,11 +68,11 @@ export function useMessageEditing(): UseMessageEditingReturn {
     setEditingMessageId(null);
     setEditingContent('');
 
-    // If we have a saved conversation, persist the edit and then fork/trim server-side
-    if (conversationId) {
+    // If we have a saved conversation AND the message has a valid seq, persist the edit and then fork/trim server-side
+    if (conversationId && originalMessage.seq !== undefined) {
       try {
         // Get the expected seq from the original message (required for intent)
-        const expectedSeq = originalMessage.seq ?? 0;
+        const expectedSeq = originalMessage.seq;
         const result = await conversationManager.editMessage(conversationId, messageId, newContent, expectedSeq);
         const newId = result?.new_conversation_id;
         // Clear all messages after the edited one locally (server also trims)

@@ -1,5 +1,5 @@
-import { 
-  createIntentError 
+import {
+  createIntentError
 } from './validation/messageIntentSchemas.js';
 import {
   getConversationById
@@ -18,12 +18,12 @@ import { logger } from '../logger.js';
  * @returns {object} - Success response or error
  */
 export function validateAppendMessageIntent(intent, userId) {
-  const { 
-    client_operation, 
-    conversation_id, 
-    after_message_id, 
-    after_seq, 
-    truncate_after 
+  const {
+    client_operation,
+    conversation_id,
+    after_message_id,
+    after_seq,
+    truncate_after
   } = intent;
 
   // Log the intent
@@ -111,7 +111,7 @@ export function validateAppendMessageIntent(intent, userId) {
   // If truncate_after is false, validate that after_message_id is the last message
   if (!truncate_after) {
     const lastMessage = getLastMessage({ conversationId: conversation_id });
-    if (lastMessage && lastMessage.id !== after_message_id) {
+    if (lastMessage && String(lastMessage.id) !== String(after_message_id)) {
       return {
         valid: false,
         error: createIntentError(
@@ -139,9 +139,9 @@ export function validateAppendMessageIntent(intent, userId) {
  * @returns {object} - Validation result
  */
 export function validateEditMessageIntent(intent, userId, conversationId) {
-  const { 
-    client_operation, 
-    message_id, 
+  const {
+    client_operation,
+    message_id,
     expected_seq,
     conversation_id: intentConversationId
   } = intent;
@@ -256,7 +256,7 @@ export function validateEditMessageIntent(intent, userId, conversationId) {
 export function getMessagesToTruncate(conversationId, afterSeq) {
   const deletedMessages = [];
   let currentAfterSeq = afterSeq;
-  
+
   // Fetch all messages after the specified seq
   while (true) {
     const page = getMessagesPage({
@@ -264,11 +264,11 @@ export function getMessagesToTruncate(conversationId, afterSeq) {
       afterSeq: currentAfterSeq,
       limit: 100
     });
-    
+
     if (!page.messages || page.messages.length === 0) {
       break;
     }
-    
+
     // Add messages to deleted list
     for (const msg of page.messages) {
       deletedMessages.push({
@@ -277,14 +277,14 @@ export function getMessagesToTruncate(conversationId, afterSeq) {
         role: msg.role
       });
     }
-    
+
     if (!page.next_after_seq) {
       break;
     }
-    
+
     currentAfterSeq = page.next_after_seq;
   }
-  
+
   return deletedMessages;
 }
 

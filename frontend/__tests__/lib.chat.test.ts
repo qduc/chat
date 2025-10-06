@@ -128,6 +128,33 @@ describe('ChatClient', () => {
     expect(fetchMock).toHaveBeenCalled();
   });
 
+  test('regeneration requests truncate_after when assistant tail was removed locally', () => {
+    const client = new ChatClient('https://example.test');
+
+    const assistantReplyToRegenerate = { id: 'asst-2', role: 'assistant' as Role, content: 'old answer', seq: 4 };
+    const baseMessages = [
+      { id: 'user-1', role: 'user' as Role, content: 'hi', seq: 1 },
+      { id: 'asst-1', role: 'assistant' as Role, content: 'hello', seq: 2 },
+      { id: 'user-2', role: 'user' as Role, content: 'try again', seq: 3 }
+    ];
+
+    const options: any = {
+      apiBase: 'https://example.test',
+      messages: [baseMessages[baseMessages.length - 1]],
+      _allMessages: baseMessages,
+      conversationId: 'conv-123',
+      model: 'gpt-test',
+      stream: false,
+      // Emulate client dropping the assistant reply before regenerate
+      _regenerateTarget: assistantReplyToRegenerate
+    };
+
+    const intentEnvelope = (client as any).buildRequestBody(options, false);
+
+    expect(intentEnvelope.intent.type).toBe('append_message');
+    expect(intentEnvelope.intent.truncate_after).toBe(true);
+  });
+
   test('closes reasoning before streaming tool calls to prevent orphan thinking tags', async () => {
     const lines = [
       'data: {"choices":[{"delta":{"reasoning_content":"I need to check current time"}}]}\n\n',
