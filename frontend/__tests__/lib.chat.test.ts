@@ -34,8 +34,12 @@ describe('ChatClient', () => {
   test('sends only the latest user message to the backend', async () => {
     const fetchMock = jest.spyOn(global, 'fetch').mockImplementation((_url, init) => {
       const body = JSON.parse((init as RequestInit).body as string);
-      expect(body.messages).toHaveLength(1);
-      expect(body.messages[0]).toMatchObject({ role: 'user', content: 'latest message' });
+      // Check for intent envelope structure
+      expect(body.intent).toBeDefined();
+      expect(body.intent.type).toBe('append_message');
+      expect(body.intent.messages).toHaveLength(1);
+      expect(body.intent.messages[0]).toMatchObject({ role: 'user', content: 'latest message' });
+      expect(body.intent.client_operation).toBeDefined();
 
       return Promise.resolve(
         new Response(

@@ -43,7 +43,7 @@ export function useMessageEditing(): UseMessageEditingReturn {
     const messageId = editingMessageId;
     const newTextContent = editingContent.trim();
 
-    // Get the original message to preserve its images
+    // Get the original message to preserve its images and seq
     let originalMessage: ChatMessage | undefined;
     onMessagesUpdate(prev => {
       originalMessage = prev.find(m => m.id === messageId);
@@ -71,7 +71,9 @@ export function useMessageEditing(): UseMessageEditingReturn {
     // If we have a saved conversation, persist the edit and then fork/trim server-side
     if (conversationId) {
       try {
-        const result = await conversationManager.editMessage(conversationId, messageId, newContent);
+        // Get the expected seq from the original message (required for intent)
+        const expectedSeq = originalMessage.seq ?? 0;
+        const result = await conversationManager.editMessage(conversationId, messageId, newContent, expectedSeq);
         const newId = result?.new_conversation_id;
         // Clear all messages after the edited one locally (server also trims)
         let baseMessages: ChatMessage[] = [];
