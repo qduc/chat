@@ -206,7 +206,9 @@ export function wrapIntentResponse(req, res, next) {
       return originalJson(data);
     }
 
-    // Extract conversation_id from various possible locations
+    return originalJson(data);
+
+/*     // Extract conversation_id from various possible locations
     const conversationId = data.conversation_id
       || data._conversation?.id
       || req.body?._intent?.conversation_id
@@ -234,7 +236,40 @@ export function wrapIntentResponse(req, res, next) {
       intentResponse.metadata = req.intent.metadata;
     }
 
-    return originalJson(intentResponse);
+    // Include assistant message content for non-streaming completions when available.
+    // Preserve structured content when present in upstream's choices[0].message.
+    try {
+      const choice = data?.choices && Array.isArray(data.choices) && data.choices[0] ? data.choices[0] : null;
+      if (choice && choice.message) {
+        const message = choice.message;
+        if (message.content !== undefined) {
+          intentResponse.content = message.content;
+          intentResponse.id = data?.id ?? null;
+          intentResponse.choices = [
+            {
+              message: {
+                role: message.role || 'assistant',
+                content: message.content
+              },
+              finish_reason: choice.finish_reason ?? null
+            }
+          ];
+          // Preserve message.content_json on the choice.message if present
+          if (message.content_json !== undefined) {
+            intentResponse.choices[0].message.content_json = message.content_json;
+          }
+        }
+      } else if (data?.message) {
+        // Also set top-level content for compatibility
+        intentResponse.content = typeof data.message === 'string' ? data.message : data.message?.content ?? null;
+      } else if (choice && typeof choice.text === 'string') {
+        intentResponse.content = choice.text;
+      }
+    } catch {
+      // Non-fatal: if anything goes wrong extracting assistant content, ignore and continue
+    }
+
+    return originalJson(intentResponse); */
   };
 
   // Also override res.send for non-JSON responses
