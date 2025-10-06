@@ -113,6 +113,27 @@ export async function handleToolsStreaming({
 
                 const choice = obj?.choices?.[0];
                 const delta = choice?.delta || {};
+                const message = choice?.message;
+
+                // Capture reasoning_details from delta or message
+                if (Array.isArray(delta.reasoning_details) && delta.reasoning_details.length > 0) {
+                  if (persistence && typeof persistence.setReasoningDetails === 'function') {
+                    persistence.setReasoningDetails(delta.reasoning_details);
+                  }
+                }
+                if (message?.reasoning_details && Array.isArray(message.reasoning_details)) {
+                  if (persistence && typeof persistence.setReasoningDetails === 'function') {
+                    persistence.setReasoningDetails(message.reasoning_details);
+                  }
+                }
+
+                // Capture reasoning_tokens from usage
+                if (obj?.usage?.reasoning_tokens != null || obj?.usage?.completion_tokens_details?.reasoning_tokens != null) {
+                  const tokens = obj.usage.reasoning_tokens ?? obj.usage.completion_tokens_details.reasoning_tokens;
+                  if (persistence && typeof persistence.setReasoningTokens === 'function') {
+                    persistence.setReasoningTokens(tokens);
+                  }
+                }
 
                 // Accumulate tool_calls, but do not stream their partial deltas
                 if (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) {

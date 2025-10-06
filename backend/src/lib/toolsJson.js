@@ -209,6 +209,24 @@ class JsonResponseHandler extends ResponseHandler {
       persistence.setResponseId(responseId);
     }
 
+    // Capture reasoning_details if present
+    if (message?.reasoning_details && Array.isArray(message.reasoning_details)) {
+      if (persistence && typeof persistence.setReasoningDetails === 'function') {
+        persistence.setReasoningDetails(message.reasoning_details);
+      }
+    }
+
+    // Capture reasoning_tokens if present (check both locations)
+    const reasoningTokens = response?.usage?.reasoning_tokens
+      ?? response?.usage?.completion_tokens_details?.reasoning_tokens
+      ?? null;
+
+    if (reasoningTokens != null) {
+      if (persistence && typeof persistence.setReasoningTokens === 'function') {
+        persistence.setReasoningTokens(reasoningTokens);
+      }
+    }
+
     if (message?.content) {
       this.collectedEvents.push({
         type: 'text',

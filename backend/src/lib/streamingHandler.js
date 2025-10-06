@@ -167,8 +167,12 @@ export async function handleRegularStreaming({
             finishReason = choice?.finish_reason ?? finishReason;
           }
 
-          if (obj?.usage?.reasoning_tokens != null) {
-            persistence.setReasoningTokens(obj.usage.reasoning_tokens);
+          // Capture reasoning_tokens from usage (check both locations)
+          const reasoningTokens = obj?.usage?.reasoning_tokens
+            ?? obj?.usage?.completion_tokens_details?.reasoning_tokens
+            ?? null;
+          if (reasoningTokens != null) {
+            persistence.setReasoningTokens(reasoningTokens);
           }
 
           const message = choice?.message;

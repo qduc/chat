@@ -326,7 +326,10 @@ async function handleRequest(context, req, res) {
         persistence.setAssistantContent(content);
       }
       if (persistence.persist) {
-        const reasoningTokens = upstreamJson?.usage?.reasoning_tokens ?? upstreamJson?.usage?.reasoning_token_count ?? null;
+        const reasoningTokens = upstreamJson?.usage?.reasoning_tokens
+          ?? upstreamJson?.usage?.completion_tokens_details?.reasoning_tokens
+          ?? upstreamJson?.usage?.reasoning_token_count
+          ?? null;
         if (reasoningTokens != null) {
           persistence.setReasoningTokens(reasoningTokens);
         }
