@@ -77,4 +77,37 @@ describe('Message ID synchronization', () => {
     expect(next.messages[0].id).toBe('db-user');
     expect(next.editingMessageId).toBe('db-user');
   });
+
+  it('copies seq from SYNC_ASSISTANT payload and merges usage data', () => {
+    const userMsg = { id: 'user-1', role: 'user' as const, content: 'Hello' };
+    const assistantMsg = {
+      id: 'assistant-temp',
+      role: 'assistant' as const,
+      content: 'Working on it…',
+      usage: { prompt_tokens: 5 }
+    };
+
+    const state: ChatState = {
+      ...initialState,
+      messages: [userMsg, assistantMsg]
+    };
+
+    const action = {
+      type: 'SYNC_ASSISTANT' as const,
+      payload: {
+        ...assistantMsg,
+        id: 'assistant-temp',
+        content: 'All done!',
+        seq: 3,
+        usage: { completion_tokens: 12 }
+      }
+    };
+
+    const next = chatReducer(state, action);
+
+    const [_, updatedAssistant] = next.messages;
+    expect(updatedAssistant.seq).toBe(3);
+    expect(updatedAssistant.content).toBe('All done!');
+    expect(updatedAssistant.usage).toEqual({ prompt_tokens: 5, completion_tokens: 12 });
+  });
 });
