@@ -50,8 +50,9 @@ export class SimplifiedPersistence {
    * @returns {Promise<{error?: Object}>} Error object if validation fails
    */
   async initialize({ conversationId, sessionId, userId = null, req, bodyIn }) {
-    // Store user context for later use
+    // Store user context and request for later use
     this.userId = userId;
+    this.req = req; // Store request object to access operationsTracker
   this.userMessageId = null;
   this.assistantMessageId = null;
   this._latestSyncMappings = [];
@@ -168,6 +169,28 @@ export class SimplifiedPersistence {
       // Track the most recent persisted user message ID for response metadata
       const latestUserMapping = [...this._latestSyncMappings].reverse().find(mapping => mapping.role === 'user');
   this.userMessageId = latestUserMapping?.persistedId != null ? String(latestUserMapping.persistedId) : null;
+
+      // Report operations to the tracker for intent response
+      if (this.req?.operationsTracker) {
+        // Report inserted messages
+        if (Array.isArray(syncResult?.insertedMessages)) {
+          for (const msg of syncResult.insertedMessages) {
+            this.req.operationsTracker.addInserted(msg.id, msg.seq, msg.role);
+          }
+        }
+        // Report updated messages
+        if (Array.isArray(syncResult?.updatedMessages)) {
+          for (const msg of syncResult.updatedMessages) {
+            this.req.operationsTracker.addUpdated(msg.id, msg.seq, msg.role);
+          }
+        }
+        // Report deleted messages
+        if (Array.isArray(syncResult?.deletedMessages)) {
+          for (const msg of syncResult.deletedMessages) {
+            this.req.operationsTracker.addDeleted(msg.id, msg.seq, msg.role);
+          }
+        }
+      }
 
       // Generate title only if this is the first message in a new conversation
       if (isNewConversation) {
@@ -484,6 +507,11 @@ export class SimplifiedPersistence {
           messageId: this.currentMessageId,
           seq: this.assistantSeq
         });
+
+        // Report assistant message insertion to operations tracker
+        if (this.req?.operationsTracker) {
+          this.req.operationsTracker.addInserted(result.id, this.assistantSeq, 'assistant');
+        }
       }
 
       // Persist any buffered tool calls and outputs

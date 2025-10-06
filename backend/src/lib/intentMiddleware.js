@@ -1,8 +1,8 @@
 import { validateIntentEnvelope } from './validation/messageIntentSchemas.js';
-import { 
+import {
   validateAppendMessageIntent,
   validateEditMessageIntent,
-  OperationsTracker 
+  OperationsTracker
 } from './intentService.js';
 import { logger } from '../logger.js';
 
@@ -21,7 +21,7 @@ export function detectIntentEnvelope(req, res, next) {
       user_id: req.user?.id,
       endpoint: req.originalUrl
     });
-    
+
     return res.status(400).json({
       success: false,
       error: 'validation_error',
@@ -35,14 +35,14 @@ export function detectIntentEnvelope(req, res, next) {
     const envelope = validateIntentEnvelope(req.body);
     req.intent = envelope.intent;
     req.hasIntent = true;
-    
+
     logger.info({
       msg: 'intent_envelope_detected',
       intent_type: req.intent.type,
       client_operation: req.intent.client_operation,
       user_id: req.user?.id
     });
-    
+
     next();
   } catch (error) {
     // Intent validation failed
@@ -51,7 +51,7 @@ export function detectIntentEnvelope(req, res, next) {
       error: error.message,
       user_id: req.user?.id
     });
-    
+
     return res.status(400).json({
       success: false,
       error: 'validation_error',
@@ -90,13 +90,13 @@ export function validateAppendIntent(req, res, next) {
       user_id: userId,
       client_operation: req.intent.client_operation
     });
-    
+
     return res.status(400).json(validation.error);
   }
 
   // Attach operations tracker for downstream use
   req.operationsTracker = new OperationsTracker();
-  
+
   next();
 }
 
@@ -129,13 +129,13 @@ export function validateEditIntent(req, res, next) {
       user_id: userId,
       client_operation: req.intent.client_operation
     });
-    
+
     return res.status(400).json(validation.error);
   }
 
   // Attach operations tracker for downstream use
   req.operationsTracker = new OperationsTracker();
-  
+
   next();
 }
 
@@ -206,10 +206,16 @@ export function wrapIntentResponse(req, res, next) {
       return originalJson(data);
     }
 
+    // Extract conversation_id from various possible locations
+    const conversationId = data.conversation_id
+      || data._conversation?.id
+      || req.body?._intent?.conversation_id
+      || req.params?.id;
+
     // Transform to intent success response format
     const intentResponse = {
       success: true,
-      conversation_id: data.conversation_id || req.body?._intent?.conversation_id || req.params?.id,
+      conversation_id: conversationId,
       client_operation: req.intent.client_operation,
       operations: req.operationsTracker?.getOperations() || {
         inserted: [],
@@ -226,11 +232,6 @@ export function wrapIntentResponse(req, res, next) {
     // Add metadata if present
     if (req.intent.metadata) {
       intentResponse.metadata = req.intent.metadata;
-    }
-
-    // Add any additional data from the original response
-    if (data.conversation_id) {
-      intentResponse.conversation_id = data.conversation_id;
     }
 
     return originalJson(intentResponse);
