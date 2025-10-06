@@ -8,14 +8,26 @@ import { logger } from '../logger.js';
 
 /**
  * Middleware to detect and parse intent envelopes
- * Attaches intent to req.intent if present
+ * Phase 4: Strict enforcement - all requests MUST include a valid intent envelope
+ * Attaches intent to req.intent
  * Sets req.hasIntent flag
  */
 export function detectIntentEnvelope(req, res, next) {
-  // Check if request body has an 'intent' field
+  // Phase 4: Require intent envelope on all requests
   if (!req.body || !req.body.intent) {
-    req.hasIntent = false;
-    return next();
+    logger.warn({
+      msg: 'intent_missing',
+      error_code: 'intent_required',
+      user_id: req.user?.id,
+      endpoint: req.originalUrl
+    });
+    
+    return res.status(400).json({
+      success: false,
+      error: 'validation_error',
+      error_code: 'intent_required',
+      message: 'Intent envelope is required for all message mutations. See docs/message-intent-schema.md for details.'
+    });
   }
 
   try {
@@ -52,14 +64,11 @@ export function detectIntentEnvelope(req, res, next) {
 
 /**
  * Validate append_message intent before processing
+ * Phase 4: Intent is now required by detectIntentEnvelope
  * Should be called after detectIntentEnvelope for POST /v1/chat/completions
  */
 export function validateAppendIntent(req, res, next) {
-  // Skip if no intent
-  if (!req.hasIntent || !req.intent) {
-    return next();
-  }
-
+  // Phase 4: Intent is guaranteed to exist by detectIntentEnvelope
   // Only validate append_message intents
   if (req.intent.type !== 'append_message') {
     return res.status(400).json({
@@ -93,14 +102,11 @@ export function validateAppendIntent(req, res, next) {
 
 /**
  * Validate edit_message intent before processing
+ * Phase 4: Intent is now required by detectIntentEnvelope
  * Should be called after detectIntentEnvelope for PUT /v1/conversations/:id/messages/:messageId/edit
  */
 export function validateEditIntent(req, res, next) {
-  // Skip if no intent
-  if (!req.hasIntent || !req.intent) {
-    return next();
-  }
-
+  // Phase 4: Intent is guaranteed to exist by detectIntentEnvelope
   // Only validate edit_message intents
   if (req.intent.type !== 'edit_message') {
     return res.status(400).json({
@@ -135,14 +141,10 @@ export function validateEditIntent(req, res, next) {
 
 /**
  * Transform intent-based request to legacy format
+ * Phase 4: All requests now have intents (enforced by detectIntentEnvelope)
  * This allows the existing proxy logic to work unchanged
  */
 export function transformIntentToLegacy(req, res, next) {
-  // Skip if no intent
-  if (!req.hasIntent || !req.intent) {
-    return next();
-  }
-
   const intent = req.intent;
 
   if (intent.type === 'append_message') {
@@ -184,14 +186,10 @@ export function transformIntentToLegacy(req, res, next) {
 
 /**
  * Wrap response to return intent-formatted response
+ * Phase 4: All requests now have intents (enforced by detectIntentEnvelope)
  * This intercepts res.json to transform legacy responses to intent format
  */
 export function wrapIntentResponse(req, res, next) {
-  // Skip if no intent
-  if (!req.hasIntent || !req.intent) {
-    return next();
-  }
-
   // Store original res.json
   const originalJson = res.json.bind(res);
   const originalSend = res.send.bind(res);
