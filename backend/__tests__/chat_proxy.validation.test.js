@@ -4,6 +4,7 @@ import request from 'supertest';
 import express from 'express';
 import { chatRouter } from '../src/routes/chat.js';
 import { createChatProxyTestContext } from '../test_utils/chatProxyTestUtils.js';
+import { createAppendIntent } from '../test_utils/intentTestHelpers.js';
 
 const { makeApp, withServer } = createChatProxyTestContext();
 
@@ -13,9 +14,15 @@ const mockUser = { id: 'test-user-123', email: 'test@example.com' };
 describe('Chat proxy validation', () => {
   test('rejects invalid reasoning_effort value when model supports reasoning', async () => {
     const app = makeApp({ mockUser });
+    const intentEnvelope = createAppendIntent({
+      messages: [{ role: 'user', content: 'Hi' }],
+      model: 'gpt-5.1-mini',
+      reasoning_effort: 'extreme',
+      stream: false
+    });
     const res = await request(app)
       .post('/v1/chat/completions')
-      .send({ model: 'gpt-5.1-mini', messages: [{ role: 'user', content: 'Hi' }], reasoning_effort: 'extreme', stream: false });
+      .send(intentEnvelope);
     assert.equal(res.status, 400);
     assert.equal(res.body.error, 'invalid_request_error');
   });
@@ -23,9 +30,15 @@ describe('Chat proxy validation', () => {
   test('strips reasoning controls when model does not support reasoning', async () => {
     // Should proceed with 200 even if verbosity value is invalid for non-gpt-5 models
     const app = makeApp({ mockUser });
+    const intentEnvelope = createAppendIntent({
+      messages: [{ role: 'user', content: 'Hi' }],
+      model: 'gpt-3.5-turbo',
+      verbosity: 'invalid-value',
+      stream: false
+    });
     const res = await request(app)
       .post('/v1/chat/completions')
-      .send({ model: 'gpt-3.5-turbo', messages: [{ role: 'user', content: 'Hi' }], verbosity: 'invalid-value', stream: false });
+      .send(intentEnvelope);
     assert.equal(res.status, 200);
   });
 });

@@ -151,27 +151,27 @@ POST /v1/chat/completions
 6. **Future Extensibility** - Easy to add new intent types
 7. **Zero Migration Pain** - Backward compatibility maintained
 
-## Migration Path (Future Phases)
+## Migration Path
 
 ✅ **Phase 1** (Complete): Backend compatibility
 - Backend accepts both intent and legacy formats
 - Returns intent format when intent was sent
 - Returns legacy format when legacy was sent
 
-🔲 **Phase 2** (Future): Frontend adoption
-- Gradually roll out intent-enabled frontend
+✅ **Phase 2** (Complete): Frontend adoption
+- All frontend mutations include intent envelopes
 - Monitor telemetry for adoption rate
-- Feature flag for rollback
+- 100% adoption achieved
 
-🔲 **Phase 3** (Future): Warning mode
-- Log warnings for legacy requests
-- Page team if warning rate too high
-- Communication to dependent teams
+🔲 **Phase 3** (Skipped): Warning mode
+- **Intentionally skipped** to move directly to strict enforcement
+- Phase 3 would have emitted warnings for missing intents
 
-🔲 **Phase 4** (Future): Strict enforcement
-- Require intent for all mutations
-- Remove legacy parsing path
-- Keep metrics for monitoring
+✅ **Phase 4** (Complete): Strict enforcement
+- ✅ All requests must include valid intent envelopes
+- ✅ Legacy parsing path removed
+- ✅ Middleware simplified
+- ✅ Tests updated to use intent format
 
 ## Files Changed
 

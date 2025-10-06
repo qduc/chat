@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createChatProxyTestContext } from '../test_utils/chatProxyTestUtils.js';
 import { getDb, upsertSession, createConversation } from '../src/db/index.js';
+import { createAppendIntent } from '../test_utils/intentTestHelpers.js';
 
 const mockUser = { id: 'test-user-123', email: 'test@example.com' };
 
@@ -12,18 +13,28 @@ const { upstream, makeApp, withServer } = createChatProxyTestContext();
 describe('POST /v1/chat/completions (proxy)', () => {
   test('proxies non-streaming requests and returns upstream JSON', async () => {
     const app = makeApp({ mockUser });
+    const intentEnvelope = createAppendIntent({
+      messages: [{ role: 'user', content: 'Hello' }],
+      stream: false
+    });
     const res = await request(app)
       .post('/v1/chat/completions')
-      .send({ messages: [{ role: 'user', content: 'Hello' }], stream: false });
+      .send(intentEnvelope);
     assert.equal(res.status, 200);
-    assert.equal(res.body.choices[0].message.content, 'Hello world');
+    // Intent responses have success field and operations
+    assert.equal(res.body.success, true);
+    assert.ok(res.body.client_operation);
   });
 
   test('streams SSE responses line-by-line until [DONE]', async () => {
     const app = makeApp({ mockUser });
+    const intentEnvelope = createAppendIntent({
+      messages: [{ role: 'user', content: 'Hello' }],
+      stream: true
+    });
     const res = await request(app)
       .post('/v1/chat/completions')
-      .send({ messages: [{ role: 'user', content: 'Hello' }], stream: true });
+      .send(intentEnvelope);
     assert.equal(res.status, 200);
     const text = res.text;
     assert.ok(text.includes('data: '));
@@ -33,18 +44,26 @@ describe('POST /v1/chat/completions (proxy)', () => {
   test('returns error JSON when upstream fails (status >= 400)', async () => {
     upstream.setError(true);
     const app = makeApp({ mockUser });
+    const intentEnvelope = createAppendIntent({
+      messages: [{ role: 'user', content: 'Hello' }],
+      stream: false
+    });
     const res = await request(app)
       .post('/v1/chat/completions')
-      .send({ messages: [{ role: 'user', content: 'Hello' }], stream: false });
+      .send(intentEnvelope);
     assert.equal(res.status, 500);
     assert.equal(res.body.error, 'upstream_error');
   });
 
   test('delivers streaming response progressively when stream=true', async () => {
     const app = makeApp({ mockUser });
+    const intentEnvelope = createAppendIntent({
+      messages: [{ role: 'user', content: 'Hello' }],
+      stream: true
+    });
     const res = await request(app)
       .post('/v1/chat/completions')
-      .send({ messages: [{ role: 'user', content: 'Hello' }], stream: true });
+      .send(intentEnvelope);
     assert.equal(res.status, 200);
     const text = res.text;
     assert.ok(text.includes('data: '), 'Should deliver data in SSE format');
@@ -67,10 +86,15 @@ describe('POST /v1/chat/completions (proxy)', () => {
 
     upstream.setError(true);
 
+    const intentEnvelope = createAppendIntent({
+      messages: [{ role: 'user', content: 'Hello' }],
+      conversationId: 'conv1',
+      stream: true
+    });
     const res = await request(app)
       .post('/v1/chat/completions')
       .set('x-session-id', sessionId)
-      .send({ messages: [{ role: 'user', content: 'Hello' }], conversation_id: 'conv1', stream: true });
+      .send(intentEnvelope);
     assert.ok(res.status >= 400, 'Should return error status when upstream fails');
     assert.ok(res.body.error, 'Should provide error information to user');
   });
