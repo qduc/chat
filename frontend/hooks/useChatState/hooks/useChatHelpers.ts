@@ -103,7 +103,10 @@ export function useChatHelpers({
         throw new Error('No message available to send.');
       }
 
+      // For intent envelope construction, we need to pass all messages so the
+      // client can calculate afterMessageId/afterSeq from existing conversation history
       const outgoing = [messageToSend];
+      const allMessages = messages;
 
       const config: any = {
         messages: outgoing.map(m => {
@@ -130,6 +133,9 @@ export function useChatHelpers({
 
           return base;
         }),
+        // Include all messages for intent envelope construction (calculating afterMessageId/afterSeq)
+        // This is not sent to the upstream API, only used by our client to build the intent envelope
+        _allMessages: allMessages,
         // Prefer the synchronous ref which is updated immediately when the user
         // selects a model. This avoids a race where a model change dispatch
         // hasn't flushed to React state yet but an immediate regenerate/send

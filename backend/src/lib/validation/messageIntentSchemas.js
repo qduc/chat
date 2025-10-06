@@ -41,7 +41,6 @@ export const appendMessageIntentSchema = z.object({
   type: z.literal('append_message'),
   ...baseIntentFields,
   after_message_id: z.string()
-    .uuid('after_message_id must be a valid UUID')
     .optional(),
   after_seq: z.number()
     .int()

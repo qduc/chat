@@ -101,14 +101,6 @@ export function createChatActions({
         messageContent = input;
       }
 
-      // DEBUG: Check state messages before sending
-      console.log('[DEBUG] State messages before send:', state.messages.map(m => ({
-        id: m.id,
-        role: m.role,
-        seq: m.seq,
-        hasSeq: m.seq !== undefined
-      })));
-
       const userMsg: ChatMessage = { id: crypto.randomUUID(), role: 'user', content: messageContent };
       const assistantMsg: ChatMessage = { id: crypto.randomUUID(), role: 'assistant', content: '' };
       assistantMsgRef.current = assistantMsg;

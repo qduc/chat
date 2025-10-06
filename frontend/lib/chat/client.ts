@@ -90,6 +90,9 @@ export class ChatClient {
     const { messages, model, providerId, responseId } = options;
     const extendedOptions = options as ChatOptionsExtended;
 
+    // Check if we have access to all messages for calculating afterMessageId/afterSeq
+    const allMessagesForIntent = (options as any)._allMessages || messages;
+
     const normalizedMessages = Array.isArray(messages)
       ? messages.filter((message): message is ChatOptions['messages'][number] => !!message)
       : [];
@@ -102,16 +105,6 @@ export class ChatClient {
 
     // Simply spread all properties from messageToSend - this includes seq if it exists
     const outgoingMessages = messageToSend ? [{ ...messageToSend }] : [];
-
-    // DEBUG: Check what's being sent to backend
-    if (outgoingMessages.length > 0) {
-      console.log('[DEBUG] Final outgoing message to backend:', {
-        role: outgoingMessages[0].role,
-        seq: outgoingMessages[0].seq,
-        hasSeq: outgoingMessages[0].seq !== undefined,
-        allKeys: Object.keys(outgoingMessages[0])
-      });
-    }
 
     // Build completion parameters for the intent envelope
     const completionParams: any = {
@@ -159,16 +152,27 @@ export class ChatClient {
     // Extract intent parameters from messages with seq
     let afterMessageId: string | undefined;
     let afterSeq: number | undefined;
-    
-    // Find the last message in state that has a seq (this is the message we're appending after)
-    for (let i = normalizedMessages.length - 1; i >= 0; i--) {
-      const msg = normalizedMessages[i];
+
+    console.debug('buildRequestBody: normalizedMessages', normalizedMessages);
+    console.debug('buildRequestBody: allMessagesForIntent', allMessagesForIntent);
+
+    // Find the last message in the full message history that has a seq
+    // This is the message we're appending after
+    const normalizedAllMessages = Array.isArray(allMessagesForIntent)
+      ? allMessagesForIntent.filter((message): message is ChatOptions['messages'][number] => !!message)
+      : [];
+
+    for (let i = normalizedAllMessages.length - 1; i >= 0; i--) {
+      const msg = normalizedAllMessages[i];
       if (msg.seq !== undefined && msg.id) {
         afterMessageId = String(msg.id);
         afterSeq = msg.seq;
+        console.debug('buildRequestBody: Found message with seq and id:', { id: msg.id, seq: msg.seq });
         break;
       }
     }
+
+    console.debug('buildRequestBody: afterMessageId', afterMessageId, 'afterSeq', afterSeq);
 
     // Create intent envelope for append_message
     const intentEnvelope = createAppendMessageIntent({
