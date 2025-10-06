@@ -305,6 +305,14 @@ async function handleRequest(context, req, res) {
           if (Array.isArray(message.reasoning_details)) {
             persistence.setReasoningDetails(message.reasoning_details);
           }
+          // Capture tool_calls from message
+          if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+            console.log('[openaiProxy] Capturing tool calls from JSON response', {
+              count: message.tool_calls.length,
+              callIds: message.tool_calls.map(tc => tc?.id)
+            });
+            persistence.addToolCalls(message.tool_calls);
+          }
         }
       }
       finishReason = upstreamJson.choices && upstreamJson.choices[0]

@@ -5,6 +5,14 @@ import {
   ConversationTitleService,
   PersistenceConfig,
 } from './persistence/index.js';
+import {
+  insertToolCalls,
+  insertToolOutputs,
+} from '../db/toolCalls.js';
+import {
+  insertToolMessage,
+  getNextSeq,
+} from '../db/messages.js';
 
 /**
  * Simplified persistence manager that implements final-only writes
@@ -541,10 +549,73 @@ export class SimplifiedPersistence {
    * Called automatically during recordAssistantFinal
    */
   persistToolCallsAndOutputs() {
-    if (!this.persist) return;
-    // Tool data will be synced from the client-provided history on the next request.
-    this.toolCalls = [];
-    this.toolOutputs = [];
+    if (!this.persist || !this.conversationId || !this.currentMessageId) {
+      // Clear buffers even if we can't persist
+      this.toolCalls = [];
+      this.toolOutputs = [];
+      return;
+    }
+
+    try {
+      // Save tool calls to database (attached to assistant message)
+      if (this.toolCalls.length > 0) {
+        console.log('[SimplifiedPersistence] Persisting tool calls to database', {
+          conversationId: this.conversationId,
+          messageId: this.currentMessageId,
+          count: this.toolCalls.length,
+          callIds: this.toolCalls.map(tc => tc?.id)
+        });
+        insertToolCalls({
+          messageId: this.currentMessageId,
+          conversationId: this.conversationId,
+          toolCalls: this.toolCalls
+        });
+      }
+
+      // Save tool outputs as separate "tool" role messages
+      if (this.toolOutputs.length > 0) {
+        console.log('[SimplifiedPersistence] Persisting tool outputs as separate messages', {
+          conversationId: this.conversationId,
+          count: this.toolOutputs.length
+        });
+
+        for (const toolOutput of this.toolOutputs) {
+          // Create a separate message with role="tool" for each output
+          const seq = getNextSeq(this.conversationId);
+          const toolContent = typeof toolOutput.output === 'string'
+            ? toolOutput.output
+            : JSON.stringify(toolOutput.output);
+
+          const result = insertToolMessage({
+            conversationId: this.conversationId,
+            content: toolContent,
+            seq,
+            status: toolOutput.status || 'success',
+            clientMessageId: null
+          });
+
+          if (result?.id) {
+            // Link the tool output to this tool message
+            insertToolOutputs({
+              messageId: result.id,
+              conversationId: this.conversationId,
+              toolOutputs: [{
+                tool_call_id: toolOutput.tool_call_id,
+                output: toolContent,
+                status: toolOutput.status || 'success'
+              }]
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[SimplifiedPersistence] Failed to persist tool calls/outputs:', error);
+      // Don't throw - this is cleanup, allow the response to complete
+    } finally {
+      // Clear buffers after persistence attempt
+      this.toolCalls = [];
+      this.toolOutputs = [];
+    }
   }
 
   /**
