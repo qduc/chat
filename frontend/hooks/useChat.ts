@@ -1,5 +1,8 @@
 import { useState, useCallback, useRef } from 'react';
 import type { MessageContent } from '../lib';
+import { conversations as conversationsApi, chat, providers } from '../lib/api';
+import { httpClient } from '../lib/http';
+import type { ConversationMeta, ConversationWithMessages, Provider, ChatOptionsExtended } from '../lib/types';
 
 // Types
 export interface PendingState {
@@ -10,7 +13,7 @@ export interface PendingState {
 
 export interface Message {
   id: string;
-  role: 'user' | 'assistant' | 'system';
+  role: 'user' | 'assistant' | 'system' | 'tool';
   content: MessageContent;
   timestamp?: number;
 }
@@ -35,6 +38,16 @@ export interface ModelGroup {
 
 export type Status = 'idle' | 'streaming';
 export type QualityLevel = 'quick' | 'balanced' | 'thorough';
+
+// Helper function to convert ConversationMeta to Conversation
+function convertConversationMeta(meta: ConversationMeta): Conversation {
+  return {
+    id: meta.id,
+    title: meta.title || '',
+    created_at: meta.created_at,
+    updatedAt: meta.created_at, // Use created_at as updatedAt fallback
+  };
+}
 
 export function useChat() {
   // Message & Conversation State
@@ -98,10 +111,19 @@ export function useChat() {
   const selectConversation = useCallback(async (id: string) => {
     try {
       setLoadingConversations(true);
-      // TODO: Fetch conversation from API
-      // const data = await fetchConversation(id);
-      // setMessages(data.messages);
+      const data = await conversationsApi.get(id);
+
+      // Convert backend messages to frontend format
+      const convertedMessages: Message[] = data.messages.map((msg) => ({
+        id: String(msg.id),
+        role: msg.role,
+        content: msg.content,
+        timestamp: new Date(msg.created_at).getTime()
+      }));
+
+      setMessages(convertedMessages);
       setConversationId(id);
+      setCurrentConversationTitle(data.title || null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load conversation');
     } finally {
@@ -111,8 +133,7 @@ export function useChat() {
 
   const deleteConversation = useCallback(async (id: string) => {
     try {
-      // TODO: Delete from API
-      // await deleteConversationAPI(id);
+      await conversationsApi.delete(id);
       setConversations(prev => prev.filter(c => c.id !== id));
       if (conversationId === id) {
         setConversationId(null);
@@ -127,10 +148,9 @@ export function useChat() {
     if (!nextCursor || loadingConversations) return;
     try {
       setLoadingConversations(true);
-      // TODO: Fetch more conversations
-      // const data = await fetchConversations(nextCursor);
-      // setConversations(prev => [...prev, ...data.conversations]);
-      // setNextCursor(data.nextCursor);
+      const data = await conversationsApi.list({ cursor: nextCursor });
+      setConversations(prev => [...prev, ...data.items.map(convertConversationMeta)]);
+      setNextCursor(data.next_cursor);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load conversations');
     } finally {
@@ -141,10 +161,9 @@ export function useChat() {
   const refreshConversations = useCallback(async () => {
     try {
       setLoadingConversations(true);
-      // TODO: Fetch conversations from API
-      // const data = await fetchConversations();
-      // setConversations(data.conversations);
-      // setNextCursor(data.nextCursor);
+      const data = await conversationsApi.list();
+      setConversations(data.items.map(convertConversationMeta));
+      setNextCursor(data.next_cursor);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to refresh conversations');
     } finally {
@@ -175,14 +194,80 @@ export function useChat() {
       // Create abort controller
       abortControllerRef.current = new AbortController();
 
-      // TODO: Send message to API
-      // const response = await sendMessageAPI({
-      //   content: messageText,
-      //   conversationId,
-      //   model,
-      //   images,
-      //   signal: abortControllerRef.current.signal
-      // });
+      // Create user message
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        role: 'user',
+        content: messageText,
+        timestamp: Date.now()
+      };
+      setMessages(prev => [...prev, userMessage]);
+
+      // Create placeholder assistant message
+      const assistantMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        content: '',
+        timestamp: Date.now()
+      };
+      setMessages(prev => [...prev, assistantMessage]);
+
+      // Convert images to content format if present
+      let messageContent: MessageContent = messageText;
+      if (images.length > 0) {
+        const contentParts: any[] = [{ type: 'text', text: messageText }];
+        for (const img of images) {
+          contentParts.push({
+            type: 'image_url',
+            image_url: { url: img.url }
+          });
+        }
+        messageContent = contentParts;
+      }
+
+      // Send message with streaming
+      const response = await chat.sendMessage({
+        messages: [{ id: userMessage.id, role: 'user', content: messageContent }],
+        model,
+        providerId: providerId || '',
+        stream: shouldStream,
+        signal: abortControllerRef.current.signal,
+        conversationId: conversationId || undefined,
+        streamingEnabled: shouldStream,
+        toolsEnabled: useTools,
+        tools: enabledTools,
+        qualityLevel,
+        systemPrompt: systemPrompt || undefined,
+        activeSystemPromptId: activeSystemPromptId || undefined,
+        onToken: (token: string) => {
+          setMessages(prev => {
+            const updated = [...prev];
+            const lastMsg = updated[updated.length - 1];
+            if (lastMsg && lastMsg.role === 'assistant') {
+              lastMsg.content = typeof lastMsg.content === 'string'
+                ? lastMsg.content + token
+                : token;
+            }
+            return updated;
+          });
+        }
+      } as ChatOptionsExtended);
+
+      // Update assistant message with final content
+      setMessages(prev => {
+        const updated = [...prev];
+        const lastMsg = updated[updated.length - 1];
+        if (lastMsg && lastMsg.role === 'assistant') {
+          lastMsg.content = response.content;
+        }
+        return updated;
+      });
+
+      // Update conversation metadata if returned
+      if (response.conversation) {
+        setConversationId(response.conversation.id);
+        setCurrentConversationTitle(response.conversation.title || null);
+      }
 
       setInput('');
       setImages([]);
@@ -195,7 +280,7 @@ export function useChat() {
       }
       setStatus('idle');
     }
-  }, [input, images, conversationId, model]);
+  }, [input, images, conversationId, model, providerId, shouldStream, useTools, enabledTools, qualityLevel, systemPrompt, activeSystemPromptId]);
 
   const stopStreaming = useCallback(() => {
     if (abortControllerRef.current) {
@@ -243,39 +328,98 @@ export function useChat() {
   }, []);
 
   const saveEdit = useCallback(async () => {
-    if (!editingMessageId) return;
+    if (!editingMessageId || !conversationId) return;
 
     try {
-      // TODO: Save edit to API
-      // await saveMessageEdit(editingMessageId, editingContent);
+      const result = await conversationsApi.editMessage(
+        conversationId,
+        editingMessageId,
+        editingContent
+      );
 
+      // Update local messages
       setMessages(prev =>
         prev.map(m =>
           m.id === editingMessageId ? { ...m, content: editingContent } : m
         )
       );
 
+      // If a new conversation was created, update the conversation ID
+      if (result.new_conversation_id !== conversationId) {
+        setConversationId(result.new_conversation_id);
+      }
+
       cancelEdit();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save edit');
     }
-  }, [editingMessageId, editingContent, cancelEdit]);
+  }, [editingMessageId, editingContent, conversationId, cancelEdit]);
 
   // Actions - Models & Providers
   const loadProvidersAndModels = useCallback(async () => {
     try {
       setIsLoadingModels(true);
-      // TODO: Fetch from API
-      // const data = await fetchModels();
-      // setModelGroups(data.groups);
-      // setModelOptions(data.options);
-      // setModelToProvider(data.modelToProvider);
+
+      // Fetch providers list
+      const providersResponse = await httpClient.get<{ providers: Provider[] }>('/v1/providers');
+      const providersList = providersResponse.data.providers.filter((p: Provider) => p.enabled === 1);
+
+      if (providersList.length === 0) {
+        setModelGroups([]);
+        setModelOptions([]);
+        setModelToProvider({});
+        return;
+      }
+
+      // Fetch models for each provider
+      const groups: ModelGroup[] = [];
+      const options: ModelOption[] = [];
+      const modelToProviderMap: Record<string, string> = {};
+
+      for (const provider of providersList) {
+        try {
+          const modelsResponse = await httpClient.get<{ data: any[] }>(`/v1/providers/${provider.id}/models`);
+          const models = modelsResponse.data.data || [];
+
+          if (models.length > 0) {
+            // Create model options for this provider
+            const providerOptions: ModelOption[] = models.map((model: any) => ({
+              value: model.id,
+              label: model.id
+            }));
+
+            groups.push({
+              id: provider.id,
+              label: provider.name,
+              options: providerOptions
+            });
+
+            options.push(...providerOptions);
+
+            // Build model to provider mapping
+            models.forEach((model: any) => {
+              modelToProviderMap[model.id] = provider.id;
+            });
+          }
+        } catch (err) {
+          console.warn(`Failed to load models for provider ${provider.name}:`, err);
+        }
+      }
+
+      setModelGroups(groups);
+      setModelOptions(options);
+      setModelToProvider(modelToProviderMap);
+
+      // Set default provider if not already set
+      if (!providerId && providersList.length > 0) {
+        setProviderId(providersList[0].id);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load models');
     } finally {
       setIsLoadingModels(false);
     }
-  }, []);
+  }, [providerId]);
 
   const setInlineSystemPromptOverride = useCallback((prompt: string | null) => {
     setSystemPrompt(prompt);
