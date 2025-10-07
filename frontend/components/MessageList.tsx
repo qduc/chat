@@ -16,7 +16,7 @@ import {
 import Markdown from './Markdown';
 import { MessageContentRenderer } from './ui/MessageContentRenderer';
 import { ImagePreview, ImageUploadZone } from './ui/ImagePreview';
-import type { PendingState } from '../hooks/useChatState';
+import type { PendingState } from '../hooks/useChat';
 import {
   images,
   createMixedContent,
