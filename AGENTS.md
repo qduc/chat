@@ -197,6 +197,7 @@ chat/
   - UI primitives: `components/ui/`
 **Image handling**: Check `frontend/components/ui/ImagePreview.tsx` (exports both `ImagePreview` and `ImageUploadZone`)
 **Documentation**: Check `docs/` for ADRs and detailed specs
+**Backend API Specification**: Check `docs/backend_api_spec.md` for the complete backend API specification
 **Linting**: ESLint configs in both `frontend/` and `backend/` directories
 
 ## Instructions for Claude/Copilot AI
