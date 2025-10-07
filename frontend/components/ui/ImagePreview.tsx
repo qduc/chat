@@ -1,8 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
 import { X, AlertCircle, Loader2 } from 'lucide-react';
-import type { ImageAttachment, ImageUploadProgress } from '../../lib';
-import { useSecureImageUrl } from '../../hooks/useSecureImageUrl';
+import type { ImageAttachment, ImageUploadProgress } from '@/lib/types';
+import { useSecureImageUrl } from '@/hooks/useSecureImageUrl';
 
 interface ImagePreviewProps {
   images: ImageAttachment[];

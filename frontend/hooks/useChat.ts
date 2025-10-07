@@ -18,21 +18,23 @@ export interface Message {
 export interface Conversation {
   id: string;
   title: string;
+  created_at: string;
   updatedAt: string;
 }
 
 export interface ModelOption {
-  id: string;
-  name: string;
+  value: string;
+  label: string;
 }
 
 export interface ModelGroup {
-  provider: string;
-  models: ModelOption[];
+  id: string;
+  label: string;
+  options: ModelOption[];
 }
 
 export type Status = 'idle' | 'streaming';
-export type QualityLevel = 'low' | 'medium' | 'high' | 'max';
+export type QualityLevel = 'quick' | 'balanced' | 'thorough';
 
 export function useChat() {
   // Message & Conversation State
@@ -53,7 +55,7 @@ export function useChat() {
 
   // Editing State
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
-  const [editingContent, setEditingContent] = useState<MessageContent>([]);
+  const [editingContent, setEditingContent] = useState<string>('');
 
   // Model & Provider State
   const [model, setModel] = useState('gpt-4');
@@ -68,7 +70,7 @@ export function useChat() {
   const [useTools, setUseTools] = useState(true);
   const [enabledTools, setEnabledTools] = useState<string[]>([]);
   const [shouldStream, setShouldStream] = useState(true);
-  const [qualityLevel, setQualityLevel] = useState<QualityLevel>('medium');
+  const [qualityLevel, setQualityLevel] = useState<QualityLevel>('balanced');
 
   // Image State
   const [images, setImages] = useState<any[]>([]);
@@ -156,7 +158,7 @@ export function useChat() {
     setInput('');
     setError(null);
     setEditingMessageId(null);
-    setEditingContent([]);
+    setEditingContent('');
     setImages([]);
     setCurrentConversationTitle(null);
   }, []);
@@ -225,15 +227,18 @@ export function useChat() {
   // Actions - Editing
   const startEdit = useCallback((messageId: string, content: MessageContent) => {
     setEditingMessageId(messageId);
-    setEditingContent(content);
+    // Convert MessageContent to string for editing
+    const contentStr = typeof content === 'string' ? content :
+      content.map(c => c.type === 'text' ? c.text : '[Image]').join('\n');
+    setEditingContent(contentStr);
   }, []);
 
   const cancelEdit = useCallback(() => {
     setEditingMessageId(null);
-    setEditingContent([]);
+    setEditingContent('');
   }, []);
 
-  const updateEditContent = useCallback((content: MessageContent) => {
+  const updateEditContent = useCallback((content: string) => {
     setEditingContent(content);
   }, []);
 

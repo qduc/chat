@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { Send, Loader2, Gauge, Wrench, Zap, ImagePlus } from 'lucide-react';
-import type { PendingState } from '../hooks/useChat';
-import { images, supportsReasoningControls, type ImageAttachment, type ImageUploadProgress } from '../lib';
+import type { PendingState } from '@/hooks/useChat';
+import { images as imageUtils, supportsReasoningControls, type ImageAttachment, type ImageUploadProgress } from '../lib';
 import Toggle from './ui/Toggle';
 import QualitySlider from './ui/QualitySlider';
 import { ImagePreview, ImageUploadZone } from './ui/ImagePreview';
@@ -89,8 +89,8 @@ export function MessageInput({
   // Load tool specs for the selector UI
   useEffect(() => {
     let mounted = true;
-    import('../lib/chat').then(mod => {
-      const ToolsClient = (mod as any).ToolsClient;
+    import('../lib/api').then(mod => {
+      const ToolsClient = (mod as any).tools;
       if (!ToolsClient) return;
       const client = new ToolsClient();
       client.getToolSpecs().then((res: any) => {
@@ -104,10 +104,10 @@ export function MessageInput({
 
   // Handle image file selection
   const handleImageFiles = async (files: File[]) => {
-    if (!onImagesChange) return;
+    if (!onImagesChange || !images) return;
 
     try {
-      const uploadedImages = await images.uploadImages(files, setUploadProgress);
+      const uploadedImages = await imageUtils.uploadImages(files, setUploadProgress);
       onImagesChange([...images, ...uploadedImages]);
     } catch (error) {
       console.error('Image upload failed:', error);
@@ -117,12 +117,12 @@ export function MessageInput({
 
   // Handle image removal
   const handleRemoveImage = (imageId: string) => {
-    if (!onImagesChange) return;
+    if (!onImagesChange || !images) return;
 
     const imageToRemove = images.find(img => img.id === imageId);
     if (imageToRemove) {
       // Revoke blob URL to free memory
-      images.revokePreviewUrl(imageToRemove.url);
+      imageUtils.revokePreviewUrl(imageToRemove.url);
       onImagesChange(images.filter(img => img.id !== imageId));
     }
   };
