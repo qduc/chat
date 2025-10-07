@@ -90,15 +90,29 @@ export function MessageInput({
   useEffect(() => {
     let mounted = true;
     import('../lib/api').then(mod => {
-      const ToolsClient = (mod as any).tools;
-      if (!ToolsClient) return;
-      const client = new ToolsClient();
-      client.getToolSpecs().then((res: any) => {
-        if (!mounted) return;
-        const tools = (res.tools || []).map((t: any) => ({ name: t.function?.name || t.name, description: t.function?.description || t.description }));
-        setAvailableTools(tools);
-      }).catch(() => setAvailableTools([]));
-    }).catch(() => setAvailableTools([]));
+      const apiTools = (mod as any).tools;
+      if (!apiTools || typeof apiTools.getToolSpecs !== 'function') {
+        if (mounted) setAvailableTools([]);
+        return;
+      }
+
+      apiTools.getToolSpecs()
+        .then((res: any) => {
+          if (!mounted) return;
+          const specs = Array.isArray(res?.tools) ? res.tools : [];
+          const names = Array.isArray(res?.available_tools) ? res.available_tools : [];
+
+          const tools = specs.length > 0
+            ? specs.map((t: any) => ({ name: t.function?.name || t.name, description: t.function?.description || t.description }))
+            : names.map((n: string) => ({ name: n, description: undefined }));
+
+          setAvailableTools(tools);
+        })
+        .catch(() => {
+          if (mounted) setAvailableTools([]);
+        });
+    }).catch(() => { if (mounted) setAvailableTools([]); });
+
     return () => { mounted = false; };
   }, []);
 
