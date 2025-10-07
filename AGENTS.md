@@ -54,11 +54,11 @@ chat/
 ./dev.sh ps              # Show running services
 ```
 
-### Logs and Monitoring
+### Logs
 ```bash
-./dev.sh logs -f         # Follow logs from all services
-./dev.sh logs -f frontend # Follow frontend logs only
-./dev.sh logs -f backend  # Follow backend logs only
+./dev.sh logs         # logs from all services
+./dev.sh logs frontend # frontend logs only
+./dev.sh logs backend  # backend logs only
 ./dev.sh logs --tail=100  # Show last 100 log lines
 ```
 

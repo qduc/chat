@@ -65,6 +65,57 @@ function convertConversationMeta(meta: ConversationMeta): Conversation {
   };
 }
 
+// Helper function to merge tool outputs from tool messages into assistant messages
+function mergeToolOutputsToAssistantMessages(messages: Message[]): Message[] {
+  // Build a map of tool_call_id to assistant message for quick lookup
+  const assistantMessagesByToolCallId = new Map<string, Message>();
+
+  for (const msg of messages) {
+    if (msg.role === 'assistant' && msg.tool_calls) {
+      for (const toolCall of msg.tool_calls) {
+        if (toolCall.id) {
+          assistantMessagesByToolCallId.set(toolCall.id, msg);
+        }
+      }
+    }
+  }
+
+  // Process messages and merge tool outputs
+  const result: Message[] = [];
+
+  for (const msg of messages) {
+    if (msg.role === 'tool' && msg.tool_outputs) {
+      // Transfer tool outputs to the corresponding assistant message
+      for (const output of msg.tool_outputs) {
+        const toolCallId = output.tool_call_id;
+        if (toolCallId) {
+          const assistantMsg = assistantMessagesByToolCallId.get(toolCallId);
+          if (assistantMsg) {
+            // Initialize tool_outputs array if needed
+            if (!assistantMsg.tool_outputs) {
+              assistantMsg.tool_outputs = [];
+            }
+            // Add the output if not already present
+            const exists = assistantMsg.tool_outputs.some(
+              o => o.tool_call_id === toolCallId
+            );
+            if (!exists) {
+              assistantMsg.tool_outputs.push(output);
+            }
+          }
+        }
+      }
+      // Skip tool messages - don't add them to the result
+      continue;
+    }
+
+    // Add all non-tool messages to the result
+    result.push(msg);
+  }
+
+  return result;
+}
+
 export function useChat() {
   // Helper to generate reasonably-unique client IDs for local messages.
   // Prefer the browser-native crypto.randomUUID when available, fall back to
@@ -161,12 +212,19 @@ export function useChat() {
       const data = await conversationsApi.get(id, { limit: 200 });
 
       // Convert backend messages to frontend format
-      const convertedMessages: Message[] = data.messages.map((msg) => ({
+      const rawMessages: Message[] = data.messages.map((msg) => ({
         id: String(msg.id),
         role: msg.role,
         content: msg.content,
         timestamp: new Date(msg.created_at).getTime(),
+        tool_calls: msg.tool_calls,
+        tool_call_id: msg.tool_call_id,
+        tool_outputs: msg.tool_outputs,
+        usage: msg.usage,
       }));
+
+      // Merge tool outputs from tool messages into their corresponding assistant messages
+      const convertedMessages = mergeToolOutputsToAssistantMessages(rawMessages);
 
       setMessages(convertedMessages);
       setConversationId(id);
