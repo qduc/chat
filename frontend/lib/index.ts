@@ -5,18 +5,6 @@
 // Core API modules
 export { auth, chat, conversations, images, tools, providers } from './api';
 
-// Backward compatibility exports for tests
-export const authApi = auth;
-export const verifySession = auth.verifySession;
-
-// Legacy function exports (deprecated but kept for backward compatibility)
-export const listConversationsApi = conversations.list;
-export const createConversation = conversations.create;
-export const getConversationApi = conversations.get;
-export const deleteConversationApi = conversations.delete;
-export const editMessageApi = conversations.editMessage;
-export const getToolSpecs = tools.getToolSpecs;
-
 // HTTP client
 export { httpClient, HttpError, type HttpResponse, type RequestOptions } from './http';
 
