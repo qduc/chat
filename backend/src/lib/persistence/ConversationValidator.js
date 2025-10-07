@@ -105,16 +105,6 @@ export class ConversationValidator {
     if (conversationId && !isNewConversation) {
       const accessError = this.validateConversationAccess(existingConversation, conversationId, sessionId);
       if (accessError) return accessError;
-
-      // Validate message limit
-      const messageLimitError = this.validateMessageLimit(conversationId);
-      if (messageLimitError) return messageLimitError;
-    }
-
-    // For new conversations, validate conversation limit
-    if (isNewConversation) {
-      const conversationLimitError = this.validateConversationLimit(sessionId);
-      if (conversationLimitError) return conversationLimitError;
     }
 
     return null;

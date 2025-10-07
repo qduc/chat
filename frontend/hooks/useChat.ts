@@ -166,10 +166,6 @@ export function useChat() {
         role: msg.role,
         content: msg.content,
         timestamp: new Date(msg.created_at).getTime(),
-        ...(msg.tool_calls && { tool_calls: msg.tool_calls }),
-        ...(msg.tool_call_id && { tool_call_id: msg.tool_call_id }),
-        ...(msg.tool_outputs && { tool_outputs: msg.tool_outputs }),
-        ...(msg.usage && { usage: msg.usage })
       }));
 
       setMessages(convertedMessages);
@@ -331,49 +327,129 @@ export function useChat() {
         activeSystemPromptId: activeSystemPromptId || undefined,
         onToken: (token: string) => {
           setMessages(prev => {
-            const updated = [...prev];
-            const lastMsg = updated[updated.length - 1];
-            if (lastMsg && lastMsg.role === 'assistant') {
-              lastMsg.content = typeof lastMsg.content === 'string'
-                ? lastMsg.content + token
-                : token;
-            }
-            return updated;
+            const lastIdx = prev.length - 1;
+            if (lastIdx < 0) return prev;
+
+            const lastMsg = prev[lastIdx];
+            if (!lastMsg || lastMsg.role !== 'assistant') return prev;
+
+            const newContent = typeof lastMsg.content === 'string'
+              ? lastMsg.content + token
+              : token;
+
+            return [
+              ...prev.slice(0, lastIdx),
+              { ...lastMsg, content: newContent }
+            ];
           });
         },
         onEvent: (event) => {
           if (event.type === 'tool_call') {
             setMessages(prev => {
-              const updated = [...prev];
-              const lastMsg = updated[updated.length - 1];
-              if (lastMsg && lastMsg.role === 'assistant') {
-                if (!lastMsg.tool_calls) {
-                  lastMsg.tool_calls = [];
+              const lastIdx = prev.length - 1;
+              if (lastIdx < 0) return prev;
+
+              const lastMsg = prev[lastIdx];
+              if (!lastMsg || lastMsg.role !== 'assistant') return prev;
+
+              // Accumulate tool calls by index to avoid duplicates during streaming
+              const tcDelta = event.value;
+              const idx = tcDelta.index ?? 0;
+              const existingToolCalls = lastMsg.tool_calls || [];
+              const existingIdx = existingToolCalls.findIndex(tc => (tc.index ?? 0) === idx);
+
+              let updatedToolCalls;
+              if (existingIdx >= 0) {
+                // Update existing tool call (merge chunks)
+                console.log('[DEBUG] Merging tool_call chunk:', { id: tcDelta.id, index: idx, name: tcDelta.function?.name });
+                updatedToolCalls = [...existingToolCalls];
+                const existing = { ...updatedToolCalls[existingIdx] };
+                if (tcDelta.id) existing.id = tcDelta.id;
+                if (tcDelta.type) existing.type = tcDelta.type;
+                if (tcDelta.function?.name) {
+                  existing.function = { ...existing.function, name: tcDelta.function.name };
                 }
-                lastMsg.tool_calls.push(event.value);
+                if (tcDelta.function?.arguments) {
+                  existing.function = {
+                    ...existing.function,
+                    arguments: (existing.function?.arguments || '') + tcDelta.function.arguments
+                  };
+                }
+                updatedToolCalls[existingIdx] = existing;
+              } else {
+                // New tool call
+                console.log('[DEBUG] Adding new tool_call:', { id: tcDelta.id, index: idx, name: tcDelta.function?.name });
+                updatedToolCalls = [
+                  ...existingToolCalls,
+                  {
+                    id: tcDelta.id,
+                    type: tcDelta.type || 'function',
+                    index: idx,
+                    function: {
+                      name: tcDelta.function?.name || '',
+                      arguments: tcDelta.function?.arguments || ''
+                    }
+                  }
+                ];
               }
-              return updated;
+
+              // Create new array with updated last message (immutable update)
+              return [
+                ...prev.slice(0, lastIdx),
+                { ...lastMsg, tool_calls: updatedToolCalls }
+              ];
             });
           } else if (event.type === 'tool_output') {
             setMessages(prev => {
-              const updated = [...prev];
-              const lastMsg = updated[updated.length - 1];
-              if (lastMsg && lastMsg.role === 'assistant') {
-                if (!lastMsg.tool_outputs) {
-                  lastMsg.tool_outputs = [];
+              const lastIdx = prev.length - 1;
+              if (lastIdx < 0) return prev;
+
+              const lastMsg = prev[lastIdx];
+              if (!lastMsg || lastMsg.role !== 'assistant') return prev;
+
+              // Avoid duplicate tool outputs by checking tool_call_id or name
+              const outputValue = event.value;
+              const toolCallId = outputValue.tool_call_id;
+              const outputName = outputValue.name;
+
+              const existingToolOutputs = lastMsg.tool_outputs || [];
+              // Check if this tool output already exists
+              const existingIdx = existingToolOutputs.findIndex(out => {
+                if (toolCallId && out.tool_call_id) {
+                  return out.tool_call_id === toolCallId;
                 }
-                lastMsg.tool_outputs.push(event.value);
+                if (outputName && out.name) {
+                  return out.name === outputName;
+                }
+                return false;
+              });
+
+              if (existingIdx === -1) {
+                // New tool output - add it
+                console.log('[DEBUG] Adding new tool_output:', { tool_call_id: toolCallId, name: outputName });
+                // Create new array with updated last message (immutable update)
+                return [
+                  ...prev.slice(0, lastIdx),
+                  { ...lastMsg, tool_outputs: [...existingToolOutputs, outputValue] }
+                ];
+              } else {
+                // If it already exists, ignore the duplicate
+                console.log('[DEBUG] Ignoring duplicate tool_output:', { tool_call_id: toolCallId, name: outputName });
+                return prev;
               }
-              return updated;
             });
           } else if (event.type === 'usage') {
             setMessages(prev => {
-              const updated = [...prev];
-              const lastMsg = updated[updated.length - 1];
-              if (lastMsg && lastMsg.role === 'assistant') {
-                lastMsg.usage = event.value;
-              }
-              return updated;
+              const lastIdx = prev.length - 1;
+              if (lastIdx < 0) return prev;
+
+              const lastMsg = prev[lastIdx];
+              if (!lastMsg || lastMsg.role !== 'assistant') return prev;
+
+              return [
+                ...prev.slice(0, lastIdx),
+                { ...lastMsg, usage: event.value }
+              ];
             });
           }
         }
@@ -381,12 +457,16 @@ export function useChat() {
 
       // Update assistant message with final content
       setMessages(prev => {
-        const updated = [...prev];
-        const lastMsg = updated[updated.length - 1];
-        if (lastMsg && lastMsg.role === 'assistant') {
-          lastMsg.content = response.content;
-        }
-        return updated;
+        const lastIdx = prev.length - 1;
+        if (lastIdx < 0) return prev;
+
+        const lastMsg = prev[lastIdx];
+        if (!lastMsg || lastMsg.role !== 'assistant') return prev;
+
+        return [
+          ...prev.slice(0, lastIdx),
+          { ...lastMsg, content: response.content }
+        ];
       });
 
       // Update conversation metadata if returned
