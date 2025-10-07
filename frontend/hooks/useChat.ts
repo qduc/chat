@@ -16,6 +16,22 @@ export interface Message {
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: MessageContent;
   timestamp?: number;
+  tool_calls?: any[];
+  tool_call_id?: string;
+  tool_outputs?: Array<{
+    tool_call_id?: string;
+    name?: string;
+    output: any;
+    status?: string;
+  }>;
+  usage?: {
+    provider?: string;
+    model?: string;
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    reasoning_tokens?: number;
+  };
 }
 
 export interface Conversation {
@@ -149,7 +165,11 @@ export function useChat() {
         id: String(msg.id),
         role: msg.role,
         content: msg.content,
-        timestamp: new Date(msg.created_at).getTime()
+        timestamp: new Date(msg.created_at).getTime(),
+        ...(msg.tool_calls && { tool_calls: msg.tool_calls }),
+        ...(msg.tool_call_id && { tool_call_id: msg.tool_call_id }),
+        ...(msg.tool_outputs && { tool_outputs: msg.tool_outputs }),
+        ...(msg.usage && { usage: msg.usage })
       }));
 
       setMessages(convertedMessages);
@@ -320,6 +340,42 @@ export function useChat() {
             }
             return updated;
           });
+        },
+        onEvent: (event) => {
+          if (event.type === 'tool_call') {
+            setMessages(prev => {
+              const updated = [...prev];
+              const lastMsg = updated[updated.length - 1];
+              if (lastMsg && lastMsg.role === 'assistant') {
+                if (!lastMsg.tool_calls) {
+                  lastMsg.tool_calls = [];
+                }
+                lastMsg.tool_calls.push(event.value);
+              }
+              return updated;
+            });
+          } else if (event.type === 'tool_output') {
+            setMessages(prev => {
+              const updated = [...prev];
+              const lastMsg = updated[updated.length - 1];
+              if (lastMsg && lastMsg.role === 'assistant') {
+                if (!lastMsg.tool_outputs) {
+                  lastMsg.tool_outputs = [];
+                }
+                lastMsg.tool_outputs.push(event.value);
+              }
+              return updated;
+            });
+          } else if (event.type === 'usage') {
+            setMessages(prev => {
+              const updated = [...prev];
+              const lastMsg = updated[updated.length - 1];
+              if (lastMsg && lastMsg.role === 'assistant') {
+                lastMsg.usage = event.value;
+              }
+              return updated;
+            });
+          }
         }
       } as ChatOptionsExtended);
 

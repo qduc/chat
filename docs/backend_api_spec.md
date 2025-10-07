@@ -208,16 +208,198 @@ Errors: 400 bad_request, 404 not_found, 500 internal_error.
 All endpoints require auth.
 
 ### POST /v1/chat/completions
-OpenAI-compatible chat completions endpoint with conversation/tool persistence enhancements.
-Accepts standard OpenAI JSON body (model, messages[], tools, tool_choice, stream, etc.).
-Additional behaviors:
-- Server orchestrates and expands simplified tool names to full specs.
-- SSE streaming if `stream: true` with standard OpenAI stream chunks + tool execution events.
-- Conversation state persistence if conversation_id provided (see tests for details).
-Responses:
-- 200 JSON (non-stream) OpenAI response shape.
-- 200 `text/event-stream` for streaming.
-Errors: OpenAI-compatible error envelope.
+Core unified endpoint for all chat interactions. Implements an OpenAI-compatible surface while adding: conversation persistence, tool orchestration (iterative), reasoning controls, system prompt injection, and metadata synchronization.
+
+#### Request Content-Type
+`application/json`
+
+#### Authentication
+Required (Bearer token). Request is rejected with 401 if missing/invalid.
+
+#### Request Body (superset of OpenAI spec)
+```
+{
+  "model": "<model-id>",                  // Optional: resolved to provider default if omitted
+  "messages": [                            // Standard OpenAI chat messages (system injected automatically)
+    { "role": "user", "content": "Hello" },
+    { "role": "assistant", "content": "..." },
+    { "role": "tool", "tool_call_id": "tc_123", "content": "<tool result>" }
+  ],
+  "stream": true|false,                    // Enable SSE streaming (default false if omitted)
+  "tools": [                               // EITHER full OpenAI tool objects OR simplified string array
+    // 1) Simplified: ["weather", "search"] (server expands)
+    // 2) Full spec objects (OpenAI format):
+    { "type": "function", "function": { "name": "search", "description": "...", "parameters": { ...JSON Schema... } } }
+  ],
+  "tool_choice": "auto" | "none" | { "type":"function", "function":{"name":"..."} },
+  "conversation_id": "uuid",              // Existing conversation; if absent a new one may be auto-created (persisted)
+  "provider_id": "uuid",                  // Chooses a stored provider (header `x-provider-id` alternative). Stripped upstream.
+  "system_prompt": "<string>",            // Convenience field; converted into/updates first system message server-side
+  "reasoning_effort": "minimal|low|medium|high", // Only if model supports reasoning
+  "verbosity": "low|medium|high",         // Only if model supports reasoning verbosity tiers
+  "streamingEnabled": true|false,          // Client hint for persistence metadata (not sent upstream)
+  "toolsEnabled": true|false,              // Client hint for persistence metadata (not sent upstream)
+  "qualityLevel": "default|...",          // Stored in conversation metadata (not upstream)
+  "researchMode": true|false,              // (Experimental) stripped
+  "id": "client-generated-id?"            // Optional passthrough for some streaming tool call chunk IDs
+}
+```
+
+Notes:
+- The server injects / normalizes a single leading `system` message based on `system_prompt`.
+- Any non-OpenAI persistence / UI control fields are stripped before outbound upstream API call.
+- If `tools` is an array of strings, each must match a registered tool name; unmatched names are silently ignored.
+- When a persisted conversation exists, prior history is reconstructed server-side (may use `previous_response_id` optimization) — client need not resend full history.
+
+#### Modes Matrix
+| Tools Present | stream=true | Behavior Path | Iterations | Response Transport |
+|---------------|-------------|---------------|-----------|--------------------|
+| No            | false       | Plain proxy   | 1         | Single JSON body   |
+| No            | true        | Plain proxy   | 1         | SSE (delta chunks) |
+| Yes           | false       | Tool orchestration (JSON) | 1..N (until no more tool calls or max) | JSON (augmented) |
+| Yes           | true        | Iterative tool streaming   | 1..N | SSE (tool + content events) |
+
+`N` is bounded by a safety limit (currently 10 iterations) to avoid infinite tool loops.
+
+#### Streaming Event Semantics
+When `stream: true` headers include `Content-Type: text/event-stream`.
+Events follow OpenAI pattern: lines of `data: <json>` terminated by blank line. A final `data: [DONE]` sentinel closes the stream.
+
+Additional event payload shapes:
+```
+// Standard delta chunk (OpenAI)
+{ "id": "...", "object": "chat.completion.chunk", "created": 123, "model": "...", "choices": [ { "index":0, "delta": { "content": "Hel" } } ] }
+
+// Consolidated tool_calls chunk (tool streaming path only, after buffering partial deltas)
+{ "id": "...", "object": "chat.completion.chunk", "choices": [ { "delta": { "tool_calls": [ { "id":"tc_x", "type":"function", "function": { "name":"search", "arguments":"{...json...}" } } ] } } ] }
+
+// Tool output event (internal prefix; `event` not used—encoded as delta wrapper)
+{ "id": "...", "object": "chat.completion.chunk", "choices": [ { "delta": { "tool_output": { "tool_call_id": "tc_x", "name": "search", "output": "<stringified output>" } } } ] }
+
+// Final empty delta signaling completion (finish_reason may appear earlier or here)
+{ "id": "...", "object": "chat.completion.chunk", "choices": [ { "delta": {}, "finish_reason":"stop" } ] }
+```
+Conversation metadata (e.g. newly created conversation id) may be streamed in a synthetic chunk before `[DONE]`.
+
+#### Non-Streaming JSON Responses
+Two shapes depending on tool usage:
+
+1. Plain (no tools): Standard OpenAI response plus added conversation metadata fields.
+```
+{
+  "id": "chatcmpl-...",
+  "object": "chat.completion",
+  "created": 1234567890,
+  "model": "gpt-4o-mini",
+  "choices": [ { "index":0, "message": { "role":"assistant", "content":"Hello!" }, "finish_reason":"stop" } ],
+  "usage": { "prompt_tokens": 12, "completion_tokens": 7, "total_tokens": 19, "reasoning_tokens?": 4 },
+  "conversation_id": "uuid",                // Added
+  "new_conversation": true|false,            // Added (present if auto-created this call)
+  "user_message_id": "<id?>",               // Added (last persisted user message)
+  "assistant_message_id": "<id?>"           // Added
+}
+```
+2. Tool orchestration (no stream): Adds `tool_events` capturing the iterative sequence (thinking text, tool calls, tool outputs) prior to final assistant message.
+```
+{
+  ...standard fields...,
+  "choices": [ { "message": { "role":"assistant", "content":"Final summarized answer" } } ],
+  "tool_events": [
+     { "type": "text", "value": "Thinking about query..." },
+     { "type": "tool_call", "value": { "id":"tc_1", "type":"function", "function": { "name":"search", "arguments":"{...}" } } },
+     { "type": "tool_output", "value": { "tool_call_id":"tc_1", "name":"search", "output":"<stringified result>" } }
+  ],
+  "conversation_id": "uuid"
+}
+```
+
+#### Conversation Persistence Behavior
+| Scenario | Effect |
+|----------|--------|
+| No `conversation_id` provided | New conversation created (if persistence enabled & user authenticated). Metadata flags (model, tools, reasoning) captured. Title may be auto-generated from first user message. |
+| Existing `conversation_id` | History reconstructed server-side; request `messages` can be partial (latest turn). Server may use `previous_response_id` for upstream optimization. |
+| Invalid / foreign `conversation_id` | Ignored and new conversation created (client receives new id). |
+| Persistence disabled (config) | Endpoint still works but omits conversation metadata fields. |
+
+#### Tool Orchestration Details
+Iterative algorithm until: model stops requesting tools OR max iterations reached.
+Each iteration:
+1. Non-stream upstream call (even if client requested streaming) to inspect `tool_calls`.
+2. If no tool calls -> final response (optionally streamed separately if streaming mode).
+3. If tool calls -> execute each locally, buffer outputs, append tool messages, repeat.
+4. Streams thinking/content + tool events if `stream:true`.
+5. Max iteration fallback appends `[Maximum iterations reached]` marker.
+
+#### Reasoning Controls
+`reasoning_effort` and `verbosity` are only forwarded if provider/model declares support. Invalid values => 400 `invalid_request_error`.
+
+#### Headers
+Optional request headers:
+- `x-provider-id`: Overrides provider selection (same as body `provider_id`).
+- `x-conversation-id`: Alternate place for conversation id (body takes precedence).
+
+#### Example: Streaming With Tools
+Request:
+```
+POST /v1/chat/completions
+{
+  "model": "gpt-4o-mini",
+  "messages": [ { "role":"user", "content":"What's the weather in Paris?" } ],
+  "tools": ["weather_api"],
+  "stream": true
+}
+```
+Pseudo-stream:
+```
+data: {"choices":[{"delta":{"content":"Let me check"}}]}
+data: {"choices":[{"delta":{"tool_calls":[{"id":"tc_1","type":"function","function":{"name":"weather_api","arguments":"{...}"}}]}}]}
+data: {"choices":[{"delta":{"tool_output":{"tool_call_id":"tc_1","name":"weather_api","output":"{\"tempC\":18}"}}}]}
+data: {"choices":[{"delta":{"content":"Currently 18C in Paris."},"finish_reason":"stop"}]}
+data: {"conversation":{"id":"uuid","new":true}}
+data: [DONE]
+```
+
+#### Error Responses
+Format mirrors OpenAI:
+```
+{ "error": "invalid_request_error", "message": "Invalid reasoning_effort. Must be one of minimal, low, medium, high" }
+```
+Common codes:
+- 400 `invalid_request_error` (bad fields / invalid reasoning controls)
+- 401 `invalid_token`
+- 404 `not_found` (if conversation referenced but removed after validation window)
+- 429 `rate_limit_exceeded` (future / upstream passthrough)
+- 500 `upstream_error` (network / provider), `tool_orchestration_error` (internal tool flow)
+- 502 `bad_gateway` (provider failure surfaced)
+
+#### Idempotency & Retries
+Endpoint is not strictly idempotent (new conversation creation, title generation). Clients should de-duplicate user messages client-side if retrying after network errors.
+
+#### Stability Guarantees
+- Unknown new fields will be additive.
+- `tool_events` list ordering preserved.
+- Streaming order: content deltas -> (buffered) tool_calls -> per-tool tool_output events -> final empty delta -> metadata -> `[DONE]`.
+
+#### Field Removal / Stripping Summary (never sent upstream)
+`conversation_id`, `provider_id`, `system_prompt` (transformed to message), `streamingEnabled`, `toolsEnabled`, `qualityLevel`, `researchMode`.
+
+#### Backwards Compatibility Notes
+Legacy clients sending a first system message manually still work; server will replace it if `system_prompt` provided.
+
+#### Limits & Safety
+- Max tool orchestration iterations: 10
+- Stream timeout guard: 30s inactivity abort for tool streaming path
+- Large tool argument accumulation: arguments concatenated until complete JSON parse (empty => `{}`)
+
+#### Observability
+Server logs summarize tool calls, tool outputs (with truncated previews), iteration counts, and persistence actions; system prompt content excluded from logs for privacy.
+
+#### Future Extensions (non-breaking)
+- Function calling parallelization
+- Partial reasoning block streaming
+- Tool call cancellation events
+
+---
 
 ### GET /v1/tools
 Returns registered tool specifications.
