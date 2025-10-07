@@ -229,15 +229,47 @@ export function useChat() {
       setMessages(convertedMessages);
       setConversationId(id);
       setCurrentConversationTitle(data.title || null);
-      // If the conversation includes a model, apply it for the active conversation
-      // but do NOT persist it to localStorage (persist only user manual selections)
+
+      // Apply conversation settings without persisting to localStorage
+      // (persist only user manual selections)
       if (data.model) {
         setModelState(data.model);
       }
+
       // Accept either `provider` or legacy `provider_id` from API
       const providerFromData = (data as any).provider ?? (data as any).provider_id;
       if (providerFromData) {
         setProviderId(providerFromData);
+      }
+
+      // Apply tools settings
+      if (data.metadata?.active_tools || data.active_tools) {
+        const tools = data.metadata?.active_tools || data.active_tools;
+        setEnabledTools(tools);
+      }
+
+      // Apply streaming and tools enabled flags
+      if (typeof data.streaming_enabled === 'boolean') {
+        setShouldStream(data.streaming_enabled);
+      }
+      if (typeof data.tools_enabled === 'boolean') {
+        setUseTools(data.tools_enabled);
+      }
+
+      // Apply quality level
+      if (data.quality_level) {
+        setQualityLevel(data.quality_level as QualityLevel);
+      }
+
+      // Apply system prompt
+      if (data.metadata?.system_prompt || data.system_prompt) {
+        const prompt = data.metadata?.system_prompt || data.system_prompt;
+        setSystemPrompt(prompt);
+      }
+
+      // Apply active system prompt ID
+      if (data.active_system_prompt_id) {
+        setActiveSystemPromptId(data.active_system_prompt_id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load conversation');
