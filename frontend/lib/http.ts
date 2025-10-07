@@ -2,11 +2,52 @@
  * Centralized HTTP client with automatic token refresh on 401 errors
  */
 
-import { authApi } from '../auth/api';
-import { getToken, clearTokens, isTokenExpired } from '../auth/tokens';
-import { setAuthReady } from '../auth/ready';
-import { resolveApiBase } from '../config/apiBase';
-import { HttpClientOptions, RequestOptions, HttpResponse, HttpError, QueuedRequest } from './types';
+import { getToken, clearTokens, isTokenExpired, setAuthReady } from './storage';
+
+const DEFAULT_API_BASE = typeof window !== 'undefined'
+  ? `${window.location.origin}/api`
+  : process.env.NEXT_PUBLIC_API_BASE || 'http://backend:3001/api';
+
+export interface HttpClientOptions {
+  baseUrl?: string;
+  timeout?: number;
+  retries?: number;
+}
+
+export interface RequestOptions {
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  headers?: Record<string, string>;
+  body?: any;
+  signal?: AbortSignal;
+  credentials?: RequestCredentials;
+  skipAuth?: boolean;  // Skip adding auth headers
+  skipRetry?: boolean; // Skip 401 retry logic
+}
+
+export interface HttpResponse<T = any> {
+  data: T;
+  status: number;
+  statusText: string;
+  headers: Headers;
+}
+
+export class HttpError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+    public response?: Response,
+    public data?: any
+  ) {
+    super(message);
+    this.name = 'HttpError';
+  }
+}
+
+export interface QueuedRequest {
+  resolve: (value: any) => void;
+  reject: (error: any) => void;
+  request: () => Promise<any>;
+}
 
 class AuthenticatedHttpClient {
   private baseUrl: string;
@@ -14,11 +55,19 @@ class AuthenticatedHttpClient {
   private retries: number;
   private isRefreshing = false;
   private requestQueue: QueuedRequest[] = [];
+  private refreshTokenFn?: () => Promise<void>;
 
   constructor(options: HttpClientOptions = {}) {
-  this.baseUrl = options.baseUrl || resolveApiBase();
+    this.baseUrl = options.baseUrl || DEFAULT_API_BASE;
     this.timeout = options.timeout || 30000;
     this.retries = options.retries || 1;
+  }
+
+  /**
+   * Set the token refresh function (will be set by api.ts to avoid circular dependency)
+   */
+  setRefreshTokenFn(fn: () => Promise<void>) {
+    this.refreshTokenFn = fn;
   }
 
   /**
@@ -82,7 +131,7 @@ class AuthenticatedHttpClient {
   private async handleUnauthorized<T>(url: string, options: RequestOptions): Promise<HttpResponse<T>> {
     // Check if we have a refresh token
     const currentToken = getToken();
-    if (!currentToken || this.isRefreshing) {
+    if (!currentToken || this.isRefreshing || !this.refreshTokenFn) {
       throw new HttpError(401, 'Authentication required');
     }
 
@@ -92,7 +141,7 @@ class AuthenticatedHttpClient {
 
     try {
       // Attempt to refresh the token
-      await authApi.refreshToken();
+      await this.refreshTokenFn();
 
       // Process queued requests with new token
       await this.processRequestQueue();

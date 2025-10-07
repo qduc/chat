@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
 import { Send, Loader2, Gauge, Wrench, Zap, ImagePlus } from 'lucide-react';
 import type { PendingState } from '../hooks/useChatState';
-import type { ImageAttachment, ImageUploadProgress } from '../lib/chat/types';
-import { imagesClient } from '../lib/chat/images';
+import { images, supportsReasoningControls, type ImageAttachment, type ImageUploadProgress } from '../lib';
 import Toggle from './ui/Toggle';
 import QualitySlider from './ui/QualitySlider';
 import { ImagePreview, ImageUploadZone } from './ui/ImagePreview';
 import type { QualityLevel } from './ui/QualitySlider';
-import { supportsReasoningControls } from '../lib/chat/modelCapabilities';
 
 interface MessageInputProps {
   input: string;
@@ -109,7 +107,7 @@ export function MessageInput({
     if (!onImagesChange) return;
 
     try {
-      const uploadedImages = await imagesClient.uploadImages(files, setUploadProgress);
+      const uploadedImages = await images.uploadImages(files, setUploadProgress);
       onImagesChange([...images, ...uploadedImages]);
     } catch (error) {
       console.error('Image upload failed:', error);
@@ -124,7 +122,7 @@ export function MessageInput({
     const imageToRemove = images.find(img => img.id === imageId);
     if (imageToRemove) {
       // Revoke blob URL to free memory
-      imagesClient.revokePreviewUrl(imageToRemove.url);
+      images.revokePreviewUrl(imageToRemove.url);
       onImagesChange(images.filter(img => img.id !== imageId));
     }
   };

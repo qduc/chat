@@ -1,5 +1,5 @@
 import { Trash2, Loader2, Plus, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
-import type { ConversationMeta } from '../lib/chat';
+import type { ConversationMeta } from '../lib';
 
 interface ChatSidebarProps {
   conversations: ConversationMeta[];

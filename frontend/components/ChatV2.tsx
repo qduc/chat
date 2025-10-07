@@ -10,7 +10,7 @@ import { MessageInput } from './MessageInput';
 import { RightSidebar } from './RightSidebar';
 import SettingsModal from './SettingsModal';
 import { AuthModal, AuthMode } from './auth/AuthModal';
-import type { MessageContent } from '../lib/chat/types';
+import type { MessageContent } from '../lib';
 
 export function ChatV2() {
   const { state, actions } = useChatState();

@@ -19,7 +19,7 @@ jest.mock('../contexts/AuthContext', () => {
 import { describe, test, expect, beforeEach } from '@jest/globals';
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useChatState } from '../hooks/useChatState';
-import * as chatLib from '../lib/chat';
+import * as chatLib from '../lib';
 
 // Mock the chat library
 jest.mock('../lib/chat');

@@ -1,5 +1,6 @@
 /**
- * Token management utilities for authentication
+ * Storage utilities for tokens and application data
+ * Consolidates localStorage access with SSR-safe guards
  */
 
 const TOKEN_KEY = 'chatforge_auth_token';
@@ -138,4 +139,54 @@ export function getUserFromToken(token: string): any | null {
 export function isAuthenticated(): boolean {
   const token = getToken();
   return token !== null && !isTokenExpired(token);
+}
+
+/**
+ * Auth ready state management
+ * Used to coordinate authentication state during token refresh
+ */
+let authReady = true;
+let resolver: (() => void) | null = null;
+let readyPromise: Promise<void> | null = null;
+
+function ensurePromise() {
+  if (!readyPromise) {
+    readyPromise = new Promise<void>((resolve) => {
+      resolver = resolve;
+    });
+  }
+}
+
+export function waitForAuthReady(): Promise<void> {
+  if (authReady) {
+    return Promise.resolve();
+  }
+
+  ensurePromise();
+  return readyPromise as Promise<void>;
+}
+
+export function markAuthReady() {
+  authReady = true;
+  resolver?.();
+  resolver = null;
+}
+
+export function resetAuthReady() {
+  authReady = false;
+  readyPromise = null;
+  resolver = null;
+  ensurePromise();
+}
+
+export function setAuthReady(value: boolean) {
+  if (value) {
+    markAuthReady();
+  } else {
+    resetAuthReady();
+  }
+}
+
+export function isAuthReady() {
+  return authReady;
 }

@@ -27,7 +27,7 @@ jest.mock('../lib/chat', () => ({
 
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useChatState } from '../hooks/useChatState';
-import { sendChat, getToolSpecs, listConversationsApi } from '../lib/chat';
+import { sendChat, getToolSpecs, listConversationsApi } from '../lib';
 
 const mockSendChat = sendChat as jest.MockedFunction<typeof sendChat>;
 const mockGetToolSpecs = getToolSpecs as jest.MockedFunction<typeof getToolSpecs>;

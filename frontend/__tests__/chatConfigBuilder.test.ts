@@ -1,5 +1,5 @@
 import { buildChatConfig } from '../hooks/useChatState/utils/chatConfigBuilder';
-import type { ChatMessage } from '../lib/chat';
+import type { ChatMessage } from '../lib';
 
 describe('buildChatConfig', () => {
   const signal = new AbortController().signal;

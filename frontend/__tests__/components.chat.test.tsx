@@ -65,7 +65,7 @@ jest.mock('../lib/chat', () => {
 });
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import * as chatLib from '../lib/chat';
+import * as chatLib from '../lib';
 const mockedChatLib = chatLib as jest.Mocked<typeof chatLib>;
 import { ChatV2 as Chat } from '../components/ChatV2';
 import { ThemeProvider } from '../contexts/ThemeContext';

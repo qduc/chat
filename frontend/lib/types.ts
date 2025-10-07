@@ -1,3 +1,80 @@
+/**
+ * Consolidated type definitions for API, HTTP, and Chat
+ */
+
+// ============================================================================
+// HTTP Types
+// ============================================================================
+
+export interface HttpClientOptions {
+  baseUrl?: string;
+  timeout?: number;
+  retries?: number;
+}
+
+export interface RequestOptions {
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  headers?: Record<string, string>;
+  body?: any;
+  signal?: AbortSignal;
+  credentials?: RequestCredentials;
+  skipAuth?: boolean;  // Skip adding auth headers
+  skipRetry?: boolean; // Skip 401 retry logic
+}
+
+export interface HttpResponse<T = any> {
+  data: T;
+  status: number;
+  statusText: string;
+  headers: Headers;
+}
+
+// ============================================================================
+// Auth Types
+// ============================================================================
+
+export interface User {
+  id: string;
+  email: string;
+  displayName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LoginResponse {
+  tokens: {
+    accessToken: string;
+    refreshToken: string;
+  };
+  user: User;
+}
+
+export interface RegisterResponse {
+  tokens: {
+    accessToken: string;
+    refreshToken: string;
+  };
+  user: User;
+}
+
+export type VerifySessionReason =
+  | 'missing-token'
+  | 'expired'
+  | 'invalid'
+  | 'network'
+  | 'unknown';
+
+export interface VerifySessionResult {
+  valid: boolean;
+  user: User | null;
+  reason?: VerifySessionReason;
+  error?: unknown;
+}
+
+// ============================================================================
+// Chat Types
+// ============================================================================
+
 export type Role = 'user' | 'assistant' | 'system' | 'tool';
 
 // Image-related types for Vision API support
@@ -270,4 +347,50 @@ export interface SendChatOptions extends ChatOptionsExtended {
   verbosity?: string;
   tool_choice?: any;
   activeSystemPromptId?: string | null;
+}
+
+// ============================================================================
+// Conversation Management Types
+// ============================================================================
+
+export interface ConversationCreateOptions {
+  title?: string;
+  provider_id?: string;
+  model?: string;
+  streamingEnabled?: boolean;
+  toolsEnabled?: boolean;
+  qualityLevel?: string;
+  reasoningEffort?: string;
+  verbosity?: string;
+}
+
+export interface ListConversationsParams {
+  cursor?: string;
+  limit?: number;
+}
+
+export interface GetConversationParams {
+  after_seq?: number;
+  limit?: number;
+}
+
+export interface EditMessageResult {
+  message: {
+    id: string;
+    seq: number;
+    content: string;
+  };
+  new_conversation_id: string;
+}
+
+// ============================================================================
+// Provider Types
+// ============================================================================
+
+export interface Provider {
+  id: string;
+  name: string;
+  provider_type: string;
+  enabled: number;
+  updated_at: string;
 }

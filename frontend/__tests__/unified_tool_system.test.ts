@@ -17,7 +17,7 @@ jest.mock('../contexts/AuthContext', () => {
 
 // Tests for unified tool system - backend as single source of truth
 
-import { ToolsClient } from '../lib/chat';
+import { ToolsClient } from '../lib';
 import { renderHook, waitFor, act } from '@testing-library/react';
 import { useChatState } from '../hooks/useChatState';
 

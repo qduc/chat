@@ -2,11 +2,11 @@
 /* eslint-disable */
 /// <reference types="jest" />
 
-import type { Role } from '../lib/chat';
+import type { Role } from '../lib';
 import {
   ChatClient,
   ConversationManager,
-} from '../lib/chat';
+} from '../lib';
 
 const encoder = new TextEncoder();
 function sseStream(lines: string[]) {

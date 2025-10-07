@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { resolveApiBase } from '../lib/config/apiBase';
-import { getToken, isTokenExpired } from '../lib/auth/tokens';
+import { resolveApiBase } from '../lib';
+import { getToken, isTokenExpired } from '../lib';
 
 interface SecureImageState {
   src: string;

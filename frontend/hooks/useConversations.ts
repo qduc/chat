@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
-import type { ConversationMeta } from '../lib/chat';
-import { ConversationManager } from '../lib/chat';
+import type { ConversationMeta } from '../lib';
+import { ConversationManager } from '../lib';
 
 export interface UseConversationsReturn {
   conversations: ConversationMeta[];

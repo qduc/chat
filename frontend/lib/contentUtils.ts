@@ -1,6 +1,9 @@
-import type { MessageContent, TextContent, ImageContent } from './types';
+/**
+ * Message content transformation utilities
+ * Handles text and image content in messages
+ */
 
-export {};
+import type { MessageContent, TextContent, ImageContent } from './types';
 
 /**
  * Extract text content from MessageContent (string or mixed content array)

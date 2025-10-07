@@ -1,8 +1,8 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
-import type { MessageContent, ImageContent } from '../../lib/chat/types';
-import { extractTextFromContent, extractImagesFromContent, hasImages } from '../../lib/chat/content-utils';
+import type { MessageContent, ImageContent } from '../../lib';
+import { extractTextFromContent, extractImagesFromContent, hasImages } from '../../lib';
 import Markdown from '../Markdown';
 import { useSecureImageUrl } from '../../hooks/useSecureImageUrl';
 

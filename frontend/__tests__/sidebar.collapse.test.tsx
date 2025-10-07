@@ -20,7 +20,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatV2 as Chat } from '../components/ChatV2';
 import { ThemeProvider } from '../contexts/ThemeContext';
-import * as chatLib from '../lib/chat';
+import * as chatLib from '../lib';
 
 // Mock the chat library functions
 jest.mock('../lib/chat');

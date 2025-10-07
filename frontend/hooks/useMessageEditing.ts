@@ -1,7 +1,7 @@
 import { useState, useCallback, useMemo } from 'react';
-import type { ChatMessage } from '../lib/chat';
-import { ConversationManager } from '../lib/chat';
-import { extractImagesFromContent, createMixedContent } from '../lib/chat/content-utils';
+import type { ChatMessage } from '../lib';
+import { ConversationManager } from '../lib';
+import { extractImagesFromContent, createMixedContent } from '../lib';
 
 export interface UseMessageEditingReturn {
   editingMessageId: string | null;
