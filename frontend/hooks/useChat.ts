@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import type { MessageContent } from '../lib';
-import { conversations as conversationsApi, chat, providers } from '../lib/api';
+import { conversations as conversationsApi, chat, providers, auth } from '../lib/api';
 import { httpClient } from '../lib/http';
 import type { ConversationMeta, ConversationWithMessages, Provider, ChatOptionsExtended } from '../lib/types';
 
@@ -71,12 +71,27 @@ export function useChat() {
   const [editingContent, setEditingContent] = useState<string>('');
 
   // Model & Provider State
-  const [model, setModel] = useState('gpt-4');
+  const SELECTED_MODEL_KEY = 'selectedModel';
+
+  // model state - internal setter is kept separate from the persisted setter
+  const [model, setModelState] = useState<string>('gpt-4');
+  // persisted setter - saves last manually selected model to localStorage
+  const setModel = useCallback((m: string) => {
+    setModelState(m);
+    try {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(SELECTED_MODEL_KEY, m);
+      }
+    } catch {
+      // ignore localStorage errors
+    }
+  }, []);
   const [providerId, setProviderId] = useState<string | null>(null);
   const [isLoadingModels, setIsLoadingModels] = useState(false);
   const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
   const [modelToProvider, setModelToProvider] = useState<Record<string, string>>({});
+  /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
   const [modelCapabilities, setModelCapabilities] = useState<any>(null);
 
   // Tool & Quality State
@@ -125,6 +140,16 @@ export function useChat() {
       setMessages(convertedMessages);
       setConversationId(id);
       setCurrentConversationTitle(data.title || null);
+      // If the conversation includes a model, apply it for the active conversation
+      // but do NOT persist it to localStorage (persist only user manual selections)
+      if (data.model) {
+        setModelState(data.model);
+      }
+      // Accept either `provider` or legacy `provider_id` from API
+      const providerFromData = (data as any).provider ?? (data as any).provider_id;
+      if (providerFromData) {
+        setProviderId(providerFromData);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load conversation');
     } finally {
@@ -181,6 +206,29 @@ export function useChat() {
     setEditingContent('');
     setImages([]);
     setCurrentConversationTitle(null);
+    // When starting a new chat (no active conversation) prefer the saved model
+    try {
+      if (typeof window !== 'undefined') {
+        const saved = window.localStorage.getItem(SELECTED_MODEL_KEY);
+        if (saved) setModelState(saved);
+      }
+    } catch {
+      // ignore localStorage errors
+    }
+  }, []);
+
+  // On mount, when there is no active conversation, load the saved selected model
+  useEffect(() => {
+    try {
+      if (typeof window !== 'undefined' && !conversationId) {
+        const saved = window.localStorage.getItem(SELECTED_MODEL_KEY);
+        if (saved) setModelState(saved);
+      }
+    } catch {
+      // ignore
+    }
+    // We intentionally only run this on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Actions - Messages
@@ -411,19 +459,33 @@ export function useChat() {
       setModelOptions(options);
       setModelToProvider(modelToProviderMap);
 
-      // Set default provider if not already set
-      if (!providerId && providersList.length > 0) {
-        setProviderId(providersList[0].id);
+      // Set default provider if not already set (use functional update to avoid capturing providerId)
+      if (providersList.length > 0) {
+        setProviderId(prev => prev ?? providersList[0].id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load models');
     } finally {
       setIsLoadingModels(false);
     }
-  }, [providerId]);
+  }, []);
 
   const setInlineSystemPromptOverride = useCallback((prompt: string | null) => {
     setSystemPrompt(prompt);
+  }, []);
+
+  // Load user profile on mount
+  useEffect(() => {
+    const loadUser = async () => {
+      try {
+        const profile = await auth.getProfile();
+        setUser({ id: profile.id });
+      } catch {
+        // User not authenticated, that's ok
+        console.log('[useChat] User not authenticated');
+      }
+    };
+    loadUser();
   }, []);
 
   // Load providers and models on mount
