@@ -2,7 +2,7 @@
  * Centralized HTTP client with automatic token refresh on 401 errors
  */
 
-import { getToken, clearTokens, isTokenExpired, setAuthReady } from './storage';
+import { getToken, clearTokens, setAuthReady } from './storage';
 
 const DEFAULT_API_BASE = typeof window !== 'undefined'
   ? `${window.location.origin}/api`
@@ -76,8 +76,8 @@ class AuthenticatedHttpClient {
   async request<T = any>(url: string, options: RequestOptions = {}): Promise<HttpResponse<T>> {
     const fullUrl = url.startsWith('http') ? url : `${this.baseUrl}${url.startsWith('/') ? url : `/${url}`}`;
 
-    // If we're currently refreshing tokens, queue this request
-    if (this.isRefreshing) {
+    // If we're currently refreshing tokens, queue this request (unless it's the refresh request itself)
+    if (this.isRefreshing && !options.skipRetry) {
       return new Promise((resolve, reject) => {
         this.requestQueue.push({
           resolve,
@@ -129,9 +129,9 @@ class AuthenticatedHttpClient {
    * Handle 401 unauthorized errors with token refresh
    */
   private async handleUnauthorized<T>(url: string, options: RequestOptions): Promise<HttpResponse<T>> {
-    // Check if we have a refresh token
-    const currentToken = getToken();
-    if (!currentToken || this.isRefreshing || !this.refreshTokenFn) {
+    // Check if we can attempt a refresh (need refresh token and refresh function)
+    if (this.isRefreshing || !this.refreshTokenFn) {
+      console.warn('[http] Cannot refresh token:', { isRefreshing: this.isRefreshing, hasRefreshFn: !!this.refreshTokenFn });
       throw new HttpError(401, 'Authentication required');
     }
 
@@ -210,7 +210,7 @@ class AuthenticatedHttpClient {
     // Add authentication header if not skipped and token exists
     if (!options.skipAuth && typeof window !== 'undefined') {
       const token = getToken();
-      if (token && !isTokenExpired(token)) {
+      if (token) {
         headers.Authorization = `Bearer ${token}`;
       }
     }

@@ -117,15 +117,16 @@ chat/
 ### Frontend Patterns
 
 **State Management Philosophy**:
-- Single source of truth via reducer pattern (modular architecture with domain-specific sub-reducers)
-- Optimistic updates with server reconciliation
+- Simplified state management with `useChat` hook using React `useState`
+- Direct state manipulation without complex reducer patterns
+- Encapsulated state and actions in a single custom hook
 - URL state synchronization for navigation
-- Separation of concerns: types, reducers, actions, hooks, and utilities in dedicated modules
 
 **API Integration Philosophy**:
-- Centralized HTTP client for consistent error handling
-- Streaming and non-streaming modes handled transparently
+- Centralized HTTP client (`lib/http.ts`) for consistent error handling
+- Streaming utilities (`lib/streaming.ts`) for real-time data processing
 - Authentication state drives UI and API behavior
+- Type definitions centralized in `lib/types.ts`
 
 **Component Philosophy**:
 - Separation between container and presentational components
@@ -175,16 +176,25 @@ chat/
 
 **Route definitions**: Look in `backend/src/routes/`
 **Tool implementations**: Look in `backend/src/lib/tools/`
-**State management**: Check `frontend/hooks/useChatState/` for modular state management:
-  - `types.ts` - TypeScript interfaces and types
-  - `initialState.ts` - Default state and constants
-  - `reducers/` - Domain-specific reducers (auth, ui, settings, conversation, stream, edit)
-  - `actions/` - Action creators organized by domain
-  - `hooks/` - Custom hooks for complex logic
-  - `utils/` - Utilities (chatConfigBuilder, streamHelpers, qualityMapping)
-**API clients**: Check `frontend/lib/` for HTTP and chat clients
+**State management**: Check `frontend/hooks/useChat.ts` - single custom hook managing all chat state and actions
+**Other hooks**:
+  - `frontend/hooks/useSystemPrompts.ts` - System prompt management
+  - `frontend/hooks/useSecureImageUrl.ts` - Secure image URL handling
+**Core utilities**: Check `frontend/lib/` for shared functionality:
+  - `http.ts` - Centralized HTTP client
+  - `streaming.ts` - Streaming utilities
+  - `types.ts` - Type definitions
+  - `api.ts` - API integration
+  - `storage.ts` - Browser storage utilities
+  - `contentUtils.ts` - Content processing utilities
+  - `modelCapabilities.ts` - Model capability detection
 **Database schema**: Check migration files in `backend/scripts/`
-**UI components**: Check `frontend/components/` organized by feature
+**UI components**: Check `frontend/components/` organized by feature:
+  - Main chat components: `ChatV2.tsx`, `MessageList.tsx`, `MessageInput.tsx`
+  - Layout: `ChatHeader.tsx`, `ChatSidebar.tsx`, `RightSidebar.tsx`
+  - Markdown rendering: `Markdown.tsx`
+  - Settings: `SettingsModal.tsx`
+  - UI primitives: `components/ui/`
 **Image handling**: Check `frontend/components/ui/ImagePreview.tsx` (exports both `ImagePreview` and `ImageUploadZone`)
 **Documentation**: Check `docs/` for ADRs and detailed specs
 **Linting**: ESLint configs in both `frontend/` and `backend/` directories
