@@ -50,6 +50,21 @@ function convertConversationMeta(meta: ConversationMeta): Conversation {
 }
 
 export function useChat() {
+  // Helper to generate reasonably-unique client IDs for local messages.
+  // Prefer the browser-native crypto.randomUUID when available, fall back to
+  // a time+random string if not. This reduces the chance of duplicates
+  // compared to using Date.now() alone.
+  const generateClientId = () => {
+    try {
+      if (typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function') {
+        return (crypto as any).randomUUID();
+      }
+    } catch {
+      // ignore and fall back
+    }
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  };
+
   // Message & Conversation State
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -232,7 +247,7 @@ export function useChat() {
   }, []);
 
   // Actions - Messages
-  const sendMessage = useCallback(async (content?: string) => {
+  const sendMessage = useCallback(async (content?: string, opts?: { clientMessageId?: string; skipLocalUserMessage?: boolean }) => {
     const messageText = content || input;
     if (!messageText.trim() && images.length === 0) return;
 
@@ -243,22 +258,28 @@ export function useChat() {
       // Create abort controller
       abortControllerRef.current = new AbortController();
 
-      // Create user message
+      // Create user message (reuse provided clientMessageId when regenerating)
       const userMessage: Message = {
-        id: Date.now().toString(),
+        id: opts?.clientMessageId ?? generateClientId(),
         role: 'user',
         content: messageText,
         timestamp: Date.now()
       };
-      setMessages(prev => [...prev, userMessage]);
+      // When regenerating we already set the messages to the baseMessages which
+      // include the original user message. In that case, skip appending another
+      // local copy to avoid duplication.
+      if (!opts?.skipLocalUserMessage) {
+        setMessages(prev => [...prev, userMessage]);
+      }
 
       // Create placeholder assistant message
       const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: generateClientId(),
         role: 'assistant',
         content: '',
         timestamp: Date.now()
       };
+      // Always append assistant placeholder (even when regenerating)
       setMessages(prev => [...prev, assistantMessage]);
 
       // Convert images to content format if present
@@ -350,10 +371,11 @@ export function useChat() {
       .find(m => m.role === 'user');
 
     if (lastUserMessage) {
+      // When regenerating, reuse the original user message id and avoid
+      // appending a duplicate local user message (baseMessages already contain it).
       await sendMessage(
-        typeof lastUserMessage.content === 'string'
-          ? lastUserMessage.content
-          : ''
+        typeof lastUserMessage.content === 'string' ? lastUserMessage.content : '',
+        { clientMessageId: lastUserMessage.id, skipLocalUserMessage: true }
       );
     }
   }, [sendMessage]);
