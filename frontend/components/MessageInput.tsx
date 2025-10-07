@@ -33,7 +33,6 @@ export function MessageInput({
   onInputChange,
   onSend,
   onStop,
-  useTools,
   shouldStream,
   onUseToolsChange,
   enabledTools = [],
@@ -51,6 +50,7 @@ export function MessageInput({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [availableTools, setAvailableTools] = useState<{ name: string; description?: string }[]>([]);
+  const [toolFilter, setToolFilter] = useState('');
   const [localSelected, setLocalSelected] = useState<string[]>(enabledTools);
   const [uploadProgress, setUploadProgress] = useState<ImageUploadProgress[]>([]);
 
@@ -257,46 +257,112 @@ export function MessageInput({
                       <span className="text-xs text-slate-600 dark:text-slate-300">{localSelected.length ? `${localSelected.length}` : 'Off'}</span>
                     </button>
 
-                    {toolsOpen && (
-                      <div className="absolute bottom-full mb-2 right-0 w-72 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 shadow-lg rounded-lg p-3 z-50">
-                        <div className="text-sm font-medium mb-2">Tools</div>
-                        <div className="max-h-40 overflow-auto space-y-2">
-                          {availableTools.length === 0 && (
-                            <div className="text-xs text-slate-500">No tools available</div>
-                          )}
-                          {availableTools.map(t => {
-                            const id = t.name;
-                            const checked = localSelected.includes(id);
-                            return (
-                              <label key={id} className="flex items-start gap-2 cursor-pointer p-1 rounded-md hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors duration-150">
-                                <input
-                                  type="checkbox"
-                                  className="mt-1 cursor-pointer"
-                                  checked={checked}
-                                  onChange={e => {
-                                    const next = e.target.checked ? [...localSelected, id] : localSelected.filter(x => x !== id);
-                                    setLocalSelected(next);
-                                    onEnabledToolsChange?.(next);
-                                    onUseToolsChange?.(next.length > 0);
-                                  }}
-                                />
-                                <div className="text-xs">
-                                  <div className="font-medium text-slate-800 dark:text-slate-200">{t.name}</div>
-                                  {t.description && <div className="text-[11px] text-slate-500 dark:text-slate-400">{t.description}</div>}
-                                </div>
-                              </label>
-                            );
-                          })}
+                      {toolsOpen && (
+                        <div className="absolute bottom-full mb-2 right-0 w-80 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 shadow-xl rounded-lg p-3 z-50">
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-3">
+                              <div className="text-sm font-semibold">Tools</div>
+                              <div className="text-xs text-slate-500 dark:text-slate-400">{availableTools.length} available</div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Toggle
+                                ariaLabel="Enable tools"
+                                checked={localSelected.length > 0}
+                                onChange={(v: boolean) => {
+                                  if (!v) {
+                                    setLocalSelected([]);
+                                    onEnabledToolsChange?.([]);
+                                    onUseToolsChange?.(false);
+                                  } else if (availableTools.length > 0) {
+                                    const all = availableTools.map(t => t.name);
+                                    setLocalSelected(all);
+                                    onEnabledToolsChange?.(all);
+                                    onUseToolsChange?.(all.length > 0);
+                                  }
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 mb-3">
+                            <input
+                              type="text"
+                              value={toolFilter}
+                              onChange={e => setToolFilter(e.target.value)}
+                              placeholder="Search tools..."
+                              className="flex-1 text-xs px-2 py-1 border border-slate-200 dark:border-neutral-800 rounded-md bg-slate-50 dark:bg-neutral-800 text-slate-800 dark:text-slate-200"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const all = availableTools.map(t => t.name);
+                                setLocalSelected(all);
+                                onEnabledToolsChange?.(all);
+                                onUseToolsChange?.(all.length > 0);
+                              }}
+                              className="text-xs px-2 py-1 rounded-md bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700"
+                            >Select all</button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setLocalSelected([]);
+                                onEnabledToolsChange?.([]);
+                                onUseToolsChange?.(false);
+                              }}
+                              className="text-xs px-2 py-1 rounded-md bg-transparent border border-slate-100 dark:border-neutral-800 hover:bg-slate-50 dark:hover:bg-neutral-800"
+                            >Clear</button>
+                          </div>
+
+                          <div className="max-h-48 overflow-auto">
+                            {availableTools.length === 0 && (
+                              <div className="text-xs text-slate-500">No tools available</div>
+                            )}
+
+                            <div className="grid grid-cols-1 gap-2">
+                              {availableTools
+                                .filter(t => t.name.toLowerCase().includes(toolFilter.toLowerCase()) || (t.description || '').toLowerCase().includes(toolFilter.toLowerCase()))
+                                .map(t => {
+                                  const id = t.name;
+                                  const checked = localSelected.includes(id);
+                                  return (
+                                    <button
+                                      key={id}
+                                      type="button"
+                                      onClick={() => {
+                                        const next = checked ? localSelected.filter(x => x !== id) : [...localSelected, id];
+                                        setLocalSelected(next);
+                                        onEnabledToolsChange?.(next);
+                                        onUseToolsChange?.(next.length > 0);
+                                      }}
+                                      className={`w-full text-left p-2 rounded-md transition-colors duration-150 flex items-center justify-between ${checked ? 'bg-slate-100 dark:bg-neutral-800 ring-1 ring-slate-200 dark:ring-neutral-700' : 'hover:bg-slate-50 dark:hover:bg-neutral-800'}`}
+                                    >
+                                      <div>
+                                        <div className="text-xs font-medium text-slate-800 dark:text-slate-200">{t.name}</div>
+                                        {t.description && <div className="text-[11px] text-slate-500 dark:text-slate-400">{t.description}</div>}
+                                      </div>
+                                      <div className="flex items-center">
+                                        <input
+                                          type="checkbox"
+                                          className="cursor-pointer"
+                                          checked={checked}
+                                          readOnly
+                                        />
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                            </div>
+                          </div>
+
+                          <div className="flex justify-end mt-3">
+                            <button
+                              type="button"
+                              onClick={() => setToolsOpen(false)}
+                              className="text-xs px-3 py-1 rounded-md bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700 cursor-pointer transition-colors duration-150"
+                            >Done</button>
+                          </div>
                         </div>
-                        <div className="flex justify-end mt-3">
-                          <button
-                            type="button"
-                            onClick={() => setToolsOpen(false)}
-                            className="text-xs px-3 py-1 rounded-md bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700 cursor-pointer transition-colors duration-150"
-                          >Done</button>
-                        </div>
-                      </div>
-                    )}
+                      )}
                   </div>
                 </div>
 
