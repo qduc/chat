@@ -303,6 +303,16 @@ export function ChatV2() {
     };
   }, [pathname, searchKey, chat.conversationId, chat.conversations, chat.currentConversationTitle]);
 
+  // Clear the input immediately when the user presses send, then invoke sendMessage
+  const handleSend = useCallback(() => {
+    const messageToSend = chat.input;
+    // clear input right away so the UI feels responsive
+    chat.setInput('');
+    // call sendMessage with the captured content so it doesn't rely on chat.input after clearing
+    void chat.sendMessage(messageToSend);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat.input, chat.setInput, chat.sendMessage]);
+
   return (
     <div className="flex h-dvh max-h-dvh bg-gradient-to-br from-slate-50 via-white to-slate-100/40 dark:from-neutral-950 dark:via-neutral-950 dark:to-neutral-900/20">
       {chat.historyEnabled && (
@@ -366,7 +376,7 @@ export function ChatV2() {
                   abort: chat.abort
                 }}
                 onInputChange={chat.setInput}
-                onSend={chat.sendMessage}
+                onSend={handleSend}
                 onStop={chat.stopStreaming}
                 useTools={chat.useTools}
                 shouldStream={chat.shouldStream}

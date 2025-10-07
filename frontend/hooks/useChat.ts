@@ -442,6 +442,11 @@ export function useChat() {
               const lastMsg = prev[lastIdx];
               if (!lastMsg || lastMsg.role !== 'assistant') return prev;
 
+              // Calculate current text length to set as textOffset
+              const currentTextLength = typeof lastMsg.content === 'string'
+                ? lastMsg.content.length
+                : 0;
+
               // Accumulate tool calls by index to avoid duplicates during streaming
               const tcDelta = event.value;
               const idx = tcDelta.index ?? 0;
@@ -467,14 +472,15 @@ export function useChat() {
                 }
                 updatedToolCalls[existingIdx] = existing;
               } else {
-                // New tool call
-                console.log('[DEBUG] Adding new tool_call:', { id: tcDelta.id, index: idx, name: tcDelta.function?.name });
+                // New tool call - capture textOffset from current content length
+                console.log('[DEBUG] Adding new tool_call:', { id: tcDelta.id, index: idx, name: tcDelta.function?.name, textOffset: currentTextLength });
                 updatedToolCalls = [
                   ...existingToolCalls,
                   {
                     id: tcDelta.id,
                     type: tcDelta.type || 'function',
                     index: idx,
+                    textOffset: currentTextLength, // Store the position where tool call occurred
                     function: {
                       name: tcDelta.function?.name || '',
                       arguments: tcDelta.function?.arguments || ''

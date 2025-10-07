@@ -199,7 +199,7 @@ chat/
 **Documentation**: Check `docs/` for ADRs and detailed specs
 **Backend API Specification**: Check `docs/backend_api_spec.md` for the complete backend API specification
 **Linting**: ESLint configs in both `frontend/` and `backend/` directories
-**Upstream Logging**: Request and response of upstream API are at [upstream-requests-yyyy-mm-dd.log](backend/logs/upstream-requests-*.log) and [upstream-responses-yyyy-mm-dd.log](backend/logs/upstream-responses-*.log). These files are very long, only read a dozen of lines from the bottom. You can read them without executing in docker container, they have been mounted to this project directory.
+**Upstream Logging**: Request and response of upstream API are in `backend/logs/` folder. These files are very long, only read a dozen of lines from the bottom. You can read them without executing in docker container, they have been mounted to this project directory.
 
 ## Instructions for Claude/Copilot AI
 

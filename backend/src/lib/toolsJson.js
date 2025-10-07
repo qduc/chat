@@ -603,7 +603,15 @@ export async function handleToolsJson({
 
       // Buffer tool calls for persistence
       if (persistence && persistence.persist && typeof persistence.addToolCalls === 'function') {
-        persistence.addToolCalls(toolCalls);
+        // For non-streaming responses, set textOffset to current content length
+        // Tools appear after any content that was generated
+        const contentLength = persistence.getContentLength();
+        const toolCallsWithOffset = toolCalls.map((tc, idx) => ({
+          ...tc,
+          index: tc.index ?? idx,
+          textOffset: contentLength
+        }));
+        persistence.addToolCalls(toolCallsWithOffset);
       }
 
       // Execute all tools
