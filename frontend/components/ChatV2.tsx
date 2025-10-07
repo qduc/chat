@@ -241,10 +241,13 @@ export function ChatV2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat.messages, chat.status]);
 
-  // Hydrate conversation from URL (?c=...) on first load
+  // Load conversations and hydrate from URL on first load
   useEffect(() => {
     if (initCheckedRef.current) return;
     initCheckedRef.current = true;
+
+    // Load conversation list
+    chat.refreshConversations();
 
     const cid = searchParams?.get('c');
     if (cid && !chat.conversationId) {

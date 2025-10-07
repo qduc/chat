@@ -80,7 +80,6 @@ export default function ModelSelector({
   className = '',
   ariaLabel = 'Select model'
 }: ModelSelectorProps) {
-  // console.log('[ModelSelector] Render'); // Disabled for performance
   const [isOpen, setIsOpen] = useState(false);
   const [shouldRenderDropdown, setShouldRenderDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');

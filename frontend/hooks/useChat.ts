@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import type { MessageContent } from '../lib';
 import { conversations as conversationsApi, chat, providers } from '../lib/api';
 import { httpClient } from '../lib/http';
@@ -111,7 +111,8 @@ export function useChat() {
   const selectConversation = useCallback(async (id: string) => {
     try {
       setLoadingConversations(true);
-      const data = await conversationsApi.get(id);
+      // Request a larger message page by default so the UI can show history
+      const data = await conversationsApi.get(id, { limit: 200 });
 
       // Convert backend messages to frontend format
       const convertedMessages: Message[] = data.messages.map((msg) => ({
@@ -148,7 +149,7 @@ export function useChat() {
     if (!nextCursor || loadingConversations) return;
     try {
       setLoadingConversations(true);
-      const data = await conversationsApi.list({ cursor: nextCursor });
+      const data = await conversationsApi.list({ cursor: nextCursor, limit: 20 });
       setConversations(prev => [...prev, ...data.items.map(convertConversationMeta)]);
       setNextCursor(data.next_cursor);
     } catch (err) {
@@ -378,8 +379,8 @@ export function useChat() {
 
       for (const provider of providersList) {
         try {
-          const modelsResponse = await httpClient.get<{ data: any[] }>(`/v1/providers/${provider.id}/models`);
-          const models = modelsResponse.data.data || [];
+          const modelsResponse = await httpClient.get<{ provider: any; models: any[] }>(`/v1/providers/${provider.id}/models`);
+          const models = modelsResponse.data.models || [];
 
           if (models.length > 0) {
             // Create model options for this provider
@@ -424,6 +425,11 @@ export function useChat() {
   const setInlineSystemPromptOverride = useCallback((prompt: string | null) => {
     setSystemPrompt(prompt);
   }, []);
+
+  // Load providers and models on mount
+  useEffect(() => {
+    loadProvidersAndModels();
+  }, [loadProvidersAndModels]);
 
   return {
     // State
