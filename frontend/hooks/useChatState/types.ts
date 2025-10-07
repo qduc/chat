@@ -30,7 +30,6 @@ export interface ChatState {
   messages: ChatMessage[];
   conversationId: string | null;
   currentConversationTitle: string | null;
-  previousResponseId: string | null;
 
   // Settings
   model: string;

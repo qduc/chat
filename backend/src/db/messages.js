@@ -265,7 +265,7 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
   const sanitizedLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
   const messages = db
     .prepare(
-      `SELECT id, seq, role, status, content, content_json, reasoning_details, reasoning_tokens, client_message_id, created_at
+      `SELECT id, seq, role, status, content, content_json, reasoning_details, reasoning_tokens, client_message_id, response_id, created_at
      FROM messages WHERE conversation_id=@conversationId AND seq > @afterSeq
      ORDER BY seq ASC LIMIT @limit`
     )

@@ -18,7 +18,6 @@ export interface ChatConfigRefs {
 
 export interface ChatConfigState {
   conversationId: string | null;
-  previousResponseId: string | null;
   providerId: string | null;
   useTools: boolean;
   enabledTools: string[];
@@ -54,8 +53,13 @@ export function buildChatConfig(
 
   const outgoing = [messageToSend];
 
+  // Find the last assistant message to get its responseId for continuation
+  const lastAssistantMessage = [...messages]
+    .reverse()
+    .find((m) => m.role === 'assistant');
+
   const config: any = {
-    messages: outgoing.map(m => ({ role: m.role as Role, content: m.content })),
+    messages: outgoing.map(m => ({ id: m.id, role: m.role as Role, content: m.content })),
     // Prefer the synchronous ref which is updated immediately when the user
     // selects a model. This avoids a race where a model change dispatch
     // hasn't flushed to React state yet but an immediate regenerate/send
@@ -63,7 +67,7 @@ export function buildChatConfig(
     model: refs.modelRef,
     signal,
     conversationId: state.conversationId || undefined,
-    responseId: state.previousResponseId || undefined,
+    responseId: lastAssistantMessage?.responseId || undefined,
     systemPrompt: effectiveSystemPrompt || undefined,
     activeSystemPromptId: refs.activeSystemPromptIdRef || undefined,
     // Use refs for chat parameters to ensure immediate updates are used

@@ -134,13 +134,33 @@ export function streamReducer(state: ChatState, action: ChatAction): ChatState |
       };
     }
 
-    case 'STREAM_COMPLETE':
+    case 'STREAM_COMPLETE': {
+      // Store responseId in the assistant message if available
+      const { responseId } = action.payload;
+      if (!responseId) {
+        return {
+          ...state,
+          status: 'idle',
+          abort: undefined,
+        };
+      }
+
+      // Find the last assistant message and attach responseId
+      const updatedMessages = [...state.messages];
+      for (let i = updatedMessages.length - 1; i >= 0; i--) {
+        if (updatedMessages[i].role === 'assistant') {
+          updatedMessages[i] = { ...updatedMessages[i], responseId };
+          break;
+        }
+      }
+
       return {
         ...state,
         status: 'idle',
         abort: undefined,
-        previousResponseId: action.payload.responseId || state.previousResponseId,
+        messages: updatedMessages,
       };
+    }
 
     case 'STREAM_ERROR':
       return {
@@ -192,7 +212,6 @@ export function streamReducer(state: ChatState, action: ChatAction): ChatState |
         ...state,
         messages: [],
         error: null,
-        previousResponseId: null,
       };
 
     case 'SET_MESSAGES':

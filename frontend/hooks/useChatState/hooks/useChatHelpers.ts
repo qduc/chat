@@ -105,6 +105,11 @@ export function useChatHelpers({
 
       const outgoing = [messageToSend];
 
+      // Find the last assistant message to get its responseId for continuation
+      const lastAssistantMessage = [...messages]
+        .reverse()
+        .find((m) => m.role === 'assistant');
+
       const config: any = {
         messages: outgoing.map(m => {
           const base: any = {
@@ -137,7 +142,7 @@ export function useChatHelpers({
         model: refs.modelRef.current || state.model,
         signal,
         conversationId: state.conversationId || undefined,
-        responseId: state.previousResponseId || undefined,
+        responseId: lastAssistantMessage?.responseId || undefined,
         systemPrompt: effectiveSystemPrompt || undefined,
         activeSystemPromptId: refs.activeSystemPromptIdRef.current || undefined,
         // Use refs for chat parameters to ensure immediate updates are used

@@ -16,7 +16,6 @@ export const initialState: ChatState = {
   messages: [],
   conversationId: null,
   currentConversationTitle: null,
-  previousResponseId: null,
   model: 'gpt-4.1-mini',
   providerId: null,
   modelOptions: [],

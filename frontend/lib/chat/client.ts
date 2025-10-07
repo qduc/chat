@@ -100,14 +100,20 @@ export class ChatClient {
     const messageToSend = latestUserMessage ?? normalizedMessages[normalizedMessages.length - 1];
 
     // Simply spread all properties from messageToSend - this includes seq if it exists
-    const outgoingMessages = messageToSend ? [{ ...messageToSend }] : [];
+    // Also send the client-generated id as uuid for backend tracking
+    const outgoingMessages = messageToSend
+      ? [{ ...messageToSend, uuid: messageToSend.id }]
+      : [];
 
     // DEBUG: Check what's being sent to backend
     if (outgoingMessages.length > 0) {
       console.log('[DEBUG] Final outgoing message to backend:', {
         role: outgoingMessages[0].role,
+        id: outgoingMessages[0].id,
+        uuid: outgoingMessages[0].uuid,
         seq: outgoingMessages[0].seq,
         hasSeq: outgoingMessages[0].seq !== undefined,
+        hasUuid: outgoingMessages[0].uuid !== undefined,
         allKeys: Object.keys(outgoingMessages[0])
       });
     }

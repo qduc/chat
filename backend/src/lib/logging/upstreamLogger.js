@@ -55,7 +55,7 @@ export function logUpstreamRequest({ url, headers, body }) {
     url,
     method: 'POST',
     headers: { ...headers, Authorization: headers?.Authorization ? '[REDACTED]' : undefined },
-    body,
+    body: { ...body, tools: body?.tools ? '[OMITTED]' : undefined },
   }, null, 2)}\n\n`;
 
   try {
@@ -72,11 +72,14 @@ export function logUpstreamRequest({ url, headers, body }) {
 export function logUpstreamResponse({ url, status, headers, body }) {
   if (process.env.NODE_ENV === 'test') return;
 
+  const isEventStream = headers?.['content-type']?.includes('text/event-stream');
+  const logBody = isEventStream ? body : JSON.stringify(body, null, 2);
+
   const logEntry = `[${new Date().toISOString()}] UPSTREAM RESPONSE\n${JSON.stringify({
     url,
     status,
     headers: { ...headers, 'set-cookie': headers?.['set-cookie'] ? '[REDACTED]' : undefined },
-    body,
+    body: logBody,
   }, null, 2)}\n\n`;
 
   try {
