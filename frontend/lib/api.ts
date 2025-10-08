@@ -392,11 +392,20 @@ function processNonStreamingData(
   onToken?: (token: string) => void,
   onEvent?: (event: any) => void
 ): ChatResponse {
-  // Check for organization verification error
-  if (json.error?.message &&
-      typeof json.error.message === 'string' &&
-      json.error.message.includes('Your organization must be verified to stream this model')) {
-    throw new StreamingNotSupportedError(json.error.message);
+  // Check for errors in the response body
+  if (json.error) {
+    const errorMessage = json.error.message || json.error || JSON.stringify(json.error);
+
+    // Check for organization verification error (streaming not supported)
+    if (typeof errorMessage === 'string' &&
+        (errorMessage.includes('Your organization must be verified to stream') ||
+         errorMessage.includes('organization must be verified'))) {
+      throw new StreamingNotSupportedError(errorMessage);
+    }
+
+    // Throw generic API error for other error types
+    const status = json.error.code === 'invalid_request_error' ? 400 : 500;
+    throw new APIError(status, errorMessage, json.error);
   }
 
   if (json.tool_events && Array.isArray(json.tool_events)) {

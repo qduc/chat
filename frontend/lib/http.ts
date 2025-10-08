@@ -3,6 +3,7 @@
  */
 
 import { getToken, clearTokens, setAuthReady } from './storage';
+import { StreamingNotSupportedError } from './streaming';
 
 const DEFAULT_API_BASE = typeof window !== 'undefined'
   ? `${window.location.origin}/api`
@@ -118,7 +119,7 @@ class AuthenticatedHttpClient {
         headers: response.headers
       };
     } catch (error) {
-      if (error instanceof HttpError) {
+      if (error instanceof HttpError || error instanceof StreamingNotSupportedError) {
         throw error;
       }
       throw new HttpError(0, `Network error: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -246,8 +247,21 @@ class AuthenticatedHttpClient {
 
     try {
       errorData = await response.json();
-      errorMessage += `: ${errorData.error || errorData.message || JSON.stringify(errorData)}`;
-    } catch {
+
+      // Check for organization verification error BEFORE building error message
+      const errorMsg = errorData?.error?.message || errorData?.message || errorData?.error || '';
+      if (typeof errorMsg === 'string' &&
+          (errorMsg.includes('Your organization must be verified to stream') ||
+           errorMsg.includes('organization must be verified'))) {
+        throw new StreamingNotSupportedError(errorMsg);
+      }
+
+      errorMessage += `: ${errorData.error?.message || errorData.message || JSON.stringify(errorData)}`;
+    } catch (error) {
+      // If it's already a StreamingNotSupportedError, re-throw it
+      if (error instanceof StreamingNotSupportedError) {
+        throw error;
+      }
       // Ignore JSON parse errors
       errorMessage += `: ${response.statusText}`;
     }
