@@ -248,7 +248,7 @@ export function useChat() {
       const rawMessages: Message[] = data.messages.map((msg) => ({
         id: String(msg.id),
         role: msg.role,
-        content: msg.content,
+        content: (msg.content ?? '') as MessageContent,
         timestamp: new Date(msg.created_at).getTime(),
         tool_calls: msg.tool_calls,
         tool_outputs: msg.tool_outputs,

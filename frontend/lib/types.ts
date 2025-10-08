@@ -244,11 +244,11 @@ export interface ConversationWithMessages {
   system_prompt?: string | null;
   active_system_prompt_id?: string | null;
   messages: {
-    id: number;
+    id: string | number;
     seq: number;
     role: Role;
     status: string;
-    content: MessageContent;
+    content: MessageContent | null;
     created_at: string;
     // Image references stored in database (after upload)
     images?: Array<{
@@ -268,7 +268,7 @@ export interface ConversationWithMessages {
     }>;
     tool_outputs?: Array<{
       tool_call_id: string;
-      output: string;
+      output: unknown;
       status: string;
     }>;
     reasoning_details?: any[];

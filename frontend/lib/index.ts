@@ -4,8 +4,6 @@
 
 // Core API modules
 export { auth, chat, conversations, images, tools, providers } from './api';
-// Backwards-compatible aliases expected by older tests / code that import from `../lib`
-// Provide shims that can be swapped out in tests.
 import { auth as _auth } from './api';
 
 // Use the canonical `auth` implementation from ./api as the exported

@@ -29,47 +29,62 @@ jest.mock('../lib/http', () => ({
 
 import { conversations, chat, auth } from '../lib/api';
 import { httpClient } from '../lib/http';
+import type { HttpResponse } from '../lib/http';
 
 const mockConversations = conversations as jest.Mocked<typeof conversations>;
 const mockChat = chat as jest.Mocked<typeof chat>;
 const mockAuth = auth as jest.Mocked<typeof auth>;
 const mockHttpClient = httpClient as jest.Mocked<typeof httpClient>;
 
+function createHttpResponse<T>(data: T): HttpResponse<T> {
+  return {
+    data,
+    status: 200,
+    statusText: 'OK',
+    headers: new Headers(),
+  };
+}
+
 function arrangeHttpMocks() {
   mockHttpClient.get.mockImplementation((url: string) => {
     if (url === '/v1/providers') {
-      return Promise.resolve({
-        data: {
+      return Promise.resolve(
+        createHttpResponse({
           providers: [
             { id: 'openai', name: 'OpenAI', enabled: 1 },
             { id: 'disabled', name: 'Disabled', enabled: 0 },
           ],
-        },
-      });
+        })
+      );
     }
     if (url === '/v1/providers/openai/models') {
-      return Promise.resolve({
-        data: {
+      return Promise.resolve(
+        createHttpResponse({
           provider: { id: 'openai' },
           models: [
             { id: 'gpt-4o' },
             { id: 'gpt-4o-mini' },
           ],
-        },
-      });
+        })
+      );
     }
-    return Promise.resolve({
-      data: {
+    return Promise.resolve(
+      createHttpResponse({
         provider: { id: 'unknown' },
         models: [],
-      },
-    });
+      })
+    );
   });
 }
 
 function renderUseChat() {
   arrangeHttpMocks();
-  mockAuth.getProfile.mockResolvedValue({ id: 'user-123' });
+  mockAuth.getProfile.mockResolvedValue({
+    id: 'user-123',
+    email: 'user@example.com',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  });
   return renderHook(() => useChat());
 }
 
@@ -108,10 +123,12 @@ describe('useChat hook', () => {
       created_at: '2024-01-01T00:00:00Z',
       messages: [
         {
-          id: '100',
+          id: 100,
+          seq: 1,
           role: 'assistant',
           content: 'Looking up data...',
           created_at: '2024-01-01T00:01:00Z',
+          status: 'completed',
           tool_calls: [
             {
               id: toolCallId,
@@ -122,14 +139,17 @@ describe('useChat hook', () => {
           ],
         },
         {
-          id: '101',
+          id: 101,
+          seq: 2,
           role: 'tool',
           content: null,
           created_at: '2024-01-01T00:01:05Z',
+          status: 'completed',
           tool_outputs: [
             {
               tool_call_id: toolCallId,
               output: { data: 'result' },
+              status: 'success',
             },
           ],
         },
@@ -198,6 +218,7 @@ describe('useChat hook', () => {
         conversation: {
           id: 'conv-stream',
           title: 'Streaming Conversation',
+          created_at: new Date().toISOString(),
         },
       };
     });
