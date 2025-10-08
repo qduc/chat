@@ -7,18 +7,14 @@ export { auth, chat, conversations, images, tools, providers } from './api';
 // Backwards-compatible aliases expected by older tests / code that import from `../lib`
 // Provide shims that can be swapped out in tests.
 import { auth as _auth } from './api';
-import { authApi as authApiOverrides } from './auth/api';
 import { verifySession as verifySessionHelper } from './auth/verification';
 
-const mergedAuthApi = { ..._auth };
-for (const key of Object.keys(authApiOverrides)) {
-  const candidate = (authApiOverrides as Record<string, unknown>)[key];
-  if (typeof candidate === 'function' && 'mock' in (candidate as Record<string, unknown>)) {
-    (mergedAuthApi as Record<string, unknown>)[key] = candidate;
-    (_auth as Record<string, unknown>)[key] = candidate;
-  }
-}
-export const authApi = mergedAuthApi;
+// Use the canonical `auth` implementation from ./api as the exported
+// `authApi`. Historically tests could override a legacy shim at
+// `./auth/api` to inject mocks; that shim is deprecated and removed to
+// simplify the module surface. Consumers should mock the consolidated
+// `../lib` exports or the `auth`/`authApi` object instead.
+export const authApi = { ..._auth };
 export const verifySession = verifySessionHelper;
 
 // Re-export legacy chat APIs and classes from the modular chat surface

@@ -26,7 +26,16 @@ jest.mock('../lib', () => {
   const { HttpError } = jest.requireActual('../lib/http');
   const { images } = jest.requireActual('../lib/api');
   const contentUtils = jest.requireActual('../lib/contentUtils');
-  const { authApi } = require('../lib/auth/api');
+  // Provide a local mock for authApi so we don't depend on the legacy
+  // `../lib/auth/api` shim or cause circular requires when building the
+  // mocked '../lib' module.
+  const authApi = {
+    login: jest.fn(),
+    register: jest.fn(),
+    logout: jest.fn(),
+    refreshToken: jest.fn(),
+    getProfile: jest.fn(),
+  };
   const { verifySession } = require('../lib/auth/verification');
   const mock: any = {
     listConversationsApi: jest.fn(),
