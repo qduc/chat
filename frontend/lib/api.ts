@@ -5,7 +5,7 @@
 
 import { httpClient, HttpError } from './http';
 import { getToken, setToken, setRefreshToken, clearTokens, getRefreshToken, waitForAuthReady } from './storage';
-import { SSEParser, APIError } from './streaming';
+import { SSEParser, APIError, StreamingNotSupportedError } from './streaming';
 import type {
   User,
   LoginResponse,
@@ -392,6 +392,13 @@ function processNonStreamingData(
   onToken?: (token: string) => void,
   onEvent?: (event: any) => void
 ): ChatResponse {
+  // Check for organization verification error
+  if (json.error?.message &&
+      typeof json.error.message === 'string' &&
+      json.error.message.includes('Your organization must be verified to stream this model')) {
+    throw new StreamingNotSupportedError(json.error.message);
+  }
+
   if (json.tool_events && Array.isArray(json.tool_events)) {
     for (const event of json.tool_events) {
       if (event.type === 'text') {
@@ -662,6 +669,12 @@ function processStreamChunk(
   }
 
   if (delta?.content) {
+    // Check for streaming not supported error
+    if (typeof delta.content === 'string' &&
+        delta.content.includes('Your organization must be verified to stream this model')) {
+      throw new StreamingNotSupportedError(delta.content);
+    }
+
     onToken?.(delta.content);
     return { ...result, content: delta.content };
   }

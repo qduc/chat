@@ -3,6 +3,7 @@ import { useSystemPrompts } from './useSystemPrompts';
 import type { MessageContent } from '../lib';
 import { conversations as conversationsApi, chat, auth } from '../lib/api';
 import { httpClient } from '../lib/http';
+import { StreamingNotSupportedError } from '../lib/streaming';
 import type { ConversationMeta, Provider, ChatOptionsExtended } from '../lib/types';
 
 // Types
@@ -679,6 +680,26 @@ export function useChat() {
       setImages([]);
       setStatus('idle');
     } catch (err) {
+      // Handle streaming not supported error by retrying with streaming disabled
+      if (err instanceof StreamingNotSupportedError) {
+        console.log('[AUTO-RETRY] Streaming not supported, retrying with streaming disabled');
+
+        // Disable streaming
+        setShouldStream(false);
+        shouldStreamRef.current = false;
+
+        // Remove the failed assistant message
+        setMessages(prev => prev.slice(0, -1));
+
+        // Retry by calling sendMessage again (it will use the updated shouldStreamRef)
+        // Use setTimeout to break out of the current call stack
+        setTimeout(() => {
+          void sendMessage(content, opts);
+        }, 0);
+
+        return;
+      }
+
       if (err instanceof Error && err.name === 'AbortError') {
         setError('Message cancelled');
       } else {

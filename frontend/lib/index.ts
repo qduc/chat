@@ -46,7 +46,7 @@ export {
 } from './storage';
 
 // Streaming utilities
-export { SSEParser, APIError, type SSEEvent } from './streaming';
+export { SSEParser, APIError, StreamingNotSupportedError, type SSEEvent } from './streaming';
 
 // Content utilities
 export {

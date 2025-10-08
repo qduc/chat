@@ -29,7 +29,7 @@ export class SSEParser {
           try {
             const json = JSON.parse(data);
             events.push({ type: 'data', data: json });
-          } catch (e) {
+          } catch {
             // Ignore malformed JSON
           }
         }
@@ -52,5 +52,12 @@ export class APIError extends Error {
   ) {
     super(message);
     this.name = 'APIError';
+  }
+}
+
+export class StreamingNotSupportedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'StreamingNotSupportedError';
   }
 }
