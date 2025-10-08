@@ -69,6 +69,7 @@ function buildAssistantSegments(message: ChatMessage): AssistantSegment[] {
   const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
   const toolOutputs = Array.isArray(message.tool_outputs) ? message.tool_outputs : [];
 
+
   if (toolCalls.length === 0) {
     return content ? [{ kind: 'text', text: content }] : [];
   }
@@ -356,12 +357,22 @@ const Message = React.memo<MessageProps>(function Message({
                     const { toolCall, outputs } = segment;
                     const toolName = toolCall.function?.name;
                     let parsedArgs = {};
-                    try {
-                      parsedArgs = typeof toolCall.function?.arguments === 'string'
-                        ? JSON.parse(toolCall.function.arguments)
-                        : toolCall.function?.arguments || {};
-                    } catch {
-                      parsedArgs = {};
+                    const argsRaw = toolCall.function?.arguments || '';
+                    let argsParseFailed = false;
+
+                    // Try to parse arguments if they're a string
+                    if (typeof argsRaw === 'string') {
+                      if (argsRaw.trim()) {
+                        try {
+                          parsedArgs = JSON.parse(argsRaw);
+                        } catch {
+                          // If parse fails, it might be streaming (incomplete JSON)
+                          // Show the raw string instead of empty object
+                          argsParseFailed = true;
+                        }
+                      }
+                    } else {
+                      parsedArgs = argsRaw;
                     }
 
                     const getToolIcon = (name: string) => {
@@ -411,8 +422,17 @@ const Message = React.memo<MessageProps>(function Message({
                     };
 
                     const outputSummary = getOutputSummary(outputs);
-                    const getInputSummary = (args: any) => {
-                      if (!args) return null;
+                    const getInputSummary = (args: any, raw: string, parseFailed: boolean) => {
+                      // If parsing failed, show the raw incomplete JSON string
+                      if (parseFailed && raw) {
+                        const cleaned = raw.trim().replace(/\s+/g, ' ');
+                        return cleaned.length > 80 ? cleaned.slice(0, 77) + '...' : cleaned;
+                      }
+
+                      // If successfully parsed, show formatted JSON
+                      if (!args || (typeof args === 'object' && Object.keys(args).length === 0)) {
+                        return null;
+                      }
 
                       try {
                         if (typeof args === 'string') {
@@ -428,8 +448,8 @@ const Message = React.memo<MessageProps>(function Message({
                       }
                     };
 
-                    const inputSummary = getInputSummary(parsedArgs);
-                    const hasDetails = outputs.length > 0 || Object.keys(parsedArgs).length > 0;
+                    const inputSummary = getInputSummary(parsedArgs, argsRaw, argsParseFailed);
+                    const hasDetails = outputs.length > 0 || Object.keys(parsedArgs).length > 0 || (argsParseFailed && argsRaw.trim().length > 0);
 
                     return (
                       <div
@@ -489,14 +509,14 @@ const Message = React.memo<MessageProps>(function Message({
 
                         {hasDetails && !isCollapsed && (
                           <div className="px-4 pb-3 pt-1 space-y-3 border-t border-blue-200/40 dark:border-blue-800/30 bg-white/40 dark:bg-blue-950/20 rounded-b-lg">
-                            {Object.keys(parsedArgs).length > 0 && (
+                            {(Object.keys(parsedArgs).length > 0 || (argsParseFailed && argsRaw.trim().length > 0)) && (
                               <div className="space-y-1">
                                 <div className="text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">
-                                  Input
+                                  Input {argsParseFailed && <span className="text-orange-500 dark:text-orange-400 ml-1">(streaming...)</span>}
                                 </div>
                                 <div className="rounded-md bg-slate-50 dark:bg-neutral-900/60 border border-slate-200/50 dark:border-neutral-700/40 p-2.5">
                                   <pre className="text-[11px] font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
-                                    {JSON.stringify(parsedArgs, null, 2)}
+                                    {argsParseFailed ? argsRaw : JSON.stringify(parsedArgs, null, 2)}
                                   </pre>
                                 </div>
                               </div>

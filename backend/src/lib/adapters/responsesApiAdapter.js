@@ -325,7 +325,7 @@ function mapFunctionCallInput(call, index = 0) {
 function mapToolCall(call, index = 0) {
 	if (!call || typeof call !== 'object') return null;
 
-	const id = call.id || call.call_id || call.tool_call_id || `call_${index}`;
+	const id = call.call_id || call.tool_call_id || call.id || `call_${index}`;
 	const name = call.name || call.function?.name;
 	const args = call.arguments ?? call.function?.arguments ?? call.args;
 
@@ -385,7 +385,7 @@ function mapToolCalls(response) {
 function mapStreamingToolCall(call, index = 0) {
 	if (!call || typeof call !== 'object') return null;
 	const idx = typeof call.index === 'number' ? call.index : index;
-	const id = call.id || call.call_id || call.tool_call_id || `call_${idx}`;
+	const id = call.call_id || call.tool_call_id || call.id || `call_${idx}`;
 	const type = call.type === 'function_call' ? 'function' : (call.type || 'function');
 	const fn = call.function && typeof call.function === 'object' ? call.function : {};
 	const name = fn.name || call.name;
@@ -944,7 +944,8 @@ function transformStreamingResponse(response, context = {}) {
 						};
 
 						// Track what changed for the delta
-						const deltaToEmit = { index: idx, id: existing.id, type: existing.type, function: {} };
+						// IMPORTANT: Use delta.id if available, otherwise fall back to existing.id
+						const deltaToEmit = { index: idx, id: delta.id || existing.id, type: existing.type, function: {} };
 						let hasChanges = false;
 
 						// Update ID if new
