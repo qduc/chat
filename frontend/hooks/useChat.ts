@@ -186,7 +186,6 @@ export function useChat() {
   const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
   const [modelToProvider, setModelToProvider] = useState<Record<string, string>>({});
-  /* eslint-disable-next-line @typescript-eslint/no-unused-vars */
   const [modelCapabilities, setModelCapabilities] = useState<any>(null);
 
   // Tool & Quality State
@@ -783,6 +782,7 @@ export function useChat() {
       const groups: ModelGroup[] = [];
       const options: ModelOption[] = [];
       const modelToProviderMap: Record<string, string> = {};
+      const capabilitiesMap: Record<string, any> = {};
 
       for (const provider of providersList) {
         try {
@@ -805,8 +805,11 @@ export function useChat() {
             options.push(...providerOptions);
 
             // Build model to provider mapping (now using qualified model IDs)
+            // and store model capabilities
             models.forEach((model: any) => {
-              modelToProviderMap[`${provider.id}::${model.id}`] = provider.id;
+              const qualifiedId = `${provider.id}::${model.id}`;
+              modelToProviderMap[qualifiedId] = provider.id;
+              capabilitiesMap[qualifiedId] = model;
             });
           }
         } catch (err) {
@@ -817,6 +820,7 @@ export function useChat() {
       setModelGroups(groups);
       setModelOptions(options);
       setModelToProvider(modelToProviderMap);
+      setModelCapabilities(capabilitiesMap);
 
       // Set default provider if not already set (use functional update to avoid capturing providerId)
       if (providersList.length > 0) {
