@@ -87,6 +87,18 @@ async function resolveSystemPromptContent(activePromptId, userId) {
   }
 }
 
+/**
+ * Inject current date into system prompt
+ * @param {string} systemPrompt - The system prompt content
+ * @returns {string} System prompt with injected date
+ */
+function injectCurrentDate(systemPrompt) {
+  if (!systemPrompt) return systemPrompt;
+
+  const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+  return `Today's date: ${currentDate}\n\n${systemPrompt}`;
+}
+
 export function extractSystemPrompt({ body, bodyIn, persistence }) {
   const fromMessages = Array.isArray(body?.messages)
     ? body.messages.find((msg) => msg && msg.role === 'system' && typeof msg.content === 'string' && msg.content.trim())
@@ -141,7 +153,7 @@ export async function extractSystemPromptAsync({ body, bodyIn, persistence, user
 export function buildConversationMessages({ body, bodyIn, persistence }) {
   const sanitizedMessages = Array.isArray(body?.messages) ? [...body.messages] : [];
   const nonSystemMessages = sanitizedMessages.filter((msg) => msg && msg.role !== 'system');
-  const systemPrompt = extractSystemPrompt({ body, bodyIn, persistence });
+  const systemPrompt = injectCurrentDate(extractSystemPrompt({ body, bodyIn, persistence }));
   const hasPersistence = !!(persistence && persistence.persist && persistence.conversationId);
 
   if (nonSystemMessages.length > 0 && !hasPersistence) {
@@ -194,7 +206,7 @@ export function buildConversationMessages({ body, bodyIn, persistence }) {
 export async function buildConversationMessagesAsync({ body, bodyIn, persistence, userId }) {
   const sanitizedMessages = Array.isArray(body?.messages) ? [...body.messages] : [];
   const nonSystemMessages = sanitizedMessages.filter((msg) => msg && msg.role !== 'system');
-  const systemPrompt = await extractSystemPromptAsync({ body, bodyIn, persistence, userId });
+  const systemPrompt = injectCurrentDate(await extractSystemPromptAsync({ body, bodyIn, persistence, userId }));
   const hasPersistence = !!(persistence && persistence.persist && persistence.conversationId);
 
   if (nonSystemMessages.length > 0 && !hasPersistence) {
@@ -251,7 +263,7 @@ export async function buildConversationMessagesAsync({ body, bodyIn, persistence
 export async function buildConversationMessagesOptimized({ body, bodyIn, persistence, userId, provider = null }) {
   const sanitizedMessages = Array.isArray(body?.messages) ? [...body.messages] : [];
   const nonSystemMessages = sanitizedMessages.filter((msg) => msg && msg.role !== 'system');
-  const systemPrompt = await extractSystemPromptAsync({ body, bodyIn, persistence, userId });
+  const systemPrompt = injectCurrentDate(await extractSystemPromptAsync({ body, bodyIn, persistence, userId }));
   const hasPersistence = !!(persistence && persistence.persist && persistence.conversationId);
 
   // If messages provided in request, use them (new conversation or explicit history)

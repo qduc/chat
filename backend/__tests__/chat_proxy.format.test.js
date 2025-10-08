@@ -320,7 +320,9 @@ describe('System prompt injection', () => {
     assert.equal(res.status, 200);
     const lastRequest = upstream.lastChatRequestBody;
     assert.equal(lastRequest.messages[0].role, 'system');
-    assert.equal(lastRequest.messages[0].content, 'Use this effective system prompt.');
+    // System prompt should have date injected
+    const currentDate = new Date().toISOString().split('T')[0];
+    assert.equal(lastRequest.messages[0].content, `Today's date: ${currentDate}\n\nUse this effective system prompt.`);
     assert.equal(lastRequest.messages[1].role, 'user');
     assert.equal(lastRequest.messages[1].content, 'Send override example');
   });
