@@ -18,7 +18,7 @@ if (typeof global.TextDecoder === 'undefined') {
 expect.poll = (fn, { timeout = 1000, interval = 50 } = {}) => {
 	const poll = async (matcher) => {
 		const start = Date.now();
-		// eslint-disable-next-line no-constant-condition
+		 
 		while (true) {
 			try {
 				const value = fn();
@@ -27,7 +27,7 @@ expect.poll = (fn, { timeout = 1000, interval = 50 } = {}) => {
 			} catch (err) {
 				if (Date.now() - start > timeout) throw err;
 				// wait
-				// eslint-disable-next-line no-await-in-loop
+				 
 				await new Promise((r) => setTimeout(r, interval));
 			}
 		}
@@ -140,7 +140,7 @@ if (typeof global.Response === 'undefined') {
 				const dec = new TextDecoder();
 				let out = '';
 				while (true) {
-					// eslint-disable-next-line no-await-in-loop
+					 
 					const { done, value } = await reader.read();
 					if (done) break;
 					out += dec.decode(value, { stream: true });
@@ -156,7 +156,7 @@ if (typeof global.Response === 'undefined') {
 				const dec = new TextDecoder();
 				let out = '';
 				while (true) {
-					// eslint-disable-next-line no-await-in-loop
+					 
 					const { done, value } = await reader.read();
 					if (done) break;
 					out += dec.decode(value, { stream: true });

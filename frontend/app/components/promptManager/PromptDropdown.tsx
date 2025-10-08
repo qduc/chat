@@ -44,9 +44,7 @@ export default function PromptDropdown({
   // Build dropdown items array for keyboard navigation
   const dropdownItems = [
     { type: 'option', id: null, name: 'No system prompt' },
-    ...(sortedBuiltIns.length > 0 ? [{ type: 'header', label: 'Built-in Prompts' }] : []),
     ...sortedBuiltIns.map(prompt => ({ type: 'option', id: prompt.id, name: prompt.name, isBuiltIn: true })),
-    ...(sortedCustom.length > 0 ? [{ type: 'header', label: 'My Prompts' }] : []),
     ...sortedCustom.map(prompt => ({ type: 'option', id: prompt.id, name: prompt.name, isBuiltIn: false }))
   ] as Array<{ type: 'option' | 'header'; id?: string | null; name?: string; label?: string; isBuiltIn?: boolean }>;
 
@@ -182,18 +180,6 @@ export default function PromptDropdown({
           aria-label="System prompt options"
         >
           {dropdownItems.map((item, index) => {
-            if (item.type === 'header') {
-              return (
-                <div
-                  key={item.label}
-                  className="px-3 py-2 text-xs font-semibold text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-700 border-b border-gray-200 dark:border-gray-600"
-                  role="presentation"
-                >
-                  {item.label}
-                </div>
-              );
-            }
-
             const selectableIndex = selectableItems.findIndex(selectable => selectable === item);
             const isFocused = focusedIndex === selectableIndex;
             const isSelected = selectedPromptId === item.id;

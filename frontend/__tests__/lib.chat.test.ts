@@ -1,5 +1,5 @@
 // Test stubs for frontend lib functions in lib/chat.ts
-/* eslint-disable */
+ 
 /// <reference types="jest" />
 
 import type { Role } from '../lib';
