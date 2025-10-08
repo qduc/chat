@@ -490,7 +490,25 @@ export function useChat() {
           });
         },
         onEvent: (event) => {
-          if (event.type === 'tool_call') {
+          if (event.type === 'text') {
+            // Handle text events from tool_events (non-streaming responses)
+            setMessages(prev => {
+              const lastIdx = prev.length - 1;
+              if (lastIdx < 0) return prev;
+
+              const lastMsg = prev[lastIdx];
+              if (!lastMsg || lastMsg.role !== 'assistant') return prev;
+
+              // Append text to existing content
+              const currentContent = typeof lastMsg.content === 'string' ? lastMsg.content : '';
+              const newContent = currentContent + event.value;
+
+              return [
+                ...prev.slice(0, lastIdx),
+                { ...lastMsg, content: newContent }
+              ];
+            });
+          } else if (event.type === 'tool_call') {
             setMessages(prev => {
               const lastIdx = prev.length - 1;
               if (lastIdx < 0) return prev;
@@ -503,20 +521,24 @@ export function useChat() {
                 ? lastMsg.content.length
                 : 0;
 
-              // Accumulate tool calls by index to avoid duplicates during streaming
+              // Accumulate tool calls by id (unique identifier) to avoid duplicates during streaming
               const tcDelta = event.value;
-              const idx = tcDelta.index ?? 0;
               const existingToolCalls = lastMsg.tool_calls || [];
-              const existingIdx = existingToolCalls.findIndex(tc => (tc.index ?? 0) === idx);
+
+              // Use id as the primary identifier (OpenAI spec), fallback to index for older formats
+              const existingIdx = tcDelta.id
+                ? existingToolCalls.findIndex(tc => tc.id === tcDelta.id)
+                : existingToolCalls.findIndex(tc => (tc.index ?? 0) === (tcDelta.index ?? 0));
 
               let updatedToolCalls;
               if (existingIdx >= 0) {
-                // Update existing tool call (merge chunks)
-                console.log('[DEBUG] Merging tool_call chunk:', { id: tcDelta.id, index: idx, name: tcDelta.function?.name });
+                // Update existing tool call (merge chunks during streaming)
+                console.log('[DEBUG] Merging tool_call chunk:', { id: tcDelta.id, index: tcDelta.index, name: tcDelta.function?.name });
                 updatedToolCalls = [...existingToolCalls];
                 const existing = { ...updatedToolCalls[existingIdx] };
                 if (tcDelta.id) existing.id = tcDelta.id;
                 if (tcDelta.type) existing.type = tcDelta.type;
+                if (tcDelta.index !== undefined) existing.index = tcDelta.index;
                 if (tcDelta.function?.name) {
                   existing.function = { ...existing.function, name: tcDelta.function.name };
                 }
@@ -529,13 +551,13 @@ export function useChat() {
                 updatedToolCalls[existingIdx] = existing;
               } else {
                 // New tool call - capture textOffset from current content length
-                console.log('[DEBUG] Adding new tool_call:', { id: tcDelta.id, index: idx, name: tcDelta.function?.name, textOffset: currentTextLength });
+                console.log('[DEBUG] Adding new tool_call:', { id: tcDelta.id, index: tcDelta.index, name: tcDelta.function?.name, textOffset: currentTextLength });
                 updatedToolCalls = [
                   ...existingToolCalls,
                   {
                     id: tcDelta.id,
                     type: tcDelta.type || 'function',
-                    index: idx,
+                    index: tcDelta.index ?? existingToolCalls.length,
                     textOffset: currentTextLength, // Store the position where tool call occurred
                     function: {
                       name: tcDelta.function?.name || '',
@@ -608,6 +630,7 @@ export function useChat() {
       } as ChatOptionsExtended);
 
       // Update assistant message with final content
+      // If content was built from tool_events, use that; otherwise use response.content
       setMessages(prev => {
         const lastIdx = prev.length - 1;
         if (lastIdx < 0) return prev;
@@ -615,9 +638,14 @@ export function useChat() {
         const lastMsg = prev[lastIdx];
         if (!lastMsg || lastMsg.role !== 'assistant') return prev;
 
+        // If we already have content from events, keep it (don't duplicate with response.content)
+        // Otherwise, use response.content (for responses without tool_events)
+        const currentContent = typeof lastMsg.content === 'string' ? lastMsg.content : '';
+        const finalContent = currentContent.length > 0 ? currentContent : response.content;
+
         return [
           ...prev.slice(0, lastIdx),
-          { ...lastMsg, content: response.content }
+          { ...lastMsg, content: finalContent }
         ];
       });
 

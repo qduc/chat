@@ -631,7 +631,6 @@ function processStreamChunk(
     const closingTag = '</thinking>';
     onToken?.(closingTag);
     onToken?.(delta.content);
-    onEvent?.({ type: 'text', value: delta.content });
 
     return {
       ...result,
@@ -664,7 +663,6 @@ function processStreamChunk(
 
   if (delta?.content) {
     onToken?.(delta.content);
-    onEvent?.({ type: 'text', value: delta.content });
     return { ...result, content: delta.content };
   }
 

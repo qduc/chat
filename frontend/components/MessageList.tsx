@@ -512,7 +512,7 @@ const Message = React.memo<MessageProps>(function Message({
                             {(Object.keys(parsedArgs).length > 0 || (argsParseFailed && argsRaw.trim().length > 0)) && (
                               <div className="space-y-1">
                                 <div className="text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">
-                                  Input {argsParseFailed && <span className="text-orange-500 dark:text-orange-400 ml-1">(streaming...)</span>}
+                                  Input
                                 </div>
                                 <div className="rounded-md bg-slate-50 dark:bg-neutral-900/60 border border-slate-200/50 dark:border-neutral-700/40 p-2.5">
                                   <pre className="text-[11px] font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
