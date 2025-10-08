@@ -173,7 +173,7 @@ describe('useChat hook', () => {
     expect(result.current.currentConversationTitle).toBe('Merged Conversation');
     expect(result.current.messages).toHaveLength(1);
     expect(result.current.messages[0].tool_outputs).toEqual([
-      { tool_call_id: toolCallId, output: { data: 'result' } },
+      { tool_call_id: toolCallId, output: { data: 'result' }, status: 'success' },
     ]);
     expect(result.current.useTools).toBe(true);
     expect(result.current.enabledTools).toEqual(['lookup']);
@@ -292,13 +292,74 @@ describe('useChat hook', () => {
       id: 'openai',
       label: 'OpenAI',
     });
+    // Model values should now be provider-qualified (provider::model)
     expect(result.current.modelOptions).toEqual(
       expect.arrayContaining([
-        { label: 'gpt-4o', value: 'gpt-4o' },
-        { label: 'gpt-4o-mini', value: 'gpt-4o-mini' },
+        { label: 'gpt-4o', value: 'openai::gpt-4o' },
+        { label: 'gpt-4o-mini', value: 'openai::gpt-4o-mini' },
       ])
     );
-    expect(result.current.modelToProvider['gpt-4o']).toBe('openai');
+    expect(result.current.modelToProvider['openai::gpt-4o']).toBe('openai');
     await waitFor(() => expect(result.current.providerId).toBe('openai'));
+  });
+
+  test('handles duplicate model IDs across different providers', async () => {
+    // Arrange: Mock two providers with the same model ID
+    mockHttpClient.get.mockImplementation((url: string) => {
+      if (url === '/v1/providers') {
+        return Promise.resolve(
+          createHttpResponse({
+            providers: [
+              { id: 'provider1', name: 'Provider 1', enabled: 1 },
+              { id: 'provider2', name: 'Provider 2', enabled: 1 },
+            ],
+          })
+        );
+      }
+      if (url === '/v1/providers/provider1/models') {
+        return Promise.resolve(
+          createHttpResponse({
+            provider: { id: 'provider1' },
+            models: [{ id: 'shared-model' }, { id: 'model-1' }],
+          })
+        );
+      }
+      if (url === '/v1/providers/provider2/models') {
+        return Promise.resolve(
+          createHttpResponse({
+            provider: { id: 'provider2' },
+            models: [{ id: 'shared-model' }, { id: 'model-2' }],
+          })
+        );
+      }
+      return Promise.resolve(createHttpResponse({ provider: { id: 'unknown' }, models: [] }));
+    });
+
+    mockAuth.getProfile.mockResolvedValue({
+      id: 'user-123',
+      email: 'user@example.com',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const { result } = renderHook(() => useChat());
+
+    await waitFor(() => expect(result.current.modelGroups.length).toBe(2));
+
+    // Both providers should have their own qualified versions of the shared model
+    expect(result.current.modelOptions).toEqual(
+      expect.arrayContaining([
+        { label: 'shared-model', value: 'provider1::shared-model' },
+        { label: 'shared-model', value: 'provider2::shared-model' },
+        { label: 'model-1', value: 'provider1::model-1' },
+        { label: 'model-2', value: 'provider2::model-2' },
+      ])
+    );
+
+    // Verify each qualified model maps to its correct provider
+    expect(result.current.modelToProvider['provider1::shared-model']).toBe('provider1');
+    expect(result.current.modelToProvider['provider2::shared-model']).toBe('provider2');
+    expect(result.current.modelToProvider['provider1::model-1']).toBe('provider1');
+    expect(result.current.modelToProvider['provider2::model-2']).toBe('provider2');
   });
 });

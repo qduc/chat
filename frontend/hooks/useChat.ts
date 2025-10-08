@@ -263,13 +263,18 @@ export function useChat() {
 
       // Apply conversation settings without persisting to localStorage
       // (persist only user manual selections)
-      if (data.model) {
-        setModelState(data.model);
-        modelRef.current = data.model;
-      }
-
       // Accept either `provider` or legacy `provider_id` from API
       const providerFromData = (data as any).provider ?? (data as any).provider_id;
+
+      if (data.model) {
+        // If we have provider info, qualify the model ID; otherwise use as-is
+        const qualifiedModel = providerFromData
+          ? `${providerFromData}::${data.model}`
+          : data.model;
+        setModelState(qualifiedModel);
+        modelRef.current = qualifiedModel;
+      }
+
       if (providerFromData) {
         setProviderId(providerFromData);
         providerIdRef.current = providerFromData;
@@ -448,9 +453,14 @@ export function useChat() {
 
       // Send message with streaming
       // Use refs to get the latest values and avoid stale closures
+      // Extract actual model ID from provider-qualified format (provider::model)
+      const actualModelId = modelRef.current.includes('::')
+        ? modelRef.current.split('::')[1]
+        : modelRef.current;
+
       const response = await chat.sendMessage({
         messages: [{ id: userMessage.id, role: 'user', content: messageContent }],
-        model: modelRef.current,
+        model: actualModelId,
         providerId: providerIdRef.current || '',
         stream: shouldStreamRef.current,
         signal: abortControllerRef.current.signal,
@@ -752,9 +762,9 @@ export function useChat() {
           const models = modelsResponse.data.models || [];
 
           if (models.length > 0) {
-            // Create model options for this provider
+            // Create model options for this provider with provider-qualified values
             const providerOptions: ModelOption[] = models.map((model: any) => ({
-              value: model.id,
+              value: `${provider.id}::${model.id}`,
               label: model.id
             }));
 
@@ -766,9 +776,9 @@ export function useChat() {
 
             options.push(...providerOptions);
 
-            // Build model to provider mapping
+            // Build model to provider mapping (now using qualified model IDs)
             models.forEach((model: any) => {
-              modelToProviderMap[model.id] = provider.id;
+              modelToProviderMap[`${provider.id}::${model.id}`] = provider.id;
             });
           }
         } catch (err) {

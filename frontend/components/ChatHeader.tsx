@@ -39,13 +39,22 @@ export function ChatHeader({ model, onModelChange, onProviderChange, onOpenSetti
 
   // Notify parent when provider changes based on selected model
   React.useEffect(() => {
-    if (!modelToProvider || !onProviderChange) return;
+    if (!onProviderChange) return;
+
     let providerId: string | undefined;
-    if (modelToProvider instanceof Map) {
-      providerId = modelToProvider.get(model) as string | undefined;
-    } else {
-      providerId = (modelToProvider as Record<string, string>)[model];
+
+    // First try to extract provider from qualified model ID (provider::model)
+    if (model.includes('::')) {
+      providerId = model.split('::')[0];
+    } else if (modelToProvider) {
+      // Fallback to modelToProvider map for legacy model IDs
+      if (modelToProvider instanceof Map) {
+        providerId = modelToProvider.get(model) as string | undefined;
+      } else {
+        providerId = (modelToProvider as Record<string, string>)[model];
+      }
     }
+
     if (!providerId) {
       lastProviderIdRef.current = undefined;
       return;
