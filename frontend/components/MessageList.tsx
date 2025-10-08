@@ -201,10 +201,8 @@ interface MessageProps {
 const Message = React.memo<MessageProps>(function Message({
   message,
   isStreaming,
-  conversationId: _conversationId,
   editingMessageId,
   editingContent,
-  onCopy: _onCopy,
   onEditMessage,
   onCancelEdit,
   onApplyLocalEdit,
@@ -413,6 +411,24 @@ const Message = React.memo<MessageProps>(function Message({
                     };
 
                     const outputSummary = getOutputSummary(outputs);
+                    const getInputSummary = (args: any) => {
+                      if (!args) return null;
+
+                      try {
+                        if (typeof args === 'string') {
+                          const cleaned = args.trim().replace(/\s+/g, ' ');
+                          return cleaned.length > 80 ? cleaned.slice(0, 77) + '...' : cleaned;
+                        }
+
+                        const str = JSON.stringify(args);
+                        const cleaned = str.replace(/\s+/g, ' ');
+                        return cleaned.length > 80 ? cleaned.slice(0, 77) + '...' : cleaned;
+                      } catch {
+                        return String(args).slice(0, 80);
+                      }
+                    };
+
+                    const inputSummary = getInputSummary(parsedArgs);
                     const hasDetails = outputs.length > 0 || Object.keys(parsedArgs).length > 0;
 
                     return (
@@ -449,10 +465,24 @@ const Message = React.memo<MessageProps>(function Message({
                                 </button>
                               )}
                             </div>
-                            {outputSummary && (
-                              <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                                {outputSummary}
-                              </div>
+                            {/* Show both input and output (one per line) when collapsed; otherwise show outputSummary or nothing. */}
+                            {isCollapsed ? (
+                              (inputSummary || outputSummary) ? (
+                                <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                                  {inputSummary && (
+                                    <div className="truncate">{inputSummary}</div>
+                                  )}
+                                  {outputSummary && (
+                                    <div className="truncate mt-1 text-slate-700 dark:text-slate-300">{outputSummary}</div>
+                                  )}
+                                </div>
+                              ) : null
+                            ) : (
+                              outputSummary ? (
+                                <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                                  {outputSummary}
+                                </div>
+                              ) : null
                             )}
                           </div>
                         </div>
@@ -625,7 +655,6 @@ export function MessageList({
   onCopy,
   onEditMessage,
   onCancelEdit,
-  onSaveEdit: _,
   onApplyLocalEdit,
   onEditingContentChange,
   onRetryMessage
