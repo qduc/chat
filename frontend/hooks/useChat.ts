@@ -229,9 +229,7 @@ export function useChat() {
         content: msg.content,
         timestamp: new Date(msg.created_at).getTime(),
         tool_calls: msg.tool_calls,
-        tool_call_id: msg.tool_call_id,
         tool_outputs: msg.tool_outputs,
-        usage: msg.usage,
       }));
 
       // Merge tool outputs from tool messages into their corresponding assistant messages
@@ -256,10 +254,10 @@ export function useChat() {
       }
 
       // Apply tools settings
-      if (data.metadata?.active_tools || data.active_tools) {
-        const tools = data.metadata?.active_tools || data.active_tools;
-        setEnabledTools(tools);
-        enabledToolsRef.current = tools;
+      const toolsFromData = (data as any).active_tools || [];
+      if (toolsFromData && Array.isArray(toolsFromData)) {
+        setEnabledTools(toolsFromData);
+        enabledToolsRef.current = toolsFromData;
       }
 
       // Apply streaming and tools enabled flags
@@ -279,10 +277,10 @@ export function useChat() {
       }
 
       // Apply system prompt
-      if (data.metadata?.system_prompt || data.system_prompt) {
-        const prompt = data.metadata?.system_prompt || data.system_prompt;
-        setSystemPrompt(prompt);
-        systemPromptRef.current = prompt;
+      const promptFromData = (data as any).system_prompt ?? null;
+      if (promptFromData !== undefined) {
+        setSystemPrompt(promptFromData);
+        systemPromptRef.current = promptFromData;
       }
 
       // Apply active system prompt ID

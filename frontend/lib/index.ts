@@ -4,6 +4,25 @@
 
 // Core API modules
 export { auth, chat, conversations, images, tools, providers } from './api';
+// Backwards-compatible aliases expected by older tests / code that import from `../lib`
+// Provide thin shims so tests and legacy callers continue to work.
+import { auth as _auth } from './api';
+export const authApi = _auth;
+export const verifySession = _auth.verifySession;
+
+// Re-export legacy chat APIs and classes from the modular chat surface
+export {
+  ChatClient,
+  ConversationManager,
+  ToolsClient,
+  createConversation,
+  listConversationsApi,
+  getConversationApi,
+  deleteConversationApi,
+  editMessageApi,
+  sendChat,
+  getToolSpecs
+} from './chat';
 
 // HTTP client
 export { httpClient, HttpError, type HttpResponse, type RequestOptions } from './http';

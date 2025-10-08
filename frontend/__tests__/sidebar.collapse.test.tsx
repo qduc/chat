@@ -20,29 +20,35 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatV2 as Chat } from '../components/ChatV2';
 import { ThemeProvider } from '../contexts/ThemeContext';
+// Mock the chat module so we can provide a mocked ConversationManager class
+// and keep other legacy exports from `../lib` intact.
+jest.mock('../lib/chat', () => {
+  // Provide a mocked ConversationManager class
+  class MockedConversationManager {
+    list = jest.fn().mockResolvedValue({
+      items: [
+        { id: 'conv-1', title: 'Test Conversation', model: 'gpt-4o', created_at: '2023-01-01' },
+      ],
+      next_cursor: null,
+    });
+    create = jest.fn();
+    get = jest.fn();
+    delete = jest.fn();
+    editMessage = jest.fn();
+  }
+
+  return {
+    __esModule: true,
+    ConversationManager: MockedConversationManager,
+    listConversationsApi: jest.fn(),
+    sendChat: jest.fn(),
+    getToolSpecs: jest.fn(),
+    getConversationApi: jest.fn(),
+  };
+});
+
 import * as chatLib from '../lib';
-
-// Mock the chat library functions
-jest.mock('../lib/chat');
 const mockedChatLib = chatLib as jest.Mocked<typeof chatLib>;
-
-// The hook uses ConversationManager (class) internally. Ensure the mocked module
-// returns a mocked ConversationManager whose `list` method resolves to the
-// same conversations we expect in tests. This prevents the real ConversationManager
-// from making HTTP calls and keeps the test deterministic.
-mockedChatLib.ConversationManager = jest.fn().mockImplementation(() => ({
-  list: jest.fn().mockResolvedValue({
-    items: [
-      { id: 'conv-1', title: 'Test Conversation', model: 'gpt-4o', created_at: '2023-01-01' },
-    ],
-    next_cursor: null,
-  }),
-  // include no-op placeholders for other instance methods used elsewhere
-  create: jest.fn(),
-  get: jest.fn(),
-  delete: jest.fn(),
-  editMessage: jest.fn(),
-} as any)) as unknown as jest.MockedClass<typeof chatLib.ConversationManager>;
 
 // Mock the Markdown component to avoid ES module issues
 jest.mock('../components/Markdown', () => ({
@@ -64,9 +70,9 @@ Object.defineProperty(global, 'crypto', {
   },
 });
 
-// Mock localStorage
+// Mock localStorage with key-aware behavior
 const mockLocalStorage = {
-  getItem: jest.fn(),
+  getItem: jest.fn((key?: string) => null),
   setItem: jest.fn(),
 };
 Object.defineProperty(window, 'localStorage', {
@@ -102,7 +108,7 @@ beforeEach(() => {
   });
 
   // Mock localStorage to return false (expanded by default)
-  mockLocalStorage.getItem.mockReturnValue(null);
+  mockLocalStorage.getItem.mockImplementation((key: string) => null);
 });
 
 describe('Sidebar Collapse Functionality', () => {
@@ -187,8 +193,8 @@ describe('Sidebar Collapse Functionality', () => {
   });
 
   test('sidebar loads collapsed state from localStorage', async () => {
-    // Mock localStorage to return 'true' (collapsed)
-    mockLocalStorage.getItem.mockReturnValue('true');
+    // Mock localStorage to return 'true' (collapsed) only for the sidebar key
+    mockLocalStorage.getItem.mockImplementation((key: string) => key === 'sidebarCollapsed' ? 'true' : null);
 
     renderWithProviders(<Chat />);
 

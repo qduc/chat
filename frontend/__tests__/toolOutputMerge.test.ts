@@ -8,7 +8,7 @@
 describe('Tool output merging', () => {
   test('merges tool outputs from tool messages to assistant messages', () => {
     // Input: backend format with separate tool messages
-    const backendMessages = [
+  const backendMessages: any[] = [
       {
         id: '1',
         role: 'user' as const,

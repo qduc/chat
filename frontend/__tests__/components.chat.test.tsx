@@ -487,7 +487,7 @@ describe('<Chat />', () => {
     mockedChatLib.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] });
 
     // First conversation has system prompt
-    mockedChatLib.getConversationApi.mockImplementation((_, id) => {
+  mockedChatLib.getConversationApi.mockImplementation((_: any, id: string) => {
       if (id === 'conv-with-prompt') {
         return Promise.resolve({
           id: 'conv-with-prompt',
