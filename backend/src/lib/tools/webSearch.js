@@ -249,14 +249,14 @@ async function handler({
 
 export const webSearchTool = createTool({
   name: TOOL_NAME,
-  description: 'Perform a web search using Tavily API to get current information from the internet. Supports filtering by date, domain, topic, and search depth.',
+  description: 'Fast, high-quality search with excellent default relevance. Best for quick answers, news/current events, and general queries. Optionally includes AI-generated answers.',
   validate,
   handler,
   openAI: {
     type: 'function',
     function: {
       name: TOOL_NAME,
-      description: 'Perform a web search using Tavily API to get current, up-to-date information from the internet. The default values provide a great starting point for most queries, most of the time you won\'t need to change them. Only specify parameters you need to customize or by user\'s requests',
+      description: 'Fast, accurate search with excellent out-of-the-box relevance. Best for quick answers, news/current events, and broad queries. Superior for time-sensitive topics with optional AI-generated summaries (include_answer). Defaults work great—only customize when needed.',
       parameters: {
         type: 'object',
         properties: {

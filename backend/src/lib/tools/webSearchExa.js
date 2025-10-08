@@ -267,14 +267,14 @@ async function handler({
 
 export const webSearchExaTool = createTool({
   name: TOOL_NAME,
-  description: 'Perform a web search using Exa API for high-quality, up-to-date results with control over domains and date ranges. Returns highlights by default.',
+  description: 'Deep research with semantic search and custom content extraction. Best for technical queries, detailed specs, and when you need precise excerpts or AI summaries. Returns highlights by default.',
   validate,
   handler,
   openAI: {
     type: 'function',
     function: {
       name: TOOL_NAME,
-      description: 'Search the web using the Exa API to retrieve high-quality, current sources. Returns highlights by default. Can optionally retrieve full text content and AI-generated summaries. Only specify optional parameters when you need to customize the search.',
+      description: 'Deep research tool with semantic/neural search. Best for technical deep-dives, detailed specs, benchmarks, and when you need custom highlight extraction or per-result AI summaries. Use type="neural" for semantic understanding. Returns highlights by default.',
       parameters: {
         type: 'object',
         properties: {
