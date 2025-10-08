@@ -45,7 +45,7 @@ export {
   clearTokens,
   isTokenExpired,
   getUserFromToken
-} from './auth/tokens';
+} from './storage';
 
 export {
   isAuthenticated,

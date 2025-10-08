@@ -7,16 +7,22 @@ import { act, render, screen, fireEvent, waitFor, waitForElementToBeRemoved } fr
 import '@testing-library/jest-dom';
 
 // Mock token functions
-jest.mock('../lib/auth/tokens', () => ({
-  getToken: jest.fn(() => null),
-  setToken: jest.fn(),
-  setRefreshToken: jest.fn(),
-  clearTokens: jest.fn(),
-  removeToken: jest.fn(),
-  removeRefreshToken: jest.fn(),
-  isTokenExpired: jest.fn(() => false),
-  getUserFromToken: jest.fn(() => null),
-}));
+jest.mock('../lib/storage', () => {
+  // Preserve the real storage helpers (auth-ready functions, etc.) and
+  // only override token-related helpers used in tests.
+  const actual = jest.requireActual('../lib/storage');
+  return {
+    ...actual,
+    getToken: jest.fn(() => null),
+    setToken: jest.fn(),
+    setRefreshToken: jest.fn(),
+    clearTokens: jest.fn(),
+    removeToken: jest.fn(),
+    removeRefreshToken: jest.fn(),
+    isTokenExpired: jest.fn(() => false),
+    getUserFromToken: jest.fn(() => null),
+  };
+});
 
 // Mock verification helper
 jest.mock('../lib/auth/verification', () => ({
@@ -161,7 +167,7 @@ describe('Authentication System', () => {
     });
 
     it('verifies session with backend on mount', async () => {
-      const tokens = require('../lib/auth/tokens');
+  const tokens = require('../lib/storage');
       (tokens.getToken as jest.Mock).mockReturnValue('existing-token');
 
       await renderWithAuth(<TestAuthComponent />);
