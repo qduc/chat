@@ -2,7 +2,6 @@ import { createTool } from './baseTool.js';
 
 const TOOL_NAME = 'web_search_exa';
 const VALID_TYPES = ['auto', 'keyword', 'neural'];
-const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 function validate(args) {
   if (!args || typeof args.query !== 'string' || args.query.trim().length === 0) {
@@ -27,10 +26,6 @@ function validate(args) {
     validated.num_results = numResults;
   }
 
-  if (args.use_autoprompt !== undefined) {
-    validated.use_autoprompt = Boolean(args.use_autoprompt);
-  }
-
   if (args.include_domains !== undefined) {
     if (!Array.isArray(args.include_domains) || !args.include_domains.every((domain) => typeof domain === 'string' && domain.trim().length > 0)) {
       throw new Error('include_domains must be an array of non-empty strings');
@@ -43,20 +38,6 @@ function validate(args) {
       throw new Error('exclude_domains must be an array of non-empty strings');
     }
     validated.exclude_domains = args.exclude_domains.map((domain) => domain.trim());
-  }
-
-  if (args.start_published_date !== undefined) {
-    if (typeof args.start_published_date !== 'string' || !DATE_REGEX.test(args.start_published_date)) {
-      throw new Error('start_published_date must be in YYYY-MM-DD format');
-    }
-    validated.start_published_date = args.start_published_date;
-  }
-
-  if (args.end_published_date !== undefined) {
-    if (typeof args.end_published_date !== 'string' || !DATE_REGEX.test(args.end_published_date)) {
-      throw new Error('end_published_date must be in YYYY-MM-DD format');
-    }
-    validated.end_published_date = args.end_published_date;
   }
 
   // Validate text parameter (boolean or object)
@@ -161,11 +142,8 @@ async function handler({
   query,
   type,
   num_results,
-  use_autoprompt,
   include_domains,
   exclude_domains,
-  start_published_date,
-  end_published_date,
   text,
   highlights,
   summary,
@@ -183,11 +161,8 @@ async function handler({
 
   if (type !== undefined) requestBody.type = type;
   if (num_results !== undefined) requestBody.numResults = num_results;
-  if (use_autoprompt !== undefined) requestBody.useAutoprompt = use_autoprompt;
   if (include_domains !== undefined) requestBody.includeDomains = include_domains;
   if (exclude_domains !== undefined) requestBody.excludeDomains = exclude_domains;
-  if (start_published_date !== undefined) requestBody.startPublishedDate = start_published_date;
-  if (end_published_date !== undefined) requestBody.endPublishedDate = end_published_date;
 
   // Content retrieval - must be nested inside 'contents' object
   const hasContentRequest = text !== undefined || highlights !== undefined || summary !== undefined;
@@ -318,10 +293,6 @@ export const webSearchExaTool = createTool({
             maximum: 100,
             description: 'Maximum number of results to return (1-100). Neural search supports up to 100, keyword search up to 10. Defaults to 10.',
           },
-          use_autoprompt: {
-            type: 'boolean',
-            description: 'Enable Exa autoprompting to automatically expand or refine search queries.',
-          },
           include_domains: {
             type: 'array',
             items: { type: 'string' },
@@ -331,16 +302,6 @@ export const webSearchExaTool = createTool({
             type: 'array',
             items: { type: 'string' },
             description: 'List of domains to exclude from the results.',
-          },
-          start_published_date: {
-            type: 'string',
-            pattern: '^\\d{4}-\\d{2}-\\d{2}$',
-            description: 'Earliest publication date to include (YYYY-MM-DD format).',
-          },
-          end_published_date: {
-            type: 'string',
-            pattern: '^\\d{4}-\\d{2}-\\d{2}$',
-            description: 'Latest publication date to include (YYYY-MM-DD format).',
           },
           text: {
             oneOf: [
