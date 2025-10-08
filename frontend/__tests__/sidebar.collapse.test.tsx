@@ -207,7 +207,7 @@ describe('Sidebar Collapse Functionality', () => {
   // Provide a minimal matchMedia mock for JSDOM used in tests
   beforeAll(() => {
     if (typeof window.matchMedia !== 'function') {
-      // @ts-ignore
+      // @ts-expect-error: Mocking window.matchMedia for test environment where it may not be defined
       window.matchMedia = (query: string) => ({
         matches: false,
         media: query,

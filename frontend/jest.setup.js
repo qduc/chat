@@ -6,19 +6,19 @@ process.env.NEXT_PUBLIC_API_BASE = '/api';
 process.env.BACKEND_ORIGIN = process.env.BACKEND_ORIGIN || 'http://localhost:3001';
 
 // Polyfill TextEncoder/TextDecoder for Node/Jest environments
-const util = require('util');
+import { TextEncoder, TextDecoder } from 'util';
 if (typeof global.TextEncoder === 'undefined') {
-	global.TextEncoder = util.TextEncoder;
+	global.TextEncoder = TextEncoder;
 }
 if (typeof global.TextDecoder === 'undefined') {
-	global.TextDecoder = util.TextDecoder;
+	global.TextDecoder = TextDecoder;
 }
 
 // Add a small expect.poll helper used by tests: polls a function until the matcher passes or times out
 expect.poll = (fn, { timeout = 1000, interval = 50 } = {}) => {
 	const poll = async (matcher) => {
 		const start = Date.now();
-		 
+
 		while (true) {
 			try {
 				const value = fn();
@@ -27,7 +27,7 @@ expect.poll = (fn, { timeout = 1000, interval = 50 } = {}) => {
 			} catch (err) {
 				if (Date.now() - start > timeout) throw err;
 				// wait
-				 
+
 				await new Promise((r) => setTimeout(r, interval));
 			}
 		}
@@ -72,17 +72,16 @@ if (typeof global.ReadableStream === 'undefined') {
 			}
 		}
 		getReader() {
-			const stream = this;
 			return {
 				read: async () => {
-					while (stream._chunks.length === 0 && !stream._closed) {
+					while (this._chunks.length === 0 && !this._closed) {
 						// wait for new chunks
-						await new Promise((resolve) => { stream._waiting = { resolve }; });
+						await new Promise((resolve) => { this._waiting = { resolve }; });
 					}
-					if (stream._chunks.length === 0 && stream._closed) {
+					if (this._chunks.length === 0 && this._closed) {
 						return { done: true, value: undefined };
 					}
-					const value = stream._chunks.shift();
+					const value = this._chunks.shift();
 					return { done: false, value };
 				},
 			};
@@ -140,7 +139,7 @@ if (typeof global.Response === 'undefined') {
 				const dec = new TextDecoder();
 				let out = '';
 				while (true) {
-					 
+
 					const { done, value } = await reader.read();
 					if (done) break;
 					out += dec.decode(value, { stream: true });
@@ -156,7 +155,7 @@ if (typeof global.Response === 'undefined') {
 				const dec = new TextDecoder();
 				let out = '';
 				while (true) {
-					 
+
 					const { done, value } = await reader.read();
 					if (done) break;
 					out += dec.decode(value, { stream: true });
