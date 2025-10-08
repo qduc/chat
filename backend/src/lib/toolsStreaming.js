@@ -3,6 +3,7 @@ import { parseSSEStream } from './sseParser.js';
 import { createOpenAIRequest, writeAndFlush, createChatCompletionChunk } from './streamUtils.js';
 import { createProvider } from './providers/index.js';
 import { setupStreamingHeaders } from './streamingHandler.js';
+import { config } from '../env.js';
 import {
   buildConversationMessagesAsync,
   buildConversationMessagesOptimized,
@@ -94,7 +95,7 @@ export async function handleToolsStreaming({
         // Add timeout to prevent hanging
         const timeout = setTimeout(() => {
           reject(new Error('Stream timeout - no response from upstream API'));
-        }, 30000); // 30 second timeout
+        }, config.providerConfig.streamTimeoutMs);
 
         const cleanup = () => {
           clearTimeout(timeout);
