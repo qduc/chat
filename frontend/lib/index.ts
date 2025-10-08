@@ -7,7 +7,6 @@ export { auth, chat, conversations, images, tools, providers } from './api';
 // Backwards-compatible aliases expected by older tests / code that import from `../lib`
 // Provide shims that can be swapped out in tests.
 import { auth as _auth } from './api';
-import { verifySession as verifySessionHelper } from './auth/verification';
 
 // Use the canonical `auth` implementation from ./api as the exported
 // `authApi`. Historically tests could override a legacy shim at
@@ -15,7 +14,6 @@ import { verifySession as verifySessionHelper } from './auth/verification';
 // simplify the module surface. Consumers should mock the consolidated
 // `../lib` exports or the `auth`/`authApi` object instead.
 export const authApi = { ..._auth };
-export const verifySession = verifySessionHelper;
 
 // Re-export legacy chat APIs and classes from the modular chat surface
 export {

@@ -25,21 +25,26 @@ jest.mock('../lib/storage', () => {
 });
 
 // Mock verification helper
-jest.mock('../lib/auth/verification', () => ({
-  verifySession: jest.fn(() => Promise.resolve({ valid: false, user: null, reason: 'missing-token' })),
-}));
+jest.mock('../lib/api', () => {
+  // Preserve other exports from the real module, but replace auth.verifySession
+  // with a jest.fn() mock.
+  const actual = jest.requireActual('../lib/api');
+  return {
+    ...actual,
+    auth: {
+      ...actual.auth,
+      verifySession: jest.fn(() => Promise.resolve({ valid: false, user: null, reason: 'missing-token' })),
+    },
+  };
+});
 
 // Mock the auth API on the consolidated `../lib` export (avoid relying on
-// the legacy shim module at `../lib/auth/api` so it can be removed).
+// the legacy shim module at `../lib/auth/verification` so it can be removed).
 jest.mock('../lib', () => {
   // Preserve other exports from the real module, but replace auth/authApi
   // with jest.fn() mocks so AuthProvider (which uses `auth`) and tests
   // (which import `authApi`) see the mocked functions.
   const actual = jest.requireActual('../lib');
-  // Pull in the mocked helpers (these jest.mocks are defined above)
-  // using require so we get the mocked implementation.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const verification = require('../lib/auth/verification');
   // Create mock functions for auth methods and make both `auth` and
   // `authApi` reference the same object so tests that set expectations on
   // `authApi` affect the `auth` used by AuthProvider.
@@ -49,17 +54,15 @@ jest.mock('../lib', () => {
     logout: jest.fn(),
     refreshToken: jest.fn(),
     getProfile: jest.fn(),
+    verifySession: jest.fn(() => Promise.resolve({ valid: false, user: null, reason: 'missing-token' })),
   };
 
   return {
     ...actual,
     auth: mockedAuthFns,
     authApi: mockedAuthFns,
-    // Use the mocked verification helper defined above (jest.mock call
-    // for ../lib/auth/verification). We can require it directly so the
-    // mock is used.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    verifySession: require('../lib/auth/verification').verifySession,
+    // Use the mocked verifySession from the auth mock
+    verifySession: mockedAuthFns.verifySession,
   };
 });
 
@@ -71,6 +74,7 @@ import { LoginForm } from '../components/auth/LoginForm';
 import { RegisterForm } from '../components/auth/RegisterForm';
 import { authApi } from '../lib';
 import { verifySession } from '../lib';
+import { getToken } from '../lib/storage';
 
 function AuthButtonWithModal() {
   const [open, setOpen] = React.useState(false);
@@ -167,8 +171,7 @@ describe('Authentication System', () => {
     });
 
     it('verifies session with backend on mount', async () => {
-  const tokens = require('../lib/storage');
-      (tokens.getToken as jest.Mock).mockReturnValue('existing-token');
+      (getToken as jest.Mock).mockReturnValue('existing-token');
 
       await renderWithAuth(<TestAuthComponent />);
 

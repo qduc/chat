@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { auth, verifySession, getToken, getUserFromToken, clearTokens, markAuthReady, resetAuthReady, waitForAuthReady, type User } from '../lib';
+import { auth, getToken, getUserFromToken, clearTokens, markAuthReady, resetAuthReady, waitForAuthReady, type User } from '../lib';
 
 interface AuthContextType {
   user: User | null;
@@ -45,7 +45,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setUser(userFromToken);
       }
 
-      const verification = await verifySession();
+      const verification = await auth.verifySession();
       if (verification.valid && verification.user) {
         setUser(verification.user);
       } else if (
@@ -106,7 +106,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const refreshUser = useCallback(async () => {
     try {
-      const verification = await verifySession();
+      const verification = await auth.verifySession();
       if (verification.valid && verification.user) {
         setUser(verification.user);
       } else {

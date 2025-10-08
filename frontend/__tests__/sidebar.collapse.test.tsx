@@ -36,7 +36,6 @@ jest.mock('../lib', () => {
     refreshToken: jest.fn(),
     getProfile: jest.fn(),
   };
-  const { verifySession } = require('../lib/auth/verification');
   const mock: any = {
     listConversationsApi: jest.fn(),
     getConversationApi: jest.fn(),
@@ -87,7 +86,6 @@ jest.mock('../lib', () => {
     auth: mock.auth,
     HttpError,
     authApi,
-    verifySession,
   };
 });
 
