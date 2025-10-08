@@ -3,10 +3,7 @@
 /// <reference types="jest" />
 
 import type { Role } from '../lib';
-import {
-  ChatClient,
-  ConversationManager,
-} from '../lib';
+import { chat, conversations } from '../lib';
 
 const encoder = new TextEncoder();
 function sseStream(lines: string[]) {
@@ -24,12 +21,7 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 
-describe('ChatClient', () => {
-  let chatClient: ChatClient;
-
-  beforeEach(() => {
-    chatClient = new ChatClient();
-  });
+describe('chat API', () => {
 
   test('sends only the latest user message to the backend', async () => {
     const fetchMock = jest.spyOn(global, 'fetch').mockImplementation((_url, init) => {
@@ -53,7 +45,7 @@ describe('ChatClient', () => {
       );
     });
 
-    await chatClient.sendMessage({
+    await chat.sendMessage({
       messages: [
         { role: 'user' as Role, content: 'first message' },
         { role: 'assistant' as Role, content: 'assistant reply' },
@@ -71,7 +63,7 @@ describe('ChatClient', () => {
       new Response(JSON.stringify({ error: 'bad' }), { status: 400 })
     );
     await expect(
-      chatClient.sendMessage({ messages: [{ role: 'user' as Role, content: 'hi' }], providerId: 'test-provider' })
+      chat.sendMessage({ messages: [{ role: 'user' as Role, content: 'hi' }], providerId: 'test-provider', stream: false })
     ).rejects.toThrow('HTTP 400: bad');
   });
 
@@ -100,7 +92,7 @@ describe('ChatClient', () => {
       });
     });
     const abort = new AbortController();
-    const promise = chatClient.sendMessage({
+    const promise = chat.sendMessage({
       messages: [{ role: 'user' as Role, content: 'hi' }],
       signal: abort.signal,
       providerId: 'test-provider',
@@ -114,11 +106,12 @@ describe('ChatClient', () => {
     const fetchMock = jest
       .spyOn(global, 'fetch')
       .mockResolvedValue(new Response(sseStream(lines), { status: 200 }));
-    await chatClient.sendMessageWithTools({
+    await chat.sendMessage({
       messages: [{ role: 'user' as Role, content: 'hi' }],
       conversationId: 'abc',
       tools: [],
       providerId: 'test-provider',
+      stream: true,
     });
     // Test behavior: Conversation context should be maintained
     expect(fetchMock).toHaveBeenCalled();
@@ -140,7 +133,7 @@ describe('ChatClient', () => {
     const tokens: string[] = [];
     const events: any[] = [];
 
-    const result = await chatClient.sendMessageWithTools({
+    const result = await chat.sendMessage({
       messages: [{ role: 'user' as Role, content: 'hi' }],
       tools: [],
       providerId: 'default-provider',
@@ -156,12 +149,7 @@ describe('ChatClient', () => {
   });
 });
 
-describe('ConversationManager', () => {
-  let conversationManager: ConversationManager;
-
-  beforeEach(() => {
-    conversationManager = new ConversationManager();
-  });
+describe('conversations API', () => {
 
   test('creates new conversation and returns conversation metadata', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValue(
@@ -170,7 +158,7 @@ describe('ConversationManager', () => {
         { status: 200 }
       )
     );
-    const meta = await conversationManager.create();
+  const meta = await conversations.create();
 
     // Test behavior: Should create conversation and return metadata
     expect(meta.id).toBe('1');
@@ -189,7 +177,7 @@ describe('ConversationManager', () => {
       .mockResolvedValue(
         new Response(JSON.stringify({ error: 'nope' }), { status: 501 })
       );
-    await expect(conversationManager.create()).rejects.toThrow('HTTP 501: nope');
+  await expect(conversations.create()).rejects.toThrow('HTTP 501: nope');
   });
 
   test('lists conversations with pagination and returns items with next cursor', async () => {
@@ -199,7 +187,7 @@ describe('ConversationManager', () => {
         { status: 200 }
       )
     );
-    const res = await conversationManager.list({ cursor: 'c', limit: 2 });
+  const res = await conversations.list({ cursor: 'c', limit: 2 });
 
     // Test behavior: Should return paginated conversation list
     expect(res.items).toHaveLength(1);
@@ -225,7 +213,7 @@ describe('ConversationManager', () => {
         { status: 200 }
       )
     );
-    const res = await conversationManager.get('x');
+  const res = await conversations.get('x');
 
     // Test behavior: Should return full conversation data
     expect(res.id).toBe('x');
@@ -252,7 +240,7 @@ describe('ConversationManager', () => {
         { status: 200 }
       )
     );
-    const res = await conversationManager.get('y', { after_seq: 5, limit: 10 });
+  const res = await conversations.get('y', { after_seq: 5, limit: 10 });
 
     // Test behavior: Should handle pagination parameters and return conversation
     expect(res.id).toBe('y');
@@ -266,7 +254,7 @@ describe('ConversationManager', () => {
     jest
       .spyOn(global, 'fetch')
       .mockResolvedValue(new Response(null, { status: 204 }));
-    await conversationManager.delete('z');
+  await conversations.delete('z');
 
     // Test behavior: Should successfully delete
     expect(global.fetch).toHaveBeenCalledWith(

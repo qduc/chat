@@ -15,19 +15,12 @@ import { auth as _auth } from './api';
 // `../lib` exports or the `auth`/`authApi` object instead.
 export const authApi = { ..._auth };
 
-// Re-export legacy chat APIs and classes from the modular chat surface
-export {
-  ChatClient,
-  ConversationManager,
-  ToolsClient,
-  createConversation,
-  listConversationsApi,
-  getConversationApi,
-  deleteConversationApi,
-  editMessageApi,
-  sendChat,
-  getToolSpecs
-} from './chat';
+// Note: legacy chat shim removed. Use the consolidated API exports above:
+// - `chat` (chat.sendMessage)
+// - `conversations` (create/list/get/delete/editMessage)
+// - `tools` (getToolSpecs)
+// Tests and consumers should import those directly from '../lib' (they are
+// re-exported from './api' at the top of this file).
 
 // HTTP client
 export { httpClient, HttpError, type HttpResponse, type RequestOptions } from './http';
