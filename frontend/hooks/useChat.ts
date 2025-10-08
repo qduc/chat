@@ -53,7 +53,7 @@ export interface ModelGroup {
 }
 
 export type Status = 'idle' | 'streaming';
-export type QualityLevel = 'quick' | 'balanced' | 'thorough';
+export type QualityLevel = 'unset' | 'minimal' | 'low' | 'medium' | 'high';
 
 // Helper function to convert ConversationMeta to Conversation
 function convertConversationMeta(meta: ConversationMeta): Conversation {
@@ -181,7 +181,7 @@ export function useChat() {
   const [useTools, setUseTools] = useState(true);
   const [enabledTools, setEnabledTools] = useState<string[]>([]);
   const [shouldStream, setShouldStream] = useState(true);
-  const [qualityLevel, setQualityLevel] = useState<QualityLevel>('balanced');
+  const [qualityLevel, setQualityLevel] = useState<QualityLevel>('unset');
 
   // Image State
   const [images, setImages] = useState<any[]>([]);
@@ -198,7 +198,7 @@ export function useChat() {
   const shouldStreamRef = useRef<boolean>(true);
   const useToolsRef = useRef<boolean>(true);
   const enabledToolsRef = useRef<string[]>([]);
-  const qualityLevelRef = useRef<QualityLevel>('balanced');
+  const qualityLevelRef = useRef<QualityLevel>('unset');
 
   // User State
   const [user, setUser] = useState<{ id: string } | null>(null);

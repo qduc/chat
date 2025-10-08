@@ -354,6 +354,11 @@ function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: bo
     ...((options as any).activeSystemPromptId && { active_system_prompt_id: (options as any).activeSystemPromptId })
   };
 
+  // Map qualityLevel to reasoning_effort (only if not 'unset')
+  if (extendedOptions.qualityLevel && extendedOptions.qualityLevel !== 'unset') {
+    bodyObj.reasoning_effort = extendedOptions.qualityLevel;
+  }
+
   if (extendedOptions.reasoning) {
     if (extendedOptions.reasoning.effort) {
       bodyObj.reasoning_effort = extendedOptions.reasoning.effort;

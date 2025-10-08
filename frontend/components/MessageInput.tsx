@@ -239,8 +239,9 @@ export function MessageInput({
                       value={qualityLevel}
                       onChange={onQualityLevelChange}
                       icon={<Gauge className="w-4 h-4" />}
-                      ariaLabel="Response Quality"
+                      ariaLabel="Reasoning Effort"
                       className="flex-shrink-0"
+                      model={model}
                     />
                   </div>
                 )}
