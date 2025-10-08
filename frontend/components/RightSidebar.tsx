@@ -62,18 +62,27 @@ export function RightSidebar({
   const [showSaveAsModal, setShowSaveAsModal] = useState(false);
   const [saveAsInitialName, setSaveAsInitialName] = useState('');
   const [newPromptContent, setNewPromptContent] = useState('');
-  const effectiveSelectedPromptId = conversationId ? activePromptId : selectedPromptId;
+  // Prefer the conversation-provided active prompt ID when the parent supplies it.
+  // If the parent didn't provide a conversationActivePromptId (undefined), fall
+  // back to the previous behavior: when a conversation exists use the hook's
+  // activePromptId, otherwise use the locally-selected promptId for new chats.
+  const effectiveSelectedPromptId = conversationActivePromptId !== undefined
+    ? conversationActivePromptId
+    : (conversationId ? activePromptId : selectedPromptId);
 
   // Notify parent of effective prompt content changes
   useEffect(() => {
     if (!onEffectivePromptChange) return;
 
-    if (activePromptId) {
-      const content = getEffectivePromptContent(activePromptId);
+    // If there's an effective selected prompt (which may come from the
+    // conversation prop or local selection), use its effective content.
+    if (effectiveSelectedPromptId) {
+      const content = getEffectivePromptContent(effectiveSelectedPromptId);
       onEffectivePromptChange(content);
       return;
     }
 
+    // Otherwise, fall back to any explicit conversation system prompt text.
     if (typeof conversationSystemPrompt === 'string' && conversationSystemPrompt.length > 0) {
       onEffectivePromptChange(conversationSystemPrompt);
       return;
@@ -81,7 +90,7 @@ export function RightSidebar({
 
     onEffectivePromptChange('');
   }, [
-    activePromptId,
+    effectiveSelectedPromptId,
     inlineEdits,
     onEffectivePromptChange,
     getEffectivePromptContent,
@@ -192,7 +201,6 @@ export function RightSidebar({
   };
 
   const handleSaveAsPrompt = async (name: string) => {
-    const prompt = effectiveSelectedPromptId ? getPromptById(effectiveSelectedPromptId) : null;
     const content = effectiveSelectedPromptId
       ? getEffectivePromptContent(effectiveSelectedPromptId)
       : newPromptContent;
@@ -274,15 +282,6 @@ export function RightSidebar({
 
   const handleSaveAsModalCancel = () => {
     setShowSaveAsModal(false);
-  };
-
-  const checkUnsavedChanges = (action: () => void) => {
-    if (effectiveSelectedPromptId && hasUnsavedChanges(effectiveSelectedPromptId)) {
-      setPendingAction(() => action);
-      setShowUnsavedModal(true);
-    } else {
-      action();
-    }
   };
 
   const handleUnsavedDiscard = () => {
