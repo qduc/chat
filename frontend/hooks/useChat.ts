@@ -1,8 +1,9 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import { useSystemPrompts } from './useSystemPrompts';
 import type { MessageContent } from '../lib';
-import { conversations as conversationsApi, chat, providers, auth } from '../lib/api';
+import { conversations as conversationsApi, chat, auth } from '../lib/api';
 import { httpClient } from '../lib/http';
-import type { ConversationMeta, ConversationWithMessages, Provider, ChatOptionsExtended } from '../lib/types';
+import type { ConversationMeta, Provider, ChatOptionsExtended } from '../lib/types';
 
 // Types
 export interface PendingState {
@@ -54,6 +55,9 @@ export interface ModelGroup {
 
 export type Status = 'idle' | 'streaming';
 export type QualityLevel = 'unset' | 'minimal' | 'low' | 'medium' | 'high';
+
+// Add constant for default system prompt ID
+const DEFAULT_SYSTEM_PROMPT_ID = 'built:default';
 
 // Helper function to convert ConversationMeta to Conversation
 function convertConversationMeta(meta: ConversationMeta): Conversation {
@@ -822,6 +826,37 @@ export function useChat() {
     };
     loadUser();
   }, []);
+
+  // Use system prompts hook (depends on user)
+  const { prompts: systemPrompts, loading: systemPromptsLoading } = useSystemPrompts(user?.id);
+
+  // Auto-select builtin:default when prompts load and there's no active conversation.
+  // Run only once per mount to avoid clobbering any user selection.
+  const defaultPromptAssignedRef = useRef(false);
+  useEffect(() => {
+    if (defaultPromptAssignedRef.current) return;
+    if (conversationId) return; // only for new chats
+    if (systemPromptsLoading) return;
+    if (!systemPrompts) return;
+
+    // If chat already has a system prompt (from user selections) don't override
+    if (activeSystemPromptIdRef.current || systemPromptRef.current) {
+      defaultPromptAssignedRef.current = true;
+      return;
+    }
+
+    const defaultPrompt = systemPrompts.built_ins.find(p => p.id === DEFAULT_SYSTEM_PROMPT_ID);
+    if (defaultPrompt) {
+      // Apply to local chat state and refs so UI and sendMessage use it
+      setSystemPrompt(defaultPrompt.body);
+      systemPromptRef.current = defaultPrompt.body;
+      setActiveSystemPromptId(defaultPrompt.id);
+      activeSystemPromptIdRef.current = defaultPrompt.id;
+    }
+
+    // Mark as assigned even if default not present to avoid re-checks
+    defaultPromptAssignedRef.current = true;
+  }, [systemPrompts, systemPromptsLoading, conversationId]);
 
   // Load providers and models on mount
   useEffect(() => {
