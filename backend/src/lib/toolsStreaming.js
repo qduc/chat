@@ -50,6 +50,7 @@ export async function handleToolsStreaming({
 
     let iteration = 0;
     let isComplete = false;
+    let currentPreviousResponseId = previousResponseId; // Track response_id across iterations
 
     while (!isComplete && iteration < MAX_ITERATIONS) {
       iteration++;
@@ -67,8 +68,8 @@ export async function handleToolsStreaming({
         messages: conversationHistory,
         stream: true,
         ...(toolsToSend && { tools: toolsToSend, tool_choice: body.tool_choice || 'auto' }),
-        // Include previous_response_id for first iteration if available (Responses API optimization)
-        ...(iteration === 1 && previousResponseId && { previous_response_id: previousResponseId }),
+        // Include previous_response_id if available (Responses API chain tracking)
+        ...(currentPreviousResponseId && { previous_response_id: currentPreviousResponseId }),
       };
       // Include reasoning controls only if supported by provider
       if (providerInstance.supportsReasoningControls(requestBody.model)) {
@@ -191,6 +192,11 @@ export async function handleToolsStreaming({
           resolve();
         });
       });
+
+      // Update previous_response_id for next iteration
+      if (responseId) {
+        currentPreviousResponseId = responseId;
+      }
 
       const toolCalls = Array.from(toolCallMap.values());
 

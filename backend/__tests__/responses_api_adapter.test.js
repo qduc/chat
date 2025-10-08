@@ -125,6 +125,43 @@ describe('ResponsesAPIAdapter', () => {
       expect(request.model).toBe('gpt-fallback');
       expect(request.input[0].content[0]).toEqual({ type: 'input_text', text: 'hi' });
     });
+
+    test('prioritizes call_id over id when both are present', () => {
+      const adapter = createAdapter();
+      const request = adapter.translateRequest({
+        messages: [
+          { role: 'user', content: 'Search for something' },
+          {
+            role: 'assistant',
+            tool_calls: [
+              {
+                id: 'fc_internal_id_12345',
+                call_id: 'call_actual_reference_67890',
+                type: 'function',
+                function: { name: 'web_search', arguments: { query: 'test' } },
+              },
+            ],
+          },
+          { role: 'tool', tool_call_id: 'call_actual_reference_67890', content: 'Search results' },
+        ],
+        tools: [{ type: 'function', function: { name: 'web_search', parameters: { type: 'object', properties: {} } } }],
+      });
+
+      // The function_call should use call_id, not id
+      expect(request.input[1]).toEqual({
+        type: 'function_call',
+        call_id: 'call_actual_reference_67890',
+        name: 'web_search',
+        arguments: '{"query":"test"}',
+      });
+
+      // The function_call_output should match the same call_id
+      expect(request.input[2]).toEqual({
+        type: 'function_call_output',
+        call_id: 'call_actual_reference_67890',
+        output: 'Search results',
+      });
+    });
   });
 
   describe('translateResponse', () => {

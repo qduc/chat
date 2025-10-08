@@ -274,14 +274,14 @@ class JsonResponseHandler extends ResponseHandler {
 /**
  * Make a request to the AI model
  */
-async function callLLM({ messages, config, bodyParams, providerId, providerHttp, provider, previousResponseId = null, isFirstIteration = false }) {
+async function callLLM({ messages, config, bodyParams, providerId, providerHttp, provider, previousResponseId = null }) {
   const requestBody = {
     model: bodyParams.model || config.defaultModel,
     messages,
     stream: bodyParams.stream || false,
     ...(bodyParams.tools && { tools: bodyParams.tools, tool_choice: bodyParams.tool_choice || 'auto' }),
-    // Include previous_response_id only on first iteration if available (Responses API optimization)
-    ...(isFirstIteration && previousResponseId && { previous_response_id: previousResponseId }),
+    // Include previous_response_id if available (Responses API chain tracking)
+    ...(previousResponseId && { previous_response_id: previousResponseId }),
   };
   // Include reasoning controls only when the provider supports them
   if (provider?.supportsReasoningControls(requestBody.model)) {
@@ -543,6 +543,7 @@ export async function handleToolsJson({
     });
 
     let iteration = 0;
+    let currentPreviousResponseId = previousResponseId; // Track response_id across iterations
 
     // Main orchestration loop - continues until LLM stops requesting tools
     while (iteration < orchestrationConfig.maxIterations) {
@@ -554,11 +555,15 @@ export async function handleToolsJson({
         providerId,
         providerHttp,
         provider: providerInstance,
-        previousResponseId,
-        isFirstIteration: iteration === 0,
+        previousResponseId: currentPreviousResponseId,
       });
       const message = response?.choices?.[0]?.message;
       const toolCalls = message?.tool_calls || [];
+
+      // Update previous_response_id for next iteration
+      if (response?.id) {
+        currentPreviousResponseId = response.id;
+      }
 
       if (!toolCalls.length) {
         // No tools needed - this is the final response

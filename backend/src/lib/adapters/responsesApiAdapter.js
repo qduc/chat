@@ -310,7 +310,7 @@ function stringifyArguments(args) {
 
 function mapFunctionCallInput(call, index = 0) {
 	if (!call || typeof call !== 'object') return null;
-	const callId = call.id || call.call_id || call.tool_call_id || `call_${index}`;
+	const callId = call.call_id || call.tool_call_id || call.id || `call_${index}`;
 	const name = call.name || call.function?.name;
 	if (!callId || !name) return null;
 	const args = call.function?.arguments ?? call.arguments ?? call.args ?? {};
