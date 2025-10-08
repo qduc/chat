@@ -80,12 +80,125 @@ export async function handleToolsStreaming({
 
       const upstream = await createOpenAIRequest(config, requestBody, { providerId });
 
+      // Check if upstream actually returned a stream or a JSON response FIRST
+      // Do this before any body consumption to avoid "Body already read" errors
+      const contentType = upstream.headers?.get?.('content-type') || '';
+      const isStreamResponse = contentType.includes('text/event-stream') || contentType.includes('text/plain');
+
       // Check upstream response status
       if (!upstream.ok) {
-        const errorBody = await upstream.text();
+        let errorBody;
+        try {
+          errorBody = await upstream.text();
+        } catch (e) {
+          errorBody = `Could not read error body: ${e.message}`;
+        }
         throw new Error(`Upstream API error (${upstream.status}): ${errorBody}`);
       }
 
+      if (!isStreamResponse) {
+        // Upstream returned JSON instead of stream - handle it as non-streaming
+        const upstreamJson = await upstream.json();
+
+        // Capture response_id
+        const responseId = upstreamJson.id;
+        if (responseId) {
+          currentPreviousResponseId = responseId;
+          if (persistence) persistence.setResponseId(responseId);
+        }
+
+        // Capture reasoning details and tokens
+        if (upstreamJson.choices?.[0]?.message) {
+          const message = upstreamJson.choices[0].message;
+
+          if (Array.isArray(message.reasoning_details)) {
+            if (persistence && typeof persistence.setReasoningDetails === 'function') {
+              persistence.setReasoningDetails(message.reasoning_details);
+            }
+          }
+
+          const reasoningTokens = upstreamJson?.usage?.reasoning_tokens
+            ?? upstreamJson?.usage?.completion_tokens_details?.reasoning_tokens
+            ?? null;
+          if (reasoningTokens != null && persistence && typeof persistence.setReasoningTokens === 'function') {
+            persistence.setReasoningTokens(reasoningTokens);
+          }
+
+          // Handle content - stream it to client
+          if (message.content) {
+            const contentChunk = createChatCompletionChunk(
+              upstreamJson.id || 'fallback',
+              upstreamJson.model || requestBody.model,
+              { role: 'assistant', content: message.content },
+              null
+            );
+            writeAndFlush(res, `data: ${JSON.stringify(contentChunk)}\n\n`);
+            appendToPersistence(persistence, message.content);
+          }
+
+          // Handle tool_calls
+          if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+            // Add tool calls to conversation for next iteration
+            conversationHistory.push({
+              role: 'assistant',
+              content: message.content || null,
+              tool_calls: message.tool_calls,
+            });
+
+            // Execute each tool call and add results to conversation
+            for (const toolCall of message.tool_calls) {
+              // Stream tool call to client
+              const toolCallChunk = createChatCompletionChunk(
+                upstreamJson.id || 'fallback',
+                upstreamJson.model || requestBody.model,
+                { tool_calls: [toolCall] },
+                null
+              );
+              writeAndFlush(res, `data: ${JSON.stringify(toolCallChunk)}\n\n`);
+
+              // Execute the tool
+              const toolResult = await executeToolCall(toolCall, userId);
+
+              // Add tool result to conversation history
+              conversationHistory.push({
+                role: 'tool',
+                tool_call_id: toolCall.id,
+                content: toolResult,
+              });
+
+              // Stream tool result to client
+              streamDeltaEvent(res, upstreamJson.id || 'fallback', upstreamJson.model || requestBody.model, {
+                role: 'tool',
+                tool_call_id: toolCall.id,
+                content: toolResult,
+              });
+            }
+
+            // Continue to next iteration to get final response
+            continue;
+          }
+
+          // No tool calls - this is the final response
+          const finishReason = upstreamJson.choices[0].finish_reason || 'stop';
+          const finalChunk = createChatCompletionChunk(
+            upstreamJson.id || 'fallback',
+            upstreamJson.model || requestBody.model,
+            {},
+            finishReason
+          );
+          writeAndFlush(res, `data: ${JSON.stringify(finalChunk)}\n\n`);
+
+          recordFinalToPersistence(persistence, finishReason, responseId);
+          isComplete = true;
+          continue;
+        }
+
+        // Empty response - mark as complete
+        isComplete = true;
+        continue;
+      }
+
+      // Normal streaming response handling
       let leftoverIter = '';
       const toolCallMap = new Map(); // index -> accumulated tool call
       let gotAnyNonToolDelta = false;

@@ -144,7 +144,11 @@ export class OpenAIProvider extends BaseProvider {
         ? Object.fromEntries(response.headers.entries())
         : {};
 
-      if (translatedRequest?.stream) {
+      // Check if response is actually a stream by inspecting content-type
+      const contentType = response.headers?.get?.('content-type') || '';
+      const isActuallyStreaming = contentType.includes('text/event-stream') || contentType.includes('text/plain');
+
+      if (translatedRequest?.stream && isActuallyStreaming) {
         // For streaming responses, tee the stream to capture SSE data
         const wrappedResponse = wrapStreamingResponse(response);
         const { previewPromise, stream: loggedStream } = teeStreamWithPreview(wrappedResponse.body, {

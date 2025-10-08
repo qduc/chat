@@ -6,7 +6,7 @@ import { handleRegularStreaming } from './streamingHandler.js';
 import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
 import { createProvider } from './providers/index.js';
 import { SimplifiedPersistence } from './simplifiedPersistence.js';
-import { addConversationMetadata } from './responseUtils.js';
+import { addConversationMetadata, getConversationMetadata } from './responseUtils.js';
 import { logger } from '../logger.js';
 
 // --- Constants ---
@@ -280,7 +280,132 @@ async function handleRequest(context, req, res) {
   }
 
   if (flags.stream) {
-    // Streaming response
+    // Streaming response expected
+    // Check if upstream actually returned a stream or a JSON response
+    const contentType = upstream.headers?.get?.('content-type') || '';
+    const isStreamResponse = contentType.includes('text/event-stream') || contentType.includes('text/plain');
+
+    if (!isStreamResponse) {
+      // Upstream returned JSON instead of stream - convert it to streaming format
+      try {
+        const upstreamJson = await upstream.json();
+
+        // Persist the response
+        if (persistence.persist && upstreamJson.choices?.[0]?.message) {
+          const message = upstreamJson.choices[0].message;
+          if (message.content !== undefined) {
+            persistence.setAssistantContent(message.content);
+          }
+          if (Array.isArray(message.reasoning_details)) {
+            persistence.setReasoningDetails(message.reasoning_details);
+          }
+          if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
+            const contentLength = message.content ?
+              (typeof message.content === 'string' ? message.content.length : 0) : 0;
+            const toolCallsWithOffset = message.tool_calls.map((tc, idx) => ({
+              ...tc,
+              index: tc.index ?? idx,
+              textOffset: contentLength
+            }));
+            persistence.addToolCalls(toolCallsWithOffset);
+          }
+
+          const finishReason = upstreamJson.choices[0].finish_reason || null;
+          const responseId = upstreamJson.id || null;
+
+          const reasoningTokens = upstreamJson?.usage?.reasoning_tokens
+            ?? upstreamJson?.usage?.completion_tokens_details?.reasoning_tokens
+            ?? upstreamJson?.usage?.reasoning_token_count
+            ?? null;
+          if (reasoningTokens != null) {
+            persistence.setReasoningTokens(reasoningTokens);
+          }
+
+          persistence.recordAssistantFinal({ finishReason, responseId });
+        }
+
+        // Convert JSON response to streaming format for client
+        setupStreamingHeaders(res);
+        const { writeAndFlush } = await import('./streamUtils.js');
+
+        // Emit conversation metadata if available
+        const conversationMeta = getConversationMetadata(persistence);
+        if (conversationMeta) {
+          writeAndFlush(res, `data: ${JSON.stringify(conversationMeta)}\n\n`);
+        }
+
+        // Convert to streaming chunks
+        const message = upstreamJson.choices[0]?.message;
+        if (message) {
+          const { createChatCompletionChunk } = await import('./streamUtils.js');
+
+          // Send content as chunk if present
+          if (message.content) {
+            const chunk = createChatCompletionChunk(
+              upstreamJson.id || 'fallback',
+              upstreamJson.model || body.model,
+              { role: 'assistant', content: message.content },
+              null
+            );
+            writeAndFlush(res, `data: ${JSON.stringify(chunk)}\n\n`);
+          }
+
+          // Send tool calls as chunks if present
+          if (Array.isArray(message.tool_calls)) {
+            for (const toolCall of message.tool_calls) {
+              const chunk = createChatCompletionChunk(
+                upstreamJson.id || 'fallback',
+                upstreamJson.model || body.model,
+                { tool_calls: [toolCall] },
+                null
+              );
+              writeAndFlush(res, `data: ${JSON.stringify(chunk)}\n\n`);
+            }
+          }
+
+          // Send final chunk with finish_reason
+          const finalChunk = createChatCompletionChunk(
+            upstreamJson.id || 'fallback',
+            upstreamJson.model || body.model,
+            {},
+            upstreamJson.choices[0].finish_reason || 'stop'
+          );
+          writeAndFlush(res, `data: ${JSON.stringify(finalChunk)}\n\n`);
+        }
+
+        // Send [DONE]
+        writeAndFlush(res, 'data: [DONE]\n\n');
+        return res.end();
+      } catch (conversionError) {
+        logger.error({
+          msg: 'stream_conversion_error',
+          error: {
+            message: conversionError.message,
+            stack: conversionError.stack,
+          },
+        });
+
+        // Fall back to error chunk
+        setupStreamingHeaders(res);
+        const { writeAndFlush } = await import('./streamUtils.js');
+        const errorChunk = {
+          id: 'error',
+          object: 'chat.completion.chunk',
+          created: Math.floor(Date.now() / 1000),
+          model: body.model,
+          choices: [{
+            index: 0,
+            delta: { content: `[Error converting response: ${conversionError.message}]` },
+            finish_reason: 'error'
+          }]
+        };
+        writeAndFlush(res, `data: ${JSON.stringify(errorChunk)}\n\n`);
+        writeAndFlush(res, 'data: [DONE]\n\n');
+        return res.end();
+      }
+    }
+
+    // Normal streaming response
     setupStreamingHeaders(res);
     return handleRegularStreaming({ config, upstream, res, req, persistence });
   } else {
