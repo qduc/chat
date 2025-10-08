@@ -160,6 +160,7 @@ export function useChat() {
   // persisted setter - saves last manually selected model to localStorage
   const setModel = useCallback((m: string) => {
     setModelState(m);
+    modelRef.current = m;
     try {
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(SELECTED_MODEL_KEY, m);
@@ -188,6 +189,16 @@ export function useChat() {
   // System Prompt State
   const [activeSystemPromptId, setActiveSystemPromptId] = useState<string | null>(null);
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
+
+  // Refs to track latest values to avoid stale closures in sendMessage
+  const systemPromptRef = useRef<string | null>(null);
+  const activeSystemPromptIdRef = useRef<string | null>(null);
+  const modelRef = useRef<string>('gpt-4');
+  const providerIdRef = useRef<string | null>(null);
+  const shouldStreamRef = useRef<boolean>(true);
+  const useToolsRef = useRef<boolean>(true);
+  const enabledToolsRef = useRef<string[]>([]);
+  const qualityLevelRef = useRef<QualityLevel>('balanced');
 
   // User State
   const [user, setUser] = useState<{ id: string } | null>(null);
@@ -234,42 +245,50 @@ export function useChat() {
       // (persist only user manual selections)
       if (data.model) {
         setModelState(data.model);
+        modelRef.current = data.model;
       }
 
       // Accept either `provider` or legacy `provider_id` from API
       const providerFromData = (data as any).provider ?? (data as any).provider_id;
       if (providerFromData) {
         setProviderId(providerFromData);
+        providerIdRef.current = providerFromData;
       }
 
       // Apply tools settings
       if (data.metadata?.active_tools || data.active_tools) {
         const tools = data.metadata?.active_tools || data.active_tools;
         setEnabledTools(tools);
+        enabledToolsRef.current = tools;
       }
 
       // Apply streaming and tools enabled flags
       if (typeof data.streaming_enabled === 'boolean') {
         setShouldStream(data.streaming_enabled);
+        shouldStreamRef.current = data.streaming_enabled;
       }
       if (typeof data.tools_enabled === 'boolean') {
         setUseTools(data.tools_enabled);
+        useToolsRef.current = data.tools_enabled;
       }
 
       // Apply quality level
       if (data.quality_level) {
         setQualityLevel(data.quality_level as QualityLevel);
+        qualityLevelRef.current = data.quality_level as QualityLevel;
       }
 
       // Apply system prompt
       if (data.metadata?.system_prompt || data.system_prompt) {
         const prompt = data.metadata?.system_prompt || data.system_prompt;
         setSystemPrompt(prompt);
+        systemPromptRef.current = prompt;
       }
 
       // Apply active system prompt ID
       if (data.active_system_prompt_id) {
         setActiveSystemPromptId(data.active_system_prompt_id);
+        activeSystemPromptIdRef.current = data.active_system_prompt_id;
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load conversation');
@@ -331,7 +350,10 @@ export function useChat() {
     try {
       if (typeof window !== 'undefined') {
         const saved = window.localStorage.getItem(SELECTED_MODEL_KEY);
-        if (saved) setModelState(saved);
+        if (saved) {
+          setModelState(saved);
+          modelRef.current = saved;
+        }
       }
     } catch {
       // ignore localStorage errors
@@ -343,7 +365,10 @@ export function useChat() {
     try {
       if (typeof window !== 'undefined' && !conversationId) {
         const saved = window.localStorage.getItem(SELECTED_MODEL_KEY);
-        if (saved) setModelState(saved);
+        if (saved) {
+          setModelState(saved);
+          modelRef.current = saved;
+        }
       }
     } catch {
       // ignore
@@ -402,19 +427,20 @@ export function useChat() {
       }
 
       // Send message with streaming
+      // Use refs to get the latest values and avoid stale closures
       const response = await chat.sendMessage({
         messages: [{ id: userMessage.id, role: 'user', content: messageContent }],
-        model,
-        providerId: providerId || '',
-        stream: shouldStream,
+        model: modelRef.current,
+        providerId: providerIdRef.current || '',
+        stream: shouldStreamRef.current,
         signal: abortControllerRef.current.signal,
         conversationId: conversationId || undefined,
-        streamingEnabled: shouldStream,
-        toolsEnabled: useTools,
-        tools: enabledTools,
-        qualityLevel,
-        systemPrompt: systemPrompt || undefined,
-        activeSystemPromptId: activeSystemPromptId || undefined,
+        streamingEnabled: shouldStreamRef.current,
+        toolsEnabled: useToolsRef.current,
+        tools: enabledToolsRef.current,
+        qualityLevel: qualityLevelRef.current,
+        systemPrompt: systemPromptRef.current || undefined,
+        activeSystemPromptId: activeSystemPromptIdRef.current || undefined,
         onToken: (token: string) => {
           setMessages(prev => {
             const lastIdx = prev.length - 1;
@@ -582,7 +608,7 @@ export function useChat() {
       }
       setStatus('idle');
     }
-  }, [input, images, conversationId, model, providerId, shouldStream, useTools, enabledTools, qualityLevel, systemPrompt, activeSystemPromptId]);
+  }, [input, images, conversationId]);
 
   const stopStreaming = useCallback(() => {
     if (abortControllerRef.current) {
@@ -715,7 +741,11 @@ export function useChat() {
 
       // Set default provider if not already set (use functional update to avoid capturing providerId)
       if (providersList.length > 0) {
-        setProviderId(prev => prev ?? providersList[0].id);
+        setProviderId(prev => {
+          const nextValue = prev ?? providersList[0].id;
+          providerIdRef.current = nextValue;
+          return nextValue;
+        });
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load models');
@@ -726,6 +756,41 @@ export function useChat() {
 
   const setInlineSystemPromptOverride = useCallback((prompt: string | null) => {
     setSystemPrompt(prompt);
+    systemPromptRef.current = prompt;
+  }, []);
+
+  // Wrapper setters that update both state and refs to avoid stale closures
+  const setProviderIdWrapper = useCallback((id: string | null | ((prev: string | null) => string | null)) => {
+    setProviderId(prev => {
+      const nextValue = typeof id === 'function' ? id(prev) : id;
+      providerIdRef.current = nextValue;
+      return nextValue;
+    });
+  }, []);
+
+  const setUseToolsWrapper = useCallback((value: boolean) => {
+    setUseTools(value);
+    useToolsRef.current = value;
+  }, []);
+
+  const setEnabledToolsWrapper = useCallback((tools: string[]) => {
+    setEnabledTools(tools);
+    enabledToolsRef.current = tools;
+  }, []);
+
+  const setShouldStreamWrapper = useCallback((value: boolean) => {
+    setShouldStream(value);
+    shouldStreamRef.current = value;
+  }, []);
+
+  const setQualityLevelWrapper = useCallback((level: QualityLevel) => {
+    setQualityLevel(level);
+    qualityLevelRef.current = level;
+  }, []);
+
+  const setActiveSystemPromptIdWrapper = useCallback((id: string | null) => {
+    setActiveSystemPromptId(id);
+    activeSystemPromptIdRef.current = id;
   }, []);
 
   // Load user profile on mount
@@ -784,13 +849,13 @@ export function useChat() {
     setMessages,
     setInput,
     setModel,
-    setProviderId,
-    setUseTools,
-    setEnabledTools,
-    setShouldStream,
-    setQualityLevel,
+    setProviderId: setProviderIdWrapper,
+    setUseTools: setUseToolsWrapper,
+    setEnabledTools: setEnabledToolsWrapper,
+    setShouldStream: setShouldStreamWrapper,
+    setQualityLevel: setQualityLevelWrapper,
     setImages,
-    setActiveSystemPromptId,
+    setActiveSystemPromptId: setActiveSystemPromptIdWrapper,
     toggleSidebar,
     toggleRightSidebar,
     selectConversation,
