@@ -414,11 +414,24 @@ export function useChat() {
       // Create abort controller
       abortControllerRef.current = new AbortController();
 
+      // Convert images to content format if present
+      let messageContent: MessageContent = messageText;
+      if (images.length > 0) {
+        const contentParts: any[] = [{ type: 'text', text: messageText }];
+        for (const img of images) {
+          contentParts.push({
+            type: 'image_url',
+            image_url: { url: img.downloadUrl || img.url }
+          });
+        }
+        messageContent = contentParts;
+      }
+
       // Create user message (reuse provided clientMessageId when regenerating)
       const userMessage: Message = {
         id: opts?.clientMessageId ?? generateClientId(),
         role: 'user',
-        content: messageText,
+        content: messageContent,
         timestamp: Date.now()
       };
       // When regenerating we already set the messages to the baseMessages which
@@ -438,18 +451,9 @@ export function useChat() {
       // Always append assistant placeholder (even when regenerating)
       setMessages(prev => [...prev, assistantMessage]);
 
-      // Convert images to content format if present
-      let messageContent: MessageContent = messageText;
-      if (images.length > 0) {
-        const contentParts: any[] = [{ type: 'text', text: messageText }];
-        for (const img of images) {
-          contentParts.push({
-            type: 'image_url',
-            image_url: { url: img.url }
-          });
-        }
-        messageContent = contentParts;
-      }
+      // Clear input and images immediately after adding message to UI
+      setInput('');
+      setImages([]);
 
       // Send message with streaming
       // Use refs to get the latest values and avoid stale closures
@@ -676,8 +680,6 @@ export function useChat() {
         }
       }
 
-      setInput('');
-      setImages([]);
       setStatus('idle');
     } catch (err) {
       // Handle streaming not supported error by retrying with streaming disabled
