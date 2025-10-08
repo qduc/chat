@@ -270,7 +270,7 @@ export function MessageInput({
                       icon={<Gauge className="w-4 h-4" />}
                       ariaLabel="Reasoning Effort"
                       className="flex-shrink-0"
-                      model={model}
+                      model={model.split('::').pop() || model}
                     />
                   </Tooltip>
                 )}
