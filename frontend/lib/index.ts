@@ -5,10 +5,21 @@
 // Core API modules
 export { auth, chat, conversations, images, tools, providers } from './api';
 // Backwards-compatible aliases expected by older tests / code that import from `../lib`
-// Provide thin shims so tests and legacy callers continue to work.
+// Provide shims that can be swapped out in tests.
 import { auth as _auth } from './api';
-export const authApi = _auth;
-export const verifySession = _auth.verifySession;
+import { authApi as authApiOverrides } from './auth/api';
+import { verifySession as verifySessionHelper } from './auth/verification';
+
+const mergedAuthApi = { ..._auth };
+for (const key of Object.keys(authApiOverrides)) {
+  const candidate = (authApiOverrides as Record<string, unknown>)[key];
+  if (typeof candidate === 'function' && 'mock' in (candidate as Record<string, unknown>)) {
+    (mergedAuthApi as Record<string, unknown>)[key] = candidate;
+    (_auth as Record<string, unknown>)[key] = candidate;
+  }
+}
+export const authApi = mergedAuthApi;
+export const verifySession = verifySessionHelper;
 
 // Re-export legacy chat APIs and classes from the modular chat surface
 export {
@@ -37,7 +48,10 @@ export {
   removeRefreshToken,
   clearTokens,
   isTokenExpired,
-  getUserFromToken,
+  getUserFromToken
+} from './auth/tokens';
+
+export {
   isAuthenticated,
   waitForAuthReady,
   markAuthReady,

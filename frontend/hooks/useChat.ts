@@ -144,7 +144,15 @@ export function useChat() {
   const [input, setInput] = useState('');
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const stored = window.localStorage.getItem('sidebarCollapsed');
+      return stored === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
   const [historyEnabled] = useState(true); // Make configurable if needed
 
@@ -208,7 +216,17 @@ export function useChat() {
 
   // Actions - Sidebar
   const toggleSidebar = useCallback(() => {
-    setSidebarCollapsed(prev => !prev);
+    setSidebarCollapsed(prev => {
+      const next = !prev;
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('sidebarCollapsed', String(next));
+        }
+      } catch {
+        // ignore storage failures
+      }
+      return next;
+    });
   }, []);
 
   const toggleRightSidebar = useCallback(() => {
