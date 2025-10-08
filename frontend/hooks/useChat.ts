@@ -695,8 +695,9 @@ export function useChat() {
 
         // Retry by calling sendMessage again (it will use the updated shouldStreamRef)
         // Use setTimeout to break out of the current call stack
+        // Pass skipLocalUserMessage: true to avoid duplicating the user message
         setTimeout(() => {
-          void sendMessage(content, opts);
+          void sendMessage(content, { ...opts, skipLocalUserMessage: true });
         }, 0);
 
         return;
