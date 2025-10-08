@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { httpClient } from '../lib/http/client';
-import { HttpError } from '../lib/http/types';
+import { httpClient } from '../lib';
+import { HttpError } from '../lib';
 
 export interface BuiltInPrompt {
   id: string;

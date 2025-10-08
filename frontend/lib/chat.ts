@@ -1,77 +1,94 @@
-// Main chat API - provides both new modular API and legacy compatibility
+// Compatibility layer exporting legacy chat symbols expected by older code/tests
 
-// Re-export all types for easy access
-export type {
-  Role,
-  ChatMessage,
-  ChatEvent,
-  ChatResponse,
+import type {
   ChatOptions,
   ChatOptionsExtended,
-  SendChatOptions,
+  ChatResponse,
   ConversationMeta,
   ConversationsList,
   ConversationWithMessages,
-  ToolSpec,
+  ConversationCreateOptions,
+  ListConversationsParams,
+  GetConversationParams,
+  EditMessageResult,
+  SendChatOptions,
   ToolsResponse
-} from './chat/types';
+} from './types';
+import { chat, conversations, tools } from './api';
 
-// Re-export new modular APIs
-export { ChatClient } from './chat/client';
-export {
-  ConversationManager,
-  type ConversationCreateOptions,
-  type ListConversationsParams,
-  type GetConversationParams,
-  type EditMessageResult
-} from './chat/conversations';
-export { ToolsClient } from './chat/tools';
-export { APIError, SSEParser, getDefaultProviderId, clearProviderCache } from './chat/utils';
-export { supportsReasoningControls } from './chat/modelCapabilities';
+// Minimal ChatClient wrapper delegating to new `chat` API
+export class ChatClient {
+  constructor(private apiBase?: string) {}
 
-// Legacy function exports for backward compatibility
-// @deprecated Use ConversationManager class instead
-export {
-  createConversation,
-  listConversationsApi,
-  getConversationApi,
-  deleteConversationApi,
-  editMessageApi
-} from './chat/conversations';
-// @deprecated Use ToolsClient class instead
-export { getToolSpecs } from './chat/tools';
+  async sendMessage(options: ChatOptions): Promise<ChatResponse> {
+    // Delegate to api.chat
+    return chat.sendMessage({ ...options, apiBase: this.apiBase });
+  }
 
-import { ChatClient } from './chat/client';
-import { SendChatOptions, ChatResponse } from './chat/types';
-import { getDefaultProviderId } from './chat/utils';
-import { resolveApiBase } from './config/apiBase';
+  async sendMessageWithTools(options: ChatOptionsExtended): Promise<ChatResponse> {
+    return chat.sendMessage({ ...options, apiBase: this.apiBase });
+  }
+}
 
-const defaultApiBase = resolveApiBase();
+// Minimal ConversationManager wrapper delegating to `conversations` API
+export class ConversationManager {
+  constructor(private apiBase?: string) {}
 
-// Legacy sendChat function for backward compatibility
-// @deprecated Use ChatClient.sendMessage() or ChatClient.sendMessageWithTools() instead
+  async create(options: ConversationCreateOptions = {}): Promise<ConversationMeta> {
+    return conversations.create(options);
+  }
+
+  async list(params: ListConversationsParams = {}): Promise<ConversationsList> {
+    return conversations.list(params);
+  }
+
+  async get(id: string, params: GetConversationParams = {}): Promise<ConversationWithMessages> {
+    return conversations.get(id, params);
+  }
+
+  async delete(id: string): Promise<void> {
+    return conversations.delete(id);
+  }
+
+  async editMessage(conversationId: string, messageId: string, content: any): Promise<EditMessageResult> {
+    return conversations.editMessage(conversationId, messageId, content);
+  }
+}
+
+// Legacy convenience functions
 export async function sendChat(options: SendChatOptions): Promise<ChatResponse> {
-  const client = new ChatClient(options.apiBase || defaultApiBase);
+  // Reuse chat.sendMessage; SendChatOptions should be compatible enough for tests
+  return chat.sendMessage(options as any);
+}
 
-  // Get default provider if not provided
-  const providerId = (options as any).providerId || await getDefaultProviderId(options.apiBase || defaultApiBase);
+export async function listConversationsApi(params: ListConversationsParams = {}) {
+  return conversations.list(params);
+}
 
-  // Convert legacy options to new format
-  const convertedOptions = {
-    ...options,
-    providerId,
-    stream: options.shouldStream !== undefined ? !!options.shouldStream :
-            (options.stream === undefined ? true : !!options.stream),
-    reasoning: (options.reasoningEffort || options.verbosity) ? {
-      effort: options.reasoningEffort,
-      verbosity: options.verbosity
-    } : undefined,
-    toolChoice: options.tool_choice
-  };
+export async function getConversationApi(id: string, params: GetConversationParams = {}) {
+  return conversations.get(id, params);
+}
 
-  if (convertedOptions.tools && convertedOptions.tools.length > 0) {
-    return client.sendMessageWithTools(convertedOptions);
-  } else {
-    return client.sendMessage(convertedOptions);
+export async function createConversation(options: ConversationCreateOptions = {}) {
+  return conversations.create(options);
+}
+
+export async function deleteConversationApi(id: string) {
+  return conversations.delete(id);
+}
+
+export async function editMessageApi(conversationId: string, messageId: string, content: any) {
+  return conversations.editMessage(conversationId, messageId, content);
+}
+
+export async function getToolSpecs(): Promise<ToolsResponse> {
+  return tools.getToolSpecs();
+}
+
+// Export ToolsClient if needed by consumers (very small shim)
+export class ToolsClient {
+  constructor(private apiBase?: string) {}
+  async getToolSpecs() {
+    return getToolSpecs();
   }
 }

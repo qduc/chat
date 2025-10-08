@@ -1,6 +1,6 @@
 import React from 'react';
 
-export type QualityLevel = 'quick' | 'balanced' | 'thorough';
+export type QualityLevel = 'unset' | 'minimal' | 'low' | 'medium' | 'high';
 
 interface QualitySliderProps {
   value: QualityLevel;
@@ -9,66 +9,38 @@ interface QualitySliderProps {
   disabled?: boolean;
   icon?: React.ReactNode;
   className?: string;
+  model?: string;
 }
 
-const qualityConfig: Record<QualityLevel, { label: string; description: string; reasoningEffort: string; verbosity: string }> = {
-  quick: {
-    label: 'Quick',
-    description: 'Fast responses with minimal reasoning',
-    reasoningEffort: 'low',
-    verbosity: 'medium'
-  },
-  balanced: {
-    label: 'Balanced',
-    description: 'Good balance of speed and thoughtfulness',
-    reasoningEffort: 'medium',
-    verbosity: 'medium'
-  },
-  thorough: {
-    label: 'Thorough',
-    description: 'Deep reasoning with comprehensive responses',
-    reasoningEffort: 'high',
-    verbosity: 'medium'
-  }
-};
-export function QualitySlider({ value, onChange, ariaLabel, disabled, icon, className = '' }: QualitySliderProps) {
-  const levels: QualityLevel[] = ['quick', 'balanced', 'thorough'];
-  const currentIndex = levels.indexOf(value);
-  const config = qualityConfig[value];
+export function QualitySlider({ value, onChange, ariaLabel, disabled, icon, className = '', model = '' }: QualitySliderProps) {
+  // Check if model supports 'minimal' (gpt-5* or openai/gpt-5*)
+  const supportsMinimal = model.startsWith('gpt-5') || model.startsWith('openai/gpt-5');
 
-  const handleSliderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newLevel = levels[parseInt(e.target.value)];
-    onChange(newLevel);
+  const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    onChange(e.target.value as QualityLevel);
   };
 
   return (
     <div className={`flex items-center gap-2 ${className}`}>
       {icon && <span className="w-4 h-4 flex items-center text-slate-600 dark:text-slate-400">{icon}</span>}
 
-      <div className="flex items-center gap-2 min-w-0">
-        <span className="text-xs text-slate-600 dark:text-slate-400 whitespace-nowrap w-14 text-left">
-          {config.label}
-        </span>
-        <input
-          type="range"
-          min="0"
-          max="2"
-          step="1"
-          value={currentIndex}
-          onChange={handleSliderChange}
-          disabled={disabled}
-          aria-label={ariaLabel || 'Quality level'}
-          className="w-16 h-2 bg-slate-200 dark:bg-neutral-700 rounded-lg appearance-none cursor-pointer
-                   [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4
-                   [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-slate-600 dark:[&::-webkit-slider-thumb]:bg-slate-400
-                   [&::-webkit-slider-thumb]:cursor-pointer [&::-webkit-slider-thumb]:border-2 [&::-webkit-slider-thumb]:border-white
-                   [&::-webkit-slider-thumb]:shadow-md hover:[&::-webkit-slider-thumb]:bg-slate-700 dark:hover:[&::-webkit-slider-thumb]:bg-slate-300
-                   [&::-moz-range-thumb]:w-4 [&::-moz-range-thumb]:h-4 [&::-moz-range-thumb]:rounded-full
-                   [&::-moz-range-thumb]:bg-slate-600 dark:[&::-moz-range-thumb]:bg-slate-400 [&::-moz-range-thumb]:cursor-pointer
-                   [&::-moz-range-thumb]:border-2 [&::-moz-range-thumb]:border-white [&::-moz-range-thumb]:shadow-md
+      <select
+        value={value}
+        onChange={handleChange}
+        disabled={disabled}
+        aria-label={ariaLabel || 'Reasoning effort'}
+        className="text-xs px-2 py-1 bg-transparent border border-slate-200 dark:border-neutral-700 rounded-md
+                   text-slate-800 dark:text-slate-200 cursor-pointer
+                   hover:bg-slate-50 dark:hover:bg-neutral-800
+                   focus:outline-none focus:ring-2 focus:ring-slate-400 dark:focus:ring-neutral-600
                    disabled:opacity-50 disabled:cursor-not-allowed"
-        />
-      </div>
+      >
+        <option value="unset">Unset</option>
+        {supportsMinimal && <option value="minimal">Minimal</option>}
+        <option value="low">Low</option>
+        <option value="medium">Medium</option>
+        <option value="high">High</option>
+      </select>
     </div>
   );
 }

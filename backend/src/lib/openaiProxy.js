@@ -311,7 +311,20 @@ async function handleRequest(context, req, res) {
               count: message.tool_calls.length,
               callIds: message.tool_calls.map(tc => tc?.id)
             });
-            persistence.addToolCalls(message.tool_calls);
+
+            // For non-streaming responses, set textOffset based on whether there's content
+            // If there's content, assume tools appear at the end (common pattern)
+            // If no content, tools appear at position 0
+            const contentLength = message.content ?
+              (typeof message.content === 'string' ? message.content.length : 0) : 0;
+
+            const toolCallsWithOffset = message.tool_calls.map((tc, idx) => ({
+              ...tc,
+              index: tc.index ?? idx,
+              textOffset: contentLength
+            }));
+
+            persistence.addToolCalls(toolCallsWithOffset);
           }
         }
       }

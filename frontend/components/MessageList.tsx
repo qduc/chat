@@ -16,15 +16,17 @@ import {
 import Markdown from './Markdown';
 import { MessageContentRenderer } from './ui/MessageContentRenderer';
 import { ImagePreview, ImageUploadZone } from './ui/ImagePreview';
-import type { ChatMessage } from '../lib/chat';
-import type { PendingState } from '../hooks/useChatState';
-import type { MessageContent, ImageAttachment, ImageContent } from '../lib/chat/types';
+import type { PendingState } from '../hooks/useChat';
 import {
+  images,
   createMixedContent,
   extractImagesFromContent,
   extractTextFromContent,
-} from '../lib/chat/content-utils';
-import { imagesClient } from '../lib/chat/images';
+  type ChatMessage,
+  type MessageContent,
+  type ImageAttachment,
+  type ImageContent
+} from '../lib';
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -674,7 +676,7 @@ export function MessageList({
   // Handle image upload during editing
   const handleEditingImageFiles = useCallback(async (files: File[]) => {
     try {
-      const uploadedImages = await imagesClient.uploadImages(files, () => {});
+      const uploadedImages = await images.uploadImages(files, () => {});
       setEditingImages(prev => [...prev, ...uploadedImages]);
     } catch (error) {
       console.error('Image upload failed during editing:', error);
@@ -685,7 +687,7 @@ export function MessageList({
   const handleRemoveEditingImage = useCallback((imageId: string) => {
     const imageToRemove = editingImages.find(img => img.id === imageId);
     if (imageToRemove && imageToRemove.url.startsWith('blob:')) {
-      imagesClient.revokePreviewUrl(imageToRemove.url);
+      images.revokePreviewUrl(imageToRemove.url);
     }
     setEditingImages(prev => prev.filter(img => img.id !== imageId));
   }, [editingImages]);

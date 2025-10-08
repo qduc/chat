@@ -421,6 +421,14 @@ export class SimplifiedPersistence {
     return null;
   }
   /**
+   * Get current content length for textOffset tracking
+   * @returns {number} Current length of assistant content
+   */
+  getContentLength() {
+    return this.assistantBuffer.length;
+  }
+
+  /**
    * Buffer assistant content (no immediate DB write)
    * @param {string} delta - Content delta to add
    */

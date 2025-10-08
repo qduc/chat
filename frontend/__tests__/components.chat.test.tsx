@@ -16,11 +16,13 @@ jest.mock('../contexts/AuthContext', () => {
   };
 });
 
+
+
 // Ensure the chat library is mocked before importing components that use it.
 // Provide a manual mock implementation so ConversationManager instance methods
 // (list, get, delete, editMessage, create) delegate to the same mocked functions
 // that tests will set up below.
-jest.mock('../lib/chat', () => {
+jest.mock('../lib', () => {
   // Create placeholders for functions the tests will override
   const mock: any = {
     listConversationsApi: jest.fn(),
@@ -60,13 +62,49 @@ jest.mock('../lib/chat', () => {
     editMessageApi: mock.editMessageApi,
     createConversation: mock.createConversation,
     sendChat: mock.sendChat,
+    supportsReasoningControls: jest.fn(() => false),
+    resolveApiBase: jest.fn(() => 'http://localhost'),
+    // Content utilities used by Message rendering components
+    extractTextFromContent: (content: any) => {
+      if (typeof content === 'string') return content;
+      if (Array.isArray(content)) return content.filter((p: any) => p && p.type === 'text' && typeof p.text === 'string').map((p: any) => p.text).join(' ');
+      return '';
+    },
+    extractImagesFromContent: (content: any) => {
+      if (!Array.isArray(content)) return [];
+      return content.filter((p: any) => p && p.type === 'image_url');
+    },
+    hasImages: (content: any) => Array.isArray(content) && content.some((p: any) => p && p.type === 'image_url'),
     getToolSpecs: mock.getToolSpecs,
+  };
+});
+
+// Ensure modules that import the new api barrel (`../lib/api`) receive the
+// same mocked functions. We proxy to the mocked `../lib` module so tests can
+// set expectations in one place.
+jest.mock('../lib/api', () => {
+  const lib = require('../lib');
+  return {
+    __esModule: true,
+    conversations: {
+      list: (...args: any[]) => lib.listConversationsApi(undefined, ...args),
+      get: (...args: any[]) => lib.getConversationApi(undefined, ...args),
+      delete: (...args: any[]) => lib.deleteConversationApi(undefined, ...args),
+      editMessage: (...args: any[]) => lib.editMessageApi(undefined, ...args),
+      create: (...args: any[]) => lib.createConversation(undefined, ...args),
+    },
+    chat: {
+      sendMessage: (...args: any[]) => lib.sendChat(undefined, ...args),
+    },
+    providers: {
+      getToolSpecs: (...args: any[]) => lib.getToolSpecs(undefined, ...args),
+    }
   };
 });
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import * as chatLib from '../lib/chat';
-const mockedChatLib = chatLib as jest.Mocked<typeof chatLib>;
+import * as chatLib from '../lib';
+const mockedChatLib: any = chatLib as any;
 import { ChatV2 as Chat } from '../components/ChatV2';
 import { ThemeProvider } from '../contexts/ThemeContext';
 
@@ -449,7 +487,7 @@ describe('<Chat />', () => {
     mockedChatLib.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] });
 
     // First conversation has system prompt
-    mockedChatLib.getConversationApi.mockImplementation((_, id) => {
+  mockedChatLib.getConversationApi.mockImplementation((_: any, id: string) => {
       if (id === 'conv-with-prompt') {
         return Promise.resolve({
           id: 'conv-with-prompt',

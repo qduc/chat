@@ -3,9 +3,9 @@ import React from 'react';
 import { Cog, Database, Plus, Save, RefreshCw, Trash2, Zap, CheckCircle, XCircle } from 'lucide-react';
 import Modal from './ui/Modal';
 import Toggle from './ui/Toggle';
-import { httpClient } from '../lib/http/client';
-import { HttpError } from '../lib/http/types';
-import { resolveApiBase } from '../lib/config/apiBase';
+import { httpClient } from '../lib';
+import { HttpError } from '../lib';
+import { resolveApiBase } from '../lib';
 
 interface SettingsModalProps {
   open: boolean;

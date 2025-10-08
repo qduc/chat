@@ -139,11 +139,19 @@ export async function handleToolsStreaming({
                 if (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) {
                   for (const tcDelta of delta.tool_calls) {
                     const idx = tcDelta.index ?? 0;
+                    const isNewToolCall = !toolCallMap.has(idx);
+
                     const existing = toolCallMap.get(idx) || {
                       id: tcDelta.id,
                       type: 'function',
                       function: { name: '', arguments: '' },
                     };
+
+                    // Capture textOffset when tool call first appears
+                    if (isNewToolCall && persistence) {
+                      existing.textOffset = persistence.getContentLength();
+                    }
+
                     if (tcDelta.id && !existing.id) existing.id = tcDelta.id;
                     if (tcDelta.function?.name) existing.function.name = tcDelta.function.name;
                     if (tcDelta.function?.arguments) existing.function.arguments += tcDelta.function.arguments;

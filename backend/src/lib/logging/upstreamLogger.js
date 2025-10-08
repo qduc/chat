@@ -1,4 +1,5 @@
 import { appendFileSync, mkdirSync, readdirSync, unlinkSync } from 'node:fs';
+import { PassThrough } from 'node:stream';
 import path from 'node:path';
 import os from 'node:os';
 
@@ -46,6 +47,78 @@ function cleanupOldLogs(logDir) {
   }
 }
 
+/**
+ * Tee a Readable stream into a PassThrough that should be used by the consumer,
+ * while capturing a bounded textual preview of the stream for logging.
+ *
+ * Usage:
+ *   const { previewPromise, stream: loggedStream } = teeStreamWithPreview(originalReadable, { maxBytes: 64*1024 });
+ *   // use loggedStream in place of originalReadable for downstream consumers
+ *   // await previewPromise to get the captured string (truncated if needed)
+ *
+ * Notes:
+ * - This function pipes the original readable into a PassThrough and returns that PassThrough;
+ *   the consumer should read from the returned stream.
+ * - The preview is captured by listening to the PassThrough 'data' events and is bounded by maxBytes.
+ * - Errors on the original readable propagate to the preview promise.
+ */
+export function teeStreamWithPreview(readable, { maxBytes = 64 * 1024, encoding = 'utf8' } = {}) {
+  if (!readable || typeof readable.pipe !== 'function') {
+    // Not a stream; nothing to tee — return a resolved preview and the input as-is
+    return { previewPromise: Promise.resolve(''), stream: readable };
+  }
+
+  const passthrough = new PassThrough();
+  let preview = '';
+  let settled = false;
+  let resolvePreview;
+  let rejectPreview;
+
+  const previewPromise = new Promise((resolve, reject) => {
+    resolvePreview = resolve;
+    rejectPreview = reject;
+  });
+
+  function finalizePreview() {
+    if (!settled) {
+      settled = true;
+      resolvePreview(preview);
+    }
+  }
+  function failPreview(err) {
+    if (!settled) {
+      settled = true;
+      rejectPreview(err);
+    }
+  }
+
+  // Capture textual preview as data flows through the passthrough
+  passthrough.on('data', (chunk) => {
+    try {
+      const s = typeof chunk === 'string' ? chunk : chunk.toString(encoding);
+      if (preview.length < maxBytes) {
+        preview += s;
+        if (preview.length > maxBytes) {
+          preview = preview.slice(0, maxBytes) + '...[truncated]';
+        }
+      }
+    } catch {
+      // ignore preview errors
+    }
+  });
+
+  passthrough.on('end', finalizePreview);
+  passthrough.on('close', finalizePreview);
+  passthrough.on('error', failPreview);
+  readable.on('error', failPreview);
+
+  // Pipe original readable into the passthrough that consumers will read from.
+  // Piping will forward data and not consume the original elsewhere.
+  readable.pipe(passthrough);
+
+  return { previewPromise, stream: passthrough };
+}
+
 const LOG_DIR = resolveLogDir();
 
 export function logUpstreamRequest({ url, headers, body }) {
@@ -73,14 +146,26 @@ export function logUpstreamResponse({ url, status, headers, body }) {
   if (process.env.NODE_ENV === 'test') return;
 
   const isEventStream = headers?.['content-type']?.includes('text/event-stream');
-  const logBody = isEventStream ? body : JSON.stringify(body, null, 2);
 
-  const logEntry = `[${new Date().toISOString()}] UPSTREAM RESPONSE\n${JSON.stringify({
-    url,
-    status,
-    headers: { ...headers, 'set-cookie': headers?.['set-cookie'] ? '[REDACTED]' : undefined },
-    body: logBody,
-  }, null, 2)}\n\n`;
+  // redact sensitive headers
+  const safeHeaders = { ...headers, 'set-cookie': headers?.['set-cookie'] ? '[REDACTED]' : undefined };
+
+  let logEntry;
+  if (isEventStream) {
+    // For SSE we want to preserve raw "data: ..." lines rather than JSON-encoding them.
+    // Expectation: caller passes a captured SSE string (or we coerce to string).
+    const bodyStr = typeof body === 'string' ? body : (body == null ? '' : String(body));
+    const meta = JSON.stringify({ url, status, headers: safeHeaders }, null, 2);
+    logEntry = `[${new Date().toISOString()}] UPSTREAM RESPONSE (event-stream)\n${meta}\n\n${bodyStr}\n\n`;
+  } else {
+    const logBody = JSON.stringify(body, null, 2);
+    logEntry = `[${new Date().toISOString()}] UPSTREAM RESPONSE\n${JSON.stringify({
+      url,
+      status,
+      headers: safeHeaders,
+      body: logBody,
+    }, null, 2)}\n\n`;
+  }
 
   try {
     cleanupOldLogs(LOG_DIR);
@@ -96,4 +181,5 @@ export function logUpstreamResponse({ url, status, headers, body }) {
 export default {
   logUpstreamRequest,
   logUpstreamResponse,
+  teeStreamWithPreview,
 };

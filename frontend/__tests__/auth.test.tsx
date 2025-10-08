@@ -40,8 +40,8 @@ import { AuthButton } from '../components/auth/AuthButton';
 import { AuthModal } from '../components/auth/AuthModal';
 import { LoginForm } from '../components/auth/LoginForm';
 import { RegisterForm } from '../components/auth/RegisterForm';
-import { authApi } from '../lib/auth/api';
-import { verifySession } from '../lib/auth/verification';
+import { authApi } from '../lib';
+import { verifySession } from '../lib';
 
 function AuthButtonWithModal() {
   const [open, setOpen] = React.useState(false);

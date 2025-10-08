@@ -20,29 +20,92 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatV2 as Chat } from '../components/ChatV2';
 import { ThemeProvider } from '../contexts/ThemeContext';
-import * as chatLib from '../lib/chat';
 
-// Mock the chat library functions
-jest.mock('../lib/chat');
+// Ensure the chat library is mocked before importing components that use it.
+jest.mock('../lib', () => {
+  const { HttpError } = jest.requireActual('../lib/http');
+  const { images } = jest.requireActual('../lib/api');
+  const contentUtils = jest.requireActual('../lib/contentUtils');
+  const { authApi } = require('../lib/auth/api');
+  const { verifySession } = require('../lib/auth/verification');
+  const mock: any = {
+    listConversationsApi: jest.fn(),
+    getConversationApi: jest.fn(),
+    deleteConversationApi: jest.fn(),
+    editMessageApi: jest.fn(),
+    createConversation: jest.fn(),
+    sendChat: jest.fn(),
+    getToolSpecs: jest.fn(),
+    supportsReasoningControls: jest.fn(() => false),
+    auth: { getProfile: jest.fn() },
+  };
+
+  class ConversationManager {
+    constructor() {}
+    async list(...args: any[]) {
+      return mock.listConversationsApi(undefined, ...args);
+    }
+    async get(...args: any[]) {
+      return mock.getConversationApi(undefined, ...args);
+    }
+    async delete(...args: any[]) {
+      return mock.deleteConversationApi(undefined, ...args);
+    }
+    async editMessage(...args: any[]) {
+      return mock.editMessageApi(undefined, ...args);
+    }
+    async create(...args: any[]) {
+      return mock.createConversation(undefined, ...args);
+    }
+  }
+
+  return {
+    __esModule: true,
+    ConversationManager,
+    listConversationsApi: mock.listConversationsApi,
+    getConversationApi: mock.getConversationApi,
+    deleteConversationApi: mock.deleteConversationApi,
+    editMessageApi: mock.editMessageApi,
+    createConversation: mock.createConversation,
+    sendChat: mock.sendChat,
+    supportsReasoningControls: mock.supportsReasoningControls,
+    resolveApiBase: jest.fn(() => 'http://localhost'),
+    extractTextFromContent: contentUtils.extractTextFromContent,
+    extractImagesFromContent: contentUtils.extractImagesFromContent,
+    hasImages: contentUtils.hasImages,
+    getToolSpecs: mock.getToolSpecs,
+    images,
+    auth: mock.auth,
+    HttpError,
+    authApi,
+    verifySession,
+  };
+});
+
+jest.mock('../lib/api', () => {
+  const actualApi = jest.requireActual('../lib/api');
+  const lib = require('../lib');
+  return {
+    ...actualApi,
+    conversations: {
+      list: (...args: any[]) => lib.listConversationsApi(undefined, ...args),
+      get: (...args: any[]) => lib.getConversationApi(undefined, ...args),
+      delete: (...args: any[]) => lib.deleteConversationApi(undefined, ...args),
+      editMessage: (...args: any[]) => lib.editMessageApi(undefined, ...args),
+      create: (...args: any[]) => lib.createConversation(undefined, ...args),
+    },
+    chat: {
+      sendMessage: (...args: any[]) => lib.sendChat(undefined, ...args),
+    },
+    providers: {
+      getToolSpecs: (...args: any[]) => lib.getToolSpecs(undefined, ...args),
+    },
+    auth: lib.auth,
+  };
+});
+
+import * as chatLib from '../lib';
 const mockedChatLib = chatLib as jest.Mocked<typeof chatLib>;
-
-// The hook uses ConversationManager (class) internally. Ensure the mocked module
-// returns a mocked ConversationManager whose `list` method resolves to the
-// same conversations we expect in tests. This prevents the real ConversationManager
-// from making HTTP calls and keeps the test deterministic.
-mockedChatLib.ConversationManager = jest.fn().mockImplementation(() => ({
-  list: jest.fn().mockResolvedValue({
-    items: [
-      { id: 'conv-1', title: 'Test Conversation', model: 'gpt-4o', created_at: '2023-01-01' },
-    ],
-    next_cursor: null,
-  }),
-  // include no-op placeholders for other instance methods used elsewhere
-  create: jest.fn(),
-  get: jest.fn(),
-  delete: jest.fn(),
-  editMessage: jest.fn(),
-} as any)) as unknown as jest.MockedClass<typeof chatLib.ConversationManager>;
 
 // Mock the Markdown component to avoid ES module issues
 jest.mock('../components/Markdown', () => ({
@@ -64,9 +127,9 @@ Object.defineProperty(global, 'crypto', {
   },
 });
 
-// Mock localStorage
+// Mock localStorage with key-aware behavior
 const mockLocalStorage = {
-  getItem: jest.fn(),
+  getItem: jest.fn((key?: string) => null),
   setItem: jest.fn(),
 };
 Object.defineProperty(window, 'localStorage', {
@@ -100,9 +163,10 @@ beforeEach(() => {
     messages: [],
     next_after_seq: null,
   });
+  mockedChatLib.auth.getProfile.mockResolvedValue({ id: 'test-user' });
 
   // Mock localStorage to return false (expanded by default)
-  mockLocalStorage.getItem.mockReturnValue(null);
+  mockLocalStorage.getItem.mockImplementation((key: string) => null);
 });
 
 describe('Sidebar Collapse Functionality', () => {
@@ -187,8 +251,8 @@ describe('Sidebar Collapse Functionality', () => {
   });
 
   test('sidebar loads collapsed state from localStorage', async () => {
-    // Mock localStorage to return 'true' (collapsed)
-    mockLocalStorage.getItem.mockReturnValue('true');
+    // Mock localStorage to return 'true' (collapsed) only for the sidebar key
+    mockLocalStorage.getItem.mockImplementation((key: string) => key === 'sidebarCollapsed' ? 'true' : null);
 
     renderWithProviders(<Chat />);
 

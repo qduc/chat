@@ -1,9 +1,9 @@
 import { generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
 import { addConversationMetadata } from './responseUtils.js';
-import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
+import { setupStreamingHeaders, createOpenAIRequest, teeStreamWithPreview } from './streamUtils.js';
+import { logUpstreamResponse } from './logging/upstreamLogger.js';
 import { createProvider } from './providers/index.js';
 import {
-  buildConversationMessagesAsync,
   buildConversationMessagesOptimized,
   executeToolCall,
   appendToPersistence,
@@ -396,9 +396,17 @@ async function streamResponse(llmResponse, res, persistence, model) {
   // Handle streaming response
   let leftover = '';
   let lastFinishReason = null;
+  // Tee the stream so we can capture a small preview for logging without
+  // interfering with existing consumers. Replace llmResponse.body with the
+  // tee'd body that we will pipe through to the client.
+  const { body: teeBody, previewPromise } = teeStreamWithPreview(llmResponse, { maxPreviewBytes: 4096 });
+
+  // If teeStreamWithPreview returned a different body, use it; otherwise fall back
+  // to the original stream.
+  const source = teeBody || llmResponse.body;
 
   return new Promise((resolve, reject) => {
-    llmResponse.body.on('data', (chunk) => {
+    source.on('data', (chunk) => {
       try {
         res.write(chunk);
         if (typeof res.flush === 'function') res.flush();
@@ -416,7 +424,20 @@ async function streamResponse(llmResponse, res, persistence, model) {
 
             const payload = m[1];
             if (payload === '[DONE]') {
-              resolve(lastFinishReason || 'stop');
+              // Before resolving, attempt to log the captured preview for debugging
+              previewPromise.then((preview) => {
+                try {
+                  logUpstreamResponse({
+                    url: llmResponse.url || '[upstream]',
+                    status: llmResponse.status || 200,
+                    headers: llmResponse.headers || {},
+                    body: preview || null,
+                  });
+                } catch {
+                  // best-effort logging
+                }
+                resolve(lastFinishReason || 'stop');
+              }).catch(() => resolve(lastFinishReason || 'stop'));
               return;
             }
 
@@ -436,16 +457,29 @@ async function streamResponse(llmResponse, res, persistence, model) {
             }
           }
         }
-      } catch (e) {
-        console.error('[unified stream] error', e);
+      } catch {
+        console.error('[unified stream] error');
       }
     });
 
-    llmResponse.body.on('end', () => {
-      resolve(lastFinishReason || 'stop');
+    source.on('end', () => {
+      // Log preview on normal end as well
+      previewPromise.then((preview) => {
+        try {
+          logUpstreamResponse({
+            url: llmResponse.url || '[upstream]',
+            status: llmResponse.status || 200,
+            headers: llmResponse.headers || {},
+            body: preview || null,
+          });
+        } catch {
+          // ignore
+        }
+        resolve(lastFinishReason || 'stop');
+      }).catch(() => resolve(lastFinishReason || 'stop'));
     });
 
-    llmResponse.body.on('error', (err) => {
+    source.on('error', (err) => {
       reject(err);
     });
   });
@@ -569,7 +603,15 @@ export async function handleToolsJson({
 
       // Buffer tool calls for persistence
       if (persistence && persistence.persist && typeof persistence.addToolCalls === 'function') {
-        persistence.addToolCalls(toolCalls);
+        // For non-streaming responses, set textOffset to current content length
+        // Tools appear after any content that was generated
+        const contentLength = persistence.getContentLength();
+        const toolCallsWithOffset = toolCalls.map((tc, idx) => ({
+          ...tc,
+          index: tc.index ?? idx,
+          textOffset: contentLength
+        }));
+        persistence.addToolCalls(toolCallsWithOffset);
       }
 
       // Execute all tools

@@ -1,5 +1,6 @@
-import { authApi, type User } from './api';
-import { clearTokens, getToken } from './tokens';
+import { auth as authApi } from '../api';
+import { clearTokens, getToken } from '../storage';
+import type { User } from '../types';
 
 export type VerifySessionReason =
   | 'missing-token'

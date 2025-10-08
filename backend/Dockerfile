@@ -19,7 +19,7 @@ FROM ${NODE_IMAGE} AS dev
 WORKDIR /app
 ENV NODE_ENV=development
 COPY --chown=node:node package*.json ./
-RUN apk add --no-cache su-exec
+RUN apk add --no-cache su-exec sqlite-libs
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node . .
 RUN chmod +x entrypoint.sh
