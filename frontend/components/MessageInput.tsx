@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { Send, Loader2, Gauge, Wrench, Zap, ImagePlus } from 'lucide-react';
+import { Send, Loader2, Gauge, Wrench, Zap, ImagePlus, Search } from 'lucide-react';
 import type { PendingState } from '@/hooks/useChat';
 import { images as imageUtils, supportsReasoningControls, type ImageAttachment, type ImageUploadProgress } from '../lib';
 import Toggle from './ui/Toggle';
 import QualitySlider from './ui/QualitySlider';
 import { ImagePreview, ImageUploadZone } from './ui/ImagePreview';
+import Tooltip from './ui/Tooltip';
 import type { QualityLevel } from './ui/QualitySlider';
 
 interface MessageInputProps {
@@ -53,6 +54,11 @@ export function MessageInput({
   const [toolFilter, setToolFilter] = useState('');
   const [localSelected, setLocalSelected] = useState<string[]>(enabledTools);
   const [uploadProgress, setUploadProgress] = useState<ImageUploadProgress[]>([]);
+
+  // Check if both search tools are enabled
+  const searchEnabled = useMemo(() => {
+    return localSelected.includes('web_search') && localSelected.includes('web_search_exa');
+  }, [localSelected]);
 
   // Check if model supports thinking/reasoning
   const supportsThinking = useMemo(() => {
@@ -194,11 +200,34 @@ export function MessageInput({
     }
   };
 
+  // Toggle both search tools on/off
+  const handleSearchToggle = (enabled: boolean) => {
+    const searchTools = ['web_search', 'web_search_exa'];
+    let next: string[];
+
+    if (enabled) {
+      // Add both search tools if not already present
+      next = [...new Set([...localSelected, ...searchTools])];
+    } else {
+      // Remove both search tools
+      next = localSelected.filter(t => !searchTools.includes(t));
+    }
+
+    setLocalSelected(next);
+    onEnabledToolsChange?.(next);
+    onUseToolsChange?.(next.length > 0);
+  };
+
   // Check if we can send (have text or images)
   const canSend = input.trim().length > 0 || images.length > 0;
 
   return (
-  <ImageUploadZone onFiles={handleImageFiles} disabled={pending.streaming} fullPage={true}>
+  <ImageUploadZone
+    onFiles={handleImageFiles}
+    disabled={pending.streaming}
+    fullPage={true}
+    clickToUpload={false} // Avoid overlay input intercepting hover events (tooltips)
+  >
       <form
         className=""
         onSubmit={e => { e.preventDefault(); if (pending.streaming) onStop(); else onSend(); }}
@@ -234,7 +263,7 @@ export function MessageInput({
                 </div>
 
                 {supportsThinking && (
-                  <div className="flex items-center">
+                  <Tooltip content="Reasoning effort level">
                     <QualitySlider
                       value={qualityLevel}
                       onChange={onQualityLevelChange}
@@ -243,10 +272,20 @@ export function MessageInput({
                       className="flex-shrink-0"
                       model={model}
                     />
-                  </div>
+                  </Tooltip>
                 )}
 
-                <div className="flex items-center">
+                <Tooltip content="Enable web search (Tavily + Exa)">
+                  <Toggle
+                    ariaLabel="Search"
+                    icon={<Search className="w-4 h-4" />}
+                    checked={searchEnabled}
+                    onChange={handleSearchToggle}
+                    className="whitespace-nowrap"
+                  />
+                </Tooltip>
+
+                <Tooltip content="Select tools to enable">
                   <div className="relative" ref={toolsDropdownRef}>
                     <button
                       type="button"
@@ -258,126 +297,118 @@ export function MessageInput({
                       <span className="text-xs text-slate-600 dark:text-slate-300">{localSelected.length ? `${localSelected.length}` : 'Off'}</span>
                     </button>
 
-                      {toolsOpen && (
-                        <div className="absolute bottom-full mb-2 right-0 w-80 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 shadow-xl rounded-lg p-3 z-50">
-                          <div className="flex items-center justify-between mb-2">
-                            <div className="flex items-center gap-3">
-                              <div className="text-sm font-semibold">Tools</div>
-                              <div className="text-xs text-slate-500 dark:text-slate-400">{availableTools.length} available</div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Toggle
-                                ariaLabel="Enable tools"
-                                checked={localSelected.length > 0}
-                                onChange={(v: boolean) => {
-                                  if (!v) {
-                                    setLocalSelected([]);
-                                    onEnabledToolsChange?.([]);
-                                    onUseToolsChange?.(false);
-                                  } else if (availableTools.length > 0) {
-                                    const all = availableTools.map(t => t.name);
-                                    setLocalSelected(all);
-                                    onEnabledToolsChange?.(all);
-                                    onUseToolsChange?.(all.length > 0);
-                                  }
-                                }}
-                              />
-                            </div>
+                    {toolsOpen && (
+                      <div className="absolute bottom-full mb-2 right-0 w-80 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 shadow-xl rounded-lg p-3 z-50">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="flex items-center gap-3">
+                            <div className="text-sm font-semibold">Tools</div>
+                            <div className="text-xs text-slate-500 dark:text-slate-400">{availableTools.length} available</div>
                           </div>
-
-                          <div className="flex items-center gap-2 mb-3">
-                            <input
-                              type="text"
-                              value={toolFilter}
-                              onChange={e => setToolFilter(e.target.value)}
-                              placeholder="Search tools..."
-                              className="flex-1 text-xs px-2 py-1 border border-slate-200 dark:border-neutral-800 rounded-md bg-slate-50 dark:bg-neutral-800 text-slate-800 dark:text-slate-200"
+                          <div className="flex items-center gap-2">
+                            <Toggle
+                              ariaLabel="Enable tools"
+                              checked={localSelected.length > 0}
+                              onChange={(v: boolean) => {
+                                if (!v) {
+                                  setLocalSelected([]);
+                                  onEnabledToolsChange?.([]);
+                                  onUseToolsChange?.(false);
+                                } else if (availableTools.length > 0) {
+                                  const all = availableTools.map(t => t.name);
+                                  setLocalSelected(all);
+                                  onEnabledToolsChange?.(all);
+                                  onUseToolsChange?.(all.length > 0);
+                                }
+                              }}
                             />
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const all = availableTools.map(t => t.name);
-                                setLocalSelected(all);
-                                onEnabledToolsChange?.(all);
-                                onUseToolsChange?.(all.length > 0);
-                              }}
-                              className="text-xs px-2 py-1 rounded-md bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700"
-                            >Select all</button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setLocalSelected([]);
-                                onEnabledToolsChange?.([]);
-                                onUseToolsChange?.(false);
-                              }}
-                              className="text-xs px-2 py-1 rounded-md bg-transparent border border-slate-100 dark:border-neutral-800 hover:bg-slate-50 dark:hover:bg-neutral-800"
-                            >Clear</button>
-                          </div>
-
-                          <div className="max-h-48 overflow-auto">
-                            {availableTools.length === 0 && (
-                              <div className="text-xs text-slate-500">No tools available</div>
-                            )}
-
-                            <div className="grid grid-cols-1 gap-2">
-                              {availableTools
-                                .filter(t => t.name.toLowerCase().includes(toolFilter.toLowerCase()) || (t.description || '').toLowerCase().includes(toolFilter.toLowerCase()))
-                                .map(t => {
-                                  const id = t.name;
-                                  const checked = localSelected.includes(id);
-                                  return (
-                                    <button
-                                      key={id}
-                                      type="button"
-                                      onClick={() => {
-                                        const next = checked ? localSelected.filter(x => x !== id) : [...localSelected, id];
-                                        setLocalSelected(next);
-                                        onEnabledToolsChange?.(next);
-                                        onUseToolsChange?.(next.length > 0);
-                                      }}
-                                      className={`w-full text-left p-2 rounded-md transition-colors duration-150 flex items-center justify-between ${checked ? 'bg-slate-100 dark:bg-neutral-800 ring-1 ring-slate-200 dark:ring-neutral-700' : 'hover:bg-slate-50 dark:hover:bg-neutral-800'}`}
-                                    >
-                                      <div>
-                                        <div className="text-xs font-medium text-slate-800 dark:text-slate-200">{t.name}</div>
-                                        {t.description && <div className="text-[11px] text-slate-500 dark:text-slate-400">{t.description}</div>}
-                                      </div>
-                                      <div className="flex items-center">
-                                        <input
-                                          type="checkbox"
-                                          className="cursor-pointer"
-                                          checked={checked}
-                                          readOnly
-                                        />
-                                      </div>
-                                    </button>
-                                  );
-                                })}
-                            </div>
-                          </div>
-
-                          <div className="flex justify-end mt-3">
-                            <button
-                              type="button"
-                              onClick={() => setToolsOpen(false)}
-                              className="text-xs px-3 py-1 rounded-md bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700 cursor-pointer transition-colors duration-150"
-                            >Done</button>
                           </div>
                         </div>
-                      )}
+
+                        <div className="flex items-center gap-2 mb-3">
+                          <input
+                            type="text"
+                            value={toolFilter}
+                            onChange={e => setToolFilter(e.target.value)}
+                            placeholder="Search tools..."
+                            className="flex-1 text-xs px-2 py-1 border border-slate-200 dark:border-neutral-800 rounded-md bg-slate-50 dark:bg-neutral-800 text-slate-800 dark:text-slate-200"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const all = availableTools.map(t => t.name);
+                              setLocalSelected(all);
+                              onEnabledToolsChange?.(all);
+                              onUseToolsChange?.(all.length > 0);
+                            }}
+                            className="text-xs px-2 py-1 rounded-md bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700"
+                          >Select all</button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setLocalSelected([]);
+                              onEnabledToolsChange?.([]);
+                              onUseToolsChange?.(false);
+                            }}
+                            className="text-xs px-2 py-1 rounded-md bg-transparent border border-slate-100 dark:border-neutral-800 hover:bg-slate-50 dark:hover:bg-neutral-800"
+                          >Clear</button>
+                        </div>
+
+                        <div className="max-h-48 overflow-auto">
+                          {availableTools.length === 0 && (
+                            <div className="text-xs text-slate-500">No tools available</div>
+                          )}
+
+                          <div className="grid grid-cols-1 gap-2">
+                            {availableTools
+                              .filter(t => t.name.toLowerCase().includes(toolFilter.toLowerCase()) || (t.description || '').toLowerCase().includes(toolFilter.toLowerCase()))
+                              .map(t => {
+                                const id = t.name;
+                                const checked = localSelected.includes(id);
+                                return (
+                                  <button
+                                    key={id}
+                                    type="button"
+                                    onClick={() => {
+                                      const next = checked ? localSelected.filter(x => x !== id) : [...localSelected, id];
+                                      setLocalSelected(next);
+                                      onEnabledToolsChange?.(next);
+                                      onUseToolsChange?.(next.length > 0);
+                                    }}
+                                    className={`w-full text-left p-2 rounded-md transition-colors duration-150 flex items-center justify-between ${checked ? 'bg-slate-100 dark:bg-neutral-800 ring-1 ring-slate-200 dark:ring-neutral-700' : 'hover:bg-slate-50 dark:hover:bg-neutral-800'}`}
+                                  >
+                                    <div>
+                                      <div className="text-xs font-medium text-slate-800 dark:text-slate-200">{t.name}</div>
+                                      {t.description && <div className="text-[11px] text-slate-500 dark:text-slate-400">{t.description}</div>}
+                                    </div>
+                                    <div className="flex items-center">
+                                      <input
+                                        type="checkbox"
+                                        className="cursor-pointer"
+                                        checked={checked}
+                                        readOnly
+                                      />
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                          </div>
+                        </div>
+
+                        <div className="flex justify-end mt-3">
+                          <button
+                            type="button"
+                            onClick={() => setToolsOpen(false)}
+                            className="text-xs px-3 py-1 rounded-md bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700 cursor-pointer transition-colors duration-150"
+                          >Done</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                </div>
+                </Tooltip>
 
                 {/* Image Upload Button */}
                 {onImagesChange && (
-                  <div className="flex items-center">
-                    <input
-                      ref={fileInputRef}
-                      type="file"
-                      accept="image/*"
-                      multiple
-                      className="hidden"
-                      onChange={handleFileInputChange}
-                    />
+                  <Tooltip content="Upload images">
                     <button
                       type="button"
                       onClick={handleImageUploadClick}
@@ -385,15 +416,23 @@ export function MessageInput({
                       className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
                       aria-label="Add Images"
                     >
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        multiple
+                        className="hidden"
+                        onChange={handleFileInputChange}
+                      />
                       <ImagePlus className="w-4 h-4" />
                       <span className="text-xs text-slate-600 dark:text-slate-300">
                         {images.length > 0 ? images.length : 'Images'}
                       </span>
                     </button>
-                  </div>
+                  </Tooltip>
                 )}
 
-                <div className="flex items-center">
+                <Tooltip content="Stream responses in real-time">
                   <Toggle
                     ariaLabel="Stream"
                     icon={<Zap className="w-4 h-4" />}
@@ -401,7 +440,7 @@ export function MessageInput({
                     onChange={onShouldStreamChange}
                     className="whitespace-nowrap"
                   />
-                </div>
+                </Tooltip>
 
               </div>
               <button
