@@ -613,8 +613,29 @@ export function useChat() {
 
       // Update conversation metadata if returned
       if (response.conversation) {
+        const isNewConversation = conversationId !== response.conversation.id;
         setConversationId(response.conversation.id);
         setCurrentConversationTitle(response.conversation.title || null);
+
+        // If this is a new conversation, add it to the sidebar list and select it
+        if (isNewConversation) {
+          const newConversation: Conversation = {
+            id: response.conversation.id,
+            title: response.conversation.title || 'Untitled conversation',
+            created_at: response.conversation.created_at,
+            updatedAt: response.conversation.created_at,
+          };
+
+          // Add to the top of the list and ensure it's selected
+          setConversations(prev => {
+            // Check if it already exists (shouldn't happen, but be safe)
+            const exists = prev.some(c => c.id === newConversation.id);
+            if (exists) {
+              return prev;
+            }
+            return [newConversation, ...prev];
+          });
+        }
       }
 
       setInput('');
