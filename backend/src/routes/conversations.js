@@ -213,20 +213,49 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
     const userId = req.user.id; // Guaranteed by authenticateToken middleware
 
     const { content } = req.body || {};
-    if (!content || typeof content !== 'string') {
+    if (!content) {
       return res
         .status(400)
         .json({ error: 'bad_request', message: 'Message content is required' });
     }
 
+    // Validate content type: must be string or array
+    if (typeof content !== 'string' && !Array.isArray(content)) {
+      return res
+        .status(400)
+        .json({ error: 'bad_request', message: 'Message content must be a string or array' });
+    }
+
+    // If content is a string, trim it and validate it's not empty
+    // If content is an array (mixed content with images), validate it has at least some text or images
+    let validatedContent;
+    if (typeof content === 'string') {
+      validatedContent = content.trim();
+      if (!validatedContent) {
+        return res
+          .status(400)
+          .json({ error: 'bad_request', message: 'Message content cannot be empty' });
+      }
+    } else {
+      // Array content: ensure it has at least one text or image item
+      const hasTextContent = content.some(item => item.type === 'text' && item.text?.trim());
+      const hasImageContent = content.some(item => item.type === 'image_url');
+      if (!hasTextContent && !hasImageContent) {
+        return res
+          .status(400)
+          .json({ error: 'bad_request', message: 'Message content cannot be empty' });
+      }
+      validatedContent = content;
+    }
+
     getDb();
 
-    // Update the message content
+    // Update the message content (supports both string and mixed content array)
     const message = updateMessageContent({
       messageId: req.params.messageId,
       conversationId: req.params.id,
       userId,
-      content: content.trim(),
+      content: validatedContent,
     });
 
     if (!message) {
@@ -261,7 +290,7 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
       message: {
         id: message.id,
         seq: message.seq,
-        content,
+        content: validatedContent,
       },
       new_conversation_id: newConversationId,
     });

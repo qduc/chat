@@ -18,6 +18,156 @@ const CODE_FENCE_PATTERN = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`]*`)/g;
 const BLOCK_LATEX_PATTERN = /(^|[^\\])\\\[((?:\\.|[\s\S])*?)\\\]/g;
 const INLINE_LATEX_PATTERN = /(^|[^\\])\\\(([\s\S]*?)\\\)/g;
 
+const CURRENCY_KEYWORDS = new Set([
+  "usd",
+  "cad",
+  "aud",
+  "eur",
+  "gbp",
+  "jpy",
+  "cny",
+  "inr",
+  "sgd",
+  "hkd",
+  "ntd",
+  "mxn",
+  "rub",
+  "brl",
+  "zar",
+  "chf",
+  "krw",
+  "million",
+  "billion",
+  "trillion",
+  "thousand",
+  "percent",
+  "per",
+  "cent",
+  "bucks",
+  "dollars"
+]);
+
+// Heuristic guard to keep currency like "$20" from being parsed as inline math.
+function shouldEscapeCurrencySequence(remainder: string): boolean {
+  if (!remainder) return false;
+
+  let index = 0;
+
+  while (index < remainder.length && (remainder[index] === " " || remainder[index] === "\t")) {
+    index += 1;
+  }
+
+  if (index >= remainder.length) return false;
+
+  if (!/[0-9]/.test(remainder[index])) {
+    return false;
+  }
+
+  let hasDigit = false;
+
+  for (; index < remainder.length; index += 1) {
+    const char = remainder[index];
+
+    if (/[0-9]/.test(char)) {
+      hasDigit = true;
+      continue;
+    }
+
+    if (char === "," || char === ".") {
+      continue;
+    }
+
+    if (char === "$") {
+      return false;
+    }
+
+    if (char === " " || char === "\t") {
+      const trimmed = remainder.slice(index).trimStart();
+
+      if (!trimmed) {
+        return hasDigit;
+      }
+
+      if (trimmed[0] === "\n") {
+        return hasDigit;
+      }
+
+      const lowerTrimmed = trimmed.toLowerCase();
+
+      if (lowerTrimmed.startsWith("/")) {
+        return true;
+      }
+
+      for (const keyword of CURRENCY_KEYWORDS) {
+        if (lowerTrimmed.startsWith(keyword)) {
+          return true;
+        }
+      }
+
+      return hasDigit;
+    }
+
+    if (/[kKmMbBtT%]/.test(char)) {
+      return true;
+    }
+
+    if (/[a-zA-Z]/.test(char)) {
+      return true;
+    }
+
+    if (",.;:!?".includes(char)) {
+      return true;
+    }
+
+    break;
+  }
+
+  return hasDigit;
+}
+
+// Escape standalone currency dollars while leaving legitimate math untouched.
+function escapeCurrencyDollarSigns(input: string): string {
+  if (!input) return input;
+
+  const segments = input.split(CODE_FENCE_PATTERN);
+
+  return segments
+    .map((segment) => {
+      if (!segment) return segment;
+
+      if (segment.startsWith("```") || segment.startsWith("~~~") || segment.startsWith("`")) {
+        return segment;
+      }
+
+      let result = "";
+
+      for (let index = 0; index < segment.length; index += 1) {
+        const char = segment[index];
+
+        if (char === "$") {
+          const previousChar = index > 0 ? segment[index - 1] : "";
+
+          if (previousChar === "\\") {
+            result += char;
+            continue;
+          }
+
+          const remainder = segment.slice(index + 1);
+
+          if (shouldEscapeCurrencySequence(remainder)) {
+            result += "\\$";
+            continue;
+          }
+        }
+
+        result += char;
+      }
+
+      return result;
+    })
+    .join("");
+}
+
 // Normalize common LaTeX delimiters from \(…\)/\[…\] to $…$/$$…$$.
 // Some providers emit the escaped forms by default, and remark-math only parses dollar delimiters.
 function normalizeLatexDelimiters(input: string): string {
@@ -78,7 +228,7 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
   // Transform thinking blocks and reasoning summaries into collapsible sections
   // First, handle incomplete thinking blocks by temporarily adding closing tags
   const processedText = useMemo(() => {
-    let textToProcess = normalizeLatexDelimiters(text);
+    let textToProcess = escapeCurrencyDollarSigns(normalizeLatexDelimiters(text));
 
     // Check for incomplete thinking blocks (both <thinking> and <think> variants)
     // Count opening and closing tags to ensure they match

@@ -1,9 +1,11 @@
 import { Readable } from 'node:stream';
+import { logUpstreamRequest, logUpstreamResponse, teeStreamWithPreview } from '../logging/upstreamLogger.js';
 import { BaseProvider } from './baseProvider.js';
 import { ChatCompletionsAdapter } from '../adapters/chatCompletionsAdapter.js';
 import { ResponsesAPIAdapter } from '../adapters/responsesApiAdapter.js';
 
 const FALLBACK_MODEL = 'gpt-4.1-mini';
+
 
 function wrapStreamingResponse(response) {
   if (!response || !response.body) return response;
@@ -122,17 +124,84 @@ export class OpenAIProvider extends BaseProvider {
       headers.Authorization = `Bearer ${this.apiKey}`;
     }
 
+    // Log the exact upstream request for debugging using centralized logger
+    try {
+      logUpstreamRequest({ url, headers, body: translatedRequest });
+    } catch (err) {
+      // logger should be best-effort; don't let logging break requests
+      console.error('Failed to log upstream request:', err?.message || err);
+    }
+
     const response = await client(url, {
       method: 'POST',
       headers,
       body: JSON.stringify(translatedRequest),
     });
 
-    if (translatedRequest?.stream) {
-      return wrapStreamingResponse(response);
-    }
+    // Log the upstream response for debugging
+    try {
+      const responseHeaders = response.headers && typeof response.headers.entries === 'function'
+        ? Object.fromEntries(response.headers.entries())
+        : {};
 
-    return response;
+      // Check if response is actually a stream by inspecting content-type
+      const contentType = response.headers?.get?.('content-type') || '';
+      const isActuallyStreaming = contentType.includes('text/event-stream') || contentType.includes('text/plain');
+
+      if (translatedRequest?.stream && isActuallyStreaming) {
+        // For streaming responses, tee the stream to capture SSE data
+        const wrappedResponse = wrapStreamingResponse(response);
+        const { previewPromise, stream: loggedStream } = teeStreamWithPreview(wrappedResponse.body, {
+          maxBytes: 128 * 1024, // Capture up to 128KB of SSE data
+          encoding: 'utf8'
+        });
+
+        // Log asynchronously without blocking the response
+        previewPromise.then((preview) => {
+          logUpstreamResponse({
+            url,
+            status: response.status,
+            headers: responseHeaders,
+            body: preview
+          });
+        }).catch((err) => {
+          console.error('Failed to capture streaming response preview:', err?.message || err);
+        });
+
+        // Return response with the logged stream
+        return new Proxy(wrappedResponse, {
+          get(target, prop, receiver) {
+            if (prop === 'body') {
+              return loggedStream;
+            }
+            return Reflect.get(target, prop, receiver);
+          },
+        });
+      } else {
+        // For non-streaming responses, capture the body
+        let responseBody = null;
+        if (response.clone) {
+          const responseClone = response.clone();
+          if (typeof responseClone.text === 'function') {
+            responseBody = await responseClone.text();
+          }
+        }
+        logUpstreamResponse({
+          url,
+          status: response.status,
+          headers: responseHeaders,
+          body: responseBody
+        });
+        return response;
+      }
+    } catch (err) {
+      // logger should be best-effort; don't let logging break responses
+      console.error('Failed to log upstream response:', err?.message || err);
+      if (translatedRequest?.stream) {
+        return wrapStreamingResponse(response);
+      }
+      return response;
+    }
   }
 
   getToolsetSpec(toolRegistry) {

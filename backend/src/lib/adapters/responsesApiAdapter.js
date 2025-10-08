@@ -1,5 +1,4 @@
 import { PassThrough } from 'node:stream';
-import { appendFileSync } from 'node:fs';
 import { maybeConvertLocalImageUrl } from '../localImageEncoder.js';
 import { BaseAdapter } from './baseAdapter.js';
 import { createChatCompletionChunk } from '../streamUtils.js';
@@ -311,7 +310,7 @@ function stringifyArguments(args) {
 
 function mapFunctionCallInput(call, index = 0) {
 	if (!call || typeof call !== 'object') return null;
-	const callId = call.id || call.call_id || call.tool_call_id || `call_${index}`;
+	const callId = call.call_id || call.tool_call_id || call.id || `call_${index}`;
 	const name = call.name || call.function?.name;
 	if (!callId || !name) return null;
 	const args = call.function?.arguments ?? call.arguments ?? call.args ?? {};
@@ -326,7 +325,7 @@ function mapFunctionCallInput(call, index = 0) {
 function mapToolCall(call, index = 0) {
 	if (!call || typeof call !== 'object') return null;
 
-	const id = call.id || call.call_id || call.tool_call_id || `call_${index}`;
+	const id = call.call_id || call.tool_call_id || call.id || `call_${index}`;
 	const name = call.name || call.function?.name;
 	const args = call.arguments ?? call.function?.arguments ?? call.args;
 
@@ -386,7 +385,7 @@ function mapToolCalls(response) {
 function mapStreamingToolCall(call, index = 0) {
 	if (!call || typeof call !== 'object') return null;
 	const idx = typeof call.index === 'number' ? call.index : index;
-	const id = call.id || call.call_id || call.tool_call_id || `call_${idx}`;
+	const id = call.call_id || call.tool_call_id || call.id || `call_${idx}`;
 	const type = call.type === 'function_call' ? 'function' : (call.type || 'function');
 	const fn = call.function && typeof call.function === 'object' ? call.function : {};
 	const name = fn.name || call.name;
@@ -549,6 +548,130 @@ function extractOutputText(response) {
 	return text;
 }
 
+function extractReasoningDetails(response) {
+	const collected = [];
+	const seen = new Set();
+	const visited = new WeakSet();
+
+	const collectArray = (arr) => {
+		for (const detail of arr) {
+			if (detail == null) continue;
+			let key = null;
+			try {
+				key = JSON.stringify(detail);
+			} catch {
+				key = null;
+			}
+			if (key && seen.has(key)) continue;
+			if (key) seen.add(key);
+			collected.push(detail);
+		}
+	};
+
+	const visit = (node, depth = 0) => {
+		if (!node || depth > 6) return;
+		if (typeof node !== 'object') return;
+
+		if (visited.has(node)) return;
+		visited.add(node);
+
+		if (Array.isArray(node)) {
+			for (const item of node) {
+				visit(item, depth);
+			}
+			return;
+		}
+
+		if (Array.isArray(node.reasoning_details)) {
+			collectArray(node.reasoning_details);
+		}
+
+		if (node.reasoning && Array.isArray(node.reasoning.details)) {
+			collectArray(node.reasoning.details);
+		}
+
+		if (node.type === 'reasoning' && Array.isArray(node.details)) {
+			collectArray(node.details);
+		}
+
+		const values = Object.values(node);
+		for (const value of values) {
+			if (value && typeof value === 'object') {
+				visit(value, depth + 1);
+			}
+		}
+	};
+
+	visit(response);
+
+	return collected.length > 0 ? collected : null;
+}
+
+function extractReasoningText(source) {
+	let text = '';
+	const visited = new WeakSet();
+
+	const visit = (node) => {
+		if (!node || typeof node === 'number' || typeof node === 'boolean') return;
+		if (typeof node === 'string') {
+			text += node;
+			return;
+		}
+		if (typeof node !== 'object') return;
+		if (visited.has(node)) return;
+		visited.add(node);
+
+		if (Array.isArray(node)) {
+			for (const item of node) {
+				visit(item);
+			}
+			return;
+		}
+
+		if (typeof node.text === 'string') {
+			text += node.text;
+		}
+		if (typeof node.reasoning_content === 'string') {
+			text += node.reasoning_content;
+		}
+		if (typeof node.value === 'string') {
+			text += node.value;
+		}
+		if (typeof node.output_text === 'string') {
+			text += node.output_text;
+		}
+
+		if (Array.isArray(node.content)) {
+			for (const item of node.content) {
+				visit(item);
+			}
+		}
+
+		if (Array.isArray(node.parts)) {
+			for (const item of node.parts) {
+				visit(item);
+			}
+		}
+
+		if (Array.isArray(node.details)) {
+			for (const item of node.details) {
+				visit(item);
+			}
+		}
+
+		const values = Object.values(node);
+		for (const value of values) {
+			if (value && typeof value === 'object') {
+				visit(value);
+			}
+		}
+	};
+
+	visit(source);
+
+	return text;
+}
+
 function mapUsage(usage) {
 	if (!usage || typeof usage !== 'object') return undefined;
 
@@ -600,6 +723,7 @@ function toChatCompletionResponse(response) {
 	const toolCalls = mapToolCalls(response);
 	const text = extractOutputText(response);
 	const finishReason = inferFinishReason(response, toolCalls);
+	const reasoningDetails = extractReasoningDetails(response);
 
 	const message = {
 		role: 'assistant',
@@ -611,6 +735,10 @@ function toChatCompletionResponse(response) {
 		if (!message.content) {
 			message.content = '';
 		}
+	}
+
+	if (Array.isArray(reasoningDetails) && reasoningDetails.length > 0) {
+		message.reasoning_details = reasoningDetails;
 	}
 
 	const completion = {
@@ -655,6 +783,7 @@ function transformStreamingResponse(response, context = {}) {
 	}
 
 	const defaultModel = defaultModelFromContext(context);
+	const persistence = context?.persistence;
 	const upstream = response.body;
 	const downstream = new PassThrough();
 
@@ -666,6 +795,9 @@ function transformStreamingResponse(response, context = {}) {
 		usage: null,
 		completed: false,
 		toolCallsMap: new Map(), // Accumulate tool calls by index
+		reasoningDetails: [],
+		reasoningSeen: new Set(),
+		reasoningTokens: null,
 	};
 
 	function ensureRoleChunk() {
@@ -680,14 +812,71 @@ function transformStreamingResponse(response, context = {}) {
 		ensureRoleChunk();
 		const chunk = createChatCompletionChunk(state.id || `resp_${Date.now()}`, state.model || defaultModel || 'unknown', { content: text });
 		downstream.write(`data: ${JSON.stringify(chunk)}\n\n`);
+		if (persistence?.persist) {
+			persistence.appendContent(text);
+		}
 	}
 
 	function sendFinalChunk() {
 		if (state.completed) return;
 		state.completed = true;
-		const chunk = createChatCompletionChunk(state.id || `resp_${Date.now()}`, state.model || defaultModel || 'unknown', {}, state.finishReason || 'stop');
+		const delta = {};
+		if (state.reasoningDetails.length > 0) {
+			delta.reasoning_details = state.reasoningDetails;
+		}
+		const chunk = createChatCompletionChunk(state.id || `resp_${Date.now()}`, state.model || defaultModel || 'unknown', delta, state.finishReason || 'stop');
 		if (state.usage) chunk.usage = state.usage;
+		if (persistence?.persist) {
+			persistence.setReasoningDetails(state.reasoningDetails);
+			if (state.reasoningTokens != null) {
+				persistence.setReasoningTokens(state.reasoningTokens);
+			}
+		}
 		downstream.write(`data: ${JSON.stringify(chunk)}\n\n`);
+	}
+
+	function addReasoningDetails(details) {
+		if (!Array.isArray(details) || details.length === 0) return;
+		let updated = false;
+		for (const detail of details) {
+			if (detail == null) continue;
+			let key = null;
+			try {
+				key = JSON.stringify(detail);
+			} catch {
+				key = null;
+			}
+			if (key && state.reasoningSeen.has(key)) continue;
+			if (key) state.reasoningSeen.add(key);
+			state.reasoningDetails.push(detail);
+			updated = true;
+		}
+
+		if (updated && persistence?.persist) {
+			persistence.setReasoningDetails(state.reasoningDetails);
+		}
+	}
+
+	function handleReasoningDelta(deltaSource) {
+		if (!deltaSource) return;
+		const text = extractReasoningText(deltaSource);
+		if (text) {
+			ensureRoleChunk();
+			const chunk = createChatCompletionChunk(
+				state.id || `resp_${Date.now()}`,
+				state.model || defaultModel || 'unknown',
+				{ reasoning: text, reasoning_content: text }
+			);
+			downstream.write(`data: ${JSON.stringify(chunk)}\n\n`);
+			if (persistence?.persist) {
+				persistence.appendReasoningText(text);
+			}
+		}
+
+		const details = extractReasoningDetails(deltaSource);
+		if (details) {
+			addReasoningDetails(details);
+		}
 	}
 
 	let buffer = '';
@@ -724,12 +913,6 @@ function transformStreamingResponse(response, context = {}) {
 
 				if (!payload || typeof payload !== 'object') continue;
 
-				try {
-					appendFileSync('/tmp/responses_stream.log', `${JSON.stringify(payload)}\n`);
-				} catch {
-					// ignore logging errors during debugging
-				}
-
 				const responseData = payload.response && typeof payload.response === 'object' ? payload.response : null;
 				if (responseData) {
 					if (responseData.id) state.id = responseData.id;
@@ -761,7 +944,8 @@ function transformStreamingResponse(response, context = {}) {
 						};
 
 						// Track what changed for the delta
-						const deltaToEmit = { index: idx, id: existing.id, type: existing.type, function: {} };
+						// IMPORTANT: Use delta.id if available, otherwise fall back to existing.id
+						const deltaToEmit = { index: idx, id: delta.id || existing.id, type: existing.type, function: {} };
 						let hasChanges = false;
 
 						// Update ID if new
@@ -822,12 +1006,26 @@ function transformStreamingResponse(response, context = {}) {
 							sendContent(payload.delta);
 						}
 						break;
+					case 'response.reasoning.delta':
+						handleReasoningDelta(payload.delta ?? payload);
+						break;
+					case 'response.reasoning.done':
+						if (payload.reasoning) {
+							handleReasoningDelta(payload.reasoning);
+						}
+						break;
 					case 'response.completed': {
 						state.id = payload.response?.id || state.id;
 						state.model = payload.response?.model || state.model;
 						state.finishReason = inferFinishReason(payload.response, []);
 						const usage = mapUsage(payload.response?.usage);
 						if (usage) state.usage = usage;
+						if (payload.response?.reasoning) {
+							handleReasoningDelta(payload.response.reasoning);
+						}
+						if (state.usage?.reasoning_tokens != null) {
+							state.reasoningTokens = state.usage.reasoning_tokens;
+						}
 						sendFinalChunk();
 						downstream.write('data: [DONE]\n\n');
 						downstream.end();
@@ -845,6 +1043,9 @@ function transformStreamingResponse(response, context = {}) {
 						upstream.destroy();
 						break;
 					default:
+						if (payload.delta && payload.type && payload.type.includes('reasoning')) {
+							handleReasoningDelta(payload.delta);
+						}
 						break;
 				}
 			}

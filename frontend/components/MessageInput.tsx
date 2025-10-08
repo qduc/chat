@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { Send, Loader2, Gauge, Wrench, Zap, ImagePlus } from 'lucide-react';
-import type { PendingState } from '../hooks/useChatState';
-import type { ImageAttachment, ImageUploadProgress } from '../lib/chat/types';
-import { imagesClient } from '../lib/chat/images';
+import { Send, Loader2, Gauge, Wrench, Zap, ImagePlus, Search, Plus, Globe } from 'lucide-react';
+import type { PendingState } from '@/hooks/useChat';
+import { images as imageUtils, supportsReasoningControls, type ImageAttachment, type ImageUploadProgress } from '../lib';
 import Toggle from './ui/Toggle';
 import QualitySlider from './ui/QualitySlider';
 import { ImagePreview, ImageUploadZone } from './ui/ImagePreview';
+import Tooltip from './ui/Tooltip';
 import type { QualityLevel } from './ui/QualitySlider';
-import { supportsReasoningControls } from '../lib/chat/modelCapabilities';
 
 interface MessageInputProps {
   input: string;
@@ -35,7 +34,6 @@ export function MessageInput({
   onInputChange,
   onSend,
   onStop,
-  useTools,
   shouldStream,
   onUseToolsChange,
   enabledTools = [],
@@ -48,19 +46,33 @@ export function MessageInput({
   images = [],
   onImagesChange,
 }: MessageInputProps) {
+  // ===== REFS =====
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const toolsDropdownRef = useRef<HTMLDivElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // ===== STATE =====
   const [toolsOpen, setToolsOpen] = useState(false);
   const [availableTools, setAvailableTools] = useState<{ name: string; description?: string }[]>([]);
+  const [toolFilter, setToolFilter] = useState('');
   const [localSelected, setLocalSelected] = useState<string[]>(enabledTools);
   const [uploadProgress, setUploadProgress] = useState<ImageUploadProgress[]>([]);
+
+  // ===== COMPUTED VALUES =====
+  // Check if both search tools are enabled
+  const searchEnabled = useMemo(() => {
+    return localSelected.includes('web_search') && localSelected.includes('web_search_exa');
+  }, [localSelected]);
 
   // Check if model supports thinking/reasoning
   const supportsThinking = useMemo(() => {
     return supportsReasoningControls(model, modelCapabilities);
   }, [model, modelCapabilities]);
 
+  // Check if we can send (have text or images)
+  const canSend = input.trim().length > 0 || images.length > 0;
+
+  // ===== EFFECTS =====
   // Auto-grow textarea up to ~200px
   useEffect(() => {
     const el = inputRef.current;
@@ -70,6 +82,7 @@ export function MessageInput({
     el.style.height = `${next}px`;
   }, [input]);
 
+  // Sync local selected tools with props
   useEffect(() => {
     setLocalSelected(enabledTools ?? []);
   }, [enabledTools]);
@@ -91,56 +104,41 @@ export function MessageInput({
   // Load tool specs for the selector UI
   useEffect(() => {
     let mounted = true;
-    import('../lib/chat').then(mod => {
-      const ToolsClient = (mod as any).ToolsClient;
-      if (!ToolsClient) return;
-      const client = new ToolsClient();
-      client.getToolSpecs().then((res: any) => {
-        if (!mounted) return;
-        const tools = (res.tools || []).map((t: any) => ({ name: t.function?.name || t.name, description: t.function?.description || t.description }));
-        setAvailableTools(tools);
-      }).catch(() => setAvailableTools([]));
-    }).catch(() => setAvailableTools([]));
+    import('../lib/api').then(mod => {
+      const apiTools = (mod as any).tools;
+      if (!apiTools || typeof apiTools.getToolSpecs !== 'function') {
+        if (mounted) setAvailableTools([]);
+        return;
+      }
+
+      apiTools.getToolSpecs()
+        .then((res: any) => {
+          if (!mounted) return;
+          const specs = Array.isArray(res?.tools) ? res.tools : [];
+          const names = Array.isArray(res?.available_tools) ? res.available_tools : [];
+
+          const tools = specs.length > 0
+            ? specs.map((t: any) => ({ name: t.function?.name || t.name, description: t.function?.description || t.description }))
+            : names.map((n: string) => ({ name: n, description: undefined }));
+
+          setAvailableTools(tools);
+        })
+        .catch(() => {
+          if (mounted) setAvailableTools([]);
+        });
+    }).catch(() => { if (mounted) setAvailableTools([]); });
+
     return () => { mounted = false; };
   }, []);
 
-  // Handle image file selection
-  const handleImageFiles = async (files: File[]) => {
-    if (!onImagesChange) return;
-
-    try {
-      const uploadedImages = await imagesClient.uploadImages(files, setUploadProgress);
-      onImagesChange([...images, ...uploadedImages]);
-    } catch (error) {
-      console.error('Image upload failed:', error);
-      // TODO: Show error toast/notification
+  // ===== EVENT HANDLERS =====
+  // Input handling
+  const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      if (pending.streaming) onStop();
+      else onSend();
     }
-  };
-
-  // Handle image removal
-  const handleRemoveImage = (imageId: string) => {
-    if (!onImagesChange) return;
-
-    const imageToRemove = images.find(img => img.id === imageId);
-    if (imageToRemove) {
-      // Revoke blob URL to free memory
-      imagesClient.revokePreviewUrl(imageToRemove.url);
-      onImagesChange(images.filter(img => img.id !== imageId));
-    }
-  };
-
-  // Handle image upload button click
-  const handleImageUploadClick = () => {
-    fileInputRef.current?.click();
-  };
-
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length > 0) {
-      handleImageFiles(files);
-    }
-    // Reset input value so same file can be selected again
-    e.target.value = '';
   };
 
   const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
@@ -173,20 +171,69 @@ export function MessageInput({
     }
   };
 
+  // Image handling
+  const handleImageFiles = async (files: File[]) => {
+    if (!onImagesChange || !images) return;
 
-  const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      if (pending.streaming) onStop();
-      else onSend();
+    try {
+      const uploadedImages = await imageUtils.uploadImages(files, setUploadProgress);
+      onImagesChange([...images, ...uploadedImages]);
+    } catch (error) {
+      console.error('Image upload failed:', error);
+      // TODO: Show error toast/notification
     }
   };
 
-  // Check if we can send (have text or images)
-  const canSend = input.trim().length > 0 || images.length > 0;
+  const handleRemoveImage = (imageId: string) => {
+    if (!onImagesChange || !images) return;
 
+    const imageToRemove = images.find(img => img.id === imageId);
+    if (imageToRemove) {
+      // Revoke blob URL to free memory
+      imageUtils.revokePreviewUrl(imageToRemove.url);
+      onImagesChange(images.filter(img => img.id !== imageId));
+    }
+  };
+
+  const handleImageUploadClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      handleImageFiles(files);
+    }
+    // Reset input value so same file can be selected again
+    e.target.value = '';
+  };
+
+  // Tools handling
+  const handleSearchToggle = (enabled: boolean) => {
+    const searchTools = ['web_search', 'web_search_exa'];
+    let next: string[];
+
+    if (enabled) {
+      // Add both search tools if not already present
+      next = [...new Set([...localSelected, ...searchTools])];
+    } else {
+      // Remove both search tools
+      next = localSelected.filter(t => !searchTools.includes(t));
+    }
+
+    setLocalSelected(next);
+    onEnabledToolsChange?.(next);
+    onUseToolsChange?.(next.length > 0);
+  };
+
+  // ===== RENDER =====
   return (
-  <ImageUploadZone onFiles={handleImageFiles} disabled={pending.streaming} fullPage={true}>
+    <ImageUploadZone
+      onFiles={handleImageFiles}
+      disabled={pending.streaming}
+      fullPage={true}
+      clickToUpload={false} // Avoid overlay input intercepting hover events (tooltips)
+    >
       <form
         className=""
         onSubmit={e => { e.preventDefault(); if (pending.streaming) onStop(); else onSend(); }}
@@ -194,7 +241,7 @@ export function MessageInput({
         <div className="px-2">
           <div className="relative rounded-2xl bg-white/95 dark:bg-neutral-900/95 border border-slate-200 dark:border-neutral-700 shadow-xl transition-shadow duration-200">
 
-            {/* Image Previews */}
+            {/* ===== IMAGE PREVIEWS ===== */}
             {images.length > 0 && (
               <div className="p-4 pb-2 border-b border-slate-200 dark:border-neutral-700">
                 <ImagePreview
@@ -205,92 +252,21 @@ export function MessageInput({
               </div>
             )}
 
-            <textarea
-              ref={inputRef}
-              className="w-full resize-none bg-transparent border-0 outline-none p-4 text-sm placeholder-slate-500 dark:placeholder-slate-400 text-slate-800 dark:text-slate-200"
-              placeholder="Type your message..."
-              value={input}
-              onChange={e => onInputChange(e.target.value)}
-              onKeyDown={handleKey}
-              onPaste={handlePaste}
-              rows={1}
-            />
-            <div className="flex items-center justify-between px-4 pb-4">
-              <div className="flex items-center gap-4 text-xs scrollbar-hide">
-                <div className="flex items-center">
-                  {/* model selector moved to header */}
-                </div>
-
-                {supportsThinking && (
-                  <div className="flex items-center">
-                    <QualitySlider
-                      value={qualityLevel}
-                      onChange={onQualityLevelChange}
-                      icon={<Gauge className="w-4 h-4" />}
-                      ariaLabel="Response Quality"
-                      className="flex-shrink-0"
-                    />
-                  </div>
-                )}
-
-                <div className="flex items-center">
-                  <div className="relative" ref={toolsDropdownRef}>
-                    <button
-                      type="button"
-                      aria-label="Tools"
-                      onClick={() => setToolsOpen(v => !v)}
-                      className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors duration-150"
-                    >
-                      <Wrench className="w-4 h-4" />
-                      <span className="text-xs text-slate-600 dark:text-slate-300">{localSelected.length ? `${localSelected.length}` : 'Off'}</span>
-                    </button>
-
-                    {toolsOpen && (
-                      <div className="absolute bottom-full mb-2 right-0 w-72 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 shadow-lg rounded-lg p-3 z-50">
-                        <div className="text-sm font-medium mb-2">Tools</div>
-                        <div className="max-h-40 overflow-auto space-y-2">
-                          {availableTools.length === 0 && (
-                            <div className="text-xs text-slate-500">No tools available</div>
-                          )}
-                          {availableTools.map(t => {
-                            const id = t.name;
-                            const checked = localSelected.includes(id);
-                            return (
-                              <label key={id} className="flex items-start gap-2 cursor-pointer p-1 rounded-md hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors duration-150">
-                                <input
-                                  type="checkbox"
-                                  className="mt-1 cursor-pointer"
-                                  checked={checked}
-                                  onChange={e => {
-                                    const next = e.target.checked ? [...localSelected, id] : localSelected.filter(x => x !== id);
-                                    setLocalSelected(next);
-                                    onEnabledToolsChange?.(next);
-                                    onUseToolsChange?.(next.length > 0);
-                                  }}
-                                />
-                                <div className="text-xs">
-                                  <div className="font-medium text-slate-800 dark:text-slate-200">{t.name}</div>
-                                  {t.description && <div className="text-[11px] text-slate-500 dark:text-slate-400">{t.description}</div>}
-                                </div>
-                              </label>
-                            );
-                          })}
-                        </div>
-                        <div className="flex justify-end mt-3">
-                          <button
-                            type="button"
-                            onClick={() => setToolsOpen(false)}
-                            className="text-xs px-3 py-1 rounded-md bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700 cursor-pointer transition-colors duration-150"
-                          >Done</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Image Upload Button */}
-                {onImagesChange && (
-                  <div className="flex items-center">
+            {/* ===== TEXT INPUT WITH IMAGE UPLOAD ===== */}
+            <div className="flex items-start gap-2 p-4">
+              {/* Image upload button */}
+              {onImagesChange && (
+                <Tooltip content="Upload images">
+                  <button
+                    type="button"
+                    onClick={handleImageUploadClick}
+                    disabled={pending.streaming}
+                    className={`flex-shrink-0 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${images.length > 0
+                      ? 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20'
+                      : 'text-slate-500 dark:text-slate-400'
+                      }`}
+                    aria-label="Add Images"
+                  >
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -299,56 +275,245 @@ export function MessageInput({
                       className="hidden"
                       onChange={handleFileInputChange}
                     />
+                    <ImagePlus className="w-5 h-5" />
+                  </button>
+                </Tooltip>
+              )}
+
+              {/* Text input */}
+              <textarea
+                ref={inputRef}
+                className="flex-1 resize-none bg-transparent border-0 outline-none text-sm placeholder-slate-500 dark:placeholder-slate-400 text-slate-800 dark:text-slate-200"
+                placeholder="Type your message..."
+                value={input}
+                onChange={e => onInputChange(e.target.value)}
+                onKeyDown={handleKey}
+                onPaste={handlePaste}
+                rows={1}
+              />
+            </div>
+
+            {/* ===== CONTROLS BAR ===== */}
+            <div className="flex items-center justify-between px-4 pb-4">
+              {/* Left side controls - grouped logically */}
+              <div className="flex items-center gap-6 text-xs scrollbar-hide">
+                {/* AI Controls Group */}
+                <div className="flex items-center gap-3">
+                  {/* Quality/Reasoning control */}
+                  {supportsThinking && (
+                    <Tooltip content="Reasoning effort level">
+                      <QualitySlider
+                        value={qualityLevel}
+                        onChange={onQualityLevelChange}
+                        icon={<Gauge className="w-4 h-4" />}
+                        ariaLabel="Reasoning Effort"
+                        className="flex-shrink-0"
+                        model={model.split('::').pop() || model}
+                      />
+                    </Tooltip>
+                  )}
+
+                  {/* Stream toggle */}
+                  <Tooltip content="Stream responses in real-time">
                     <button
                       type="button"
-                      onClick={handleImageUploadClick}
-                      disabled={pending.streaming}
-                      className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
-                      aria-label="Add Images"
+                      onClick={() => onShouldStreamChange(!shouldStream)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all duration-200 ${
+                        shouldStream
+                          ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
+                          : 'border-transparent hover:bg-slate-100 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400'
+                      }`}
                     >
-                      <ImagePlus className="w-4 h-4" />
-                      <span className="text-xs text-slate-600 dark:text-slate-300">
-                        {images.length > 0 ? images.length : 'Images'}
-                      </span>
+                      <Zap className="w-4 h-4" />
+                      <span className="text-sm font-medium">Stream</span>
                     </button>
-                  </div>
-                )}
-
-                <div className="flex items-center">
-                  <Toggle
-                    ariaLabel="Stream"
-                    icon={<Zap className="w-4 h-4" />}
-                    checked={shouldStream}
-                    onChange={onShouldStreamChange}
-                    className="whitespace-nowrap"
-                  />
+                  </Tooltip>
                 </div>
 
+                {/* Visual separator */}
+                {(supportsThinking || true) && (
+                  <div className="w-px h-6 bg-slate-200 dark:bg-neutral-700" />
+                )}
+
+                {/* Tools Group */}
+                <div className="flex items-center gap-3">
+                  {/* Search toggle */}
+                  <Tooltip content="Enable web search (Tavily + Exa)">
+                    <button
+                      type="button"
+                      onClick={() => handleSearchToggle(!searchEnabled)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all duration-200 ${
+                        searchEnabled
+                          ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
+                          : 'border-transparent hover:bg-slate-100 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      <Globe className="w-4 h-4" />
+                      <span className="text-sm font-medium">Search</span>
+                    </button>
+                  </Tooltip>
+
+                  {/* Tools selector */}
+                  <Tooltip content="Select tools to enable">
+                    <div className="relative" ref={toolsDropdownRef}>
+                      <button
+                        type="button"
+                        aria-label="Tools"
+                        onClick={() => setToolsOpen(v => !v)}
+                        className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors duration-150"
+                      >
+                        <Wrench className="w-4 h-4" />
+                        <span className={`text-xs px-1.5 py-0.5 rounded-full transition-colors ${localSelected.length > 0
+                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                          : 'text-slate-600 dark:text-slate-300'
+                          }`}>
+                          {localSelected.length || 'None'}
+                        </span>
+                      </button>
+
+                      {/* Tools dropdown */}
+                      {toolsOpen && (
+                        <div className="absolute bottom-full mb-2 right-0 w-80 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 shadow-xl rounded-lg p-3 z-50">
+                          {/* Dropdown header */}
+                          <div className="flex items-center justify-between mb-2">
+                            <div className="flex items-center gap-3">
+                              <div className="text-sm font-semibold">Tools</div>
+                              <div className="text-xs text-slate-500 dark:text-slate-400">{availableTools.length} available</div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Toggle
+                                ariaLabel="Enable tools"
+                                checked={localSelected.length > 0}
+                                onChange={(v: boolean) => {
+                                  if (!v) {
+                                    setLocalSelected([]);
+                                    onEnabledToolsChange?.([]);
+                                    onUseToolsChange?.(false);
+                                  } else if (availableTools.length > 0) {
+                                    const all = availableTools.map(t => t.name);
+                                    setLocalSelected(all);
+                                    onEnabledToolsChange?.(all);
+                                    onUseToolsChange?.(all.length > 0);
+                                  }
+                                }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Search and bulk actions */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <input
+                              type="text"
+                              value={toolFilter}
+                              onChange={e => setToolFilter(e.target.value)}
+                              placeholder="Search tools..."
+                              className="flex-1 text-xs px-2 py-1 border border-slate-200 dark:border-neutral-800 rounded-md bg-slate-50 dark:bg-neutral-800 text-slate-800 dark:text-slate-200"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const all = availableTools.map(t => t.name);
+                                setLocalSelected(all);
+                                onEnabledToolsChange?.(all);
+                                onUseToolsChange?.(all.length > 0);
+                              }}
+                              className="text-xs px-2 py-1 rounded-md bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700"
+                            >Select all</button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setLocalSelected([]);
+                                onEnabledToolsChange?.([]);
+                                onUseToolsChange?.(false);
+                              }}
+                              className="text-xs px-2 py-1 rounded-md bg-transparent border border-slate-100 dark:border-neutral-800 hover:bg-slate-50 dark:hover:bg-neutral-800"
+                            >Clear</button>
+                          </div>
+
+                          {/* Tools list */}
+                          <div className="max-h-48 overflow-auto">
+                            {availableTools.length === 0 && (
+                              <div className="text-xs text-slate-500">No tools available</div>
+                            )}
+
+                            <div className="grid grid-cols-1 gap-2">
+                              {availableTools
+                                .filter(t => t.name.toLowerCase().includes(toolFilter.toLowerCase()) || (t.description || '').toLowerCase().includes(toolFilter.toLowerCase()))
+                                .map(t => {
+                                  const id = t.name;
+                                  const checked = localSelected.includes(id);
+                                  return (
+                                    <button
+                                      key={id}
+                                      type="button"
+                                      onClick={() => {
+                                        const next = checked ? localSelected.filter(x => x !== id) : [...localSelected, id];
+                                        setLocalSelected(next);
+                                        onEnabledToolsChange?.(next);
+                                        onUseToolsChange?.(next.length > 0);
+                                      }}
+                                      className={`w-full text-left p-2 rounded-md transition-colors duration-150 flex items-center justify-between ${checked ? 'bg-slate-100 dark:bg-neutral-800 ring-1 ring-slate-200 dark:ring-neutral-700' : 'hover:bg-slate-50 dark:hover:bg-neutral-800'}`}
+                                    >
+                                      <div>
+                                        <div className="text-xs font-medium text-slate-800 dark:text-slate-200">{t.name}</div>
+                                        {t.description && <div className="text-[11px] text-slate-500 dark:text-slate-400">{t.description}</div>}
+                                      </div>
+                                      <div className="flex items-center">
+                                        <input
+                                          type="checkbox"
+                                          className="cursor-pointer"
+                                          checked={checked}
+                                          readOnly
+                                        />
+                                      </div>
+                                    </button>
+                                  );
+                                })}
+                            </div>
+                          </div>
+
+                          {/* Dropdown footer */}
+                          <div className="flex justify-end mt-3">
+                            <button
+                              type="button"
+                              onClick={() => setToolsOpen(false)}
+                              className="text-xs px-3 py-1 rounded-md bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700 cursor-pointer transition-colors duration-150"
+                            >Done</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </Tooltip>
+                </div>
+
+
               </div>
+
+              {/* ===== SEND BUTTON ===== */}
               <button
-                  type="button"
-                  onClick={() => {
-                    if (pending.streaming) {
-                      onStop();
-                    } else {
-                      onSend();
-                    }
-                  }}
-                  disabled={!canSend && !pending.streaming}
-                  className="flex items-center gap-2 px-4 py-2 text-sm rounded-xl bg-slate-800 hover:bg-slate-700 dark:bg-slate-600 dark:hover:bg-slate-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg disabled:hover:shadow-md transform hover:scale-[1.02] disabled:hover:scale-100"
-                >
-                  {pending.streaming ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Stop
-                    </>
-                  ) : (
-                    <>
-                      <Send className="w-4 h-4" />
-                      Send
-                    </>
-                  )}
-                </button>
+                type="button"
+                onClick={() => {
+                  if (pending.streaming) {
+                    onStop();
+                  } else {
+                    onSend();
+                  }
+                }}
+                disabled={!canSend && !pending.streaming}
+                className="flex items-center gap-2 px-4 py-2 text-sm rounded-xl bg-slate-800 hover:bg-slate-700 dark:bg-slate-600 dark:hover:bg-slate-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg disabled:hover:shadow-md transform hover:scale-[1.02] disabled:hover:scale-100"
+              >
+                {pending.streaming ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Stop
+                  </>
+                ) : (
+                  <>
+                    <Send className="w-4 h-4" />
+                    Send
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>

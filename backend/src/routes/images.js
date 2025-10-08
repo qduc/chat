@@ -1,5 +1,5 @@
 import express from 'express';
-import multer from 'multer';
+import multer from '../lib/multerShim.js';
 import path from 'path';
 import fs from 'fs/promises';
 import { nanoid } from 'nanoid';
@@ -118,11 +118,11 @@ router.post('/v1/images/upload', authenticateToken, upload.array('images', IMAGE
           throw metadataError;
         }
 
-        const url = `/v1/images/${imageId}`;
+        const baseUrl = `/v1/images/${imageId}`;
 
         results.push({
           id: imageId,
-          url,
+          url: baseUrl,
           filename: storageFilename,
           originalFilename: file.originalname,
           size: file.size,
@@ -214,6 +214,7 @@ router.get('/v1/images/config', (req, res) => {
     storageLimitPerUser: IMAGE_CONFIG.storageLimitPerUser,
   });
 });
+
 
 /**
  * GET /v1/images/:imageId

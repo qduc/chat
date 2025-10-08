@@ -20,29 +20,74 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatV2 as Chat } from '../components/ChatV2';
 import { ThemeProvider } from '../contexts/ThemeContext';
-import * as chatLib from '../lib/chat';
 
-// Mock the chat library functions
-jest.mock('../lib/chat');
-const mockedChatLib = chatLib as jest.Mocked<typeof chatLib>;
+type ConversationsApi = typeof import('../lib/api')['conversations'];
+type ChatApi = typeof import('../lib/api')['chat'];
+type ToolsApi = typeof import('../lib/api')['tools'];
+type ProvidersApi = typeof import('../lib/api')['providers'];
+type AuthApi = typeof import('../lib/api')['auth'];
+type HttpClient = typeof import('../lib/http')['httpClient'];
 
-// The hook uses ConversationManager (class) internally. Ensure the mocked module
-// returns a mocked ConversationManager whose `list` method resolves to the
-// same conversations we expect in tests. This prevents the real ConversationManager
-// from making HTTP calls and keeps the test deterministic.
-mockedChatLib.ConversationManager = jest.fn().mockImplementation(() => ({
-  list: jest.fn().mockResolvedValue({
-    items: [
-      { id: 'conv-1', title: 'Test Conversation', model: 'gpt-4o', created_at: '2023-01-01' },
-    ],
-    next_cursor: null,
-  }),
-  // include no-op placeholders for other instance methods used elsewhere
+const mockConversations: jest.Mocked<ConversationsApi> = {
   create: jest.fn(),
+  list: jest.fn(),
   get: jest.fn(),
   delete: jest.fn(),
+  clearListCache: jest.fn(),
   editMessage: jest.fn(),
-} as any)) as unknown as jest.MockedClass<typeof chatLib.ConversationManager>;
+  migrateFromSession: jest.fn(),
+};
+
+const mockChat: jest.Mocked<ChatApi> = {
+  sendMessage: jest.fn(),
+};
+
+const mockTools: jest.Mocked<ToolsApi> = {
+  getToolSpecs: jest.fn(),
+};
+
+const mockProviders: jest.Mocked<ProvidersApi> = {
+  getDefaultProviderId: jest.fn(),
+  clearCache: jest.fn(),
+};
+
+const mockAuth: jest.Mocked<AuthApi> = {
+  register: jest.fn(),
+  login: jest.fn(),
+  logout: jest.fn(),
+  getProfile: jest.fn(),
+  verifySession: jest.fn(() => Promise.resolve({ valid: true, user: null, reason: null } as any)),
+};
+
+const mockHttpClient = {
+  request: jest.fn(),
+  get: jest.fn(),
+  post: jest.fn(),
+  put: jest.fn(),
+  patch: jest.fn(),
+  delete: jest.fn(),
+  setRefreshTokenFn: jest.fn(),
+} as unknown as jest.Mocked<HttpClient>;
+
+jest.mock('../lib/api', () => {
+  const actual = jest.requireActual('../lib/api');
+  return {
+    ...actual,
+    conversations: mockConversations,
+    chat: mockChat,
+    tools: mockTools,
+    providers: mockProviders,
+    auth: mockAuth,
+  };
+});
+
+jest.mock('../lib/http', () => {
+  const actual = jest.requireActual('../lib/http');
+  return {
+    ...actual,
+    httpClient: mockHttpClient,
+  };
+});
 
 // Mock the Markdown component to avoid ES module issues
 jest.mock('../components/Markdown', () => ({
@@ -64,10 +109,17 @@ Object.defineProperty(global, 'crypto', {
   },
 });
 
-// Mock localStorage
+// Mock localStorage with key-aware behavior
 const mockLocalStorage = {
-  getItem: jest.fn(),
+  getItem: jest.fn((key: string) => null),
   setItem: jest.fn(),
+  removeItem: jest.fn(),
+  clear: jest.fn(),
+} as unknown as Storage & {
+  getItem: jest.Mock;
+  setItem: jest.Mock;
+  removeItem: jest.Mock;
+  clear: jest.Mock;
 };
 Object.defineProperty(window, 'localStorage', {
   value: mockLocalStorage,
@@ -77,39 +129,85 @@ function renderWithProviders(ui: React.ReactElement) {
   return render(<ThemeProvider>{ui}</ThemeProvider>);
 }
 
+function setupHttpClient() {
+  mockHttpClient.get.mockImplementation((url: string) => {
+    if (url === '/v1/providers') {
+      return Promise.resolve({
+        data: {
+          providers: [
+            { id: 'openai', name: 'OpenAI', enabled: 1, updated_at: new Date().toISOString() },
+            { id: 'disabled', name: 'Disabled', enabled: 0, updated_at: new Date().toISOString() },
+          ],
+        },
+        status: 200,
+        statusText: 'OK',
+        headers: new Headers(),
+      });
+    }
+
+    if (url === '/v1/providers/openai/models') {
+      return Promise.resolve({
+        data: {
+          provider: { id: 'openai' },
+          models: [
+            { id: 'gpt-4o' },
+            { id: 'gpt-4o-mini' },
+          ],
+        },
+        status: 200,
+        statusText: 'OK',
+        headers: new Headers(),
+      });
+    }
+
+    return Promise.resolve({
+      data: { provider: { id: 'unknown' }, models: [] },
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers(),
+    });
+  });
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
 
-  // Setup chat functionality
-  mockedChatLib.listConversationsApi.mockResolvedValue({
+  mockConversations.list.mockResolvedValue({
     items: [
       { id: 'conv-1', title: 'Test Conversation', model: 'gpt-4o', created_at: '2023-01-01' },
     ],
     next_cursor: null,
   });
-  mockedChatLib.sendChat.mockResolvedValue({
+  mockChat.sendMessage.mockResolvedValue({
     content: 'Mock response',
     responseId: 'mock-response-id'
   });
-  mockedChatLib.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] });
-  mockedChatLib.getConversationApi.mockResolvedValue({
+  mockTools.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] } as any);
+  mockConversations.get.mockResolvedValue({
     id: 'mock-conv-id',
     title: 'Mock Conversation',
     model: 'test-model',
     created_at: new Date().toISOString(),
     messages: [],
     next_after_seq: null,
-  });
+  } as any);
+  mockAuth.getProfile.mockResolvedValue({
+    id: 'test-user',
+    email: 'test@example.com',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  } as any);
+  setupHttpClient();
 
   // Mock localStorage to return false (expanded by default)
-  mockLocalStorage.getItem.mockReturnValue(null);
+  mockLocalStorage.getItem.mockImplementation((key: string) => null);
 });
 
 describe('Sidebar Collapse Functionality', () => {
   // Provide a minimal matchMedia mock for JSDOM used in tests
   beforeAll(() => {
     if (typeof window.matchMedia !== 'function') {
-      // @ts-ignore
+      // @ts-expect-error: Mocking window.matchMedia for test environment where it may not be defined
       window.matchMedia = (query: string) => ({
         matches: false,
         media: query,
@@ -187,8 +285,8 @@ describe('Sidebar Collapse Functionality', () => {
   });
 
   test('sidebar loads collapsed state from localStorage', async () => {
-    // Mock localStorage to return 'true' (collapsed)
-    mockLocalStorage.getItem.mockReturnValue('true');
+    // Mock localStorage to return 'true' (collapsed) only for the sidebar key
+    mockLocalStorage.getItem.mockImplementation((key: string) => key === 'sidebarCollapsed' ? 'true' : null);
 
     renderWithProviders(<Chat />);
 

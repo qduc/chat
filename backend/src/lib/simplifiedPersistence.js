@@ -4,8 +4,15 @@ import {
   ConversationValidator,
   ConversationTitleService,
   PersistenceConfig,
-  ToolCallPersistence,
 } from './persistence/index.js';
+import {
+  insertToolCalls,
+  insertToolOutputs,
+} from '../db/toolCalls.js';
+import {
+  insertToolMessage,
+  getNextSeq,
+} from '../db/messages.js';
 
 /**
  * Simplified persistence manager that implements final-only writes
@@ -31,6 +38,13 @@ export class SimplifiedPersistence {
     this.currentMessageId = null; // Track current assistant message ID for tool call persistence
     this.toolCalls = []; // Buffer tool calls during streaming
     this.toolOutputs = []; // Buffer tool outputs during streaming
+    this.assistantContentJson = null; // Preserve structured assistant content when available
+    this.reasoningDetails = null; // Structured reasoning blocks captured from providers
+    this.reasoningTextBuffer = ''; // Accumulate reasoning text during streaming when structured data absent
+    this.reasoningTokens = null; // Reasoning token usage metadata
+    this.userMessageId = null; // Persisted user message ID from latest sync
+    this.assistantMessageId = null; // Persisted assistant message ID for the current turn
+    this._latestSyncMappings = [];
   }
 
   /**
@@ -46,6 +60,9 @@ export class SimplifiedPersistence {
   async initialize({ conversationId, sessionId, userId = null, req, bodyIn }) {
     // Store user context for later use
     this.userId = userId;
+  this.userMessageId = null;
+  this.assistantMessageId = null;
+  this._latestSyncMappings = [];
 
     // Check if persistence is enabled
     // Prioritize user-based persistence - require either userId OR sessionId
@@ -145,10 +162,20 @@ export class SimplifiedPersistence {
    */
   async _processMessageHistory(sessionId, userId, bodyIn, isNewConversation) {
     const messages = this.persistenceConfig.filterNonSystemMessages(bodyIn.messages || []);
+    const maxSeq = messages
+      .map(msg => msg.seq)
+      .filter(seq => typeof seq === 'number' && seq > 0)
+      .reduce((max, current) => Math.max(max, current), 0);
+    const seq = Math.max(0, maxSeq - 1);
 
     if (messages.length > 0) {
-      // Sync message history
-      this.conversationManager.syncMessageHistory(this.conversationId, userId, messages);
+      // Sync message history using diff-based approach with automatic fallback
+  const syncResult = this.conversationManager.syncMessageHistoryDiff(this.conversationId, userId, messages, seq);
+      this._latestSyncMappings = Array.isArray(syncResult?.idMappings) ? syncResult.idMappings : [];
+
+      // Track the most recent persisted user message ID for response metadata
+      const latestUserMapping = [...this._latestSyncMappings].reverse().find(mapping => mapping.role === 'user');
+  this.userMessageId = latestUserMapping?.persistedId != null ? String(latestUserMapping.persistedId) : null;
 
       // Generate title only if this is the first message in a new conversation
       if (isNewConversation) {
@@ -178,6 +205,11 @@ export class SimplifiedPersistence {
     this.persist = true;
     this.assistantSeq = this.conversationManager.getNextSequence(this.conversationId);
     this.assistantBuffer = '';
+    this.assistantContentJson = null;
+    this.reasoningDetails = null;
+    this.reasoningTextBuffer = '';
+    this.reasoningTokens = null;
+    this.assistantMessageId = null;
   }
 
   /**
@@ -261,13 +293,181 @@ export class SimplifiedPersistence {
       console.warn('[SimplifiedPersistence] Metadata update failed:', error?.message || error);
     }
   }
+
+  _clone(value) {
+    if (value === undefined || value === null) return value;
+    try {
+      return JSON.parse(JSON.stringify(value));
+    } catch {
+      return value;
+    }
+  }
+
+  _extractTextFromMixedContent(content) {
+    if (!Array.isArray(content)) return '';
+    const segments = [];
+    for (const part of content) {
+      if (!part) continue;
+      if (typeof part === 'string') {
+        segments.push(part);
+        continue;
+      }
+      if (typeof part === 'object') {
+        if (typeof part.text === 'string') {
+          segments.push(part.text);
+          continue;
+        }
+        if (typeof part.value === 'string') {
+          segments.push(part.value);
+          continue;
+        }
+        if (typeof part.content === 'string') {
+          segments.push(part.content);
+        }
+      }
+    }
+    return segments.join('');
+  }
+
+  setAssistantContent(content) {
+    if (!this.persist || content === undefined) return;
+
+    if (Array.isArray(content)) {
+      this.assistantContentJson = this._clone(content);
+      this.assistantBuffer = this._extractTextFromMixedContent(content);
+      return;
+    }
+
+    if (typeof content === 'string') {
+      this.assistantContentJson = null;
+      this.assistantBuffer = content;
+      return;
+    }
+
+    if (content === null) {
+      this.assistantContentJson = null;
+      this.assistantBuffer = '';
+      return;
+    }
+
+    if (typeof content === 'object') {
+      this.assistantContentJson = this._clone(content);
+      if (Array.isArray(content.content)) {
+        this.assistantBuffer = this._extractTextFromMixedContent(content.content);
+      } else if (typeof content.text === 'string') {
+        this.assistantBuffer = content.text;
+      } else if (typeof content.value === 'string') {
+        this.assistantBuffer = content.value;
+      } else if (typeof content.output_text === 'string') {
+        this.assistantBuffer = content.output_text;
+      } else {
+        this.assistantBuffer = '';
+      }
+    }
+  }
+
+  appendReasoningText(delta) {
+    if (!this.persist || !delta) return;
+    this.reasoningTextBuffer += delta;
+  }
+
+  setReasoningDetails(details) {
+    if (!this.persist || details === undefined) return;
+
+    if (details === null) {
+      this.reasoningDetails = null;
+      return;
+    }
+
+    if (Array.isArray(details)) {
+      this.reasoningDetails = this._clone(details);
+      return;
+    }
+
+    if (typeof details === 'object') {
+      const cloned = this._clone(details);
+      if (!Array.isArray(this.reasoningDetails)) {
+        this.reasoningDetails = [];
+      }
+      this.reasoningDetails.push(cloned);
+    }
+  }
+
+  setReasoningTokens(value) {
+    if (!this.persist || value === undefined) return;
+    if (value === null) {
+      this.reasoningTokens = null;
+      return;
+    }
+
+    const asNumber = Number(value);
+    if (!Number.isFinite(asNumber)) return;
+    this.reasoningTokens = Math.max(0, Math.trunc(asNumber));
+  }
+
+  _finalizeReasoningDetails() {
+    if (Array.isArray(this.reasoningDetails)) {
+      return this._clone(this.reasoningDetails);
+    }
+
+    if (this.reasoningDetails && typeof this.reasoningDetails === 'object') {
+      return [this._clone(this.reasoningDetails)];
+    }
+
+    if (typeof this.reasoningTextBuffer === 'string' && this.reasoningTextBuffer.trim()) {
+      return [{ type: 'text', text: this.reasoningTextBuffer }];
+    }
+
+    return null;
+  }
+  /**
+   * Get current content length for textOffset tracking
+   * @returns {number} Current length of assistant content
+   */
+  getContentLength() {
+    return this.assistantBuffer.length;
+  }
+
   /**
    * Buffer assistant content (no immediate DB write)
    * @param {string} delta - Content delta to add
    */
   appendContent(delta) {
-    if (!this.persist) return;
-    this.assistantBuffer += delta || '';
+    if (!this.persist || delta == null) return;
+
+    if (Array.isArray(delta)) {
+      const cloned = this._clone(delta) || [];
+
+      if (Array.isArray(this.assistantContentJson)) {
+        this.assistantContentJson.push(...cloned);
+      } else if (this.assistantContentJson && typeof this.assistantContentJson === 'object') {
+        // Existing structured content that's not an array; convert to array to preserve data
+        this.assistantContentJson = [this._clone(this.assistantContentJson), ...cloned];
+      } else {
+        this.assistantContentJson = cloned;
+      }
+
+      const text = this._extractTextFromMixedContent(cloned);
+      if (text) {
+        this.assistantBuffer += text;
+      }
+      return;
+    }
+
+    if (typeof delta === 'string') {
+      this.assistantBuffer += delta;
+      return;
+    }
+
+    if (typeof delta === 'object') {
+      if (typeof delta.text === 'string') {
+        this.assistantBuffer += delta.text;
+      } else if (typeof delta.value === 'string') {
+        this.assistantBuffer += delta.value;
+      } else if (typeof delta.content === 'string') {
+        this.assistantBuffer += delta.content;
+      }
+    }
   }
 
   /**
@@ -283,20 +483,35 @@ export class SimplifiedPersistence {
     try {
       const result = this.conversationManager.recordAssistantMessage({
         conversationId: this.conversationId,
-        content: this.assistantBuffer,
+        content: this.assistantContentJson ?? this.assistantBuffer,
         seq: this.assistantSeq,
         finishReason,
         responseId: responseId || this.responseId, // Use provided or stored responseId
+        reasoningDetails: this._finalizeReasoningDetails(),
+        reasoningTokens: this.reasoningTokens,
       });
 
       // Store message ID for tool call persistence
       if (result && result.id) {
         this.currentMessageId = result.id;
+        this.assistantMessageId = String(result.id);
+        console.log('[SimplifiedPersistence] Assistant message recorded', {
+          conversationId: this.conversationId,
+          messageId: this.currentMessageId,
+          seq: this.assistantSeq
+        });
       }
 
       // Persist any buffered tool calls and outputs
       this.persistToolCallsAndOutputs();
 
+      // Prepare for future iterations
+      this.assistantSeq = this.conversationManager.getNextSequence(this.conversationId);
+      this.assistantBuffer = '';
+      this.assistantContentJson = null;
+      this.reasoningDetails = null;
+      this.reasoningTextBuffer = '';
+      this.reasoningTokens = null;
       this.finalized = true;
     } catch (error) {
       console.error('[SimplifiedPersistence] Failed to record final assistant message:', error);
@@ -309,7 +524,13 @@ export class SimplifiedPersistence {
    * @param {Array} toolCalls - Array of tool calls in OpenAI format
    */
   addToolCalls(toolCalls) {
-    if (!this.persist || !Array.isArray(toolCalls)) return;
+    if (!this.persist || !Array.isArray(toolCalls) || toolCalls.length === 0) return;
+    console.log('[SimplifiedPersistence] Buffering tool calls', {
+      conversationId: this.conversationId,
+      messageSeq: this.assistantSeq,
+      callIds: toolCalls.map(tc => tc?.id),
+      count: toolCalls.length
+    });
     this.toolCalls.push(...toolCalls);
   }
 
@@ -318,7 +539,16 @@ export class SimplifiedPersistence {
    * @param {Array} toolOutputs - Array of tool outputs
    */
   addToolOutputs(toolOutputs) {
-    if (!this.persist || !Array.isArray(toolOutputs)) return;
+    if (!this.persist || !Array.isArray(toolOutputs) || toolOutputs.length === 0) return;
+    console.log('[SimplifiedPersistence] Buffering tool outputs', {
+      conversationId: this.conversationId,
+      messageSeq: this.assistantSeq,
+      entries: toolOutputs.map(out => ({
+        tool_call_id: out?.tool_call_id,
+        status: out?.status || 'success'
+      })),
+      count: toolOutputs.length
+    });
     this.toolOutputs.push(...toolOutputs);
   }
 
@@ -327,31 +557,72 @@ export class SimplifiedPersistence {
    * Called automatically during recordAssistantFinal
    */
   persistToolCallsAndOutputs() {
-    if (!this.persist || !this.conversationId || !this.currentMessageId) return;
+    if (!this.persist || !this.conversationId || !this.currentMessageId) {
+      // Clear buffers even if we can't persist
+      this.toolCalls = [];
+      this.toolOutputs = [];
+      return;
+    }
 
     try {
+      // Save tool calls to database (attached to assistant message)
       if (this.toolCalls.length > 0) {
-        ToolCallPersistence.saveToolCalls({
+        console.log('[SimplifiedPersistence] Persisting tool calls to database', {
+          conversationId: this.conversationId,
+          messageId: this.currentMessageId,
+          count: this.toolCalls.length,
+          callIds: this.toolCalls.map(tc => tc?.id)
+        });
+        insertToolCalls({
           messageId: this.currentMessageId,
           conversationId: this.conversationId,
           toolCalls: this.toolCalls
         });
       }
 
+      // Save tool outputs as separate "tool" role messages
       if (this.toolOutputs.length > 0) {
-        ToolCallPersistence.saveToolOutputs({
-          messageId: this.currentMessageId,
+        console.log('[SimplifiedPersistence] Persisting tool outputs as separate messages', {
           conversationId: this.conversationId,
-          toolOutputs: this.toolOutputs
+          count: this.toolOutputs.length
         });
-      }
 
-      // Clear buffers after persisting
-      this.toolCalls = [];
-      this.toolOutputs = [];
+        for (const toolOutput of this.toolOutputs) {
+          // Create a separate message with role="tool" for each output
+          const seq = getNextSeq(this.conversationId);
+          const toolContent = typeof toolOutput.output === 'string'
+            ? toolOutput.output
+            : JSON.stringify(toolOutput.output);
+
+          const result = insertToolMessage({
+            conversationId: this.conversationId,
+            content: toolContent,
+            seq,
+            status: toolOutput.status || 'success',
+            clientMessageId: null
+          });
+
+          if (result?.id) {
+            // Link the tool output to this tool message
+            insertToolOutputs({
+              messageId: result.id,
+              conversationId: this.conversationId,
+              toolOutputs: [{
+                tool_call_id: toolOutput.tool_call_id,
+                output: toolContent,
+                status: toolOutput.status || 'success'
+              }]
+            });
+          }
+        }
+      }
     } catch (error) {
       console.error('[SimplifiedPersistence] Failed to persist tool calls/outputs:', error);
-      // Don't throw - this is non-fatal for the main flow
+      // Don't throw - this is cleanup, allow the response to complete
+    } finally {
+      // Clear buffers after persistence attempt
+      this.toolCalls = [];
+      this.toolOutputs = [];
     }
   }
 

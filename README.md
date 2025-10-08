@@ -52,6 +52,8 @@ npm --prefix frontend run dev
 
 Visit http://localhost:3000
 
+In production the proxy exposes the backend at `https://<your-domain>/api`.
+
 ### Docker Development (Recommended)
 
 ```bash
@@ -67,6 +69,8 @@ cp backend/.env.example backend/.env
 ```
 
 Visit http://localhost:3003 (dev environment uses different ports)
+
+API requests from the browser can now target `http://localhost:3003/api` via the bundled reverse proxy container.
 
 ### Docker Production
 
@@ -129,6 +133,7 @@ chat/
 ```env
 OPENAI_API_KEY=your-api-key-here
 TAVILY_API_KEY=your-tavily-key-here  # Optional: for web_search tool
+EXA_API_KEY=your-exa-key-here       # Optional: for web_search_exa tool
 PORT=3001
 LOG_LEVEL=info
 RATE_LIMIT_MAX=100
@@ -139,7 +144,8 @@ RETENTION_DAYS=30
 #### Frontend (`frontend/.env.local`)
 
 ```env
-NEXT_PUBLIC_API_BASE=http://localhost:3001
+NEXT_PUBLIC_API_BASE=/api
+BACKEND_ORIGIN=http://localhost:3001
 ```
 
 ### Adding New Tools

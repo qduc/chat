@@ -292,8 +292,8 @@ export function forkConversationFromMessage({ originalConversationId, sessionId,
   });
 
   db.prepare(
-    `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, tokens_in, tokens_out, finish_reason, tool_calls, function_call, created_at, updated_at)
-     SELECT @newConversationId, role, status, content, content_json, seq, tokens_in, tokens_out, finish_reason, tool_calls, function_call, @now, @now
+   `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, tokens_in, tokens_out, finish_reason, tool_calls, function_call, reasoning_details, reasoning_tokens, created_at, updated_at)
+    SELECT @newConversationId, role, status, content, content_json, seq, tokens_in, tokens_out, finish_reason, tool_calls, function_call, reasoning_details, reasoning_tokens, @now, @now
      FROM messages
      WHERE conversation_id = @originalConversationId AND seq <= @messageSeq
      ORDER BY seq`

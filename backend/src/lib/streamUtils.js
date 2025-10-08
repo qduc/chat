@@ -61,3 +61,78 @@ export function setupStreamingHeaders(res) {
     res.flushHeaders();
   }
 }
+
+import { PassThrough } from 'node:stream';
+
+/**
+ * Tee a Node Readable stream so callers can consume the original stream
+ * while also capturing a small preview of the data for logging or inspection.
+ * Returns an object with a `body` (readable stream to use instead of original)
+ * and a `previewPromise` that resolves to the captured preview string when
+ * the source stream ends (or errors).
+ *
+ * @param {Object} response - The original fetch Response-like object (should expose .body Readable)
+ * @param {Object} options - { maxPreviewBytes }
+ */
+export function teeStreamWithPreview(response, options = {}) {
+  const maxPreviewBytes = Number(options.maxPreviewBytes || 2048);
+  const original = response?.body;
+  if (!original || typeof original.on !== 'function') {
+    return { body: original, previewPromise: Promise.resolve(null) };
+  }
+
+  const out = new PassThrough();
+  const capture = new PassThrough();
+
+  // Pipe original stream into both PassThroughs by wiring data events.
+  // We intentionally attach listeners to the original so we don't change
+  // its flowing mode semantics for other potential consumers.
+  original.on('data', (chunk) => {
+    try {
+      out.write(chunk);
+      capture.write(chunk);
+    } catch (e) {
+      // best-effort capture; ignore
+    }
+  });
+
+  original.on('end', () => {
+    try {
+      out.end();
+      capture.end();
+    } catch (e) {
+      // ignore
+    }
+  });
+
+  original.on('error', (err) => {
+    try {
+      out.destroy(err);
+      capture.destroy(err);
+    } catch (e) {
+      // ignore
+    }
+  });
+
+  // Accumulate preview up to maxPreviewBytes
+  let captured = '';
+  let capturedBytes = 0;
+  const previewPromise = new Promise((resolve) => {
+    capture.on('data', (chunk) => {
+      if (capturedBytes >= maxPreviewBytes) return;
+      try {
+        const s = String(chunk);
+        const remain = maxPreviewBytes - capturedBytes;
+        const toTake = s.slice(0, remain);
+        captured += toTake;
+        capturedBytes += Buffer.byteLength(toTake);
+      } catch {
+        // ignore conversion errors
+      }
+    });
+    capture.on('end', () => resolve(captured));
+    capture.on('error', () => resolve(captured));
+  });
+
+  return { body: out, previewPromise };
+}

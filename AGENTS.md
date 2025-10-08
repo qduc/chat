@@ -4,7 +4,7 @@ This document provides essential knowledge for AI agents to be immediately produ
 
 ## Project Overview
 
-**ChatForge** is a modern chat application with a Next.js frontend and Node.js backend, designed as an OpenAI API proxy with enhanced features like conversation persistence, tool orchestration, and multi-provider support.
+**ChatForge** is a modern chat application with a Next.js frontend and Node.js backend, designed as an OpenAI API proxy with enhanced features like conversation persistence, tool orchestration, multi-provider support, image handling, and advanced reasoning capabilities.
 
 ## Architecture Overview
 
@@ -36,6 +36,8 @@ chat/
 2. **Server-Side Tool Orchestration**: Tools execute on the backend, not client
 3. **OpenAI API Compatibility**: Backend presents OpenAI-compatible interface while adding features
 4. **Real-time Streaming**: SSE-based streaming for chat and tool execution
+5. **Conversation Settings Persistence**: Complete snapshots of conversation settings (model, provider, tools, reasoning controls) persist across edits and regenerations
+6. **Image Support**: Full image handling with upload, paste, preview, and secure metadata storage
 
 ## Development Workflow
 
@@ -52,11 +54,11 @@ chat/
 ./dev.sh ps              # Show running services
 ```
 
-### Logs and Monitoring
+### Logs
 ```bash
-./dev.sh logs -f         # Follow logs from all services
-./dev.sh logs -f frontend # Follow frontend logs only
-./dev.sh logs -f backend  # Follow backend logs only
+./dev.sh logs         # logs from all services
+./dev.sh logs frontend # frontend logs only
+./dev.sh logs backend  # backend logs only
 ./dev.sh logs --tail=100  # Show last 100 log lines
 ```
 
@@ -83,6 +85,12 @@ chat/
 ./dev.sh migrate fresh    # Reset database and reapply all migrations
 ```
 
+### Additional Services
+```bash
+# Adminer database management (available at http://localhost:3080)
+# Provides password-less login for SQLite database inspection
+```
+
 ## Key Architectural Patterns
 
 ### Backend Patterns
@@ -101,26 +109,32 @@ chat/
 - Backend expands simplified tool names to full specifications
 
 **Database Philosophy**:
-- User-based data isolation at query level
+- User-based data isolation at query level (enforced with NOT NULL constraints on user_id)
 - Migration-driven schema evolution
 - Automatic cleanup for data retention
+- In-memory caching with TTL support for performance optimization
 
 ### Frontend Patterns
 
 **State Management Philosophy**:
-- Single source of truth via reducer pattern
-- Optimistic updates with server reconciliation
+- Simplified state management with `useChat` hook using React `useState`
+- Direct state manipulation without complex reducer patterns
+- Encapsulated state and actions in a single custom hook
 - URL state synchronization for navigation
 
 **API Integration Philosophy**:
-- Centralized HTTP client for consistent error handling
-- Streaming and non-streaming modes handled transparently
+- Centralized HTTP client (`lib/http.ts`) for consistent error handling
+- Streaming utilities (`lib/streaming.ts`) for real-time data processing
 - Authentication state drives UI and API behavior
+- Type definitions centralized in `lib/types.ts`
 
 **Component Philosophy**:
 - Separation between container and presentational components
 - Tool visualization integrated into message rendering
 - Authentication-aware UI components
+- Image handling with drag-and-drop, paste support, and preview modals
+- Enhanced markdown rendering with language detection and copy functionality
+- Model capabilities dynamically adjust UI based on selected model features
 
 ## Core Conventions
 
@@ -138,29 +152,54 @@ chat/
 
 ### Universal Rules
 
-- **Authentication**: Always check user authentication for data operations
+- **Authentication**: Always check user authentication for data operations (user_id is required and enforced)
 - **Error Handling**: Use structured error responses, sanitize upstream errors
 - **Logging**: Structured logging for debugging and monitoring
 - **Type Safety**: TypeScript strict mode on frontend, JSDoc or validation on backend
 - **Testing**: Write tests before committing, both services must pass
+- **Code Quality**: ESLint configured for both frontend and backend with strict linting rules
 
 ## Important Architectural Decisions
 
 - **Provider Adapters**: System automatically selects appropriate API adapter based on upstream provider URL
 - **Tool Execution**: Always server-side, never client-side
-- **Data Isolation**: All queries filtered by authenticated user
-- **Streaming Protocol**: SSE for real-time updates
+- **Data Isolation**: All queries filtered by authenticated user (enforced at database level)
+- **Streaming Protocol**: SSE for real-time updates with usage metadata tracking
 - **API Compatibility**: Maintains OpenAI API contract while extending functionality
+- **Reverse Proxy**: Supports proxying requests to external services
+- **Image Storage**: Secure image metadata storage with path-based access control
+- **Conversation Snapshots**: Each conversation maintains complete settings snapshot for reproducibility
+- **Reasoning Controls**: Advanced reasoning features available across compatible models
+- **Performance**: In-memory caching, model filtering by provider, and optimized rendering
 
 ## Finding Your Way Around
 
 **Route definitions**: Look in `backend/src/routes/`
 **Tool implementations**: Look in `backend/src/lib/tools/`
-**State management**: Check `frontend/hooks/` for React hooks
-**API clients**: Check `frontend/lib/` for HTTP and chat clients
+**State management**: Check `frontend/hooks/useChat.ts` - single custom hook managing all chat state and actions
+**Other hooks**:
+  - `frontend/hooks/useSystemPrompts.ts` - System prompt management
+  - `frontend/hooks/useSecureImageUrl.ts` - Secure image URL handling
+**Core utilities**: Check `frontend/lib/` for shared functionality:
+  - `http.ts` - Centralized HTTP client
+  - `streaming.ts` - Streaming utilities
+  - `types.ts` - Type definitions
+  - `api.ts` - API integration
+  - `storage.ts` - Browser storage utilities
+  - `contentUtils.ts` - Content processing utilities
+  - `modelCapabilities.ts` - Model capability detection
 **Database schema**: Check migration files in `backend/scripts/`
-**UI components**: Check `frontend/components/` organized by feature
+**UI components**: Check `frontend/components/` organized by feature:
+  - Main chat components: `ChatV2.tsx`, `MessageList.tsx`, `MessageInput.tsx`
+  - Layout: `ChatHeader.tsx`, `ChatSidebar.tsx`, `RightSidebar.tsx`
+  - Markdown rendering: `Markdown.tsx`
+  - Settings: `SettingsModal.tsx`
+  - UI primitives: `components/ui/`
+**Image handling**: Check `frontend/components/ui/ImagePreview.tsx` (exports both `ImagePreview` and `ImageUploadZone`)
 **Documentation**: Check `docs/` for ADRs and detailed specs
+**Backend API Specification**: Check `docs/backend_api_spec.md` for the complete backend API specification
+**Linting**: ESLint configs in both `frontend/` and `backend/` directories
+**Upstream Logging**: Request and response of upstream API are in `backend/logs/` folder. These files are very long, only read a dozen of lines from the bottom. You can read them without executing in docker container, they have been mounted to this project directory.
 
 ## Instructions for Claude/Copilot AI
 

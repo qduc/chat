@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import fetchLib from 'node-fetch';
 import { v4 as uuidv4 } from 'uuid';
+import { config } from '../env.js';
 import {
   listProviders,
   getProviderById,
@@ -161,7 +162,7 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
     const upstream = await http(url, {
       method: 'GET',
       headers,
-      timeout: 3000 // 3 second timeout
+      timeout: config.providerConfig.modelFetchTimeoutMs
     });
 
     if (!upstream.ok) {
@@ -279,7 +280,7 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
     const upstream = await http(url, {
       method: 'GET',
       headers,
-      timeout: 10000 // 10 second timeout
+      timeout: config.providerConfig.timeoutMs
     });
 
     if (!upstream.ok) {
@@ -399,7 +400,7 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
     const upstream = await http(url, {
       method: 'GET',
       headers,
-      timeout: 10000 // 10 second timeout
+      timeout: config.providerConfig.timeoutMs
     });
 
     if (!upstream.ok) {

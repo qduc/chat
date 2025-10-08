@@ -16,57 +16,78 @@ jest.mock('../contexts/AuthContext', () => {
   };
 });
 
-// Ensure the chat library is mocked before importing components that use it.
-// Provide a manual mock implementation so ConversationManager instance methods
-// (list, get, delete, editMessage, create) delegate to the same mocked functions
-// that tests will set up below.
-jest.mock('../lib/chat', () => {
-  // Create placeholders for functions the tests will override
-  const mock: any = {
-    listConversationsApi: jest.fn(),
-    getConversationApi: jest.fn(),
-    deleteConversationApi: jest.fn(),
-    editMessageApi: jest.fn(),
-    createConversation: jest.fn(),
-    sendChat: jest.fn(),
-    getToolSpecs: jest.fn(),
-  };
 
-  class ConversationManager {
-    constructor() {}
-    async list(...args: any[]) {
-      return mock.listConversationsApi(undefined, ...args);
-    }
-    async get(...args: any[]) {
-      return mock.getConversationApi(undefined, ...args);
-    }
-    async delete(...args: any[]) {
-      return mock.deleteConversationApi(undefined, ...args);
-    }
-    async editMessage(...args: any[]) {
-      return mock.editMessageApi(undefined, ...args);
-    }
-    async create(...args: any[]) {
-      return mock.createConversation(undefined, ...args);
-    }
-  }
 
+type ConversationsApi = typeof import('../lib/api')['conversations'];
+type ChatApi = typeof import('../lib/api')['chat'];
+type ToolsApi = typeof import('../lib/api')['tools'];
+type ProvidersApi = typeof import('../lib/api')['providers'];
+type AuthApi = typeof import('../lib/api')['auth'];
+type HttpClient = typeof import('../lib/http')['httpClient'];
+
+const mockConversations: jest.Mocked<ConversationsApi> = {
+  create: jest.fn(),
+  list: jest.fn(),
+  get: jest.fn(),
+  delete: jest.fn(),
+  clearListCache: jest.fn(),
+  editMessage: jest.fn(),
+  migrateFromSession: jest.fn(),
+};
+
+const mockChat: jest.Mocked<ChatApi> = {
+  sendMessage: jest.fn(),
+};
+
+const mockTools: jest.Mocked<ToolsApi> = {
+  getToolSpecs: jest.fn(),
+};
+
+const mockProviders: jest.Mocked<ProvidersApi> = {
+  getDefaultProviderId: jest.fn(),
+  clearCache: jest.fn(),
+};
+
+const mockAuth: jest.Mocked<AuthApi> = {
+  register: jest.fn(),
+  login: jest.fn(),
+  logout: jest.fn(),
+  getProfile: jest.fn(),
+  verifySession: jest.fn(() => Promise.resolve({ valid: true, user: null, reason: null } as any)),
+};
+
+const mockHttpClient = {
+  request: jest.fn(),
+  get: jest.fn(),
+  post: jest.fn(),
+  put: jest.fn(),
+  patch: jest.fn(),
+  delete: jest.fn(),
+  setRefreshTokenFn: jest.fn(),
+} as unknown as jest.Mocked<HttpClient>;
+
+jest.mock('../lib/api', () => {
+  const actual = jest.requireActual('../lib/api');
   return {
-    __esModule: true,
-    ConversationManager,
-    listConversationsApi: mock.listConversationsApi,
-    getConversationApi: mock.getConversationApi,
-    deleteConversationApi: mock.deleteConversationApi,
-    editMessageApi: mock.editMessageApi,
-    createConversation: mock.createConversation,
-    sendChat: mock.sendChat,
-    getToolSpecs: mock.getToolSpecs,
+    ...actual,
+    conversations: mockConversations,
+    chat: mockChat,
+    tools: mockTools,
+    providers: mockProviders,
+    auth: mockAuth,
   };
 });
+
+jest.mock('../lib/http', () => {
+  const actual = jest.requireActual('../lib/http');
+  return {
+    ...actual,
+    httpClient: mockHttpClient,
+  };
+});
+
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import * as chatLib from '../lib/chat';
-const mockedChatLib = chatLib as jest.Mocked<typeof chatLib>;
 import { ChatV2 as Chat } from '../components/ChatV2';
 import { ThemeProvider } from '../contexts/ThemeContext';
 
@@ -90,39 +111,105 @@ Object.defineProperty(global, 'crypto', {
   },
 });
 
+// Mock localStorage with key-aware behavior
+const mockLocalStorage = {
+  getItem: jest.fn((key: string) => null),
+  setItem: jest.fn(),
+  removeItem: jest.fn(),
+  clear: jest.fn(),
+} as unknown as Storage & {
+  getItem: jest.Mock;
+  setItem: jest.Mock;
+  removeItem: jest.Mock;
+  clear: jest.Mock;
+};
+
+Object.defineProperty(window, 'localStorage', {
+  value: mockLocalStorage,
+});
+
 // Note: no SSE helpers needed; tests stub sendChat directly
 
 function renderWithProviders(ui: React.ReactElement) {
   return render(<ThemeProvider>{ui}</ThemeProvider>);
 }
 
+function setupHttpClient() {
+  mockHttpClient.get.mockImplementation((url: string) => {
+    if (url === '/v1/providers') {
+      return Promise.resolve({
+        data: {
+          providers: [
+            { id: 'openai', name: 'OpenAI', enabled: 1, updated_at: new Date().toISOString() },
+            { id: 'disabled', name: 'Disabled', enabled: 0, updated_at: new Date().toISOString() },
+          ],
+        },
+        status: 200,
+        statusText: 'OK',
+        headers: new Headers(),
+      });
+    }
+
+    if (url === '/v1/providers/openai/models') {
+      return Promise.resolve({
+        data: {
+          provider: { id: 'openai' },
+          models: [
+            { id: 'gpt-4o' },
+            { id: 'gpt-4o-mini' },
+          ],
+        },
+        status: 200,
+        statusText: 'OK',
+        headers: new Headers(),
+      });
+    }
+
+    return Promise.resolve({
+      data: { provider: { id: 'unknown' }, models: [] },
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers(),
+    });
+  });
+}
+
 beforeEach(() => {
   jest.clearAllMocks();
 
   // Default behavior: Simulate a fresh chat session (no conversation history available)
-  // This represents the most common user scenario and avoids over-specification
-  mockedChatLib.listConversationsApi.mockRejectedValue(new Error('History not available'));
-  mockedChatLib.createConversation.mockRejectedValue(new Error('History not available'));
-  mockedChatLib.sendChat.mockResolvedValue({
+  mockConversations.list.mockRejectedValue(new Error('History not available'));
+  mockConversations.create.mockRejectedValue(new Error('History not available'));
+  mockChat.sendMessage.mockResolvedValue({
     content: 'Mock response',
     responseId: 'mock-response-id'
   });
-  mockedChatLib.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] });
-  mockedChatLib.getConversationApi.mockResolvedValue({
+  mockTools.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] } as any);
+  mockConversations.get.mockResolvedValue({
     id: 'mock-conv-id',
     title: 'Mock Conversation',
     model: 'test-model',
     created_at: new Date().toISOString(),
     messages: [],
     next_after_seq: null,
-  });
+  } as any);
+  mockAuth.getProfile.mockResolvedValue({
+    id: 'test-user',
+    email: 'test@example.com',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  } as any);
+  setupHttpClient();
+
+  // Mock localStorage to return false (expanded by default)
+  mockLocalStorage.getItem.mockImplementation((key: string) => null);
 });
 
 describe('<Chat />', () => {
   // Provide a minimal matchMedia mock for JSDOM used in tests
   beforeAll(() => {
     if (typeof window.matchMedia !== 'function') {
-      // @ts-ignore
+      // @ts-expect-error: Mocking window.matchMedia for test environment where it may not be defined
       window.matchMedia = (query: string) => ({
         matches: false,
         media: query,
@@ -180,7 +267,7 @@ describe('<Chat />', () => {
   });
 
   test('shows history list when persistence is enabled', async () => {
-    mockedChatLib.listConversationsApi.mockResolvedValue({
+    mockConversations.list.mockResolvedValue({
       items: [
         { id: 'conv-1', title: 'Test Conversation', model: 'gpt-4o', created_at: '2023-01-01' },
         { id: 'conv-2', title: 'Another Chat', model: 'gpt-4.1-mini', created_at: '2023-01-02' },
@@ -199,12 +286,12 @@ describe('<Chat />', () => {
 
   test('selecting a conversation loads its messages', async () => {
     const user = userEvent.setup();
-    mockedChatLib.listConversationsApi.mockResolvedValue({
+    mockConversations.list.mockResolvedValue({
       items: [{ id: 'conv-1', title: 'Test Conversation', model: 'gpt-4o', created_at: '2023-01-01' }],
       next_cursor: null,
     });
-    mockedChatLib.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] });
-    mockedChatLib.getConversationApi.mockResolvedValue({
+    mockTools.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] });
+    mockConversations.get.mockResolvedValue({
       id: 'conv-1',
       title: 'Test Conversation',
       model: 'gpt-4o',
@@ -234,13 +321,13 @@ describe('<Chat />', () => {
   });
 
   test('deleting a conversation calls the API correctly', async () => {
-    mockedChatLib.listConversationsApi.mockResolvedValue({
+    mockConversations.list.mockResolvedValue({
       items: [
         { id: 'conv-1', title: 'Test Conversation', model: 'gpt-4o', created_at: '2023-01-01' },
       ],
       next_cursor: null,
     });
-    mockedChatLib.deleteConversationApi.mockResolvedValue(true);
+    mockConversations.delete.mockResolvedValue(undefined);
 
     renderWithProviders(<Chat />);
 
@@ -249,12 +336,12 @@ describe('<Chat />', () => {
     });
 
     // Verify the delete API is available and mocked
-    expect(mockedChatLib.deleteConversationApi).toBeDefined();
+    expect(mockConversations.delete).toBeDefined();
   });
 
   test('paginates history with Load more', async () => {
     const user = userEvent.setup();
-    mockedChatLib.listConversationsApi
+    mockConversations.list
       .mockResolvedValueOnce({
         items: [{ id: 'conv-1', title: 'First', model: 'gpt-4o', created_at: '2023-01-01' }],
         next_cursor: 'cursor-1',
@@ -279,11 +366,8 @@ describe('<Chat />', () => {
       expect(screen.queryByText('Load more conversations')).not.toBeInTheDocument();
     });
 
-    expect(mockedChatLib.listConversationsApi).toHaveBeenCalledTimes(2);
-    expect(mockedChatLib.listConversationsApi).toHaveBeenLastCalledWith(
-      undefined,
-      { cursor: 'cursor-1', limit: 20 }
-    );
+    expect(mockConversations.list).toHaveBeenCalledTimes(2);
+    expect(mockConversations.list).toHaveBeenLastCalledWith({ cursor: 'cursor-1', limit: 20 });
   });
 
   test('textarea responds to input changes', async () => {
@@ -310,7 +394,7 @@ describe('<Chat />', () => {
   });
 
   test('handles errors when sendChat fails', async () => {
-    mockedChatLib.sendChat.mockRejectedValue(new Error('Network error'));
+    mockChat.sendMessage.mockRejectedValue(new Error('Network error'));
 
     renderWithProviders(<Chat />);
 
@@ -333,12 +417,12 @@ describe('<Chat />', () => {
 
   test('switches conversations correctly', async () => {
     const user = userEvent.setup();
-    mockedChatLib.listConversationsApi.mockResolvedValue({
+    mockConversations.list.mockResolvedValue({
       items: [{ id: 'conv-1', title: 'Existing Chat', model: 'gpt-4o', created_at: '2023-01-01' }],
       next_cursor: null,
     });
-    mockedChatLib.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] });
-    mockedChatLib.getConversationApi.mockResolvedValue({
+    mockTools.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] });
+    mockConversations.get.mockResolvedValue({
       id: 'conv-1',
       title: 'Existing Chat',
       model: 'gpt-4o',
@@ -379,12 +463,12 @@ describe('<Chat />', () => {
 
   test('handles message editing and conversation forking', async () => {
     const user = userEvent.setup();
-    mockedChatLib.listConversationsApi.mockResolvedValue({
+    mockConversations.list.mockResolvedValue({
       items: [{ id: 'conv-1', title: 'Test Chat', model: 'gpt-4o', created_at: '2023-01-01' }],
       next_cursor: null,
     });
-    mockedChatLib.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] });
-    mockedChatLib.getConversationApi.mockResolvedValue({
+    mockTools.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] });
+    mockConversations.get.mockResolvedValue({
       id: 'conv-1',
       title: 'Test Chat',
       model: 'gpt-4o',
@@ -409,7 +493,7 @@ describe('<Chat />', () => {
       ],
       next_after_seq: null,
     });
-    mockedChatLib.editMessageApi.mockResolvedValue({
+    mockConversations.editMessage.mockResolvedValue({
       message: {
         id: '2',
         seq: 3,
@@ -432,24 +516,24 @@ describe('<Chat />', () => {
 
     // The message editing functionality exists in the component but is complex to test
     // due to hover states and dynamic button rendering. For now, verify the API is mocked
-    expect(mockedChatLib.editMessageApi).toBeDefined();
+    expect(mockConversations.editMessage).toBeDefined();
   });
 
   test('clears system prompt and active prompt ID when loading conversation with null values', async () => {
     const user = userEvent.setup();
 
     // First, set up a conversation with system prompt and active prompt ID
-    mockedChatLib.listConversationsApi.mockResolvedValue({
+    mockConversations.list.mockResolvedValue({
       items: [
         { id: 'conv-with-prompt', title: 'Chat with Prompt', model: 'gpt-4o', created_at: '2023-01-01' },
         { id: 'conv-no-prompt', title: 'Chat without Prompt', model: 'gpt-4o', created_at: '2023-01-02' }
       ],
       next_cursor: null,
     });
-    mockedChatLib.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] });
+    mockTools.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] });
 
     // First conversation has system prompt
-    mockedChatLib.getConversationApi.mockImplementation((_, id) => {
+  mockConversations.get.mockImplementation((id: string) => {
       if (id === 'conv-with-prompt') {
         return Promise.resolve({
           id: 'conv-with-prompt',
@@ -487,7 +571,7 @@ describe('<Chat />', () => {
 
     // Wait for conversation to load
     await waitFor(() => {
-      expect(mockedChatLib.getConversationApi).toHaveBeenCalledWith(undefined, 'conv-with-prompt', { limit: 200 });
+      expect(mockConversations.get).toHaveBeenCalledWith('conv-with-prompt', { limit: 200 });
     });
 
     // Now select conversation without prompt
@@ -495,12 +579,12 @@ describe('<Chat />', () => {
 
     // Verify that getConversationApi was called with the conversation without prompt
     await waitFor(() => {
-      expect(mockedChatLib.getConversationApi).toHaveBeenCalledWith(undefined, 'conv-no-prompt', { limit: 200 });
+      expect(mockConversations.get).toHaveBeenCalledWith('conv-no-prompt', { limit: 200 });
     });
 
     // The test verifies that the API calls happen correctly
     // In a real scenario, this would clear the system prompt in the RightSidebar
-    expect(mockedChatLib.getConversationApi).toHaveBeenCalledTimes(2);
+    expect(mockConversations.get).toHaveBeenCalledTimes(2);
   });
 });
 

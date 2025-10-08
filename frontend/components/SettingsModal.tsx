@@ -3,8 +3,9 @@ import React from 'react';
 import { Cog, Database, Plus, Save, RefreshCw, Trash2, Zap, CheckCircle, XCircle } from 'lucide-react';
 import Modal from './ui/Modal';
 import Toggle from './ui/Toggle';
-import { httpClient } from '../lib/http/client';
-import { HttpError } from '../lib/http/types';
+import { httpClient } from '../lib';
+import { HttpError } from '../lib';
+import { resolveApiBase } from '../lib';
 
 interface SettingsModalProps {
   open: boolean;
@@ -28,7 +29,7 @@ export default function SettingsModal({
     updated_at?: string;
   };
 
-  const apiBase = (process.env.NEXT_PUBLIC_API_BASE as string) ?? 'http://localhost:3001';
+  const apiBase = React.useMemo(() => resolveApiBase(), []);
   const [providers, setProviders] = React.useState<ProviderRow[]>([]);
   const [loadingProviders, setLoadingProviders] = React.useState(false);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
@@ -135,7 +136,7 @@ export default function SettingsModal({
         await httpClient.put(`${apiBase}/v1/providers/${form.id}`, payload);
       } else {
         // Create new provider with retry logic for ID conflicts
-        let generatedId = generateIdFromName(form.name);
+        const generatedId = generateIdFromName(form.name);
         let attempt = 0;
         const maxAttempts = 5;
 

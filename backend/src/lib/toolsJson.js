@@ -1,9 +1,10 @@
 import { generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
 import { addConversationMetadata } from './responseUtils.js';
-import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
+import { setupStreamingHeaders, createOpenAIRequest, teeStreamWithPreview } from './streamUtils.js';
+import { logUpstreamResponse } from './logging/upstreamLogger.js';
 import { createProvider } from './providers/index.js';
 import {
-  buildConversationMessagesAsync,
+  buildConversationMessagesOptimized,
   executeToolCall,
   appendToPersistence,
   recordFinalToPersistence,
@@ -143,6 +144,20 @@ class StreamingResponseHandler extends ResponseHandler {
   }
 }
 
+function summarizeMessagesForLog(messages) {
+  if (!Array.isArray(messages)) return [];
+  return messages.map((msg, idx) => ({
+    idx,
+    role: msg?.role,
+    hasToolCalls: Array.isArray(msg?.tool_calls) && msg.tool_calls.length > 0,
+    toolCallCount: Array.isArray(msg?.tool_calls) ? msg.tool_calls.length : 0,
+    toolOutputCount: Array.isArray(msg?.tool_outputs) ? msg.tool_outputs.length : 0,
+    toolCallIds: Array.isArray(msg?.tool_calls) ? msg.tool_calls.map(tc => tc?.id) : undefined,
+    toolOutputIds: Array.isArray(msg?.tool_outputs) ? msg.tool_outputs.map(out => out?.tool_call_id) : undefined,
+    contentPreview: typeof msg?.content === 'string' ? msg.content.slice(0, 80) : '[non-string]',
+  }));
+}
+
 /**
  * JSON response handler (collects events)
  */
@@ -187,13 +202,42 @@ class JsonResponseHandler extends ResponseHandler {
 
   sendFinalResponse(response, persistence) {
     const message = response?.choices?.[0]?.message;
+    const finishReason = response?.choices?.[0]?.finish_reason || 'stop';
+    const responseId = response?.id || null;
+
+    if (responseId && persistence && typeof persistence.setResponseId === 'function') {
+      persistence.setResponseId(responseId);
+    }
+
+    // Capture reasoning_details if present
+    if (message?.reasoning_details && Array.isArray(message.reasoning_details)) {
+      if (persistence && typeof persistence.setReasoningDetails === 'function') {
+        persistence.setReasoningDetails(message.reasoning_details);
+      }
+    }
+
+    // Capture reasoning_tokens if present (check both locations)
+    const reasoningTokens = response?.usage?.reasoning_tokens
+      ?? response?.usage?.completion_tokens_details?.reasoning_tokens
+      ?? null;
+
+    if (reasoningTokens != null) {
+      if (persistence && typeof persistence.setReasoningTokens === 'function') {
+        persistence.setReasoningTokens(reasoningTokens);
+      }
+    }
+
     if (message?.content) {
       this.collectedEvents.push({
         type: 'text',
         value: message.content
       });
       appendToPersistence(persistence, message.content);
-      recordFinalToPersistence(persistence, response?.choices?.[0]?.finish_reason || 'stop');
+    }
+
+    // Only record final message if there's content or tool events
+    if (message?.content || this.collectedEvents.length > 0) {
+      recordFinalToPersistence(persistence, finishReason, responseId);
     }
 
     const responseWithEvents = {
@@ -230,12 +274,14 @@ class JsonResponseHandler extends ResponseHandler {
 /**
  * Make a request to the AI model
  */
-async function callLLM({ messages, config, bodyParams, providerId, providerHttp, provider }) {
+async function callLLM({ messages, config, bodyParams, providerId, providerHttp, provider, previousResponseId = null }) {
   const requestBody = {
     model: bodyParams.model || config.defaultModel,
     messages,
     stream: bodyParams.stream || false,
-    ...(bodyParams.tools && { tools: bodyParams.tools, tool_choice: bodyParams.tool_choice || 'auto' })
+    ...(bodyParams.tools && { tools: bodyParams.tools, tool_choice: bodyParams.tool_choice || 'auto' }),
+    // Include previous_response_id if available (Responses API chain tracking)
+    ...(previousResponseId && { previous_response_id: previousResponseId }),
   };
   // Include reasoning controls only when the provider supports them
   if (provider?.supportsReasoningControls(requestBody.model)) {
@@ -295,6 +341,14 @@ async function executeAllTools(toolCalls, responseHandler, persistence) {
   }
 
   // Send all tool outputs through response handler
+  console.log('[toolsJson] Sending tool outputs to response handler', {
+    count: toolOutputs.length,
+    outputs: toolOutputs.map(({ tool_call_id, name, output }) => ({
+      tool_call_id,
+      name,
+      outputPreview: typeof output === 'string' ? output.slice(0, 120) : '[non-string]',
+    })),
+  });
   responseHandler.sendToolOutputs(toolOutputs, persistence);
   return toolResults;
 }
@@ -304,6 +358,10 @@ async function executeAllTools(toolCalls, responseHandler, persistence) {
  */
 async function streamResponse(llmResponse, res, persistence, model) {
   if (!llmResponse.body) {
+    if (llmResponse?.id && persistence && typeof persistence.setResponseId === 'function') {
+      persistence.setResponseId(llmResponse.id);
+    }
+
     // Non-streaming response, convert to streaming format
     const message = llmResponse?.choices?.[0]?.message;
     if (message?.content) {
@@ -338,9 +396,17 @@ async function streamResponse(llmResponse, res, persistence, model) {
   // Handle streaming response
   let leftover = '';
   let lastFinishReason = null;
+  // Tee the stream so we can capture a small preview for logging without
+  // interfering with existing consumers. Replace llmResponse.body with the
+  // tee'd body that we will pipe through to the client.
+  const { body: teeBody, previewPromise } = teeStreamWithPreview(llmResponse, { maxPreviewBytes: 4096 });
+
+  // If teeStreamWithPreview returned a different body, use it; otherwise fall back
+  // to the original stream.
+  const source = teeBody || llmResponse.body;
 
   return new Promise((resolve, reject) => {
-    llmResponse.body.on('data', (chunk) => {
+    source.on('data', (chunk) => {
       try {
         res.write(chunk);
         if (typeof res.flush === 'function') res.flush();
@@ -358,12 +424,28 @@ async function streamResponse(llmResponse, res, persistence, model) {
 
             const payload = m[1];
             if (payload === '[DONE]') {
-              resolve(lastFinishReason || 'stop');
+              // Before resolving, attempt to log the captured preview for debugging
+              previewPromise.then((preview) => {
+                try {
+                  logUpstreamResponse({
+                    url: llmResponse.url || '[upstream]',
+                    status: llmResponse.status || 200,
+                    headers: llmResponse.headers || {},
+                    body: preview || null,
+                  });
+                } catch {
+                  // best-effort logging
+                }
+                resolve(lastFinishReason || 'stop');
+              }).catch(() => resolve(lastFinishReason || 'stop'));
               return;
             }
 
             try {
               const obj = JSON.parse(payload);
+              if (obj?.id && persistence && typeof persistence.setResponseId === 'function') {
+                persistence.setResponseId(obj.id);
+              }
               const delta = obj?.choices?.[0]?.delta?.content;
               if (delta) {
                 appendToPersistence(persistence, delta);
@@ -375,16 +457,29 @@ async function streamResponse(llmResponse, res, persistence, model) {
             }
           }
         }
-      } catch (e) {
-        console.error('[unified stream] error', e);
+      } catch {
+        console.error('[unified stream] error');
       }
     });
 
-    llmResponse.body.on('end', () => {
-      resolve(lastFinishReason || 'stop');
+    source.on('end', () => {
+      // Log preview on normal end as well
+      previewPromise.then((preview) => {
+        try {
+          logUpstreamResponse({
+            url: llmResponse.url || '[upstream]',
+            status: llmResponse.status || 200,
+            headers: llmResponse.headers || {},
+            body: preview || null,
+          });
+        } catch {
+          // ignore
+        }
+        resolve(lastFinishReason || 'stop');
+      }).catch(() => resolve(lastFinishReason || 'stop'));
     });
 
-    llmResponse.body.on('error', (err) => {
+    source.on('error', (err) => {
       reject(err);
     });
   });
@@ -414,7 +509,19 @@ export async function handleToolsJson({
     generateToolSpecs,
   }) || generateOpenAIToolSpecs();
   // Build initial messages ensuring the active system prompt is preserved
-  const messages = await buildConversationMessagesAsync({ body, bodyIn, persistence, userId });
+  // Use optimized version to leverage previous_response_id when available
+  const { messages, previousResponseId } = await buildConversationMessagesOptimized({
+    body,
+    bodyIn,
+    persistence,
+    userId,
+    provider: providerInstance
+  });
+  console.log('[toolsJson] Prepared messages for upstream call', {
+    conversationId: persistence?.conversationId || null,
+    previousResponseId,
+    messageSummaries: summarizeMessagesForLog(messages)
+  });
   const orchestrationConfig = OrchestrationConfig.fromRequest(body, config, fallbackToolSpecs);
   const responseHandler = ResponseHandlerFactory.create(orchestrationConfig, res);
 
@@ -436,6 +543,7 @@ export async function handleToolsJson({
     });
 
     let iteration = 0;
+    let currentPreviousResponseId = previousResponseId; // Track response_id across iterations
 
     // Main orchestration loop - continues until LLM stops requesting tools
     while (iteration < orchestrationConfig.maxIterations) {
@@ -447,16 +555,27 @@ export async function handleToolsJson({
         providerId,
         providerHttp,
         provider: providerInstance,
+        previousResponseId: currentPreviousResponseId,
       });
       const message = response?.choices?.[0]?.message;
       const toolCalls = message?.tool_calls || [];
 
+      // Update previous_response_id for next iteration
+      if (response?.id) {
+        currentPreviousResponseId = response.id;
+      }
+
       if (!toolCalls.length) {
         // No tools needed - this is the final response
         if (orchestrationConfig.streamingEnabled) {
+          const responseId = response?.id || null;
+          if (responseId && persistence && typeof persistence.setResponseId === 'function') {
+            persistence.setResponseId(responseId);
+          }
+
           const finishReason = await responseHandler.sendFinalResponse(response, persistence);
 
-          recordFinalToPersistence(persistence, finishReason);
+          recordFinalToPersistence(persistence, finishReason, responseId || (persistence?.responseId ?? null));
 
           return res.end();
         } else {
@@ -472,18 +591,55 @@ export async function handleToolsJson({
       }
 
       // Send tool calls
+      if (toolCalls.length > 0) {
+        console.log('[toolsJson] Tool calls detected from model', {
+          conversationId: persistence?.conversationId || null,
+          iteration,
+          toolCalls: toolCalls.map((tc) => ({
+            id: tc.id,
+            name: tc.function?.name,
+            argPreview: typeof tc.function?.arguments === 'string'
+              ? tc.function.arguments.slice(0, 120)
+              : '[non-string]'
+          })),
+        });
+      }
       responseHandler.sendToolCalls(toolCalls);
 
       // Buffer tool calls for persistence
       if (persistence && persistence.persist && typeof persistence.addToolCalls === 'function') {
-        persistence.addToolCalls(toolCalls);
+        // For non-streaming responses, set textOffset to current content length
+        // Tools appear after any content that was generated
+        const contentLength = persistence.getContentLength();
+        const toolCallsWithOffset = toolCalls.map((tc, idx) => ({
+          ...tc,
+          index: tc.index ?? idx,
+          textOffset: contentLength
+        }));
+        persistence.addToolCalls(toolCallsWithOffset);
       }
 
       // Execute all tools
       const toolResults = await executeAllTools(toolCalls, responseHandler, persistence);
+      if (toolResults.length > 0) {
+        console.log('[toolsJson] Tool results produced', {
+          conversationId: persistence?.conversationId || null,
+          iteration,
+          resultsSummary: toolResults.map((result) => ({
+            tool_call_id: result.tool_call_id,
+            contentPreview: typeof result.content === 'string' ? result.content.slice(0, 120) : '[non-string]',
+          })),
+        });
+      }
 
       // Add to conversation for next iteration
       messages.push(message, ...toolResults);
+      console.log('[toolsJson] Messages extended after tool execution', {
+        conversationId: persistence?.conversationId || null,
+        iteration,
+        totalMessages: messages.length,
+        messageSummaries: summarizeMessagesForLog(messages.slice(-Math.min(messages.length, 6))),
+      });
       iteration++;
     }
 
@@ -501,9 +657,14 @@ export async function handleToolsJson({
     const maxIterMsg = '\n\n[Maximum iterations reached]';
 
     if (orchestrationConfig.streamingEnabled) {
+      const responseId = finalResponse?.id || null;
+      if (responseId && persistence && typeof persistence.setResponseId === 'function') {
+        persistence.setResponseId(responseId);
+      }
+
       const finishReason = await responseHandler.sendFinalResponse(finalResponse, persistence);
       responseHandler.sendThinkingContent(maxIterMsg, persistence);
-      recordFinalToPersistence(persistence, finishReason);
+      recordFinalToPersistence(persistence, finishReason, responseId || (persistence?.responseId ?? null));
       return res.end();
     } else {
       const responseWithEvents = responseHandler.sendFinalResponse(finalResponse, persistence);

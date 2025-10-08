@@ -46,6 +46,9 @@ export const config = {
         return undefined;
       }
     })(),
+    timeoutMs: Number(process.env.PROVIDER_TIMEOUT_MS) || 10000, // 10 second default for provider operations
+    modelFetchTimeoutMs: Number(process.env.PROVIDER_MODEL_FETCH_TIMEOUT_MS) || 3000, // 3 second default for model fetching
+    streamTimeoutMs: Number(process.env.PROVIDER_STREAM_TIMEOUT_MS) || 300000, // 300 second default for streaming operations
   },
   defaultModel: process.env.DEFAULT_MODEL || 'gpt-4.1-mini',
   titleModel: process.env.TITLE_MODEL || 'gpt-4.1-mini',

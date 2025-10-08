@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { useChatState } from '../hooks/useChatState';
+import { useChat } from '../hooks/useChat';
 import { ChatSidebar } from './ChatSidebar';
 import { ChatHeader } from './ChatHeader';
 import { MessageList } from './MessageList';
@@ -10,9 +10,10 @@ import { MessageInput } from './MessageInput';
 import { RightSidebar } from './RightSidebar';
 import SettingsModal from './SettingsModal';
 import { AuthModal, AuthMode } from './auth/AuthModal';
+import type { MessageContent } from '../lib';
 
 export function ChatV2() {
-  const { state, actions } = useChatState();
+  const chat = useChat();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('login');
@@ -33,11 +34,11 @@ export function ChatV2() {
   const nextWidthRef = useRef(DEFAULT_RIGHT_SIDEBAR_WIDTH);
   const frameRef = useRef<number | null>(null);
 
-  // Simple event handlers - just dispatch actions
+  // Simple event handlers
   const handleCopy = useCallback(async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-    } catch (_) {}
+    } catch {}
   }, []);
 
   const handleShowLogin = useCallback(() => {
@@ -59,14 +60,13 @@ export function ChatV2() {
       nextWidthRef.current = clamped;
       setRightSidebarWidth(clamped);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    if (state.rightSidebarCollapsed) return;
+    if (chat.rightSidebarCollapsed) return;
     if (typeof window === 'undefined') return;
     window.localStorage.setItem('rightSidebarWidth', String(rightSidebarWidth));
-  }, [rightSidebarWidth, state.rightSidebarCollapsed]);
+  }, [rightSidebarWidth, chat.rightSidebarCollapsed]);
 
   const stopResizing = useCallback(() => {
     if (!isResizingRef.current) return;
@@ -122,25 +122,25 @@ export function ChatV2() {
   }, [handleResizeMove, stopResizing]);
 
   const handleResizeStart = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (state.rightSidebarCollapsed) return;
+    if (chat.rightSidebarCollapsed) return;
     resizeStateRef.current = {
       startX: event.clientX,
       startWidth: rightSidebarWidth
     };
     isResizingRef.current = true;
     setIsResizingRightSidebar(true);
-  }, [rightSidebarWidth, state.rightSidebarCollapsed]);
+  }, [rightSidebarWidth, chat.rightSidebarCollapsed]);
 
   const handleResizeDoubleClick = useCallback(() => {
-    if (state.rightSidebarCollapsed) return;
+    if (chat.rightSidebarCollapsed) return;
     nextWidthRef.current = clampRightSidebarWidth(DEFAULT_RIGHT_SIDEBAR_WIDTH);
     setRightSidebarWidth(nextWidthRef.current);
-  }, [DEFAULT_RIGHT_SIDEBAR_WIDTH, clampRightSidebarWidth, state.rightSidebarCollapsed]);
+  }, [DEFAULT_RIGHT_SIDEBAR_WIDTH, clampRightSidebarWidth, chat.rightSidebarCollapsed]);
 
   useEffect(() => {
-    if (!state.rightSidebarCollapsed) return;
+    if (!chat.rightSidebarCollapsed) return;
     stopResizing();
-  }, [state.rightSidebarCollapsed, stopResizing]);
+  }, [chat.rightSidebarCollapsed, stopResizing]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -175,84 +175,86 @@ export function ChatV2() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key === '\\') {
         e.preventDefault();
-        actions.toggleSidebar();
+        chat.toggleSidebar();
       }
       // Keyboard shortcut for toggling right sidebar (Ctrl/Cmd + Shift + \)
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === '\\') {
         e.preventDefault();
-        actions.toggleRightSidebar();
+        chat.toggleRightSidebar();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [actions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Respond to URL changes (e.g., back/forward) to drive state
   useEffect(() => {
     if (!searchParams) return;
     if (initLoadingRef.current) return;
     const cid = searchParams.get('c');
-    if (cid && cid !== state.conversationId) {
-      void actions.selectConversation(cid);
-    } else if (!cid && state.conversationId) {
-      actions.newChat();
+    if (cid && cid !== chat.conversationId) {
+      void chat.selectConversation(cid);
+    } else if (!cid && chat.conversationId) {
+      chat.newChat();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchKey]);
 
   const handleRetryMessage = useCallback(async (messageId: string) => {
-    if (state.status === 'streaming') return;
-    if (state.messages.length === 0) return;
+    if (chat.status === 'streaming') return;
+    if (chat.messages.length === 0) return;
 
     // Find the message index
-    const idx = state.messages.findIndex(m => m.id === messageId);
+    const idx = chat.messages.findIndex(m => m.id === messageId);
     if (idx === -1) return;
 
-    const message = state.messages[idx];
+    const message = chat.messages[idx];
     if (message.role !== 'assistant') return;
 
     // Keep only messages up to (but not including) the message being retried
-    const base = state.messages.slice(0, idx);
-    actions.regenerate(base);
-  }, [state.messages, state.status, actions]);
+    const base = chat.messages.slice(0, idx);
+    chat.regenerate(base);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat.messages, chat.status]);
 
-  const handleApplyLocalEdit = useCallback(async () => {
-    if (!state.editingMessageId || !state.editingContent.trim()) return;
-    if (state.status === 'streaming') {
-      actions.stopStreaming();
+  const handleApplyLocalEdit = useCallback(async (messageId: string, updatedContent: MessageContent) => {
+    if (chat.status === 'streaming') {
+      chat.stopStreaming();
     }
 
-    const messageId = state.editingMessageId;
-    const content = state.editingContent.trim();
-
-    // Find the message and create base messages
-    const idx = state.messages.findIndex(m => m.id === messageId);
+    const idx = chat.messages.findIndex(m => m.id === messageId);
     if (idx === -1) return;
 
-    const updatedMessage = { ...state.messages[idx], content };
-    const baseMessages = [...state.messages.slice(0, idx), updatedMessage];
+    const baseMessages = [
+      ...chat.messages.slice(0, idx),
+      { ...chat.messages[idx], content: updatedContent }
+    ];
 
-    actions.setMessages(baseMessages);
-    actions.cancelEdit();
+    chat.setMessages(baseMessages);
+    chat.cancelEdit();
 
-    // If last message is user message, could trigger regeneration here
     if (baseMessages.length && baseMessages[baseMessages.length - 1].role === 'user') {
-      actions.regenerate(baseMessages);
+      chat.regenerate(baseMessages);
     }
-  }, [state.editingMessageId, state.editingContent, state.messages, state.status, actions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat.messages, chat.status]);
 
-  // Hydrate conversation from URL (?c=...) on first load
+  // Load conversations and hydrate from URL on first load
   useEffect(() => {
     if (initCheckedRef.current) return;
     initCheckedRef.current = true;
 
+    // Load conversation list
+    chat.refreshConversations();
+
     const cid = searchParams?.get('c');
-    if (cid && !state.conversationId) {
+    if (cid && !chat.conversationId) {
       initLoadingRef.current = true;
       (async () => {
         try {
-          await actions.selectConversation(cid);
+          await chat.selectConversation(cid);
         } finally {
           initLoadingRef.current = false;
         }
@@ -265,9 +267,9 @@ export function ChatV2() {
   useEffect(() => {
     if (!initCheckedRef.current || initLoadingRef.current) return;
     const params = new URLSearchParams(searchParams?.toString());
-    if (state.conversationId) {
-      if (params.get('c') !== state.conversationId) {
-        params.set('c', state.conversationId);
+    if (chat.conversationId) {
+      if (params.get('c') !== chat.conversationId) {
+        params.set('c', chat.conversationId);
         router.push(`${pathname}?${params.toString()}`);
       }
     } else {
@@ -278,13 +280,13 @@ export function ChatV2() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.conversationId]);
+  }, [chat.conversationId]);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
 
-    const sidebarTitle = state.conversations.find(convo => convo.id === state.conversationId)?.title?.trim();
-    const activeTitle = (state.currentConversationTitle ?? sidebarTitle)?.trim();
+    const sidebarTitle = chat.conversations.find(convo => convo.id === chat.conversationId)?.title?.trim();
+    const activeTitle = (chat.currentConversationTitle ?? sidebarTitle)?.trim();
     const nextTitle = activeTitle ? `${activeTitle} - ChatForge` : 'ChatForge';
 
     const applyTitle = () => {
@@ -299,85 +301,95 @@ export function ChatV2() {
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [pathname, searchKey, state.conversationId, state.conversations, state.currentConversationTitle]);
+  }, [pathname, searchKey, chat.conversationId, chat.conversations, chat.currentConversationTitle]);
+
+  // Clear the input immediately when the user presses send, then invoke sendMessage
+  const handleSend = useCallback(() => {
+    const messageToSend = chat.input;
+    // clear input right away so the UI feels responsive
+    chat.setInput('');
+    // call sendMessage with the captured content so it doesn't rely on chat.input after clearing
+    void chat.sendMessage(messageToSend);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat.input, chat.setInput, chat.sendMessage]);
 
   return (
     <div className="flex h-dvh max-h-dvh bg-gradient-to-br from-slate-50 via-white to-slate-100/40 dark:from-neutral-950 dark:via-neutral-950 dark:to-neutral-900/20">
-      {state.historyEnabled && (
+      {chat.historyEnabled && (
         <ChatSidebar
-          conversations={state.conversations}
-          nextCursor={state.nextCursor}
-          loadingConversations={state.loadingConversations}
-          conversationId={state.conversationId}
-          collapsed={state.sidebarCollapsed}
-          onSelectConversation={actions.selectConversation}
-          onDeleteConversation={actions.deleteConversation}
-          onLoadMore={actions.loadMoreConversations}
-          onRefresh={actions.refreshConversations}
-          onNewChat={actions.newChat}
-          onToggleCollapse={actions.toggleSidebar}
+          conversations={chat.conversations}
+          nextCursor={chat.nextCursor}
+          loadingConversations={chat.loadingConversations}
+          conversationId={chat.conversationId}
+          collapsed={chat.sidebarCollapsed}
+          onSelectConversation={chat.selectConversation}
+          onDeleteConversation={chat.deleteConversation}
+          onLoadMore={chat.loadMoreConversations}
+          onRefresh={chat.refreshConversations}
+          onNewChat={chat.newChat}
+          onToggleCollapse={chat.toggleSidebar}
         />
       )}
       <div className="flex flex-col flex-1">
         <ChatHeader
-          isStreaming={state.status === 'streaming'}
-          onNewChat={actions.newChat}
-          model={state.model}
-          onModelChange={actions.setModel}
-          onProviderChange={actions.setProviderId}
+          isStreaming={chat.status === 'streaming'}
+          onNewChat={chat.newChat}
+          model={chat.model}
+          onModelChange={chat.setModel}
+          onProviderChange={chat.setProviderId}
           onOpenSettings={() => setIsSettingsOpen(true)}
           onShowLogin={handleShowLogin}
           onShowRegister={handleShowRegister}
-          onRefreshModels={actions.loadProvidersAndModels}
-          isLoadingModels={state.isLoadingModels}
-          groups={state.modelGroups}
-          fallbackOptions={state.modelOptions}
-          modelToProvider={state.modelToProvider}
+          onRefreshModels={chat.loadProvidersAndModels}
+          isLoadingModels={chat.isLoadingModels}
+          groups={chat.modelGroups}
+          fallbackOptions={chat.modelOptions}
+          modelToProvider={chat.modelToProvider}
         />
         <div className="flex flex-1 min-h-0">
           <div className="flex flex-col flex-1 relative">
             <MessageList
-              messages={state.messages}
+              messages={chat.messages}
               pending={{
-                streaming: state.status === 'streaming',
-                error: state.error ?? undefined,
-                abort: state.abort
+                streaming: chat.status === 'streaming',
+                error: chat.error ?? undefined,
+                abort: chat.abort
               }}
-              conversationId={state.conversationId}
-              editingMessageId={state.editingMessageId}
-              editingContent={state.editingContent}
+              conversationId={chat.conversationId}
+              editingMessageId={chat.editingMessageId}
+              editingContent={chat.editingContent}
               onCopy={handleCopy}
-              onEditMessage={actions.startEdit}
-              onCancelEdit={actions.cancelEdit}
-              onSaveEdit={actions.saveEdit}
+              onEditMessage={chat.startEdit}
+              onCancelEdit={chat.cancelEdit}
+              onSaveEdit={chat.saveEdit}
               onApplyLocalEdit={handleApplyLocalEdit}
-              onEditingContentChange={actions.updateEditContent}
+              onEditingContentChange={chat.updateEditContent}
               onRetryMessage={handleRetryMessage}
             />
             {/* Removed soft fade to keep a cleaner boundaryless look */}
       <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-4xl px-6 z-30">
               <MessageInput
-                input={state.input}
+                input={chat.input}
                 pending={{
-                  streaming: state.status === 'streaming',
-                  error: state.error ?? undefined,
-                  abort: state.abort
+                  streaming: chat.status === 'streaming',
+                  error: chat.error ?? undefined,
+                  abort: chat.abort
                 }}
-                onInputChange={actions.setInput}
-                onSend={actions.sendMessage}
-                onStop={actions.stopStreaming}
-                useTools={state.useTools}
-                shouldStream={state.shouldStream}
-                onUseToolsChange={actions.setUseTools}
-                enabledTools={state.enabledTools}
-                onEnabledToolsChange={actions.setEnabledTools}
-                onShouldStreamChange={actions.setShouldStream}
-                model={state.model}
-                qualityLevel={state.qualityLevel}
-                onQualityLevelChange={actions.setQualityLevel}
-                modelCapabilities={state.modelCapabilities}
-                images={state.images}
-                onImagesChange={actions.setImages}
+                onInputChange={chat.setInput}
+                onSend={handleSend}
+                onStop={chat.stopStreaming}
+                useTools={chat.useTools}
+                shouldStream={chat.shouldStream}
+                onUseToolsChange={chat.setUseTools}
+                enabledTools={chat.enabledTools}
+                onEnabledToolsChange={chat.setEnabledTools}
+                onShouldStreamChange={chat.setShouldStream}
+                model={chat.model}
+                qualityLevel={chat.qualityLevel}
+                onQualityLevelChange={chat.setQualityLevel}
+                modelCapabilities={chat.modelCapabilities}
+                images={chat.images}
+                onImagesChange={chat.setImages}
               />
             </div>
             <SettingsModal
@@ -390,7 +402,7 @@ export function ChatV2() {
               initialMode={authMode}
             />
           </div>
-          {!state.rightSidebarCollapsed && (
+          {!chat.rightSidebarCollapsed && (
             <div
               role="separator"
               aria-orientation="vertical"
@@ -401,14 +413,14 @@ export function ChatV2() {
             />
           )}
           <RightSidebar
-            userId={state.user?.id}
-            conversationId={state.conversationId || undefined}
-            collapsed={state.rightSidebarCollapsed}
-            onToggleCollapse={actions.toggleRightSidebar}
-            onEffectivePromptChange={actions.setInlineSystemPromptOverride}
-            onActivePromptIdChange={actions.setActiveSystemPromptId}
-            conversationActivePromptId={state.activeSystemPromptId}
-            conversationSystemPrompt={state.systemPrompt}
+            userId={chat.user?.id}
+            conversationId={chat.conversationId || undefined}
+            collapsed={chat.rightSidebarCollapsed}
+            onToggleCollapse={chat.toggleRightSidebar}
+            onEffectivePromptChange={chat.setInlineSystemPromptOverride}
+            onActivePromptIdChange={chat.setActiveSystemPromptId}
+            conversationActivePromptId={chat.activeSystemPromptId}
+            conversationSystemPrompt={chat.systemPrompt}
             width={rightSidebarWidth}
             isResizing={isResizingRightSidebar}
           />

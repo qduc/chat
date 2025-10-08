@@ -1,10 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { User, authApi } from '../lib/auth/api';
-import { getToken, getUserFromToken, clearTokens } from '../lib/auth/tokens';
-import { verifySession } from '../lib/auth/verification';
-import { markAuthReady, resetAuthReady, waitForAuthReady } from '../lib/auth/ready';
+import { auth, getToken, getUserFromToken, clearTokens, markAuthReady, resetAuthReady, waitForAuthReady, type User } from '../lib';
 
 interface AuthContextType {
   user: User | null;
@@ -48,7 +45,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
         setUser(userFromToken);
       }
 
-      const verification = await verifySession();
+      const verification = await auth.verifySession();
       if (verification.valid && verification.user) {
         setUser(verification.user);
       } else if (
@@ -79,7 +76,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const login = useCallback(async (email: string, password: string) => {
     try {
-      const response = await authApi.login(email, password);
+      const response = await auth.login(email, password);
       setUser(response.user);
     } catch (error) {
       setUser(null);
@@ -89,7 +86,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const register = useCallback(async (email: string, password: string, displayName?: string) => {
     try {
-      const response = await authApi.register(email, password, displayName);
+      const response = await auth.register(email, password, displayName);
       setUser(response.user);
     } catch (error) {
       setUser(null);
@@ -99,7 +96,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const logout = useCallback(async () => {
     try {
-      await authApi.logout();
+      await auth.logout();
     } catch (error) {
       console.warn('Logout request failed:', error);
     } finally {
@@ -109,7 +106,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const refreshUser = useCallback(async () => {
     try {
-      const verification = await verifySession();
+      const verification = await auth.verifySession();
       if (verification.valid && verification.user) {
         setUser(verification.user);
       } else {

@@ -27,6 +27,7 @@ await jest.unstable_mockModule(providersIndexPath, () => ({
 const toolOrchestrationUtilsPath = new URL('../src/lib/toolOrchestrationUtils.js', import.meta.url).href;
 await jest.unstable_mockModule(toolOrchestrationUtilsPath, () => ({
   buildConversationMessagesAsync: jest.fn(),
+  buildConversationMessagesOptimized: jest.fn(),
   executeToolCall: jest.fn(),
   appendToPersistence: jest.fn(),
   recordFinalToPersistence: jest.fn(),
@@ -42,6 +43,7 @@ const { handleToolsJson } = await import('../src/lib/toolsJson.js');
 const { setupStreamingHeaders, createOpenAIRequest } = await import('../src/lib/streamUtils.js');
 const {
   buildConversationMessagesAsync,
+  buildConversationMessagesOptimized,
   executeToolCall,
   streamDeltaEvent,
   appendToPersistence,
@@ -60,6 +62,12 @@ describe('toolsJson', () => {
     buildConversationMessagesAsync.mockResolvedValue([
       { role: 'user', content: 'Hello' }
     ]);
+    if (buildConversationMessagesOptimized) {
+      buildConversationMessagesOptimized.mockResolvedValue({
+        messages: [{ role: 'user', content: 'Hello' }],
+        previousResponseId: null
+      });
+    }
 
     createProvider.mockResolvedValue({
       getToolsetSpec: jest.fn(() => [

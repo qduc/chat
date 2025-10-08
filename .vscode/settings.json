@@ -9,4 +9,5 @@
             "rootPath": "backend"
         }
     ],
+    "jest.runMode": "on-demand",
 }

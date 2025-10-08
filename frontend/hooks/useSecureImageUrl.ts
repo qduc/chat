@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { getToken, isTokenExpired } from '../lib/auth/tokens';
+import { resolveApiBase } from '../lib';
+import { getToken, isTokenExpired } from '../lib';
 
 interface SecureImageState {
   src: string;
@@ -39,24 +40,21 @@ export function useSecureImageUrl(rawUrlInput: string | null | undefined): Secur
       return;
     }
 
-    const apiBase = process.env.NEXT_PUBLIC_API_BASE ?? window.location.origin;
+    const apiBase = resolveApiBase();
     let absoluteUrl: string;
+    let parsedUrl: URL;
 
     try {
-      absoluteUrl = new URL(rawUrl, apiBase).toString();
-    } catch (_error) {
+      parsedUrl = new URL(rawUrl, apiBase);
+      absoluteUrl = parsedUrl.toString();
+    } catch {
       setState({ src: rawUrl, originalUrl: rawUrl, loading: false, error: false });
       return;
     }
 
-    let requiresAuth = false;
-    try {
-      const parsed = new URL(absoluteUrl);
-      const baseOrigin = new URL(apiBase).origin;
-      requiresAuth = parsed.origin === baseOrigin && parsed.pathname.startsWith('/v1/images/');
-    } catch (_error) {
-      requiresAuth = false;
-    }
+    const baseOrigin = new URL(apiBase).origin;
+    const requiresAuth = parsedUrl.origin === baseOrigin &&
+      (parsedUrl.pathname.startsWith('/v1/images/') || parsedUrl.pathname.startsWith('/api/v1/images/'));
 
     if (!requiresAuth) {
       setState({ src: absoluteUrl, originalUrl: absoluteUrl, loading: false, error: false });
@@ -66,7 +64,14 @@ export function useSecureImageUrl(rawUrlInput: string | null | undefined): Secur
     let cancelled = false;
     let objectUrl: string | null = null;
 
-    const fetchImage = async () => {
+    const revokeObjectUrl = () => {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+        objectUrl = null;
+      }
+    };
+
+    const fetchImageBlob = async () => {
       setState({ src: '', originalUrl: absoluteUrl, loading: true, error: false });
 
       try {
@@ -87,22 +92,22 @@ export function useSecureImageUrl(rawUrlInput: string | null | undefined): Secur
         const blob = await response.blob();
         if (cancelled) return;
 
+        revokeObjectUrl();
         objectUrl = URL.createObjectURL(blob);
         setState({ src: objectUrl, originalUrl: absoluteUrl, loading: false, error: false });
       } catch (error) {
         if (cancelled) return;
         console.warn('Failed to fetch protected image', error);
+        revokeObjectUrl();
         setState({ src: '', originalUrl: absoluteUrl, loading: false, error: true });
       }
     };
 
-    fetchImage();
+    void fetchImageBlob();
 
     return () => {
       cancelled = true;
-      if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
-      }
+      revokeObjectUrl();
     };
   }, [rawUrl]);
 

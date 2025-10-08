@@ -1,8 +1,8 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
 import { X, AlertCircle, Loader2 } from 'lucide-react';
-import type { ImageAttachment, ImageUploadProgress } from '../../lib/chat/types';
-import { useSecureImageUrl } from '../../hooks/useSecureImageUrl';
+import type { ImageAttachment, ImageUploadProgress } from '@/lib/types';
+import { useSecureImageUrl } from '@/hooks/useSecureImageUrl';
 
 interface ImagePreviewProps {
   images: ImageAttachment[];
@@ -17,10 +17,6 @@ interface SelectedPreview {
 }
 
 export function ImagePreview({ images, uploadProgress, onRemove, className = '' }: ImagePreviewProps) {
-  if (images.length === 0) {
-    return null;
-  }
-
   const [selectedImage, setSelectedImage] = React.useState<SelectedPreview | null>(null);
 
   const handleClosePreview = () => setSelectedImage(null);
@@ -28,6 +24,10 @@ export function ImagePreview({ images, uploadProgress, onRemove, className = '' 
   const getProgressForImage = (imageId: string) => {
     return uploadProgress?.find(p => p.imageId === imageId);
   };
+
+  if (images.length === 0) {  // ← Move after hooks
+    return null;
+  }
 
   return (
     <>
@@ -79,7 +79,8 @@ interface PreviewItemProps {
 }
 
 function PreviewItem({ image, progress, onRemove, onPreview }: PreviewItemProps) {
-  const { src, loading, error } = useSecureImageUrl(image.url);
+  const preferredUrl = image.downloadUrl ?? image.url;
+  const { src, loading, error } = useSecureImageUrl(preferredUrl);
   const isUploading = progress?.state === 'uploading' || progress?.state === 'processing';
   const hasError = progress?.state === 'error' || error;
   const canPreview = !isUploading && !hasError && Boolean(src);
@@ -159,6 +160,7 @@ interface ImageUploadZoneProps {
   className?: string;
   children?: React.ReactNode;
   fullPage?: boolean;
+  clickToUpload?: boolean;
 }
 
 export function ImageUploadZone({
@@ -169,6 +171,7 @@ export function ImageUploadZone({
   className = '',
   children,
   fullPage = false,
+  clickToUpload = true,
 }: ImageUploadZoneProps) {
   const [dragOver, setDragOver] = React.useState(false);
   const dragCounterRef = React.useRef(0);
@@ -286,18 +289,20 @@ export function ImageUploadZone({
         className={`
           relative
           ${dragOver && !disabled && !fullPage ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-600' : ''}
-          ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}
+          ${disabled ? 'opacity-50 cursor-not-allowed' : clickToUpload ? 'cursor-pointer' : ''}
           ${className}
         `}
       >
-        <input
-          type="file"
-          accept={accept}
-          multiple
-          disabled={disabled}
-          onChange={handleFileInput}
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
-        />
+        {clickToUpload && (
+          <input
+            type="file"
+            accept={accept}
+            multiple
+            disabled={disabled}
+            onChange={handleFileInput}
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+          />
+        )}
         {children}
       </div>
     </>

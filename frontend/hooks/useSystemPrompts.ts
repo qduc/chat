@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { httpClient } from '../lib/http/client';
-import { HttpError } from '../lib/http/types';
+import { httpClient } from '../lib';
+import { HttpError } from '../lib';
 
 export interface BuiltInPrompt {
   id: string;
@@ -28,10 +28,8 @@ export interface PromptsListResponse {
   error?: string;
 }
 
-interface InlineEdit {
-  promptId: string;
-  content: string;
-}
+// InlineEdit shape is represented by the inlineEdits map; no standalone
+// interface is required here.
 
 interface UseSystemPromptsReturn {
   // Data
@@ -204,7 +202,8 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
       if (userId) {
         localStorage.removeItem(`${STORAGE_PREFIX}${userId}-${id}`);
         setInlineEdits(prev => {
-          const { [id]: removed, ...rest } = prev;
+          const rest = { ...prev };
+          delete (rest as Record<string, string>)[id];
           return rest;
         });
       }
@@ -304,7 +303,8 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
     localStorage.removeItem(storageKey);
 
     setInlineEdits(prev => {
-      const { [promptId]: removed, ...rest } = prev;
+      const rest = { ...prev };
+      delete (rest as Record<string, string>)[promptId];
       return rest;
     });
   }, [userId]);
@@ -352,9 +352,11 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
 
   // Auto-fetch on mount
   useEffect(() => {
-    if (userId) {
-      fetchPrompts();
-    }
+    // Always fetch prompts (including built-ins) on mount. Inline edits
+    // (per-user) will still only be loaded when userId is present, but the
+    // prompt list itself should be available to unauthenticated users so
+    // the UI (RightSidebar) can display built-in defaults.
+    fetchPrompts();
   }, [userId, fetchPrompts]);
 
   return {

@@ -32,21 +32,38 @@ export function ChatHeader({ model, onModelChange, onProviderChange, onOpenSetti
     { value: 'gpt-4o', label: 'GPT-4o' }
   ]), []);
 
-  const effectiveGroups = groups ?? (fallbackOptions ? [{ id: 'default', label: 'Models', options: fallbackOptions }] : [{ id: 'default', label: 'Models', options: defaultOpenAIModels }]);
+  const effectiveGroups = (groups && groups.length > 0) ? groups : (fallbackOptions ? [{ id: 'default', label: 'Models', options: fallbackOptions }] : [{ id: 'default', label: 'Models', options: defaultOpenAIModels }]);
   const effectiveFallback = fallbackOptions ?? defaultOpenAIModels;
+
+  const lastProviderIdRef = React.useRef<string | undefined>(undefined);
 
   // Notify parent when provider changes based on selected model
   React.useEffect(() => {
-    if (!modelToProvider || !onProviderChange) return;
+    if (!onProviderChange) return;
+
     let providerId: string | undefined;
-    if (modelToProvider instanceof Map) {
-      providerId = modelToProvider.get(model) as string | undefined;
-    } else {
-      providerId = (modelToProvider as Record<string, string>)[model];
+
+    // First try to extract provider from qualified model ID (provider::model)
+    if (model.includes('::')) {
+      providerId = model.split('::')[0];
+    } else if (modelToProvider) {
+      // Fallback to modelToProvider map for legacy model IDs
+      if (modelToProvider instanceof Map) {
+        providerId = modelToProvider.get(model) as string | undefined;
+      } else {
+        providerId = (modelToProvider as Record<string, string>)[model];
+      }
     }
-    if (providerId) {
-      onProviderChange(providerId);
+
+    if (!providerId) {
+      lastProviderIdRef.current = undefined;
+      return;
     }
+    if (lastProviderIdRef.current === providerId) {
+      return;
+    }
+    lastProviderIdRef.current = providerId;
+    onProviderChange(providerId);
   }, [model, modelToProvider, onProviderChange]);
 
 
