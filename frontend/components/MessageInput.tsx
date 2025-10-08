@@ -315,13 +315,18 @@ export function MessageInput({
 
                   {/* Stream toggle */}
                   <Tooltip content="Stream responses in real-time">
-                    <Toggle
-                      ariaLabel="Stream"
-                      icon={<Zap className="w-4 h-4" />}
-                      checked={shouldStream}
-                      onChange={onShouldStreamChange}
-                      className="whitespace-nowrap"
-                    />
+                    <button
+                      type="button"
+                      onClick={() => onShouldStreamChange(!shouldStream)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all duration-200 ${
+                        shouldStream
+                          ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
+                          : 'border-transparent hover:bg-slate-100 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      <Zap className="w-4 h-4" />
+                      <span className="text-sm font-medium">Stream</span>
+                    </button>
                   </Tooltip>
                 </div>
 
