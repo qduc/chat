@@ -392,6 +392,9 @@ function processNonStreamingData(
   onToken?: (token: string) => void,
   onEvent?: (event: any) => void
 ): ChatResponse {
+  // Track if we processed text events (to avoid duplication with choices[0].message.content)
+  let hasTextEvents = false;
+
   // Check for errors in the response body
   if (json.error) {
     const errorMessage = json.error.message || json.error || JSON.stringify(json.error);
@@ -413,6 +416,7 @@ function processNonStreamingData(
       if (event.type === 'text') {
         onEvent?.({ type: 'text', value: event.value });
         onToken?.(event.value);
+        hasTextEvents = true;
       } else if (event.type === 'tool_call') {
         onEvent?.({ type: 'tool_call', value: event.value });
       } else if (event.type === 'tool_output') {
@@ -447,21 +451,25 @@ function processNonStreamingData(
   let reasoningDetails: any[] | undefined;
   let reasoningTokens: number | undefined;
 
-  if (json?.choices && Array.isArray(json.choices)) {
-    const message = json.choices[0]?.message;
-    content = message?.content ?? '';
+  // If we already sent text via tool_events, don't duplicate by returning content
+  // The text has already been handled by onEvent/onToken callbacks
+  if (!hasTextEvents) {
+    if (json?.choices && Array.isArray(json.choices)) {
+      const message = json.choices[0]?.message;
+      content = message?.content ?? '';
 
-    if (message?.reasoning) {
-      content = `<thinking>${message.reasoning}</thinking>\n\n${content}`;
-    }
+      if (message?.reasoning) {
+        content = `<thinking>${message.reasoning}</thinking>\n\n${content}`;
+      }
 
-    if (Array.isArray(message?.reasoning_details)) {
-      reasoningDetails = message.reasoning_details;
-    }
-  } else {
-    content = json?.content ?? json?.message?.content ?? '';
-    if (Array.isArray(json?.reasoning_details)) {
-      reasoningDetails = json.reasoning_details;
+      if (Array.isArray(message?.reasoning_details)) {
+        reasoningDetails = message.reasoning_details;
+      }
+    } else {
+      content = json?.content ?? json?.message?.content ?? '';
+      if (Array.isArray(json?.reasoning_details)) {
+        reasoningDetails = json.reasoning_details;
+      }
     }
   }
 
