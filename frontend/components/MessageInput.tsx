@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { Send, Loader2, Gauge, Wrench, Zap, ImagePlus, Search } from 'lucide-react';
+import { Send, Loader2, Gauge, Wrench, Zap, ImagePlus, Search, Plus, Globe } from 'lucide-react';
 import type { PendingState } from '@/hooks/useChat';
 import { images as imageUtils, supportsReasoningControls, type ImageAttachment, type ImageUploadProgress } from '../lib';
 import Toggle from './ui/Toggle';
@@ -334,13 +334,18 @@ export function MessageInput({
                 <div className="flex items-center gap-3">
                   {/* Search toggle */}
                   <Tooltip content="Enable web search (Tavily + Exa)">
-                    <Toggle
-                      ariaLabel="Search"
-                      icon={<Search className="w-4 h-4" />}
-                      checked={searchEnabled}
-                      onChange={handleSearchToggle}
-                      className="whitespace-nowrap"
-                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSearchToggle(!searchEnabled)}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all duration-200 ${
+                        searchEnabled
+                          ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
+                          : 'border-transparent hover:bg-slate-100 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400'
+                      }`}
+                    >
+                      <Globe className="w-4 h-4" />
+                      <span className="text-sm font-medium">Search</span>
+                    </button>
                   </Tooltip>
 
                   {/* Tools selector */}
