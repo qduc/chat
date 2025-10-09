@@ -328,18 +328,6 @@ function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: bo
     ? [{ ...messageToSend, uuid: messageToSend.id }]
     : [];
 
-  if (outgoingMessages.length > 0) {
-    console.log('[DEBUG] Final outgoing message to backend:', {
-      role: outgoingMessages[0].role,
-      id: outgoingMessages[0].id,
-      uuid: outgoingMessages[0].uuid,
-      seq: outgoingMessages[0].seq,
-      hasSeq: outgoingMessages[0].seq !== undefined,
-      hasUuid: outgoingMessages[0].uuid !== undefined,
-      allKeys: Object.keys(outgoingMessages[0])
-    });
-  }
-
   const bodyObj: any = {
     model,
     ...(outgoingMessages.length > 0 ? { messages: outgoingMessages } : {}),

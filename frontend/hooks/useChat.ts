@@ -600,7 +600,6 @@ export function useChat() {
               let updatedToolCalls;
               if (existingIdx >= 0) {
                 // Update existing tool call (merge chunks during streaming)
-                console.log('[DEBUG] Merging tool_call chunk:', { id: tcDelta.id, index: tcDelta.index, name: tcDelta.function?.name });
                 updatedToolCalls = [...existingToolCalls];
                 const existing = { ...updatedToolCalls[existingIdx] };
                 if (tcDelta.id) existing.id = tcDelta.id;
@@ -618,7 +617,6 @@ export function useChat() {
                 updatedToolCalls[existingIdx] = existing;
               } else {
                 // New tool call - capture textOffset from current content length
-                console.log('[DEBUG] Adding new tool_call:', { id: tcDelta.id, index: tcDelta.index, name: tcDelta.function?.name, textOffset: currentTextLength });
                 updatedToolCalls = [
                   ...existingToolCalls,
                   {
@@ -666,8 +664,6 @@ export function useChat() {
               });
 
               if (existingIdx === -1) {
-                // New tool output - add it
-                console.log('[DEBUG] Adding new tool_output:', { tool_call_id: toolCallId, name: outputName });
                 // Create new array with updated last message (immutable update)
                 return [
                   ...prev.slice(0, lastIdx),
@@ -675,7 +671,6 @@ export function useChat() {
                 ];
               } else {
                 // If it already exists, ignore the duplicate
-                console.log('[DEBUG] Ignoring duplicate tool_output:', { tool_call_id: toolCallId, name: outputName });
                 return prev;
               }
             });
