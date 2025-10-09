@@ -402,8 +402,8 @@ function processNonStreamingData(
   if (json.tool_events && Array.isArray(json.tool_events)) {
     for (const event of json.tool_events) {
       if (event.type === 'text') {
+        // Non-stream tool text is already merged via onEvent; calling onToken too duplicates it in the UI.
         onEvent?.({ type: 'text', value: event.value });
-        onToken?.(event.value);
         hasTextEvents = true;
       } else if (event.type === 'tool_call') {
         onEvent?.({ type: 'tool_call', value: event.value });
