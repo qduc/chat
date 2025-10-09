@@ -501,16 +501,21 @@ export function useChat() {
         systemPrompt: systemPromptRef.current || undefined,
         activeSystemPromptId: activeSystemPromptIdRef.current || undefined,
         onToken: (token: string) => {
-          // Update token count for speed calculation
+          // Update token count for speed calculation and record startTime on first token
           setPending(prev => {
             if (!prev.tokenStats || prev.tokenStats.messageId !== messageId) {
               return prev;
             }
+
+            // If this is the first token (count is 0), update startTime to now
+            const isFirstToken = prev.tokenStats.count === 0;
+
             return {
               ...prev,
               tokenStats: {
                 ...prev.tokenStats,
                 count: prev.tokenStats.count + 1,
+                startTime: isFirstToken ? Date.now() : prev.tokenStats.startTime,
               },
             };
           });
@@ -534,6 +539,25 @@ export function useChat() {
         },
         onEvent: (event) => {
           if (event.type === 'text') {
+            // Record startTime on first text content if not already recorded
+            setPending(prev => {
+              if (!prev.tokenStats || prev.tokenStats.messageId !== messageId) {
+                return prev;
+              }
+
+              // If this is the first content (count is 0), update startTime to now
+              const isFirstContent = prev.tokenStats.count === 0;
+
+              return {
+                ...prev,
+                tokenStats: {
+                  ...prev.tokenStats,
+                  count: prev.tokenStats.count + 1,
+                  startTime: isFirstContent ? Date.now() : prev.tokenStats.startTime,
+                },
+              };
+            });
+
             // Handle text events from tool_events (non-streaming responses)
             setMessages(prev => {
               const lastIdx = prev.length - 1;
@@ -716,6 +740,27 @@ export function useChat() {
             }
             return [newConversation, ...prev];
           });
+
+          // Poll for title update after a delay (title generation is async on backend)
+          // Only poll if we got a generic/empty title initially
+          if (!response.conversation.title || response.conversation.title === 'Untitled conversation') {
+            setTimeout(async () => {
+              try {
+                const updated = await conversationsApi.get(response.conversation!.id, { limit: 1 });
+                if (updated.title && updated.title !== response.conversation!.title) {
+                  // Update current conversation title if we're still on this conversation
+                  setCurrentConversationTitle(updated.title);
+                  // Update in sidebar list
+                  setConversations(prev => prev.map(c =>
+                    c.id === response.conversation!.id ? { ...c, title: updated.title } : c
+                  ));
+                }
+              } catch (err) {
+                // Silent failure - title update is non-critical
+                console.warn('Failed to fetch updated conversation title:', err);
+              }
+            }, 2000); // Poll after 2 seconds to allow title generation to complete
+          }
         }
       }
 

@@ -178,20 +178,32 @@ export class SimplifiedPersistence {
   this.userMessageId = latestUserMapping?.persistedId != null ? String(latestUserMapping.persistedId) : null;
 
       // Generate title only if this is the first message in a new conversation
+      // Fire-and-forget to avoid blocking the response
       if (isNewConversation) {
-        try {
-          const lastUser = ConversationTitleService.findLastUserMessage(messages);
-          if (lastUser) {
-            // Extract the model being used for the chat to use the same model for title generation
-            const { model: chatModel } = this.persistenceConfig.extractRequestSettings(bodyIn);
-            const generated = await this.titleService.generateTitle(lastUser.content, this.providerId, chatModel);
-            if (generated) {
-              this.conversationManager.updateTitle(this.conversationId, userId, generated);
-              this.conversationMeta = { ...this.conversationMeta, title: generated };
-            }
-          }
-        } catch (err) {
-          console.warn('[SimplifiedPersistence] Title generation failed:', err?.message || err);
+        const lastUser = ConversationTitleService.findLastUserMessage(messages);
+        if (lastUser) {
+          // Extract the model being used for the chat to use the same model for title generation
+          const { model: chatModel } = this.persistenceConfig.extractRequestSettings(bodyIn);
+
+          // Run title generation in background without blocking
+          // Store conversationId and userId in closure to avoid stale references
+          const convId = this.conversationId;
+          const uId = userId;
+          this.titleService.generateTitle(lastUser.content, this.providerId, chatModel)
+            .then(generated => {
+              if (generated) {
+                this.conversationManager.updateTitle(convId, uId, generated);
+                // Update the in-memory conversationMeta so it's available for subsequent messages
+                // in the same request cycle (though typically this completes after response is sent)
+                if (this.conversationMeta && this.conversationId === convId) {
+                  this.conversationMeta.title = generated;
+                }
+                console.log(`[SimplifiedPersistence] Title generated: "${generated}"`);
+              }
+            })
+            .catch(err => {
+              console.warn('[SimplifiedPersistence] Title generation failed:', err?.message || err);
+            });
         }
       }
     }
