@@ -80,6 +80,15 @@ async function handler({
   if (!searxngUrl) {
     throw new Error('SEARXNG_BASE_URL environment variable is not set');
   }
+  // Basic URL sanity check to provide clearer errors for bad config
+  try {
+    const parsed = new URL(searxngUrl);
+    if (!parsed.protocol || !/^https?:$/.test(parsed.protocol)) {
+      throw new Error('SEARXNG_BASE_URL must start with http:// or https://');
+    }
+  } catch (e) {
+    throw new Error(`Invalid SEARXNG_BASE_URL: ${e.message || String(e)}`);
+  }
 
   // Build URL with query parameters
   const url = new URL('/search', searxngUrl);
@@ -153,20 +162,24 @@ async function handler({
 
       output += 'Search Results:\n\n';
       limitedResults.forEach((result, index) => {
-        output += `${index + 1}. ${result.title || 'Untitled'}\n`;
+        const title = result?.title || 'Untitled';
+        const snippet = typeof result?.content === 'string'
+          ? (result.content.length > 800 ? `${result.content.slice(0, 800).trim()}…` : result.content)
+          : undefined;
+        const urlStr = typeof result?.url === 'string' ? result.url : 'N/A';
+        const source = result?.engine;
+        const published = result?.publishedDate || result?.published || result?.date;
 
-        if (result.content) {
-          output += `   ${result.content}\n`;
+        output += `${index + 1}. ${title}\n`;
+        if (snippet) {
+          output += `   ${snippet}\n`;
         }
-
-        output += `   URL: ${result.url}\n`;
-
-        if (result.engine) {
-          output += `   Source: ${result.engine}\n`;
+        output += `   URL: ${urlStr}\n`;
+        if (source) {
+          output += `   Source: ${source}\n`;
         }
-
-        if (result.publishedDate) {
-          output += `   Published: ${result.publishedDate}\n`;
+        if (published) {
+          output += `   Published: ${published}\n`;
         }
 
         output += '\n';
@@ -199,10 +212,13 @@ async function handler({
     if (Array.isArray(results.infoboxes) && results.infoboxes.length > 0) {
       output += '\nAdditional Information:\n';
       results.infoboxes.forEach((infobox, index) => {
-        if (infobox.infobox) {
+        if (infobox?.infobox) {
           output += `\n${index + 1}. ${infobox.infobox}\n`;
           if (infobox.content) {
-            output += `   ${infobox.content}\n`;
+            const info = typeof infobox.content === 'string' && infobox.content.length > 800
+              ? `${infobox.content.slice(0, 800).trim()}…`
+              : infobox.content;
+            if (info) output += `   ${info}\n`;
           }
           if (Array.isArray(infobox.urls) && infobox.urls.length > 0) {
             output += `   URLs: ${infobox.urls.join(', ')}\n`;
@@ -213,7 +229,13 @@ async function handler({
 
     return output.trim();
   } catch (error) {
-    logger.error('Error performing web search with SearXNG:', error);
+    logger.error('Error performing web search with SearXNG:', {
+      error: error?.message || String(error),
+      query,
+      categories,
+      engines,
+      language
+    });
 
     // Handle timeout errors
     if (error.name === 'AbortError') {
