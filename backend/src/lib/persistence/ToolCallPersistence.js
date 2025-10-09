@@ -4,6 +4,7 @@ import {
   getToolCallsByMessageId,
   getToolOutputsByMessageId,
 } from '../../db/toolCalls.js';
+import { logger } from '../../logger.js';
 
 /**
  * Manages persistence of tool calls and outputs
@@ -26,7 +27,7 @@ export class ToolCallPersistence {
     try {
       return insertToolCalls({ messageId, conversationId, toolCalls });
     } catch (error) {
-      console.error('[ToolCallPersistence] Error saving tool calls:', error);
+      logger.error('[ToolCallPersistence] Error saving tool calls:', error);
       throw error;
     }
   }
@@ -47,7 +48,7 @@ export class ToolCallPersistence {
     try {
       return insertToolOutputs({ messageId, conversationId, toolOutputs });
     } catch (error) {
-      console.error('[ToolCallPersistence] Error saving tool outputs:', error);
+      logger.error('[ToolCallPersistence] Error saving tool outputs:', error);
       throw error;
     }
   }
@@ -75,7 +76,7 @@ export class ToolCallPersistence {
         textOffset: tc.text_offset
       }));
     } catch (error) {
-      console.error('[ToolCallPersistence] Error loading tool calls:', error);
+      logger.error('[ToolCallPersistence] Error loading tool calls:', error);
       return [];
     }
   }
@@ -98,7 +99,7 @@ export class ToolCallPersistence {
         status: to.status
       }));
     } catch (error) {
-      console.error('[ToolCallPersistence] Error loading tool outputs:', error);
+      logger.error('[ToolCallPersistence] Error loading tool outputs:', error);
       return [];
     }
   }

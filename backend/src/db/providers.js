@@ -1,4 +1,5 @@
 import { getDb } from './client.js';
+import { logger } from '../logger.js';
 
 function safeJsonParse(value, fallback) {
   try {
@@ -305,7 +306,7 @@ export function createDefaultProviders(userId) {
       const provider = createProvider(providerConfig);
       createdProviders.push(provider);
     } catch (error) {
-      console.warn(`Failed to create default provider ${providerConfig.name} for user ${userId}:`, error.message);
+      logger.warn(`Failed to create default provider ${providerConfig.name} for user ${userId}:`, error.message);
       // Continue with other providers even if one fails
     }
   }

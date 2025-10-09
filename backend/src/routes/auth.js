@@ -16,6 +16,7 @@ import {
   verifyRefreshToken,
   authenticateToken
 } from '../middleware/auth.js';
+import { logger } from '../logger.js';
 
 const router = Router();
 
@@ -116,7 +117,7 @@ router.post('/register', registerLimiter, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[auth] Registration error:', error);
+    logger.error('[auth] Registration error:', error);
     res.status(500).json({
       error: 'registration_failed',
       message: 'Failed to create account'
@@ -190,7 +191,7 @@ router.post('/login', authLimiter, async (req, res) => {
     });
 
   } catch (error) {
-    console.error('[auth] Login error:', error);
+    logger.error('[auth] Login error:', error);
     res.status(500).json({
       error: 'login_failed',
       message: 'Failed to authenticate'
@@ -245,7 +246,7 @@ router.post('/refresh', async (req, res) => {
       });
     }
 
-    console.error('[auth] Refresh token error:', error);
+    logger.error('[auth] Refresh token error:', error);
     res.status(500).json({
       error: 'refresh_failed',
       message: 'Failed to refresh token'

@@ -13,6 +13,7 @@ import {
   insertToolMessage,
   getNextSeq,
 } from '../db/messages.js';
+import { logger } from '../logger.js';
 
 /**
  * Simplified persistence manager that implements final-only writes
@@ -60,9 +61,9 @@ export class SimplifiedPersistence {
   async initialize({ conversationId, sessionId, userId = null, req, bodyIn }) {
     // Store user context for later use
     this.userId = userId;
-  this.userMessageId = null;
-  this.assistantMessageId = null;
-  this._latestSyncMappings = [];
+    this.userMessageId = null;
+    this.assistantMessageId = null;
+    this._latestSyncMappings = [];
 
     // Check if persistence is enabled
     // Prioritize user-based persistence - require either userId OR sessionId
@@ -170,12 +171,12 @@ export class SimplifiedPersistence {
 
     if (messages.length > 0) {
       // Sync message history using diff-based approach with automatic fallback
-  const syncResult = this.conversationManager.syncMessageHistoryDiff(this.conversationId, userId, messages, seq);
+      const syncResult = this.conversationManager.syncMessageHistoryDiff(this.conversationId, userId, messages, seq);
       this._latestSyncMappings = Array.isArray(syncResult?.idMappings) ? syncResult.idMappings : [];
 
       // Track the most recent persisted user message ID for response metadata
       const latestUserMapping = [...this._latestSyncMappings].reverse().find(mapping => mapping.role === 'user');
-  this.userMessageId = latestUserMapping?.persistedId != null ? String(latestUserMapping.persistedId) : null;
+      this.userMessageId = latestUserMapping?.persistedId != null ? String(latestUserMapping.persistedId) : null;
 
       // Generate title only if this is the first message in a new conversation
       // Fire-and-forget to avoid blocking the response
@@ -198,11 +199,11 @@ export class SimplifiedPersistence {
                 if (this.conversationMeta && this.conversationId === convId) {
                   this.conversationMeta.title = generated;
                 }
-                console.log(`[SimplifiedPersistence] Title generated: "${generated}"`);
+                logger.info(`[SimplifiedPersistence] Title generated: "${generated}"`);
               }
             })
             .catch(err => {
-              console.warn('[SimplifiedPersistence] Title generation failed:', err?.message || err);
+              logger.warn('[SimplifiedPersistence] Title generation failed:', err?.message || err);
             });
         }
       }
@@ -302,7 +303,7 @@ export class SimplifiedPersistence {
       }
     } catch (error) {
       // Non-fatal: log and continue
-      console.warn('[SimplifiedPersistence] Metadata update failed:', error?.message || error);
+      logger.warn('[SimplifiedPersistence] Metadata update failed:', error?.message || error);
     }
   }
 
@@ -507,7 +508,7 @@ export class SimplifiedPersistence {
       if (result && result.id) {
         this.currentMessageId = result.id;
         this.assistantMessageId = String(result.id);
-        console.log('[SimplifiedPersistence] Assistant message recorded', {
+        logger.debug('[SimplifiedPersistence] Assistant message recorded', {
           conversationId: this.conversationId,
           messageId: this.currentMessageId,
           seq: this.assistantSeq
@@ -526,7 +527,7 @@ export class SimplifiedPersistence {
       this.reasoningTokens = null;
       this.finalized = true;
     } catch (error) {
-      console.error('[SimplifiedPersistence] Failed to record final assistant message:', error);
+      logger.error('[SimplifiedPersistence] Failed to record final assistant message:', error);
       throw error;
     }
   }
@@ -537,7 +538,7 @@ export class SimplifiedPersistence {
    */
   addToolCalls(toolCalls) {
     if (!this.persist || !Array.isArray(toolCalls) || toolCalls.length === 0) return;
-    console.log('[SimplifiedPersistence] Buffering tool calls', {
+    logger.debug('[SimplifiedPersistence] Buffering tool calls', {
       conversationId: this.conversationId,
       messageSeq: this.assistantSeq,
       callIds: toolCalls.map(tc => tc?.id),
@@ -552,7 +553,7 @@ export class SimplifiedPersistence {
    */
   addToolOutputs(toolOutputs) {
     if (!this.persist || !Array.isArray(toolOutputs) || toolOutputs.length === 0) return;
-    console.log('[SimplifiedPersistence] Buffering tool outputs', {
+    logger.debug('[SimplifiedPersistence] Buffering tool outputs', {
       conversationId: this.conversationId,
       messageSeq: this.assistantSeq,
       entries: toolOutputs.map(out => ({
@@ -579,7 +580,7 @@ export class SimplifiedPersistence {
     try {
       // Save tool calls to database (attached to assistant message)
       if (this.toolCalls.length > 0) {
-        console.log('[SimplifiedPersistence] Persisting tool calls to database', {
+        logger.debug('[SimplifiedPersistence] Persisting tool calls to database', {
           conversationId: this.conversationId,
           messageId: this.currentMessageId,
           count: this.toolCalls.length,
@@ -594,7 +595,7 @@ export class SimplifiedPersistence {
 
       // Save tool outputs as separate "tool" role messages
       if (this.toolOutputs.length > 0) {
-        console.log('[SimplifiedPersistence] Persisting tool outputs as separate messages', {
+        logger.debug('[SimplifiedPersistence] Persisting tool outputs as separate messages', {
           conversationId: this.conversationId,
           count: this.toolOutputs.length
         });
@@ -629,7 +630,7 @@ export class SimplifiedPersistence {
         }
       }
     } catch (error) {
-      console.error('[SimplifiedPersistence] Failed to persist tool calls/outputs:', error);
+      logger.error('[SimplifiedPersistence] Failed to persist tool calls/outputs:', error);
       // Don't throw - this is cleanup, allow the response to complete
     } finally {
       // Clear buffers after persistence attempt
@@ -659,7 +660,7 @@ export class SimplifiedPersistence {
       this.conversationManager.markAssistantError(this.conversationId, this.assistantSeq);
       this.errored = true;
     } catch (error) {
-      console.error('[SimplifiedPersistence] Failed to mark error:', error);
+      logger.error('[SimplifiedPersistence] Failed to mark error:', error);
       // Don't re-throw as this is cleanup
     }
   }

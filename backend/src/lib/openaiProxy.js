@@ -432,7 +432,7 @@ async function handleRequest(context, req, res) {
           }
           // Capture tool_calls from message
           if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
-            console.log('[openaiProxy] Capturing tool calls from JSON response', {
+            logger.debug('[openaiProxy] Capturing tool calls from JSON response', {
               count: message.tool_calls.length,
               callIds: message.tool_calls.map(tc => tc?.id)
             });
@@ -522,7 +522,7 @@ async function executeRequestHandler(context, req, res) {
         );
       } catch (error) {
         // Don't fail the request if usage tracking fails
-        console.warn('[openaiProxy] Failed to update prompt usage:', error.message);
+        logger.warn('[openaiProxy] Failed to update prompt usage:', error.message);
       }
     }
 

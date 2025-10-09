@@ -20,23 +20,23 @@ export const logger = pino({
       // Pretty console output in development, plain JSON in production
       pretty
         ? {
-            target: 'pino-pretty',
-            level,
-            options: {
-              colorize: true,
-              translateTime: 'SYS:standard',
-              singleLine: false,
-              ignore: 'pid,hostname',
-              destination: 1, // stdout
-            },
-          }
-        : {
-            target: 'pino/file',
-            level,
-            options: {
-              destination: 1, // stdout
-            },
+          target: 'pino-pretty',
+          level,
+          options: {
+            colorize: true,
+            translateTime: 'SYS:standard',
+            singleLine: false,
+            ignore: 'pid,hostname',
+            destination: 1, // stdout
           },
+        }
+        : {
+          target: 'pino/file',
+          level,
+          options: {
+            destination: 1, // stdout
+          },
+        },
     ],
   },
   redact: {

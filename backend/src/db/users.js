@@ -2,6 +2,7 @@ import { getDb } from './client.js';
 import { randomUUID } from 'crypto';
 import { createDefaultProviders } from './providers.js';
 import { upsertSession } from './sessions.js';
+import { logger } from '../logger.js';
 
 /**
  * Create a new user
@@ -37,7 +38,7 @@ export function createUser({ email, passwordHash, displayName }) {
   try {
     createDefaultProviders(id);
   } catch (error) {
-    console.warn(`Failed to create default providers for user ${id}:`, error.message);
+    logger.warn(`Failed to create default providers for user ${id}:`, error.message);
     // Don't fail user creation if provider creation fails
   }
 

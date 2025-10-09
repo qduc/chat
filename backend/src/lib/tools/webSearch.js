@@ -1,4 +1,5 @@
 import { createTool } from './baseTool.js';
+import { logger } from '../../logger.js';
 
 const TOOL_NAME = 'web_search';
 
@@ -192,7 +193,7 @@ async function handler({
 
       // Other errors - provide full context
       throw new Error(`Tavily API request failed with status ${response.status}: ${apiErrorMessage}`);
-    }    const results = await response.json();
+    } const results = await response.json();
     let output = '';
 
     if (results.answer) {
@@ -226,7 +227,7 @@ async function handler({
 
     return output.trim() || 'No results found.';
   } catch (error) {
-    console.error('Error performing web search with Tavily:', error);
+    logger.error('Error performing web search with Tavily:', error);
 
     // Re-throw with more context if it's a generic error
     if (error.message && !error.message.includes('Tavily')) {

@@ -1,4 +1,5 @@
 import { upsertSession } from '../../db/sessions.js';
+import { logger } from '../../logger.js';
 import {
   getConversationById,
   createConversation,
@@ -37,7 +38,7 @@ import { getDb } from '../../db/client.js';
  * Focused on database interactions without business logic or HTTP concerns
  */
 export class ConversationManager {
-  constructor() {}
+  constructor() { }
 
   /**
    * Ensure session exists in database
@@ -148,7 +149,7 @@ export class ConversationManager {
     }
 
     if (diff.fallback) {
-      console.warn(`[MessageSync] Fallback to clear-and-rewrite for conversation ${conversationId}: ${diff.reason}`);
+      logger.warn(`[MessageSync] Fallback to clear-and-rewrite for conversation ${conversationId}: ${diff.reason}`);
       return this._fallbackClearAndRewrite(conversationId, userId, normalized, anchorSeq);
     }
 
@@ -161,7 +162,7 @@ export class ConversationManager {
       unchanged: diff.unchanged.length,
       anchorSeq
     };
-    console.log(`[MessageSync] Diff-based sync for conversation ${conversationId}:`, stats);
+    logger.debug(`[MessageSync] Diff-based sync for conversation ${conversationId}:`, stats);
 
     return this._applyMessageDiff(conversationId, userId, diff, anchorSeq);
   }
@@ -292,7 +293,7 @@ export class ConversationManager {
     const hasIncomingToolOutputs = Array.isArray(message.tool_outputs);
 
     if (!hasIncomingToolCalls && !hasIncomingToolOutputs) {
-      console.log('[ConversationManager] Skipping tool artifact sync (no incoming metadata)', {
+      logger.debug('[ConversationManager] Skipping tool artifact sync (no incoming metadata)', {
         conversationId,
         messageId
       });
@@ -305,7 +306,7 @@ export class ConversationManager {
     const nextToolCalls = hasIncomingToolCalls ? message.tool_calls : existingToolCalls;
     const nextToolOutputs = hasIncomingToolOutputs ? message.tool_outputs : existingToolOutputs;
 
-    console.log('[ConversationManager] Syncing tool artifacts', {
+    logger.debug('[ConversationManager] Syncing tool artifacts', {
       conversationId,
       messageId,
       incoming: {
@@ -328,7 +329,7 @@ export class ConversationManager {
 
     if (artifactDiff.fallback) {
       // Fall back to replace strategy
-      console.log('[ConversationManager] Tool artifact diff fallback triggered', {
+      logger.debug('[ConversationManager] Tool artifact diff fallback triggered', {
         conversationId,
         messageId,
         reason: artifactDiff.reason || 'unknown'
@@ -344,7 +345,7 @@ export class ConversationManager {
 
     // Apply granular updates
     for (const tc of artifactDiff.toolCallsToUpdate) {
-      console.log('[ConversationManager] Updating tool call', {
+      logger.debug('[ConversationManager] Updating tool call', {
         id: tc.id,
         conversationId,
         messageId
@@ -357,7 +358,7 @@ export class ConversationManager {
     }
 
     for (const to of artifactDiff.toolOutputsToUpdate) {
-      console.log('[ConversationManager] Updating tool output', {
+      logger.debug('[ConversationManager] Updating tool output', {
         id: to.id,
         conversationId,
         messageId
@@ -371,7 +372,7 @@ export class ConversationManager {
 
     // Insert new tool calls/outputs
     if (artifactDiff.toolCallsToInsert.length > 0) {
-      console.log('[ConversationManager] Inserting tool calls', {
+      logger.debug('[ConversationManager] Inserting tool calls', {
         conversationId,
         messageId,
         count: artifactDiff.toolCallsToInsert.length
@@ -384,7 +385,7 @@ export class ConversationManager {
     }
 
     if (artifactDiff.toolOutputsToInsert.length > 0) {
-      console.log('[ConversationManager] Inserting tool outputs', {
+      logger.debug('[ConversationManager] Inserting tool outputs', {
         conversationId,
         messageId,
         count: artifactDiff.toolOutputsToInsert.length

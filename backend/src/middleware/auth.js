@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import { getUserById } from '../db/users.js';
 import { upsertSession } from '../db/sessions.js';
 import { config } from '../env.js';
+import { logger } from '../logger.js';
 
 /**
  * Middleware that requires authentication
@@ -48,7 +49,7 @@ export function authenticateToken(req, res, next) {
         };
         upsertSession(req.sessionId, { userId: user.id, ...sessionMeta });
       } catch (sessionErr) {
-        console.warn('[auth] Failed to upsert session during authentication:', sessionErr.message);
+        logger.warn('[auth] Failed to upsert session during authentication:', sessionErr.message);
       }
     }
 

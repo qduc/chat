@@ -2,6 +2,7 @@ import { readdir, readFile } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import yaml from 'js-yaml';
+import { logger } from '../logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -83,7 +84,7 @@ async function loadBuiltInPrompts() {
       files = await readdir(builtinsDir);
     } catch (error) {
       if (error.code === 'ENOENT') {
-        console.warn('[builtins] Built-ins directory not found, no built-in prompts available');
+        logger.warn('[builtins] Built-ins directory not found, no built-in prompts available');
         return [];
       }
       throw error;
@@ -95,7 +96,7 @@ async function loadBuiltInPrompts() {
     );
 
     if (markdownFiles.length === 0) {
-      console.warn('[builtins] No built-in prompt files found');
+      logger.warn('[builtins] No built-in prompt files found');
       return [];
     }
 
@@ -109,7 +110,7 @@ async function loadBuiltInPrompts() {
         const prompt = await parsePromptFile(filePath);
         prompts.push(prompt);
       } catch (error) {
-        console.error(`[builtins] Failed to load ${file}:`, error.message);
+        logger.error(`[builtins] Failed to load ${file}:`, error.message);
         errors.push({ file, error: error.message });
       }
     }
@@ -118,15 +119,15 @@ async function loadBuiltInPrompts() {
     prompts.sort((a, b) => a.order - b.order);
 
     if (errors.length > 0) {
-      console.warn(`[builtins] Loaded ${prompts.length} prompts with ${errors.length} errors`);
+      logger.warn(`[builtins] Loaded ${prompts.length} prompts with ${errors.length} errors`);
     } else {
-      console.log(`[builtins] Loaded ${prompts.length} built-in prompts`);
+      logger.info(`[builtins] Loaded ${prompts.length} built-in prompts`);
     }
 
     return prompts;
 
   } catch (error) {
-    console.error('[builtins] Failed to load built-in prompts:', error.message);
+    logger.error('[builtins] Failed to load built-in prompts:', error.message);
     throw error;
   }
 }

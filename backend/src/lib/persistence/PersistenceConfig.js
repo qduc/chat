@@ -1,3 +1,5 @@
+import { logger } from '../../logger.js';
+
 /**
  * Centralized configuration management for persistence operations
  * Handles validation and provides defaults for persistence-related settings
@@ -111,7 +113,7 @@ export class PersistenceConfig {
           };
         }
       } catch (error) {
-        console.warn('[PersistenceConfig] Failed to resolve system prompt:', error);
+        logger.warn('[PersistenceConfig] Failed to resolve system prompt:', error);
       }
     } else if (settings.systemPrompt && bodyIn.active_system_prompt_id) {
       // If there's both an explicit system prompt and active_system_prompt_id, save both
@@ -197,11 +199,11 @@ export class PersistenceConfig {
     const maxMessages = this.getMaxMessagesPerConversation();
 
     if (maxConversations < 1 || maxConversations > 10000) {
-      console.warn('[PersistenceConfig] maxConversationsPerSession should be between 1 and 10000, got:', maxConversations);
+      logger.warn('[PersistenceConfig] maxConversationsPerSession should be between 1 and 10000, got:', maxConversations);
     }
 
     if (maxMessages < 1 || maxMessages > 50000) {
-      console.warn('[PersistenceConfig] maxMessagesPerConversation should be between 1 and 50000, got:', maxMessages);
+      logger.warn('[PersistenceConfig] maxMessagesPerConversation should be between 1 and 50000, got:', maxMessages);
     }
   }
 

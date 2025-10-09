@@ -1,9 +1,10 @@
 import { config } from '../../env.js';
+import { logger } from '../../logger.js';
 
 export default function seedProviderFromEnv(db, options = {}) {
   const { userId } = options;
   if (!userId) {
-    console.log('[seeder] Skipping env provider seeding - no userId provided');
+    logger.info('[seeder] Skipping env provider seeding - no userId provided');
     return;
   }
 
@@ -63,6 +64,6 @@ export default function seedProviderFromEnv(db, options = {}) {
 
     db.prepare(`UPDATE providers SET is_default = CASE WHEN id=@id THEN 1 ELSE 0 END WHERE user_id = @userId`).run({ id, userId });
   } catch (err) {
-    console.warn('[seeder] Env provider seeding skipped:', err?.message || String(err));
+    logger.warn('[seeder] Env provider seeding skipped:', err?.message || String(err));
   }
 }

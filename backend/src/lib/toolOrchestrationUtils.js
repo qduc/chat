@@ -1,28 +1,29 @@
 import { tools as toolRegistry } from './tools.js';
 import { getMessagesPage, getLastAssistantResponseId } from '../db/messages.js';
 import { getConversationMetadata } from './responseUtils.js';
+import { logger } from '../logger.js';
 
 function debugLogMessages(label, messages, persistence) {
   try {
     const conversationId = persistence?.conversationId;
     const condensed = Array.isArray(messages)
       ? messages.map((msg) => ({
-          role: msg?.role,
-          hasToolCalls: Array.isArray(msg?.tool_calls) && msg.tool_calls.length > 0,
-          toolCallIds: Array.isArray(msg?.tool_calls) ? msg.tool_calls.map((tc) => tc?.id) : undefined,
-          toolCallCount: Array.isArray(msg?.tool_calls) ? msg.tool_calls.length : 0,
-          toolOutputs: Array.isArray(msg?.tool_outputs)
-            ? msg.tool_outputs.map((out) => ({ tool_call_id: out?.tool_call_id }))
-            : undefined,
-        }))
+        role: msg?.role,
+        hasToolCalls: Array.isArray(msg?.tool_calls) && msg.tool_calls.length > 0,
+        toolCallIds: Array.isArray(msg?.tool_calls) ? msg.tool_calls.map((tc) => tc?.id) : undefined,
+        toolCallCount: Array.isArray(msg?.tool_calls) ? msg.tool_calls.length : 0,
+        toolOutputs: Array.isArray(msg?.tool_outputs)
+          ? msg.tool_outputs.map((out) => ({ tool_call_id: out?.tool_call_id }))
+          : undefined,
+      }))
       : null;
-    console.log(`[toolOrchestrationUtils] ${label}`, {
+    logger.debug(`[toolOrchestrationUtils] ${label}`, {
       conversationId,
       messageCount: Array.isArray(messages) ? messages.length : null,
       messages: condensed,
     });
   } catch (error) {
-    console.warn('[toolOrchestrationUtils] Failed to log messages', error);
+    logger.warn('[toolOrchestrationUtils] Failed to log messages', error);
   }
 }
 
@@ -82,7 +83,7 @@ async function resolveSystemPromptContent(activePromptId, userId) {
     const prompt = await getPromptById(activePromptId, userId);
     return prompt?.body || '';
   } catch (error) {
-    console.warn('[toolOrchestrationUtils] Failed to resolve system prompt:', error);
+    logger.warn('[toolOrchestrationUtils] Failed to resolve system prompt:', error);
     return '';
   }
 }
@@ -232,8 +233,8 @@ export async function buildConversationMessagesAsync({ body, bodyIn, persistence
     } catch {
       prior = Array.isArray(bodyIn?.messages)
         ? bodyIn.messages
-            .filter((m) => m && m.role !== 'system')
-            .map((m) => normalizeStoredMessage(m) || { role: m.role, content: m.content })
+          .filter((m) => m && m.role !== 'system')
+          .map((m) => normalizeStoredMessage(m) || { role: m.role, content: m.content })
         : [];
     }
   } else if (Array.isArray(bodyIn?.messages)) {
@@ -310,14 +311,14 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
       const page = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
       const prior = [];
 
-      console.log('[toolOrchestrationUtils] Retrieved ' + page?.messages?.length + ' messages for conversation ' + persistence.conversationId);
+      logger.debug('[toolOrchestrationUtils] Retrieved ' + page?.messages?.length + ' messages for conversation ' + persistence.conversationId);
 
       for (const m of page?.messages || []) {
         const normalized = normalizeStoredMessage(m);
         if (normalized) prior.push(normalized);
       }
 
-      console.log('[toolOrchestrationUtils] After normalization: ' + prior.length + ' messages left');
+      logger.debug('[toolOrchestrationUtils] After normalization: ' + prior.length + ' messages left');
 
       const messagesWithSystem = systemPrompt
         ? [{ role: 'system', content: systemPrompt }, ...prior]
@@ -328,7 +329,7 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
         previousResponseId: null
       };
     } catch (error) {
-      console.warn('[toolOrchestrationUtils] Failed to get response_id, falling back to full history:', error);
+      logger.warn('[toolOrchestrationUtils] Failed to get response_id, falling back to full history:', error);
       // Fall through to bodyIn messages
     }
   }
@@ -339,14 +340,14 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
       const page = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
       const prior = [];
 
-      console.log('[toolOrchestrationUtils] Retrieved ' + page?.messages?.length + ' messages for conversation ' + persistence.conversationId);
+      logger.debug('[toolOrchestrationUtils] Retrieved ' + page?.messages?.length + ' messages for conversation ' + persistence.conversationId);
 
       for (const m of page?.messages || []) {
         const normalized = normalizeStoredMessage(m);
         if (normalized) prior.push(normalized);
       }
 
-      console.log('[toolOrchestrationUtils] After normalization: ' + prior.length + ' messages left');
+      logger.debug('[toolOrchestrationUtils] After normalization: ' + prior.length + ' messages left');
 
       const messages = systemPrompt
         ? [{ role: 'system', content: systemPrompt }, ...prior]
@@ -357,15 +358,15 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
         previousResponseId: null
       };
     } catch (error) {
-      console.warn('[toolOrchestrationUtils] Failed to load persistence fallback history:', error);
+      logger.warn('[toolOrchestrationUtils] Failed to load persistence fallback history:', error);
     }
   }
 
   // Final fallback: rely on bodyIn history (may lack tool metadata)
   const prior = Array.isArray(bodyIn?.messages)
     ? bodyIn.messages
-        .filter((m) => m && m.role !== 'system')
-        .map((m) => normalizeStoredMessage(m) || { role: m.role, content: m.content })
+      .filter((m) => m && m.role !== 'system')
+      .map((m) => normalizeStoredMessage(m) || { role: m.role, content: m.content })
     : [];
 
   const messages = systemPrompt

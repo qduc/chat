@@ -3,6 +3,7 @@ import { logUpstreamRequest, logUpstreamResponse, teeStreamWithPreview } from '.
 import { BaseProvider } from './baseProvider.js';
 import { ChatCompletionsAdapter } from '../adapters/chatCompletionsAdapter.js';
 import { ResponsesAPIAdapter } from '../adapters/responsesApiAdapter.js';
+import { logger } from '../../logger.js';
 
 const FALLBACK_MODEL = 'gpt-4.1-mini';
 
@@ -129,7 +130,7 @@ export class OpenAIProvider extends BaseProvider {
       logUpstreamRequest({ url, headers, body: translatedRequest });
     } catch (err) {
       // logger should be best-effort; don't let logging break requests
-      console.error('Failed to log upstream request:', err?.message || err);
+      logger.error('Failed to log upstream request:', err?.message || err);
     }
 
     const response = await client(url, {
@@ -165,7 +166,7 @@ export class OpenAIProvider extends BaseProvider {
             body: preview
           });
         }).catch((err) => {
-          console.error('Failed to capture streaming response preview:', err?.message || err);
+          logger.error('Failed to capture streaming response preview:', err?.message || err);
         });
 
         // Return response with the logged stream
@@ -196,7 +197,7 @@ export class OpenAIProvider extends BaseProvider {
       }
     } catch (err) {
       // logger should be best-effort; don't let logging break responses
-      console.error('Failed to log upstream response:', err?.message || err);
+      logger.error('Failed to log upstream response:', err?.message || err);
       if (translatedRequest?.stream) {
         return wrapStreamingResponse(response);
       }
