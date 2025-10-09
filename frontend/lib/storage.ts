@@ -80,6 +80,8 @@ export function removeRefreshToken(): void {
 export function clearTokens(): void {
   removeToken();
   removeRefreshToken();
+  // Notify listeners that tokens were cleared
+  notifyTokensCleared();
 }
 
 /**
@@ -189,4 +191,30 @@ export function setAuthReady(value: boolean) {
 
 export function isAuthReady() {
   return authReady;
+}
+
+/**
+ * Token cleared event management
+ * Used to notify components when tokens are cleared due to auth failure
+ */
+type TokensClearedListener = () => void;
+let tokensClearedListeners: TokensClearedListener[] = [];
+
+export function onTokensCleared(listener: TokensClearedListener): () => void {
+  tokensClearedListeners.push(listener);
+  
+  // Return unsubscribe function
+  return () => {
+    tokensClearedListeners = tokensClearedListeners.filter(l => l !== listener);
+  };
+}
+
+function notifyTokensCleared(): void {
+  tokensClearedListeners.forEach(listener => {
+    try {
+      listener();
+    } catch (error) {
+      console.error('Error in tokens cleared listener:', error);
+    }
+  });
 }
