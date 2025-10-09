@@ -582,7 +582,7 @@ const Message = React.memo<MessageProps>(function Message({
                           <span className="text-slate-500 dark:text-slate-500">•</span>
                         )}
                         {message.usage.prompt_tokens !== undefined && message.usage.completion_tokens !== undefined && (
-                            <span>{message.usage.prompt_tokens + message.usage.completion_tokens} tokens ({message.usage.prompt_tokens}↑ + {message.usage.completion_tokens}↓)</span>
+                          <span>{message.usage.prompt_tokens + message.usage.completion_tokens} tokens ({message.usage.prompt_tokens}↑ + {message.usage.completion_tokens}↓)</span>
                         )}
                       </div>
                     )}
@@ -687,12 +687,7 @@ export function MessageList({
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [dynamicBottomPadding, setDynamicBottomPadding] = useState('8rem');
 
-  // Streaming statistics
-  const streamingStatsRef = useRef<{
-    startTime: number;
-    tokenCount: number;
-    messageId: string;
-  } | null>(null);
+  // Streaming statistics - now calculated from actual token count
   const [streamingStats, setStreamingStats] = useState<{ tokensPerSecond: number } | null>(null);
 
   // Editing images state - tracks images being edited
@@ -725,7 +720,7 @@ export function MessageList({
   // Handle image upload during editing
   const handleEditingImageFiles = useCallback(async (files: File[]) => {
     try {
-      const uploadedImages = await images.uploadImages(files, () => {});
+      const uploadedImages = await images.uploadImages(files, () => { });
       setEditingImages(prev => [...prev, ...uploadedImages]);
     } catch (error) {
       console.error('Image upload failed during editing:', error);
@@ -876,47 +871,22 @@ export function MessageList({
     resizeEditingTextarea();
   }, [editingContent, editingMessageId]);
 
-  // Track streaming statistics
+  // Track streaming statistics using actual token count
   useEffect(() => {
-    if (messages.length === 0) {
-      streamingStatsRef.current = null;
+    if (!pending.tokenStats) {
       setStreamingStats(null);
       return;
     }
 
-    const lastMessage = messages[messages.length - 1];
+    const { count, startTime } = pending.tokenStats;
 
-    // Start tracking when a new assistant message appears during streaming
-    if (pending.streaming && lastMessage.role === 'assistant') {
-      // Initialize tracking for new message
-      if (!streamingStatsRef.current || streamingStatsRef.current.messageId !== lastMessage.id) {
-        streamingStatsRef.current = {
-          startTime: Date.now(),
-          tokenCount: 0,
-          messageId: lastMessage.id,
-        };
-      }
-
-      // Estimate token count (rough approximation: ~4 chars per token)
-      const textContent = extractTextFromContent(lastMessage.content);
-      const estimatedTokens = Math.ceil(textContent.length / 4);
-
-      if (streamingStatsRef.current) {
-        streamingStatsRef.current.tokenCount = estimatedTokens;
-
-        // Calculate tokens per second
-        const elapsedSeconds = (Date.now() - streamingStatsRef.current.startTime) / 1000;
-        if (elapsedSeconds > 0.1) { // Only show after 100ms to avoid division issues
-          const tokensPerSecond = estimatedTokens / elapsedSeconds;
-          setStreamingStats({ tokensPerSecond });
-        }
-      }
-    } else if (!pending.streaming && streamingStatsRef.current) {
-      // Streaming ended - keep the final stats in state but clear the ref
-      // This ensures the stats stay visible after streaming completes
-      streamingStatsRef.current = null;
+    // Calculate tokens per second from actual token count
+    const elapsedSeconds = (Date.now() - startTime) / 1000;
+    if (elapsedSeconds > 0.1 && count > 0) { // Only show after 100ms and at least 1 token
+      const tokensPerSecond = count / elapsedSeconds;
+      setStreamingStats({ tokensPerSecond });
     }
-  }, [messages, pending.streaming]);
+  }, [pending.tokenStats]);
 
   // Split messages with tool calls into separate messages
   const processedMessages = useMemo(

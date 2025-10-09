@@ -11,6 +11,11 @@ export interface PendingState {
   streaming: boolean;
   error?: string;
   abort: AbortController | null;
+  tokenStats?: {
+    count: number;
+    startTime: number;
+    messageId: string;
+  };
 }
 
 export interface Message {
@@ -218,6 +223,13 @@ export function useChat() {
   // Abort Controller
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Token streaming stats
+  const [pending, setPending] = useState<PendingState>({
+    streaming: false,
+    error: undefined,
+    abort: null,
+  });
+
   // Actions - Sidebar
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed(prev => {
@@ -414,6 +426,19 @@ export function useChat() {
       // Create abort controller
       abortControllerRef.current = new AbortController();
 
+      // Initialize token stats
+      const messageId = generateClientId();
+      setPending({
+        streaming: true,
+        error: undefined,
+        abort: abortControllerRef.current,
+        tokenStats: {
+          count: 0,
+          startTime: Date.now(),
+          messageId,
+        },
+      });
+
       // Convert images to content format if present
       let messageContent: MessageContent = messageText;
       if (images.length > 0) {
@@ -443,7 +468,7 @@ export function useChat() {
 
       // Create placeholder assistant message
       const assistantMessage: Message = {
-        id: generateClientId(),
+        id: messageId, // Use the same ID for token tracking
         role: 'assistant',
         content: '',
         timestamp: Date.now()
@@ -476,6 +501,20 @@ export function useChat() {
         systemPrompt: systemPromptRef.current || undefined,
         activeSystemPromptId: activeSystemPromptIdRef.current || undefined,
         onToken: (token: string) => {
+          // Update token count for speed calculation
+          setPending(prev => {
+            if (!prev.tokenStats || prev.tokenStats.messageId !== messageId) {
+              return prev;
+            }
+            return {
+              ...prev,
+              tokenStats: {
+                ...prev.tokenStats,
+                count: prev.tokenStats.count + 1,
+              },
+            };
+          });
+
           setMessages(prev => {
             const lastIdx = prev.length - 1;
             if (lastIdx < 0) return prev;
@@ -681,6 +720,7 @@ export function useChat() {
       }
 
       setStatus('idle');
+      setPending(prev => ({ ...prev, streaming: false }));
     } catch (err) {
       // Handle streaming not supported error by retrying with streaming disabled
       if (err instanceof StreamingNotSupportedError) {
@@ -709,6 +749,11 @@ export function useChat() {
         setError(err instanceof Error ? err.message : 'Failed to send message');
       }
       setStatus('idle');
+      setPending(prev => ({
+        ...prev,
+        streaming: false,
+        error: err instanceof Error ? err.message : 'Failed to send message'
+      }));
     }
   }, [input, images, conversationId]);
 
@@ -718,6 +763,7 @@ export function useChat() {
       abortControllerRef.current = null;
     }
     setStatus('idle');
+    setPending(prev => ({ ...prev, streaming: false }));
   }, []);
 
   const regenerate = useCallback(async (baseMessages: Message[]) => {
@@ -961,6 +1007,7 @@ export function useChat() {
     input,
     status,
     error,
+    pending,
     abort: abortControllerRef.current,
     sidebarCollapsed,
     rightSidebarCollapsed,

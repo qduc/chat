@@ -38,7 +38,7 @@ export function ChatV2() {
   const handleCopy = useCallback(async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-    } catch {}
+    } catch { }
   }, []);
 
   const handleShowLogin = useCallback(() => {
@@ -350,11 +350,7 @@ export function ChatV2() {
           <div className="flex flex-col flex-1 relative">
             <MessageList
               messages={chat.messages}
-              pending={{
-                streaming: chat.status === 'streaming',
-                error: chat.error ?? undefined,
-                abort: chat.abort
-              }}
+              pending={chat.pending}
               conversationId={chat.conversationId}
               editingMessageId={chat.editingMessageId}
               editingContent={chat.editingContent}
@@ -367,14 +363,10 @@ export function ChatV2() {
               onRetryMessage={handleRetryMessage}
             />
             {/* Removed soft fade to keep a cleaner boundaryless look */}
-      <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-4xl px-6 z-30">
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-4xl px-6 z-30">
               <MessageInput
                 input={chat.input}
-                pending={{
-                  streaming: chat.status === 'streaming',
-                  error: chat.error ?? undefined,
-                  abort: chat.abort
-                }}
+                pending={chat.pending}
                 onInputChange={chat.setInput}
                 onSend={handleSend}
                 onStop={chat.stopStreaming}
