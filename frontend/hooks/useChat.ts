@@ -682,6 +682,22 @@ export function useChat() {
               const lastMsg = prev[lastIdx];
               if (!lastMsg || lastMsg.role !== 'assistant') return prev;
 
+              // Only update if usage data has actually changed
+              // Compare the usage object properties to avoid infinite loops
+              const existingUsage = lastMsg.usage;
+              const newUsage = event.value;
+
+              // Check if usage data is the same
+              if (existingUsage && newUsage &&
+                  existingUsage.provider === newUsage.provider &&
+                  existingUsage.model === newUsage.model &&
+                  existingUsage.prompt_tokens === newUsage.prompt_tokens &&
+                  existingUsage.completion_tokens === newUsage.completion_tokens &&
+                  existingUsage.total_tokens === newUsage.total_tokens &&
+                  existingUsage.reasoning_tokens === newUsage.reasoning_tokens) {
+                return prev; // No change, return existing state
+              }
+
               return [
                 ...prev.slice(0, lastIdx),
                 { ...lastMsg, usage: event.value }
