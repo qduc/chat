@@ -377,15 +377,13 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
             );
           },
           code: function CodeRenderer({ className, children }: { className?: string; children?: React.ReactNode }) {
-            const [isExpanded, setIsExpanded] = React.useState(false);
-            
-            if (className?.includes('language-thinking')) {
+            const [isExpanded, setIsExpanded] = useState(false);
 
-              // Height for ~3 lines. Do NOT subtract padding; we remove padding from the height-bearing box.
-              const collapsedHeight = 69; // px
+            const defaultCollapsedHeight = 72; // px
 
-              return (
-                <div className="my-4 border border-slate-200 dark:border-neutral-800 rounded-lg bg-slate-50 dark:bg-neutral-900/50">
+              if (className?.includes('language-thinking')) {
+                return (
+                  <div className="my-4 border border-slate-200 dark:border-neutral-800 rounded-lg bg-slate-50 dark:bg-neutral-900/50">
                   <div
                     className="px-4 py-2 cursor-pointer font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-t-lg"
                     onClick={() => setIsExpanded(!isExpanded)}
@@ -401,7 +399,7 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
                         isExpanded
                           ? {}
                           : {
-                              height: `${collapsedHeight}px`,
+                              maxHeight: `${defaultCollapsedHeight}px`,
                               overflow: "hidden",
                               display: "flex",
                               flexDirection: "column",
@@ -418,9 +416,9 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
                     {/* When collapsed, add bottom padding outside the height box for visual spacing */}
                     {!isExpanded && <div className="px-4 pb-3" />}
                   </div>
-                </div>
-              );
-            }
+                  </div>
+                );
+              }
 
             // Show un-highlighted code during streaming
             if (!shouldHighlight && className?.startsWith('language-')) {
