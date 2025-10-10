@@ -687,15 +687,18 @@ export function useChat() {
               const existingUsage = lastMsg.usage;
               const newUsage = event.value;
 
-              // Check if usage data is the same
-              if (existingUsage && newUsage &&
-                  existingUsage.provider === newUsage.provider &&
-                  existingUsage.model === newUsage.model &&
-                  existingUsage.prompt_tokens === newUsage.prompt_tokens &&
-                  existingUsage.completion_tokens === newUsage.completion_tokens &&
-                  existingUsage.total_tokens === newUsage.total_tokens &&
-                  existingUsage.reasoning_tokens === newUsage.reasoning_tokens) {
-                return prev; // No change, return existing state
+              // Check if usage data is the same (deep equality check)
+              if (existingUsage) {
+                const providerSame = existingUsage.provider === newUsage.provider;
+                const modelSame = existingUsage.model === newUsage.model;
+                const promptTokensSame = existingUsage.prompt_tokens === newUsage.prompt_tokens;
+                const completionTokensSame = existingUsage.completion_tokens === newUsage.completion_tokens;
+                const totalTokensSame = existingUsage.total_tokens === newUsage.total_tokens;
+                const reasoningTokensSame = existingUsage.reasoning_tokens === newUsage.reasoning_tokens;
+
+                if (providerSame && modelSame && promptTokensSame && completionTokensSame && totalTokensSame && reasoningTokensSame) {
+                  return prev; // No change, return existing state
+                }
               }
 
               return [

@@ -715,7 +715,8 @@ export function MessageList({
     } else {
       setEditingImages([]);
     }
-  }, [editingMessageId, messages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingMessageId]);
 
   // Handle image upload during editing
   const handleEditingImageFiles = useCallback(async (files: File[]) => {
