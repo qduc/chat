@@ -1,4 +1,5 @@
 import { createTool } from './baseTool.js';
+import { logger } from '../../logger.js';
 
 const TOOL_NAME = 'web_search_exa';
 const VALID_TYPES = ['auto', 'keyword', 'neural'];
@@ -247,7 +248,7 @@ async function handler({
 
     return output.trim() || 'No results found.';
   } catch (error) {
-    console.error('Error performing web search with Exa:', error);
+    logger.error('Error performing web search with Exa:', error);
 
     if (error.message && !error.message.includes('Exa')) {
       if (error.name === 'TypeError' && error.message.includes('fetch')) {

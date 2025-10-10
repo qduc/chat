@@ -1,6 +1,7 @@
 import { parseSSEStream } from './sseParser.js';
 import { writeAndFlush } from './streamUtils.js';
 import { getConversationMetadata } from './responseUtils.js';
+import { logger } from '../logger.js';
 
 export { setupStreamingHeaders } from './streamUtils.js';
 
@@ -33,7 +34,7 @@ function setupStreamEventHandlers({
         // Add accumulated tool calls to persistence before finalizing
         if (toolCallMap && toolCallMap.size > 0) {
           const toolCalls = Array.from(toolCallMap.values());
-          console.log('[streamingHandler] Adding tool calls to persistence', {
+          logger.debug('[streamingHandler] Adding tool calls to persistence', {
             count: toolCalls.length,
             callIds: toolCalls.map(tc => tc?.id)
           });
@@ -44,13 +45,13 @@ function setupStreamEventHandlers({
         persistence.recordAssistantFinal({ finishReason });
       }
     } catch (e) {
-      console.error('[persist] finalize error', e);
+      logger.error('[persist] finalize error', e);
     }
     return res.end();
   });
 
   upstream.body.on('error', (err) => {
-    console.error('Upstream stream error', err);
+    logger.error('Upstream stream error', err);
     if (completed) return res.end();
     completed = true;
     try {
@@ -99,7 +100,7 @@ export async function handleRegularStreaming({
     }
   } catch (e) {
     // Non-fatal: continue streaming even if metadata cannot be serialized
-    console.warn('[stream] failed to write conversation metadata early', e?.message || e);
+    logger.warn('[stream] failed to write conversation metadata early', e?.message || e);
   }
 
   upstream.body.on('data', (chunk) => {
@@ -199,11 +200,11 @@ export async function handleRegularStreaming({
             lastFinishReason.value = finishReason;
           }
         },
-        () => {},
-        () => {}
+        () => { },
+        () => { }
       );
     } catch (e) {
-      console.error('[stream data] error', e);
+      logger.error('[stream data] error', e);
     }
   });
 

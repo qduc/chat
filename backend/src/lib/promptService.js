@@ -286,7 +286,7 @@ async function updateConversationActivePrompt(
           patch.system_prompt = prompt.body.trim();
         }
       } catch (error) {
-        console.warn('[promptService] Failed to resolve system prompt content for saving:', error);
+        logger.warn('[promptService] Failed to resolve system prompt content for saving:', error);
       }
     } else {
       // Clear system prompt content when promptId is null

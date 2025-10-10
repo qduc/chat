@@ -2,6 +2,7 @@ import { migrate } from '@blackglory/better-sqlite3-migrations';
 import { readdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { logger } from '../logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -37,11 +38,11 @@ export function runMigrations(db) {
   try {
     migrate(db, migrations);
     if (process.env.NODE_ENV !== 'test') {
-      console.log('[db] Migrations completed successfully');
+      logger.info('[db] Migrations completed successfully');
     }
   } catch (error) {
     if (process.env.NODE_ENV !== 'test') {
-      console.error('[db] Migration failed:', error);
+      logger.error('[db] Migration failed:', error);
     }
     throw error;
   }

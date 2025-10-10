@@ -153,6 +153,7 @@ class AuthenticatedHttpClient {
 
     } catch (refreshError) {
       // Refresh failed - clear tokens and auth state
+      console.log('[http] Token refresh failed, clearing tokens and logging out');
       clearTokens();
       setAuthReady(true);
 

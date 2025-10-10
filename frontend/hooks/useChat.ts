@@ -11,6 +11,11 @@ export interface PendingState {
   streaming: boolean;
   error?: string;
   abort: AbortController | null;
+  tokenStats?: {
+    count: number;
+    startTime: number;
+    messageId: string;
+  };
 }
 
 export interface Message {
@@ -218,6 +223,13 @@ export function useChat() {
   // Abort Controller
   const abortControllerRef = useRef<AbortController | null>(null);
 
+  // Token streaming stats
+  const [pending, setPending] = useState<PendingState>({
+    streaming: false,
+    error: undefined,
+    abort: null,
+  });
+
   // Actions - Sidebar
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed(prev => {
@@ -414,6 +426,19 @@ export function useChat() {
       // Create abort controller
       abortControllerRef.current = new AbortController();
 
+      // Initialize token stats
+      const messageId = generateClientId();
+      setPending({
+        streaming: true,
+        error: undefined,
+        abort: abortControllerRef.current,
+        tokenStats: {
+          count: 0,
+          startTime: Date.now(),
+          messageId,
+        },
+      });
+
       // Convert images to content format if present
       let messageContent: MessageContent = messageText;
       if (images.length > 0) {
@@ -443,7 +468,7 @@ export function useChat() {
 
       // Create placeholder assistant message
       const assistantMessage: Message = {
-        id: generateClientId(),
+        id: messageId, // Use the same ID for token tracking
         role: 'assistant',
         content: '',
         timestamp: Date.now()
@@ -476,6 +501,25 @@ export function useChat() {
         systemPrompt: systemPromptRef.current || undefined,
         activeSystemPromptId: activeSystemPromptIdRef.current || undefined,
         onToken: (token: string) => {
+          // Update token count for speed calculation and record startTime on first token
+          setPending(prev => {
+            if (!prev.tokenStats || prev.tokenStats.messageId !== messageId) {
+              return prev;
+            }
+
+            // If this is the first token (count is 0), update startTime to now
+            const isFirstToken = prev.tokenStats.count === 0;
+
+            return {
+              ...prev,
+              tokenStats: {
+                ...prev.tokenStats,
+                count: prev.tokenStats.count + 1,
+                startTime: isFirstToken ? Date.now() : prev.tokenStats.startTime,
+              },
+            };
+          });
+
           setMessages(prev => {
             const lastIdx = prev.length - 1;
             if (lastIdx < 0) return prev;
@@ -495,6 +539,25 @@ export function useChat() {
         },
         onEvent: (event) => {
           if (event.type === 'text') {
+            // Record startTime on first text content if not already recorded
+            setPending(prev => {
+              if (!prev.tokenStats || prev.tokenStats.messageId !== messageId) {
+                return prev;
+              }
+
+              // If this is the first content (count is 0), update startTime to now
+              const isFirstContent = prev.tokenStats.count === 0;
+
+              return {
+                ...prev,
+                tokenStats: {
+                  ...prev.tokenStats,
+                  count: prev.tokenStats.count + 1,
+                  startTime: isFirstContent ? Date.now() : prev.tokenStats.startTime,
+                },
+              };
+            });
+
             // Handle text events from tool_events (non-streaming responses)
             setMessages(prev => {
               const lastIdx = prev.length - 1;
@@ -537,7 +600,6 @@ export function useChat() {
               let updatedToolCalls;
               if (existingIdx >= 0) {
                 // Update existing tool call (merge chunks during streaming)
-                console.log('[DEBUG] Merging tool_call chunk:', { id: tcDelta.id, index: tcDelta.index, name: tcDelta.function?.name });
                 updatedToolCalls = [...existingToolCalls];
                 const existing = { ...updatedToolCalls[existingIdx] };
                 if (tcDelta.id) existing.id = tcDelta.id;
@@ -555,7 +617,6 @@ export function useChat() {
                 updatedToolCalls[existingIdx] = existing;
               } else {
                 // New tool call - capture textOffset from current content length
-                console.log('[DEBUG] Adding new tool_call:', { id: tcDelta.id, index: tcDelta.index, name: tcDelta.function?.name, textOffset: currentTextLength });
                 updatedToolCalls = [
                   ...existingToolCalls,
                   {
@@ -603,8 +664,6 @@ export function useChat() {
               });
 
               if (existingIdx === -1) {
-                // New tool output - add it
-                console.log('[DEBUG] Adding new tool_output:', { tool_call_id: toolCallId, name: outputName });
                 // Create new array with updated last message (immutable update)
                 return [
                   ...prev.slice(0, lastIdx),
@@ -612,7 +671,6 @@ export function useChat() {
                 ];
               } else {
                 // If it already exists, ignore the duplicate
-                console.log('[DEBUG] Ignoring duplicate tool_output:', { tool_call_id: toolCallId, name: outputName });
                 return prev;
               }
             });
@@ -623,6 +681,22 @@ export function useChat() {
 
               const lastMsg = prev[lastIdx];
               if (!lastMsg || lastMsg.role !== 'assistant') return prev;
+
+              // Only update if usage data has actually changed
+              // Compare the usage object properties to avoid infinite loops
+              const existingUsage = lastMsg.usage;
+              const newUsage = event.value;
+
+              // Check if usage data is the same
+              if (existingUsage && newUsage &&
+                  existingUsage.provider === newUsage.provider &&
+                  existingUsage.model === newUsage.model &&
+                  existingUsage.prompt_tokens === newUsage.prompt_tokens &&
+                  existingUsage.completion_tokens === newUsage.completion_tokens &&
+                  existingUsage.total_tokens === newUsage.total_tokens &&
+                  existingUsage.reasoning_tokens === newUsage.reasoning_tokens) {
+                return prev; // No change, return existing state
+              }
 
               return [
                 ...prev.slice(0, lastIdx),
@@ -677,10 +751,32 @@ export function useChat() {
             }
             return [newConversation, ...prev];
           });
+
+          // Poll for title update after a delay (title generation is async on backend)
+          // Only poll if we got a generic/empty title initially
+          if (!response.conversation.title || response.conversation.title === 'Untitled conversation') {
+            setTimeout(async () => {
+              try {
+                const updated = await conversationsApi.get(response.conversation!.id, { limit: 1 });
+                if (updated.title && updated.title !== response.conversation!.title) {
+                  // Update current conversation title if we're still on this conversation
+                  setCurrentConversationTitle(updated.title);
+                  // Update in sidebar list
+                  setConversations(prev => prev.map(c =>
+                    c.id === response.conversation!.id ? { ...c, title: updated.title } : c
+                  ));
+                }
+              } catch (err) {
+                // Silent failure - title update is non-critical
+                console.warn('Failed to fetch updated conversation title:', err);
+              }
+            }, 2000); // Poll after 2 seconds to allow title generation to complete
+          }
         }
       }
 
       setStatus('idle');
+      setPending(prev => ({ ...prev, streaming: false }));
     } catch (err) {
       // Handle streaming not supported error by retrying with streaming disabled
       if (err instanceof StreamingNotSupportedError) {
@@ -709,6 +805,11 @@ export function useChat() {
         setError(err instanceof Error ? err.message : 'Failed to send message');
       }
       setStatus('idle');
+      setPending(prev => ({
+        ...prev,
+        streaming: false,
+        error: err instanceof Error ? err.message : 'Failed to send message'
+      }));
     }
   }, [input, images, conversationId]);
 
@@ -718,6 +819,7 @@ export function useChat() {
       abortControllerRef.current = null;
     }
     setStatus('idle');
+    setPending(prev => ({ ...prev, streaming: false }));
   }, []);
 
   const regenerate = useCallback(async (baseMessages: Message[]) => {
@@ -961,6 +1063,7 @@ export function useChat() {
     input,
     status,
     error,
+    pending,
     abort: abortControllerRef.current,
     sidebarCollapsed,
     rightSidebarCollapsed,

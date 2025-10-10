@@ -1,4 +1,5 @@
 import { getDb } from './client.js';
+import { logger } from '../logger.js';
 
 function extractTextFromMixedContent(content) {
   if (!Array.isArray(content)) return '';
@@ -76,7 +77,7 @@ function parseJsonField(raw, messageId, fieldName) {
   try {
     return JSON.parse(raw);
   } catch (error) {
-    console.warn(`Failed to parse ${fieldName} for message ${messageId}`, error);
+    logger.warn(`Failed to parse ${fieldName} for message ${messageId}`, error);
     return null;
   }
 }

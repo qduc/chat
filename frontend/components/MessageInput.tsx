@@ -210,7 +210,7 @@ export function MessageInput({
 
   // Tools handling
   const handleSearchToggle = (enabled: boolean) => {
-    const searchTools = ['web_search', 'web_search_exa'];
+    const searchTools = ['web_search', 'web_search_exa', 'web_fetch'];
     let next: string[];
 
     if (enabled) {

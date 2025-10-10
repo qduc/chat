@@ -1,5 +1,6 @@
 import { createOpenAIRequest } from '../streamUtils.js';
 import { providerIsConfigured } from '../providers/index.js';
+import { logger } from '../../logger.js';
 
 /**
  * Handles conversation title generation
@@ -32,7 +33,7 @@ export class ConversationTitleService {
       return title || this.generateFallbackTitle(text);
     } catch (error) {
       // Log error but don't throw - title generation is non-critical
-      console.warn('[ConversationTitleService] Title generation failed:', error?.message || error);
+      logger.warn('[ConversationTitleService] Title generation failed:', error?.message || error);
       return this.generateFallbackTitle(ConversationTitleService.extractTextFromContent(content));
     }
   }

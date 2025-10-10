@@ -1,4 +1,4 @@
-import { appendFileSync, mkdirSync, readdirSync, unlinkSync } from 'node:fs';
+import { appendFileSync, mkdirSync, readdirSync, unlinkSync, readFileSync, writeFileSync, statSync } from 'node:fs';
 import { PassThrough } from 'node:stream';
 import path from 'node:path';
 import os from 'node:os';
@@ -7,6 +7,7 @@ const LOG_PREFIX = 'upstream-requests-';
 const RESPONSE_LOG_PREFIX = 'upstream-responses-';
 const SSE_RAW_LOG_PREFIX = 'upstream-responses-sse-raw-';
 const RETENTION_DAYS = Number(process.env.UPSTREAM_LOG_RETENTION_DAYS || 7);
+const MAX_LOG_LINES = Number(process.env.UPSTREAM_LOG_MAX_LINES || 1000);
 
 function resolveLogDir() {
   // In test environment, use a temporary directory to avoid polluting actual logs
@@ -62,6 +63,38 @@ function cleanupOldLogs(logDir) {
   } catch (err) {
     if (err && err.code !== 'ENOENT') {
       console.error('Failed to cleanup old log files:', err.message);
+    }
+  }
+}
+
+/**
+ * Trim log file to keep only the last N lines (rolling cleanup)
+ * @param {string} filePath - Full path to the log file
+ * @param {number} maxLines - Maximum number of lines to keep
+ */
+function trimLogFile(filePath, maxLines) {
+  try {
+    // Check if file exists and has content
+    const stats = statSync(filePath);
+    if (stats.size === 0) return;
+
+    // Read the entire file
+    const content = readFileSync(filePath, 'utf8');
+    const lines = content.split('\n');
+
+    // Only trim if we exceed the max line count
+    if (lines.length > maxLines) {
+      // Keep only the last maxLines lines
+      const trimmedLines = lines.slice(-maxLines);
+      const trimmedContent = trimmedLines.join('\n');
+
+      // Write back to file
+      writeFileSync(filePath, trimmedContent, 'utf8');
+    }
+  } catch (err) {
+    // Silently ignore errors (file might not exist yet, which is fine)
+    if (err && err.code !== 'ENOENT') {
+      console.error('Failed to trim log file:', filePath, err.message);
     }
   }
 }
@@ -156,6 +189,7 @@ export function logUpstreamRequest({ url, headers, body }) {
     const filename = `${LOG_PREFIX}${dateStr}.log`;
     const filePath = path.join(LOG_DIR, filename);
     appendFileSync(filePath, logEntry);
+    trimLogFile(filePath, MAX_LOG_LINES);
   } catch (err) {
     console.error('Failed to write to upstream log file:', err?.message || err);
   }
@@ -301,6 +335,7 @@ export function logUpstreamResponse({ url, status, headers, body }) {
       const rawFilename = `${SSE_RAW_LOG_PREFIX}${dateStr}.log`;
       const rawFilePath = path.join(LOG_DIR, rawFilename);
       appendFileSync(rawFilePath, rawLogEntry);
+      trimLogFile(rawFilePath, MAX_LOG_LINES);
     } catch (err) {
       console.error('Failed to write to upstream SSE raw log file:', err?.message || err);
     }
@@ -319,6 +354,7 @@ export function logUpstreamResponse({ url, status, headers, body }) {
     const filename = `${RESPONSE_LOG_PREFIX}${dateStr}.log`;
     const filePath = path.join(LOG_DIR, filename);
     appendFileSync(filePath, logEntry);
+    trimLogFile(filePath, MAX_LOG_LINES);
   } catch (err) {
     console.error('Failed to write to upstream response log file:', err?.message || err);
   }

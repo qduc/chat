@@ -1,5 +1,6 @@
 import { randomUUID, createHash } from 'crypto';
 import { upsertSession } from '../db/sessions.js';
+import { logger } from '../logger.js';
 
 // Resolves session ID for the request based on header/cookie precedence.
 // - Header x-session-id wins over cookie cf_session_id
@@ -65,7 +66,7 @@ export function sessionResolver(req, res, next) {
       upsertSession(sessionId, { userId: req.user.id, ...sessionMeta });
     }
   } catch (error) {
-    console.warn('[session] Failed to upsert session:', error.message);
+    logger.warn('[session] Failed to upsert session:', error.message);
   }
 
   next();

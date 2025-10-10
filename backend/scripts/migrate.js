@@ -3,6 +3,7 @@
 import { getDb, resetDbCache } from '../src/db/index.js';
 import { getCurrentVersion } from '../src/db/migrations.js';
 import { config } from '../src/env.js';
+import { logger } from '../src/logger.js';
 
 // Ensure directories exist
 import fs from 'fs';
@@ -10,19 +11,19 @@ import path from 'path';
 
 function main() {
   const command = process.argv[2];
-  
+
   if (!config.persistence.enabled) {
-    console.error('❌ Persistence is not enabled. Set PERSIST_TRANSCRIPTS=true in your .env file');
+    logger.error('❌ Persistence is not enabled. Set PERSIST_TRANSCRIPTS=true in your .env file');
     process.exit(1);
   }
-  
+
   if (!config.persistence.dbUrl) {
-    console.error('❌ Database URL not configured. Set DB_URL in your .env file');
+    logger.error('❌ Database URL not configured. Set DB_URL in your .env file');
     process.exit(1);
   }
-  
-  console.log(`📊 Database: ${config.persistence.dbUrl}`);
-  
+
+  logger.info(`📊 Database: ${config.persistence.dbUrl}`);
+
   try {
     switch (command) {
       case 'status':
@@ -39,7 +40,7 @@ function main() {
         showHelp();
     }
   } catch (error) {
-    console.error('❌ Migration failed:', error.message);
+    logger.error('❌ Migration failed:', error.message);
     process.exit(1);
   }
 }
@@ -47,43 +48,43 @@ function main() {
 function showMigrationStatus() {
   const db = getDb();
   if (!db) {
-    console.log('❌ Could not connect to database');
+    logger.error('❌ Could not connect to database');
     return;
   }
-  
+
   const currentVersion = getCurrentVersion(db);
-  console.log(`📋 Current database version: ${currentVersion}`);
-  
+  logger.info(`📋 Current database version: ${currentVersion}`);
+
   // Show table info
   const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all();
-  console.log(`📊 Tables: ${tables.map(t => t.name).join(', ')}`);
-  
+  logger.info(`📊 Tables: ${tables.map(t => t.name).join(', ')}`);
+
   db.close();
 }
 
 function runMigrations() {
-  console.log('🔄 Running migrations...');
+  logger.info('🔄 Running migrations...');
   const db = getDb(); // This automatically runs migrations
   const version = getCurrentVersion(db);
-  console.log(`✅ Migrations complete! Current version: ${version}`);
+  logger.info(`✅ Migrations complete! Current version: ${version}`);
   db.close();
 }
 
 function freshMigrate() {
-  console.log('🗑️  Fresh migration - this will delete all data!');
-  
+  logger.warn('🗑️  Fresh migration - this will delete all data!');
+
   const dbPath = config.persistence.dbUrl.replace(/^file:/, '');
   if (fs.existsSync(dbPath)) {
     fs.unlinkSync(dbPath);
-    console.log('🗑️  Deleted existing database');
+    logger.info('🗑️  Deleted existing database');
   }
-  
+
   resetDbCache();
   runMigrations();
 }
 
 function showHelp() {
-  console.log(`
+  logger.info(`
 📚 Database Migration Commands:
 
   migrate status    Show current migration status

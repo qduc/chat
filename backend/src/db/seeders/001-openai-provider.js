@@ -1,3 +1,5 @@
+import { logger } from '../../logger.js';
+
 /**
  * Seeds the first OpenAI provider into the database
  * This seeder creates a default OpenAI provider with standard configuration
@@ -5,7 +7,7 @@
 export default function seedOpenAIProvider(db, options = {}) {
   const { userId } = options;
   if (!userId) {
-    console.log('[seeder] Skipping OpenAI provider seeding - no userId provided');
+    logger.info('[seeder] Skipping OpenAI provider seeding - no userId provided');
     return;
   }
 
@@ -18,7 +20,7 @@ export default function seedOpenAIProvider(db, options = {}) {
       .get({ id: providerId });
 
     if (existingProvider) {
-      console.log('[seeder] OpenAI provider already exists (id: openai), skipping seeding');
+      logger.info('[seeder] OpenAI provider already exists (id: openai), skipping seeding');
       return;
     }
 
@@ -71,7 +73,7 @@ export default function seedOpenAIProvider(db, options = {}) {
     });
 
     if (result.changes > 0) {
-      console.log('[seeder] Successfully seeded OpenAI provider');
+      logger.info('[seeder] Successfully seeded OpenAI provider');
 
       // Ensure this provider is set as default if no other default exists
       const defaultProviders = db
@@ -80,12 +82,12 @@ export default function seedOpenAIProvider(db, options = {}) {
 
       if (defaultProviders?.count === 0) {
         db.prepare("UPDATE providers SET is_default = 1 WHERE id = @id").run({ id: providerId });
-        console.log('[seeder] Set OpenAI provider as default');
+        logger.info('[seeder] Set OpenAI provider as default');
       }
     } else {
-      console.log('[seeder] OpenAI provider already exists (INSERT OR IGNORE)');
+      logger.info('[seeder] OpenAI provider already exists (INSERT OR IGNORE)');
     }
   } catch (error) {
-    console.warn('[seeder] Failed to seed OpenAI provider:', error.message);
+    logger.warn('[seeder] Failed to seed OpenAI provider:', error.message);
   }
 }

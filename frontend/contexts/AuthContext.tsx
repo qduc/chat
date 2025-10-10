@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { auth, getToken, getUserFromToken, clearTokens, markAuthReady, resetAuthReady, waitForAuthReady, type User } from '../lib';
+import { auth, getToken, getUserFromToken, clearTokens, markAuthReady, resetAuthReady, waitForAuthReady, onTokensCleared, type User } from '../lib';
 
 interface AuthContextType {
   user: User | null;
@@ -73,6 +73,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
     resetAuthReady();
     void initializeAuth();
   }, [initializeAuth]);
+
+  // Listen for token clearing events (e.g., when refresh token expires)
+  useEffect(() => {
+    const unsubscribe = onTokensCleared(() => {
+      console.log('[AuthContext] Tokens cleared, logging out user');
+      setUser(null);
+    });
+
+    return unsubscribe;
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
     try {

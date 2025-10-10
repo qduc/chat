@@ -4,6 +4,7 @@ import { createOpenAIRequest, writeAndFlush, createChatCompletionChunk } from '.
 import { createProvider } from './providers/index.js';
 import { setupStreamingHeaders } from './streamingHandler.js';
 import { config } from '../env.js';
+import { logger } from '../logger.js';
 import {
   buildConversationMessagesAsync,
   buildConversationMessagesOptimized,
@@ -456,7 +457,7 @@ export async function handleToolsStreaming({
     res.end();
 
   } catch (error) {
-    console.error('[iterative orchestration] error:', error);
+    logger.error('[iterative orchestration] error:', error);
 
     // Stream error to client
     const errorMsg = `[Error: ${error.message}]`;

@@ -4,6 +4,7 @@ import { config } from '../env.js';
 import { getDb } from '../db/client.js';
 import { upsertSession } from '../db/sessions.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { logger } from '../logger.js';
 import {
   createConversation,
   getConversationById,
@@ -64,7 +65,7 @@ conversationsRouter.post('/v1/conversations/migrate', (req, res) => {
       message: `Successfully migrated ${migratedCount} conversations to your account`
     });
   } catch (e) {
-    console.error('[conversations] migrate error', e);
+    logger.error('[conversations] migrate error', e);
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -82,15 +83,15 @@ conversationsRouter.get('/v1/conversations', (req, res) => {
       String(include_deleted).toLowerCase() === 'true';
     const result = includeDeleted
       ? listConversationsIncludingDeleted({
-          userId,
-          cursor,
-          limit,
-          includeDeleted: true,
-        })
+        userId,
+        cursor,
+        limit,
+        includeDeleted: true,
+      })
       : listConversations({ userId, cursor, limit });
     return res.json(result);
   } catch (e) {
-    console.error('[conversations] list error', e);
+    logger.error('[conversations] list error', e);
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -145,7 +146,7 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
     const convo = getConversationById({ id, userId });
     return res.status(201).json(convo);
   } catch (e) {
-    console.error('[conversations] create error', e);
+    logger.error('[conversations] create error', e);
     if (
       String(e.message || '').includes('DB_URL') ||
       String(e.message || '').includes('SQLite')
@@ -184,7 +185,7 @@ conversationsRouter.get('/v1/conversations/:id', (req, res) => {
       next_after_seq: page.next_after_seq,
     });
   } catch (e) {
-    console.error('[conversations] get error', e);
+    logger.error('[conversations] get error', e);
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -200,7 +201,7 @@ conversationsRouter.delete('/v1/conversations/:id', (req, res) => {
     if (!ok) return res.status(404).json({ error: 'not_found' });
     return res.status(204).end();
   } catch (e) {
-    console.error('[conversations] delete error', e);
+    logger.error('[conversations] delete error', e);
     return res.status(500).json({ error: 'internal_error' });
   }
 });
@@ -295,7 +296,7 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
       new_conversation_id: newConversationId,
     });
   } catch (e) {
-    console.error('[conversations] edit message error', e);
+    logger.error('[conversations] edit message error', e);
     return res.status(500).json({ error: 'internal_error' });
   }
 });

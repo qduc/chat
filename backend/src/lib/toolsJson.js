@@ -12,6 +12,7 @@ import {
   streamDeltaEvent,
   streamDone,
 } from './toolOrchestrationUtils.js';
+import { logger } from '../logger.js';
 
 /**
  * Configuration class for orchestration behavior
@@ -341,7 +342,7 @@ async function executeAllTools(toolCalls, responseHandler, persistence) {
   }
 
   // Send all tool outputs through response handler
-  console.log('[toolsJson] Sending tool outputs to response handler', {
+  logger.debug('[toolsJson] Sending tool outputs to response handler', {
     count: toolOutputs.length,
     outputs: toolOutputs.map(({ tool_call_id, name, output }) => ({
       tool_call_id,
@@ -458,7 +459,7 @@ async function streamResponse(llmResponse, res, persistence, model) {
           }
         }
       } catch {
-        console.error('[unified stream] error');
+        logger.error('[unified stream] error');
       }
     });
 
@@ -517,7 +518,7 @@ export async function handleToolsJson({
     userId,
     provider: providerInstance
   });
-  console.log('[toolsJson] Prepared messages for upstream call', {
+  logger.debug('[toolsJson] Prepared messages for upstream call', {
     conversationId: persistence?.conversationId || null,
     previousResponseId,
     messageSummaries: summarizeMessagesForLog(messages)
@@ -592,7 +593,7 @@ export async function handleToolsJson({
 
       // Send tool calls
       if (toolCalls.length > 0) {
-        console.log('[toolsJson] Tool calls detected from model', {
+        logger.debug('[toolsJson] Tool calls detected from model', {
           conversationId: persistence?.conversationId || null,
           iteration,
           toolCalls: toolCalls.map((tc) => ({
@@ -622,7 +623,7 @@ export async function handleToolsJson({
       // Execute all tools
       const toolResults = await executeAllTools(toolCalls, responseHandler, persistence);
       if (toolResults.length > 0) {
-        console.log('[toolsJson] Tool results produced', {
+        logger.debug('[toolsJson] Tool results produced', {
           conversationId: persistence?.conversationId || null,
           iteration,
           resultsSummary: toolResults.map((result) => ({
@@ -634,7 +635,7 @@ export async function handleToolsJson({
 
       // Add to conversation for next iteration
       messages.push(message, ...toolResults);
-      console.log('[toolsJson] Messages extended after tool execution', {
+      logger.debug('[toolsJson] Messages extended after tool execution', {
         conversationId: persistence?.conversationId || null,
         iteration,
         totalMessages: messages.length,
@@ -673,7 +674,7 @@ export async function handleToolsJson({
     }
 
   } catch (error) {
-    console.error('[unified orchestration] error:', error);
+    logger.error('[unified orchestration] error:', error);
 
     if (orchestrationConfig.streamingEnabled) {
       return responseHandler.sendError(error, persistence);
