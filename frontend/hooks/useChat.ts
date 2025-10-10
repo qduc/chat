@@ -415,7 +415,7 @@ export function useChat() {
   }, []);
 
   // Actions - Messages
-  const sendMessage = useCallback(async (content?: string, opts?: { clientMessageId?: string; skipLocalUserMessage?: boolean }) => {
+  const sendMessage = useCallback(async (content?: string, opts?: { clientMessageId?: string; skipLocalUserMessage?: boolean; retried?: boolean }) => {
     const messageText = content || input;
     if (!messageText.trim() && images.length === 0) return;
 
@@ -780,6 +780,16 @@ export function useChat() {
     } catch (err) {
       // Handle streaming not supported error by retrying with streaming disabled
       if (err instanceof StreamingNotSupportedError) {
+        // Only retry once to avoid infinite retry loops which can cause max update
+        // depth exceeded when the backend doesn't support streaming at all.
+        if (opts?.retried) {
+          // Already retried once; surface a useful error and stop.
+          setError('Streaming not supported by provider');
+          setStatus('idle');
+          setPending(prev => ({ ...prev, streaming: false, error: 'Streaming not supported by provider' }));
+          return;
+        }
+
         console.log('[AUTO-RETRY] Streaming not supported, retrying with streaming disabled');
 
         // Disable streaming
@@ -792,8 +802,9 @@ export function useChat() {
         // Retry by calling sendMessage again (it will use the updated shouldStreamRef)
         // Use setTimeout to break out of the current call stack
         // Pass skipLocalUserMessage: true to avoid duplicating the user message
+        // and mark retried=true so we don't loop indefinitely.
         setTimeout(() => {
-          void sendMessage(content, { ...opts, skipLocalUserMessage: true });
+          void sendMessage(content, { ...opts, skipLocalUserMessage: true, retried: true });
         }, 0);
 
         return;
