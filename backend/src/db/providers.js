@@ -251,7 +251,7 @@ export function createDefaultProviders(userId) {
   const defaultProviders = [
     {
       id: `${userId}-openai`,
-      name: `Personal OpenAI (${userId.slice(0, 8)})`,
+      name: `OpenAI`,
       provider_type: 'openai',
       base_url: 'https://api.openai.com',
       api_key: null,
@@ -263,7 +263,7 @@ export function createDefaultProviders(userId) {
     },
     {
       id: `${userId}-openrouter`,
-      name: `Personal OpenRouter (${userId.slice(0, 8)})`,
+      name: `OpenRouter`,
       provider_type: 'openai', // Uses OpenAI-compatible API
       base_url: 'https://openrouter.ai/api',
       api_key: null,
@@ -275,7 +275,7 @@ export function createDefaultProviders(userId) {
     },
     {
       id: `${userId}-lmstudio`,
-      name: `Personal LM Studio (${userId.slice(0, 8)})`,
+      name: `LM Studio`,
       provider_type: 'openai', // Uses OpenAI-compatible API
       base_url: 'http://localhost:1234',
       api_key: null,
@@ -287,7 +287,7 @@ export function createDefaultProviders(userId) {
     },
     {
       id: `${userId}-llamacpp`,
-      name: `Personal Llama.cpp (${userId.slice(0, 8)})`,
+      name: `Llama.cpp`,
       provider_type: 'openai', // Uses OpenAI-compatible API
       base_url: 'http://localhost:8080',
       api_key: null,
