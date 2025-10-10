@@ -763,7 +763,7 @@ export function useChat() {
                   setCurrentConversationTitle(updated.title);
                   // Update in sidebar list
                   setConversations(prev => prev.map(c =>
-                    c.id === response.conversation!.id ? { ...c, title: updated.title } : c
+                    c.id === response.conversation!.id ? { ...c, title: updated.title ?? c.title } : c
                   ));
                 }
               } catch (err) {
