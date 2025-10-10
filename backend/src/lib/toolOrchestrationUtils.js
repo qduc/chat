@@ -385,19 +385,32 @@ export async function executeToolCall(call) {
   const tool = toolRegistry[name];
 
   if (!tool) {
-    throw new Error(`unknown_tool: ${name}`);
+    return {
+      name,
+      output: `Error: Unknown tool '${name}'. Available tools: ${Object.keys(toolRegistry).join(', ')}. Please check the tool name and try again.`
+    };
   }
 
   let args;
   try {
     args = JSON.parse(argsStr || '{}');
-  } catch {
-    throw new Error('invalid_arguments_json');
+  } catch (parseError) {
+    return {
+      name,
+      output: `Error: Invalid JSON in tool arguments. Please check the JSON syntax and try again. Arguments received: ${argsStr}`
+    };
   }
 
-  const validated = tool.validate ? tool.validate(args) : args;
-  const output = await tool.handler(validated);
-  return { name, output };
+  try {
+    const validated = tool.validate ? tool.validate(args) : args;
+    const output = await tool.handler(validated);
+    return { name, output };
+  } catch (executionError) {
+    return {
+      name,
+      output: `Error executing tool '${name}': ${executionError.message}. Please check the arguments and try again.`
+    };
+  }
 }
 
 export function appendToPersistence(persistence, content) {

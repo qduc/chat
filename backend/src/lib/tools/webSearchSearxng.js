@@ -151,8 +151,8 @@ async function handler({
 
     // Add query info
     output += `Query: ${results.query || query}\n`;
-    if (results.number_of_results !== undefined) {
-      output += `Number of results: ${results.number_of_results}\n`;
+    if (Array.isArray(results.results)) {
+      output += `Number of results: ${results.results.length}\n`;
     }
     output += '\n';
 
