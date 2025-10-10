@@ -14,8 +14,6 @@ services:
       - db_data:/data
       # store uploaded images in a separate named volume mounted at /data/images
       - images_data:/data/images
-    ports:
-      - "3001:3001"
     restart: unless-stopped
     healthcheck:
       test:
@@ -24,8 +22,6 @@ services:
       timeout: 10s
       start_period: 30s
       retries: 3
-    networks:
-      - app
   frontend:
     build:
       context: ./frontend
@@ -47,11 +43,10 @@ services:
       timeout: 10s
       start_period: 30s
       retries: 3
-    networks:
-      - app
   proxy:
     image: nginx:1.27-alpine
     init: true
+    hostname: chatforge-proxy
     depends_on:
       frontend:
         condition: service_started
@@ -69,11 +64,10 @@ services:
       retries: 3
       start_period: 10s
     networks:
-      - app
+      - frontend
 
 networks:
-  app:
-    driver: bridge
+  frontend:
 
 volumes:
   db_data:
