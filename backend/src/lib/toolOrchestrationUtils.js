@@ -70,10 +70,103 @@ function normalizeStoredMessage(message) {
 }
 
 /**
+ * Load shared modules for all prompts
+ * @returns {Promise<string>} Shared modules content
+ */
+async function loadSharedModules() {
+  try {
+    const { loadSharedModules: loadModules } = await import('./builtInsPromptLoader.js');
+    // This would need to be exposed from builtInsPromptLoader
+    // For now, we'll recreate the logic here
+    const { readdir, readFile } = await import('fs/promises');
+    const { join, dirname } = await import('path');
+    const { fileURLToPath } = await import('url');
+
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = dirname(__filename);
+    const modulesDir = join(__dirname, '..', 'prompts', 'builtins', '_modules');
+
+    try {
+      const files = await readdir(modulesDir);
+      const moduleFiles = files.filter(file => file.endsWith('.md'));
+
+      if (moduleFiles.length === 0) {
+        return '';
+      }
+
+      const moduleContents = [];
+      for (const file of moduleFiles) {
+        try {
+          const filePath = join(modulesDir, file);
+          const content = await readFile(filePath, 'utf-8');
+          moduleContents.push(content.trim());
+        } catch (error) {
+          logger.warn(`[toolOrchestrationUtils] Failed to load module ${file}: ${error.message}`);
+        }
+      }
+
+      return moduleContents.length > 0 ? moduleContents.join('\n\n') : '';
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return '';
+      }
+      logger.warn('[toolOrchestrationUtils] Failed to load shared modules:', error);
+      return '';
+    }
+  } catch (error) {
+    logger.warn('[toolOrchestrationUtils] Failed to import shared modules:', error);
+    return '';
+  }
+}
+
+/**
+ * Wrap prompt content with full structure (system_instructions + user_instructions)
+ * @param {string} promptContent - The prompt content to wrap
+ * @returns {Promise<string>} Prompt with full structure
+ */
+async function wrapPromptWithStructure(promptContent) {
+  if (!promptContent) return promptContent;
+
+  // Check if already has the structure
+  if (promptContent.includes('<system_instructions>') && promptContent.includes('<user_instructions>')) {
+    return promptContent;
+  }
+
+  const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+  const sharedModules = await loadSharedModules();
+
+  let systemInstructions = `Today's date: ${currentDate}`;
+  if (sharedModules) {
+    systemInstructions += `\n\n${sharedModules}`;
+  }
+
+  return `<system_instructions>\n${systemInstructions}\n</system_instructions>\n\n<user_instructions>\n${promptContent}\n</user_instructions>`;
+}
+
+/**
+ * Synchronous wrapper for prompts (for backwards compatibility)
+ * Only wraps with date, doesn't include shared modules
+ * @param {string} promptContent - The prompt content to wrap
+ * @returns {string} Prompt with date in system_instructions
+ */
+function wrapPromptWithDate(promptContent) {
+  if (!promptContent) return promptContent;
+
+  // Check if already has the structure
+  if (promptContent.includes('<system_instructions>') && promptContent.includes('<user_instructions>')) {
+    return promptContent;
+  }
+
+  const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+
+  return `<system_instructions>\nToday's date: ${currentDate}\n</system_instructions>\n\n<user_instructions>\n${promptContent}\n</user_instructions>`;
+}
+
+/**
  * Resolve system prompt content from active system prompt ID
  * @param {string} activePromptId - The active system prompt ID
  * @param {string} userId - User ID for custom prompts
- * @returns {Promise<string>} Resolved system prompt content
+ * @returns {Promise<string>} Resolved system prompt content with full structure
  */
 async function resolveSystemPromptContent(activePromptId, userId) {
   if (!activePromptId) return '';
@@ -81,7 +174,15 @@ async function resolveSystemPromptContent(activePromptId, userId) {
   try {
     const { getPromptById } = await import('./promptService.js');
     const prompt = await getPromptById(activePromptId, userId);
-    return prompt?.body || '';
+    const promptBody = prompt?.body || '';
+
+    // Built-in prompts already have the full structure
+    if (activePromptId.startsWith('built:')) {
+      return promptBody;
+    }
+
+    // Custom prompts need to be wrapped with the full structure
+    return await wrapPromptWithStructure(promptBody);
   } catch (error) {
     logger.warn('[toolOrchestrationUtils] Failed to resolve system prompt:', error);
     return '';
@@ -93,19 +194,24 @@ export function extractSystemPrompt({ body, bodyIn, persistence }) {
     ? body.messages.find((msg) => msg && msg.role === 'system' && typeof msg.content === 'string' && msg.content.trim())
     : null;
   if (fromMessages) {
-    return fromMessages.content.trim();
+    return wrapPromptWithDate(fromMessages.content.trim());
   }
 
   const fromBodyParam = typeof bodyIn?.systemPrompt === 'string'
     ? bodyIn.systemPrompt.trim()
     : (typeof bodyIn?.system_prompt === 'string' ? bodyIn.system_prompt.trim() : '');
   if (fromBodyParam) {
-    return fromBodyParam;
+    return wrapPromptWithDate(fromBodyParam);
   }
 
   const fromPersistence = persistence?.conversationMeta?.metadata?.system_prompt;
   if (typeof fromPersistence === 'string' && fromPersistence.trim()) {
-    return fromPersistence.trim();
+    // Check if this is a built-in prompt (already has structure) or needs wrapping
+    const trimmed = fromPersistence.trim();
+    if (trimmed.includes('<system_instructions>') && trimmed.includes('<user_instructions>')) {
+      return trimmed; // Already structured (built-in prompt)
+    }
+    return wrapPromptWithDate(trimmed);
   }
 
   return '';
@@ -121,19 +227,38 @@ export function extractSystemPrompt({ body, bodyIn, persistence }) {
  * @returns {Promise<string>} Resolved system prompt content
  */
 export async function extractSystemPromptAsync({ body, bodyIn, persistence, userId }) {
-  // First try the synchronous extraction (inline overrides, legacy system_prompt)
-  const syncPrompt = extractSystemPrompt({ body, bodyIn, persistence });
-  if (syncPrompt) {
-    return syncPrompt;
+  // Check for inline overrides first (highest priority)
+  const fromMessages = Array.isArray(body?.messages)
+    ? body.messages.find((msg) => msg && msg.role === 'system' && typeof msg.content === 'string' && msg.content.trim())
+    : null;
+  if (fromMessages) {
+    return await wrapPromptWithStructure(fromMessages.content.trim());
   }
 
-  // If no inline override, check if there's an active system prompt ID to resolve
+  const fromBodyParam = typeof bodyIn?.systemPrompt === 'string'
+    ? bodyIn.systemPrompt.trim()
+    : (typeof bodyIn?.system_prompt === 'string' ? bodyIn.system_prompt.trim() : '');
+  if (fromBodyParam) {
+    return await wrapPromptWithStructure(fromBodyParam);
+  }
+
+  // If there's an active system prompt ID, resolve it (prefer this over legacy stored prompt)
   const activePromptId = persistence?.conversationMeta?.metadata?.active_system_prompt_id;
   if (activePromptId) {
     const resolvedContent = await resolveSystemPromptContent(activePromptId, userId);
     if (resolvedContent) {
       return resolvedContent;
     }
+  }
+
+  // Fall back to legacy stored system_prompt
+  const fromPersistence = persistence?.conversationMeta?.metadata?.system_prompt;
+  if (typeof fromPersistence === 'string' && fromPersistence.trim()) {
+    const trimmed = fromPersistence.trim();
+    if (trimmed.includes('<system_instructions>') && trimmed.includes('<user_instructions>')) {
+      return trimmed; // Already structured
+    }
+    return await wrapPromptWithStructure(trimmed);
   }
 
   return '';
