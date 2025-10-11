@@ -230,6 +230,13 @@ export function useChat() {
     abort: null,
   });
 
+  // Use ref to track token stats to avoid triggering re-renders on every token
+  const tokenStatsRef = useRef<{
+    count: number;
+    startTime: number;
+    messageId: string;
+  } | null>(null);
+
   // Actions - Sidebar
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed(prev => {
@@ -426,17 +433,18 @@ export function useChat() {
       // Create abort controller
       abortControllerRef.current = new AbortController();
 
-      // Initialize token stats
+      // Initialize token stats using ref to avoid re-renders
       const messageId = generateClientId();
+      tokenStatsRef.current = {
+        count: 0,
+        startTime: Date.now(),
+        messageId,
+      };
       setPending({
         streaming: true,
         error: undefined,
         abort: abortControllerRef.current,
-        tokenStats: {
-          count: 0,
-          startTime: Date.now(),
-          messageId,
-        },
+        tokenStats: tokenStatsRef.current,
       });
 
       // Convert images to content format if present
@@ -501,24 +509,15 @@ export function useChat() {
         systemPrompt: systemPromptRef.current || undefined,
         activeSystemPromptId: activeSystemPromptIdRef.current || undefined,
         onToken: (token: string) => {
-          // Update token count for speed calculation and record startTime on first token
-          setPending(prev => {
-            if (!prev.tokenStats || prev.tokenStats.messageId !== messageId) {
-              return prev;
-            }
-
+          // Update token count using ref to avoid re-renders on every token
+          if (tokenStatsRef.current && tokenStatsRef.current.messageId === messageId) {
             // If this is the first token (count is 0), update startTime to now
-            const isFirstToken = prev.tokenStats.count === 0;
-
-            return {
-              ...prev,
-              tokenStats: {
-                ...prev.tokenStats,
-                count: prev.tokenStats.count + 1,
-                startTime: isFirstToken ? Date.now() : prev.tokenStats.startTime,
-              },
-            };
-          });
+            const isFirstToken = tokenStatsRef.current.count === 0;
+            tokenStatsRef.current.count += 1;
+            if (isFirstToken) {
+              tokenStatsRef.current.startTime = Date.now();
+            }
+          }
 
           setMessages(prev => {
             const lastIdx = prev.length - 1;
@@ -539,24 +538,15 @@ export function useChat() {
         },
         onEvent: (event) => {
           if (event.type === 'text') {
-            // Record startTime on first text content if not already recorded
-            setPending(prev => {
-              if (!prev.tokenStats || prev.tokenStats.messageId !== messageId) {
-                return prev;
-              }
-
+            // Update token count using ref to avoid re-renders on every event
+            if (tokenStatsRef.current && tokenStatsRef.current.messageId === messageId) {
               // If this is the first content (count is 0), update startTime to now
-              const isFirstContent = prev.tokenStats.count === 0;
-
-              return {
-                ...prev,
-                tokenStats: {
-                  ...prev.tokenStats,
-                  count: prev.tokenStats.count + 1,
-                  startTime: isFirstContent ? Date.now() : prev.tokenStats.startTime,
-                },
-              };
-            });
+              const isFirstContent = tokenStatsRef.current.count === 0;
+              tokenStatsRef.current.count += 1;
+              if (isFirstContent) {
+                tokenStatsRef.current.startTime = Date.now();
+              }
+            }
 
             // Handle text events from tool_events (non-streaming responses)
             setMessages(prev => {
@@ -779,7 +769,11 @@ export function useChat() {
       }
 
       setStatus('idle');
-      setPending(prev => ({ ...prev, streaming: false }));
+      setPending(prev => ({
+        ...prev,
+        streaming: false,
+        tokenStats: tokenStatsRef.current ?? undefined
+      }));
     } catch (err) {
       // Handle streaming not supported error by retrying with streaming disabled
       if (err instanceof StreamingNotSupportedError) {
