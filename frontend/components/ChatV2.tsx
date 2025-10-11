@@ -34,7 +34,7 @@ export function ChatV2() {
   const isResizingRef = useRef(false);
   const nextWidthRef = useRef(DEFAULT_RIGHT_SIDEBAR_WIDTH);
   const frameRef = useRef<number | null>(null);
-  const messageListRef = useRef<HTMLDivElement>(null);
+  const messageListRef = useRef<HTMLDivElement>(null!);
   const [scrollButtons, setScrollButtons] = useState({ showTop: false, showBottom: false });
 
   // Simple event handlers
