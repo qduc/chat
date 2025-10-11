@@ -8,6 +8,7 @@ import { createProvider } from './providers/index.js';
 import { SimplifiedPersistence } from './simplifiedPersistence.js';
 import { addConversationMetadata, getConversationMetadata } from './responseUtils.js';
 import { logger } from '../logger.js';
+import { addPromptCaching } from './promptCaching.js';
 
 // --- Constants ---
 
@@ -272,6 +273,14 @@ async function handleRequest(context, req, res) {
       requestBody.previous_response_id = previousResponseId;
     }
   }
+
+  // Apply prompt caching after messages are fully constructed
+  requestBody = await addPromptCaching(requestBody, {
+    conversationId: persistence?.conversationId,
+    userId,
+    provider,
+    hasTools: false
+  });
 
   const upstream = await createOpenAIRequest(config, requestBody, { providerId });
   if (!upstream.ok) {

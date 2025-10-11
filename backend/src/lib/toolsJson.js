@@ -3,6 +3,7 @@ import { addConversationMetadata } from './responseUtils.js';
 import { setupStreamingHeaders, createOpenAIRequest, teeStreamWithPreview } from './streamUtils.js';
 import { logUpstreamResponse } from './logging/upstreamLogger.js';
 import { createProvider } from './providers/index.js';
+import { addPromptCaching } from './promptCaching.js';
 import {
   buildConversationMessagesOptimized,
   executeToolCall,
@@ -275,8 +276,8 @@ class JsonResponseHandler extends ResponseHandler {
 /**
  * Make a request to the AI model
  */
-async function callLLM({ messages, config, bodyParams, providerId, providerHttp, provider, previousResponseId = null }) {
-  const requestBody = {
+async function callLLM({ messages, config, bodyParams, providerId, providerHttp, provider, previousResponseId = null, userId = null, conversationId = null }) {
+  let requestBody = {
     model: bodyParams.model || config.defaultModel,
     messages,
     stream: bodyParams.stream || false,
@@ -289,6 +290,14 @@ async function callLLM({ messages, config, bodyParams, providerId, providerHttp,
     if (bodyParams.reasoning_effort) requestBody.reasoning_effort = bodyParams.reasoning_effort;
     if (bodyParams.verbosity) requestBody.verbosity = bodyParams.verbosity;
   }
+
+  // Apply prompt caching
+  requestBody = await addPromptCaching(requestBody, {
+    conversationId,
+    userId,
+    provider,
+    hasTools: Boolean(bodyParams.tools)
+  });
 
   const response = await createOpenAIRequest(config, requestBody, { providerId, http: providerHttp });
 
@@ -557,6 +566,8 @@ export async function handleToolsJson({
         providerHttp,
         provider: providerInstance,
         previousResponseId: currentPreviousResponseId,
+        userId,
+        conversationId: persistence?.conversationId,
       });
       const message = response?.choices?.[0]?.message;
       const toolCalls = message?.tool_calls || [];
@@ -652,6 +663,8 @@ export async function handleToolsJson({
       providerId,
       providerHttp,
       provider: providerInstance,
+      userId,
+      conversationId: persistence?.conversationId,
     });
 
     // Handle max iterations reached

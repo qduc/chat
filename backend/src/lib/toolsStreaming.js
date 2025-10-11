@@ -5,6 +5,7 @@ import { createProvider } from './providers/index.js';
 import { setupStreamingHeaders } from './streamingHandler.js';
 import { config } from '../env.js';
 import { logger } from '../logger.js';
+import { addPromptCaching } from './promptCaching.js';
 import {
   buildConversationMessagesAsync,
   buildConversationMessagesOptimized,
@@ -65,7 +66,7 @@ export async function handleToolsStreaming({
         generateToolSpecs,
       }) || generateOpenAIToolSpecs();
       const toolsToSend = (Array.isArray(body.tools) && body.tools.length) ? body.tools : fallbackToolSpecs;
-      const requestBody = {
+      let requestBody = {
         model: body.model || config.defaultModel,
         messages: conversationHistory,
         stream: true,
@@ -78,6 +79,14 @@ export async function handleToolsStreaming({
         if (body.reasoning_effort) requestBody.reasoning_effort = body.reasoning_effort;
         if (body.verbosity) requestBody.verbosity = body.verbosity;
       }
+
+      // Apply prompt caching
+      requestBody = await addPromptCaching(requestBody, {
+        conversationId: persistence?.conversationId,
+        userId,
+        provider: providerInstance,
+        hasTools: Boolean(toolsToSend)
+      });
 
       const upstream = await createOpenAIRequest(config, requestBody, { providerId });
 

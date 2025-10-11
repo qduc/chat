@@ -33,6 +33,11 @@ export class GeminiProvider extends BaseProvider {
     // TODO: report reasoning control availability for Gemini.
   }
 
+  supportsPromptCaching() {
+    // Gemini does not currently support explicit prompt caching via message annotations
+    return false;
+  }
+
   getDefaultModel() {
     // TODO: determine Gemini default model from configuration.
   }
