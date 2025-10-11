@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { ArrowUp, ArrowDown } from 'lucide-react';
 import { useChat } from '../hooks/useChat';
 import { ChatSidebar } from './ChatSidebar';
 import { ChatHeader } from './ChatHeader';
@@ -33,6 +34,8 @@ export function ChatV2() {
   const isResizingRef = useRef(false);
   const nextWidthRef = useRef(DEFAULT_RIGHT_SIDEBAR_WIDTH);
   const frameRef = useRef<number | null>(null);
+  const messageListRef = useRef<HTMLDivElement>(null);
+  const [scrollButtons, setScrollButtons] = useState({ showTop: false, showBottom: false });
 
   // Simple event handlers
   const handleCopy = useCallback(async (text: string) => {
@@ -313,6 +316,17 @@ export function ChatV2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat.input, chat.setInput, chat.sendMessage]);
 
+  // Scroll functions
+  const scrollToTop = useCallback(() => {
+    messageListRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+  }, []);
+
+  const scrollToBottom = useCallback(() => {
+    if (messageListRef.current) {
+      messageListRef.current.scrollTo({ top: messageListRef.current.scrollHeight, behavior: 'smooth' });
+    }
+  }, []);
+
   return (
     <div className="flex h-dvh max-h-dvh bg-gradient-to-br from-slate-50 via-white to-slate-100/40 dark:from-neutral-950 dark:via-neutral-950 dark:to-neutral-900/20">
       {chat.historyEnabled && (
@@ -361,7 +375,34 @@ export function ChatV2() {
               onApplyLocalEdit={handleApplyLocalEdit}
               onEditingContentChange={chat.updateEditContent}
               onRetryMessage={handleRetryMessage}
+              onScrollStateChange={setScrollButtons}
+              containerRef={messageListRef}
             />
+
+            {/* Scroll Buttons - positioned in the center of message area, avoiding sidebars */}
+            <div className="absolute bottom-40 left-1/2 transform -translate-x-1/2 flex flex-col gap-2 z-40 pointer-events-none">
+              {scrollButtons.showTop && (
+                <button
+                  onClick={scrollToTop}
+                  className="pointer-events-auto p-2 rounded-full bg-white/60 dark:bg-neutral-800/60 backdrop-blur-md hover:bg-white/80 dark:hover:bg-neutral-700/80 text-slate-700 dark:text-slate-200 shadow-lg transition-all duration-200 hover:scale-110 border border-slate-200/50 dark:border-neutral-600/50"
+                  aria-label="Scroll to top"
+                  title="Scroll to top"
+                >
+                  <ArrowUp className="w-4 h-4" />
+                </button>
+              )}
+              {scrollButtons.showBottom && (
+                <button
+                  onClick={scrollToBottom}
+                  className="pointer-events-auto p-2 rounded-full bg-white/60 dark:bg-neutral-800/60 backdrop-blur-md hover:bg-white/80 dark:hover:bg-neutral-700/80 text-slate-700 dark:text-slate-200 shadow-lg transition-all duration-200 hover:scale-110 border border-slate-200/50 dark:border-neutral-600/50"
+                  aria-label="Scroll to bottom"
+                  title="Scroll to bottom"
+                >
+                  <ArrowDown className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
             {/* Removed soft fade to keep a cleaner boundaryless look */}
             <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-4xl px-6 z-30">
               <MessageInput
