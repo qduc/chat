@@ -53,9 +53,10 @@ async function loadSharedModules(builtinsDir) {
  * Load and parse a markdown file with YAML front-matter
  * @param {string} filePath - Path to the markdown file
  * @param {string} builtinsDir - Path to builtins directory
+ * @param {string} sharedModules - Shared modules content
  * @returns {Object} Parsed prompt object
  */
-async function parsePromptFile(filePath, builtinsDir) {
+async function parsePromptFile(filePath, builtinsDir, sharedModules = '') {
   const content = await readFile(filePath, 'utf-8');
 
   // Check if file has YAML front-matter
@@ -99,13 +100,29 @@ async function parsePromptFile(filePath, builtinsDir) {
     throw new Error(`Field 'order' must be a number in ${filePath}`);
   }
 
+  // Construct full body with structure:
+  // <system_instructions>date + shared modules</system_instructions>
+  // <user_instructions>prompt body</user_instructions>
+  let fullBody = '';
+
+  // Build system_instructions section with date and shared modules
+  const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+  let systemInstructions = `Today's date: ${currentDate}`;
+
+  if (sharedModules) {
+    systemInstructions += `\n\n${sharedModules.trim()}`;
+  }
+
+  fullBody = `<system_instructions>\n${systemInstructions}\n</system_instructions>\n\n<user_instructions>\n${bodyText}\n</user_instructions>`;
+
   return {
     id: `built:${frontMatter.slug}`,
     slug: frontMatter.slug,
     name: frontMatter.name,
     description: frontMatter.description || '',
     order: frontMatter.order,
-    body: bodyText,
+    body: fullBody,
+    user_instructions: bodyText, // Store separately for API response
     read_only: true
   };
 }
@@ -149,10 +166,7 @@ async function loadBuiltInPrompts() {
     for (const file of markdownFiles) {
       try {
         const filePath = join(builtinsDir, file);
-        const prompt = await parsePromptFile(filePath, builtinsDir);
-
-        // Append shared modules to the prompt body
-        prompt.body = prompt.body + sharedModules;
+        const prompt = await parsePromptFile(filePath, builtinsDir, sharedModules);
 
         prompts.push(prompt);
       } catch (error) {
