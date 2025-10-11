@@ -18,25 +18,41 @@ function addCacheBreakpoints(messages) {
 
   const annotatedMessages = [...messages];
 
-  // Find the last message that comes from the user side (user or tool result)
-  // This is the last message before the assistant needs to respond
-  const lastUserOrToolIdx = annotatedMessages.findLastIndex(m =>
-    m?.role === 'user' || m?.role === 'tool'
-  );
+  // Annotate the last message with cache control
+  const lastIdx = annotatedMessages.length - 1;
+  const lastMessage = annotatedMessages[lastIdx];
 
-  if (lastUserOrToolIdx >= 0) {
-    // Add cache breakpoint after the last user/tool message
-    annotatedMessages[lastUserOrToolIdx] = {
-      ...annotatedMessages[lastUserOrToolIdx],
+  if (lastMessage.role === 'user') {
+    // Transform content to object format for user messages
+    if (typeof lastMessage.content === 'string') {
+      annotatedMessages[lastIdx] = {
+        ...lastMessage,
+        content: [{
+          type: 'text',
+          text: lastMessage.content,
+          cache_control: { type: 'ephemeral' }
+        }]
+      };
+    } else {
+      // If content is already an object/array, add cache_control to the message
+      annotatedMessages[lastIdx] = {
+        ...lastMessage,
+        cache_control: { type: 'ephemeral' }
+      };
+    }
+  } else {
+    // For non-user messages, add cache_control to the message
+    annotatedMessages[lastIdx] = {
+      ...lastMessage,
       cache_control: { type: 'ephemeral' }
     };
-
-    logger.debug('[promptCaching] Added cache point at last user/tool message', {
-      index: lastUserOrToolIdx,
-      role: annotatedMessages[lastUserOrToolIdx].role,
-      totalMessages: annotatedMessages.length
-    });
   }
+
+  logger.info('[promptCaching] Added cache point at last message', {
+    index: lastIdx,
+    role: annotatedMessages[lastIdx].role,
+    totalMessages: annotatedMessages.length
+  });
 
   return annotatedMessages;
 }

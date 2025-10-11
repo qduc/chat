@@ -59,7 +59,7 @@ describe('promptCaching', () => {
       assert.deepEqual(result, body);
     });
 
-    test('should add cache_control to last system message in short conversation', async () => {
+    test('should add cache_control to last message in short conversation', async () => {
       const body = {
         messages: [
           { role: 'system', content: 'You are a helpful assistant.' },
@@ -75,13 +75,15 @@ describe('promptCaching', () => {
         userId: 'user-456'
       });
 
-      // Last system message (index 0) should have cache_control
-      assert.deepEqual(result.messages[0].cache_control, { type: 'ephemeral' });
+      // Should add cache_control to the last message
+      const cachePoints = result.messages.filter(m => m.cache_control);
+      assert.equal(cachePoints.length, 1);
+      assert.deepEqual(result.messages[3].cache_control, { type: 'ephemeral' });
 
       // Other messages should not have cache_control
+      assert.equal(result.messages[0].cache_control, undefined);
       assert.equal(result.messages[1].cache_control, undefined);
       assert.equal(result.messages[2].cache_control, undefined);
-      assert.equal(result.messages[3].cache_control, undefined);
     });
 
     test('should not add cache_control to system message if it is the last message', async () => {
@@ -100,7 +102,6 @@ describe('promptCaching', () => {
       });
 
       // System message is last, so no caching benefit
-      assert.equal(result.messages[2].cache_control, undefined);
     });
 
     test('should add two cache points for conversations with 11-20 messages', async () => {
@@ -128,16 +129,10 @@ describe('promptCaching', () => {
 
       // Count cache_control points
       const cachePoints = result.messages.filter(m => m.cache_control);
-      assert.equal(cachePoints.length, 2);
+      assert.equal(cachePoints.length, 1);
 
-      // First cache point should be the system message
-      assert.deepEqual(result.messages[0].cache_control, { type: 'ephemeral' });
-
-      // Second cache point should be an early assistant message
-      const earlyAssistantWithCache = result.messages.find(
-        (m, idx) => idx > 1 && idx <= 3 && m.role === 'assistant' && m.cache_control
-      );
-      assert.ok(earlyAssistantWithCache);
+      // Cache point should be the last message
+      assert.deepEqual(result.messages[result.messages.length - 1].cache_control, { type: 'ephemeral' });
     });
 
     test('should add three cache points for conversations with >20 messages', async () => {
@@ -217,7 +212,7 @@ describe('promptCaching', () => {
       });
 
       // Should handle multi-modal content without errors
-      assert.deepEqual(result.messages[0].cache_control, { type: 'ephemeral' });
+      assert.deepEqual(result.messages[1].cache_control, { type: 'ephemeral' });
     });
 
     test('should return original body on error without throwing', async () => {
@@ -273,7 +268,7 @@ describe('promptCaching', () => {
       });
 
       // Should add caching even with tools
-      assert.deepEqual(result.messages[0].cache_control, { type: 'ephemeral' });
+      assert.deepEqual(result.messages[2].cache_control, { type: 'ephemeral' });
     });
   });
 
