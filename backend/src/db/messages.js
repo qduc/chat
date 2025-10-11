@@ -272,6 +272,14 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
     )
     .all({ conversationId, afterSeq, limit: sanitizedLimit });
 
+  // Build mapping of integer id to client_message_id before transformation
+  const integerIdToClientId = new Map();
+  for (const message of messages) {
+    if (message.client_message_id) {
+      integerIdToClientId.set(message.id, message.client_message_id);
+    }
+  }
+
   // Parse content_json and use it if available, otherwise fall back to content
   for (const message of messages) {
     if (message.content_json) {
@@ -294,7 +302,7 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
     }
   }
 
-  // Fetch tool calls and outputs for all messages in batch
+  // Fetch tool calls and outputs for all messages in batch (using integer IDs)
   if (messages.length > 0) {
     const messageIds = messages.map(m => m.id);
     const placeholders = messageIds.map(() => '?').join(',');
@@ -352,7 +360,7 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
       });
     }
 
-    // Attach tool calls and outputs to messages
+    // Attach tool calls and outputs to messages (still using integer IDs)
     for (const message of messages) {
       if (toolCallsByMessage[message.id]) {
         message.tool_calls = toolCallsByMessage[message.id];
@@ -376,6 +384,14 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
     }
   }
 
+  // Finally, transform integer IDs to client_message_ids for API response
+  for (const message of messages) {
+    if (message.client_message_id) {
+      message.id = message.client_message_id;
+    }
+    delete message.client_message_id;
+  }
+
   const next_after_seq =
     messages.length === sanitizedLimit ? messages[messages.length - 1].seq : null;
   return { messages, next_after_seq };
@@ -385,13 +401,16 @@ export function getLastMessage({ conversationId }) {
   const db = getDb();
   const message = db
     .prepare(
-      `SELECT id, seq, role, status, content, content_json, reasoning_details, reasoning_tokens, created_at
+      `SELECT id, seq, role, status, content, content_json, reasoning_details, reasoning_tokens, client_message_id, created_at
      FROM messages WHERE conversation_id=@conversationId
      ORDER BY seq DESC LIMIT 1`
     )
     .get({ conversationId });
 
   if (!message) return null;
+
+  // Store integer ID for database lookups
+  const integerMessageId = message.id;
 
   // Parse content_json and use it if available, otherwise fall back to content
   if (message.content_json) {
@@ -414,7 +433,7 @@ export function getLastMessage({ conversationId }) {
     message.reasoning_tokens = Number(message.reasoning_tokens);
   }
 
-  // Fetch tool calls for this message
+  // Fetch tool calls for this message (using integer ID)
   const toolCalls = db
     .prepare(
       `SELECT id, message_id, conversation_id, call_index, tool_name, arguments, text_offset, created_at
@@ -422,9 +441,9 @@ export function getLastMessage({ conversationId }) {
        WHERE message_id = @messageId
        ORDER BY call_index ASC`
     )
-    .all({ messageId: message.id });
+    .all({ messageId: integerMessageId });
 
-  // Fetch tool outputs for this message
+  // Fetch tool outputs for this message (using integer ID)
   const toolOutputs = db
     .prepare(
       `SELECT id, tool_call_id, message_id, conversation_id, output, status, executed_at
@@ -432,7 +451,7 @@ export function getLastMessage({ conversationId }) {
        WHERE message_id = @messageId
        ORDER BY executed_at ASC`
     )
-    .all({ messageId: message.id });
+    .all({ messageId: integerMessageId });
 
   // Transform tool calls to OpenAI format
   if (toolCalls.length > 0) {
@@ -456,6 +475,12 @@ export function getLastMessage({ conversationId }) {
       status: to.status
     }));
   }
+
+  // Finally, transform integer ID to client_message_id for API response
+  if (message.client_message_id) {
+    message.id = message.client_message_id;
+  }
+  delete message.client_message_id;
 
   return message;
 }
