@@ -30,7 +30,7 @@ function validate(args) {
   // Basic URL validation
   try {
     new URL(url);
-  } catch (error) {
+  } catch {
     throw new Error(`Invalid URL format: ${url}`);
   }
 
@@ -77,18 +77,86 @@ async function handler({ url, maxChars, targetHeading }) {
 
     const contentType = response.headers.get('content-type') || '';
 
-    // Check if the response is HTML
-    if (!contentType.includes('text/html')) {
-      throw new Error(`URL does not return HTML content. Content-Type: ${contentType}`);
-    }
+    // If the Content-Type clearly indicates text-like content, accept it.
+    // Otherwise we'll peek at the first chunk of the body and apply a
+    // lightweight binary-vs-text heuristic to decide if the response is
+    // text-parsable. This allows fetching resources that may not set
+    // Content-Type correctly but are still text (e.g., some servers).
+    const contentTypeLooksLikeText = /^(?:text\/)|(?:application\/(?:xml|xhtml\+xml|json))|html|xml|json/i.test(contentType);
 
     // Stream response body with size limit to prevent memory blowup
-    const reader = response.body.getReader();
+    const reader = response.body && typeof response.body.getReader === 'function'
+      ? response.body.getReader()
+      : null;
+
+    if (!reader) {
+      throw new Error('Response body is not readable');
+    }
+
     const decoder = new TextDecoder();
     let html = '';
     let bytesDownloaded = 0;
 
+    // Helper: detect if a small binary buffer looks like text
+    function isProbablyText(buffer) {
+      if (!buffer || buffer.length === 0) return false;
+
+      // Quick null-byte check (very likely binary)
+      const sampleLen = Math.min(buffer.length, 1024);
+      for (let i = 0; i < sampleLen; i++) {
+        if (buffer[i] === 0) return false;
+      }
+
+      // Decode and examine printable vs control chars
+      const sample = new TextDecoder('utf-8', { fatal: false }).decode(buffer.slice(0, sampleLen));
+      let nonPrintable = 0;
+      let total = 0;
+      for (let i = 0; i < sample.length; i++) {
+        const code = sample.charCodeAt(i);
+        // allow common whitespace: tab, line feed, carriage return
+        if (code === 9 || code === 10 || code === 13) {
+          total++;
+          continue;
+        }
+        if (code < 32) {
+          nonPrintable++;
+        }
+        total++;
+      }
+      if (total === 0) return false;
+      // If less than 10% of the sample are non-printable control chars,
+      // treat it as text.
+      return (nonPrintable / total) < 0.10;
+    }
+
     try {
+      // Read the first chunk to allow content sniffing when needed
+      const first = await reader.read();
+      if (first.done) {
+        reader.releaseLock();
+        throw new Error('Empty response body');
+      }
+
+      const firstChunk = first.value;
+      bytesDownloaded += firstChunk.length;
+
+      if (bytesDownloaded > MAX_BODY_SIZE) {
+        reader.cancel();
+        throw new Error(`Response body exceeds maximum size limit of ${MAX_BODY_SIZE / (1024 * 1024)} MB`);
+      }
+
+      if (!contentTypeLooksLikeText) {
+        // If the header doesn't clearly say text, use the heuristic on the
+        // first chunk to avoid reading binary blobs.
+        if (!isProbablyText(firstChunk)) {
+          reader.cancel();
+          throw new Error(`URL does not return text-parsable content. Content-Type: ${contentType}`);
+        }
+      }
+
+      // Append first chunk and continue streaming the rest
+      html += decoder.decode(firstChunk, { stream: true });
+
       while (true) {
         const { done, value } = await reader.read();
 
@@ -107,8 +175,14 @@ async function handler({ url, maxChars, targetHeading }) {
       // Flush any remaining bytes in the decoder
       html += decoder.decode();
     } finally {
-      reader.releaseLock();
+      try {
+        reader.releaseLock();
+      } catch {
+        // ignore
+      }
     }
+
+
 
     const dom = new JSDOM(html, { url });
     const document = dom.window.document;
@@ -136,7 +210,7 @@ async function handler({ url, maxChars, targetHeading }) {
         };
         method = 'readability';
       }
-    } catch (error) {
+    } catch {
       // Readability failed, continue to next strategy
     }
 
