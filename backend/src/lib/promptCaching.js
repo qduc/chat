@@ -18,19 +18,22 @@ function addCacheBreakpoints(messages) {
 
   const annotatedMessages = [...messages];
 
-  // Find the last user message (which includes tool results - they have role "user")
+  // Find the last message that comes from the user side (user or tool result)
   // This is the last message before the assistant needs to respond
-  const lastUserIdx = annotatedMessages.findLastIndex(m => m?.role === 'user');
+  const lastUserOrToolIdx = annotatedMessages.findLastIndex(m =>
+    m?.role === 'user' || m?.role === 'tool'
+  );
 
-  if (lastUserIdx >= 0) {
+  if (lastUserOrToolIdx >= 0) {
     // Add cache breakpoint after the last user/tool message
-    annotatedMessages[lastUserIdx] = {
-      ...annotatedMessages[lastUserIdx],
+    annotatedMessages[lastUserOrToolIdx] = {
+      ...annotatedMessages[lastUserOrToolIdx],
       cache_control: { type: 'ephemeral' }
     };
 
     logger.debug('[promptCaching] Added cache point at last user/tool message', {
-      index: lastUserIdx,
+      index: lastUserOrToolIdx,
+      role: annotatedMessages[lastUserOrToolIdx].role,
       totalMessages: annotatedMessages.length
     });
   }

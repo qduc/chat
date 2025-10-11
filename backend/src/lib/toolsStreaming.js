@@ -80,7 +80,8 @@ export async function handleToolsStreaming({
         if (body.verbosity) requestBody.verbosity = body.verbosity;
       }
 
-      // Apply prompt caching
+      // Apply prompt caching - must be done AFTER messages are finalized
+      // This ensures the last user/tool message gets the cache breakpoint
       requestBody = await addPromptCaching(requestBody, {
         conversationId: persistence?.conversationId,
         userId,
