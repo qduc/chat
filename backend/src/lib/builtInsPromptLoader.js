@@ -12,11 +12,50 @@ let builtInPromptsCache = null;
 let loadError = null;
 
 /**
+ * Load all shared modules from the _modules directory
+ * @param {string} builtinsDir - Path to builtins directory
+ * @returns {string} Concatenated module content
+ */
+async function loadSharedModules(builtinsDir) {
+  const modulesDir = join(builtinsDir, '_modules');
+
+  try {
+    const files = await readdir(modulesDir);
+    const moduleFiles = files.filter(file => file.endsWith('.md'));
+
+    if (moduleFiles.length === 0) {
+      return '';
+    }
+
+    const moduleContents = [];
+    for (const file of moduleFiles) {
+      try {
+        const filePath = join(modulesDir, file);
+        const content = await readFile(filePath, 'utf-8');
+        moduleContents.push(content.trim());
+      } catch (error) {
+        logger.warn(`[builtins] Failed to load module ${file}: ${error.message}`);
+      }
+    }
+
+    return moduleContents.length > 0 ? '\n\n' + moduleContents.join('\n\n') : '';
+  } catch (error) {
+    // _modules directory doesn't exist or is inaccessible
+    if (error.code === 'ENOENT') {
+      return '';
+    }
+    logger.warn(`[builtins] Failed to load shared modules: ${error.message}`);
+    return '';
+  }
+}
+
+/**
  * Load and parse a markdown file with YAML front-matter
  * @param {string} filePath - Path to the markdown file
+ * @param {string} builtinsDir - Path to builtins directory
  * @returns {Object} Parsed prompt object
  */
-async function parsePromptFile(filePath) {
+async function parsePromptFile(filePath, builtinsDir) {
   const content = await readFile(filePath, 'utf-8');
 
   // Check if file has YAML front-matter
@@ -100,6 +139,9 @@ async function loadBuiltInPrompts() {
       return [];
     }
 
+    // Load shared modules once
+    const sharedModules = await loadSharedModules(builtinsDir);
+
     const prompts = [];
     const errors = [];
 
@@ -107,7 +149,11 @@ async function loadBuiltInPrompts() {
     for (const file of markdownFiles) {
       try {
         const filePath = join(builtinsDir, file);
-        const prompt = await parsePromptFile(filePath);
+        const prompt = await parsePromptFile(filePath, builtinsDir);
+
+        // Append shared modules to the prompt body
+        prompt.body = prompt.body + sharedModules;
+
         prompts.push(prompt);
       } catch (error) {
         logger.error(`[builtins] Failed to load ${file}:`, error.message);
