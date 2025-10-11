@@ -385,7 +385,9 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
   }
 
   // Finally, transform integer IDs to client_message_ids for API response
+  // Store integer ID as _dbId for internal use (like updates/deletes)
   for (const message of messages) {
+    message._dbId = message.id; // Store integer ID for database operations
     if (message.client_message_id) {
       message.id = message.client_message_id;
     }
@@ -477,6 +479,8 @@ export function getLastMessage({ conversationId }) {
   }
 
   // Finally, transform integer ID to client_message_id for API response
+  // Store integer ID as _dbId for internal use (like updates/deletes)
+  message._dbId = message.id; // Store integer ID for database operations
   if (message.client_message_id) {
     message.id = message.client_message_id;
   }
