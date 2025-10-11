@@ -101,10 +101,11 @@ export class ConversationManager {
       : [];
 
     const allExisting = getAllMessagesForSync({ conversationId });
+    // Note: getAllMessagesForSync returns messages with id already transformed to client_message_id
     const existingByClientId = new Map();
     for (const message of allExisting) {
-      if (message?.client_message_id != null) {
-        existingByClientId.set(String(message.client_message_id), message);
+      if (message?.id != null) {
+        existingByClientId.set(String(message.id), message);
       }
     }
 
@@ -123,6 +124,7 @@ export class ConversationManager {
           explicitUpdates.push({
             ...incomingMessage,
             id: existingMessage.id,
+            _dbId: existingMessage._dbId, // Preserve database integer ID for updates
             seq: existingMessage.seq
           });
         }
@@ -185,18 +187,21 @@ export class ConversationManager {
       for (const msg of diff.toUpdate) {
         updatedMessages.push({ role: msg.role, id: msg.id, seq: msg.seq });
 
+        // Use _dbId (integer) for database operations, fallback to id if _dbId not present
+        const dbId = msg._dbId ?? msg.id;
+
         if (msg.role === 'tool') {
           updateMessageContent({
-            messageId: msg.id,
+            messageId: dbId,
             conversationId,
             userId,
             content: msg.content,
             status: msg.status || 'success'
           });
-          this._replaceToolOutputs({ messageId: msg.id, conversationId, message: msg });
+          this._replaceToolOutputs({ messageId: dbId, conversationId, message: msg });
         } else {
           updateMessageContent({
-            messageId: msg.id,
+            messageId: dbId,
             conversationId,
             userId,
             content: msg.content,
@@ -205,7 +210,7 @@ export class ConversationManager {
           });
 
           if (msg.role === 'assistant') {
-            this._syncAssistantArtifacts(msg.id, conversationId, msg);
+            this._syncAssistantArtifacts(dbId, conversationId, msg);
           }
         }
       }

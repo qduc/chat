@@ -32,8 +32,14 @@ systemPromptsRouter.get('/v1/system-prompts', authenticateToken, async (req, res
       });
     }
 
+    // Transform built-ins to only include user_instructions in body field
+    const transformedBuiltIns = result.built_ins.map(prompt => ({
+      ...prompt,
+      body: prompt.user_instructions || prompt.body // Use user_instructions if available
+    }));
+
     res.json({
-      built_ins: result.built_ins,
+      built_ins: transformedBuiltIns,
       custom: result.custom,
       error: result.error || null
     });

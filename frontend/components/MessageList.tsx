@@ -41,6 +41,8 @@ interface MessageListProps {
   onApplyLocalEdit: (messageId: string, content: MessageContent) => void;
   onEditingContentChange: (content: string) => void;
   onRetryMessage: (messageId: string) => void;
+  onScrollStateChange?: (state: { showTop: boolean; showBottom: boolean }) => void;
+  containerRef?: React.RefObject<HTMLDivElement>;
 }
 
 // Helper function to split messages with tool calls into separate messages
@@ -454,7 +456,7 @@ const Message = React.memo<MessageProps>(function Message({
                     return (
                       <div
                         key={`tool-${segmentIndex}`}
-                        className="block min-w-fit max-w-[75%] rounded-lg bg-gradient-to-br from-blue-50/80 to-indigo-50/60 dark:from-blue-950/30 dark:to-indigo-950/20 border border-blue-200/60 dark:border-blue-800/40 shadow-sm hover:shadow-md transition-shadow duration-200"
+                        className="block max-w-[95%] rounded-lg bg-gradient-to-br from-blue-50/80 to-indigo-50/60 dark:from-blue-950/30 dark:to-indigo-950/20 border border-blue-200/60 dark:border-blue-800/40 shadow-sm hover:shadow-md transition-shadow duration-200"
                       >
                         <div
                           className={`flex items-center gap-3 px-4 py-3 ${hasDetails ? 'cursor-pointer' : ''}`}
@@ -677,10 +679,14 @@ export function MessageList({
   onCancelEdit,
   onApplyLocalEdit,
   onEditingContentChange,
-  onRetryMessage
+  onRetryMessage,
+  onScrollStateChange,
+  containerRef: externalContainerRef
 }: MessageListProps) {
   // Debug logging
   const bottomRef = useRef<HTMLDivElement | null>(null);
+  const internalContainerRef = useRef<HTMLDivElement | null>(null);
+  const containerRef = externalContainerRef || internalContainerRef;
   const editingTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const lastUserMessageRef = useRef<HTMLDivElement | null>(null);
   const [collapsedToolOutputs, setCollapsedToolOutputs] = useState<Record<string, boolean>>({});
@@ -715,7 +721,8 @@ export function MessageList({
     } else {
       setEditingImages([]);
     }
-  }, [editingMessageId, messages]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingMessageId]);
 
   // Handle image upload during editing
   const handleEditingImageFiles = useCallback(async (files: File[]) => {
@@ -894,9 +901,30 @@ export function MessageList({
     [messages]
   );
 
+  // Track scroll position to show/hide scroll buttons
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !onScrollStateChange) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const threshold = 100; // pixels from top/bottom to show buttons
+
+      onScrollStateChange({
+        showTop: scrollTop > threshold,
+        showBottom: scrollTop < scrollHeight - clientHeight - threshold
+      });
+    };
+
+    handleScroll(); // Initial check
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [messages.length, onScrollStateChange]);
+
   return (
     <main
-      className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-neutral-700 scrollbar-track-transparent"
+      ref={containerRef}
+      className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-neutral-700 scrollbar-track-transparent relative"
       style={{ willChange: 'scroll-position' }}
     >
       <div

@@ -510,6 +510,7 @@ async function handleStreamingResponse(
   let usage: any | undefined;
   let reasoning_details: any[] | undefined;
   let reasoning_tokens: number | undefined;
+  let lastSentUsage: any | undefined; // Track last sent usage to prevent duplicate events
 
   try {
     while (true) {
@@ -539,13 +540,17 @@ async function handleStreamingResponse(
         }
 
         if (event.type === 'data' && event.data) {
-          const result = processStreamChunk(event.data, onToken, onEvent, reasoningStarted);
+          const result = processStreamChunk(event.data, onToken, onEvent, reasoningStarted, lastSentUsage);
           if (result.content) content += result.content;
           if (result.responseId) responseId = result.responseId;
           if (result.conversation) conversation = result.conversation;
           if (result.reasoningStarted !== undefined) reasoningStarted = result.reasoningStarted;
           if (result.reasoning_summary) reasoning_summary = result.reasoning_summary;
-          if (result.usage) usage = { ...usage, ...result.usage };
+          if (result.usage) {
+            usage = { ...usage, ...result.usage };
+            // Update lastSentUsage if we actually sent a usage event
+            if (result.usageSent) lastSentUsage = usage;
+          }
           if (result.reasoningDetails) reasoning_details = result.reasoningDetails;
           if (result.reasoningTokens !== undefined) reasoning_tokens = result.reasoningTokens;
         }
@@ -572,8 +577,9 @@ function processStreamChunk(
   data: any,
   onToken?: (token: string) => void,
   onEvent?: (event: any) => void,
-  reasoningStarted?: boolean
-): { content?: string; responseId?: string; conversation?: ConversationMeta; reasoningStarted?: boolean; reasoning_summary?: string; usage?: any; reasoningDetails?: any[]; reasoningTokens?: number } {
+  reasoningStarted?: boolean,
+  lastSentUsage?: any
+): { content?: string; responseId?: string; conversation?: ConversationMeta; reasoningStarted?: boolean; reasoning_summary?: string; usage?: any; usageSent?: boolean; reasoningDetails?: any[]; reasoningTokens?: number } {
   if (data._conversation) {
     return {
       conversation: {
@@ -606,7 +612,7 @@ function processStreamChunk(
     };
   }
 
-  const result: { content?: string; usage?: any; reasoningStarted?: boolean; reasoningDetails?: any[]; reasoningTokens?: number } = {};
+  const result: { content?: string; usage?: any; usageSent?: boolean; reasoningStarted?: boolean; reasoningDetails?: any[]; reasoningTokens?: number } = {};
 
   if (data.usage || data.provider || data.model) {
     const usage: any = {};
@@ -623,7 +629,19 @@ function processStreamChunk(
     }
 
     if (Object.keys(usage).length > 0) {
-      onEvent?.({ type: 'usage', value: usage });
+      // Only fire usage event if data has actually changed
+      const usageChanged = !lastSentUsage ||
+        lastSentUsage.provider !== usage.provider ||
+        lastSentUsage.model !== usage.model ||
+        lastSentUsage.prompt_tokens !== usage.prompt_tokens ||
+        lastSentUsage.completion_tokens !== usage.completion_tokens ||
+        lastSentUsage.total_tokens !== usage.total_tokens ||
+        lastSentUsage.reasoning_tokens !== usage.reasoning_tokens;
+
+      if (usageChanged) {
+        onEvent?.({ type: 'usage', value: usage });
+        result.usageSent = true;
+      }
       result.usage = usage;
     }
   }
