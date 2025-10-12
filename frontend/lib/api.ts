@@ -285,22 +285,52 @@ export const chat = {
     const bodyObj = buildRequestBody(options, stream);
 
     try {
+      const requestHeaders = stream
+        ? { 'Accept': 'text/event-stream' }
+        : { 'Accept': 'application/json' };
+
       const httpResponse = await httpClient.post(
         `${apiBase}/v1/chat/completions`,
         bodyObj,
         {
           signal,
-          headers: stream
-            ? { 'Accept': 'text/event-stream' }
-            : { 'Accept': 'application/json' }
+          headers: requestHeaders
         }
       );
 
-      if (stream) {
-        return handleStreamingResponse(httpResponse.data as Response, onToken, onEvent);
-      } else {
-        return processNonStreamingData(httpResponse.data, onToken, onEvent);
+      let responseData = httpResponse.data;
+
+      if (stream && !isStreamingResponse(responseData)) {
+        if (typeof fetch !== 'function') {
+          throw new Error('Streaming fetch is not available in this environment');
+        }
+
+        const fallbackHeaders: Record<string, string> = {
+          'Content-Type': 'application/json',
+          ...requestHeaders
+        };
+
+        if (typeof window !== 'undefined') {
+          const token = getToken();
+          if (token) {
+            fallbackHeaders.Authorization = `Bearer ${token}`;
+          }
+        }
+
+        responseData = await fetch(`${apiBase}/v1/chat/completions`, {
+          method: 'POST',
+          headers: fallbackHeaders,
+          body: JSON.stringify(bodyObj),
+          signal,
+          credentials: 'include'
+        });
       }
+
+      if (stream) {
+        return handleStreamingResponse(responseData as Response, onToken, onEvent);
+      }
+
+      return processNonStreamingData(responseData, onToken, onEvent);
     } catch (error) {
       if (error instanceof HttpError) {
         throw new APIError(error.status, error.message, error.data);
@@ -373,6 +403,13 @@ function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: bo
   }
 
   return bodyObj;
+}
+
+function isStreamingResponse(value: any): value is Response {
+  return !!value &&
+    typeof value === 'object' &&
+    typeof (value as any).headers?.get === 'function' &&
+    (typeof (value as any).body !== 'undefined' || typeof (value as any).text === 'function');
 }
 
 function processNonStreamingData(
@@ -494,11 +531,6 @@ async function handleStreamingResponse(
   onToken?: (token: string) => void,
   onEvent?: (event: any) => void
 ): Promise<ChatResponse> {
-  if (!response.body) {
-    throw new Error('No response body');
-  }
-
-  const reader = response.body.getReader();
   const decoder = new TextDecoder('utf-8');
   const parser = new SSEParser();
 
@@ -512,57 +544,7 @@ async function handleStreamingResponse(
   let reasoning_tokens: number | undefined;
   let lastSentUsage: any | undefined; // Track last sent usage to prevent duplicate events
 
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      const chunk = decoder.decode(value, { stream: true });
-      const events = parser.parse(chunk);
-
-      for (const event of events) {
-        if (event.type === 'done') {
-          if (reasoningStarted) {
-            const closingTag = '</thinking>';
-            onToken?.(closingTag);
-            content += closingTag;
-          }
-
-          return {
-            content,
-            responseId,
-            conversation,
-            reasoning_summary,
-            ...(reasoning_details ? { reasoning_details } : {}),
-            ...(reasoning_tokens !== undefined ? { reasoning_tokens } : {}),
-            ...(usage ? { usage } : {})
-          };
-        }
-
-        if (event.type === 'data' && event.data) {
-          const result = processStreamChunk(event.data, onToken, onEvent, reasoningStarted, lastSentUsage);
-          if (result.content) content += result.content;
-          if (result.responseId) responseId = result.responseId;
-          if (result.conversation) conversation = result.conversation;
-          if (result.reasoningStarted !== undefined) reasoningStarted = result.reasoningStarted;
-          if (result.reasoning_summary) reasoning_summary = result.reasoning_summary;
-          if (result.usage) {
-            usage = { ...usage, ...result.usage };
-            // Update lastSentUsage if we actually sent a usage event
-            if (result.usageSent) lastSentUsage = usage;
-          }
-          if (result.reasoningDetails) reasoning_details = result.reasoningDetails;
-          if (result.reasoningTokens !== undefined) reasoning_tokens = result.reasoningTokens;
-        }
-      }
-    }
-  } finally {
-    if (typeof (reader as any).releaseLock === 'function') {
-      (reader as any).releaseLock();
-    }
-  }
-
-  return {
+  const finalizeResponse = (): ChatResponse => ({
     content,
     responseId,
     conversation,
@@ -570,7 +552,160 @@ async function handleStreamingResponse(
     ...(reasoning_details ? { reasoning_details } : {}),
     ...(reasoning_tokens !== undefined ? { reasoning_tokens } : {}),
     ...(usage ? { usage } : {})
+  });
+
+  const processChunk = (chunk: string): ChatResponse | undefined => {
+    const events = parser.parse(chunk);
+
+    for (const event of events) {
+      if (event.type === 'done') {
+        if (reasoningStarted) {
+          const closingTag = '</thinking>';
+          onToken?.(closingTag);
+          content += closingTag;
+          reasoningStarted = false;
+        }
+
+        return finalizeResponse();
+      }
+
+      if (event.type === 'data' && event.data) {
+        const result = processStreamChunk(event.data, onToken, onEvent, reasoningStarted, lastSentUsage);
+        if (result.content) content += result.content;
+        if (result.responseId) responseId = result.responseId;
+        if (result.conversation) conversation = result.conversation;
+        if (result.reasoningStarted !== undefined) reasoningStarted = result.reasoningStarted;
+        if (result.reasoning_summary) reasoning_summary = result.reasoning_summary;
+        if (result.usage) {
+          usage = { ...usage, ...result.usage };
+          // Update lastSentUsage if we actually sent a usage event
+          if (result.usageSent) lastSentUsage = usage;
+        }
+        if (result.reasoningDetails) reasoning_details = result.reasoningDetails;
+        if (result.reasoningTokens !== undefined) reasoning_tokens = result.reasoningTokens;
+      }
+    }
+
+    return undefined;
   };
+
+  const body: any = response.body;
+  const readBodyAsText = async (): Promise<string> => {
+    const responseAny = response as any;
+
+    if (typeof responseAny.text === 'function') {
+      return responseAny.text();
+    }
+
+    const streamDecoderFactory = () => new TextDecoder('utf-8');
+    const normalizeChunk = (chunk: any, decoder: TextDecoder): string => {
+      if (typeof chunk === 'string') {
+        return chunk;
+      }
+      if (chunk instanceof Uint8Array) {
+        return decoder.decode(chunk, { stream: true });
+      }
+      if (chunk instanceof ArrayBuffer) {
+        return decoder.decode(new Uint8Array(chunk), { stream: true });
+      }
+      if (typeof Buffer !== 'undefined' && Buffer.isBuffer?.(chunk)) {
+        return decoder.decode(chunk, { stream: true });
+      }
+      if (ArrayBuffer.isView?.(chunk)) {
+        const view = chunk as ArrayBufferView;
+        return decoder.decode(new Uint8Array(view.buffer, view.byteOffset, view.byteLength), { stream: true });
+      }
+      if (chunk?.type === 'Buffer' && Array.isArray(chunk?.data)) {
+        return decoder.decode(Uint8Array.from(chunk.data), { stream: true });
+      }
+      return '';
+    };
+
+    const tryCollectFromAsyncIterable = async (iterable: any): Promise<string> => {
+      const streamDecoder = streamDecoderFactory();
+      let textContent = '';
+      for await (const chunk of iterable as any) {
+        textContent += normalizeChunk(chunk, streamDecoder);
+      }
+      textContent += streamDecoder.decode();
+      return textContent;
+    };
+
+    const streamCandidate = body ?? responseAny.body;
+
+    if (streamCandidate && typeof streamCandidate[Symbol.asyncIterator] === 'function') {
+      return tryCollectFromAsyncIterable(streamCandidate);
+    }
+
+    if (typeof responseAny[Symbol.asyncIterator] === 'function') {
+      return tryCollectFromAsyncIterable(responseAny);
+    }
+
+    if (streamCandidate && typeof streamCandidate.on === 'function') {
+      return await new Promise<string>((resolve, reject) => {
+        const streamDecoder = streamDecoderFactory();
+        let textContent = '';
+
+        const handleData = (chunk: any) => {
+          textContent += normalizeChunk(chunk, streamDecoder);
+        };
+        const handleEnd = () => {
+          textContent += streamDecoder.decode();
+          cleanup();
+          resolve(textContent);
+        };
+        const handleError = (error: Error) => {
+          cleanup();
+          reject(error);
+        };
+        const cleanup = () => {
+          streamCandidate.off?.('data', handleData);
+          streamCandidate.off?.('end', handleEnd);
+          streamCandidate.off?.('error', handleError);
+          streamCandidate.removeListener?.('data', handleData);
+          streamCandidate.removeListener?.('end', handleEnd);
+          streamCandidate.removeListener?.('error', handleError);
+        };
+
+        streamCandidate.on('data', handleData);
+        streamCandidate.on('end', handleEnd);
+        streamCandidate.on('error', handleError);
+      });
+    }
+
+    throw new Error('No response body');
+  };
+
+  if (body && typeof body.getReader === 'function') {
+    const reader = body.getReader();
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+
+        const chunk = decoder.decode(value, { stream: true });
+        const finalResponse = processChunk(chunk);
+        if (finalResponse) {
+          return finalResponse;
+        }
+      }
+    } finally {
+      if (typeof reader.releaseLock === 'function') {
+        reader.releaseLock();
+      }
+    }
+  } else {
+    // Fallback for environments (e.g. Node tests) where the response body isn't a web ReadableStream
+    const text = await readBodyAsText();
+    const finalResponse = processChunk(text);
+    if (finalResponse) {
+      return finalResponse;
+    }
+  }
+
+  return finalizeResponse();
 }
 
 function processStreamChunk(
