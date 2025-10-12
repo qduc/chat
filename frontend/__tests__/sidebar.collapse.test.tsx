@@ -28,49 +28,34 @@ type ProvidersApi = typeof import('../lib/api')['providers'];
 type AuthApi = typeof import('../lib/api')['auth'];
 type HttpClient = typeof import('../lib/http')['httpClient'];
 
-const mockConversations: jest.Mocked<ConversationsApi> = {
-  create: jest.fn(),
-  list: jest.fn(),
-  get: jest.fn(),
-  delete: jest.fn(),
-  clearListCache: jest.fn(),
-  editMessage: jest.fn(),
-  migrateFromSession: jest.fn(),
-};
-
-const mockChat: jest.Mocked<ChatApi> = {
-  sendMessage: jest.fn(),
-};
-
-const mockTools: jest.Mocked<ToolsApi> = {
-  getToolSpecs: jest.fn(),
-};
-
-const mockProviders: jest.Mocked<ProvidersApi> = {
-  getDefaultProviderId: jest.fn(),
-  clearCache: jest.fn(),
-};
-
-const mockAuth: jest.Mocked<AuthApi> = {
-  register: jest.fn(),
-  login: jest.fn(),
-  logout: jest.fn(),
-  getProfile: jest.fn(),
-  verifySession: jest.fn(() => Promise.resolve({ valid: true, user: null, reason: null } as any)),
-};
-
-const mockHttpClient = {
-  request: jest.fn(),
-  get: jest.fn(),
-  post: jest.fn(),
-  put: jest.fn(),
-  patch: jest.fn(),
-  delete: jest.fn(),
-  setRefreshTokenFn: jest.fn(),
-} as unknown as jest.Mocked<HttpClient>;
-
 jest.mock('../lib/api', () => {
   const actual = jest.requireActual('../lib/api');
+  const mockConversations = {
+    create: jest.fn(),
+    list: jest.fn(),
+    get: jest.fn(),
+    delete: jest.fn(),
+    clearListCache: jest.fn(),
+    editMessage: jest.fn(),
+    migrateFromSession: jest.fn(),
+  } as unknown as jest.Mocked<ConversationsApi>;
+  const mockChat = {
+    sendMessage: jest.fn(),
+  } as unknown as jest.Mocked<ChatApi>;
+  const mockTools = {
+    getToolSpecs: jest.fn(),
+  } as unknown as jest.Mocked<ToolsApi>;
+  const mockProviders = {
+    getDefaultProviderId: jest.fn(),
+    clearCache: jest.fn(),
+  } as unknown as jest.Mocked<ProvidersApi>;
+  const mockAuth = {
+    register: jest.fn(),
+    login: jest.fn(),
+    logout: jest.fn(),
+    getProfile: jest.fn(),
+    verifySession: jest.fn(() => Promise.resolve({ valid: true, user: null, reason: null } as any)),
+  } as unknown as jest.Mocked<AuthApi>;
   return {
     ...actual,
     conversations: mockConversations,
@@ -83,11 +68,38 @@ jest.mock('../lib/api', () => {
 
 jest.mock('../lib/http', () => {
   const actual = jest.requireActual('../lib/http');
+  const httpClientMock = {
+    request: jest.fn(),
+    get: jest.fn(),
+    post: jest.fn(),
+    put: jest.fn(),
+    patch: jest.fn(),
+    delete: jest.fn(),
+    setRefreshTokenFn: jest.fn(),
+  } as unknown as jest.Mocked<HttpClient>;
   return {
     ...actual,
-    httpClient: mockHttpClient,
+    httpClient: httpClientMock,
   };
 });
+
+const {
+  conversations: mockConversations,
+  chat: mockChat,
+  tools: mockTools,
+  providers: mockProviders,
+  auth: mockAuth,
+} = require('../lib/api') as {
+  conversations: jest.Mocked<ConversationsApi>;
+  chat: jest.Mocked<ChatApi>;
+  tools: jest.Mocked<ToolsApi>;
+  providers: jest.Mocked<ProvidersApi>;
+  auth: jest.Mocked<AuthApi>;
+};
+
+const { httpClient: mockHttpClient } = require('../lib/http') as {
+  httpClient: jest.Mocked<HttpClient>;
+};
 
 // Mock the Markdown component to avoid ES module issues
 jest.mock('../components/Markdown', () => ({
