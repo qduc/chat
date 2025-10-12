@@ -136,6 +136,24 @@ export class ConversationManager {
     const hasExistingMessages = allExisting.length > 0;
     const hasIncomingMessages = normalized.length > 0;
     if (hasExistingMessages && hasIncomingMessages && matchedExisting.length === 0) {
+      const anchorCandidate = allExisting.length > 0
+        ? (allExisting[allExisting.length - 1]?.seq || afterSeq || 0)
+        : afterSeq;
+      const isSingleNewMessage = incomingTail.length === normalized.length
+        && incomingTail.length === 1
+        && ['user', 'assistant', 'tool'].includes(incomingTail[0]?.role || '')
+        && (incomingTail[0]?.id == null || !existingByClientId.has(String(incomingTail[0].id)));
+
+      if (isSingleNewMessage) {
+        logger.debug('[MessageSync] Appending single new message without id alignment', {
+          conversationId,
+          role: incomingTail[0]?.role,
+          clientMessageId: incomingTail[0]?.id || null,
+        });
+        const diff = computeMessageDiff([], incomingTail);
+        return this._applyMessageDiff(conversationId, userId, diff, anchorCandidate);
+      }
+
       logger.debug('[MessageSync] No alignment on client IDs; falling back to clear-and-rewrite', {
         conversationId,
         incomingCount: normalized.length,

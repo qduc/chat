@@ -86,6 +86,27 @@ describe('Diff-Based Conversation Sync', () => {
       expect(synced[2].content).toBe('How are you?');
     });
 
+    it('should append latest message when payload includes only the new turn', () => {
+      // Seed existing conversation history
+      const initialMessages = [
+        { id: 'user-1', role: 'user', content: 'Hello' },
+        { id: 'assistant-1', role: 'assistant', content: 'Hi there!' }
+      ];
+      manager.syncMessageHistoryDiff(conversationId, userId, initialMessages);
+
+      // Incoming payload mirrors real requests where only the new user turn is sent
+      const latestOnly = [
+        { id: 'user-2', role: 'user', content: 'What is my name?' }
+      ];
+      manager.syncMessageHistoryDiff(conversationId, userId, latestOnly);
+
+      const synced = getAllMessagesForSync({ conversationId });
+      expect(synced).toHaveLength(3);
+      expect(synced[0].content).toBe('Hello');
+      expect(synced[1].content).toBe('Hi there!');
+      expect(synced[2].content).toBe('What is my name?');
+    });
+
     it('should update message content (edit in middle)', () => {
       // Initial sync
       const messages1 = [
