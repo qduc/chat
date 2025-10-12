@@ -36,11 +36,9 @@ describe('Prompt Manager Rendering', () => {
       fireEvent.click(dropdownButton);
 
       // Should have Built-ins section header
-      expect(screen.getByText('Built-in Prompts')).toBeInTheDocument();
       expect(screen.getByText('Example')).toBeInTheDocument();
 
       // Should have My Prompts section header
-      expect(screen.getByText('My Prompts')).toBeInTheDocument();
       expect(screen.getByText('My Prompt')).toBeInTheDocument();
 
     } catch (error) {

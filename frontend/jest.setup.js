@@ -178,6 +178,55 @@ if (typeof global.Response === 'undefined') {
 // Mock scrollIntoView as it's not available in jsdom
 Element.prototype.scrollIntoView = jest.fn();
 
+// Mock the HTTP client to prevent real network requests during tests
+jest.mock('./lib/http', () => {
+	const mockHttpResponse = (data, status = 200) => ({
+		data,
+		status,
+		statusText: status === 200 ? 'OK' : 'Error',
+		headers: new Headers(),
+	});
+
+	const httpClient = {
+		get: jest.fn().mockResolvedValue(mockHttpResponse({ built_ins: [], custom: [] })),
+		post: jest.fn().mockResolvedValue(mockHttpResponse({ id: 'mock-id', success: true })),
+		patch: jest.fn().mockResolvedValue(mockHttpResponse({ id: 'mock-id', success: true })),
+		delete: jest.fn().mockResolvedValue(mockHttpResponse({ success: true })),
+		put: jest.fn().mockResolvedValue(mockHttpResponse({ id: 'mock-id', success: true })),
+		request: jest.fn(),
+		setRefreshTokenFn: jest.fn(),
+	};
+
+	return {
+		httpClient,
+		HttpError: class HttpError extends Error {
+			constructor(status, message, response, data) {
+				super(message);
+				this.name = 'HttpError';
+				this.status = status;
+				this.response = response;
+				this.data = data;
+			}
+		},
+		mockHttpResponse, // Export for test use
+	};
+});
+
+// Suppress React act warnings for async useEffect calls in testing
+// This is needed because useSystemPrompts makes HTTP calls on mount
+const originalConsoleError = console.error;
+console.error = (...args) => {
+	if (
+		typeof args[0] === 'string' &&
+		(args[0].includes('An update to') &&
+		args[0].includes('was not wrapped in act'))
+	) {
+		// Suppress act warnings for async operations in useSystemPrompts
+		return;
+	}
+	originalConsoleError(...args);
+};
+
 // Provide a basic mock for next/navigation hooks so components can render in JSDOM without the App Router
 jest.mock('next/navigation', () => {
 	// We don't need the real module in tests; return minimal stubs
