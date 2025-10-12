@@ -109,9 +109,9 @@ export class ConversationManager {
       }
     }
 
-    const matchedExisting = [];
-    const incomingTail = [];
-    const explicitUpdates = [];
+  const matchedExisting = [];
+  const incomingTail = [];
+  const explicitUpdates = [];
 
     for (const incomingMessage of normalized) {
       const clientMessageId = incomingMessage?.id != null ? String(incomingMessage.id) : null;
@@ -131,6 +131,18 @@ export class ConversationManager {
       } else {
         incomingTail.push(incomingMessage);
       }
+    }
+
+    const hasExistingMessages = allExisting.length > 0;
+    const hasIncomingMessages = normalized.length > 0;
+    if (hasExistingMessages && hasIncomingMessages && matchedExisting.length === 0) {
+      logger.debug('[MessageSync] No alignment on client IDs; falling back to clear-and-rewrite', {
+        conversationId,
+        incomingCount: normalized.length,
+        existingCount: allExisting.length,
+        afterSeq
+      });
+      return this._fallbackClearAndRewrite(conversationId, userId, normalized, afterSeq);
     }
 
     let anchorSeq = afterSeq || 0;
@@ -232,7 +244,7 @@ export class ConversationManager {
       for (const msg of diff.toInsert) {
         const hasUserContent = typeof msg.content === 'string' || Array.isArray(msg.content);
         const hasAssistantContent = msg.content !== undefined && msg.content !== null;
-        const clientMessageId = msg.id ?? null;
+        const clientMessageId = msg.id != null ? String(msg.id) : null;
 
         if (msg.role === 'user' && hasUserContent) {
           const result = insertUserMessage({
@@ -243,7 +255,16 @@ export class ConversationManager {
           });
           if (result?.id) {
             insertedMessages.push({ role: 'user', id: result.id, seq: result.seq });
-            idMappings.push({ role: 'user', clientMessageId, persistedId: result.id, seq: result.seq });
+            const mapping = {
+              role: 'user',
+              clientMessageId,
+              persistedId: result.id,
+              seq: result.seq
+            };
+            if (clientMessageId != null) {
+              mapping.tempId = clientMessageId;
+            }
+            idMappings.push(mapping);
           }
         } else if (msg.role === 'assistant' && hasAssistantContent) {
           const result = insertAssistantFinal({
@@ -259,7 +280,16 @@ export class ConversationManager {
           if (result?.id) {
             this._insertAssistantArtifacts(result.id, conversationId, msg);
             insertedMessages.push({ role: 'assistant', id: result.id, seq: result.seq });
-            idMappings.push({ role: 'assistant', clientMessageId, persistedId: result.id, seq: result.seq });
+            const mapping = {
+              role: 'assistant',
+              clientMessageId,
+              persistedId: result.id,
+              seq: result.seq
+            };
+            if (clientMessageId != null) {
+              mapping.tempId = clientMessageId;
+            }
+            idMappings.push(mapping);
           }
         } else if (msg.role === 'tool') {
           const toolContent = this._stringifyToolOutput(msg.content);
@@ -275,7 +305,16 @@ export class ConversationManager {
           if (result?.id) {
             this._persistToolOutputs(result.id, conversationId, msg, toolContent, toolStatus);
             insertedMessages.push({ role: 'tool', id: result.id, seq: result.seq });
-            idMappings.push({ role: 'tool', clientMessageId, persistedId: result.id, seq: result.seq });
+            const mapping = {
+              role: 'tool',
+              clientMessageId,
+              persistedId: result.id,
+              seq: result.seq
+            };
+            if (clientMessageId != null) {
+              mapping.tempId = clientMessageId;
+            }
+            idMappings.push(mapping);
           }
         }
       }
@@ -511,7 +550,7 @@ export class ConversationManager {
       for (const message of messages) {
         const hasUserContent = typeof message.content === 'string' || Array.isArray(message.content);
         const hasAssistantContent = message.content !== undefined && message.content !== null;
-        const clientMessageId = message.id ?? null;
+        const clientMessageId = message.id != null ? String(message.id) : null;
 
         if (message.role === 'user' && hasUserContent) {
           const result = insertUserMessage({
@@ -522,7 +561,16 @@ export class ConversationManager {
           });
           if (result?.id) {
             insertedMessages.push({ role: 'user', id: result.id, seq: result.seq });
-            idMappings.push({ role: 'user', clientMessageId, persistedId: result.id, seq: result.seq });
+            const mapping = {
+              role: 'user',
+              clientMessageId,
+              persistedId: result.id,
+              seq: result.seq
+            };
+            if (clientMessageId != null) {
+              mapping.tempId = clientMessageId;
+            }
+            idMappings.push(mapping);
           }
         } else if (message.role === 'assistant' && hasAssistantContent) {
           const result = insertAssistantFinal({
@@ -538,7 +586,16 @@ export class ConversationManager {
           if (result?.id) {
             this._insertAssistantArtifacts(result.id, conversationId, message);
             insertedMessages.push({ role: 'assistant', id: result.id, seq: result.seq });
-            idMappings.push({ role: 'assistant', clientMessageId, persistedId: result.id, seq: result.seq });
+            const mapping = {
+              role: 'assistant',
+              clientMessageId,
+              persistedId: result.id,
+              seq: result.seq
+            };
+            if (clientMessageId != null) {
+              mapping.tempId = clientMessageId;
+            }
+            idMappings.push(mapping);
           }
         } else if (message.role === 'tool') {
           const toolContent = this._stringifyToolOutput(message.content);
@@ -554,7 +611,16 @@ export class ConversationManager {
           if (result?.id) {
             this._persistToolOutputs(result.id, conversationId, message, toolContent, toolStatus);
             insertedMessages.push({ role: 'tool', id: result.id, seq: result.seq });
-            idMappings.push({ role: 'tool', clientMessageId, persistedId: result.id, seq: result.seq });
+            const mapping = {
+              role: 'tool',
+              clientMessageId,
+              persistedId: result.id,
+              seq: result.seq
+            };
+            if (clientMessageId != null) {
+              mapping.tempId = clientMessageId;
+            }
+            idMappings.push(mapping);
           }
         }
       }
@@ -570,13 +636,9 @@ export class ConversationManager {
     }
 
     const normalized = { ...message };
-    const providedId = normalized.id ?? null;
-
-    // Generate UUID if client didn't provide one
-    if (!providedId) {
-      normalized.id = uuidv4();
+    if (normalized.id != null && typeof normalized.id !== 'string') {
+      normalized.id = String(normalized.id);
     }
-
     return normalized;
   }
 
