@@ -709,10 +709,14 @@ export function useChat() {
         const lastMsg = prev[lastIdx];
         if (!lastMsg || lastMsg.role !== 'assistant') return prev;
 
-        // If we already have content from events, keep it (don't duplicate with response.content)
-        // Otherwise, use response.content (for responses without tool_events)
-        const currentContent = typeof lastMsg.content === 'string' ? lastMsg.content : '';
-        const finalContent = currentContent.length > 0 ? currentContent : response.content;
+        const responseContent = response.content;
+        const hasResponseContent = typeof responseContent === 'string'
+          ? responseContent.length > 0
+          : Array.isArray(responseContent)
+            ? responseContent.length > 0
+            : responseContent != null;
+
+        const finalContent = hasResponseContent ? responseContent : lastMsg.content;
 
         return [
           ...prev.slice(0, lastIdx),
