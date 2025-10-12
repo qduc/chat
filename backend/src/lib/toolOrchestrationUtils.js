@@ -70,14 +70,31 @@ function normalizeStoredMessage(message) {
 }
 
 /**
+ * Check if any web search tools are enabled in the request
+ * @param {Array} enabledTools - Array of tool specs or tool names that are enabled
+ * @returns {boolean} True if at least one web search tool is enabled
+ */
+function hasWebSearchToolsEnabled(enabledTools) {
+  if (!Array.isArray(enabledTools) || enabledTools.length === 0) {
+    return false;
+  }
+
+  const webSearchToolNames = ['web_search', 'web_search_exa', 'web_search_searxng'];
+
+  return enabledTools.some(tool => {
+    // Handle both tool spec objects and simple tool names
+    const toolName = typeof tool === 'string' ? tool : tool?.function?.name || tool?.name;
+    return webSearchToolNames.includes(toolName);
+  });
+}
+
+/**
  * Load shared modules for all prompts
+ * @param {Array} enabledTools - Array of enabled tools (optional)
  * @returns {Promise<string>} Shared modules content
  */
-async function loadSharedModules() {
+async function loadSharedModules(enabledTools = null) {
   try {
-    const { loadSharedModules: loadModules } = await import('./builtInsPromptLoader.js');
-    // This would need to be exposed from builtInsPromptLoader
-    // For now, we'll recreate the logic here
     const { readdir, readFile } = await import('fs/promises');
     const { join, dirname } = await import('path');
     const { fileURLToPath } = await import('url');
@@ -94,18 +111,24 @@ async function loadSharedModules() {
         return '';
       }
 
+      const hasWebSearch = hasWebSearchToolsEnabled(enabledTools);
       const moduleContents = [];
+
       for (const file of moduleFiles) {
         try {
+          // Skip web_search module if no web search tools are enabled
+          if (file === 'web_search.md' && !hasWebSearch) {
+            logger.debug('[toolOrchestrationUtils] Skipping web_search module (no web search tools enabled)');
+            continue;
+          }
+
           const filePath = join(modulesDir, file);
           const content = await readFile(filePath, 'utf-8');
           moduleContents.push(content.trim());
         } catch (error) {
           logger.warn(`[toolOrchestrationUtils] Failed to load module ${file}: ${error.message}`);
         }
-      }
-
-      return moduleContents.length > 0 ? moduleContents.join('\n\n') : '';
+      }      return moduleContents.length > 0 ? moduleContents.join('\n\n') : '';
     } catch (error) {
       if (error.code === 'ENOENT') {
         return '';
@@ -122,9 +145,10 @@ async function loadSharedModules() {
 /**
  * Wrap prompt content with full structure (system_instructions + user_instructions)
  * @param {string} promptContent - The prompt content to wrap
+ * @param {Array} enabledTools - Array of enabled tools (optional)
  * @returns {Promise<string>} Prompt with full structure
  */
-async function wrapPromptWithStructure(promptContent) {
+async function wrapPromptWithStructure(promptContent, enabledTools = null) {
   if (!promptContent) return promptContent;
 
   // Check if already has the structure
@@ -133,7 +157,7 @@ async function wrapPromptWithStructure(promptContent) {
   }
 
   const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-  const sharedModules = await loadSharedModules();
+  const sharedModules = await loadSharedModules(enabledTools);
 
   let systemInstructions = `Today's date: ${currentDate}`;
   if (sharedModules) {
@@ -166,9 +190,10 @@ function wrapPromptWithDate(promptContent) {
  * Resolve system prompt content from active system prompt ID
  * @param {string} activePromptId - The active system prompt ID
  * @param {string} userId - User ID for custom prompts
+ * @param {Array} enabledTools - Array of enabled tools (optional)
  * @returns {Promise<string>} Resolved system prompt content with full structure
  */
-async function resolveSystemPromptContent(activePromptId, userId) {
+async function resolveSystemPromptContent(activePromptId, userId, enabledTools = null) {
   if (!activePromptId) return '';
 
   try {
@@ -182,7 +207,7 @@ async function resolveSystemPromptContent(activePromptId, userId) {
     }
 
     // Custom prompts need to be wrapped with the full structure
-    return await wrapPromptWithStructure(promptBody);
+    return await wrapPromptWithStructure(promptBody, enabledTools);
   } catch (error) {
     logger.warn('[toolOrchestrationUtils] Failed to resolve system prompt:', error);
     return '';
@@ -227,25 +252,28 @@ export function extractSystemPrompt({ body, bodyIn, persistence }) {
  * @returns {Promise<string>} Resolved system prompt content
  */
 export async function extractSystemPromptAsync({ body, bodyIn, persistence, userId }) {
+  // Extract enabled tools from the request body
+  const enabledTools = Array.isArray(body?.tools) ? body.tools : null;
+
   // Check for inline overrides first (highest priority)
   const fromMessages = Array.isArray(body?.messages)
     ? body.messages.find((msg) => msg && msg.role === 'system' && typeof msg.content === 'string' && msg.content.trim())
     : null;
   if (fromMessages) {
-    return await wrapPromptWithStructure(fromMessages.content.trim());
+    return await wrapPromptWithStructure(fromMessages.content.trim(), enabledTools);
   }
 
   const fromBodyParam = typeof bodyIn?.systemPrompt === 'string'
     ? bodyIn.systemPrompt.trim()
     : (typeof bodyIn?.system_prompt === 'string' ? bodyIn.system_prompt.trim() : '');
   if (fromBodyParam) {
-    return await wrapPromptWithStructure(fromBodyParam);
+    return await wrapPromptWithStructure(fromBodyParam, enabledTools);
   }
 
   // If there's an active system prompt ID, resolve it (prefer this over legacy stored prompt)
   const activePromptId = persistence?.conversationMeta?.metadata?.active_system_prompt_id;
   if (activePromptId) {
-    const resolvedContent = await resolveSystemPromptContent(activePromptId, userId);
+    const resolvedContent = await resolveSystemPromptContent(activePromptId, userId, enabledTools);
     if (resolvedContent) {
       return resolvedContent;
     }
@@ -258,7 +286,7 @@ export async function extractSystemPromptAsync({ body, bodyIn, persistence, user
     if (trimmed.includes('<system_instructions>') && trimmed.includes('<user_instructions>')) {
       return trimmed; // Already structured
     }
-    return await wrapPromptWithStructure(trimmed);
+    return await wrapPromptWithStructure(trimmed, enabledTools);
   }
 
   return '';

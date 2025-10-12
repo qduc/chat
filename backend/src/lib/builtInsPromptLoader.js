@@ -12,6 +12,25 @@ let builtInPromptsCache = null;
 let loadError = null;
 
 /**
+ * Check if any web search tools are available
+ * @returns {boolean} True if at least one web search tool is registered
+ */
+function hasWebSearchTools() {
+  try {
+    // Dynamically check if web search tools are registered
+    const { getAvailableTools } = require('./tools.js');
+    const availableTools = getAvailableTools();
+
+    // Check for web search tool names
+    const webSearchToolNames = ['web_search', 'web_search_exa', 'web_search_searxng'];
+    return availableTools.some(tool => webSearchToolNames.includes(tool));
+  } catch (error) {
+    logger.warn(`[builtins] Failed to check for web search tools: ${error.message}`);
+    return false;
+  }
+}
+
+/**
  * Load all shared modules from the _modules directory
  * @param {string} builtinsDir - Path to builtins directory
  * @returns {string} Concatenated module content
@@ -27,9 +46,17 @@ async function loadSharedModules(builtinsDir) {
       return '';
     }
 
+    const hasWebSearch = hasWebSearchTools();
     const moduleContents = [];
+
     for (const file of moduleFiles) {
       try {
+        // Skip web_search module if no web search tools are available
+        if (file === 'web_search.md' && !hasWebSearch) {
+          logger.debug('[builtins] Skipping web_search module (no web search tools available)');
+          continue;
+        }
+
         const filePath = join(modulesDir, file);
         const content = await readFile(filePath, 'utf-8');
         moduleContents.push(content.trim());
