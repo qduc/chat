@@ -72,7 +72,7 @@ describe('POST /v1/system-prompts/:id/duplicate - Contract Test', () => {
       const agent = request(app);
 
       const res = await agent
-        .post('/v1/system-prompts/built:example/duplicate')
+        .post('/v1/system-prompts/built:default/duplicate')
         .set('Authorization', `Bearer ${getTestAuthToken()}`);
 
       assert.equal(res.status, 201);

@@ -201,12 +201,8 @@ async function resolveSystemPromptContent(activePromptId, userId, enabledTools =
     const prompt = await getPromptById(activePromptId, userId);
     const promptBody = prompt?.body || '';
 
-    // Built-in prompts already have the full structure
-    if (activePromptId.startsWith('built:')) {
-      return promptBody;
-    }
-
-    // Custom prompts need to be wrapped with the full structure
+    // All prompts (both built-in and custom) are wrapped at request time
+    // This ensures consistent behavior and request-specific module inclusion
     return await wrapPromptWithStructure(promptBody, enabledTools);
   } catch (error) {
     logger.warn('[toolOrchestrationUtils] Failed to resolve system prompt:', error);

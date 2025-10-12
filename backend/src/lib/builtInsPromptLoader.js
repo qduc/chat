@@ -12,78 +12,11 @@ let builtInPromptsCache = null;
 let loadError = null;
 
 /**
- * Check if any web search tools are available
- * @returns {boolean} True if at least one web search tool is registered
- */
-function hasWebSearchTools() {
-  try {
-    // Dynamically check if web search tools are registered
-    const { getAvailableTools } = require('./tools.js');
-    const availableTools = getAvailableTools();
-
-    // Check for web search tool names
-    const webSearchToolNames = ['web_search', 'web_search_exa', 'web_search_searxng'];
-    return availableTools.some(tool => webSearchToolNames.includes(tool));
-  } catch (error) {
-    logger.warn(`[builtins] Failed to check for web search tools: ${error.message}`);
-    return false;
-  }
-}
-
-/**
- * Load all shared modules from the _modules directory
- * @param {string} builtinsDir - Path to builtins directory
- * @returns {string} Concatenated module content
- */
-async function loadSharedModules(builtinsDir) {
-  const modulesDir = join(builtinsDir, '_modules');
-
-  try {
-    const files = await readdir(modulesDir);
-    const moduleFiles = files.filter(file => file.endsWith('.md'));
-
-    if (moduleFiles.length === 0) {
-      return '';
-    }
-
-    const hasWebSearch = hasWebSearchTools();
-    const moduleContents = [];
-
-    for (const file of moduleFiles) {
-      try {
-        // Skip web_search module if no web search tools are available
-        if (file === 'web_search.md' && !hasWebSearch) {
-          logger.debug('[builtins] Skipping web_search module (no web search tools available)');
-          continue;
-        }
-
-        const filePath = join(modulesDir, file);
-        const content = await readFile(filePath, 'utf-8');
-        moduleContents.push(content.trim());
-      } catch (error) {
-        logger.warn(`[builtins] Failed to load module ${file}: ${error.message}`);
-      }
-    }
-
-    return moduleContents.length > 0 ? '\n\n' + moduleContents.join('\n\n') : '';
-  } catch (error) {
-    // _modules directory doesn't exist or is inaccessible
-    if (error.code === 'ENOENT') {
-      return '';
-    }
-    logger.warn(`[builtins] Failed to load shared modules: ${error.message}`);
-    return '';
-  }
-}
-
-/**
  * Load and parse a markdown file with YAML front-matter
  * @param {string} filePath - Path to the markdown file
- * @param {string} builtinsDir - Path to builtins directory
- * @param {string} sharedModules - Shared modules content
  * @returns {Object} Parsed prompt object
  */
-async function parsePromptFile(filePath, builtinsDir, sharedModules = '') {
+async function parsePromptFile(filePath) {
   const content = await readFile(filePath, 'utf-8');
 
   // Check if file has YAML front-matter
@@ -127,29 +60,16 @@ async function parsePromptFile(filePath, builtinsDir, sharedModules = '') {
     throw new Error(`Field 'order' must be a number in ${filePath}`);
   }
 
-  // Construct full body with structure:
-  // <system_instructions>date + shared modules</system_instructions>
-  // <user_instructions>prompt body</user_instructions>
-  let fullBody = '';
-
-  // Build system_instructions section with date and shared modules
-  const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-  let systemInstructions = `Today's date: ${currentDate}`;
-
-  if (sharedModules) {
-    systemInstructions += `\n\n${sharedModules.trim()}`;
-  }
-
-  fullBody = `<system_instructions>\n${systemInstructions}\n</system_instructions>\n\n<user_instructions>\n${bodyText}\n</user_instructions>`;
-
+  // Store raw body without wrapping
+  // Wrapping with system_instructions and date will be done at request time
   return {
     id: `built:${frontMatter.slug}`,
     slug: frontMatter.slug,
     name: frontMatter.name,
     description: frontMatter.description || '',
     order: frontMatter.order,
-    body: fullBody,
-    user_instructions: bodyText, // Store separately for API response
+    body: bodyText, // Raw user instructions (will be wrapped at request time)
+    user_instructions: bodyText, // Store separately for API compatibility
     read_only: true
   };
 }
@@ -183,9 +103,6 @@ async function loadBuiltInPrompts() {
       return [];
     }
 
-    // Load shared modules once
-    const sharedModules = await loadSharedModules(builtinsDir);
-
     const prompts = [];
     const errors = [];
 
@@ -193,7 +110,7 @@ async function loadBuiltInPrompts() {
     for (const file of markdownFiles) {
       try {
         const filePath = join(builtinsDir, file);
-        const prompt = await parsePromptFile(filePath, builtinsDir, sharedModules);
+        const prompt = await parsePromptFile(filePath);
 
         prompts.push(prompt);
       } catch (error) {
