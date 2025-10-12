@@ -9,6 +9,7 @@ jest.mock('../lib/api', () => ({
     delete: jest.fn(),
     editMessage: jest.fn(),
     create: jest.fn(),
+    invalidate: jest.fn(),
   },
   chat: {
     sendMessage: jest.fn(),
@@ -249,6 +250,92 @@ describe('useChat hook', () => {
     expect(result.current.error).toBeNull();
   });
 
+  test('sendMessage continues to use the updated provider after switching conversations', async () => {
+    const now = new Date().toISOString();
+    let conv2Calls = 0;
+    mockConversations.get.mockImplementation(async (id: string) => {
+      if (id === 'conv-1') {
+        return {
+          id: 'conv-1',
+          title: 'Conversation A',
+          model: 'model-a',
+          provider_id: 'provider-a',
+          created_at: now,
+          messages: [],
+          next_after_seq: null,
+        };
+      }
+      if (id === 'conv-2') {
+        conv2Calls += 1;
+        return {
+          id: 'conv-2',
+          title: 'Conversation B',
+          model: 'model-b',
+          provider_id: conv2Calls >= 2 ? 'provider-b' : 'provider-a',
+          created_at: now,
+          messages: [],
+          next_after_seq: null,
+        };
+      }
+      throw new Error(`Unexpected conversation id: ${id}`);
+    });
+
+    mockChat.sendMessage.mockResolvedValue({
+      content: 'ok',
+      conversation: {
+        id: 'conv-2',
+        title: 'Conversation B',
+        created_at: now,
+      },
+    });
+
+    const { result } = renderUseChat();
+
+    await act(async () => {
+      await result.current.selectConversation('conv-2');
+    });
+
+    // User updates the provider manually (e.g., via model selector)
+    await act(async () => {
+      result.current.setProviderId('provider-b');
+      result.current.setModel('provider-b::model-b');
+    });
+
+    await act(async () => {
+      result.current.setInput('First message with provider B');
+    });
+
+    await act(async () => {
+      await result.current.sendMessage();
+    });
+
+    expect(mockChat.sendMessage).toHaveBeenLastCalledWith(expect.objectContaining({
+      providerId: 'provider-b',
+    }));
+
+    await act(async () => {
+      await result.current.selectConversation('conv-1');
+    });
+
+    await act(async () => {
+      await result.current.selectConversation('conv-2');
+    });
+
+    await act(async () => {
+      result.current.setInput('Second message with provider B');
+    });
+
+    await act(async () => {
+      await result.current.sendMessage();
+    });
+
+    expect(mockChat.sendMessage).toHaveBeenLastCalledWith(expect.objectContaining({
+      providerId: 'provider-b',
+    }));
+
+    expect(conv2Calls).toBe(2);
+  });
+
   test('stopStreaming aborts in-flight request and records cancellation error', async () => {
     let capturedSignal: AbortSignal | undefined;
     mockChat.sendMessage.mockImplementation(
@@ -280,6 +367,110 @@ describe('useChat hook', () => {
     expect(capturedSignal?.aborted).toBe(true);
     expect(result.current.status).toBe('idle');
     await waitFor(() => expect(result.current.error).toBe('Message cancelled'));
+  });
+
+  test('selectConversation derives provider when backend omits provider_id', async () => {
+    const now = new Date().toISOString();
+    mockConversations.get.mockImplementation(async (id: string) => {
+      if (id === 'conv-1') {
+        return {
+          id: 'conv-1',
+          title: 'With provider',
+          model: 'gpt-4o',
+          provider_id: 'openai',
+          created_at: now,
+          messages: [],
+          next_after_seq: null,
+        };
+      }
+      if (id === 'conv-2') {
+        return {
+          id: 'conv-2',
+          title: 'Missing provider',
+          model: 'gpt-4o',
+          provider_id: undefined,
+          created_at: now,
+          messages: [],
+          next_after_seq: null,
+        };
+      }
+      throw new Error(`Unexpected conversation id: ${id}`);
+    });
+
+    const { result } = renderUseChat();
+
+    await waitFor(() => expect(result.current.modelOptions.length).toBeGreaterThan(0));
+
+    await act(async () => {
+      await result.current.selectConversation('conv-1');
+    });
+
+    expect(result.current.providerId).toBe('openai');
+    expect(result.current.model).toBe('openai::gpt-4o');
+
+    await act(async () => {
+      await result.current.selectConversation('conv-2');
+    });
+
+    expect(result.current.providerId).toBe('openai');
+    expect(result.current.model).toBe('openai::gpt-4o');
+  });
+
+  test('selectConversation clears stale provider when mapping is unavailable', async () => {
+    const now = new Date().toISOString();
+    mockConversations.get.mockImplementation(async (id: string) => {
+      if (id === 'conv-1') {
+        return {
+          id: 'conv-1',
+          title: 'First',
+          model: 'model-a',
+          provider_id: 'provider-a',
+          created_at: now,
+          messages: [],
+          next_after_seq: null,
+        };
+      }
+      if (id === 'conv-2') {
+        return {
+          id: 'conv-2',
+          title: 'Second missing provider',
+          model: 'model-b',
+          provider_id: undefined,
+          created_at: now,
+          messages: [],
+          next_after_seq: null,
+        };
+      }
+      throw new Error(`Unexpected conversation id: ${id}`);
+    });
+
+    mockHttpClient.get.mockImplementation((url: string) => {
+      if (url === '/v1/providers') {
+        return Promise.resolve(createHttpResponse({ providers: [] }));
+      }
+      return Promise.resolve(createHttpResponse({ provider: { id: 'none' }, models: [] }));
+    });
+
+    mockAuth.getProfile.mockResolvedValue({
+      id: 'user-123',
+      email: 'user@example.com',
+      createdAt: now,
+      updatedAt: now,
+    });
+
+    const { result } = renderHook(() => useChat());
+
+    await act(async () => {
+      await result.current.selectConversation('conv-1');
+    });
+
+    expect(result.current.providerId).toBe('provider-a');
+
+    await act(async () => {
+      await result.current.selectConversation('conv-2');
+    });
+
+    expect(result.current.providerId).toBeNull();
   });
 
   test('loadProvidersAndModels builds groups and provider mapping', async () => {
