@@ -812,6 +812,12 @@ export function useChat() {
         streaming: false,
         tokenStats: tokenStatsRef.current ?? undefined
       }));
+
+      const effectiveConversationId = response.conversation?.id ?? conversationId;
+      if (effectiveConversationId) {
+        conversationsApi.invalidateDetailCache(effectiveConversationId);
+      }
+      conversationsApi.clearListCache();
     } catch (err) {
       // Handle streaming not supported error by retrying with streaming disabled
       if (err instanceof StreamingNotSupportedError) {

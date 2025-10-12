@@ -86,6 +86,14 @@ class Cache<T> {
     this.cache.delete(key);
   }
 
+  deleteByPrefix(prefix: string): void {
+    for (const key of this.cache.keys()) {
+      if (key.startsWith(prefix)) {
+        this.cache.delete(key);
+      }
+    }
+  }
+
   has(key: string): boolean {
     const entry = this.cache.get(key);
     if (!entry) return false;
@@ -934,7 +942,7 @@ export const conversations = {
     try {
       await httpClient.delete(`/v1/conversations/${id}`);
       conversationListCache.clear();
-      conversationDetailCache.delete(`get:${id}:`);
+      conversationDetailCache.deleteByPrefix(`get:${id}:`);
     } catch (error) {
       throw error instanceof HttpError ? new Error(error.message) : error;
     }
@@ -942,6 +950,10 @@ export const conversations = {
 
   clearListCache() {
     conversationListCache.clear();
+  },
+
+  invalidateDetailCache(conversationId: string) {
+    conversationDetailCache.deleteByPrefix(`get:${conversationId}:`);
   },
 
   async editMessage(
