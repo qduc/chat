@@ -10,6 +10,8 @@ jest.mock('../lib/api', () => ({
     editMessage: jest.fn(),
     create: jest.fn(),
     invalidate: jest.fn(),
+    invalidateDetailCache: jest.fn(),
+    clearListCache: jest.fn(),
   },
   chat: {
     sendMessage: jest.fn(),
