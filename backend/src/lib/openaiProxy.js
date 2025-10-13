@@ -214,9 +214,32 @@ function handleValidationError(res, validation) {
 }
 
 async function handleUpstreamError(upstream, persistence) {
-  const errorJson = await readUpstreamError(upstream);
+  const upstreamBody = await readUpstreamError(upstream);
   if (persistence.persist) persistence.markError();
-  return { status: upstream.status, errorJson };
+
+  const upstreamMessage = typeof upstreamBody === 'string'
+    ? upstreamBody
+    : (typeof upstreamBody?.message === 'string'
+      ? upstreamBody.message
+      : (typeof upstreamBody?.error === 'string' ? upstreamBody.error : undefined));
+
+  logger.warn({
+    msg: 'upstream_error_response',
+    upstreamStatus: upstream.status,
+    upstreamMessage,
+  });
+
+  const payload = {
+    error: 'upstream_error',
+    message: 'Upstream provider returned an error response.',
+    upstream: {
+      status: upstream.status,
+      ...(upstreamMessage ? { message: upstreamMessage } : {}),
+      body: upstreamBody,
+    },
+  };
+
+  return { status: 502, payload };
 }
 
 function handleProxyError(error, req, res, persistence) {
@@ -284,8 +307,8 @@ async function handleRequest(context, req, res) {
 
   const upstream = await createOpenAIRequest(config, requestBody, { providerId });
   if (!upstream.ok) {
-    const { status, errorJson } = await handleUpstreamError(upstream, persistence);
-    return res.status(status).json(errorJson);
+  const { status, payload } = await handleUpstreamError(upstream, persistence);
+  return res.status(status).json(payload);
   }
 
   if (flags.stream) {

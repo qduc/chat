@@ -3,7 +3,7 @@ import { useSystemPrompts } from './useSystemPrompts';
 import type { MessageContent } from '../lib';
 import { conversations as conversationsApi, chat, auth } from '../lib/api';
 import { httpClient } from '../lib/http';
-import { StreamingNotSupportedError } from '../lib/streaming';
+import { APIError, StreamingNotSupportedError } from '../lib/streaming';
 import type { ConversationMeta, Provider, ChatOptionsExtended } from '../lib/types';
 
 // Types
@@ -124,6 +124,36 @@ function mergeToolOutputsToAssistantMessages(messages: Message[]): Message[] {
   }
 
   return result;
+}
+
+function formatUpstreamError(error: APIError): string {
+  const body = error.body && typeof error.body === 'object'
+    ? (error.body as Record<string, unknown>)
+    : null;
+  const upstream = body && typeof body.upstream === 'object' && body.upstream !== null
+    ? (body.upstream as Record<string, unknown>)
+    : null;
+
+  const upstreamMessage = typeof upstream?.message === 'string'
+    ? upstream.message.trim()
+    : '';
+  const bodyMessage = typeof body?.message === 'string'
+    ? body.message.trim()
+    : '';
+  const statusValue = upstream && upstream.status !== undefined && upstream.status !== null
+    ? upstream.status
+    : undefined;
+  const statusPart = statusValue !== undefined ? ` (status ${statusValue})` : '';
+
+  if (upstreamMessage) {
+    return `Upstream provider error${statusPart}: ${upstreamMessage}`;
+  }
+
+  if (bodyMessage) {
+    return `Upstream provider error${statusPart}: ${bodyMessage}`;
+  }
+
+  return error.message;
 }
 
 export function useChat() {
@@ -851,16 +881,24 @@ export function useChat() {
         return;
       }
 
-      if (err instanceof Error && err.name === 'AbortError') {
-        setError('Message cancelled');
+      let displayError: string;
+
+      if (err instanceof APIError) {
+        displayError = formatUpstreamError(err);
+      } else if (err instanceof Error && err.name === 'AbortError') {
+        displayError = 'Message cancelled';
+      } else if (err instanceof Error) {
+        displayError = err.message;
       } else {
-        setError(err instanceof Error ? err.message : 'Failed to send message');
+        displayError = 'Failed to send message';
       }
+
+      setError(displayError);
       setStatus('idle');
       setPending(prev => ({
         ...prev,
         streaming: false,
-        error: err instanceof Error ? err.message : 'Failed to send message'
+        error: displayError
       }));
     }
   }, [input, images, conversationId]);

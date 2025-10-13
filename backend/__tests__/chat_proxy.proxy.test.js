@@ -7,7 +7,7 @@ import { getDb, upsertSession, createConversation } from '../src/db/index.js';
 const mockUser = { id: 'test-user-123', email: 'test@example.com' };
 
 // Register shared setup/teardown and get helpers
-const { upstream, makeApp, withServer } = createChatProxyTestContext();
+const { upstream, makeApp } = createChatProxyTestContext();
 
 describe('POST /v1/chat/completions (proxy)', () => {
   test('proxies non-streaming requests and returns upstream JSON', async () => {
@@ -36,7 +36,7 @@ describe('POST /v1/chat/completions (proxy)', () => {
     const res = await request(app)
       .post('/v1/chat/completions')
       .send({ messages: [{ role: 'user', content: 'Hello' }], stream: false });
-    assert.equal(res.status, 500);
+  assert.equal(res.status, 502);
     assert.equal(res.body.error, 'upstream_error');
   });
 
@@ -61,8 +61,8 @@ describe('POST /v1/chat/completions (proxy)', () => {
   test('user receives error response when upstream stream fails', async () => {
     const app = makeApp({ mockUser });
     const sessionId = 'test-session';
-    const db = getDb();
-    upsertSession(sessionId, { userId: mockUser.id });
+  getDb();
+  upsertSession(sessionId, { userId: mockUser.id });
     createConversation({ id: 'conv1', sessionId, userId: mockUser.id, title: 'Test' });
 
     upstream.setError(true);
