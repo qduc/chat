@@ -185,7 +185,7 @@ describe('POST /v1/system-prompts/:id/select - Contract Test', () => {
       };
 
       const res = await agent
-        .post('/v1/system-prompts/built:example/select')
+        .post('/v1/system-prompts/built:default/select')
         .set('Authorization', `Bearer ${getTestAuthToken()}`)
         .send(payload);
 
@@ -194,7 +194,7 @@ describe('POST /v1/system-prompts/:id/select - Contract Test', () => {
       const body = res.body;
       assert.ok(typeof body === 'object', 'Response should be an object');
       assert.equal(body.conversation_id, payload.conversation_id, 'conversation_id should match input');
-      assert.equal(body.active_system_prompt_id, 'built:example', 'active_system_prompt_id should match built-in prompt');
+      assert.equal(body.active_system_prompt_id, 'built:default', 'active_system_prompt_id should match built-in prompt');
     } catch (error) {
       if (error.code === 'ERR_MODULE_NOT_FOUND') {
         // Expected to fail - route doesn't exist yet

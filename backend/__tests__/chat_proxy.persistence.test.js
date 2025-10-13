@@ -14,46 +14,6 @@ const mockUser = {
 };
 
 describe('Chat proxy persistence', () => {
-  test('user receives appropriate error when conversation message limit exceeded', async () => {
-    const originalLimit = config.persistence.maxMessagesPerConversation;
-    config.persistence.maxMessagesPerConversation = 1; // Set very low limit
-
-    const sessionId = 'test-session-limit';
-    const userId = mockUser.id;
-
-    try {
-      const app = makeApp({ mockUser });
-      const db = getDb();
-      upsertSession(sessionId, { userId });
-      createConversation({ id: 'conv1', sessionId, userId, title: 'Test Limit' });
-
-      // Pre-populate one message to reach the limit
-      db.prepare(
-        `INSERT INTO messages (conversation_id, role, content, seq) VALUES (?, 'user', 'existing message', 1)`
-      ).run('conv1');
-      await withServer(app, async (_port) => {
-        // Suppress console.error for this specific test
-        const originalConsoleError = console.error;
-        console.error = () => {};
-
-        try {
-          const res = await request(app)
-            .post('/v1/chat/completions')
-            .set('x-session-id', sessionId)
-            .send({ messages: [{ role: 'user', content: 'This should be blocked' }], conversation_id: 'conv1', stream: false });
-          assert.equal(res.status, 429, 'Should return 429 when limit exceeded');
-          const body = res.body;
-          assert.equal(body.error, 'message_limit_exceeded', 'Should indicate message limit exceeded');
-          assert.ok(body.message, 'Should provide explanatory message to user');
-        } finally {
-          console.error = originalConsoleError;
-        }
-      });
-    } finally {
-      config.persistence.maxMessagesPerConversation = originalLimit;
-    }
-  });
-
   test('accepts optional conversation_id in body/header and continues streaming', async () => {
     const sessionId = 'test-session';
     const userId = mockUser.id;

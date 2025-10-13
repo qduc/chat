@@ -3,10 +3,10 @@ import { parseSSEStream } from './sseParser.js';
 import { createOpenAIRequest, writeAndFlush, createChatCompletionChunk } from './streamUtils.js';
 import { createProvider } from './providers/index.js';
 import { setupStreamingHeaders } from './streamingHandler.js';
-import { config } from '../env.js';
+import { config as envConfig } from '../env.js';
 import { logger } from '../logger.js';
+import { addPromptCaching } from './promptCaching.js';
 import {
-  buildConversationMessagesAsync,
   buildConversationMessagesOptimized,
   executeToolCall,
   appendToPersistence,
@@ -28,13 +28,14 @@ const MAX_ITERATIONS = 10; // Prevent infinite loops
 export async function handleToolsStreaming({
   body,
   bodyIn,
-  config,
+  config: runtimeConfigInput,
   res,
   req,
   persistence,
   provider,
   userId = null,
 }) {
+  const config = runtimeConfigInput || envConfig;
   const providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
   const providerInstance = provider || await createProvider(config, { providerId });
   try {
@@ -65,7 +66,7 @@ export async function handleToolsStreaming({
         generateToolSpecs,
       }) || generateOpenAIToolSpecs();
       const toolsToSend = (Array.isArray(body.tools) && body.tools.length) ? body.tools : fallbackToolSpecs;
-      const requestBody = {
+      let requestBody = {
         model: body.model || config.defaultModel,
         messages: conversationHistory,
         stream: true,
@@ -79,12 +80,25 @@ export async function handleToolsStreaming({
         if (body.verbosity) requestBody.verbosity = body.verbosity;
       }
 
+      // Apply prompt caching - must be done AFTER messages are finalized
+      // This ensures the last user/tool message gets the cache breakpoint
+      requestBody = await addPromptCaching(requestBody, {
+        conversationId: persistence?.conversationId,
+        userId,
+        provider: providerInstance,
+        hasTools: Boolean(toolsToSend)
+      });
+
       const upstream = await createOpenAIRequest(config, requestBody, { providerId });
 
       // Check if upstream actually returned a stream or a JSON response FIRST
       // Do this before any body consumption to avoid "Body already read" errors
       const contentType = upstream.headers?.get?.('content-type') || '';
-      const isStreamResponse = contentType.includes('text/event-stream') || contentType.includes('text/plain');
+      const isStreamResponse = (
+        contentType.includes('text/event-stream') ||
+        contentType.includes('text/plain') ||
+        typeof upstream.body?.on === 'function'
+      );
 
       // Check upstream response status
       if (!upstream.ok) {
@@ -105,7 +119,9 @@ export async function handleToolsStreaming({
         const responseId = upstreamJson.id;
         if (responseId) {
           currentPreviousResponseId = responseId;
-          if (persistence) persistence.setResponseId(responseId);
+          if (persistence && typeof persistence.setResponseId === 'function') {
+            persistence.setResponseId(responseId);
+          }
         }
 
         // Capture reasoning details and tokens
@@ -168,10 +184,15 @@ export async function handleToolsStreaming({
               });
 
               // Stream tool result to client
-              streamDeltaEvent(res, upstreamJson.id || 'fallback', upstreamJson.model || requestBody.model, {
-                role: 'tool',
-                tool_call_id: toolCall.id,
-                content: toolResult,
+              streamDeltaEvent({
+                res,
+                model: upstreamJson.model || requestBody.model,
+                event: {
+                  role: 'tool',
+                  tool_call_id: toolCall.id,
+                  content: toolResult,
+                },
+                prefix: 'iter',
               });
             }
 
@@ -224,7 +245,9 @@ export async function handleToolsStreaming({
                 // Capture response_id from any chunk
                 if (obj?.id && !responseId) {
                   responseId = obj.id;
-                  if (persistence) persistence.setResponseId(responseId);
+                  if (persistence && typeof persistence.setResponseId === 'function') {
+                    persistence.setResponseId(responseId);
+                  }
                 }
 
                 const choice = obj?.choices?.[0];
@@ -264,7 +287,7 @@ export async function handleToolsStreaming({
                     };
 
                     // Capture textOffset when tool call first appears
-                    if (isNewToolCall && persistence) {
+                    if (isNewToolCall && persistence && typeof persistence.getContentLength === 'function') {
                       existing.textOffset = persistence.getContentLength();
                     }
 

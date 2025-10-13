@@ -16,7 +16,8 @@ await jest.unstable_mockModule(responseUtilsPath, () => ({
 const streamUtilsPath = new URL('../src/lib/streamUtils.js', import.meta.url).href;
 await jest.unstable_mockModule(streamUtilsPath, () => ({
   setupStreamingHeaders: jest.fn(),
-  createOpenAIRequest: jest.fn()
+  createOpenAIRequest: jest.fn(),
+  teeStreamWithPreview: jest.fn(() => ({ body: null, previewPromise: Promise.resolve(null) }))
 }));
 
 const providersIndexPath = new URL('../src/lib/providers/index.js', import.meta.url).href;

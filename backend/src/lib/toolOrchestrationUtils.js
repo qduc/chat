@@ -1,3 +1,4 @@
+import yaml from 'js-yaml';
 import { tools as toolRegistry } from './tools.js';
 import { getMessagesPage, getLastAssistantResponseId } from '../db/messages.js';
 import { getConversationMetadata } from './responseUtils.js';
@@ -70,14 +71,110 @@ function normalizeStoredMessage(message) {
 }
 
 /**
+ * Check if any web search tools are enabled in the request
+ * @param {Array} enabledTools - Array of tool specs or tool names that are enabled
+ * @returns {boolean} True if at least one web search tool is enabled
+ */
+function hasWebSearchToolsEnabled(enabledTools) {
+  if (!Array.isArray(enabledTools) || enabledTools.length === 0) {
+    return false;
+  }
+
+  const webSearchToolNames = ['web_search', 'web_search_exa', 'web_search_searxng'];
+
+  return enabledTools.some(tool => {
+    // Handle both tool spec objects and simple tool names
+    const toolName = typeof tool === 'string' ? tool : tool?.function?.name || tool?.name;
+    return webSearchToolNames.includes(toolName);
+  });
+}
+
+function escapeRegExp(value) {
+  return value.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
+}
+
+function matchesModelPattern(pattern, model) {
+  if (typeof pattern !== 'string' || typeof model !== 'string') {
+    return false;
+  }
+
+  const normalizedPattern = pattern.toLowerCase();
+  const normalizedModel = model.toLowerCase();
+  const escapedSegments = normalizedPattern.split('*').map(segment => escapeRegExp(segment));
+  const regex = new RegExp(`^${escapedSegments.join('.*')}$`);
+  return regex.test(normalizedModel);
+}
+
+function shouldIncludeModule(metadata, { model } = {}) {
+  if (!metadata || typeof metadata !== 'object') {
+    return true;
+  }
+
+  if (metadata.models) {
+    const patterns = Array.isArray(metadata.models) ? metadata.models : [metadata.models];
+    const usablePatterns = patterns
+      .filter(pattern => typeof pattern === 'string')
+      .map(pattern => pattern.trim())
+      .filter(Boolean);
+
+    if (usablePatterns.length === 0) {
+      return true;
+    }
+
+    if (!model) {
+      return true;
+    }
+
+    return usablePatterns.some(pattern => matchesModelPattern(pattern, model));
+  }
+
+  return true;
+}
+
+function parseModuleContent(content, filePath) {
+  if (typeof content !== 'string' || content.trim() === '') {
+    return { metadata: {}, body: '' };
+  }
+
+  const normalized = content.replace(/\r\n/g, '\n');
+
+  if (!normalized.startsWith('---\n')) {
+    return { metadata: {}, body: normalized.trim() };
+  }
+
+  const frontMatterPattern = /^---\s*\n([\s\S]*?)\n---\s*\n?/;
+  const match = frontMatterPattern.exec(normalized);
+
+  if (!match) {
+    logger.warn(`[toolOrchestrationUtils] Invalid front-matter format in module ${filePath}, treating entire file as body`);
+    return { metadata: {}, body: normalized.trim() };
+  }
+
+  const [, frontMatterText] = match;
+  const bodyText = normalized.slice(match[0].length);
+
+  let metadata = {};
+  try {
+    const parsed = yaml.load(frontMatterText) || {};
+    metadata = typeof parsed === 'object' && parsed !== null ? parsed : {};
+  } catch (error) {
+    logger.warn(`[toolOrchestrationUtils] Failed to parse front-matter in module ${filePath}: ${error.message}`);
+    metadata = {};
+  }
+
+  return {
+    metadata,
+    body: bodyText.trim()
+  };
+}
+
+/**
  * Load shared modules for all prompts
+ * @param {Array} enabledTools - Array of enabled tools (optional)
  * @returns {Promise<string>} Shared modules content
  */
-async function loadSharedModules() {
+async function loadSharedModules({ enabledTools = null, model = null } = {}) {
   try {
-    const { loadSharedModules: loadModules } = await import('./builtInsPromptLoader.js');
-    // This would need to be exposed from builtInsPromptLoader
-    // For now, we'll recreate the logic here
     const { readdir, readFile } = await import('fs/promises');
     const { join, dirname } = await import('path');
     const { fileURLToPath } = await import('url');
@@ -88,18 +185,40 @@ async function loadSharedModules() {
 
     try {
       const files = await readdir(modulesDir);
-      const moduleFiles = files.filter(file => file.endsWith('.md'));
+      const moduleFiles = files
+        .filter(file => file.endsWith('.md'))
+        .sort();
 
       if (moduleFiles.length === 0) {
         return '';
       }
 
+      const hasWebSearch = hasWebSearchToolsEnabled(enabledTools);
       const moduleContents = [];
+
       for (const file of moduleFiles) {
         try {
+          // Skip web_search module if no web search tools are enabled
+          if (file === 'web_search.md' && !hasWebSearch) {
+            logger.debug('[toolOrchestrationUtils] Skipping web_search module (no web search tools enabled)');
+            continue;
+          }
+
           const filePath = join(modulesDir, file);
           const content = await readFile(filePath, 'utf-8');
-          moduleContents.push(content.trim());
+          const { metadata, body } = parseModuleContent(content, filePath);
+
+          if (!body) {
+            logger.debug(`[toolOrchestrationUtils] Skipping module ${file} (empty body)`);
+            continue;
+          }
+
+          if (!shouldIncludeModule(metadata, { model })) {
+            logger.debug(`[toolOrchestrationUtils] Skipping module ${file} for model '${model || 'unknown'}'`);
+            continue;
+          }
+
+          moduleContents.push(body);
         } catch (error) {
           logger.warn(`[toolOrchestrationUtils] Failed to load module ${file}: ${error.message}`);
         }
@@ -122,10 +241,13 @@ async function loadSharedModules() {
 /**
  * Wrap prompt content with full structure (system_instructions + user_instructions)
  * @param {string} promptContent - The prompt content to wrap
+ * @param {Array} enabledTools - Array of enabled tools (optional)
  * @returns {Promise<string>} Prompt with full structure
  */
-async function wrapPromptWithStructure(promptContent) {
+async function wrapPromptWithStructure(promptContent, options = {}) {
   if (!promptContent) return promptContent;
+
+  const { enabledTools = null, model = null } = options;
 
   // Check if already has the structure
   if (promptContent.includes('<system_instructions>') && promptContent.includes('<user_instructions>')) {
@@ -133,7 +255,7 @@ async function wrapPromptWithStructure(promptContent) {
   }
 
   const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-  const sharedModules = await loadSharedModules();
+  const sharedModules = await loadSharedModules({ enabledTools, model });
 
   let systemInstructions = `Today's date: ${currentDate}`;
   if (sharedModules) {
@@ -166,23 +288,24 @@ function wrapPromptWithDate(promptContent) {
  * Resolve system prompt content from active system prompt ID
  * @param {string} activePromptId - The active system prompt ID
  * @param {string} userId - User ID for custom prompts
+ * @param {Array} enabledTools - Array of enabled tools (optional)
  * @returns {Promise<string>} Resolved system prompt content with full structure
  */
-async function resolveSystemPromptContent(activePromptId, userId) {
-  if (!activePromptId) return '';
+async function resolveSystemPromptContent(activePromptId, userId, options = {}) {
+  if (!activePromptId) {
+    return '';
+  }
+
+  const { enabledTools = null, model = null } = options;
 
   try {
     const { getPromptById } = await import('./promptService.js');
     const prompt = await getPromptById(activePromptId, userId);
     const promptBody = prompt?.body || '';
 
-    // Built-in prompts already have the full structure
-    if (activePromptId.startsWith('built:')) {
-      return promptBody;
-    }
-
-    // Custom prompts need to be wrapped with the full structure
-    return await wrapPromptWithStructure(promptBody);
+    // All prompts (both built-in and custom) are wrapped at request time
+    // This ensures consistent behavior and request-specific module inclusion
+    return await wrapPromptWithStructure(promptBody, { enabledTools, model });
   } catch (error) {
     logger.warn('[toolOrchestrationUtils] Failed to resolve system prompt:', error);
     return '';
@@ -227,25 +350,42 @@ export function extractSystemPrompt({ body, bodyIn, persistence }) {
  * @returns {Promise<string>} Resolved system prompt content
  */
 export async function extractSystemPromptAsync({ body, bodyIn, persistence, userId }) {
+  // Extract enabled tools from the request body
+  const enabledTools = Array.isArray(body?.tools) ? body.tools : null;
+  const candidateModels = [];
+
+  const modelFromBody = typeof body?.model === 'string' ? body.model.trim() : '';
+  if (modelFromBody) candidateModels.push(modelFromBody);
+
+  const modelFromBodyIn = typeof bodyIn?.model === 'string' ? bodyIn.model.trim() : '';
+  if (modelFromBodyIn) candidateModels.push(modelFromBodyIn);
+
+  const modelFromPersistence = typeof persistence?.conversationMeta?.metadata?.model === 'string'
+    ? persistence.conversationMeta.metadata.model.trim()
+    : '';
+  if (modelFromPersistence) candidateModels.push(modelFromPersistence);
+
+  const model = candidateModels.length > 0 ? candidateModels[0] : null;
+
   // Check for inline overrides first (highest priority)
   const fromMessages = Array.isArray(body?.messages)
     ? body.messages.find((msg) => msg && msg.role === 'system' && typeof msg.content === 'string' && msg.content.trim())
     : null;
   if (fromMessages) {
-    return await wrapPromptWithStructure(fromMessages.content.trim());
+    return wrapPromptWithStructure(fromMessages.content.trim(), { enabledTools, model });
   }
 
   const fromBodyParam = typeof bodyIn?.systemPrompt === 'string'
     ? bodyIn.systemPrompt.trim()
     : (typeof bodyIn?.system_prompt === 'string' ? bodyIn.system_prompt.trim() : '');
   if (fromBodyParam) {
-    return await wrapPromptWithStructure(fromBodyParam);
+    return wrapPromptWithStructure(fromBodyParam, { enabledTools, model });
   }
 
   // If there's an active system prompt ID, resolve it (prefer this over legacy stored prompt)
   const activePromptId = persistence?.conversationMeta?.metadata?.active_system_prompt_id;
   if (activePromptId) {
-    const resolvedContent = await resolveSystemPromptContent(activePromptId, userId);
+    const resolvedContent = await resolveSystemPromptContent(activePromptId, userId, { enabledTools, model });
     if (resolvedContent) {
       return resolvedContent;
     }
@@ -258,7 +398,7 @@ export async function extractSystemPromptAsync({ body, bodyIn, persistence, user
     if (trimmed.includes('<system_instructions>') && trimmed.includes('<user_instructions>')) {
       return trimmed; // Already structured
     }
-    return await wrapPromptWithStructure(trimmed);
+    return wrapPromptWithStructure(trimmed, { enabledTools, model });
   }
 
   return '';
@@ -508,9 +648,12 @@ export async function executeToolCall(call) {
   try {
     args = JSON.parse(argsStr || '{}');
   } catch (parseError) {
+    const detail = parseError && typeof parseError.message === 'string' && parseError.message.length > 0
+      ? ` Error details: ${parseError.message}`
+      : '';
     return {
       name,
-      output: `Error: Invalid JSON in tool arguments. Please check the JSON syntax and try again. Arguments received: ${argsStr}`
+      output: `Error: Invalid JSON in tool arguments. Please check the JSON syntax and try again. Arguments received: ${argsStr}.${detail}`
     };
   }
 

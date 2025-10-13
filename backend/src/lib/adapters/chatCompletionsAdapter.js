@@ -149,6 +149,11 @@ function normalizeMessage(message) {
     }
   }
 
+  // Preserve cache_control for prompt caching support
+  if (message.cache_control && typeof message.cache_control === 'object') {
+    normalized.cache_control = message.cache_control;
+  }
+
   return normalized;
 }
 

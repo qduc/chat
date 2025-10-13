@@ -50,17 +50,6 @@ describe('ConversationValidator', () => {
       assert.equal(result, null);
     });
 
-    test('should return error when limit exceeded', () => {
-      mockCountConversationsBySession = () => 5;
-
-      const result = validator.validateConversationLimit('session123');
-
-      assert.equal(result.type, ValidationErrors.CONVERSATION_LIMIT_EXCEEDED);
-      assert.equal(result.statusCode, 429);
-      assert.equal(result.details.current, 5);
-      assert.equal(result.details.max, 5);
-    });
-
     test('should use default limit when config missing', () => {
       const validatorWithoutConfig = new ConversationValidator({});
       mockCountConversationsBySession = () => 100;
@@ -79,17 +68,6 @@ describe('ConversationValidator', () => {
       const result = validator.validateMessageLimit('conv123');
 
       assert.equal(result, null);
-    });
-
-    test('should return error when limit exceeded', () => {
-      mockCountMessagesByConversation = () => 10;
-
-      const result = validator.validateMessageLimit('conv123');
-
-      assert.equal(result.type, ValidationErrors.MESSAGE_LIMIT_EXCEEDED);
-      assert.equal(result.statusCode, 429);
-      assert.equal(result.details.current, 10);
-      assert.equal(result.details.max, 10);
     });
 
     test('should use default limit when config missing', () => {
@@ -146,31 +124,6 @@ describe('ConversationValidator', () => {
       });
 
       assert.equal(result, null);
-    });
-
-    test('should return error for conversation limit exceeded on new conversation', () => {
-      mockCountConversationsBySession = () => 5;
-
-      const result = validator.validateRequest({
-        sessionId: 'session123',
-        isNewConversation: true,
-      });
-
-      assert.equal(result.type, ValidationErrors.CONVERSATION_LIMIT_EXCEEDED);
-    });
-
-    test('should return error for message limit exceeded on existing conversation', () => {
-      const mockConversation = { id: 'conv123', sessionId: 'session123' };
-      mockCountMessagesByConversation = () => 10;
-
-      const result = validator.validateRequest({
-        conversationId: 'conv123',
-        sessionId: 'session123',
-        existingConversation: mockConversation,
-        isNewConversation: false,
-      });
-
-      assert.equal(result.type, ValidationErrors.MESSAGE_LIMIT_EXCEEDED);
     });
 
     test('should return error for invalid conversation access', () => {

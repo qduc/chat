@@ -33,6 +33,12 @@ export class AnthropicProvider extends BaseProvider {
     // TODO: report reasoning control availability for Anthropic.
   }
 
+  supportsPromptCaching() {
+    // Anthropic supports prompt caching natively via cache_control in messages
+    // Available for Claude 3.5+ models
+    return true;
+  }
+
   getDefaultModel() {
     // TODO: determine Anthropic default model from configuration.
   }

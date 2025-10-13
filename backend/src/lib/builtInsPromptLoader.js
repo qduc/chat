@@ -12,51 +12,11 @@ let builtInPromptsCache = null;
 let loadError = null;
 
 /**
- * Load all shared modules from the _modules directory
- * @param {string} builtinsDir - Path to builtins directory
- * @returns {string} Concatenated module content
- */
-async function loadSharedModules(builtinsDir) {
-  const modulesDir = join(builtinsDir, '_modules');
-
-  try {
-    const files = await readdir(modulesDir);
-    const moduleFiles = files.filter(file => file.endsWith('.md'));
-
-    if (moduleFiles.length === 0) {
-      return '';
-    }
-
-    const moduleContents = [];
-    for (const file of moduleFiles) {
-      try {
-        const filePath = join(modulesDir, file);
-        const content = await readFile(filePath, 'utf-8');
-        moduleContents.push(content.trim());
-      } catch (error) {
-        logger.warn(`[builtins] Failed to load module ${file}: ${error.message}`);
-      }
-    }
-
-    return moduleContents.length > 0 ? '\n\n' + moduleContents.join('\n\n') : '';
-  } catch (error) {
-    // _modules directory doesn't exist or is inaccessible
-    if (error.code === 'ENOENT') {
-      return '';
-    }
-    logger.warn(`[builtins] Failed to load shared modules: ${error.message}`);
-    return '';
-  }
-}
-
-/**
  * Load and parse a markdown file with YAML front-matter
  * @param {string} filePath - Path to the markdown file
- * @param {string} builtinsDir - Path to builtins directory
- * @param {string} sharedModules - Shared modules content
  * @returns {Object} Parsed prompt object
  */
-async function parsePromptFile(filePath, builtinsDir, sharedModules = '') {
+async function parsePromptFile(filePath) {
   const content = await readFile(filePath, 'utf-8');
 
   // Check if file has YAML front-matter
@@ -100,29 +60,16 @@ async function parsePromptFile(filePath, builtinsDir, sharedModules = '') {
     throw new Error(`Field 'order' must be a number in ${filePath}`);
   }
 
-  // Construct full body with structure:
-  // <system_instructions>date + shared modules</system_instructions>
-  // <user_instructions>prompt body</user_instructions>
-  let fullBody = '';
-
-  // Build system_instructions section with date and shared modules
-  const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
-  let systemInstructions = `Today's date: ${currentDate}`;
-
-  if (sharedModules) {
-    systemInstructions += `\n\n${sharedModules.trim()}`;
-  }
-
-  fullBody = `<system_instructions>\n${systemInstructions}\n</system_instructions>\n\n<user_instructions>\n${bodyText}\n</user_instructions>`;
-
+  // Store raw body without wrapping
+  // Wrapping with system_instructions and date will be done at request time
   return {
     id: `built:${frontMatter.slug}`,
     slug: frontMatter.slug,
     name: frontMatter.name,
     description: frontMatter.description || '',
     order: frontMatter.order,
-    body: fullBody,
-    user_instructions: bodyText, // Store separately for API response
+    body: bodyText, // Raw user instructions (will be wrapped at request time)
+    user_instructions: bodyText, // Store separately for API compatibility
     read_only: true
   };
 }
@@ -156,9 +103,6 @@ async function loadBuiltInPrompts() {
       return [];
     }
 
-    // Load shared modules once
-    const sharedModules = await loadSharedModules(builtinsDir);
-
     const prompts = [];
     const errors = [];
 
@@ -166,7 +110,7 @@ async function loadBuiltInPrompts() {
     for (const file of markdownFiles) {
       try {
         const filePath = join(builtinsDir, file);
-        const prompt = await parsePromptFile(filePath, builtinsDir, sharedModules);
+        const prompt = await parsePromptFile(filePath);
 
         prompts.push(prompt);
       } catch (error) {

@@ -26,20 +26,19 @@ jest.mock('../lib/storage', () => {
 
 type AuthApi = typeof import('../lib/api')['auth'];
 
-const mockedAuthFns: jest.Mocked<AuthApi> = {
-  register: jest.fn(),
-  login: jest.fn(),
-  logout: jest.fn(),
-  getProfile: jest.fn(),
-  verifySession: jest.fn(() => Promise.resolve({ valid: false, user: null, reason: 'missing-token' as const })),
-};
-
 // Mock verification helper and expose the same auth object everywhere.
 jest.mock('../lib/api', () => {
   const actual = jest.requireActual('../lib/api');
+  const authMock = {
+    register: jest.fn(),
+    login: jest.fn(),
+    logout: jest.fn(),
+    getProfile: jest.fn(),
+    verifySession: jest.fn(() => Promise.resolve({ valid: false, user: null, reason: 'missing-token' as const })),
+  } as jest.Mocked<AuthApi>;
   return {
     ...actual,
-    auth: mockedAuthFns,
+    auth: authMock,
   };
 });
 
@@ -51,6 +50,8 @@ import { LoginForm } from '../components/auth/LoginForm';
 import { RegisterForm } from '../components/auth/RegisterForm';
 import { authApi } from '../lib';
 import { getToken } from '../lib/storage';
+
+const authApiMock = authApi as jest.Mocked<AuthApi>;
 
 function AuthButtonWithModal() {
   const [open, setOpen] = React.useState(false);
@@ -152,7 +153,7 @@ describe('Authentication System', () => {
       await renderWithAuth(<TestAuthComponent />);
 
       await waitFor(() => {
-        expect(mockedAuthFns.verifySession).toHaveBeenCalled();
+        expect(authApiMock.verifySession).toHaveBeenCalled();
       });
     });
 
@@ -168,7 +169,7 @@ describe('Authentication System', () => {
     });
 
     it('calls login API when login is triggered', async () => {
-      mockedAuthFns.login.mockResolvedValue({
+      authApiMock.login.mockResolvedValue({
         tokens: {
           accessToken: 'test-token',
           refreshToken: 'test-refresh-token',

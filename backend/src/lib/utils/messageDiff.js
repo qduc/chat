@@ -13,56 +13,112 @@
  * @returns {Object} Diff result with insert/update/delete operations
  */
 export function computeMessageDiff(existing, incoming) {
-  const toInsert = [];
-  const toUpdate = [];
-  const toDelete = [];
-  const unchanged = [];
-
-  const existingById = new Map();
-  const matchedIds = new Set();
-
-  for (const message of existing) {
-    if (message?.id != null) {
-      existingById.set(String(message.id), message);
-    }
-  }
-
-  for (const incomingMessage of incoming) {
-    const key = incomingMessage?.id != null ? String(incomingMessage.id) : null;
-
-    if (key && existingById.has(key)) {
-      const existingMessage = existingById.get(key);
-      matchedIds.add(key);
-
-      if (messagesEqual(existingMessage, incomingMessage)) {
-        unchanged.push(existingMessage);
-      } else {
-        toUpdate.push({
-          ...incomingMessage,
-          id: existingMessage.id,
-          seq: existingMessage.seq
-        });
-      }
-    } else {
-      toInsert.push(incomingMessage);
-    }
-  }
-
-  for (const existingMessage of existing) {
-    const key = existingMessage?.id != null ? String(existingMessage.id) : null;
-    if (!key || !matchedIds.has(key)) {
-      toDelete.push(existingMessage);
-    }
-  }
-
-  return {
-    toInsert,
-    toUpdate,
-    toDelete,
-    unchanged,
+  const result = {
+    toInsert: [],
+    toUpdate: [],
+    toDelete: [],
+    unchanged: [],
     fallback: false,
     anchorOffset: 0
   };
+
+  if (!existing.length && !incoming.length) {
+    return result;
+  }
+
+  if (!existing.length) {
+    result.toInsert.push(...incoming);
+    return result;
+  }
+
+  if (!incoming.length) {
+    result.toDelete.push(...existing);
+    return result;
+  }
+
+  let existingIndex = 0;
+  let incomingIndex = 0;
+  let matchedPrefix = 0;
+  let unsafeAlignment = false;
+
+  while (existingIndex < existing.length && incomingIndex < incoming.length) {
+    const existingMessage = existing[existingIndex];
+    const incomingMessage = incoming[incomingIndex];
+
+    if (messagesEqual(existingMessage, incomingMessage)) {
+      result.unchanged.push(existingMessage);
+      existingIndex += 1;
+      incomingIndex += 1;
+      matchedPrefix += 1;
+      continue;
+    }
+
+    const nextExisting = existing[existingIndex + 1];
+    const nextIncoming = incoming[incomingIndex + 1];
+
+    const incomingMatchesNextExisting =
+      nextExisting && messagesEqual(nextExisting, incomingMessage);
+    const nextIncomingMatchesExisting =
+      nextIncoming && messagesEqual(existingMessage, nextIncoming);
+
+    if (nextIncomingMatchesExisting) {
+      result.toInsert.push(incomingMessage);
+      incomingIndex += 1;
+      continue;
+    }
+
+    if (incomingMatchesNextExisting) {
+      // Guard against truncated histories before any stable prefix is matched.
+      if (matchedPrefix === 0) {
+        unsafeAlignment = true;
+        break;
+      }
+
+      result.toDelete.push(existingMessage);
+      existingIndex += 1;
+      continue;
+    }
+
+    const canUpdate =
+      existingMessage?.id != null && existingMessage.role === incomingMessage.role;
+
+    if (canUpdate) {
+      result.toUpdate.push({
+        ...incomingMessage,
+        id: existingMessage.id,
+        seq: existingMessage.seq
+      });
+      existingIndex += 1;
+      incomingIndex += 1;
+      continue;
+    }
+
+    unsafeAlignment = true;
+    break;
+  }
+
+  if (unsafeAlignment) {
+    return {
+      toInsert: [...incoming],
+      toUpdate: [],
+      toDelete: [...existing],
+      unchanged: [],
+      fallback: false,
+      anchorOffset: 0
+    };
+  }
+
+  while (incomingIndex < incoming.length) {
+    result.toInsert.push(incoming[incomingIndex]);
+    incomingIndex += 1;
+  }
+
+  while (existingIndex < existing.length) {
+    result.toDelete.push(existing[existingIndex]);
+    existingIndex += 1;
+  }
+
+  return result;
 }
 
 /**

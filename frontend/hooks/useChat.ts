@@ -216,6 +216,7 @@ export function useChat() {
   const useToolsRef = useRef<boolean>(true);
   const enabledToolsRef = useRef<string[]>([]);
   const qualityLevelRef = useRef<QualityLevel>('unset');
+  const modelToProviderRef = useRef<Record<string, string>>({});
 
   // User State
   const [user, setUser] = useState<{ id: string } | null>(null);
@@ -282,22 +283,55 @@ export function useChat() {
 
       // Apply conversation settings without persisting to localStorage
       // (persist only user manual selections)
-      // Accept either `provider` or legacy `provider_id` from API
-      const providerFromData = (data as any).provider ?? (data as any).provider_id;
+      const providerFromPayload = (data as any).provider ?? (data as any).provider_id;
+      const normalizeProvider = (value: unknown): string | null => {
+        if (typeof value !== 'string') return null;
+        const trimmed = value.trim();
+        return trimmed.length ? trimmed : null;
+      };
 
-      if (data.model) {
-        // If we have provider info, qualify the model ID; otherwise use as-is
-        const qualifiedModel = providerFromData
-          ? `${providerFromData}::${data.model}`
-          : data.model;
-        setModelState(qualifiedModel);
-        modelRef.current = qualifiedModel;
+      const resolveProviderFromModel = (rawModel: string | null): string | null => {
+        if (!rawModel) return null;
+        const direct = modelToProviderRef.current[rawModel];
+        if (direct) return direct;
+        const entries = Object.entries(modelToProviderRef.current);
+        const match = entries.find(([key]) => key.endsWith(`::${rawModel}`));
+        return match ? match[1] : null;
+      };
+
+      const rawModel = typeof data.model === 'string' ? data.model.trim() : null;
+      const providerFromData = normalizeProvider(providerFromPayload);
+
+      let resolvedProvider: string | null = providerFromData;
+      let finalModelValue: string | null = rawModel;
+
+      if (rawModel) {
+        if (rawModel.includes('::')) {
+          const [maybeProvider, maybeModel] = rawModel.split('::', 2);
+          const trimmedModel = maybeModel?.trim() || '';
+          if (!resolvedProvider && maybeProvider?.trim()) {
+            resolvedProvider = maybeProvider.trim();
+          }
+          finalModelValue = resolvedProvider && trimmedModel
+            ? `${resolvedProvider}::${trimmedModel}`
+            : rawModel;
+        } else {
+          if (!resolvedProvider) {
+            resolvedProvider = resolveProviderFromModel(rawModel);
+          }
+          finalModelValue = resolvedProvider
+            ? `${resolvedProvider}::${rawModel}`
+            : rawModel;
+        }
       }
 
-      if (providerFromData) {
-        setProviderId(providerFromData);
-        providerIdRef.current = providerFromData;
+      if (finalModelValue) {
+        setModelState(finalModelValue);
+        modelRef.current = finalModelValue;
       }
+
+      setProviderId(resolvedProvider);
+      providerIdRef.current = resolvedProvider;
 
       // Apply tools settings
       const toolsFromData = (data as any).active_tools || [];
@@ -709,10 +743,14 @@ export function useChat() {
         const lastMsg = prev[lastIdx];
         if (!lastMsg || lastMsg.role !== 'assistant') return prev;
 
-        // If we already have content from events, keep it (don't duplicate with response.content)
-        // Otherwise, use response.content (for responses without tool_events)
-        const currentContent = typeof lastMsg.content === 'string' ? lastMsg.content : '';
-        const finalContent = currentContent.length > 0 ? currentContent : response.content;
+  const responseContent = response.content as MessageContent;
+        const hasResponseContent = typeof responseContent === 'string'
+          ? responseContent.length > 0
+          : Array.isArray(responseContent)
+            ? responseContent.length > 0
+            : responseContent != null;
+
+        const finalContent = hasResponseContent ? responseContent : lastMsg.content;
 
         return [
           ...prev.slice(0, lastIdx),
@@ -774,6 +812,12 @@ export function useChat() {
         streaming: false,
         tokenStats: tokenStatsRef.current ?? undefined
       }));
+
+      const effectiveConversationId = response.conversation?.id ?? conversationId;
+      if (effectiveConversationId) {
+        conversationsApi.invalidateDetailCache(effectiveConversationId);
+      }
+      conversationsApi.clearListCache();
     } catch (err) {
       // Handle streaming not supported error by retrying with streaming disabled
       if (err instanceof StreamingNotSupportedError) {
@@ -909,6 +953,7 @@ export function useChat() {
         setModelGroups([]);
         setModelOptions([]);
         setModelToProvider({});
+        modelToProviderRef.current = {};
         return;
       }
 
@@ -944,6 +989,18 @@ export function useChat() {
               const qualifiedId = `${provider.id}::${model.id}`;
               modelToProviderMap[qualifiedId] = provider.id;
               capabilitiesMap[qualifiedId] = model;
+
+              if (!modelToProviderMap[model.id]) {
+                modelToProviderMap[model.id] = provider.id;
+              }
+
+              if (Array.isArray(model.aliases)) {
+                for (const alias of model.aliases) {
+                  if (typeof alias === 'string' && !modelToProviderMap[alias]) {
+                    modelToProviderMap[alias] = provider.id;
+                  }
+                }
+              }
             });
           }
         } catch (err) {
@@ -951,10 +1008,11 @@ export function useChat() {
         }
       }
 
-      setModelGroups(groups);
-      setModelOptions(options);
-      setModelToProvider(modelToProviderMap);
-      setModelCapabilities(capabilitiesMap);
+  setModelGroups(groups);
+  setModelOptions(options);
+  setModelToProvider(modelToProviderMap);
+  setModelCapabilities(capabilitiesMap);
+  modelToProviderRef.current = modelToProviderMap;
 
       // Set default provider if not already set (use functional update to avoid capturing providerId)
       if (providersList.length > 0) {

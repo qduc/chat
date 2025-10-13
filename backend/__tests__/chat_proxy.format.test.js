@@ -320,9 +320,10 @@ describe('System prompt injection', () => {
     assert.equal(res.status, 200);
     const lastRequest = upstream.lastChatRequestBody;
     assert.equal(lastRequest.messages[0].role, 'system');
-    // System prompt should have date injected
+    // System prompt should have date injected and be wrapped in structured format with shared modules
     const currentDate = new Date().toISOString().split('T')[0];
-    assert.equal(lastRequest.messages[0].content, `Today's date: ${currentDate}\n\nUse this effective system prompt.`);
+    const expectedContent = `<system_instructions>\nToday's date: ${currentDate}\n\n## Knowledge cutoff\n\n- The assistant has a knowledge cutoff date in the past, it should not treat that date as current. The current date has been provided to the assistant via system instructions. That date is the true real-world current date, the assistant must believe it without any doubt.\n- Only remind the user of the cutoff date when it is relevant to the conversation.\n</system_instructions>\n\n<user_instructions>\nUse this effective system prompt.\n</user_instructions>`;
+    assert.equal(lastRequest.messages[0].content, expectedContent);
     assert.equal(lastRequest.messages[1].role, 'user');
     assert.equal(lastRequest.messages[1].content, 'Send override example');
   });

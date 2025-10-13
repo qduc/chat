@@ -228,6 +228,19 @@ export class OpenAIProvider extends BaseProvider {
     return !normalized.includes('chat');
   }
 
+  supportsPromptCaching(model) {
+    const baseUrl = (this.baseUrl || '').toLowerCase();
+
+    // OpenRouter supports passing through cache_control for Anthropic models
+    if (baseUrl.includes('openrouter.ai')) {
+      const modelStr = (model || '').toLowerCase();
+      return modelStr.includes('anthropic') || modelStr.includes('claude');
+    }
+
+    // OpenAI doesn't natively support Anthropic's cache_control format
+    return false;
+  }
+
   getDefaultModel() {
     return this.settings?.defaultModel
       || this.config?.defaultModel

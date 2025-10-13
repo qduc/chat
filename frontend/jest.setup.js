@@ -40,10 +40,6 @@ expect.poll = (fn, { timeout = 1000, interval = 50 } = {}) => {
 };
 
 // Ensure global.fetch exists and is mockable
-if (typeof global.fetch === 'undefined') {
-	global.fetch = jest.fn();
-}
-
 // Minimal ReadableStream polyfill suitable for these tests
 if (typeof global.ReadableStream === 'undefined') {
 	class SimpleReadableStream {
@@ -175,8 +171,212 @@ if (typeof global.Response === 'undefined') {
 	global.Response = ResponsePolyfill;
 }
 
+// Provide a default mocked fetch that can be spied on / overridden by tests.
+const createDefaultFetchResponse = () => {
+	const ResponseCtor = global.Response;
+	if (typeof ResponseCtor !== 'function') {
+		throw new Error('Response constructor not available for default fetch mock');
+	}
+	return new ResponseCtor(
+		'{}',
+		{
+			status: 200,
+			headers: { 'Content-Type': 'application/json' }
+		}
+	);
+};
+
+Object.defineProperty(global, 'fetch', {
+	value: jest.fn(() => Promise.resolve(createDefaultFetchResponse())),
+	writable: true,
+	configurable: true
+});
+
 // Mock scrollIntoView as it's not available in jsdom
 Element.prototype.scrollIntoView = jest.fn();
+
+// Mock the HTTP client to prevent real network requests during tests while still
+// flowing through the Jest-level fetch mocks used by unit tests.
+jest.mock('./lib/http', () => {
+	const defaultApiBase = typeof window !== 'undefined'
+		? `${window.location.origin}/api`
+		: process.env.NEXT_PUBLIC_API_BASE || 'http://backend:3001/api';
+
+	const resolveUrl = (url = '') =>
+		url.startsWith('http') ? url : `${defaultApiBase}${url.startsWith('/') ? url : `/${url}`}`;
+
+	const asHeaders = (headers) => {
+		if (
+			headers &&
+			typeof headers === 'object' &&
+			typeof headers.append === 'function' &&
+			typeof headers.get === 'function'
+		) {
+			return headers;
+		}
+		const result = new Headers();
+		if (headers && typeof headers === 'object') {
+			for (const [key, value] of Object.entries(headers)) {
+				if (Array.isArray(value)) {
+					for (const v of value) {
+						result.append(key, v);
+					}
+				} else if (value !== undefined) {
+					result.append(key, String(value));
+				}
+			}
+		}
+		return result;
+	};
+
+	const mockHttpResponse = (data, status = 200, headers = new Headers(), statusText) => ({
+		data,
+		status,
+		statusText: statusText ?? (status >= 200 && status < 300 ? 'OK' : 'Error'),
+		headers: asHeaders(headers),
+	});
+
+	class HttpError extends Error {
+		constructor(status, message, response, data) {
+			super(message);
+			this.name = 'HttpError';
+			this.status = status;
+			this.response = response;
+			this.data = data;
+		}
+	}
+
+	const callFetch = async (method, url, body, options = {}) => {
+		if (typeof global.fetch !== 'function') {
+			throw new Error('global.fetch is not defined');
+		}
+
+		const headers = { ...(options.headers || {}) };
+		const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+
+		if (method !== 'GET' && body !== undefined) {
+			if (isFormData) {
+				delete headers['Content-Type'];
+			} else if (!headers['Content-Type']) {
+				headers['Content-Type'] = 'application/json';
+			}
+		}
+
+		const init = {
+			method,
+			headers,
+			credentials: options.credentials ?? 'include',
+			signal: options.signal,
+		};
+
+		if (method !== 'GET' && body !== undefined) {
+			if (isFormData) {
+				init.body = body;
+			} else if (typeof body === 'string') {
+				init.body = body;
+			} else {
+				init.body = JSON.stringify(body);
+			}
+		}
+
+		const response = await global.fetch(resolveUrl(url), init);
+		if (!response) {
+			throw new HttpError(0, 'No response received from fetch', null, null);
+		}
+
+		const contentType = response.headers?.get?.('content-type') || '';
+
+		const handleError = async () => {
+			let errorData;
+			if (contentType.includes('application/json')) {
+				try {
+					errorData = await response.json();
+				} catch {
+					errorData = undefined;
+				}
+			} else {
+				try {
+					const text = await response.text();
+					errorData = text ? { message: text } : undefined;
+				} catch {
+					errorData = undefined;
+				}
+			}
+
+			const detail =
+				errorData?.error?.message ||
+				errorData?.error ||
+				errorData?.message ||
+				response.statusText;
+
+			throw new HttpError(
+				response.status,
+				`HTTP ${response.status}: ${detail}`,
+				response,
+				errorData
+			);
+		};
+
+		if (!response.ok) {
+			await handleError();
+		}
+
+		if (contentType.includes('text/event-stream')) {
+			return mockHttpResponse(response, response.status, response.headers, response.statusText);
+		}
+
+		if (contentType.includes('application/json')) {
+			const data = await response.json();
+			return mockHttpResponse(data, response.status, response.headers, response.statusText);
+		}
+
+		if (contentType.includes('text/')) {
+			const text = await response.text();
+			return mockHttpResponse(text, response.status, response.headers, response.statusText);
+		}
+
+		if (typeof response.blob === 'function') {
+			const blob = await response.blob();
+			return mockHttpResponse(blob, response.status, response.headers, response.statusText);
+		}
+
+		const fallback = await response.text?.();
+		return mockHttpResponse(fallback, response.status, response.headers, response.statusText);
+	};
+
+	const httpClient = {
+		get: jest.fn((url, options = {}) => callFetch('GET', url, undefined, options)),
+		post: jest.fn((url, body, options = {}) => callFetch('POST', url, body, options)),
+		patch: jest.fn((url, body, options = {}) => callFetch('PATCH', url, body, options)),
+		delete: jest.fn((url, options = {}) => callFetch('DELETE', url, undefined, options)),
+		put: jest.fn((url, body, options = {}) => callFetch('PUT', url, body, options)),
+		request: jest.fn((url, options = {}) =>
+			callFetch(options.method || 'GET', url, options.body, options)
+		),
+		setRefreshTokenFn: jest.fn(),
+	};
+
+	return {
+		httpClient,
+		HttpError,
+		mockHttpResponse,
+	};
+});
+
+// Suppress React act warnings for async useEffect calls in testing
+// This is needed because useSystemPrompts makes HTTP calls on mount
+const originalConsoleError = console.error;
+console.error = (...args) => {
+	if (
+		typeof args[0] === 'string' &&
+		(args[0].includes('An update to') &&
+		args[0].includes('was not wrapped in act'))
+	) {
+		// Suppress act warnings for async operations in useSystemPrompts
+		return;
+	}
+	originalConsoleError(...args);
+};
 
 // Provide a basic mock for next/navigation hooks so components can render in JSDOM without the App Router
 jest.mock('next/navigation', () => {

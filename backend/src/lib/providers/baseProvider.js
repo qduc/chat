@@ -95,6 +95,11 @@ export class BaseProvider {
     return false;
   }
 
+  supportsPromptCaching() {
+    // TODO: report whether the provider supports prompt caching.
+    return false;
+  }
+
   getDefaultModel() {
     // TODO: provide the default model identifier for this provider.
     return this.config?.defaultModel;
