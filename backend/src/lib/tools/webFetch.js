@@ -10,19 +10,55 @@ const MIN_READABILITY_LENGTH = 300; // Relaxed from 500
 const MIN_SELECTOR_LENGTH = 300;
 
 // Maximum output length to prevent token overflow
-const DEFAULT_MAX_CHARS = 5000;
+const DEFAULT_MAX_CHARS = 10000; // Increased from 5000 for better context
 const MAX_CHARS_LIMIT = 200000; // Hard limit: ~50,000 tokens
 
 // Maximum body size to prevent memory issues (10 MB)
 const MAX_BODY_SIZE = 10 * 1024 * 1024;
+
+// Content cache for continuation support
+const contentCache = new Map();
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Clean up expired cache entries periodically
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, value] of contentCache.entries()) {
+    if (now - value.timestamp > CACHE_TTL) {
+      contentCache.delete(key);
+    }
+  }
+}, 60 * 1000); // Check every minute
 
 function validate(args) {
   if (!args || typeof args !== 'object') {
     throw new Error('web_fetch requires an arguments object');
   }
 
-  const { url, max_chars } = args;
+  const { url, max_chars, continuation_token, heading_range } = args;
 
+  // If continuation_token is provided, we're fetching next chunk
+  if (continuation_token) {
+    if (typeof continuation_token !== 'string') {
+      throw new Error('continuation_token must be a string');
+    }
+
+    // Validate max_chars for continuation
+    let maxChars = DEFAULT_MAX_CHARS;
+    if (max_chars !== undefined) {
+      if (typeof max_chars !== 'number' || max_chars < 200) {
+        throw new Error('max_chars must be a number >= 200');
+      }
+      if (max_chars > MAX_CHARS_LIMIT) {
+        throw new Error(`max_chars cannot exceed ${MAX_CHARS_LIMIT}`);
+      }
+      maxChars = max_chars;
+    }
+
+    return { continuation_token, maxChars };
+  }
+
+  // Normal fetch - require URL
   if (!url || typeof url !== 'string') {
     throw new Error('web_fetch requires a valid "url" string parameter');
   }
@@ -56,10 +92,78 @@ function validate(args) {
     targetHeading = heading.trim();
   }
 
-  return { url, maxChars, targetHeading };
+  // Validate heading_range if provided
+  let headingRange = null;
+  if (heading_range !== undefined) {
+    if (typeof heading_range !== 'object' || heading_range === null) {
+      throw new Error('heading_range must be an object with start and end properties');
+    }
+    const { start, end } = heading_range;
+    if (typeof start !== 'number' || typeof end !== 'number') {
+      throw new Error('heading_range.start and heading_range.end must be numbers');
+    }
+    if (start < 1 || end < start) {
+      throw new Error('heading_range must have start >= 1 and end >= start');
+    }
+    headingRange = { start, end };
+  }
+
+  // Can't use both heading and heading_range
+  if (targetHeading && headingRange) {
+    throw new Error('Cannot use both "heading" and "heading_range" parameters');
+  }
+
+  return { url, maxChars, targetHeading, headingRange };
 }
 
-async function handler({ url, maxChars, targetHeading }) {
+function generateCacheKey(url, filterType, filterValue) {
+  return `${url}:${filterType}:${JSON.stringify(filterValue)}:${Date.now()}`;
+}
+
+function handleContinuation(token, maxChars) {
+  const cached = contentCache.get(token);
+
+  if (!cached) {
+    throw new Error('Continuation token expired or invalid. Please fetch the URL again.');
+  }
+
+  const { markdown, offset, url, title, metadata } = cached;
+  const truncationResult = truncateMarkdown(markdown, maxChars, offset);
+
+  // Generate new continuation token if there's more content
+  let nextToken = null;
+  if (truncationResult.hasMore) {
+    nextToken = generateCacheKey(url, 'continuation', truncationResult.nextOffset);
+    contentCache.set(nextToken, {
+      markdown,
+      offset: truncationResult.nextOffset,
+      url,
+      title,
+      metadata,
+      timestamp: Date.now()
+    });
+  }
+
+  return {
+    url,
+    title,
+    markdown: truncationResult.markdown,
+    length: truncationResult.markdown.length,
+    truncated: truncationResult.hasMore,
+    ...(truncationResult.hasMore && {
+      continuation_token: nextToken,
+      originalLength: truncationResult.originalLength
+    }),
+    ...metadata
+  };
+}
+
+async function handler({ url, maxChars, targetHeading, headingRange, continuation_token }) {
+  // Handle continuation token (fetch next chunk from cache)
+  if (continuation_token) {
+    return handleContinuation(continuation_token, maxChars);
+  }
+
   try {
     // Fetch the web page
     const response = await fetch(url, {
@@ -258,17 +362,30 @@ async function handler({ url, maxChars, targetHeading }) {
     const allHeadings = extractHeadings(extractedContent.html);
     const fullToc = buildTOC(allHeadings);
 
-    // Filter content by heading if requested (this happens BEFORE markdown conversion)
+    // STRATEGY 1: Heading-based filtering (preferred for structured content)
     let filterResult = { html: extractedContent.html, filtered: false };
-    if (targetHeading) {
-      filterResult = filterContentByHeading(extractedContent.html, allHeadings, targetHeading);
+    let filterMetadata = {};
 
-      // If heading not found, include error in response but continue with full content
+    if (headingRange) {
+      // Filter by heading range (e.g., headings 2-4)
+      filterResult = filterContentByHeadingRange(extractedContent.html, allHeadings, headingRange);
+
       if (filterResult.error) {
-        extractedContent.headingError = filterResult.error;
+        filterMetadata.headingError = filterResult.error;
       } else if (filterResult.filtered) {
         extractedContent.html = filterResult.html;
-        extractedContent.filteredBy = filterResult.matchedHeading;
+        filterMetadata.filteredByHeadingRange = headingRange;
+        filterMetadata.matchedHeadings = filterResult.matchedHeadings;
+      }
+    } else if (targetHeading) {
+      // Filter by single heading name
+      filterResult = filterContentByHeading(extractedContent.html, allHeadings, targetHeading);
+
+      if (filterResult.error) {
+        filterMetadata.headingError = filterResult.error;
+      } else if (filterResult.filtered) {
+        extractedContent.html = filterResult.html;
+        filterMetadata.filteredByHeading = filterResult.matchedHeading;
       }
     }
 
@@ -281,13 +398,34 @@ async function handler({ url, maxChars, targetHeading }) {
 
     let markdown = turndownService.turndown(extractedContent.html);
 
-    // Apply character limit (TOC is preserved separately and added after)
-    const truncationResult = truncateMarkdown(markdown, maxChars);
+    // STRATEGY 2: If page has no headings, use continuation token approach
+    const usesContinuation = allHeadings.length === 0 && !targetHeading && !headingRange;
+
+    // Apply character limit
+    const truncationResult = truncateMarkdown(markdown, maxChars, 0);
     markdown = truncationResult.markdown;
+
+    // Generate continuation token if truncated and no headings available
+    let continuationToken = null;
+    if (usesContinuation && truncationResult.hasMore) {
+      continuationToken = generateCacheKey(url, 'continuation', truncationResult.nextOffset);
+      contentCache.set(continuationToken, {
+        markdown: turndownService.turndown(extractedContent.html), // Full markdown
+        offset: truncationResult.nextOffset,
+        url,
+        title: extractedContent.title || 'Untitled',
+        metadata: {
+          excerpt: extractedContent.excerpt,
+          byline: extractedContent.byline,
+          extractionMethod: method,
+        },
+        timestamp: Date.now()
+      });
+    }
 
     // Prepend TOC to markdown if available (TOC is from FULL content, even if markdown is truncated)
     let finalMarkdown = markdown;
-    if (fullToc && !extractedContent.filteredBy) {
+    if (fullToc && !filterMetadata.filteredByHeading && !filterMetadata.filteredByHeadingRange) {
       // Only include TOC if we're showing full content (not filtered to a specific heading)
       finalMarkdown = `## Table of Contents\n\n${fullToc}\n\n---\n\n${markdown}`;
     }
@@ -300,12 +438,12 @@ async function handler({ url, maxChars, targetHeading }) {
       excerpt: extractedContent.excerpt,
       byline: extractedContent.byline,
       extractionMethod: method, // For debugging
-      truncated: truncationResult.truncated,
-      ...(truncationResult.truncated && { originalLength: truncationResult.originalLength }),
+      truncated: truncationResult.hasMore,
+      ...(truncationResult.hasMore && { originalLength: truncationResult.originalLength }),
+      ...(continuationToken && { continuation_token: continuationToken }),
       ...(fullToc && { tableOfContents: fullToc }),
       ...(allHeadings && allHeadings.length > 0 && { headingsCount: allHeadings.length }),
-      ...(extractedContent.filteredBy && { filteredByHeading: extractedContent.filteredBy }),
-      ...(extractedContent.headingError && { headingError: extractedContent.headingError }),
+      ...filterMetadata,
     };
   } catch (error) {
     if (error.name === 'AbortError') {
@@ -395,6 +533,59 @@ function filterContentByHeading(htmlContent, headings, targetHeading) {
   };
 }
 
+function filterContentByHeadingRange(htmlContent, headings, range) {
+  if (!range || !headings || headings.length === 0) {
+    return { html: htmlContent, filtered: false };
+  }
+
+  const { start, end } = range;
+
+  // Validate range against available headings (1-indexed)
+  if (start > headings.length) {
+    return {
+      html: htmlContent,
+      filtered: false,
+      error: `Start index ${start} exceeds available headings (${headings.length} total). Available headings: ${headings.map((h, i) => `${i + 1}. ${h.text}`).join(', ')}`
+    };
+  }
+
+  const actualEnd = Math.min(end, headings.length);
+  const startIndex = start - 1; // Convert to 0-indexed
+  const endIndex = actualEnd - 1;
+
+  const startHeading = headings[startIndex];
+  const startPos = startHeading.position;
+
+  // Find end position (start of next heading after the range, or end of content)
+  let endPos = htmlContent.length;
+  if (endIndex + 1 < headings.length) {
+    // Check if next heading is at same or higher level as any in our range
+    const nextHeading = headings[endIndex + 1];
+    const minLevelInRange = Math.min(...headings.slice(startIndex, endIndex + 1).map(h => h.level));
+
+    if (nextHeading.level <= minLevelInRange) {
+      endPos = nextHeading.position;
+    } else {
+      // Include subheadings, find next heading at same or higher level
+      for (let i = endIndex + 2; i < headings.length; i++) {
+        if (headings[i].level <= minLevelInRange) {
+          endPos = headings[i].position;
+          break;
+        }
+      }
+    }
+  }
+
+  const filteredHtml = htmlContent.substring(startPos, endPos);
+  const matchedHeadings = headings.slice(startIndex, endIndex + 1).map(h => h.text);
+
+  return {
+    html: filteredHtml,
+    filtered: true,
+    matchedHeadings
+  };
+}
+
 function cleanHtml(html) {
   // Remove script tags and their content
   let cleaned = html.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
@@ -426,45 +617,68 @@ function extractTitle(html) {
   return titleMatch ? titleMatch[1].trim() : 'Untitled';
 }
 
-function truncateMarkdown(markdown, maxChars) {
-  if (markdown.length <= maxChars) {
-    return { markdown, truncated: false };
+function truncateMarkdown(markdown, maxChars, offset = 0) {
+  const totalLength = markdown.length;
+  const start = offset;
+  const end = Math.min(start + maxChars, totalLength);
+
+  // If offset is beyond content, return empty
+  if (start >= totalLength) {
+    return {
+      markdown: '',
+      hasMore: false,
+      truncated: false,
+      originalLength: totalLength
+    };
+  }
+
+  // If we can fit all remaining content, return it
+  if (end >= totalLength) {
+    return {
+      markdown: markdown.substring(start).trim(),
+      hasMore: false,
+      truncated: false,
+      originalLength: totalLength
+    };
   }
 
   // Find a good breaking point (end of sentence or paragraph)
-  let breakPoint = maxChars;
+  let breakPoint = end;
 
   // Try to break at paragraph boundary (double newline)
-  const paragraphBreak = markdown.lastIndexOf('\n\n', maxChars);
-  if (paragraphBreak > maxChars * 0.8) {
+  const paragraphBreak = markdown.lastIndexOf('\n\n', end);
+  if (paragraphBreak > start && paragraphBreak > end * 0.8) {
     // If we can break within last 20% of max length, use paragraph break
     breakPoint = paragraphBreak;
   } else {
     // Otherwise try to break at sentence boundary
-    const sentenceBreak = markdown.lastIndexOf('. ', maxChars);
-    if (sentenceBreak > maxChars * 0.8) {
+    const sentenceBreak = markdown.lastIndexOf('. ', end);
+    if (sentenceBreak > start && sentenceBreak > end * 0.8) {
       breakPoint = sentenceBreak + 1; // Include the period
     } else {
       // Last resort: break at word boundary
-      const spaceBreak = markdown.lastIndexOf(' ', maxChars);
-      if (spaceBreak > maxChars * 0.9) {
+      const spaceBreak = markdown.lastIndexOf(' ', end);
+      if (spaceBreak > start && spaceBreak > end * 0.9) {
         breakPoint = spaceBreak;
       }
     }
   }
 
-  const truncatedMarkdown = markdown.substring(0, breakPoint).trim() + '\n\n[... Content truncated ...]';
+  const chunk = markdown.substring(start, breakPoint).trim();
+  const truncatedMarkdown = chunk + '\n\n[... More content available ...]';
 
   return {
     markdown: truncatedMarkdown,
+    hasMore: true,
     truncated: true,
-    originalLength: markdown.length,
+    originalLength: totalLength,
+    nextOffset: breakPoint
   };
 }
 
 export const webFetchTool = createTool({
   name: TOOL_NAME,
-  description: 'Fetch a web page and convert its HTML content to Markdown format',
+  description: 'Fetch a web page and convert its HTML content to Markdown format with intelligent content navigation',
   validate,
   handler,
   openAI: {
@@ -472,24 +686,43 @@ export const webFetchTool = createTool({
     function: {
       name: TOOL_NAME,
       description:
-        'Fetch a web page and convert its HTML content to Markdown format. Returns the page title and content as markdown. Automatically detects headings (h1-h3) and includes a table of contents. Use max_chars to limit output length, or heading to retrieve only a specific section.',
+        'Fetch a web page and convert its HTML content to Markdown format. Returns the page title and content as markdown. Automatically detects headings (h1-h3) and includes a table of contents.\n\nNavigation strategies:\n1. For structured content with headings: Use heading or heading_range to get specific sections\n2. For unstructured content: Use continuation_token to fetch subsequent chunks\n\nThe tool automatically chooses the best strategy based on content structure.',
       parameters: {
         type: 'object',
         properties: {
           url: {
             type: 'string',
-            description: 'The URL of the web page to fetch',
+            description: 'The URL of the web page to fetch (required for initial fetch, omit when using continuation_token)',
           },
           max_chars: {
             type: 'number',
-            description: `Maximum number of characters to return (default: ${DEFAULT_MAX_CHARS}). Content will be intelligently truncated at paragraph/sentence boundaries if needed.`,
+            description: `Maximum number of characters to return per chunk (default: ${DEFAULT_MAX_CHARS}). Content will be intelligently truncated at paragraph/sentence boundaries.`,
           },
           heading: {
             type: 'string',
-            description: 'Optional: Retrieve only the content under a specific heading (h1-h3). Performs case-insensitive partial matching. If not found, returns full content with available headings.',
+            description: 'Optional: Retrieve content under a specific heading (h1-h3). Performs case-insensitive partial matching. Returns error with available headings if not found.',
+          },
+          heading_range: {
+            type: 'object',
+            description: 'Optional: Retrieve content from a range of headings by index (1-based). Example: {start: 2, end: 4} gets content from 2nd to 4th heading. Includes all subheadings within range.',
+            properties: {
+              start: {
+                type: 'number',
+                description: 'Starting heading index (1-based, inclusive)'
+              },
+              end: {
+                type: 'number',
+                description: 'Ending heading index (1-based, inclusive)'
+              }
+            },
+            required: ['start', 'end']
+          },
+          continuation_token: {
+            type: 'string',
+            description: 'Optional: Token from previous response to fetch the next chunk of content. Use this for pages without headings that were truncated. Omit url when using this.',
           },
         },
-        required: ['url'],
+        required: [],
       },
     },
   },
