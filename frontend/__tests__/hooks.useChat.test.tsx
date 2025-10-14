@@ -1,6 +1,7 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import type { ChatOptionsExtended } from '../lib/types';
 import { useChat } from '../hooks/useChat';
+import { APIError } from '../lib/streaming';
 
 jest.mock('../lib/api', () => ({
   conversations: {
@@ -369,6 +370,30 @@ describe('useChat hook', () => {
     expect(capturedSignal?.aborted).toBe(true);
     expect(result.current.status).toBe('idle');
     await waitFor(() => expect(result.current.error).toBe('Message cancelled'));
+  });
+
+  test('sendMessage surfaces upstream error details when proxy wraps errors', async () => {
+    mockChat.sendMessage.mockRejectedValue(
+      new APIError(502, 'HTTP 502: Upstream provider returned an error response.', {
+        error: 'upstream_error',
+        message: 'Upstream provider returned an error response.',
+        upstream: {
+          status: 401,
+          message: 'Unauthorized',
+        },
+      })
+    );
+
+    const { result } = renderUseChat();
+
+    await act(async () => {
+      await result.current.sendMessage('Hello');
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBe('Upstream provider error (status 401): Unauthorized');
+      expect(result.current.pending.error).toBe('Upstream provider error (status 401): Unauthorized');
+    });
   });
 
   test('selectConversation derives provider when backend omits provider_id', async () => {

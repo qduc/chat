@@ -306,11 +306,13 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
           pre: function PreRenderer(p) {
             const { children } = p as any;
             const preRef = React.useRef<HTMLPreElement | null>(null);
+            const codeRef = React.useRef<HTMLDivElement | null>(null);
             const [copied, setCopied] = React.useState(false);
 
             const onCopy = async () => {
               try {
-                const text = preRef.current?.innerText ?? "";
+                // Get text from the code content div only, not the entire pre element
+                const text = codeRef.current?.innerText ?? "";
                 if (!text) return;
                 if (navigator.clipboard?.writeText) {
                   await navigator.clipboard.writeText(text);
@@ -370,7 +372,7 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
                 </div>
 
                 {/* padded, scrollable code area */}
-                <div className="p-4 overflow-auto text-sm font-mono text-slate-700 dark:text-slate-200 leading-snug">
+                <div ref={codeRef} className="p-4 overflow-auto text-sm font-mono text-slate-700 dark:text-slate-200 leading-snug">
                   {children}
                 </div>
               </pre>
@@ -381,9 +383,9 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
 
             const defaultCollapsedHeight = 72; // px
 
-              if (className?.includes('language-thinking')) {
-                return (
-                  <div className="my-4 border border-slate-200 dark:border-neutral-800 rounded-lg bg-slate-50 dark:bg-neutral-900/50">
+            if (className?.includes('language-thinking')) {
+              return (
+                <div className="my-4 border border-slate-200 dark:border-neutral-800 rounded-lg bg-slate-50 dark:bg-neutral-900/50">
                   <div
                     className="px-4 py-2 cursor-pointer font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-t-lg"
                     onClick={() => setIsExpanded(!isExpanded)}
@@ -399,12 +401,12 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
                         isExpanded
                           ? {}
                           : {
-                              maxHeight: `${defaultCollapsedHeight}px`,
-                              overflow: "hidden",
-                              display: "flex",
-                              flexDirection: "column",
-                              justifyContent: "flex-end"
-                            }
+                            maxHeight: `${defaultCollapsedHeight}px`,
+                            overflow: "hidden",
+                            display: "flex",
+                            flexDirection: "column",
+                            justifyContent: "flex-end"
+                          }
                       }
                     >
                       {/* Add vertical padding only when expanded to avoid shrinking visible height */}
@@ -416,9 +418,9 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
                     {/* When collapsed, add bottom padding outside the height box for visual spacing */}
                     {!isExpanded && <div className="px-4 pb-3" />}
                   </div>
-                  </div>
-                );
-              }
+                </div>
+              );
+            }
 
             // Show un-highlighted code during streaming
             if (!shouldHighlight && className?.startsWith('language-')) {

@@ -221,9 +221,15 @@ export class ChatCompletionsAdapter extends BaseAdapter {
     for (const [key, value] of Object.entries(payload)) {
       if (value === undefined) continue;
       if (key === 'messages' || key === 'model' || key === 'tools' || key === 'tool_choice' || key === 'stream') continue;
+      if (key === 'reasoning_effort') continue; // handled separately below
       if (OPENAI_ALLOWED_REQUEST_KEYS.has(key)) {
         normalized[key] = value;
       }
+    }
+
+    // Handle reasoning_effort -> reasoning object conversion
+    if (payload.reasoning_effort !== undefined) {
+      normalized.reasoning = { effort: payload.reasoning_effort };
     }
 
     return normalized;

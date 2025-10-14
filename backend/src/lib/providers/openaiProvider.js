@@ -223,9 +223,11 @@ export class OpenAIProvider extends BaseProvider {
 
   supportsReasoningControls(model) {
     if (!model || typeof model !== 'string') return false;
-    const normalized = model.toLowerCase();
-    if (!normalized.startsWith('gpt-5') && !normalized.startsWith('o3') && !normalized.startsWith('o4')) return false;
-    return !normalized.includes('chat');
+    // const normalized = model.toLowerCase();
+    // if (!normalized.includes('gpt-5') && !normalized.includes('o3') && !normalized.includes('o4')) return false;
+    // return !normalized.includes('chat');
+    // Trust what frontend send, backend will not check this
+    return true;
   }
 
   supportsPromptCaching(model) {

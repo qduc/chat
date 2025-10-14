@@ -82,7 +82,7 @@ describe('ChatCompletionsAdapter', () => {
         verbosity: 'high',
       });
 
-      expect(result.reasoning_effort).toBe('medium');
+      expect(result.reasoning).toEqual({ effort: 'medium' });
       expect(result.verbosity).toBe('high');
     });
 
@@ -95,7 +95,7 @@ describe('ChatCompletionsAdapter', () => {
         verbosity: 'high',
       });
 
-      expect(result.reasoning_effort).toBe('medium');
+      expect(result.reasoning).toEqual({ effort: 'medium' });
       expect(result.verbosity).toBe('high');
     });
   });
