@@ -1,5 +1,5 @@
 ---
-models: gpt-5*
+models: "*gpt-5*"
 ---
 
 ## Output Format
