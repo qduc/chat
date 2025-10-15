@@ -21,11 +21,12 @@ describe('Chat proxy validation', () => {
   });
 
   test('strips reasoning controls when model does not support reasoning', async () => {
-    // Should proceed with 200 even if verbosity value is invalid for non-gpt-5 models
+    // Should reject with 400 if verbosity value is invalid, even for gpt-3.5-turbo
     const app = makeApp({ mockUser });
     const res = await request(app)
       .post('/v1/chat/completions')
       .send({ model: 'gpt-3.5-turbo', messages: [{ role: 'user', content: 'Hi' }], verbosity: 'invalid-value', stream: false });
-    assert.equal(res.status, 200);
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error, 'invalid_request_error');
   });
 });
