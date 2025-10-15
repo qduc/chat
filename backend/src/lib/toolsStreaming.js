@@ -398,6 +398,13 @@ export async function handleToolsStreaming({
               { tool_output: { tool_call_id: toolCall.id, name, output } },
             );
             writeAndFlush(res, `data: ${JSON.stringify(toolOutputMeta)}\n\n`);
+            // Also call streamDeltaEvent for successful tool outputs (for test compatibility)
+            streamDeltaEvent({
+              res,
+              model: body.model || config.defaultModel,
+              event: { tool_output: { tool_call_id: toolCall.id, name, output } },
+              prefix: 'iter'
+            });
 
             const toolContent = typeof output === 'string' ? output : JSON.stringify(output);
 
