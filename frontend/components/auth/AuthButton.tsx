@@ -15,13 +15,7 @@ export function AuthButton({ className = '', onShowLogin, onShowRegister }: Auth
   const { user, logout } = useAuth();
 
   if (user) {
-    return (
-      <UserMenu
-        user={user}
-        onLogout={logout}
-        className={className}
-      />
-    );
+    return <UserMenu user={user} onLogout={logout} className={className} />;
   }
 
   return (

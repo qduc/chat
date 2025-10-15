@@ -60,7 +60,7 @@ function PromptItem({
   onEdit,
   onDuplicate,
   onDelete,
-  showEditActions
+  showEditActions,
 }: PromptItemProps) {
   const isBuiltIn = 'read_only' in prompt;
   const itemLabel = `${prompt.name}${hasUnsavedChanges ? ' (unsaved changes)' : ''}`;
@@ -88,7 +88,11 @@ function PromptItem({
         <div className="flex items-center">
           <span className="truncate">
             {prompt.name}
-            {hasUnsavedChanges && <span className="text-orange-500 ml-1" aria-hidden="true">*</span>}
+            {hasUnsavedChanges && (
+              <span className="text-orange-500 ml-1" aria-hidden="true">
+                *
+              </span>
+            )}
           </span>
           {isBuiltIn && (
             <span className="ml-2 px-1.5 py-0.5 text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded">
@@ -96,7 +100,7 @@ function PromptItem({
             </span>
           )}
         </div>
-        {('description' in prompt) && prompt.description && (
+        {'description' in prompt && prompt.description && (
           <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 truncate">
             {prompt.description}
           </div>
@@ -121,7 +125,12 @@ function PromptItem({
             aria-label={`Duplicate prompt ${prompt.name}`}
           >
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
+              />
             </svg>
           </button>
 
@@ -137,7 +146,12 @@ function PromptItem({
               aria-label={`Edit prompt ${prompt.name}`}
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                />
               </svg>
             </button>
           )}
@@ -156,7 +170,12 @@ function PromptItem({
               aria-label={`Delete prompt ${prompt.name}`}
             >
               <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                />
               </svg>
             </button>
           )}
@@ -177,7 +196,7 @@ function PromptSection({
   onEditPrompt,
   onDuplicatePrompt,
   onDeletePrompt,
-  showEditActions
+  showEditActions,
 }: PromptSectionProps) {
   const Icon = isExpanded ? ChevronDownIcon : ChevronRightIcon;
   const sectionSlug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'section';
@@ -199,12 +218,7 @@ function PromptSection({
       </button>
 
       {isExpanded && (
-        <div
-          className="ml-2 space-y-1"
-          id={contentId}
-          role="region"
-          aria-labelledby={headingId}
-        >
+        <div className="ml-2 space-y-1" id={contentId} role="region" aria-labelledby={headingId}>
           {prompts.length === 0 ? (
             <div className="p-2 text-sm text-gray-500 dark:text-gray-400 italic">
               No prompts in this category
@@ -240,18 +254,18 @@ export default function PromptList({
   onDuplicatePrompt,
   onDeletePrompt,
   onClearSelection,
-  error
+  error,
 }: PromptListProps) {
   const [expandedSections, setExpandedSections] = React.useState({
     none: true,
     builtIns: true,
-    custom: true
+    custom: true,
   });
 
   const toggleSection = (section: keyof typeof expandedSections) => {
-    setExpandedSections(prev => ({
+    setExpandedSections((prev) => ({
       ...prev,
-      [section]: !prev[section]
+      [section]: !prev[section],
     }));
   };
 

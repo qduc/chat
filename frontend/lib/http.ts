@@ -5,9 +5,10 @@
 import { getToken, clearTokens, setAuthReady } from './storage';
 import { StreamingNotSupportedError } from './streaming';
 
-const DEFAULT_API_BASE = typeof window !== 'undefined'
-  ? `${window.location.origin}/api`
-  : process.env.NEXT_PUBLIC_API_BASE || 'http://backend:3001/api';
+const DEFAULT_API_BASE =
+  typeof window !== 'undefined'
+    ? `${window.location.origin}/api`
+    : process.env.NEXT_PUBLIC_API_BASE || 'http://backend:3001/api';
 
 export interface HttpClientOptions {
   baseUrl?: string;
@@ -21,7 +22,7 @@ export interface RequestOptions {
   body?: any;
   signal?: AbortSignal;
   credentials?: RequestCredentials;
-  skipAuth?: boolean;  // Skip adding auth headers
+  skipAuth?: boolean; // Skip adding auth headers
   skipRetry?: boolean; // Skip 401 retry logic
 }
 
@@ -75,7 +76,9 @@ class AuthenticatedHttpClient {
    * Make an HTTP request with automatic 401 handling
    */
   async request<T = any>(url: string, options: RequestOptions = {}): Promise<HttpResponse<T>> {
-    const fullUrl = url.startsWith('http') ? url : `${this.baseUrl}${url.startsWith('/') ? url : `/${url}`}`;
+    const fullUrl = url.startsWith('http')
+      ? url
+      : `${this.baseUrl}${url.startsWith('/') ? url : `/${url}`}`;
 
     // If we're currently refreshing tokens, queue this request (unless it's the refresh request itself)
     if (this.isRefreshing && !options.skipRetry) {
@@ -83,7 +86,7 @@ class AuthenticatedHttpClient {
         this.requestQueue.push({
           resolve,
           reject,
-          request: () => this.makeRequest<T>(fullUrl, options)
+          request: () => this.makeRequest<T>(fullUrl, options),
         });
       });
     }
@@ -116,23 +119,32 @@ class AuthenticatedHttpClient {
         data,
         status: response.status,
         statusText: response.statusText,
-        headers: response.headers
+        headers: response.headers,
       };
     } catch (error) {
       if (error instanceof HttpError || error instanceof StreamingNotSupportedError) {
         throw error;
       }
-      throw new HttpError(0, `Network error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      throw new HttpError(
+        0,
+        `Network error: ${error instanceof Error ? error.message : 'Unknown error'}`
+      );
     }
   }
 
   /**
    * Handle 401 unauthorized errors with token refresh
    */
-  private async handleUnauthorized<T>(url: string, options: RequestOptions): Promise<HttpResponse<T>> {
+  private async handleUnauthorized<T>(
+    url: string,
+    options: RequestOptions
+  ): Promise<HttpResponse<T>> {
     // Check if we can attempt a refresh (need refresh token and refresh function)
     if (this.isRefreshing || !this.refreshTokenFn) {
-      console.warn('[http] Cannot refresh token:', { isRefreshing: this.isRefreshing, hasRefreshFn: !!this.refreshTokenFn });
+      console.warn('[http] Cannot refresh token:', {
+        isRefreshing: this.isRefreshing,
+        hasRefreshFn: !!this.refreshTokenFn,
+      });
       throw new HttpError(401, 'Authentication required');
     }
 
@@ -150,7 +162,6 @@ class AuthenticatedHttpClient {
       // Retry the original request with new token
       const retryOptions = { ...options, skipRetry: true }; // Prevent infinite retry loop
       return await this.makeRequest<T>(url, retryOptions);
-
     } catch (refreshError) {
       // Refresh failed - clear tokens and auth state
       console.log('[http] Token refresh failed, clearing tokens and logging out');
@@ -194,7 +205,7 @@ class AuthenticatedHttpClient {
    */
   private buildRequestInit(options: RequestOptions): RequestInit {
     const headers: Record<string, string> = {
-      ...options.headers
+      ...options.headers,
     };
 
     // Only set Content-Type for JSON if body is not FormData
@@ -221,7 +232,7 @@ class AuthenticatedHttpClient {
       method: options.method || 'GET',
       headers,
       credentials: options.credentials || 'include',
-      signal: options.signal
+      signal: options.signal,
     };
 
     // Add body for non-GET requests
@@ -251,9 +262,11 @@ class AuthenticatedHttpClient {
 
       // Check for organization verification error BEFORE building error message
       const errorMsg = errorData?.error?.message || errorData?.message || errorData?.error || '';
-      if (typeof errorMsg === 'string' &&
-          (errorMsg.includes('Your organization must be verified to stream') ||
-           errorMsg.includes('organization must be verified'))) {
+      if (
+        typeof errorMsg === 'string' &&
+        (errorMsg.includes('Your organization must be verified to stream') ||
+          errorMsg.includes('organization must be verified'))
+      ) {
         throw new StreamingNotSupportedError(errorMsg);
       }
 
@@ -295,23 +308,41 @@ class AuthenticatedHttpClient {
   /**
    * Convenience methods for common HTTP verbs
    */
-  async get<T = any>(url: string, options: Omit<RequestOptions, 'method'> = {}): Promise<HttpResponse<T>> {
+  async get<T = any>(
+    url: string,
+    options: Omit<RequestOptions, 'method'> = {}
+  ): Promise<HttpResponse<T>> {
     return this.request<T>(url, { ...options, method: 'GET' });
   }
 
-  async post<T = any>(url: string, body?: any, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<HttpResponse<T>> {
+  async post<T = any>(
+    url: string,
+    body?: any,
+    options: Omit<RequestOptions, 'method' | 'body'> = {}
+  ): Promise<HttpResponse<T>> {
     return this.request<T>(url, { ...options, method: 'POST', body });
   }
 
-  async put<T = any>(url: string, body?: any, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<HttpResponse<T>> {
+  async put<T = any>(
+    url: string,
+    body?: any,
+    options: Omit<RequestOptions, 'method' | 'body'> = {}
+  ): Promise<HttpResponse<T>> {
     return this.request<T>(url, { ...options, method: 'PUT', body });
   }
 
-  async patch<T = any>(url: string, body?: any, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<HttpResponse<T>> {
+  async patch<T = any>(
+    url: string,
+    body?: any,
+    options: Omit<RequestOptions, 'method' | 'body'> = {}
+  ): Promise<HttpResponse<T>> {
     return this.request<T>(url, { ...options, method: 'PATCH', body });
   }
 
-  async delete<T = any>(url: string, options: Omit<RequestOptions, 'method'> = {}): Promise<HttpResponse<T>> {
+  async delete<T = any>(
+    url: string,
+    options: Omit<RequestOptions, 'method'> = {}
+  ): Promise<HttpResponse<T>> {
     return this.request<T>(url, { ...options, method: 'DELETE' });
   }
 }

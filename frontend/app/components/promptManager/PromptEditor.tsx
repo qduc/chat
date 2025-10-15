@@ -18,7 +18,7 @@ export default function PromptEditor({
   onSave,
   onCancel,
   onInlineChange,
-  onToggleEdit
+  onToggleEdit,
 }: PromptEditorProps) {
   const [editName, setEditName] = useState('');
   const [editBody, setEditBody] = useState('');
@@ -92,16 +92,17 @@ export default function PromptEditor({
               aria-label="Prompt name"
             />
           ) : (
-            <h3 id={headingId} className="text-lg font-medium text-gray-900 dark:text-gray-100 truncate">
+            <h3
+              id={headingId}
+              className="text-lg font-medium text-gray-900 dark:text-gray-100 truncate"
+            >
               {prompt.name}
               {hasUnsavedChanges && <span className="text-orange-500 ml-2">*</span>}
             </h3>
           )}
 
-          {('description' in prompt) && prompt.description && !isEditing && (
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-              {prompt.description}
-            </p>
+          {'description' in prompt && prompt.description && !isEditing && (
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">{prompt.description}</p>
           )}
         </div>
 
@@ -130,7 +131,7 @@ export default function PromptEditor({
                     onClick={handleSave}
                     type="button"
                     className="px-3 py-1 text-sm bg-green-500 text-white rounded hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 disabled:opacity-50"
-                    disabled={saving || (!editName.trim() || !editBody.trim())}
+                    disabled={saving || !editName.trim() || !editBody.trim()}
                   >
                     {saving ? 'Saving...' : 'Save'}
                   </button>
@@ -157,7 +158,11 @@ export default function PromptEditor({
               value={displayContent}
               onChange={(e) => onInlineChange(e.target.value)}
               className="flex-1 p-4 border-0 resize-none focus:outline-none bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100"
-              placeholder={isBuiltIn ? "This is a built-in prompt. Your edits will be temporary and used only for the current session." : "Edit your prompt content..."}
+              placeholder={
+                isBuiltIn
+                  ? 'This is a built-in prompt. Your edits will be temporary and used only for the current session.'
+                  : 'Edit your prompt content...'
+              }
               readOnly={false}
               aria-labelledby={headingId}
               aria-describedby={hasUnsavedChanges ? inlineNoticeId : undefined}
@@ -207,9 +212,7 @@ export default function PromptEditor({
               <span>Built-in prompt (read-only)</span>
             ) : (
               <>
-                {'usage_count' in prompt && (
-                  <span>Used {prompt.usage_count} times</span>
-                )}
+                {'usage_count' in prompt && <span>Used {prompt.usage_count} times</span>}
                 <span>Created {new Date(prompt.created_at).toLocaleDateString()}</span>
                 {'updated_at' in prompt && prompt.updated_at !== prompt.created_at && (
                   <span>Updated {new Date(prompt.updated_at).toLocaleDateString()}</span>
@@ -217,9 +220,7 @@ export default function PromptEditor({
               </>
             )}
           </div>
-          <div>
-            {displayContent.length} characters
-          </div>
+          <div>{displayContent.length} characters</div>
         </div>
       </div>
     </div>

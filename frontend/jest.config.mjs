@@ -15,7 +15,7 @@ const config = {
   // Handle ES modules in dependencies
   extensionsToTreatAsEsm: ['.ts', '.tsx'],
   transformIgnorePatterns: [
-    'node_modules/(?!(react-markdown|remark-gfm|rehype-highlight|unified|bail|is-plain-obj|trough|vfile|unist-util-stringify-position|mdast-util-from-markdown|micromark|decode-named-character-reference|character-entities|mdast-util-to-string|unist-util-generated|unist-util-position|unist-util-visit|unist-util-is|unist-util-visit-parents|mdast-util-gfm|mdast-util-gfm-table|mdast-util-gfm-strikethrough|mdast-util-gfm-task-list-item|mdast-util-gfm-autolink-literal|mdast-util-gfm-footnote|hast-util-highlight|lowlight|highlight.js)/)'
+    'node_modules/(?!(react-markdown|remark-gfm|rehype-highlight|unified|bail|is-plain-obj|trough|vfile|unist-util-stringify-position|mdast-util-from-markdown|micromark|decode-named-character-reference|character-entities|mdast-util-to-string|unist-util-generated|unist-util-position|unist-util-visit|unist-util-is|unist-util-visit-parents|mdast-util-gfm|mdast-util-gfm-table|mdast-util-gfm-strikethrough|mdast-util-gfm-task-list-item|mdast-util-gfm-autolink-literal|mdast-util-gfm-footnote|hast-util-highlight|lowlight|highlight.js)/)',
   ],
 };
 

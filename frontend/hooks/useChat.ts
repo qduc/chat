@@ -106,9 +106,7 @@ function mergeToolOutputsToAssistantMessages(messages: Message[]): Message[] {
               assistantMsg.tool_outputs = [];
             }
             // Add the output if not already present
-            const exists = assistantMsg.tool_outputs.some(
-              o => o.tool_call_id === toolCallId
-            );
+            const exists = assistantMsg.tool_outputs.some((o) => o.tool_call_id === toolCallId);
             if (!exists) {
               assistantMsg.tool_outputs.push(output);
             }
@@ -127,22 +125,19 @@ function mergeToolOutputsToAssistantMessages(messages: Message[]): Message[] {
 }
 
 function formatUpstreamError(error: APIError): string {
-  const body = error.body && typeof error.body === 'object'
-    ? (error.body as Record<string, unknown>)
-    : null;
-  const upstream = body && typeof body.upstream === 'object' && body.upstream !== null
-    ? (body.upstream as Record<string, unknown>)
-    : null;
+  const body =
+    error.body && typeof error.body === 'object' ? (error.body as Record<string, unknown>) : null;
+  const upstream =
+    body && typeof body.upstream === 'object' && body.upstream !== null
+      ? (body.upstream as Record<string, unknown>)
+      : null;
 
-  const upstreamMessage = typeof upstream?.message === 'string'
-    ? upstream.message.trim()
-    : '';
-  const bodyMessage = typeof body?.message === 'string'
-    ? body.message.trim()
-    : '';
-  const statusValue = upstream && upstream.status !== undefined && upstream.status !== null
-    ? upstream.status
-    : undefined;
+  const upstreamMessage = typeof upstream?.message === 'string' ? upstream.message.trim() : '';
+  const bodyMessage = typeof body?.message === 'string' ? body.message.trim() : '';
+  const statusValue =
+    upstream && upstream.status !== undefined && upstream.status !== null
+      ? upstream.status
+      : undefined;
   const statusPart = statusValue !== undefined ? ` (status ${statusValue})` : '';
 
   if (upstreamMessage) {
@@ -233,6 +228,9 @@ export function useChat() {
   // Image State
   const [images, setImages] = useState<any[]>([]);
 
+  // File State
+  const [files, setFiles] = useState<any[]>([]);
+
   // System Prompt State
   const [activeSystemPromptId, setActiveSystemPromptId] = useState<string | null>(null);
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
@@ -270,7 +268,7 @@ export function useChat() {
 
   // Actions - Sidebar
   const toggleSidebar = useCallback(() => {
-    setSidebarCollapsed(prev => {
+    setSidebarCollapsed((prev) => {
       const next = !prev;
       try {
         if (typeof window !== 'undefined') {
@@ -284,7 +282,7 @@ export function useChat() {
   }, []);
 
   const toggleRightSidebar = useCallback(() => {
-    setRightSidebarCollapsed(prev => !prev);
+    setRightSidebarCollapsed((prev) => !prev);
   }, []);
 
   // Actions - Conversations
@@ -342,16 +340,13 @@ export function useChat() {
           if (!resolvedProvider && maybeProvider?.trim()) {
             resolvedProvider = maybeProvider.trim();
           }
-          finalModelValue = resolvedProvider && trimmedModel
-            ? `${resolvedProvider}::${trimmedModel}`
-            : rawModel;
+          finalModelValue =
+            resolvedProvider && trimmedModel ? `${resolvedProvider}::${trimmedModel}` : rawModel;
         } else {
           if (!resolvedProvider) {
             resolvedProvider = resolveProviderFromModel(rawModel);
           }
-          finalModelValue = resolvedProvider
-            ? `${resolvedProvider}::${rawModel}`
-            : rawModel;
+          finalModelValue = resolvedProvider ? `${resolvedProvider}::${rawModel}` : rawModel;
         }
       }
 
@@ -405,25 +400,28 @@ export function useChat() {
     }
   }, []);
 
-  const deleteConversation = useCallback(async (id: string) => {
-    try {
-      await conversationsApi.delete(id);
-      setConversations(prev => prev.filter(c => c.id !== id));
-      if (conversationId === id) {
-        setConversationId(null);
-        setMessages([]);
+  const deleteConversation = useCallback(
+    async (id: string) => {
+      try {
+        await conversationsApi.delete(id);
+        setConversations((prev) => prev.filter((c) => c.id !== id));
+        if (conversationId === id) {
+          setConversationId(null);
+          setMessages([]);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to delete conversation');
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete conversation');
-    }
-  }, [conversationId]);
+    },
+    [conversationId]
+  );
 
   const loadMoreConversations = useCallback(async () => {
     if (!nextCursor || loadingConversations) return;
     try {
       setLoadingConversations(true);
       const data = await conversationsApi.list({ cursor: nextCursor, limit: 20 });
-      setConversations(prev => [...prev, ...data.items.map(convertConversationMeta)]);
+      setConversations((prev) => [...prev, ...data.items.map(convertConversationMeta)]);
       setNextCursor(data.next_cursor);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load conversations');
@@ -446,15 +444,16 @@ export function useChat() {
   }, []);
 
   const newChat = useCallback(() => {
-  setMessages([]);
-  setConversationId(null);
-  setInput('');
-  setError(null);
-  setPending(prev => ({ ...prev, error: undefined, streaming: false, abort: null }));
-  setEditingMessageId(null);
-  setEditingContent('');
-  setImages([]);
-  setCurrentConversationTitle(null);
+    setMessages([]);
+    setConversationId(null);
+    setInput('');
+    setError(null);
+    setPending((prev) => ({ ...prev, error: undefined, streaming: false, abort: null }));
+    setEditingMessageId(null);
+    setEditingContent('');
+    setImages([]);
+    setFiles([]);
+    setCurrentConversationTitle(null);
     // When starting a new chat (no active conversation) prefer the saved model
     try {
       if (typeof window !== 'undefined') {
@@ -487,422 +486,476 @@ export function useChat() {
   }, []);
 
   // Actions - Messages
-  const sendMessage = useCallback(async (content?: string, opts?: { clientMessageId?: string; skipLocalUserMessage?: boolean; retried?: boolean }) => {
-    const messageText = content || input;
-    if (!messageText.trim() && images.length === 0) return;
+  const sendMessage = useCallback(
+    async (
+      content?: string,
+      opts?: { clientMessageId?: string; skipLocalUserMessage?: boolean; retried?: boolean }
+    ) => {
+      const messageText = content || input;
+      if (!messageText.trim() && images.length === 0) return;
 
-    try {
-      setStatus('streaming');
-      setError(null);
+      try {
+        setStatus('streaming');
+        setError(null);
 
-      // Create abort controller
-      abortControllerRef.current = new AbortController();
+        // Create abort controller
+        abortControllerRef.current = new AbortController();
 
-      // Initialize token stats using ref to avoid re-renders
-      const messageId = generateClientId();
-      tokenStatsRef.current = {
-        count: 0,
-        startTime: Date.now(),
-        messageId,
-      };
-      setPending({
-        streaming: true,
-        error: undefined,
-        abort: abortControllerRef.current,
-        tokenStats: tokenStatsRef.current,
-      });
+        // Initialize token stats using ref to avoid re-renders
+        const messageId = generateClientId();
+        tokenStatsRef.current = {
+          count: 0,
+          startTime: Date.now(),
+          messageId,
+        };
+        setPending({
+          streaming: true,
+          error: undefined,
+          abort: abortControllerRef.current,
+          tokenStats: tokenStatsRef.current,
+        });
 
-      // Convert images to content format if present
-      let messageContent: MessageContent = messageText;
-      if (images.length > 0) {
-        const contentParts: any[] = [{ type: 'text', text: messageText }];
-        for (const img of images) {
-          contentParts.push({
-            type: 'image_url',
-            image_url: { url: img.downloadUrl || img.url }
-          });
+        // Prepend file contents to message text if present
+        let finalMessageText = messageText;
+        if (files.length > 0) {
+          const fileContexts = files
+            .map((f) => {
+              // Get file extension for language detection
+              const ext = f.name.split('.').pop()?.toLowerCase() || '';
+              const langMap: Record<string, string> = {
+                js: 'javascript',
+                jsx: 'javascript',
+                ts: 'typescript',
+                tsx: 'typescript',
+                py: 'python',
+                rb: 'ruby',
+                java: 'java',
+                cpp: 'cpp',
+                c: 'c',
+                go: 'go',
+                rs: 'rust',
+                sh: 'bash',
+                bash: 'bash',
+                json: 'json',
+                xml: 'xml',
+                yaml: 'yaml',
+                yml: 'yaml',
+                md: 'markdown',
+                html: 'html',
+                css: 'css',
+                scss: 'scss',
+                sql: 'sql',
+                graphql: 'graphql',
+              };
+              const language = langMap[ext] || ext;
+
+              return `File: ${f.name}\n\`\`\`${language}\n${f.content || ''}\n\`\`\``;
+            })
+            .join('\n\n');
+
+          finalMessageText = fileContexts + '\n\n' + messageText;
         }
-        messageContent = contentParts;
-      }
 
-      // Create user message (reuse provided clientMessageId when regenerating)
-      const userMessage: Message = {
-        id: opts?.clientMessageId ?? generateClientId(),
-        role: 'user',
-        content: messageContent,
-        timestamp: Date.now()
-      };
-      // When regenerating we already set the messages to the baseMessages which
-      // include the original user message. In that case, skip appending another
-      // local copy to avoid duplication.
-      if (!opts?.skipLocalUserMessage) {
-        setMessages(prev => [...prev, userMessage]);
-      }
-
-      // Create placeholder assistant message
-      const assistantMessage: Message = {
-        id: messageId, // Use the same ID for token tracking
-        role: 'assistant',
-        content: '',
-        timestamp: Date.now()
-      };
-      // Always append assistant placeholder (even when regenerating)
-      setMessages(prev => [...prev, assistantMessage]);
-
-      // Clear input and images immediately after adding message to UI
-      setInput('');
-      setImages([]);
-
-      // Send message with streaming
-      // Use refs to get the latest values and avoid stale closures
-      // Extract actual model ID from provider-qualified format (provider::model)
-      const actualModelId = modelRef.current.includes('::')
-        ? modelRef.current.split('::')[1]
-        : modelRef.current;
-
-      const response = await chat.sendMessage({
-        messages: [{ id: userMessage.id, role: 'user', content: messageContent }],
-        model: actualModelId,
-        providerId: providerIdRef.current || '',
-        stream: shouldStreamRef.current,
-        signal: abortControllerRef.current.signal,
-        conversationId: conversationId || undefined,
-        streamingEnabled: shouldStreamRef.current,
-        toolsEnabled: useToolsRef.current,
-        tools: enabledToolsRef.current,
-        qualityLevel: qualityLevelRef.current,
-        systemPrompt: systemPromptRef.current || undefined,
-        activeSystemPromptId: activeSystemPromptIdRef.current || undefined,
-        onToken: (token: string) => {
-          // Update token count using ref to avoid re-renders on every token
-          if (tokenStatsRef.current && tokenStatsRef.current.messageId === messageId) {
-            // If this is the first token (count is 0), update startTime to now
-            const isFirstToken = tokenStatsRef.current.count === 0;
-            tokenStatsRef.current.count += 1;
-            if (isFirstToken) {
-              tokenStatsRef.current.startTime = Date.now();
-            }
+        // Convert images to content format if present
+        let messageContent: MessageContent = finalMessageText;
+        if (images.length > 0) {
+          const contentParts: any[] = [{ type: 'text', text: finalMessageText }];
+          for (const img of images) {
+            contentParts.push({
+              type: 'image_url',
+              image_url: { url: img.downloadUrl || img.url },
+            });
           }
+          messageContent = contentParts;
+        }
 
-          setMessages(prev => {
-            const lastIdx = prev.length - 1;
-            if (lastIdx < 0) return prev;
+        // Create user message (reuse provided clientMessageId when regenerating)
+        const userMessage: Message = {
+          id: opts?.clientMessageId ?? generateClientId(),
+          role: 'user',
+          content: messageContent,
+          timestamp: Date.now(),
+        };
+        // When regenerating we already set the messages to the baseMessages which
+        // include the original user message. In that case, skip appending another
+        // local copy to avoid duplication.
+        if (!opts?.skipLocalUserMessage) {
+          setMessages((prev) => [...prev, userMessage]);
+        }
 
-            const lastMsg = prev[lastIdx];
-            if (!lastMsg || lastMsg.role !== 'assistant') return prev;
+        // Create placeholder assistant message
+        const assistantMessage: Message = {
+          id: messageId, // Use the same ID for token tracking
+          role: 'assistant',
+          content: '',
+          timestamp: Date.now(),
+        };
+        // Always append assistant placeholder (even when regenerating)
+        setMessages((prev) => [...prev, assistantMessage]);
 
-            const newContent = typeof lastMsg.content === 'string'
-              ? lastMsg.content + token
-              : token;
+        // Clear input, images, and files immediately after adding message to UI
+        setInput('');
+        setImages([]);
+        setFiles([]);
 
-            return [
-              ...prev.slice(0, lastIdx),
-              { ...lastMsg, content: newContent }
-            ];
-          });
-        },
-        onEvent: (event) => {
-          if (event.type === 'text') {
-            // Update token count using ref to avoid re-renders on every event
+        // Send message with streaming
+        // Use refs to get the latest values and avoid stale closures
+        // Extract actual model ID from provider-qualified format (provider::model)
+        const actualModelId = modelRef.current.includes('::')
+          ? modelRef.current.split('::')[1]
+          : modelRef.current;
+
+        const response = await chat.sendMessage({
+          messages: [{ id: userMessage.id, role: 'user', content: messageContent }],
+          model: actualModelId,
+          providerId: providerIdRef.current || '',
+          stream: shouldStreamRef.current,
+          signal: abortControllerRef.current.signal,
+          conversationId: conversationId || undefined,
+          streamingEnabled: shouldStreamRef.current,
+          toolsEnabled: useToolsRef.current,
+          tools: enabledToolsRef.current,
+          qualityLevel: qualityLevelRef.current,
+          systemPrompt: systemPromptRef.current || undefined,
+          activeSystemPromptId: activeSystemPromptIdRef.current || undefined,
+          onToken: (token: string) => {
+            // Update token count using ref to avoid re-renders on every token
             if (tokenStatsRef.current && tokenStatsRef.current.messageId === messageId) {
-              // If this is the first content (count is 0), update startTime to now
-              const isFirstContent = tokenStatsRef.current.count === 0;
+              // If this is the first token (count is 0), update startTime to now
+              const isFirstToken = tokenStatsRef.current.count === 0;
               tokenStatsRef.current.count += 1;
-              if (isFirstContent) {
+              if (isFirstToken) {
                 tokenStatsRef.current.startTime = Date.now();
               }
             }
 
-            // Handle text events from tool_events (non-streaming responses)
-            setMessages(prev => {
+            setMessages((prev) => {
               const lastIdx = prev.length - 1;
               if (lastIdx < 0) return prev;
 
               const lastMsg = prev[lastIdx];
               if (!lastMsg || lastMsg.role !== 'assistant') return prev;
 
-              // Append text to existing content
-              const currentContent = typeof lastMsg.content === 'string' ? lastMsg.content : '';
-              const newContent = currentContent + event.value;
+              const newContent =
+                typeof lastMsg.content === 'string' ? lastMsg.content + token : token;
 
-              return [
-                ...prev.slice(0, lastIdx),
-                { ...lastMsg, content: newContent }
-              ];
+              return [...prev.slice(0, lastIdx), { ...lastMsg, content: newContent }];
             });
-          } else if (event.type === 'tool_call') {
-            setMessages(prev => {
-              const lastIdx = prev.length - 1;
-              if (lastIdx < 0) return prev;
-
-              const lastMsg = prev[lastIdx];
-              if (!lastMsg || lastMsg.role !== 'assistant') return prev;
-
-              // Calculate current text length to set as textOffset
-              const currentTextLength = typeof lastMsg.content === 'string'
-                ? lastMsg.content.length
-                : 0;
-
-              // Accumulate tool calls by id (unique identifier) to avoid duplicates during streaming
-              const tcDelta = event.value;
-              const existingToolCalls = lastMsg.tool_calls || [];
-
-              // Use id as the primary identifier (OpenAI spec), fallback to index for older formats
-              const existingIdx = tcDelta.id
-                ? existingToolCalls.findIndex(tc => tc.id === tcDelta.id)
-                : existingToolCalls.findIndex(tc => (tc.index ?? 0) === (tcDelta.index ?? 0));
-
-              let updatedToolCalls;
-              if (existingIdx >= 0) {
-                // Update existing tool call (merge chunks during streaming)
-                updatedToolCalls = [...existingToolCalls];
-                const existing = { ...updatedToolCalls[existingIdx] };
-                if (tcDelta.id) existing.id = tcDelta.id;
-                if (tcDelta.type) existing.type = tcDelta.type;
-                if (tcDelta.index !== undefined) existing.index = tcDelta.index;
-                if (tcDelta.function?.name) {
-                  existing.function = { ...existing.function, name: tcDelta.function.name };
+          },
+          onEvent: (event) => {
+            if (event.type === 'text') {
+              // Update token count using ref to avoid re-renders on every event
+              if (tokenStatsRef.current && tokenStatsRef.current.messageId === messageId) {
+                // If this is the first content (count is 0), update startTime to now
+                const isFirstContent = tokenStatsRef.current.count === 0;
+                tokenStatsRef.current.count += 1;
+                if (isFirstContent) {
+                  tokenStatsRef.current.startTime = Date.now();
                 }
-                if (tcDelta.function?.arguments) {
-                  existing.function = {
-                    ...existing.function,
-                    arguments: (existing.function?.arguments || '') + tcDelta.function.arguments
-                  };
-                }
-                updatedToolCalls[existingIdx] = existing;
-              } else {
-                // New tool call - capture textOffset from current content length
-                updatedToolCalls = [
-                  ...existingToolCalls,
-                  {
-                    id: tcDelta.id,
-                    type: tcDelta.type || 'function',
-                    index: tcDelta.index ?? existingToolCalls.length,
-                    textOffset: currentTextLength, // Store the position where tool call occurred
-                    function: {
-                      name: tcDelta.function?.name || '',
-                      arguments: tcDelta.function?.arguments || ''
-                    }
-                  }
-                ];
               }
 
-              // Create new array with updated last message (immutable update)
-              return [
-                ...prev.slice(0, lastIdx),
-                { ...lastMsg, tool_calls: updatedToolCalls }
-              ];
-            });
-          } else if (event.type === 'tool_output') {
-            setMessages(prev => {
-              const lastIdx = prev.length - 1;
-              if (lastIdx < 0) return prev;
+              // Handle text events from tool_events (non-streaming responses)
+              setMessages((prev) => {
+                const lastIdx = prev.length - 1;
+                if (lastIdx < 0) return prev;
 
-              const lastMsg = prev[lastIdx];
-              if (!lastMsg || lastMsg.role !== 'assistant') return prev;
+                const lastMsg = prev[lastIdx];
+                if (!lastMsg || lastMsg.role !== 'assistant') return prev;
 
-              // Avoid duplicate tool outputs by checking tool_call_id or name
-              const outputValue = event.value;
-              const toolCallId = outputValue.tool_call_id;
-              const outputName = outputValue.name;
+                // Append text to existing content
+                const currentContent = typeof lastMsg.content === 'string' ? lastMsg.content : '';
+                const newContent = currentContent + event.value;
 
-              const existingToolOutputs = lastMsg.tool_outputs || [];
-              // Check if this tool output already exists
-              const existingIdx = existingToolOutputs.findIndex(out => {
-                if (toolCallId && out.tool_call_id) {
-                  return out.tool_call_id === toolCallId;
-                }
-                if (outputName && out.name) {
-                  return out.name === outputName;
-                }
-                return false;
+                return [...prev.slice(0, lastIdx), { ...lastMsg, content: newContent }];
               });
+            } else if (event.type === 'tool_call') {
+              setMessages((prev) => {
+                const lastIdx = prev.length - 1;
+                if (lastIdx < 0) return prev;
 
-              if (existingIdx === -1) {
+                const lastMsg = prev[lastIdx];
+                if (!lastMsg || lastMsg.role !== 'assistant') return prev;
+
+                // Calculate current text length to set as textOffset
+                const currentTextLength =
+                  typeof lastMsg.content === 'string' ? lastMsg.content.length : 0;
+
+                // Accumulate tool calls by id (unique identifier) to avoid duplicates during streaming
+                const tcDelta = event.value;
+                const existingToolCalls = lastMsg.tool_calls || [];
+
+                // Use id as the primary identifier (OpenAI spec), fallback to index for older formats
+                const existingIdx = tcDelta.id
+                  ? existingToolCalls.findIndex((tc) => tc.id === tcDelta.id)
+                  : existingToolCalls.findIndex((tc) => (tc.index ?? 0) === (tcDelta.index ?? 0));
+
+                let updatedToolCalls;
+                if (existingIdx >= 0) {
+                  // Update existing tool call (merge chunks during streaming)
+                  updatedToolCalls = [...existingToolCalls];
+                  const existing = { ...updatedToolCalls[existingIdx] };
+                  if (tcDelta.id) existing.id = tcDelta.id;
+                  if (tcDelta.type) existing.type = tcDelta.type;
+                  if (tcDelta.index !== undefined) existing.index = tcDelta.index;
+                  if (tcDelta.function?.name) {
+                    existing.function = { ...existing.function, name: tcDelta.function.name };
+                  }
+                  if (tcDelta.function?.arguments) {
+                    existing.function = {
+                      ...existing.function,
+                      arguments: (existing.function?.arguments || '') + tcDelta.function.arguments,
+                    };
+                  }
+                  updatedToolCalls[existingIdx] = existing;
+                } else {
+                  // New tool call - capture textOffset from current content length
+                  updatedToolCalls = [
+                    ...existingToolCalls,
+                    {
+                      id: tcDelta.id,
+                      type: tcDelta.type || 'function',
+                      index: tcDelta.index ?? existingToolCalls.length,
+                      textOffset: currentTextLength, // Store the position where tool call occurred
+                      function: {
+                        name: tcDelta.function?.name || '',
+                        arguments: tcDelta.function?.arguments || '',
+                      },
+                    },
+                  ];
+                }
+
                 // Create new array with updated last message (immutable update)
-                return [
-                  ...prev.slice(0, lastIdx),
-                  { ...lastMsg, tool_outputs: [...existingToolOutputs, outputValue] }
-                ];
-              } else {
-                // If it already exists, ignore the duplicate
+                return [...prev.slice(0, lastIdx), { ...lastMsg, tool_calls: updatedToolCalls }];
+              });
+            } else if (event.type === 'tool_output') {
+              setMessages((prev) => {
+                const lastIdx = prev.length - 1;
+                if (lastIdx < 0) return prev;
+
+                const lastMsg = prev[lastIdx];
+                if (!lastMsg || lastMsg.role !== 'assistant') return prev;
+
+                // Avoid duplicate tool outputs by checking tool_call_id or name
+                const outputValue = event.value;
+                const toolCallId = outputValue.tool_call_id;
+                const outputName = outputValue.name;
+
+                const existingToolOutputs = lastMsg.tool_outputs || [];
+                // Check if this tool output already exists
+                const existingIdx = existingToolOutputs.findIndex((out) => {
+                  if (toolCallId && out.tool_call_id) {
+                    return out.tool_call_id === toolCallId;
+                  }
+                  if (outputName && out.name) {
+                    return out.name === outputName;
+                  }
+                  return false;
+                });
+
+                if (existingIdx === -1) {
+                  // Create new array with updated last message (immutable update)
+                  return [
+                    ...prev.slice(0, lastIdx),
+                    { ...lastMsg, tool_outputs: [...existingToolOutputs, outputValue] },
+                  ];
+                } else {
+                  // If it already exists, ignore the duplicate
+                  return prev;
+                }
+              });
+            } else if (event.type === 'usage') {
+              setMessages((prev) => {
+                const lastIdx = prev.length - 1;
+                if (lastIdx < 0) return prev;
+
+                const lastMsg = prev[lastIdx];
+                if (!lastMsg || lastMsg.role !== 'assistant') return prev;
+
+                // Only update if usage data has actually changed
+                // Compare the usage object properties to avoid infinite loops
+                const existingUsage = lastMsg.usage;
+                const newUsage = event.value;
+
+                // Check if usage data is the same (deep equality check)
+                if (existingUsage) {
+                  const providerSame = existingUsage.provider === newUsage.provider;
+                  const modelSame = existingUsage.model === newUsage.model;
+                  const promptTokensSame = existingUsage.prompt_tokens === newUsage.prompt_tokens;
+                  const completionTokensSame =
+                    existingUsage.completion_tokens === newUsage.completion_tokens;
+                  const totalTokensSame = existingUsage.total_tokens === newUsage.total_tokens;
+                  const reasoningTokensSame =
+                    existingUsage.reasoning_tokens === newUsage.reasoning_tokens;
+
+                  if (
+                    providerSame &&
+                    modelSame &&
+                    promptTokensSame &&
+                    completionTokensSame &&
+                    totalTokensSame &&
+                    reasoningTokensSame
+                  ) {
+                    return prev; // No change, return existing state
+                  }
+                }
+
+                return [...prev.slice(0, lastIdx), { ...lastMsg, usage: event.value }];
+              });
+            }
+          },
+        } as ChatOptionsExtended);
+
+        // Update assistant message with final content
+        // If content was built from tool_events, use that; otherwise use response.content
+        setMessages((prev) => {
+          const lastIdx = prev.length - 1;
+          if (lastIdx < 0) return prev;
+
+          const lastMsg = prev[lastIdx];
+          if (!lastMsg || lastMsg.role !== 'assistant') return prev;
+
+          const responseContent = response.content as MessageContent;
+          const hasResponseContent =
+            typeof responseContent === 'string'
+              ? responseContent.length > 0
+              : Array.isArray(responseContent)
+                ? responseContent.length > 0
+                : responseContent != null;
+
+          const finalContent = hasResponseContent ? responseContent : lastMsg.content;
+
+          return [...prev.slice(0, lastIdx), { ...lastMsg, content: finalContent }];
+        });
+
+        // Update conversation metadata if returned
+        if (response.conversation) {
+          const isNewConversation = conversationId !== response.conversation.id;
+          setConversationId(response.conversation.id);
+          setCurrentConversationTitle(response.conversation.title || null);
+
+          // If this is a new conversation, add it to the sidebar list and select it
+          if (isNewConversation) {
+            const newConversation: Conversation = {
+              id: response.conversation.id,
+              title: response.conversation.title || 'Untitled conversation',
+              created_at: response.conversation.created_at,
+              updatedAt: response.conversation.created_at,
+            };
+
+            // Add to the top of the list and ensure it's selected
+            setConversations((prev) => {
+              // Check if it already exists (shouldn't happen, but be safe)
+              const exists = prev.some((c) => c.id === newConversation.id);
+              if (exists) {
                 return prev;
               }
+              return [newConversation, ...prev];
             });
-          } else if (event.type === 'usage') {
-            setMessages(prev => {
-              const lastIdx = prev.length - 1;
-              if (lastIdx < 0) return prev;
 
-              const lastMsg = prev[lastIdx];
-              if (!lastMsg || lastMsg.role !== 'assistant') return prev;
-
-              // Only update if usage data has actually changed
-              // Compare the usage object properties to avoid infinite loops
-              const existingUsage = lastMsg.usage;
-              const newUsage = event.value;
-
-              // Check if usage data is the same (deep equality check)
-              if (existingUsage) {
-                const providerSame = existingUsage.provider === newUsage.provider;
-                const modelSame = existingUsage.model === newUsage.model;
-                const promptTokensSame = existingUsage.prompt_tokens === newUsage.prompt_tokens;
-                const completionTokensSame = existingUsage.completion_tokens === newUsage.completion_tokens;
-                const totalTokensSame = existingUsage.total_tokens === newUsage.total_tokens;
-                const reasoningTokensSame = existingUsage.reasoning_tokens === newUsage.reasoning_tokens;
-
-                if (providerSame && modelSame && promptTokensSame && completionTokensSame && totalTokensSame && reasoningTokensSame) {
-                  return prev; // No change, return existing state
+            // Poll for title update after a delay (title generation is async on backend)
+            // Only poll if we got a generic/empty title initially
+            if (
+              !response.conversation.title ||
+              response.conversation.title === 'Untitled conversation'
+            ) {
+              setTimeout(async () => {
+                try {
+                  const updated = await conversationsApi.get(response.conversation!.id, {
+                    limit: 1,
+                  });
+                  if (updated.title && updated.title !== response.conversation!.title) {
+                    // Update current conversation title if we're still on this conversation
+                    setCurrentConversationTitle(updated.title);
+                    // Update in sidebar list
+                    setConversations((prev) =>
+                      prev.map((c) =>
+                        c.id === response.conversation!.id
+                          ? { ...c, title: updated.title ?? c.title }
+                          : c
+                      )
+                    );
+                  }
+                } catch (err) {
+                  // Silent failure - title update is non-critical
+                  console.warn('Failed to fetch updated conversation title:', err);
                 }
-              }
-
-              return [
-                ...prev.slice(0, lastIdx),
-                { ...lastMsg, usage: event.value }
-              ];
-            });
-          }
-        }
-      } as ChatOptionsExtended);
-
-      // Update assistant message with final content
-      // If content was built from tool_events, use that; otherwise use response.content
-      setMessages(prev => {
-        const lastIdx = prev.length - 1;
-        if (lastIdx < 0) return prev;
-
-        const lastMsg = prev[lastIdx];
-        if (!lastMsg || lastMsg.role !== 'assistant') return prev;
-
-  const responseContent = response.content as MessageContent;
-        const hasResponseContent = typeof responseContent === 'string'
-          ? responseContent.length > 0
-          : Array.isArray(responseContent)
-            ? responseContent.length > 0
-            : responseContent != null;
-
-        const finalContent = hasResponseContent ? responseContent : lastMsg.content;
-
-        return [
-          ...prev.slice(0, lastIdx),
-          { ...lastMsg, content: finalContent }
-        ];
-      });
-
-      // Update conversation metadata if returned
-      if (response.conversation) {
-        const isNewConversation = conversationId !== response.conversation.id;
-        setConversationId(response.conversation.id);
-        setCurrentConversationTitle(response.conversation.title || null);
-
-        // If this is a new conversation, add it to the sidebar list and select it
-        if (isNewConversation) {
-          const newConversation: Conversation = {
-            id: response.conversation.id,
-            title: response.conversation.title || 'Untitled conversation',
-            created_at: response.conversation.created_at,
-            updatedAt: response.conversation.created_at,
-          };
-
-          // Add to the top of the list and ensure it's selected
-          setConversations(prev => {
-            // Check if it already exists (shouldn't happen, but be safe)
-            const exists = prev.some(c => c.id === newConversation.id);
-            if (exists) {
-              return prev;
+              }, 2000); // Poll after 2 seconds to allow title generation to complete
             }
-            return [newConversation, ...prev];
-          });
-
-          // Poll for title update after a delay (title generation is async on backend)
-          // Only poll if we got a generic/empty title initially
-          if (!response.conversation.title || response.conversation.title === 'Untitled conversation') {
-            setTimeout(async () => {
-              try {
-                const updated = await conversationsApi.get(response.conversation!.id, { limit: 1 });
-                if (updated.title && updated.title !== response.conversation!.title) {
-                  // Update current conversation title if we're still on this conversation
-                  setCurrentConversationTitle(updated.title);
-                  // Update in sidebar list
-                  setConversations(prev => prev.map(c =>
-                    c.id === response.conversation!.id ? { ...c, title: updated.title ?? c.title } : c
-                  ));
-                }
-              } catch (err) {
-                // Silent failure - title update is non-critical
-                console.warn('Failed to fetch updated conversation title:', err);
-              }
-            }, 2000); // Poll after 2 seconds to allow title generation to complete
           }
         }
-      }
 
-      setStatus('idle');
-      setPending(prev => ({
-        ...prev,
-        streaming: false,
-        tokenStats: tokenStatsRef.current ?? undefined
-      }));
+        setStatus('idle');
+        setPending((prev) => ({
+          ...prev,
+          streaming: false,
+          tokenStats: tokenStatsRef.current ?? undefined,
+        }));
 
-      const effectiveConversationId = response.conversation?.id ?? conversationId;
-      if (effectiveConversationId) {
-        conversationsApi.invalidateDetailCache(effectiveConversationId);
-      }
-      conversationsApi.clearListCache();
-    } catch (err) {
-      // Handle streaming not supported error by retrying with streaming disabled
-      if (err instanceof StreamingNotSupportedError) {
-        // Only retry once to avoid infinite retry loops which can cause max update
-        // depth exceeded when the backend doesn't support streaming at all.
-        if (opts?.retried) {
-          // Already retried once; surface a useful error and stop.
-          setError('Streaming not supported by provider');
-          setStatus('idle');
-          setPending(prev => ({ ...prev, streaming: false, error: 'Streaming not supported by provider' }));
+        const effectiveConversationId = response.conversation?.id ?? conversationId;
+        if (effectiveConversationId) {
+          conversationsApi.invalidateDetailCache(effectiveConversationId);
+        }
+        conversationsApi.clearListCache();
+      } catch (err) {
+        // Handle streaming not supported error by retrying with streaming disabled
+        if (err instanceof StreamingNotSupportedError) {
+          // Only retry once to avoid infinite retry loops which can cause max update
+          // depth exceeded when the backend doesn't support streaming at all.
+          if (opts?.retried) {
+            // Already retried once; surface a useful error and stop.
+            setError('Streaming not supported by provider');
+            setStatus('idle');
+            setPending((prev) => ({
+              ...prev,
+              streaming: false,
+              error: 'Streaming not supported by provider',
+            }));
+            return;
+          }
+
+          console.log('[AUTO-RETRY] Streaming not supported, retrying with streaming disabled');
+
+          // Disable streaming
+          setShouldStream(false);
+          shouldStreamRef.current = false;
+
+          // Remove the failed assistant message
+          setMessages((prev) => prev.slice(0, -1));
+
+          // Retry by calling sendMessage again (it will use the updated shouldStreamRef)
+          // Use setTimeout to break out of the current call stack
+          // Pass skipLocalUserMessage: true to avoid duplicating the user message
+          // and mark retried=true so we don't loop indefinitely.
+          setTimeout(() => {
+            void sendMessage(content, { ...opts, skipLocalUserMessage: true, retried: true });
+          }, 0);
+
           return;
         }
 
-        console.log('[AUTO-RETRY] Streaming not supported, retrying with streaming disabled');
+        let displayError: string;
 
-        // Disable streaming
-        setShouldStream(false);
-        shouldStreamRef.current = false;
+        if (err instanceof APIError) {
+          displayError = formatUpstreamError(err);
+        } else if (err instanceof Error && err.name === 'AbortError') {
+          displayError = 'Message cancelled';
+        } else if (err instanceof Error) {
+          displayError = err.message;
+        } else {
+          displayError = 'Failed to send message';
+        }
 
-        // Remove the failed assistant message
-        setMessages(prev => prev.slice(0, -1));
-
-        // Retry by calling sendMessage again (it will use the updated shouldStreamRef)
-        // Use setTimeout to break out of the current call stack
-        // Pass skipLocalUserMessage: true to avoid duplicating the user message
-        // and mark retried=true so we don't loop indefinitely.
-        setTimeout(() => {
-          void sendMessage(content, { ...opts, skipLocalUserMessage: true, retried: true });
-        }, 0);
-
-        return;
+        setError(displayError);
+        setStatus('idle');
+        setPending((prev) => ({
+          ...prev,
+          streaming: false,
+          error: displayError,
+        }));
       }
-
-      let displayError: string;
-
-      if (err instanceof APIError) {
-        displayError = formatUpstreamError(err);
-      } else if (err instanceof Error && err.name === 'AbortError') {
-        displayError = 'Message cancelled';
-      } else if (err instanceof Error) {
-        displayError = err.message;
-      } else {
-        displayError = 'Failed to send message';
-      }
-
-      setError(displayError);
-      setStatus('idle');
-      setPending(prev => ({
-        ...prev,
-        streaming: false,
-        error: displayError
-      }));
-    }
-  }, [input, images, conversationId]);
+    },
+    [input, images, files, conversationId]
+  );
 
   const stopStreaming = useCallback(() => {
     if (abortControllerRef.current) {
@@ -910,35 +963,40 @@ export function useChat() {
       abortControllerRef.current = null;
     }
     setStatus('idle');
-    setPending(prev => ({ ...prev, streaming: false }));
+    setPending((prev) => ({ ...prev, streaming: false }));
   }, []);
 
-  const regenerate = useCallback(async (baseMessages: Message[]) => {
-    setMessages(baseMessages);
+  const regenerate = useCallback(
+    async (baseMessages: Message[]) => {
+      setMessages(baseMessages);
 
-    if (baseMessages.length === 0) return;
+      if (baseMessages.length === 0) return;
 
-    const lastUserMessage = baseMessages
-      .slice()
-      .reverse()
-      .find(m => m.role === 'user');
+      const lastUserMessage = baseMessages
+        .slice()
+        .reverse()
+        .find((m) => m.role === 'user');
 
-    if (lastUserMessage) {
-      // When regenerating, reuse the original user message id and avoid
-      // appending a duplicate local user message (baseMessages already contain it).
-      await sendMessage(
-        typeof lastUserMessage.content === 'string' ? lastUserMessage.content : '',
-        { clientMessageId: lastUserMessage.id, skipLocalUserMessage: true }
-      );
-    }
-  }, [sendMessage]);
+      if (lastUserMessage) {
+        // When regenerating, reuse the original user message id and avoid
+        // appending a duplicate local user message (baseMessages already contain it).
+        await sendMessage(
+          typeof lastUserMessage.content === 'string' ? lastUserMessage.content : '',
+          { clientMessageId: lastUserMessage.id, skipLocalUserMessage: true }
+        );
+      }
+    },
+    [sendMessage]
+  );
 
   // Actions - Editing
   const startEdit = useCallback((messageId: string, content: MessageContent) => {
     setEditingMessageId(messageId);
     // Convert MessageContent to string for editing
-    const contentStr = typeof content === 'string' ? content :
-      content.map(c => c.type === 'text' ? c.text : '[Image]').join('\n');
+    const contentStr =
+      typeof content === 'string'
+        ? content
+        : content.map((c) => (c.type === 'text' ? c.text : '[Image]')).join('\n');
     setEditingContent(contentStr);
   }, []);
 
@@ -962,10 +1020,8 @@ export function useChat() {
       );
 
       // Update local messages
-      setMessages(prev =>
-        prev.map(m =>
-          m.id === editingMessageId ? { ...m, content: editingContent } : m
-        )
+      setMessages((prev) =>
+        prev.map((m) => (m.id === editingMessageId ? { ...m, content: editingContent } : m))
       );
 
       // If a new conversation was created, update the conversation ID
@@ -986,7 +1042,9 @@ export function useChat() {
 
       // Fetch providers list
       const providersResponse = await httpClient.get<{ providers: Provider[] }>('/v1/providers');
-      const providersList = providersResponse.data.providers.filter((p: Provider) => p.enabled === 1);
+      const providersList = providersResponse.data.providers.filter(
+        (p: Provider) => p.enabled === 1
+      );
 
       if (providersList.length === 0) {
         setModelGroups([]);
@@ -1004,20 +1062,22 @@ export function useChat() {
 
       for (const provider of providersList) {
         try {
-          const modelsResponse = await httpClient.get<{ provider: any; models: any[] }>(`/v1/providers/${provider.id}/models`);
+          const modelsResponse = await httpClient.get<{ provider: any; models: any[] }>(
+            `/v1/providers/${provider.id}/models`
+          );
           const models = modelsResponse.data.models || [];
 
           if (models.length > 0) {
             // Create model options for this provider with provider-qualified values
             const providerOptions: ModelOption[] = models.map((model: any) => ({
               value: `${provider.id}::${model.id}`,
-              label: model.id
+              label: model.id,
             }));
 
             groups.push({
               id: provider.id,
               label: provider.name,
-              options: providerOptions
+              options: providerOptions,
             });
 
             options.push(...providerOptions);
@@ -1047,15 +1107,15 @@ export function useChat() {
         }
       }
 
-  setModelGroups(groups);
-  setModelOptions(options);
-  setModelToProvider(modelToProviderMap);
-  setModelCapabilities(capabilitiesMap);
-  modelToProviderRef.current = modelToProviderMap;
+      setModelGroups(groups);
+      setModelOptions(options);
+      setModelToProvider(modelToProviderMap);
+      setModelCapabilities(capabilitiesMap);
+      modelToProviderRef.current = modelToProviderMap;
 
       // Set default provider if not already set (use functional update to avoid capturing providerId)
       if (providersList.length > 0) {
-        setProviderId(prev => {
+        setProviderId((prev) => {
           const nextValue = prev ?? providersList[0].id;
           providerIdRef.current = nextValue;
           return nextValue;
@@ -1074,13 +1134,16 @@ export function useChat() {
   }, []);
 
   // Wrapper setters that update both state and refs to avoid stale closures
-  const setProviderIdWrapper = useCallback((id: string | null | ((prev: string | null) => string | null)) => {
-    setProviderId(prev => {
-      const nextValue = typeof id === 'function' ? id(prev) : id;
-      providerIdRef.current = nextValue;
-      return nextValue;
-    });
-  }, []);
+  const setProviderIdWrapper = useCallback(
+    (id: string | null | ((prev: string | null) => string | null)) => {
+      setProviderId((prev) => {
+        const nextValue = typeof id === 'function' ? id(prev) : id;
+        providerIdRef.current = nextValue;
+        return nextValue;
+      });
+    },
+    []
+  );
 
   const setUseToolsWrapper = useCallback((value: boolean) => {
     setUseTools(value);
@@ -1139,7 +1202,7 @@ export function useChat() {
       return;
     }
 
-    const defaultPrompt = systemPrompts.built_ins.find(p => p.id === DEFAULT_SYSTEM_PROMPT_ID);
+    const defaultPrompt = systemPrompts.built_ins.find((p) => p.id === DEFAULT_SYSTEM_PROMPT_ID);
     if (defaultPrompt) {
       // Apply to local chat state and refs so UI and sendMessage use it
       setSystemPrompt(defaultPrompt.body);
@@ -1187,6 +1250,7 @@ export function useChat() {
     shouldStream,
     qualityLevel,
     images,
+    files,
     user,
     activeSystemPromptId,
     systemPrompt,
@@ -1201,6 +1265,7 @@ export function useChat() {
     setShouldStream: setShouldStreamWrapper,
     setQualityLevel: setQualityLevelWrapper,
     setImages,
+    setFiles,
     setActiveSystemPromptId: setActiveSystemPromptIdWrapper,
     toggleSidebar,
     toggleRightSidebar,

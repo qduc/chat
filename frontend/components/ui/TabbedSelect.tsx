@@ -1,4 +1,4 @@
-"use client";
+'use client';
 import React from 'react';
 import { ChevronDown } from 'lucide-react';
 import {
@@ -11,7 +11,7 @@ import {
   useDismiss,
   useRole,
   useInteractions,
-  FloatingFocusManager
+  FloatingFocusManager,
 } from '@floating-ui/react';
 
 export type Option = { value: string; label: string };
@@ -25,10 +25,16 @@ interface TabbedSelectProps {
   className?: string;
 }
 
-export default function TabbedSelect({ ariaLabel, value, onChange, groups, className = '' }: TabbedSelectProps) {
+export default function TabbedSelect({
+  ariaLabel,
+  value,
+  onChange,
+  groups,
+  className = '',
+}: TabbedSelectProps) {
   const [isOpen, setIsOpen] = React.useState(false);
   const currentGroupIndex = React.useMemo(() => {
-    const idx = groups.findIndex(g => g.options.some(o => o.value === value));
+    const idx = groups.findIndex((g) => g.options.some((o) => o.value === value));
     return idx >= 0 ? idx : 0;
   }, [groups, value]);
   const [activeIndex, setActiveIndex] = React.useState(currentGroupIndex);
@@ -37,7 +43,7 @@ export default function TabbedSelect({ ariaLabel, value, onChange, groups, class
 
   const selectedOption = React.useMemo(() => {
     for (const g of groups) {
-      const found = g.options.find(o => o.value === value);
+      const found = g.options.find((o) => o.value === value);
       if (found) return found;
     }
     return undefined;
@@ -70,7 +76,9 @@ export default function TabbedSelect({ ariaLabel, value, onChange, groups, class
         {...getReferenceProps()}
       >
         <span className="truncate">{selectedOption?.label || 'Select model...'}</span>
-        <ChevronDown className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown
+          className={`w-4 h-4 flex-shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+        />
       </button>
 
       {isOpen && (
@@ -103,16 +111,21 @@ export default function TabbedSelect({ ariaLabel, value, onChange, groups, class
 
             {/* Options */}
             <div className="max-h-60 overflow-y-auto">
-              {groups[activeIndex]?.options.map(opt => (
+              {groups[activeIndex]?.options.map((opt) => (
                 <button
                   key={opt.value}
                   type="button"
                   role="option"
                   aria-selected={opt.value === value}
                   className={`w-full block text-left px-3 py-2 text-sm cursor-pointer hover:bg-slate-100 dark:hover:bg-neutral-800 hover:text-slate-900 dark:hover:text-slate-100 transition-all duration-200 ${
-                    opt.value === value ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' : 'text-slate-700 dark:text-slate-300'
+                    opt.value === value
+                      ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
+                      : 'text-slate-700 dark:text-slate-300'
                   }`}
-                  onClick={() => { onChange(opt.value); setIsOpen(false); }}
+                  onClick={() => {
+                    onChange(opt.value);
+                    setIsOpen(false);
+                  }}
                 >
                   {opt.label}
                 </button>
@@ -127,4 +140,3 @@ export default function TabbedSelect({ ariaLabel, value, onChange, groups, class
     </div>
   );
 }
-

@@ -8,7 +8,7 @@
 describe('Tool output merging', () => {
   test('merges tool outputs from tool messages to assistant messages', () => {
     // Input: backend format with separate tool messages
-  const backendMessages: any[] = [
+    const backendMessages: any[] = [
       {
         id: '1',
         role: 'user' as const,
@@ -36,13 +36,15 @@ describe('Tool output merging', () => {
       {
         id: '3',
         role: 'tool' as const,
-        content: '{"iso":"2025-10-07T15:31:10.744Z","human":"10/07/2025, 15:31:10 UTC","timezone":"UTC"}',
+        content:
+          '{"iso":"2025-10-07T15:31:10.744Z","human":"10/07/2025, 15:31:10 UTC","timezone":"UTC"}',
         timestamp: 1696701071981,
         tool_call_id: 'call_Q1wvZtxlpMy971o8mLv4C9XH',
         tool_outputs: [
           {
             tool_call_id: 'call_Q1wvZtxlpMy971o8mLv4C9XH',
-            output: '{"iso":"2025-10-07T15:31:10.744Z","human":"10/07/2025, 15:31:10 UTC","timezone":"UTC"}',
+            output:
+              '{"iso":"2025-10-07T15:31:10.744Z","human":"10/07/2025, 15:31:10 UTC","timezone":"UTC"}',
             status: 'success',
           },
         ],

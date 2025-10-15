@@ -23,7 +23,7 @@ export default function PromptDropdown({
   selectedPromptId,
   hasUnsavedChanges,
   onSelectPrompt,
-  onClearSelection
+  onClearSelection,
 }: PromptDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
@@ -44,16 +44,32 @@ export default function PromptDropdown({
   // Build dropdown items array for keyboard navigation
   const dropdownItems = [
     { type: 'option', id: null, name: 'No system prompt' },
-    ...sortedBuiltIns.map(prompt => ({ type: 'option', id: prompt.id, name: prompt.name, isBuiltIn: true })),
-    ...sortedCustom.map(prompt => ({ type: 'option', id: prompt.id, name: prompt.name, isBuiltIn: false }))
-  ] as Array<{ type: 'option' | 'header'; id?: string | null; name?: string; label?: string; isBuiltIn?: boolean }>;
+    ...sortedBuiltIns.map((prompt) => ({
+      type: 'option',
+      id: prompt.id,
+      name: prompt.name,
+      isBuiltIn: true,
+    })),
+    ...sortedCustom.map((prompt) => ({
+      type: 'option',
+      id: prompt.id,
+      name: prompt.name,
+      isBuiltIn: false,
+    })),
+  ] as Array<{
+    type: 'option' | 'header';
+    id?: string | null;
+    name?: string;
+    label?: string;
+    isBuiltIn?: boolean;
+  }>;
 
   // Get selectable items only (not headers)
-  const selectableItems = dropdownItems.filter(item => item.type === 'option');
+  const selectableItems = dropdownItems.filter((item) => item.type === 'option');
 
   // Get selected prompt for display
   const selectedPrompt = selectedPromptId
-    ? [...sortedBuiltIns, ...sortedCustom].find(p => p.id === selectedPromptId)
+    ? [...sortedBuiltIns, ...sortedCustom].find((p) => p.id === selectedPromptId)
     : null;
 
   // Handle click outside to close dropdown
@@ -92,16 +108,12 @@ export default function PromptDropdown({
 
       case 'ArrowDown':
         event.preventDefault();
-        setFocusedIndex(prev =>
-          prev < selectableItems.length - 1 ? prev + 1 : 0
-        );
+        setFocusedIndex((prev) => (prev < selectableItems.length - 1 ? prev + 1 : 0));
         break;
 
       case 'ArrowUp':
         event.preventDefault();
-        setFocusedIndex(prev =>
-          prev > 0 ? prev - 1 : selectableItems.length - 1
-        );
+        setFocusedIndex((prev) => (prev > 0 ? prev - 1 : selectableItems.length - 1));
         break;
 
       case 'Enter':
@@ -162,9 +174,7 @@ export default function PromptDropdown({
         aria-expanded={isOpen}
         aria-label="Select system prompt"
       >
-        <span className="truncate text-left flex-1">
-          {getDisplayText()}
-        </span>
+        <span className="truncate text-left flex-1">{getDisplayText()}</span>
         <ChevronDownIcon
           className={`w-4 h-4 text-gray-400 ml-2 transition-transform ${
             isOpen ? 'rotate-180' : ''
@@ -180,7 +190,7 @@ export default function PromptDropdown({
           aria-label="System prompt options"
         >
           {dropdownItems.map((item, index) => {
-            const selectableIndex = selectableItems.findIndex(selectable => selectable === item);
+            const selectableIndex = selectableItems.findIndex((selectable) => selectable === item);
             const isFocused = focusedIndex === selectableIndex;
             const isSelected = selectedPromptId === item.id;
             const hasChanges = item.id && hasUnsavedChanges(item.id);
@@ -210,8 +220,18 @@ export default function PromptDropdown({
                   )}
                 </div>
                 {isSelected && (
-                  <svg className="w-4 h-4 text-blue-600 dark:text-blue-400 ml-2 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  <svg
+                    className="w-4 h-4 text-blue-600 dark:text-blue-400 ml-2 flex-shrink-0"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M5 13l4 4L19 7"
+                    />
                   </svg>
                 )}
               </div>

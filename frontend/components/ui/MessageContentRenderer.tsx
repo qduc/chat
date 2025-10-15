@@ -17,7 +17,11 @@ interface SelectedImage {
   src: string;
 }
 
-export function MessageContentRenderer({ content, isStreaming = false, className = '' }: MessageContentRendererProps) {
+export function MessageContentRenderer({
+  content,
+  isStreaming = false,
+  className = '',
+}: MessageContentRendererProps) {
   // Extract text and images from content
   const textContent = extractTextFromContent(content);
   const imageContents = extractImagesFromContent(content);
@@ -43,9 +47,7 @@ export function MessageContentRenderer({ content, isStreaming = false, className
         )}
 
         {/* Render text content */}
-        {textContent && (
-          <Markdown text={textContent} isStreaming={isStreaming} />
-        )}
+        {textContent && <Markdown text={textContent} isStreaming={isStreaming} />}
 
         {/* If no content at all, show placeholder */}
         {!textContent && !hasImageContent && (
@@ -54,7 +56,11 @@ export function MessageContentRenderer({ content, isStreaming = false, className
       </div>
 
       {selectedImage && (
-        <ImagePreviewOverlay image={selectedImage.image} src={selectedImage.src} onClose={handleClosePreview} />
+        <ImagePreviewOverlay
+          image={selectedImage.image}
+          src={selectedImage.src}
+          onClose={handleClosePreview}
+        />
       )}
     </>
   );
@@ -87,9 +93,10 @@ interface MessageImageProps {
 }
 
 function MessageImage({ image, className = '', onClick }: MessageImageProps) {
-  const rawUrl = typeof (image as any)?.image_url === 'string'
-    ? (image as any).image_url as string
-    : image.image_url?.url ?? '';
+  const rawUrl =
+    typeof (image as any)?.image_url === 'string'
+      ? ((image as any).image_url as string)
+      : (image.image_url?.url ?? '');
   const { src, loading: fetching, error: fetchError } = useSecureImageUrl(rawUrl);
   const [loaded, setLoaded] = React.useState(false);
   const [renderError, setRenderError] = React.useState(false);

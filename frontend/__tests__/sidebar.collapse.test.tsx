@@ -21,12 +21,12 @@ import userEvent from '@testing-library/user-event';
 import { ChatV2 as Chat } from '../components/ChatV2';
 import { ThemeProvider } from '../contexts/ThemeContext';
 
-type ConversationsApi = typeof import('../lib/api')['conversations'];
-type ChatApi = typeof import('../lib/api')['chat'];
-type ToolsApi = typeof import('../lib/api')['tools'];
-type ProvidersApi = typeof import('../lib/api')['providers'];
-type AuthApi = typeof import('../lib/api')['auth'];
-type HttpClient = typeof import('../lib/http')['httpClient'];
+type ConversationsApi = (typeof import('../lib/api'))['conversations'];
+type ChatApi = (typeof import('../lib/api'))['chat'];
+type ToolsApi = (typeof import('../lib/api'))['tools'];
+type ProvidersApi = (typeof import('../lib/api'))['providers'];
+type AuthApi = (typeof import('../lib/api'))['auth'];
+type HttpClient = (typeof import('../lib/http'))['httpClient'];
 
 jest.mock('../lib/api', () => {
   const actual = jest.requireActual('../lib/api');
@@ -161,10 +161,7 @@ function setupHttpClient() {
       return Promise.resolve({
         data: {
           provider: { id: 'openai' },
-          models: [
-            { id: 'gpt-4o' },
-            { id: 'gpt-4o-mini' },
-          ],
+          models: [{ id: 'gpt-4o' }, { id: 'gpt-4o-mini' }],
         },
         status: 200,
         statusText: 'OK',
@@ -192,7 +189,7 @@ beforeEach(() => {
   });
   mockChat.sendMessage.mockResolvedValue({
     content: 'Mock response',
-    responseId: 'mock-response-id'
+    responseId: 'mock-response-id',
   });
   mockTools.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] } as any);
   mockConversations.get.mockResolvedValue({
@@ -280,9 +277,9 @@ describe('Sidebar Collapse Functionality', () => {
     });
 
     // Click collapse button
-  const leftSidebar = screen.getByText('Chat History').closest('aside');
-  expect(leftSidebar).not.toBeNull();
-  const collapseButton = within(leftSidebar as HTMLElement).getByTitle('Collapse sidebar');
+    const leftSidebar = screen.getByText('Chat History').closest('aside');
+    expect(leftSidebar).not.toBeNull();
+    const collapseButton = within(leftSidebar as HTMLElement).getByTitle('Collapse sidebar');
     await user.click(collapseButton);
 
     // Verify localStorage.setItem was called with 'true'
@@ -298,7 +295,9 @@ describe('Sidebar Collapse Functionality', () => {
 
   test('sidebar loads collapsed state from localStorage', async () => {
     // Mock localStorage to return 'true' (collapsed) only for the sidebar key
-    mockLocalStorage.getItem.mockImplementation((key: string) => key === 'sidebarCollapsed' ? 'true' : null);
+    mockLocalStorage.getItem.mockImplementation((key: string) =>
+      key === 'sidebarCollapsed' ? 'true' : null
+    );
 
     renderWithProviders(<Chat />);
 
@@ -342,9 +341,9 @@ describe('Sidebar Collapse Functionality', () => {
     });
 
     // Collapse the sidebar
-  const leftSidebar = screen.getByText('Chat History').closest('aside');
-  expect(leftSidebar).not.toBeNull();
-  const collapseButton = within(leftSidebar as HTMLElement).getByTitle('Collapse sidebar');
+    const leftSidebar = screen.getByText('Chat History').closest('aside');
+    expect(leftSidebar).not.toBeNull();
+    const collapseButton = within(leftSidebar as HTMLElement).getByTitle('Collapse sidebar');
     await user.click(collapseButton);
 
     await waitFor(() => {
@@ -365,9 +364,9 @@ describe('Sidebar Collapse Functionality', () => {
     });
 
     // Collapse the sidebar
-  const leftSidebar = screen.getByText('Chat History').closest('aside');
-  expect(leftSidebar).not.toBeNull();
-  const collapseButton = within(leftSidebar as HTMLElement).getByTitle('Collapse sidebar');
+    const leftSidebar = screen.getByText('Chat History').closest('aside');
+    expect(leftSidebar).not.toBeNull();
+    const collapseButton = within(leftSidebar as HTMLElement).getByTitle('Collapse sidebar');
     await user.click(collapseButton);
 
     await waitFor(() => {

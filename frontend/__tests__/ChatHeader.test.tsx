@@ -21,11 +21,7 @@ import { ChatHeader } from '../components/ChatHeader';
 import { ThemeProvider } from '../contexts/ThemeContext';
 
 function renderWithProvider(ui: React.ReactElement) {
-  return render(
-    <ThemeProvider>
-      {ui}
-    </ThemeProvider>
-  );
+  return render(<ThemeProvider>{ui}</ThemeProvider>);
 }
 
 // Provide a minimal matchMedia mock for JSDOM used in tests
@@ -38,7 +34,7 @@ beforeAll(() => {
       onchange: null,
       addEventListener: () => {},
       removeEventListener: () => {},
-      dispatchEvent: () => false
+      dispatchEvent: () => false,
     });
   }
 });

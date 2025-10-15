@@ -8,7 +8,13 @@ interface HeaderButtonProps {
   title?: string;
 }
 
-export function HeaderButton({ onClick, children, className = '', type = 'button', title }: HeaderButtonProps) {
+export function HeaderButton({
+  onClick,
+  children,
+  className = '',
+  type = 'button',
+  title,
+}: HeaderButtonProps) {
   return (
     <button
       type={type}

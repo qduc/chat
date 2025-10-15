@@ -25,13 +25,9 @@ export function AuthGate() {
         </div>
 
         {isLogin ? (
-          <LoginForm
-            onSwitchToRegister={() => setMode('register')}
-          />
+          <LoginForm onSwitchToRegister={() => setMode('register')} />
         ) : (
-          <RegisterForm
-            onSwitchToLogin={() => setMode('login')}
-          />
+          <RegisterForm onSwitchToLogin={() => setMode('login')} />
         )}
       </div>
     </div>

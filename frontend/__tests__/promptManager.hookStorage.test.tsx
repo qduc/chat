@@ -98,7 +98,7 @@ describe('useSystemPrompts localStorage behaviour', () => {
     expect(result.current.prompts).toEqual({
       built_ins: [],
       custom: [],
-      error: 'No prompts found'
+      error: 'No prompts found',
     });
     expect(result.current.error).toBeNull();
   });

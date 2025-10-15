@@ -1,4 +1,4 @@
-"use client";
+'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
@@ -41,7 +41,7 @@ export function ChatV2() {
   const handleCopy = useCallback(async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
-    } catch { }
+    } catch {}
   }, []);
 
   const handleShowLogin = useCallback(() => {
@@ -55,7 +55,8 @@ export function ChatV2() {
   }, []);
 
   useEffect(() => {
-    const storedWidth = typeof window !== 'undefined' ? window.localStorage.getItem('rightSidebarWidth') : null;
+    const storedWidth =
+      typeof window !== 'undefined' ? window.localStorage.getItem('rightSidebarWidth') : null;
     if (!storedWidth) return;
     const parsed = Number.parseInt(storedWidth, 10);
     if (Number.isFinite(parsed)) {
@@ -82,35 +83,44 @@ export function ChatV2() {
     setRightSidebarWidth(nextWidthRef.current);
   }, []);
 
-  const clampRightSidebarWidth = useCallback((value: number) => {
-    return Math.min(Math.max(value, MIN_RIGHT_SIDEBAR_WIDTH), MAX_RIGHT_SIDEBAR_WIDTH);
-  }, [MAX_RIGHT_SIDEBAR_WIDTH, MIN_RIGHT_SIDEBAR_WIDTH]);
+  const clampRightSidebarWidth = useCallback(
+    (value: number) => {
+      return Math.min(Math.max(value, MIN_RIGHT_SIDEBAR_WIDTH), MAX_RIGHT_SIDEBAR_WIDTH);
+    },
+    [MAX_RIGHT_SIDEBAR_WIDTH, MIN_RIGHT_SIDEBAR_WIDTH]
+  );
 
-  const scheduleWidthUpdate = useCallback((value: number) => {
-    const clamped = clampRightSidebarWidth(value);
-    nextWidthRef.current = clamped;
+  const scheduleWidthUpdate = useCallback(
+    (value: number) => {
+      const clamped = clampRightSidebarWidth(value);
+      nextWidthRef.current = clamped;
 
-    if (typeof window === 'undefined') {
-      setRightSidebarWidth(clamped);
-      return;
-    }
+      if (typeof window === 'undefined') {
+        setRightSidebarWidth(clamped);
+        return;
+      }
 
-    if (frameRef.current !== null) {
-      return;
-    }
+      if (frameRef.current !== null) {
+        return;
+      }
 
-    frameRef.current = window.requestAnimationFrame(() => {
-      frameRef.current = null;
-      setRightSidebarWidth(nextWidthRef.current);
-    });
-  }, [clampRightSidebarWidth]);
+      frameRef.current = window.requestAnimationFrame(() => {
+        frameRef.current = null;
+        setRightSidebarWidth(nextWidthRef.current);
+      });
+    },
+    [clampRightSidebarWidth]
+  );
 
-  const handleResizeMove = useCallback((event: PointerEvent) => {
-    if (!isResizingRef.current) return;
-    const delta = resizeStateRef.current.startX - event.clientX;
-    const nextWidth = resizeStateRef.current.startWidth + delta;
-    scheduleWidthUpdate(nextWidth);
-  }, [scheduleWidthUpdate]);
+  const handleResizeMove = useCallback(
+    (event: PointerEvent) => {
+      if (!isResizingRef.current) return;
+      const delta = resizeStateRef.current.startX - event.clientX;
+      const nextWidth = resizeStateRef.current.startWidth + delta;
+      scheduleWidthUpdate(nextWidth);
+    },
+    [scheduleWidthUpdate]
+  );
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -124,15 +134,18 @@ export function ChatV2() {
     };
   }, [handleResizeMove, stopResizing]);
 
-  const handleResizeStart = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    if (chat.rightSidebarCollapsed) return;
-    resizeStateRef.current = {
-      startX: event.clientX,
-      startWidth: rightSidebarWidth
-    };
-    isResizingRef.current = true;
-    setIsResizingRightSidebar(true);
-  }, [rightSidebarWidth, chat.rightSidebarCollapsed]);
+  const handleResizeStart = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (chat.rightSidebarCollapsed) return;
+      resizeStateRef.current = {
+        startX: event.clientX,
+        startWidth: rightSidebarWidth,
+      };
+      isResizingRef.current = true;
+      setIsResizingRightSidebar(true);
+    },
+    [rightSidebarWidth, chat.rightSidebarCollapsed]
+  );
 
   const handleResizeDoubleClick = useCallback(() => {
     if (chat.rightSidebarCollapsed) return;
@@ -205,44 +218,48 @@ export function ChatV2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchKey]);
 
-  const handleRetryMessage = useCallback(async (messageId: string) => {
-    if (chat.status === 'streaming') return;
-    if (chat.messages.length === 0) return;
+  const handleRetryMessage = useCallback(
+    async (messageId: string) => {
+      if (chat.status === 'streaming') return;
+      if (chat.messages.length === 0) return;
 
-    // Find the message index
-    const idx = chat.messages.findIndex(m => m.id === messageId);
-    if (idx === -1) return;
+      // Find the message index
+      const idx = chat.messages.findIndex((m) => m.id === messageId);
+      if (idx === -1) return;
 
-    const message = chat.messages[idx];
-    if (message.role !== 'assistant') return;
+      const message = chat.messages[idx];
+      if (message.role !== 'assistant') return;
 
-    // Keep only messages up to (but not including) the message being retried
-    const base = chat.messages.slice(0, idx);
-    chat.regenerate(base);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat.messages, chat.status]);
+      // Keep only messages up to (but not including) the message being retried
+      const base = chat.messages.slice(0, idx);
+      chat.regenerate(base);
+    },
+    [chat.messages, chat.status]
+  );
 
-  const handleApplyLocalEdit = useCallback(async (messageId: string, updatedContent: MessageContent) => {
-    if (chat.status === 'streaming') {
-      chat.stopStreaming();
-    }
+  const handleApplyLocalEdit = useCallback(
+    async (messageId: string, updatedContent: MessageContent) => {
+      if (chat.status === 'streaming') {
+        chat.stopStreaming();
+      }
 
-    const idx = chat.messages.findIndex(m => m.id === messageId);
-    if (idx === -1) return;
+      const idx = chat.messages.findIndex((m) => m.id === messageId);
+      if (idx === -1) return;
 
-    const baseMessages = [
-      ...chat.messages.slice(0, idx),
-      { ...chat.messages[idx], content: updatedContent }
-    ];
+      const baseMessages = [
+        ...chat.messages.slice(0, idx),
+        { ...chat.messages[idx], content: updatedContent },
+      ];
 
-    chat.setMessages(baseMessages);
-    chat.cancelEdit();
+      chat.setMessages(baseMessages);
+      chat.cancelEdit();
 
-    if (baseMessages.length && baseMessages[baseMessages.length - 1].role === 'user') {
-      chat.regenerate(baseMessages);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat.messages, chat.status]);
+      if (baseMessages.length && baseMessages[baseMessages.length - 1].role === 'user') {
+        chat.regenerate(baseMessages);
+      }
+    },
+    [chat.messages, chat.status]
+  );
 
   // Load conversations and hydrate from URL on first load
   useEffect(() => {
@@ -288,7 +305,9 @@ export function ChatV2() {
   useEffect(() => {
     if (typeof document === 'undefined') return;
 
-    const sidebarTitle = chat.conversations.find(convo => convo.id === chat.conversationId)?.title?.trim();
+    const sidebarTitle = chat.conversations
+      .find((convo) => convo.id === chat.conversationId)
+      ?.title?.trim();
     const activeTitle = (chat.currentConversationTitle ?? sidebarTitle)?.trim();
     const nextTitle = activeTitle ? `${activeTitle} - ChatForge` : 'ChatForge';
 
@@ -323,7 +342,10 @@ export function ChatV2() {
 
   const scrollToBottom = useCallback(() => {
     if (messageListRef.current) {
-      messageListRef.current.scrollTo({ top: messageListRef.current.scrollHeight, behavior: 'smooth' });
+      messageListRef.current.scrollTo({
+        top: messageListRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
     }
   }, []);
 
@@ -423,12 +445,11 @@ export function ChatV2() {
                 modelCapabilities={chat.modelCapabilities}
                 images={chat.images}
                 onImagesChange={chat.setImages}
+                files={chat.files}
+                onFilesChange={chat.setFiles}
               />
             </div>
-            <SettingsModal
-              open={isSettingsOpen}
-              onClose={() => setIsSettingsOpen(false)}
-            />
+            <SettingsModal open={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
             <AuthModal
               open={showAuthModal}
               onClose={() => setShowAuthModal(false)}

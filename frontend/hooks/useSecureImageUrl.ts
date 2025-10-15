@@ -22,7 +22,11 @@ function isDataLike(url: string) {
 
 export function useSecureImageUrl(rawUrlInput: string | null | undefined): SecureImageState {
   const rawUrl = useMemo(() => rawUrlInput ?? '', [rawUrlInput]);
-  const [state, setState] = useState<SecureImageState>(() => ({ ...initialState, src: rawUrl, originalUrl: rawUrl }));
+  const [state, setState] = useState<SecureImageState>(() => ({
+    ...initialState,
+    src: rawUrl,
+    originalUrl: rawUrl,
+  }));
 
   useEffect(() => {
     if (!rawUrl) {
@@ -53,8 +57,10 @@ export function useSecureImageUrl(rawUrlInput: string | null | undefined): Secur
     }
 
     const baseOrigin = new URL(apiBase).origin;
-    const requiresAuth = parsedUrl.origin === baseOrigin &&
-      (parsedUrl.pathname.startsWith('/v1/images/') || parsedUrl.pathname.startsWith('/api/v1/images/'));
+    const requiresAuth =
+      parsedUrl.origin === baseOrigin &&
+      (parsedUrl.pathname.startsWith('/v1/images/') ||
+        parsedUrl.pathname.startsWith('/api/v1/images/'));
 
     if (!requiresAuth) {
       setState({ src: absoluteUrl, originalUrl: absoluteUrl, loading: false, error: false });

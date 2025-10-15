@@ -202,15 +202,15 @@ let tokensClearedListeners: TokensClearedListener[] = [];
 
 export function onTokensCleared(listener: TokensClearedListener): () => void {
   tokensClearedListeners.push(listener);
-  
+
   // Return unsubscribe function
   return () => {
-    tokensClearedListeners = tokensClearedListeners.filter(l => l !== listener);
+    tokensClearedListeners = tokensClearedListeners.filter((l) => l !== listener);
   };
 }
 
 function notifyTokensCleared(): void {
-  tokensClearedListeners.forEach(listener => {
+  tokensClearedListeners.forEach((listener) => {
     try {
       listener();
     } catch (error) {

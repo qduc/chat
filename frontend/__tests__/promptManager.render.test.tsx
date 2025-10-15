@@ -5,15 +5,31 @@ import '@testing-library/jest-dom';
 describe('Prompt Manager Rendering', () => {
   test('renders built-ins and custom prompts in dropdown groups', async () => {
     try {
-      const PromptDropdown = (await import('../app/components/promptManager/PromptDropdown')).default;
+      const PromptDropdown = (await import('../app/components/promptManager/PromptDropdown'))
+        .default;
 
       const mockPrompts = {
         built_ins: [
-          { id: 'built:example', name: 'Example', body: 'test', read_only: true, slug: 'example', order: 10 }
+          {
+            id: 'built:example',
+            name: 'Example',
+            body: 'test',
+            read_only: true,
+            slug: 'example',
+            order: 10,
+          },
         ],
         custom: [
-          { id: 'custom-1', name: 'My Prompt', body: 'test', usage_count: 0, created_at: '2023-01-01', updated_at: '2023-01-01', last_used_at: null }
-        ]
+          {
+            id: 'custom-1',
+            name: 'My Prompt',
+            body: 'test',
+            usage_count: 0,
+            created_at: '2023-01-01',
+            updated_at: '2023-01-01',
+            last_used_at: null,
+          },
+        ],
       };
 
       render(
@@ -40,7 +56,6 @@ describe('Prompt Manager Rendering', () => {
 
       // Should have My Prompts section header
       expect(screen.getByText('My Prompt')).toBeInTheDocument();
-
     } catch (error) {
       const err = error as { code?: string; message?: string };
       if (err?.code === 'MODULE_NOT_FOUND' || err?.message?.includes('Cannot resolve module')) {
@@ -54,7 +69,8 @@ describe('Prompt Manager Rendering', () => {
 
   test('shows None option in dropdown when no prompt selected', async () => {
     try {
-      const PromptDropdown = (await import('../app/components/promptManager/PromptDropdown')).default;
+      const PromptDropdown = (await import('../app/components/promptManager/PromptDropdown'))
+        .default;
 
       const mockPrompts = { built_ins: [], custom: [] };
 
@@ -79,7 +95,6 @@ describe('Prompt Manager Rendering', () => {
       // Should show No system prompt option in the dropdown
       const dropdownOptions = screen.getAllByText('No system prompt');
       expect(dropdownOptions.length).toBe(2); // One in button, one in dropdown
-
     } catch (error) {
       const err = error as { code?: string; message?: string };
       if (err?.code === 'MODULE_NOT_FOUND' || err?.message?.includes('Cannot resolve module')) {
