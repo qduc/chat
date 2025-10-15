@@ -13,6 +13,7 @@ import {
   waitForAuthReady,
 } from './storage';
 import { SSEParser, APIError, StreamingNotSupportedError } from './streaming';
+import { supportsReasoningControls } from './modelCapabilities';
 import type {
   User,
   LoginResponse,
@@ -389,27 +390,29 @@ function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: bo
     }),
   };
 
-  // Map qualityLevel to reasoning_effort (only if not 'unset')
-  if (extendedOptions.qualityLevel && extendedOptions.qualityLevel !== 'unset') {
-    bodyObj.reasoning_effort = extendedOptions.qualityLevel;
-  }
+  // Check if model supports reasoning before adding reasoning parameters
+  const modelCapabilities = (extendedOptions as any).modelCapabilities;
+  const supportsReasoning = supportsReasoningControls(model, modelCapabilities);
 
-  if (extendedOptions.reasoning) {
-    if (extendedOptions.reasoning.effort) {
-      bodyObj.reasoning_effort = extendedOptions.reasoning.effort;
+  // Only add reasoning parameters if the model supports reasoning
+  if (supportsReasoning) {
+    if (extendedOptions.reasoning) {
+      if (extendedOptions.reasoning.effort) {
+        bodyObj.reasoning_effort = extendedOptions.reasoning.effort;
+      }
+      if (extendedOptions.reasoning.verbosity) {
+        bodyObj.verbosity = extendedOptions.reasoning.verbosity;
+      }
+      if (extendedOptions.reasoning.summary) {
+        bodyObj.reasoning_summary = extendedOptions.reasoning.summary;
+      }
     }
-    if (extendedOptions.reasoning.verbosity) {
-      bodyObj.verbosity = extendedOptions.reasoning.verbosity;
+    if ((options as any).reasoningEffort) {
+      bodyObj.reasoning_effort = (options as any).reasoningEffort;
     }
-    if (extendedOptions.reasoning.summary) {
-      bodyObj.reasoning_summary = extendedOptions.reasoning.summary;
+    if ((options as any).verbosity) {
+      bodyObj.verbosity = (options as any).verbosity;
     }
-  }
-  if ((options as any).reasoningEffort) {
-    bodyObj.reasoning_effort = (options as any).reasoningEffort;
-  }
-  if ((options as any).verbosity) {
-    bodyObj.verbosity = (options as any).verbosity;
   }
 
   if (

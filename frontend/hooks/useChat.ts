@@ -699,6 +699,10 @@ export function useChat() {
           ? modelRef.current.split('::')[1]
           : modelRef.current;
 
+        // Map qualityLevel to reasoning effort if the model supports reasoning
+        const reasoning =
+          qualityLevelRef.current !== 'unset' ? { effort: qualityLevelRef.current } : undefined;
+
         const response = await chat.sendMessage({
           messages: [{ id: userMessage.id, role: 'user', content: messageContent }],
           model: actualModelId,
@@ -711,8 +715,10 @@ export function useChat() {
           toolsEnabled: useToolsRef.current,
           tools: enabledToolsRef.current,
           qualityLevel: qualityLevelRef.current,
+          reasoning: reasoning,
           systemPrompt: systemPromptRef.current || undefined,
           activeSystemPromptId: activeSystemPromptIdRef.current || undefined,
+          modelCapabilities: modelCapabilities,
           onToken: (token: string) => {
             // Update token count using ref to avoid re-renders on every token
             if (tokenStatsRef.current && tokenStatsRef.current.messageId === messageId) {
