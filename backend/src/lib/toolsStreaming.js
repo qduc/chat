@@ -369,7 +369,7 @@ export async function handleToolsStreaming({
         const toolCallChunk = createChatCompletionChunk(
           bodyIn.id || 'chatcmpl-' + Date.now(),
           body.model || config.defaultModel,
-          { tool_calls: normalizedToolCalls }
+          { tool_calls: Array.isArray(normalizedToolCalls) ? normalizedToolCalls : [normalizedToolCalls] }
         );
         writeAndFlush(res, `data: ${JSON.stringify(toolCallChunk)}
 
