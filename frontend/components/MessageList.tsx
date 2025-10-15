@@ -672,8 +672,7 @@ const Message = React.memo<MessageProps>(
                             <span className="sr-only">Edit</span>
                           </button>
                         )
-                      : !pending.streaming &&
-                        (!message.tool_calls || message.tool_calls.length === 0) && (
+                      : !pending.streaming && (
                           <button
                             type="button"
                             onClick={() => onRetryMessage && onRetryMessage(message.id)}
@@ -985,7 +984,7 @@ export function MessageList({
     handleScroll(); // Initial check
     container.addEventListener('scroll', handleScroll);
     return () => container.removeEventListener('scroll', handleScroll);
-  }, [messages.length, onScrollStateChange]);
+  }, [messages.length, onScrollStateChange, containerRef]);
 
   return (
     <main
