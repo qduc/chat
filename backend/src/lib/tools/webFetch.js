@@ -19,16 +19,22 @@ const MAX_BODY_SIZE = 10 * 1024 * 1024;
 // Content cache for continuation support
 const contentCache = new Map();
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+const CACHE_SWEEP_INTERVAL = 60 * 1000; // Check every minute
 
 // Clean up expired cache entries periodically
-setInterval(() => {
+const cacheCleanupTimer = setInterval(() => {
   const now = Date.now();
   for (const [key, value] of contentCache.entries()) {
     if (now - value.timestamp > CACHE_TTL) {
       contentCache.delete(key);
     }
   }
-}, 60 * 1000); // Check every minute
+}, CACHE_SWEEP_INTERVAL);
+
+// Allow Node.js process to exit even if the interval is still scheduled (important for tests)
+if (typeof cacheCleanupTimer.unref === 'function') {
+  cacheCleanupTimer.unref();
+}
 
 function validate(args) {
   if (!args || typeof args !== 'object') {
