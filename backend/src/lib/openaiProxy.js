@@ -1,3 +1,9 @@
+// Utility: Ensures content is a string or array, else returns empty string.
+function sanitizeContent(content) {
+  if (typeof content === 'string' || Array.isArray(content)) return content;
+  if (content === null || content === undefined) return '';
+  return String(content);
+}
 import { config } from '../env.js';
 import { generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
 import { handleToolsJson } from './toolsJson.js';
@@ -347,14 +353,16 @@ async function handleRequest(context, req, res) {
         if (persistence.persist && upstreamJson.choices?.[0]?.message) {
           const message = upstreamJson.choices[0].message;
           if (message.content !== undefined) {
-            persistence.setAssistantContent(message.content);
+            const safeContent = sanitizeContent(message.content);
+            persistence.setAssistantContent(safeContent);
           }
           if (Array.isArray(message.reasoning_details)) {
             persistence.setReasoningDetails(message.reasoning_details);
           }
           if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
-            const contentLength = message.content ?
-              (typeof message.content === 'string' ? message.content.length : 0) : 0;
+            const safeContent = sanitizeContent(message.content);
+            const contentLength = safeContent ?
+              (typeof safeContent === 'string' ? safeContent.length : 0) : 0;
             const toolCallsWithOffset = message.tool_calls.map((tc, idx) => ({
               ...tc,
               index: tc.index ?? idx,
@@ -393,11 +401,12 @@ async function handleRequest(context, req, res) {
           const { createChatCompletionChunk } = await import('./streamUtils.js');
 
           // Send content as chunk if present
-          if (message.content) {
+          if (message.content !== undefined) {
+            const safeContent = sanitizeContent(message.content);
             const chunk = createChatCompletionChunk(
               upstreamJson.id || 'fallback',
               upstreamJson.model || body.model,
-              { role: 'assistant', content: message.content },
+              { role: 'assistant', content: safeContent },
               null
             );
             writeAndFlush(res, `data: ${JSON.stringify(chunk)}\n\n`);

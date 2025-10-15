@@ -1,3 +1,12 @@
+/**
+ * Ensures content is a string or array, else returns empty string.
+ */
+function sanitizeContent(content) {
+  if (typeof content === 'string' || Array.isArray(content)) return content;
+  if (content === null || content === undefined) return '';
+  // If it's an object or number, convert to string
+  return String(content);
+}
 import { generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
 import { parseSSEStream } from './sseParser.js';
 import { createOpenAIRequest, writeAndFlush, createChatCompletionChunk } from './streamUtils.js';
@@ -143,15 +152,16 @@ export async function handleToolsStreaming({
           }
 
           // Handle content - stream it to client
-          if (message.content) {
+          if (message.content !== undefined) {
+            const safeContent = sanitizeContent(message.content);
             const contentChunk = createChatCompletionChunk(
               upstreamJson.id || 'fallback',
               upstreamJson.model || requestBody.model,
-              { role: 'assistant', content: message.content },
+              { role: 'assistant', content: safeContent },
               null
             );
             writeAndFlush(res, `data: ${JSON.stringify(contentChunk)}\n\n`);
-            appendToPersistence(persistence, message.content);
+            appendToPersistence(persistence, safeContent);
           }
 
           // Handle tool_calls
@@ -159,7 +169,7 @@ export async function handleToolsStreaming({
             // Add tool calls to conversation for next iteration
             conversationHistory.push({
               role: 'assistant',
-              content: message.content || null,
+                content: sanitizeContent(message.content),
               tool_calls: message.tool_calls,
             });
 
@@ -181,7 +191,7 @@ export async function handleToolsStreaming({
               conversationHistory.push({
                 role: 'tool',
                 tool_call_id: toolCall.id,
-                content: toolResult,
+                  content: sanitizeContent(toolResult),
               });
 
               // Stream tool result to client
@@ -191,7 +201,7 @@ export async function handleToolsStreaming({
                 event: {
                   role: 'tool',
                   tool_call_id: toolCall.id,
-                  content: toolResult,
+                    content: sanitizeContent(toolResult),
                 },
                 prefix: 'iter',
               });
@@ -398,7 +408,7 @@ export async function handleToolsStreaming({
             conversationHistory.push({
               role: 'tool',
               tool_call_id: toolCall.id,
-              content: toolContent,
+                content: sanitizeContent(toolContent),
             });
           } catch (error) {
             const errorMessage = `Tool ${toolCall.function?.name} failed: ${error.message}`;
@@ -427,7 +437,7 @@ export async function handleToolsStreaming({
             conversationHistory.push({
               role: 'tool',
               tool_call_id: toolCall.id,
-              content: errorMessage,
+                content: sanitizeContent(errorMessage),
             });
           }
         }
