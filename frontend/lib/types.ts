@@ -367,6 +367,7 @@ export interface ChatOptionsExtended extends ChatOptions {
   // Accept either full ToolSpec objects or simple tool name strings
   tools?: Array<ToolSpec | string>;
   toolChoice?: any;
+  providerStream?: boolean;
   reasoning?: {
     effort?: string;
     verbosity?: string;

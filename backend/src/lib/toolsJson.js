@@ -22,6 +22,10 @@ class OrchestrationConfig {
   constructor(options = {}) {
     this.maxIterations = options.maxIterations || 10;
     this.streamingEnabled = options.streamingEnabled !== false;
+    const providerStreamingOption = options.providerStreamingEnabled;
+    this.providerStreamingEnabled = providerStreamingOption !== undefined
+      ? providerStreamingOption !== false
+      : this.streamingEnabled;
     this.model = options.model;
     this.defaultModel = options.defaultModel;
     this.tools = options.tools;
@@ -29,9 +33,14 @@ class OrchestrationConfig {
   }
 
   static fromRequest(body, config, fallbackToolSpecs) {
+    const uiStreamingEnabled = body.stream !== false;
+    const providerStreamingEnabled = body.provider_stream !== undefined
+      ? body.provider_stream !== false
+      : uiStreamingEnabled;
     return new OrchestrationConfig({
       maxIterations: 10,
-      streamingEnabled: body.stream !== false,
+      streamingEnabled: uiStreamingEnabled,
+      providerStreamingEnabled,
       model: body.model || config.defaultModel,
       defaultModel: config.defaultModel,
       tools: (Array.isArray(body.tools) && body.tools.length > 0) ? body.tools : fallbackToolSpecs,
@@ -277,10 +286,15 @@ class JsonResponseHandler extends ResponseHandler {
  * Make a request to the AI model
  */
 async function callLLM({ messages, config, bodyParams, providerId, providerHttp, provider, previousResponseId = null, userId = null, conversationId = null }) {
+  const providerStreamFlag = bodyParams?.provider_stream ?? bodyParams?.providerStream;
+  const upstreamStreamEnabled = (providerStreamFlag !== undefined
+    ? providerStreamFlag
+    : bodyParams?.stream) !== false;
+
   let requestBody = {
     model: bodyParams.model || config.defaultModel,
     messages,
-    stream: bodyParams.stream || false,
+    stream: upstreamStreamEnabled,
     ...(bodyParams.tools && { tools: bodyParams.tools, tool_choice: bodyParams.tool_choice || 'auto' }),
     // Include previous_response_id if available (Responses API chain tracking)
     ...(previousResponseId && { previous_response_id: previousResponseId }),
@@ -301,7 +315,7 @@ async function callLLM({ messages, config, bodyParams, providerId, providerHttp,
 
   const response = await createOpenAIRequest(config, requestBody, { providerId, http: providerHttp });
 
-  if (bodyParams.stream) {
+  if (upstreamStreamEnabled) {
     return response; // Return raw response for streaming
   }
 
@@ -659,7 +673,11 @@ export async function handleToolsJson({
     const finalResponse = await callLLM({
       messages,
       config,
-      bodyParams: { ...body, tools: orchestrationConfig.tools, stream: orchestrationConfig.streamingEnabled },
+      bodyParams: {
+        ...body,
+        tools: orchestrationConfig.tools,
+        provider_stream: orchestrationConfig.providerStreamingEnabled
+      },
       providerId,
       providerHttp,
       provider: providerInstance,

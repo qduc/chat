@@ -364,10 +364,15 @@ function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: bo
 
   const outgoingMessages = messageToSend ? [{ ...messageToSend, uuid: messageToSend.id }] : [];
 
+  const providerStream =
+    extendedOptions.providerStream !== undefined ? extendedOptions.providerStream : stream;
+
   const bodyObj: any = {
     model,
     ...(outgoingMessages.length > 0 ? { messages: outgoingMessages } : {}),
     stream,
+    providerStream,
+    provider_stream: providerStream,
     provider_id: providerId,
     ...(responseId && { previous_response_id: responseId }),
     ...(extendedOptions.conversationId && { conversation_id: extendedOptions.conversationId }),

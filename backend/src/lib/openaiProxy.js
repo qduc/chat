@@ -16,6 +16,9 @@ import { addPromptCaching } from './promptCaching.js';
 
 async function sanitizeIncomingBody(bodyIn, helpers = {}) {
   const body = { ...bodyIn };
+  const providerStreamInput = typeof bodyIn.provider_stream === 'boolean'
+    ? bodyIn.provider_stream
+    : (typeof bodyIn.providerStream === 'boolean' ? bodyIn.providerStream : undefined);
 
   // Normalize incoming system prompt
   const rawSystemPrompt = typeof bodyIn.system_prompt === 'string'
@@ -46,6 +49,13 @@ async function sanitizeIncomingBody(bodyIn, helpers = {}) {
   delete body.researchMode;
   delete body.qualityLevel;
   delete body.system_prompt;
+  delete body.providerStream;
+
+  if (providerStreamInput !== undefined) {
+    body.provider_stream = providerStreamInput;
+  } else if (typeof body.stream !== 'undefined') {
+    body.provider_stream = body.stream;
+  }
   // Default model
   // Default model is resolved later (may come from DB)
 
@@ -112,8 +122,9 @@ function validateAndNormalizeReasoningControls(body, { reasoningAllowed }) {
 
 function getFlags({ body, provider }) {
   const hasTools = provider.supportsTools() && Array.isArray(body.tools) && body.tools.length > 0;
-  const stream = !!body.stream;
-  return { hasTools, stream };
+  const stream = body.stream !== false;
+  const providerStream = body.provider_stream !== false;
+  return { hasTools, stream, providerStream };
 }
 
 
@@ -268,6 +279,7 @@ function handleProxyError(error, req, res, persistence) {
 
 async function handleRequest(context, req, res) {
   const { body, bodyIn, flags, provider, providerId, persistence, userId } = context;
+  const upstreamStreamEnabled = flags.providerStream !== false;
 
   if (flags.hasTools) {
     // Tool orchestration path
@@ -282,6 +294,9 @@ async function handleRequest(context, req, res) {
 
   // Try to use previous_response_id optimization for existing conversations
   let requestBody = { ...body };
+  requestBody.stream = upstreamStreamEnabled;
+  delete requestBody.provider_stream;
+  delete requestBody.providerStream;
   if (persistence && persistence.persist && persistence.conversationId) {
     const { buildConversationMessagesOptimized } = await import('./toolOrchestrationUtils.js');
     const { messages, previousResponseId } = await buildConversationMessagesOptimized({
@@ -307,8 +322,8 @@ async function handleRequest(context, req, res) {
 
   const upstream = await createOpenAIRequest(config, requestBody, { providerId });
   if (!upstream.ok) {
-  const { status, payload } = await handleUpstreamError(upstream, persistence);
-  return res.status(status).json(payload);
+    const { status, payload } = await handleUpstreamError(upstream, persistence);
+    return res.status(status).json(payload);
   }
 
   if (flags.stream) {

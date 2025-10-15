@@ -291,6 +291,7 @@ export function useChat() {
   const modelRef = useRef<string>('gpt-4');
   const providerIdRef = useRef<string | null>(null);
   const shouldStreamRef = useRef<boolean>(true);
+  const providerStreamRef = useRef<boolean>(true);
   const useToolsRef = useRef<boolean>(true);
   const enabledToolsRef = useRef<string[]>([]);
   const qualityLevelRef = useRef<QualityLevel>('unset');
@@ -437,6 +438,7 @@ export function useChat() {
       if (typeof data.streaming_enabled === 'boolean') {
         setShouldStream(data.streaming_enabled);
         shouldStreamRef.current = data.streaming_enabled;
+        providerStreamRef.current = data.streaming_enabled;
       }
       if (typeof data.tools_enabled === 'boolean') {
         setUseTools(data.tools_enabled);
@@ -678,6 +680,7 @@ export function useChat() {
           model: actualModelId,
           providerId: providerIdRef.current || '',
           stream: shouldStreamRef.current,
+          providerStream: providerStreamRef.current,
           signal: abortControllerRef.current.signal,
           conversationId: conversationId || undefined,
           streamingEnabled: shouldStreamRef.current,
@@ -984,8 +987,7 @@ export function useChat() {
           console.log('[AUTO-RETRY] Streaming not supported, retrying with streaming disabled');
 
           // Disable streaming
-          setShouldStream(false);
-          shouldStreamRef.current = false;
+          providerStreamRef.current = false;
 
           // Remove the failed assistant message
           setMessages((prev) => prev.slice(0, -1));
@@ -1226,6 +1228,11 @@ export function useChat() {
   const setShouldStreamWrapper = useCallback((value: boolean) => {
     setShouldStream(value);
     shouldStreamRef.current = value;
+    if (!value) {
+      providerStreamRef.current = false;
+    } else if (value && !providerStreamRef.current) {
+      providerStreamRef.current = true;
+    }
   }, []);
 
   const setQualityLevelWrapper = useCallback((level: QualityLevel) => {

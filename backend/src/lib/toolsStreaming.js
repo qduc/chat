@@ -38,6 +38,7 @@ export async function handleToolsStreaming({
   const config = runtimeConfigInput || envConfig;
   const providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
   const providerInstance = provider || await createProvider(config, { providerId });
+  const providerStreamEnabled = body?.provider_stream !== false;
   try {
     // Setup streaming headers
     setupStreamingHeaders(res);
@@ -69,7 +70,7 @@ export async function handleToolsStreaming({
       let requestBody = {
         model: body.model || config.defaultModel,
         messages: conversationHistory,
-        stream: true,
+        stream: providerStreamEnabled,
         ...(toolsToSend && { tools: toolsToSend, tool_choice: body.tool_choice || 'auto' }),
         // Include previous_response_id if available (Responses API chain tracking)
         ...(currentPreviousResponseId && { previous_response_id: currentPreviousResponseId }),
