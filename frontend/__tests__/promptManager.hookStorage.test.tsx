@@ -1,12 +1,17 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import { useSystemPrompts } from '../hooks/useSystemPrompts';
-import { httpClient, mockHttpResponse } from '../lib/http';
+import { httpClient, HttpError } from '../lib/http';
 
 // Get access to the mocked httpClient
 const mockHttpClient = httpClient as jest.Mocked<typeof httpClient>;
 
 const mockHttpClientResponse = (data: any = { built_ins: [], custom: [] }) => {
-  mockHttpClient.get.mockResolvedValue(mockHttpResponse(data));
+  mockHttpClient.get.mockResolvedValue({
+    data,
+    status: 200,
+    statusText: 'OK',
+    headers: new Headers(),
+  });
   return mockHttpClient;
 };
 
@@ -22,7 +27,12 @@ describe('useSystemPrompts localStorage behaviour', () => {
   afterEach(() => {
     jest.clearAllMocks();
     // Reset httpClient mocks to default behavior
-    mockHttpClient.get.mockResolvedValue(mockHttpResponse({ built_ins: [], custom: [] }));
+    mockHttpClient.get.mockResolvedValue({
+      data: { built_ins: [], custom: [] },
+      status: 200,
+      statusText: 'OK',
+      headers: new Headers(),
+    });
   });
 
   test('hydrates inline edits from localStorage on mount', async () => {
@@ -86,9 +96,8 @@ describe('useSystemPrompts localStorage behaviour', () => {
   });
 
   test('fetchPrompts gracefully handles missing system prompts (404)', async () => {
-    const { HttpError } = require('../lib/http');
     mockHttpClient.get.mockRejectedValue(
-      new HttpError(404, 'Not Found', null, { message: 'No prompts found' })
+      new HttpError(404, 'Not Found', undefined, { message: 'No prompts found' })
     );
 
     const { result } = renderHook(() => useSystemPrompts(USER_ID));
