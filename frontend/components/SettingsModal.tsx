@@ -20,9 +20,10 @@ import { resolveApiBase } from '../lib';
 interface SettingsModalProps {
   open: boolean;
   onClose: () => void;
+  onProvidersChanged?: () => void;
 }
 
-export default function SettingsModal({ open, onClose }: SettingsModalProps) {
+export default function SettingsModal({ open, onClose, onProvidersChanged }: SettingsModalProps) {
   // --- Providers management state ---
   type ProviderRow = {
     id: string;
@@ -186,7 +187,8 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
           }
         }
       }
-      await fetchProviders();
+  await fetchProviders();
+  if (onProvidersChanged) onProvidersChanged();
     } catch (e: any) {
       const message = e instanceof HttpError ? e.message : e?.message || 'Failed to save provider';
       setError(message);
@@ -206,7 +208,8 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       setError(null);
       await httpClient.delete(`${apiBase}/v1/providers/${target}`);
       resetForm();
-      await fetchProviders();
+  await fetchProviders();
+  if (onProvidersChanged) onProvidersChanged();
     } catch (e: any) {
       const message =
         e instanceof HttpError ? e.message : e?.message || 'Failed to delete provider';

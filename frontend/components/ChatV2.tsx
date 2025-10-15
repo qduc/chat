@@ -449,7 +449,11 @@ export function ChatV2() {
                 onFilesChange={chat.setFiles}
               />
             </div>
-            <SettingsModal open={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
+            <SettingsModal
+              open={isSettingsOpen}
+              onClose={() => setIsSettingsOpen(false)}
+              onProvidersChanged={chat.loadProvidersAndModels}
+            />
             <AuthModal
               open={showAuthModal}
               onClose={() => setShowAuthModal(false)}
