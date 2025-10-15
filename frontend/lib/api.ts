@@ -293,13 +293,12 @@ export const chat = {
     await waitForAuthReady();
     const { apiBase = resolveApiBase(), stream = true, signal, onEvent, onToken } = options;
 
-    // Build request body
+    // Build request body - always request SSE from backend for real-time updates
     const bodyObj = buildRequestBody(options, stream);
 
     try {
-      const requestHeaders = stream
-        ? { Accept: 'text/event-stream' }
-        : { Accept: 'application/json' };
+      // Always use SSE for real-time tool updates, even when streaming is disabled
+      const requestHeaders = { Accept: 'text/event-stream' };
 
       const httpResponse = await httpClient.post(`${apiBase}/v1/chat/completions`, bodyObj, {
         signal,
@@ -308,7 +307,7 @@ export const chat = {
 
       let responseData = httpResponse.data;
 
-      if (stream && !isStreamingResponse(responseData)) {
+      if (!isStreamingResponse(responseData)) {
         if (typeof fetch !== 'function') {
           throw new Error('Streaming fetch is not available in this environment');
         }
@@ -334,11 +333,8 @@ export const chat = {
         });
       }
 
-      if (stream) {
-        return handleStreamingResponse(responseData as Response, onToken, onEvent);
-      }
-
-      return processNonStreamingData(responseData, onToken, onEvent);
+      // Always handle as streaming response since backend always returns SSE
+      return handleStreamingResponse(responseData as Response, onToken, onEvent);
     } catch (error) {
       if (error instanceof HttpError) {
         throw new APIError(error.status, error.message, error.data);
@@ -364,13 +360,15 @@ function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: bo
 
   const outgoingMessages = messageToSend ? [{ ...messageToSend, uuid: messageToSend.id }] : [];
 
+  // Frontend always uses SSE (stream: true) to receive real-time updates
+  // providerStream controls upstream behavior based on user's streaming toggle
   const providerStream =
     extendedOptions.providerStream !== undefined ? extendedOptions.providerStream : stream;
 
   const bodyObj: any = {
     model,
     ...(outgoingMessages.length > 0 ? { messages: outgoingMessages } : {}),
-    stream,
+    stream: true, // Always true for frontend SSE connection
     providerStream,
     provider_stream: providerStream,
     provider_id: providerId,

@@ -1228,11 +1228,9 @@ export function useChat() {
   const setShouldStreamWrapper = useCallback((value: boolean) => {
     setShouldStream(value);
     shouldStreamRef.current = value;
-    if (!value) {
-      providerStreamRef.current = false;
-    } else if (value && !providerStreamRef.current) {
-      providerStreamRef.current = true;
-    }
+    // Control upstream streaming based on user toggle
+    // This affects whether backend requests streaming from upstream provider
+    providerStreamRef.current = value;
   }, []);
 
   const setQualityLevelWrapper = useCallback((level: QualityLevel) => {

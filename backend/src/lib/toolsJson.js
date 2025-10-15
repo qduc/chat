@@ -705,7 +705,7 @@ export async function handleToolsJson({
     }
 
   } catch (error) {
-    logger.error('[unified orchestration] error:', error);
+  logger.error({ msg: '[unified orchestration] error', err: error });
 
     if (orchestrationConfig.streamingEnabled) {
       return responseHandler.sendError(error, persistence);

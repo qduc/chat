@@ -481,7 +481,7 @@ export async function handleToolsStreaming({
     res.end();
 
   } catch (error) {
-    logger.error('[iterative orchestration] error:', error);
+    logger.error({ msg: '[iterative orchestration] error', err: error });
 
     // Stream error to client
     const errorMsg = `[Error: ${error.message}]`;
