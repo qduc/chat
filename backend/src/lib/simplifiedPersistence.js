@@ -393,7 +393,33 @@ export class SimplifiedPersistence {
     }
 
     if (Array.isArray(details)) {
-      this.reasoningDetails = this._clone(details);
+      // Merge incoming array with existing reasoning_details
+      // Each item in the array has an index, accumulate text for items with the same index
+      if (!Array.isArray(this.reasoningDetails)) {
+        this.reasoningDetails = [];
+      }
+
+      for (const item of details) {
+        if (!item || typeof item !== 'object') continue;
+
+        const incomingIndex = item.index ?? 0;
+        const existingItem = this.reasoningDetails.find(r => (r.index ?? 0) === incomingIndex);
+
+        if (existingItem && item.text) {
+          // Accumulate text for existing item with same index
+          if (typeof existingItem.text === 'string') {
+            existingItem.text += item.text;
+          } else {
+            existingItem.text = item.text;
+          }
+          // Update other fields if present
+          if (item.type) existingItem.type = item.type;
+          if (item.format) existingItem.format = item.format;
+        } else {
+          // New item, add to array
+          this.reasoningDetails.push(this._clone(item));
+        }
+      }
       return;
     }
 
