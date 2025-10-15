@@ -7,9 +7,8 @@ import {
   Zap,
   ImagePlus,
   FileText,
-  Search,
-  Plus,
   Globe,
+  Paperclip,
 } from 'lucide-react';
 import type { PendingState } from '@/hooks/useChat';
 import {
@@ -75,6 +74,7 @@ export function MessageInput({
   const toolsDropdownRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const attachDropdownRef = useRef<HTMLDivElement | null>(null);
 
   // ===== STATE =====
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -85,6 +85,7 @@ export function MessageInput({
   const [localSelected, setLocalSelected] = useState<string[]>(enabledTools);
   const [imageUploadProgress, setImageUploadProgress] = useState<ImageUploadProgress[]>([]);
   const [fileUploadProgress, setFileUploadProgress] = useState<FileUploadProgress[]>([]);
+  const [attachOpen, setAttachOpen] = useState(false);
 
   // ===== COMPUTED VALUES =====
   // Check if both search tools are enabled
@@ -128,6 +129,20 @@ export function MessageInput({
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [toolsOpen]);
+
+  // Click outside to close attach dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (attachDropdownRef.current && !attachDropdownRef.current.contains(event.target as Node)) {
+        setAttachOpen(false);
+      }
+    };
+
+    if (attachOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [attachOpen]);
 
   // Load tool specs for the selector UI
   useEffect(() => {
@@ -338,20 +353,70 @@ export function MessageInput({
 
             {/* ===== TEXT INPUT WITH IMAGE/FILE UPLOAD ===== */}
             <div className="flex items-start gap-2 p-4">
-              {/* Image upload button */}
-              {onImagesChange && (
-                <Tooltip content="Upload images">
-                  <button
-                    type="button"
-                    onClick={handleImageUploadClick}
-                    disabled={pending.streaming}
-                    className={`flex-shrink-0 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${
-                      images.length > 0
-                        ? 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20'
-                        : 'text-slate-500 dark:text-slate-400'
-                    }`}
-                    aria-label="Add Images"
-                  >
+              {/* Attach button */}
+              {(onImagesChange || onFilesChange) && (
+                <div className="relative" ref={attachDropdownRef}>
+                  {attachOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => setAttachOpen(!attachOpen)}
+                      disabled={pending.streaming}
+                      className={`flex-shrink-0 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${
+                        images.length > 0 || files.length > 0
+                          ? 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20'
+                          : 'text-slate-500 dark:text-slate-400'
+                      }`}
+                      aria-label="Attach Files"
+                    >
+                      <Paperclip className="w-5 h-5" />
+                    </button>
+                  ) : (
+                    <Tooltip content="Attach files">
+                      <button
+                        type="button"
+                        onClick={() => setAttachOpen(!attachOpen)}
+                        disabled={pending.streaming}
+                        className={`flex-shrink-0 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${
+                          images.length > 0 || files.length > 0
+                            ? 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20'
+                            : 'text-slate-500 dark:text-slate-400'
+                        }`}
+                        aria-label="Attach Files"
+                      >
+                        <Paperclip className="w-5 h-5" />
+                      </button>
+                    </Tooltip>
+                  )}
+                  {attachOpen && (
+                    <div className="absolute bottom-full mb-2 left-0 w-48 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 shadow-xl rounded-lg p-2 z-50">
+                      {onImagesChange && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAttachOpen(false);
+                            handleImageUploadClick();
+                          }}
+                          className="w-full text-left p-2 rounded-md hover:bg-slate-50 dark:hover:bg-neutral-800 text-sm flex items-center"
+                        >
+                          <ImagePlus className="w-4 h-4 mr-2" /> Upload Image
+                        </button>
+                      )}
+                      {onFilesChange && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAttachOpen(false);
+                            handleFileUploadClick();
+                          }}
+                          className="w-full text-left p-2 rounded-md hover:bg-slate-50 dark:hover:bg-neutral-800 text-sm flex items-center"
+                        >
+                          <FileText className="w-4 h-4 mr-2" /> Upload File
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {/* Hidden inputs */}
+                  {onImagesChange && (
                     <input
                       ref={imageInputRef}
                       type="file"
@@ -360,25 +425,8 @@ export function MessageInput({
                       className="hidden"
                       onChange={handleImageInputChange}
                     />
-                    <ImagePlus className="w-5 h-5" />
-                  </button>
-                </Tooltip>
-              )}
-
-              {/* File upload button */}
-              {onFilesChange && (
-                <Tooltip content="Upload source files">
-                  <button
-                    type="button"
-                    onClick={handleFileUploadClick}
-                    disabled={pending.streaming}
-                    className={`flex-shrink-0 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${
-                      files.length > 0
-                        ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20'
-                        : 'text-slate-500 dark:text-slate-400'
-                    }`}
-                    aria-label="Add Files"
-                  >
+                  )}
+                  {onFilesChange && (
                     <input
                       ref={fileInputRef}
                       type="file"
@@ -387,9 +435,8 @@ export function MessageInput({
                       className="hidden"
                       onChange={handleFileInputChange}
                     />
-                    <FileText className="w-5 h-5" />
-                  </button>
-                </Tooltip>
+                  )}
+                </div>
               )}
 
               {/* Text input */}
