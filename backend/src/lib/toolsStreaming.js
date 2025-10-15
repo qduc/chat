@@ -188,23 +188,25 @@ export async function handleToolsStreaming({
               const toolResult = await executeToolCall(toolCall, userId);
 
               // Add tool result to conversation history
-              conversationHistory.push({
-                role: 'tool',
-                tool_call_id: toolCall.id,
-                  content: sanitizeContent(toolResult),
-              });
-
-              // Stream tool result to client
-              streamDeltaEvent({
-                res,
-                model: upstreamJson.model || requestBody.model,
-                event: {
+                let serializedToolResult;
+                if (typeof toolResult === 'object' && toolResult !== null) {
+                  serializedToolResult = JSON.stringify(toolResult);
+                } else {
+                  serializedToolResult = sanitizeContent(toolResult);
+                }
+                conversationHistory.push({
                   role: 'tool',
                   tool_call_id: toolCall.id,
-                    content: sanitizeContent(toolResult),
-                },
-                prefix: 'iter',
-              });
+                  content: serializedToolResult,
+                });
+
+              // Stream tool result to client
+            streamDeltaEvent({
+              res,
+              model: body.model || config.defaultModel,
+              event: { tool_output: { tool_call_id: toolCall.id, name: toolCall.function?.name, output: serializedToolResult } },
+              prefix: 'iter'
+            });
             }
 
             // Continue to next iteration to get final response
@@ -236,6 +238,7 @@ export async function handleToolsStreaming({
       const toolCallMap = new Map(); // index -> accumulated tool call
       let gotAnyNonToolDelta = false;
       let responseId = null; // Capture response_id for persistence
+      let accumulatedContent = ''; // Accumulate assistant content for conversation history
 
       await new Promise((resolve, reject) => {
         // Add timeout to prevent hanging
@@ -315,7 +318,10 @@ export async function handleToolsStreaming({
                   gotAnyNonToolDelta = true;
                 }
 
-                // Persist text content only
+                // Accumulate text content only
+                if (delta.content) {
+                  accumulatedContent += delta.content;
+                }
                 appendToPersistence(persistence, delta.content);
               },
               () => {
@@ -370,7 +376,11 @@ export async function handleToolsStreaming({
 `);
 
         // Add assistant message with tool calls for the next iteration
-        conversationHistory.push({ role: 'assistant', tool_calls: normalizedToolCalls });
+        conversationHistory.push({
+          role: 'assistant',
+          content: accumulatedContent,
+          tool_calls: normalizedToolCalls
+        });
 
         // Buffer tool calls for persistence
         if (persistence && persistence.persist && typeof persistence.addToolCalls === 'function') {
@@ -381,18 +391,13 @@ export async function handleToolsStreaming({
         for (const toolCall of normalizedToolCalls) {
           try {
             const { name, output } = await executeToolCall(toolCall);
-            streamDeltaEvent({
-              res,
-              model: body.model || config.defaultModel,
-              event: {
-                tool_output: {
-                  tool_call_id: toolCall.id,
-                  name,
-                  output,
-                },
-              },
-              prefix: 'iter',
-            });
+            // Emit tool_output meta as a chat chunk for clients that expect tool events
+            const toolOutputMeta = createChatCompletionChunk(
+              bodyIn.id || 'chatcmpl-' + Date.now(),
+              body.model || config.defaultModel,
+              { tool_output: { tool_call_id: toolCall.id, name, output } },
+            );
+            writeAndFlush(res, `data: ${JSON.stringify(toolOutputMeta)}\n\n`);
 
             const toolContent = typeof output === 'string' ? output : JSON.stringify(output);
 
@@ -412,17 +417,12 @@ export async function handleToolsStreaming({
             });
           } catch (error) {
             const errorMessage = `Tool ${toolCall.function?.name} failed: ${error.message}`;
+            // Stream error tool output to client
             streamDeltaEvent({
               res,
               model: body.model || config.defaultModel,
-              event: {
-                tool_output: {
-                  tool_call_id: toolCall.id,
-                  name: toolCall.function?.name,
-                  output: errorMessage,
-                },
-              },
-              prefix: 'iter',
+              event: { tool_output: { tool_call_id: toolCall.id, name: toolCall.function?.name, output: errorMessage } },
+              prefix: 'iter'
             });
 
             // Buffer error tool output for persistence (don't append to message content!)

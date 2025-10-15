@@ -94,26 +94,50 @@ function mergeToolOutputsToAssistantMessages(messages: Message[]): Message[] {
   const result: Message[] = [];
 
   for (const msg of messages) {
-    if (msg.role === 'tool' && msg.tool_outputs) {
-      // Transfer tool outputs to the corresponding assistant message
-      for (const output of msg.tool_outputs) {
-        const toolCallId = output.tool_call_id;
-        if (toolCallId) {
-          const assistantMsg = assistantMessagesByToolCallId.get(toolCallId);
-          if (assistantMsg) {
-            // Initialize tool_outputs array if needed
-            if (!assistantMsg.tool_outputs) {
-              assistantMsg.tool_outputs = [];
-            }
-            // Add the output if not already present
-            const exists = assistantMsg.tool_outputs.some((o) => o.tool_call_id === toolCallId);
-            if (!exists) {
-              assistantMsg.tool_outputs.push(output);
+    if (msg.role === 'tool') {
+      // Handle tool messages with tool_outputs array (streaming format)
+      if (msg.tool_outputs) {
+        for (const output of msg.tool_outputs) {
+          const toolCallId = output.tool_call_id;
+          if (toolCallId) {
+            const assistantMsg = assistantMessagesByToolCallId.get(toolCallId);
+            if (assistantMsg) {
+              // Initialize tool_outputs array if needed
+              if (!assistantMsg.tool_outputs) {
+                assistantMsg.tool_outputs = [];
+              }
+              // Add the output if not already present
+              const exists = assistantMsg.tool_outputs.some((o) => o.tool_call_id === toolCallId);
+              if (!exists) {
+                assistantMsg.tool_outputs.push(output);
+              }
             }
           }
         }
       }
-      // Skip tool messages - don't add them to the result
+
+      // Handle tool messages with tool_call_id and content (database format)
+      if (msg.tool_call_id && msg.content) {
+        const assistantMsg = assistantMessagesByToolCallId.get(msg.tool_call_id);
+        if (assistantMsg) {
+          // Initialize tool_outputs array if needed
+          if (!assistantMsg.tool_outputs) {
+            assistantMsg.tool_outputs = [];
+          }
+          // Add the output if not already present
+          const exists = assistantMsg.tool_outputs.some((o) => o.tool_call_id === msg.tool_call_id);
+          if (!exists) {
+            // Convert database format to tool_outputs format
+            assistantMsg.tool_outputs.push({
+              tool_call_id: msg.tool_call_id,
+              output: msg.content,
+              status: 'success',
+            });
+          }
+        }
+      }
+
+      // Skip all tool messages - don't add them to the result
       continue;
     }
 
