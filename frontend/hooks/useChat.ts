@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSystemPrompts } from './useSystemPrompts';
-import type { MessageContent } from '../lib';
+import type { MessageContent, TextContent } from '../lib';
 import { conversations as conversationsApi, chat, auth } from '../lib/api';
 import { httpClient } from '../lib/http';
 import { APIError, StreamingNotSupportedError } from '../lib/streaming';
@@ -122,6 +122,56 @@ function mergeToolOutputsToAssistantMessages(messages: Message[]): Message[] {
   }
 
   return result;
+}
+
+function prependReasoningToContent(content: MessageContent, reasoningText: string): MessageContent {
+  const normalizedReasoning = reasoningText.trim();
+  if (!normalizedReasoning) {
+    return content;
+  }
+
+  const thinkingBlock = `<thinking>${normalizedReasoning}</thinking>`;
+
+  if (!content || (typeof content === 'string' && content.trim().length === 0)) {
+    return thinkingBlock;
+  }
+
+  if (typeof content === 'string') {
+    if (content.includes('<thinking>')) {
+      return content;
+    }
+    const suffix = content.length > 0 ? `\n\n${content}` : '';
+    return `${thinkingBlock}${suffix}`;
+  }
+
+  if (!Array.isArray(content)) {
+    return thinkingBlock;
+  }
+
+  const hasExistingThinking = content.some(
+    (item) => item.type === 'text' && item.text.includes('<thinking>')
+  );
+  if (hasExistingThinking) {
+    return content;
+  }
+
+  const updated = [...content];
+  const firstTextIndex = updated.findIndex((item) => item.type === 'text');
+
+  if (firstTextIndex === -1) {
+    return [{ type: 'text', text: thinkingBlock }, ...updated];
+  }
+
+  const firstItem = updated[firstTextIndex];
+  if (firstItem.type === 'text') {
+    const suffix = firstItem.text.length > 0 ? `\n\n${firstItem.text}` : '';
+    updated[firstTextIndex] = {
+      ...firstItem,
+      text: `${thinkingBlock}${suffix}`,
+    } as TextContent;
+  }
+
+  return updated;
 }
 
 function formatUpstreamError(error: APIError): string {
@@ -293,14 +343,32 @@ export function useChat() {
       const data = await conversationsApi.get(id, { limit: 200 });
 
       // Convert backend messages to frontend format
-      const rawMessages: Message[] = data.messages.map((msg) => ({
-        id: String(msg.id),
-        role: msg.role,
-        content: (msg.content ?? '') as MessageContent,
-        timestamp: new Date(msg.created_at).getTime(),
-        tool_calls: msg.tool_calls,
-        tool_outputs: msg.tool_outputs,
-      }));
+      const rawMessages: Message[] = data.messages.map((msg) => {
+        const baseContent = (msg.content ?? '') as MessageContent;
+        const reasoningText =
+          msg.role === 'assistant' && Array.isArray(msg.reasoning_details)
+            ? msg.reasoning_details
+                .map((detail: any) => (typeof detail?.text === 'string' ? detail.text.trim() : ''))
+                .filter(Boolean)
+                .join('\n\n')
+            : '';
+
+        const content =
+          msg.role === 'assistant' && reasoningText
+            ? prependReasoningToContent(baseContent, reasoningText)
+            : baseContent;
+
+        return {
+          id: String(msg.id),
+          role: msg.role,
+          content,
+          timestamp: new Date(msg.created_at).getTime(),
+          tool_calls: msg.tool_calls,
+          tool_outputs: msg.tool_outputs,
+          reasoning_details: msg.reasoning_details ?? undefined,
+          reasoning_tokens: msg.reasoning_tokens ?? undefined,
+        };
+      });
 
       // Merge tool outputs from tool messages into their corresponding assistant messages
       const convertedMessages = mergeToolOutputsToAssistantMessages(rawMessages);
