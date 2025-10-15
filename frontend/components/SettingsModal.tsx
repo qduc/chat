@@ -187,8 +187,8 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
           }
         }
       }
-  await fetchProviders();
-  if (onProvidersChanged) onProvidersChanged();
+      await fetchProviders();
+      if (onProvidersChanged) onProvidersChanged();
     } catch (e: any) {
       const message = e instanceof HttpError ? e.message : e?.message || 'Failed to save provider';
       setError(message);
@@ -208,8 +208,8 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
       setError(null);
       await httpClient.delete(`${apiBase}/v1/providers/${target}`);
       resetForm();
-  await fetchProviders();
-  if (onProvidersChanged) onProvidersChanged();
+      await fetchProviders();
+      if (onProvidersChanged) onProvidersChanged();
     } catch (e: any) {
       const message =
         e instanceof HttpError ? e.message : e?.message || 'Failed to delete provider';
@@ -617,7 +617,7 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                               ? '••••••••••••••••••••'
                               : "sk-proj-abc123... or your provider's API key"
                           }
-                          required={!form.id}
+                          // required removed: API key is now optional
                         />
                         <p className="text-xs text-slate-500 dark:text-slate-400">
                           {form.id

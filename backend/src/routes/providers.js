@@ -256,10 +256,6 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
       }
 
     const api_key = body.api_key || null;
-    if (!api_key) {
-      return res.status(400).json({ error: 'invalid_request', message: 'API key is required for testing' });
-    }
-
     const base_url = String(body.base_url || '').replace(/\/v1\/?$/, '') || 'https://api.openai.com';
 
     let extra = {};
@@ -273,9 +269,11 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
     const url = `${base_url}/v1/models`;
     const headers = {
       Accept: 'application/json',
-      Authorization: `Bearer ${api_key}`,
       ...extra,
     };
+    if (api_key) {
+      headers.Authorization = `Bearer ${api_key}`;
+    }
 
     const upstream = await http(url, {
       method: 'GET',
