@@ -446,14 +446,15 @@ export function useChat() {
   }, []);
 
   const newChat = useCallback(() => {
-    setMessages([]);
-    setConversationId(null);
-    setInput('');
-    setError(null);
-    setEditingMessageId(null);
-    setEditingContent('');
-    setImages([]);
-    setCurrentConversationTitle(null);
+  setMessages([]);
+  setConversationId(null);
+  setInput('');
+  setError(null);
+  setPending(prev => ({ ...prev, error: undefined, streaming: false, abort: null }));
+  setEditingMessageId(null);
+  setEditingContent('');
+  setImages([]);
+  setCurrentConversationTitle(null);
     // When starting a new chat (no active conversation) prefer the saved model
     try {
       if (typeof window !== 'undefined') {
