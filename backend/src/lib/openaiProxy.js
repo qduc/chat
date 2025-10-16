@@ -291,7 +291,6 @@ function handleProxyError(error, req, res, persistence) {
 
 async function handleRequest(context, req, res) {
   const { body, bodyIn, flags, provider, providerId, persistence, userId } = context;
-  const upstreamStreamEnabled = flags.providerStream !== false;
 
   if (flags.hasTools) {
     // Tool orchestration path
@@ -319,6 +318,8 @@ async function handleRequest(context, req, res) {
       provider
     });
     requestBody.messages = messages;
+    // previousResponseId is already validated inside buildConversationMessagesOptimized
+    // It will only be returned if it's valid (starts with 'resp_')
     if (previousResponseId) {
       requestBody.previous_response_id = previousResponseId;
     }
@@ -332,7 +333,51 @@ async function handleRequest(context, req, res) {
     hasTools: false
   });
 
-  const upstream = await createOpenAIRequest(config, requestBody, { providerId });
+  let upstream = await createOpenAIRequest(config, requestBody, { providerId });
+
+  // If request with previous_response_id failed due to invalid ID format, retry with full history
+  if (!upstream.ok && requestBody.previous_response_id) {
+    const upstreamBody = await readUpstreamError(upstream);
+    const isInvalidResponseIdError = upstream.status === 400
+      && upstreamBody?.error?.param === 'previous_response_id'
+      && upstreamBody?.error?.code === 'invalid_value';
+
+    if (isInvalidResponseIdError) {
+      logger.warn({
+        msg: 'invalid_previous_response_id',
+        previous_response_id: requestBody.previous_response_id,
+        error: upstreamBody?.error?.message,
+        retrying: 'with full history'
+      });
+
+      // Retry without previous_response_id (will use full history)
+      const retryBody = { ...requestBody };
+      delete retryBody.previous_response_id;
+
+      // Rebuild full message history
+      if (persistence && persistence.persist && persistence.conversationId) {
+        const { buildConversationMessagesAsync } = await import('./toolOrchestrationUtils.js');
+        const fullMessages = await buildConversationMessagesAsync({
+          body,
+          bodyIn,
+          persistence,
+          userId
+        });
+        retryBody.messages = fullMessages;
+      }
+
+      // Reapply prompt caching with full history
+      const retryBodyWithCaching = await addPromptCaching(retryBody, {
+        conversationId: persistence?.conversationId,
+        userId,
+        provider,
+        hasTools: false
+      });
+
+      upstream = await createOpenAIRequest(config, retryBodyWithCaching, { providerId });
+    }
+  }
+
   if (!upstream.ok) {
     const { status, payload } = await handleUpstreamError(upstream, persistence);
     return res.status(status).json(payload);

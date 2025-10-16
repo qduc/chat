@@ -524,6 +524,16 @@ export async function buildConversationMessagesAsync({ body, bodyIn, persistence
 }
 
 /**
+ * Validate if a response_id is compatible with the Responses API
+ * The Responses API expects IDs that begin with 'resp_'
+ * @param {string} responseId - The response ID to validate
+ * @returns {boolean} True if valid for Responses API
+ */
+function isValidResponsesAPIId(responseId) {
+  return typeof responseId === 'string' && responseId.startsWith('resp_');
+}
+
+/**
  * Build conversation messages optimized for Responses API using previous_response_id
  * Falls back to full history if no response_id is available
  * @param {Object} params - Parameters object
@@ -560,8 +570,9 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
     try {
       const previousResponseId = getLastAssistantResponseId({ conversationId: persistence.conversationId });
 
-      if (previousResponseId) {
-        // We have a response_id - only send the latest user message
+      // Only use the optimization if we have a valid response_id
+      if (previousResponseId && isValidResponsesAPIId(previousResponseId)) {
+        // We have a valid response_id - only send the latest user message
         // OpenAI will manage conversation state server-side
         const allUserMessages = Array.isArray(bodyIn?.messages)
           ? bodyIn.messages.filter((m) => m && m.role === 'user')
@@ -578,6 +589,14 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
 
         debugLogMessages('buildConversationMessagesOptimized(previousResponseId)', messages, persistence);
         return { messages, previousResponseId };
+      }
+
+      if (previousResponseId && !isValidResponsesAPIId(previousResponseId)) {
+        logger.debug({
+          msg: 'skipping_invalid_previous_response_id_in_builder',
+          previous_response_id: previousResponseId,
+          reason: 'ID does not match Responses API format (expected resp_* prefix), using full history'
+        });
       }
 
       // No response_id yet - fall back to full history for this conversation

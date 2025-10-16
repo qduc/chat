@@ -296,7 +296,7 @@ async function callLLM({ messages, config, bodyParams, providerId, providerHttp,
     messages,
     stream: upstreamStreamEnabled,
     ...(bodyParams.tools && { tools: bodyParams.tools, tool_choice: bodyParams.tool_choice || 'auto' }),
-    // Include previous_response_id if available (Responses API chain tracking)
+    // Include previous_response_id if available (already validated in buildConversationMessagesOptimized)
     ...(previousResponseId && { previous_response_id: previousResponseId }),
   };
   // Include reasoning controls only when the provider supports them
@@ -313,7 +313,53 @@ async function callLLM({ messages, config, bodyParams, providerId, providerHttp,
     hasTools: Boolean(bodyParams.tools)
   });
 
-  const response = await createOpenAIRequest(config, requestBody, { providerId, http: providerHttp });
+  let response = await createOpenAIRequest(config, requestBody, { providerId, http: providerHttp });
+
+  // If request with previous_response_id failed due to invalid ID format, retry with full history
+  if (!response.ok && requestBody.previous_response_id) {
+    let upstreamBody;
+    try {
+      upstreamBody = await response.json();
+    } catch {
+      try {
+        const text = await response.text();
+        upstreamBody = { error: 'upstream_error', message: text };
+      } catch {
+        upstreamBody = { error: 'upstream_error', message: 'Unknown error' };
+      }
+    }
+
+    const isInvalidResponseIdError = response.status === 400
+      && upstreamBody?.error?.param === 'previous_response_id'
+      && upstreamBody?.error?.code === 'invalid_value';
+
+    if (isInvalidResponseIdError) {
+      logger.warn({
+        msg: 'invalid_previous_response_id',
+        previous_response_id: requestBody.previous_response_id,
+        error: upstreamBody?.error?.message,
+        retrying: 'with full history'
+      });
+
+      // Retry without previous_response_id (will use full history)
+      // Need to rebuild messages with full history from persistence
+      const retryBody = { ...requestBody };
+      delete retryBody.previous_response_id;
+
+      // Note: messages should already be full history since this is in tool orchestration
+      // which builds full history at the start, but we'll keep the retry logic consistent
+
+      // Reapply prompt caching
+      const retryBodyWithCaching = await addPromptCaching(retryBody, {
+        conversationId,
+        userId,
+        provider,
+        hasTools: Boolean(bodyParams.tools)
+      });
+
+      response = await createOpenAIRequest(config, retryBodyWithCaching, { providerId, http: providerHttp });
+    }
+  }
 
   if (upstreamStreamEnabled) {
     return response; // Return raw response for streaming

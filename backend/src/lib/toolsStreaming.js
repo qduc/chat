@@ -31,6 +31,7 @@ import {
  */
 
 const MAX_ITERATIONS = 10; // Prevent infinite loops
+
 /**
  * Handle iterative tool orchestration with thinking support
  */
@@ -81,7 +82,7 @@ export async function handleToolsStreaming({
         messages: conversationHistory,
         stream: providerStreamEnabled,
         ...(toolsToSend && { tools: toolsToSend, tool_choice: body.tool_choice || 'auto' }),
-        // Include previous_response_id if available (Responses API chain tracking)
+        // Include previous_response_id if available (already validated in buildConversationMessagesOptimized)
         ...(currentPreviousResponseId && { previous_response_id: currentPreviousResponseId }),
       };
       // Include reasoning controls only if supported by provider
@@ -99,7 +100,60 @@ export async function handleToolsStreaming({
         hasTools: Boolean(toolsToSend)
       });
 
-      const upstream = await createOpenAIRequest(config, requestBody, { providerId });
+      let upstream = await createOpenAIRequest(config, requestBody, { providerId });
+
+      // If request with previous_response_id failed due to invalid ID format, retry with full history
+      if (!upstream.ok && requestBody.previous_response_id) {
+        let upstreamBody;
+        try {
+          upstreamBody = await upstream.json();
+        } catch {
+          try {
+            const text = await upstream.text();
+            upstreamBody = { error: 'upstream_error', message: text };
+          } catch {
+            upstreamBody = { error: 'upstream_error', message: 'Unknown error' };
+          }
+        }
+
+        const isInvalidResponseIdError = upstream.status === 400
+          && upstreamBody?.error?.param === 'previous_response_id'
+          && upstreamBody?.error?.code === 'invalid_value';
+
+        if (isInvalidResponseIdError) {
+          logger.warn({
+            msg: 'invalid_previous_response_id',
+            previous_response_id: requestBody.previous_response_id,
+            error: upstreamBody?.error?.message,
+            retrying: 'with full history'
+          });
+
+          // Retry without previous_response_id (will use full history)
+          const retryBody = { ...requestBody };
+          delete retryBody.previous_response_id;
+
+          // Rebuild full message history
+          const { buildConversationMessagesAsync } = await import('./toolOrchestrationUtils.js');
+          const fullMessages = await buildConversationMessagesAsync({
+            body,
+            bodyIn,
+            persistence,
+            userId
+          });
+          retryBody.messages = fullMessages;
+
+          // Reapply prompt caching with full history
+          const retryBodyWithCaching = await addPromptCaching(retryBody, {
+            conversationId: persistence?.conversationId,
+            userId,
+            provider: providerInstance,
+            hasTools: Boolean(toolsToSend)
+          });
+
+          upstream = await createOpenAIRequest(config, retryBodyWithCaching, { providerId });
+          currentPreviousResponseId = null; // Reset for subsequent iterations
+        }
+      }
 
       // Check if upstream actually returned a stream or a JSON response FIRST
       // Do this before any body consumption to avoid "Body already read" errors
