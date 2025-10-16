@@ -306,9 +306,8 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
         setSuccess(null);
         await httpClient.put(`${apiBase}/v1/providers/${providerId}`, { enabled });
 
-        // Refresh providers to get updated data
-        await fetchProviders();
         setSuccess(`Provider ${enabled ? 'enabled' : 'disabled'} successfully!`);
+        if (onProvidersChanged) onProvidersChanged();
       } catch (error: any) {
         // Revert on failure
         setProviders((prev) =>
@@ -329,7 +328,7 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
         });
       }
     },
-    [apiBase, providers, fetchProviders]
+    [apiBase, providers, onProvidersChanged]
   );
 
   async function testProviderConnection() {
