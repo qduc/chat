@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, RotateCcw, X } from 'lucide-react';
 import { useSystemPrompts } from '../hooks/useSystemPrompts';
 import PromptDropdown from '../app/components/promptManager/PromptDropdown';
 import SaveAsModal from '../app/components/promptManager/SaveAsModal';
@@ -419,14 +419,27 @@ export function RightSidebar({
 
                   {/* Prompt Dropdown */}
                   <div className="p-4">
-                    <PromptDropdown
-                      builtIns={prompts?.built_ins || []}
-                      customPrompts={prompts?.custom || []}
-                      selectedPromptId={effectiveSelectedPromptId}
-                      hasUnsavedChanges={hasUnsavedChanges}
-                      onSelectPrompt={handleSelectPrompt}
-                      onClearSelection={handleClearSelection}
-                    />
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1">
+                        <PromptDropdown
+                          builtIns={prompts?.built_ins || []}
+                          customPrompts={prompts?.custom || []}
+                          selectedPromptId={effectiveSelectedPromptId}
+                          hasUnsavedChanges={hasUnsavedChanges}
+                          onSelectPrompt={handleSelectPrompt}
+                          onClearSelection={handleClearSelection}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleClearSelection}
+                        title="Clear selection"
+                        className="p-1 rounded hover:bg-gray-200 dark:hover:bg-neutral-700/40 text-gray-500 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                        aria-label="Clear prompt selection"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
                   </div>
 
                   {/* Content Textarea */}
@@ -439,11 +452,11 @@ export function RightSidebar({
                       <button
                         type="button"
                         onClick={handleClearContent}
-                        title="Clear content"
+                        title="Revert changes"
                         className="ml-1 p-1 rounded hover:bg-gray-200 dark:hover:bg-neutral-700/40 text-gray-500 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
-                        aria-label="Clear content"
+                        aria-label="Revert changes"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <RotateCcw className="w-4 h-4" />
                       </button>
                     </label>
                     <textarea
