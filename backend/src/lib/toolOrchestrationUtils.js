@@ -632,7 +632,7 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
   };
 }
 
-export async function executeToolCall(call) {
+export async function executeToolCall(call, userId = null) {
   const name = call?.function?.name;
   const argsStr = call?.function?.arguments || '{}';
   const tool = toolRegistry[name];
@@ -659,7 +659,8 @@ export async function executeToolCall(call) {
 
   try {
     const validated = tool.validate ? tool.validate(args) : args;
-    const output = await tool.handler(validated);
+    // Pass user context to tool handler as second parameter for tools that need it
+    const output = await tool.handler(validated, { userId });
     return { name, output };
   } catch (executionError) {
     return {

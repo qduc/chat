@@ -1,5 +1,6 @@
 import { createTool } from './baseTool.js';
 import { logger } from '../../logger.js';
+import { getUserSetting } from '../../db/userSettings.js';
 
 const TOOL_NAME = 'web_search_searxng';
 
@@ -75,7 +76,19 @@ async function handler({
   time_range,
   safesearch,
   max_results = 10,
-}) {
+}, context = {}) {
+  // SearXNG uses a base URL rather than API key, but we accept user context
+  // for potential per-user routing in the future
+  const userId = context?.userId || null;
+  if (userId) {
+    // Currently no-op, but keep for future extensibility
+    try {
+      // read to ensure permission; ignore value
+      getUserSetting(userId, 'search_api_key');
+    } catch {
+      // ignore
+    }
+  }
   const searxngUrl = process.env.SEARXNG_BASE_URL;
   if (!searxngUrl) {
     throw new Error('SEARXNG_BASE_URL environment variable is not set');

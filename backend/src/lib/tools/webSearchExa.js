@@ -1,5 +1,6 @@
 import { createTool } from './baseTool.js';
 import { logger } from '../../logger.js';
+import { getUserSetting } from '../../db/userSettings.js';
 
 const TOOL_NAME = 'web_search_exa';
 const VALID_TYPES = ['auto', 'keyword', 'neural'];
@@ -148,10 +149,20 @@ async function handler({
   text,
   highlights,
   summary,
-}) {
-  const apiKey = process.env.EXA_API_KEY;
+}, context = {}) {
+  const userId = context?.userId || null;
+  let apiKey = null;
+  if (userId) {
+    try {
+      const row = getUserSetting(userId, 'search_api_key');
+      if (row && row.value) apiKey = row.value;
+    } catch (err) {
+      logger.warn('Failed to read user search_api_key from DB', { userId, err: err?.message || err });
+    }
+  }
+  if (!apiKey) apiKey = process.env.EXA_API_KEY;
   if (!apiKey) {
-    throw new Error('EXA_API_KEY environment variable is not set');
+    throw new Error('Exa API key is not configured (no per-user key or EXA_API_KEY env var)');
   }
 
   const url = 'https://api.exa.ai/search';

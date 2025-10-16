@@ -14,6 +14,7 @@ import {
 import Modal from './ui/Modal';
 import Toggle from './ui/Toggle';
 import { httpClient } from '../lib';
+import { fetchSearchApiKey, saveSearchApiKey, deleteSearchApiKey } from '../lib/userSettings';
 import { HttpError } from '../lib';
 import { resolveApiBase } from '../lib';
 
@@ -54,6 +55,9 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
   const [error, setError] = React.useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState('providers');
+  const [searchApiKey, setSearchApiKeyState] = React.useState<string | null>(null);
+  const [searchSaving, setSearchSaving] = React.useState(false);
+  const [searchError, setSearchError] = React.useState<string | null>(null);
   const [testing, setTesting] = React.useState(false);
   const [testResult, setTestResult] = React.useState<{ success: boolean; message: string } | null>(
     null
@@ -122,6 +126,17 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
 
   React.useEffect(() => {
     if (open) fetchProviders();
+    if (open) {
+      // Load saved search API key from server
+      (async () => {
+        try {
+          const key = await fetchSearchApiKey();
+          setSearchApiKeyState(key);
+        } catch (err: any) {
+          setSearchError(err?.message || 'Failed to load search API key');
+        }
+      })();
+    }
   }, [open, fetchProviders]);
 
   // Clear test results when form changes (but not immediately after setting them)
@@ -370,6 +385,19 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                 <div className="flex items-center gap-2">
                   <Database className="w-4 h-4" />
                   Providers
+                </div>
+              </button>
+              <button
+                onClick={() => setActiveTab('search')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                  activeTab === 'search'
+                    ? 'bg-white dark:bg-neutral-800 text-slate-900 dark:text-slate-100 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-white/60 dark:hover:bg-neutral-800/60'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4" />
+                  Search Engines
                 </div>
               </button>
               {/* Future tabs can be added here */}
@@ -739,6 +767,97 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                         )}
                       </div>
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'search' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    Search Engines API Key
+                  </h3>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    Store an API key to enable third-party web search tools. The key is saved
+                    encrypted and scoped to your account on the server.
+                  </p>
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-4 shadow-sm">
+                <div className="space-y-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Search API Key
+                  </label>
+                  <input
+                    type="password"
+                    className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                    value={searchApiKey || ''}
+                    onChange={(e) => setSearchApiKeyState(e.target.value)}
+                    placeholder="Paste your search engine API key here"
+                  />
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Keys are stored securely on the server and only accessible by your account.
+                  </p>
+
+                  <div className="pt-3 border-t border-slate-200/70 dark:border-neutral-800">
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setSearchSaving(true);
+                          setSearchError(null);
+                          try {
+                            if (searchApiKey && searchApiKey.trim() !== '') {
+                              await saveSearchApiKey(searchApiKey.trim());
+                            } else {
+                              setSearchError('Please enter a valid API key to save');
+                            }
+                          } catch (err: any) {
+                            setSearchError(err?.message || 'Failed to save key');
+                          } finally {
+                            setSearchSaving(false);
+                          }
+                        }}
+                        className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                        disabled={searchSaving}
+                      >
+                        {searchSaving ? (
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Save className="w-4 h-4" />
+                        )}
+                        {searchSaving ? 'Saving...' : 'Save Key'}
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setSearchSaving(true);
+                          setSearchError(null);
+                          try {
+                            await deleteSearchApiKey();
+                            setSearchApiKeyState(null);
+                          } catch (err: any) {
+                            setSearchError(err?.message || 'Failed to remove key');
+                          } finally {
+                            setSearchSaving(false);
+                          }
+                        }}
+                        className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-md bg-red-600 hover:bg-red-700 text-white transition-colors"
+                        disabled={searchSaving}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                        Remove Key
+                      </button>
+                    </div>
+
+                    {searchError && (
+                      <p className="text-xs text-red-600 dark:text-red-400 mt-2">{searchError}</p>
+                    )}
                   </div>
                 </div>
               </div>

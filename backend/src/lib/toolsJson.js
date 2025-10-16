@@ -332,7 +332,7 @@ async function executeAllTools(toolCalls, responseHandler, persistence) {
 
   for (const toolCall of toolCalls) {
     try {
-      const { name, output } = await executeToolCall(toolCall);
+      const { name, output } = await executeToolCall(toolCall, persistence?.userId ?? null);
 
       const toolOutput = {
         tool_call_id: toolCall.id,
@@ -524,7 +524,7 @@ export async function handleToolsJson({
   persistence,
   providerHttp,
   provider,
-  userId = null,
+  _userId = null,
 }) {
   const providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
   const providerInstance = provider || await createProvider(config, { providerId });
@@ -538,7 +538,7 @@ export async function handleToolsJson({
     body,
     bodyIn,
     persistence,
-    userId,
+      userId: persistence?.userId ?? null,
     provider: providerInstance
   });
   logger.debug('[toolsJson] Prepared messages for upstream call', {
@@ -580,7 +580,7 @@ export async function handleToolsJson({
         providerHttp,
         provider: providerInstance,
         previousResponseId: currentPreviousResponseId,
-        userId,
+         userId: persistence?.userId ?? null,
         conversationId: persistence?.conversationId,
       });
       const message = response?.choices?.[0]?.message;
@@ -681,7 +681,7 @@ export async function handleToolsJson({
       providerId,
       providerHttp,
       provider: providerInstance,
-      userId,
+        userId: persistence?.userId ?? null,
       conversationId: persistence?.conversationId,
     });
 

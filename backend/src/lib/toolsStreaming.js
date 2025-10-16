@@ -185,7 +185,7 @@ export async function handleToolsStreaming({
               writeAndFlush(res, `data: ${JSON.stringify(toolCallChunk)}\n\n`);
 
               // Execute the tool
-              const toolResult = await executeToolCall(toolCall, userId);
+                const toolResult = await executeToolCall(toolCall, userId);
 
               // Add tool result to conversation history
                 let serializedToolResult;
@@ -390,7 +390,7 @@ export async function handleToolsStreaming({
         // Execute each tool call and stream tool_output events
         for (const toolCall of normalizedToolCalls) {
           try {
-            const { name, output } = await executeToolCall(toolCall);
+              const { name, output } = await executeToolCall(toolCall, userId);
             // Emit tool_output meta as a chat chunk for clients that expect tool events
             const toolOutputMeta = createChatCompletionChunk(
               bodyIn.id || 'chatcmpl-' + Date.now(),

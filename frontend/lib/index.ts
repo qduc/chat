@@ -36,6 +36,8 @@ export {
   getUserFromToken,
 } from './storage';
 
+// Search engine API key storage helpers
+
 export {
   isAuthenticated,
   waitForAuthReady,
