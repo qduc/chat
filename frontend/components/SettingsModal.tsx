@@ -16,7 +16,6 @@ import {
 import Modal from './ui/Modal';
 import Toggle from './ui/Toggle';
 import { httpClient } from '../lib';
-import { deleteSearchApiKey } from '../lib/userSettings';
 import { HttpError } from '../lib';
 import { resolveApiBase } from '../lib';
 
@@ -847,6 +846,13 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                   </p>
                 </div>
               </div>
+
+              {/* Success Alert for search API key save */}
+              {success && (
+                <div className="rounded-lg bg-green-50 dark:bg-green-900/20 p-3 border border-green-200/70 dark:border-green-800/70">
+                  <div className="text-sm text-green-700 dark:text-green-400">{success}</div>
+                </div>
+              )}
 
               <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-4 shadow-sm">
                 <div className="space-y-6">
