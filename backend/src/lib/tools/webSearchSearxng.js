@@ -81,12 +81,12 @@ async function handler({
   // for potential per-user routing in the future
   const userId = context?.userId || null;
   if (userId) {
-    // Currently no-op, but keep for future extensibility
+    // Currently no-op, but keep for future extensibility. Read per-tool key name if present.
     try {
-      // read to ensure permission; ignore value
-      getUserSetting(userId, 'search_api_key');
-    } catch {
-      // ignore
+      // read to ensure permission; ignore value if any
+      getUserSetting(userId, 'searxng_api_key');
+    } catch (err) {
+      logger.warn('Failed to read user searxng_api_key from DB', { userId, err: err?.message || err });
     }
   }
   const searxngUrl = process.env.SEARXNG_BASE_URL;

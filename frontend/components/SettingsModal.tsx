@@ -58,6 +58,9 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
   const [searchApiKey, setSearchApiKeyState] = React.useState<string | null>(null);
   const [searchSaving, setSearchSaving] = React.useState(false);
   const [searchError, setSearchError] = React.useState<string | null>(null);
+  const [searchKeyName, setSearchKeyName] = React.useState<'tavily' | 'exa' | 'searxng' | 'legacy'>(
+    'tavily'
+  );
   const [testing, setTesting] = React.useState(false);
   const [testResult, setTestResult] = React.useState<{ success: boolean; message: string } | null>(
     null
@@ -127,17 +130,18 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
   React.useEffect(() => {
     if (open) fetchProviders();
     if (open) {
-      // Load saved search API key from server
+      // Load saved search API key from server for the currently selected engine
       (async () => {
         try {
-          const key = await fetchSearchApiKey();
+          const name = searchKeyName === 'legacy' ? undefined : searchKeyName;
+          const key = await fetchSearchApiKey(name);
           setSearchApiKeyState(key);
         } catch (err: any) {
           setSearchError(err?.message || 'Failed to load search API key');
         }
       })();
     }
-  }, [open, fetchProviders]);
+  }, [open, fetchProviders, searchKeyName]);
 
   // Clear test results when form changes (but not immediately after setting them)
   const [lastTestTime, setLastTestTime] = React.useState(0);
@@ -789,9 +793,21 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
 
               <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-4 shadow-sm">
                 <div className="space-y-2">
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                    Search API Key
-                  </label>
+                  <div className="flex items-center justify-between">
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                      Search API Key
+                    </label>
+                    <select
+                      value={searchKeyName}
+                      onChange={(e) => setSearchKeyName(e.target.value as any)}
+                      className="ml-3 text-xs px-2 py-1 rounded-md border border-slate-200/60 dark:border-neutral-700 bg-white/80 dark:bg-neutral-900/60"
+                      aria-label="Search engine selector"
+                    >
+                      <option value="tavily">Tavily</option>
+                      <option value="exa">Exa</option>
+                      <option value="searxng">SearXNG</option>
+                    </select>
+                  </div>
                   <input
                     type="password"
                     className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
@@ -812,7 +828,10 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                           setSearchError(null);
                           try {
                             if (searchApiKey && searchApiKey.trim() !== '') {
-                              await saveSearchApiKey(searchApiKey.trim());
+                              await saveSearchApiKey(
+                                searchApiKey.trim(),
+                                searchKeyName === 'legacy' ? undefined : searchKeyName
+                              );
                             } else {
                               setSearchError('Please enter a valid API key to save');
                             }
@@ -839,7 +858,9 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                           setSearchSaving(true);
                           setSearchError(null);
                           try {
-                            await deleteSearchApiKey();
+                            await deleteSearchApiKey(
+                              searchKeyName === 'legacy' ? undefined : searchKeyName
+                            );
                             setSearchApiKeyState(null);
                           } catch (err: any) {
                             setSearchError(err?.message || 'Failed to remove key');

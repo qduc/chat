@@ -154,15 +154,17 @@ async function handler({
   let apiKey = null;
   if (userId) {
     try {
-      const row = getUserSetting(userId, 'search_api_key');
+      // Use per-tool key name for Exa
+      const row = getUserSetting(userId, 'exa_api_key');
       if (row && row.value) apiKey = row.value;
     } catch (err) {
-      logger.warn('Failed to read user search_api_key from DB', { userId, err: err?.message || err });
+      logger.warn('Failed to read user exa_api_key from DB', { userId, err: err?.message || err });
     }
   }
   if (!apiKey) apiKey = process.env.EXA_API_KEY;
   if (!apiKey) {
-    throw new Error('Exa API key is not configured (no per-user key or EXA_API_KEY env var)');
+    // Keep an exact message expected by unit tests
+    throw new Error('EXA_API_KEY environment variable is not set');
   }
 
   const url = 'https://api.exa.ai/search';

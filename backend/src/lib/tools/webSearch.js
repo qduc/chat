@@ -129,10 +129,11 @@ async function handler({
   let apiKey = null;
   if (userId) {
     try {
-      const row = getUserSetting(userId, 'search_api_key');
+      // Use per-tool key name for Tavily
+      const row = getUserSetting(userId, 'tavily_api_key');
       if (row && row.value) apiKey = row.value;
     } catch (err) {
-      logger.warn('Failed to read user search_api_key from DB', { userId, err: err?.message || err });
+      logger.warn('Failed to read user tavily_api_key from DB', { userId, err: err?.message || err });
     }
   }
   if (!apiKey) {

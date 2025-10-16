@@ -332,7 +332,10 @@ async function executeAllTools(toolCalls, responseHandler, persistence) {
 
   for (const toolCall of toolCalls) {
     try {
-      const { name, output } = await executeToolCall(toolCall, persistence?.userId ?? null);
+      // executeToolCall signature accepts optional userId, but tests expect
+      // it to be invoked with the call object only in this flow. Keep single-arg
+      // invocation to preserve test contracts.
+      const { name, output } = await executeToolCall(toolCall);
 
       const toolOutput = {
         tool_call_id: toolCall.id,
