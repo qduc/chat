@@ -10,11 +10,13 @@ import {
   Zap,
   CheckCircle,
   XCircle,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import Modal from './ui/Modal';
 import Toggle from './ui/Toggle';
 import { httpClient } from '../lib';
-  import { deleteSearchApiKey } from '../lib/userSettings';
+import { deleteSearchApiKey } from '../lib/userSettings';
 import { HttpError } from '../lib';
 import { resolveApiBase } from '../lib';
 
@@ -72,6 +74,12 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
     tavily: null,
     exa: null,
     searxng: null,
+  });
+  // Per-engine reveal/hide state for API keys
+  const [searchReveal, setSearchReveal] = React.useState<Record<SearchEngine, boolean>>({
+    tavily: false,
+    exa: false,
+    searxng: false,
   });
   const [testing, setTesting] = React.useState(false);
   const [testResult, setTestResult] = React.useState<{ success: boolean; message: string } | null>(
@@ -806,7 +814,8 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                     Search Engines API Keys
                   </h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Store API keys to enable third-party web search tools. Keys are encrypted and scoped to your account.
+                    Store API keys to enable third-party web search tools. Keys are encrypted and
+                    scoped to your account.
                   </p>
                 </div>
               </div>
@@ -818,15 +827,32 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                         {engine.charAt(0).toUpperCase() + engine.slice(1)} API Key
                       </label>
-                      <input
-                        type="password"
-                        className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
-                        value={searchApiKeys[engine] || ''}
-                        onChange={(e) =>
-                          setSearchApiKeys((prev) => ({ ...prev, [engine]: e.target.value }))
-                        }
-                        placeholder={`Paste your ${engine} API key here`}
-                      />
+                      <div className="relative flex items-center">
+                        <input
+                          type={searchReveal[engine] ? 'text' : 'password'}
+                          className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors pr-10"
+                          value={searchApiKeys[engine] || ''}
+                          onChange={(e) =>
+                            setSearchApiKeys((prev) => ({ ...prev, [engine]: e.target.value }))
+                          }
+                          placeholder={`Paste your ${engine} API key here`}
+                        />
+                        <button
+                          type="button"
+                          aria-label={searchReveal[engine] ? 'Hide API key' : 'Show API key'}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400"
+                          tabIndex={0}
+                          onClick={() =>
+                            setSearchReveal((prev) => ({ ...prev, [engine]: !prev[engine] }))
+                          }
+                        >
+                          {searchReveal[engine] ? (
+                            <EyeOff className="w-5 h-5" />
+                          ) : (
+                            <Eye className="w-5 h-5" />
+                          )}
+                        </button>
+                      </div>
                       <div className="flex gap-2 pt-2">
                         <button
                           type="button"

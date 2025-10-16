@@ -1,6 +1,11 @@
+
 import { Router } from 'express';
 import { authenticateToken } from '../middleware/auth.js';
-// Removed unused imports after legacy route cleanup
+import { upsertUserSetting } from '../db/userSettings.js';
+import { getAllUserSettings } from '../db/getAllUserSettings.js';
+
+const router = Router();
+router.use(authenticateToken);
 
 export function createUserSettingsRouter() {
   // Unified update route for all keys
@@ -13,7 +18,6 @@ export function createUserSettingsRouter() {
       for (const key of supportedKeys) {
         if (Object.hasOwn(body, key)) {
           const value = body[key];
-          const { upsertUserSetting } = require('../db/userSettings.js');
           upsertUserSetting(userId, key, value);
           updated[key] = value;
         }
@@ -24,8 +28,6 @@ export function createUserSettingsRouter() {
     }
   });
   // Get all user settings for the authenticated user
-  const { getAllUserSettings } = require('../db/getAllUserSettings.js');
-
   router.get('/v1/user-settings', (req, res) => {
     try {
       const userId = req.user.id;
@@ -35,13 +37,6 @@ export function createUserSettingsRouter() {
       res.status(500).json({ error: 'internal_server_error', message: err.message });
     }
   });
-  const router = Router();
-  router.use(authenticateToken);
-
-  // Generic user setting key access for supported search tools.
-  // Query param `name` must be one of: 'tavily', 'exa', 'searxng'.
-  // Removed unused mapNameToKey after legacy route cleanup
-
 
   return router;
 }
