@@ -306,7 +306,7 @@ async function handleRequest(context, req, res) {
 
   // Try to use previous_response_id optimization for existing conversations
   let requestBody = { ...body };
-  requestBody.stream = upstreamStreamEnabled;
+  requestBody.stream = flags.providerStream;
   delete requestBody.provider_stream;
   delete requestBody.providerStream;
   if (persistence && persistence.persist && persistence.conversationId) {
