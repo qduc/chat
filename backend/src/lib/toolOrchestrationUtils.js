@@ -89,6 +89,19 @@ function hasWebSearchToolsEnabled(enabledTools) {
   });
 }
 
+/**
+ * Check if the journal tool is enabled in the request
+ * @param {Array} enabledTools - Array of tool specs or tool names that are enabled
+ * @returns {boolean} True if journal is enabled
+ */
+function hasJournalToolsEnabled(enabledTools) {
+  if (!Array.isArray(enabledTools) || enabledTools.length === 0) return false;
+  return enabledTools.some(tool => {
+    const toolName = typeof tool === 'string' ? tool : tool?.function?.name || tool?.name;
+    return toolName === 'journal';
+  });
+}
+
 function escapeRegExp(value) {
   return value.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
 }
@@ -193,7 +206,8 @@ async function loadSharedModules({ enabledTools = null, model = null } = {}) {
         return '';
       }
 
-      const hasWebSearch = hasWebSearchToolsEnabled(enabledTools);
+  const hasWebSearch = hasWebSearchToolsEnabled(enabledTools);
+  const hasJournal = hasJournalToolsEnabled(enabledTools);
       const moduleContents = [];
 
       for (const file of moduleFiles) {
@@ -201,6 +215,12 @@ async function loadSharedModules({ enabledTools = null, model = null } = {}) {
           // Skip web_search module if no web search tools are enabled
           if (file === 'web_search.md' && !hasWebSearch) {
             logger.debug('[toolOrchestrationUtils] Skipping web_search module (no web search tools enabled)');
+            continue;
+          }
+
+          // Skip journal module if no journal tool is enabled
+          if (file === 'journal.md' && !hasJournal) {
+            logger.debug('[toolOrchestrationUtils] Skipping journal module (journal tool not enabled)');
             continue;
           }
 
