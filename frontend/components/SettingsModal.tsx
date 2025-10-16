@@ -55,6 +55,7 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
   }>({ name: '', provider_type: 'openai', base_url: '', enabled: true });
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [success, setSuccess] = React.useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState('providers');
   // Per-engine search API key state
@@ -128,6 +129,7 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
     try {
       setLoadingProviders(true);
       setError(null);
+      setSuccess(null);
       const response = await httpClient.get<{ providers: ProviderRow[] }>(
         `${apiBase}/v1/providers`
       );
@@ -148,7 +150,11 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
   }, [apiBase, selectedId, populateFormFromRow]);
 
   React.useEffect(() => {
-    if (open) fetchProviders();
+    if (open) {
+      setError(null);
+      setSuccess(null);
+      fetchProviders();
+    }
     if (open) {
       // Fetch all user settings (all keys) at once
       (async () => {
@@ -190,6 +196,16 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
     lastTestTime,
   ]);
 
+  // Auto-clear success messages after 3 seconds
+  React.useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => {
+        setSuccess(null);
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
+
   const onSelectProvider = (r: ProviderRow) => {
     setSelectedId(r.id);
     populateFormFromRow(r);
@@ -199,6 +215,7 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
     try {
       setSaving(true);
       setError(null);
+      setSuccess(null);
       const payload: any = {
         name: form.name,
         provider_type: form.provider_type,
@@ -237,6 +254,7 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
       }
       await fetchProviders();
       if (onProvidersChanged) onProvidersChanged();
+      setSuccess(form.id ? 'Provider updated successfully!' : 'Provider created successfully!');
     } catch (e: any) {
       const message = e instanceof HttpError ? e.message : e?.message || 'Failed to save provider';
       setError(message);
@@ -254,10 +272,12 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
     try {
       setSaving(true);
       setError(null);
+      setSuccess(null);
       await httpClient.delete(`${apiBase}/v1/providers/${target}`);
       resetForm();
       await fetchProviders();
       if (onProvidersChanged) onProvidersChanged();
+      setSuccess('Provider deleted successfully!');
     } catch (e: any) {
       const message =
         e instanceof HttpError ? e.message : e?.message || 'Failed to delete provider';
@@ -283,10 +303,12 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
 
       try {
         setError(null);
+        setSuccess(null);
         await httpClient.put(`${apiBase}/v1/providers/${providerId}`, { enabled });
 
         // Refresh providers to get updated data
         await fetchProviders();
+        setSuccess(`Provider ${enabled ? 'enabled' : 'disabled'} successfully!`);
       } catch (error: any) {
         // Revert on failure
         setProviders((prev) =>
@@ -466,6 +488,13 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
               {error && (
                 <div className="rounded-lg bg-red-50 dark:bg-red-900/20 p-3 border border-red-200/70 dark:border-red-800/70">
                   <div className="text-sm text-red-700 dark:text-red-400">{error}</div>
+                </div>
+              )}
+
+              {/* Success Alert */}
+              {success && (
+                <div className="rounded-lg bg-green-50 dark:bg-green-900/20 p-3 border border-green-200/70 dark:border-green-800/70">
+                  <div className="text-sm text-green-700 dark:text-green-400">{success}</div>
                 </div>
               )}
 
@@ -859,6 +888,7 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                           onClick={async () => {
                             setSearchSaving((prev) => ({ ...prev, [engine]: true }));
                             setSearchErrors((prev) => ({ ...prev, [engine]: null }));
+                            setSuccess(null);
                             try {
                               if (searchApiKeys[engine] && searchApiKeys[engine].trim() !== '') {
                                 // Use unified update route
@@ -869,6 +899,9 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                                 };
                                 const body = { [keyMap[engine]]: searchApiKeys[engine].trim() };
                                 await httpClient.put('/v1/user-settings', body);
+                                setSuccess(
+                                  `${engine.charAt(0).toUpperCase() + engine.slice(1)} API key saved successfully!`
+                                );
                               } else {
                                 setSearchErrors((prev) => ({
                                   ...prev,
@@ -893,29 +926,6 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                             <Save className="w-4 h-4" />
                           )}
                           {searchSaving[engine] ? 'Saving...' : 'Save Key'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            setSearchSaving((prev) => ({ ...prev, [engine]: true }));
-                            setSearchErrors((prev) => ({ ...prev, [engine]: null }));
-                            try {
-                              await deleteSearchApiKey(engine);
-                              setSearchApiKeys((prev) => ({ ...prev, [engine]: '' }));
-                            } catch (err: any) {
-                              setSearchErrors((prev) => ({
-                                ...prev,
-                                [engine]: err?.message || 'Failed to remove key',
-                              }));
-                            } finally {
-                              setSearchSaving((prev) => ({ ...prev, [engine]: false }));
-                            }
-                          }}
-                          className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-md bg-red-600 hover:bg-red-700 text-white transition-colors"
-                          disabled={searchSaving[engine]}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                          Remove Key
                         </button>
                       </div>
                       {searchErrors[engine] && (
