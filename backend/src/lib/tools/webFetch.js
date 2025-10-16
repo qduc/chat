@@ -91,11 +91,17 @@ function validate(args) {
   // Validate heading if provided
   const { heading } = args;
   let targetHeading = null;
-  if (heading !== undefined) {
-    if (typeof heading !== 'string' || heading.trim().length === 0) {
-      throw new Error('heading must be a non-empty string');
+  if (heading !== undefined && heading !== null) {
+    if (typeof heading === 'string') {
+      if (heading.trim().length === 0) {
+        // Treat empty/whitespace heading as not entered
+        targetHeading = null;
+      } else {
+        targetHeading = heading.trim();
+      }
+    } else {
+      throw new Error('heading must be a string');
     }
-    targetHeading = heading.trim();
   }
 
   // Validate heading_range if provided
