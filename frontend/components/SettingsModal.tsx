@@ -14,7 +14,7 @@ import {
 import Modal from './ui/Modal';
 import Toggle from './ui/Toggle';
 import { httpClient } from '../lib';
-import { fetchSearchApiKey, saveSearchApiKey, deleteSearchApiKey } from '../lib/userSettings';
+  import { deleteSearchApiKey } from '../lib/userSettings';
 import { HttpError } from '../lib';
 import { resolveApiBase } from '../lib';
 
@@ -55,12 +55,24 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
   const [error, setError] = React.useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState('providers');
-  const [searchApiKey, setSearchApiKeyState] = React.useState<string | null>(null);
-  const [searchSaving, setSearchSaving] = React.useState(false);
-  const [searchError, setSearchError] = React.useState<string | null>(null);
-  const [searchKeyName, setSearchKeyName] = React.useState<'tavily' | 'exa' | 'searxng' | 'legacy'>(
-    'tavily'
-  );
+  // Per-engine search API key state
+  type SearchEngine = 'tavily' | 'exa' | 'searxng';
+  const searchEngines: SearchEngine[] = React.useMemo(() => ['tavily', 'exa', 'searxng'], []);
+  const [searchApiKeys, setSearchApiKeys] = React.useState<Record<SearchEngine, string>>({
+    tavily: '',
+    exa: '',
+    searxng: '',
+  });
+  const [searchSaving, setSearchSaving] = React.useState<Record<SearchEngine, boolean>>({
+    tavily: false,
+    exa: false,
+    searxng: false,
+  });
+  const [searchErrors, setSearchErrors] = React.useState<Record<SearchEngine, string | null>>({
+    tavily: null,
+    exa: null,
+    searxng: null,
+  });
   const [testing, setTesting] = React.useState(false);
   const [testResult, setTestResult] = React.useState<{ success: boolean; message: string } | null>(
     null
@@ -130,18 +142,27 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
   React.useEffect(() => {
     if (open) fetchProviders();
     if (open) {
-      // Load saved search API key from server for the currently selected engine
+      // Fetch all user settings (all keys) at once
       (async () => {
         try {
-          const name = searchKeyName === 'legacy' ? undefined : searchKeyName;
-          const key = await fetchSearchApiKey(name);
-          setSearchApiKeyState(key);
+          const res = await httpClient.get('/v1/user-settings');
+          const keys = res.data || {};
+          setSearchApiKeys({
+            tavily: keys.tavily_api_key || '',
+            exa: keys.exa_api_key || '',
+            searxng: keys.searxng_api_key || '',
+          });
+          setSearchErrors({ tavily: null, exa: null, searxng: null });
         } catch (err: any) {
-          setSearchError(err?.message || 'Failed to load search API key');
+          setSearchErrors({
+            tavily: err?.message || 'Failed to load Tavily API key',
+            exa: err?.message || 'Failed to load Exa API key',
+            searxng: err?.message || 'Failed to load SearXNG API key',
+          });
         }
       })();
     }
-  }, [open, fetchProviders, searchKeyName]);
+  }, [open, fetchProviders]);
 
   // Clear test results when form changes (but not immediately after setting them)
   const [lastTestTime, setLastTestTime] = React.useState(0);
@@ -782,104 +803,105 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-medium text-slate-900 dark:text-slate-100">
-                    Search Engines API Key
+                    Search Engines API Keys
                   </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400">
-                    Store an API key to enable third-party web search tools. The key is saved
-                    encrypted and scoped to your account on the server.
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Store API keys to enable third-party web search tools. Keys are encrypted and scoped to your account.
                   </p>
                 </div>
               </div>
 
               <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-4 shadow-sm">
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Search API Key
-                    </label>
-                    <select
-                      value={searchKeyName}
-                      onChange={(e) => setSearchKeyName(e.target.value as any)}
-                      className="ml-3 text-xs px-2 py-1 rounded-md border border-slate-200/60 dark:border-neutral-700 bg-white/80 dark:bg-neutral-900/60"
-                      aria-label="Search engine selector"
-                    >
-                      <option value="tavily">Tavily</option>
-                      <option value="exa">Exa</option>
-                      <option value="searxng">SearXNG</option>
-                    </select>
-                  </div>
-                  <input
-                    type="password"
-                    className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
-                    value={searchApiKey || ''}
-                    onChange={(e) => setSearchApiKeyState(e.target.value)}
-                    placeholder="Paste your search engine API key here"
-                  />
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                <div className="space-y-6">
+                  {searchEngines.map((engine) => (
+                    <div key={engine} className="space-y-2">
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                        {engine.charAt(0).toUpperCase() + engine.slice(1)} API Key
+                      </label>
+                      <input
+                        type="password"
+                        className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                        value={searchApiKeys[engine] || ''}
+                        onChange={(e) =>
+                          setSearchApiKeys((prev) => ({ ...prev, [engine]: e.target.value }))
+                        }
+                        placeholder={`Paste your ${engine} API key here`}
+                      />
+                      <div className="flex gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setSearchSaving((prev) => ({ ...prev, [engine]: true }));
+                            setSearchErrors((prev) => ({ ...prev, [engine]: null }));
+                            try {
+                              if (searchApiKeys[engine] && searchApiKeys[engine].trim() !== '') {
+                                // Use unified update route
+                                const keyMap = {
+                                  tavily: 'tavily_api_key',
+                                  exa: 'exa_api_key',
+                                  searxng: 'searxng_api_key',
+                                };
+                                const body = { [keyMap[engine]]: searchApiKeys[engine].trim() };
+                                await httpClient.put('/v1/user-settings', body);
+                              } else {
+                                setSearchErrors((prev) => ({
+                                  ...prev,
+                                  [engine]: 'Please enter a valid API key to save',
+                                }));
+                              }
+                            } catch (err: any) {
+                              setSearchErrors((prev) => ({
+                                ...prev,
+                                [engine]: err?.message || 'Failed to save key',
+                              }));
+                            } finally {
+                              setSearchSaving((prev) => ({ ...prev, [engine]: false }));
+                            }
+                          }}
+                          className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                          disabled={searchSaving[engine]}
+                        >
+                          {searchSaving[engine] ? (
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Save className="w-4 h-4" />
+                          )}
+                          {searchSaving[engine] ? 'Saving...' : 'Save Key'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setSearchSaving((prev) => ({ ...prev, [engine]: true }));
+                            setSearchErrors((prev) => ({ ...prev, [engine]: null }));
+                            try {
+                              await deleteSearchApiKey(engine);
+                              setSearchApiKeys((prev) => ({ ...prev, [engine]: '' }));
+                            } catch (err: any) {
+                              setSearchErrors((prev) => ({
+                                ...prev,
+                                [engine]: err?.message || 'Failed to remove key',
+                              }));
+                            } finally {
+                              setSearchSaving((prev) => ({ ...prev, [engine]: false }));
+                            }
+                          }}
+                          className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-md bg-red-600 hover:bg-red-700 text-white transition-colors"
+                          disabled={searchSaving[engine]}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                          Remove Key
+                        </button>
+                      </div>
+                      {searchErrors[engine] && (
+                        <p className="text-xs text-red-600 dark:text-red-400 mt-2">
+                          {searchErrors[engine]}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                  <p className="text-xs text-slate-500 dark:text-slate-400 pt-2">
                     Keys are stored securely on the server and only accessible by your account.
                   </p>
-
-                  <div className="pt-3 border-t border-slate-200/70 dark:border-neutral-800">
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          setSearchSaving(true);
-                          setSearchError(null);
-                          try {
-                            if (searchApiKey && searchApiKey.trim() !== '') {
-                              await saveSearchApiKey(
-                                searchApiKey.trim(),
-                                searchKeyName === 'legacy' ? undefined : searchKeyName
-                              );
-                            } else {
-                              setSearchError('Please enter a valid API key to save');
-                            }
-                          } catch (err: any) {
-                            setSearchError(err?.message || 'Failed to save key');
-                          } finally {
-                            setSearchSaving(false);
-                          }
-                        }}
-                        className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-                        disabled={searchSaving}
-                      >
-                        {searchSaving ? (
-                          <RefreshCw className="w-4 h-4 animate-spin" />
-                        ) : (
-                          <Save className="w-4 h-4" />
-                        )}
-                        {searchSaving ? 'Saving...' : 'Save Key'}
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          setSearchSaving(true);
-                          setSearchError(null);
-                          try {
-                            await deleteSearchApiKey(
-                              searchKeyName === 'legacy' ? undefined : searchKeyName
-                            );
-                            setSearchApiKeyState(null);
-                          } catch (err: any) {
-                            setSearchError(err?.message || 'Failed to remove key');
-                          } finally {
-                            setSearchSaving(false);
-                          }
-                        }}
-                        className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-md bg-red-600 hover:bg-red-700 text-white transition-colors"
-                        disabled={searchSaving}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                        Remove Key
-                      </button>
-                    </div>
-
-                    {searchError && (
-                      <p className="text-xs text-red-600 dark:text-red-400 mt-2">{searchError}</p>
-                    )}
-                  </div>
                 </div>
               </div>
             </div>
