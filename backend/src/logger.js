@@ -10,11 +10,14 @@ export const logger = pino({
     targets: [
       // Always write JSON logs to file with date-based filenames
       {
-        target: './lib/dailyRotatingFileTransport.js',
+        target: 'pino-pretty',
         level,
         options: {
-          file: './logs/app',
-          extension: '.log',
+          colorize: false,
+          translateTime: 'SYS:standard',
+          singleLine: true,
+          ignore: 'pid,hostname',
+          destination: `./logs/app-${new Date().toISOString().slice(0, 10)}.log`,
         },
       },
       // Pretty console output in development, plain JSON in production
