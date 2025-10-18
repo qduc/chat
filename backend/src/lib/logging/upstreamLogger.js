@@ -6,7 +6,7 @@ import os from 'node:os';
 const LOG_PREFIX = 'upstream-requests-';
 const RESPONSE_LOG_PREFIX = 'upstream-responses-';
 const SSE_RAW_LOG_PREFIX = 'upstream-responses-sse-raw-';
-const RETENTION_DAYS = Number(process.env.UPSTREAM_LOG_RETENTION_DAYS || 7);
+const RETENTION_DAYS = Number(process.env.UPSTREAM_LOG_RETENTION_DAYS || 2);
 const MAX_LOG_LINES = Number(process.env.UPSTREAM_LOG_MAX_LINES || 1000);
 
 function resolveLogDir() {
@@ -209,12 +209,40 @@ export function formatSSEChunks(bodyStr) {
   const toolCallAccumulator = {};
   let toolCallStreamingShown = false;
 
+  // Track consecutive content chunks to consolidate them
+  let contentBuffer = [];
+  let roleSet = false;
+
+  // Track current event type for Realtime API format
+  let currentEvent = null;
+
+  function flushContentBuffer() {
+    if (contentBuffer.length > 0) {
+      const consolidatedContent = contentBuffer.join('');
+      formattedChunks.push(`[Content] ${JSON.stringify(consolidatedContent)}`);
+      contentBuffer = [];
+    }
+  }
+
   for (const line of lines) {
+    // Skip OPENROUTER PROCESSING lines
+    if (line === ': OPENROUTER PROCESSING') {
+      continue;
+    }
+
+    // Handle event: lines (OpenAI Realtime API format)
+    if (line.startsWith('event: ')) {
+      currentEvent = line.slice(7); // Remove 'event: ' prefix
+      continue;
+    }
+
     if (line.startsWith('data: ')) {
       const dataContent = line.slice(6); // Remove 'data: ' prefix
 
       // Handle special cases
       if (dataContent === '[DONE]') {
+        flushContentBuffer(); // Flush any pending content before showing tool calls
+
         // Show final accumulated tool calls if any
         if (Object.keys(toolCallAccumulator).length > 0) {
           formattedChunks.push('\n--- Accumulated Tool Calls ---');
@@ -229,22 +257,68 @@ export function formatSSEChunks(bodyStr) {
       try {
         const parsed = JSON.parse(dataContent);
 
-        // Extract relevant fields for readability
+        // Handle OpenAI Realtime API format
+        if (currentEvent && parsed.type) {
+          // Handle text deltas from Realtime API
+          if (parsed.type === 'response.output_text.delta' && parsed.delta) {
+            contentBuffer.push(parsed.delta);
+            chunkIndex++;
+            continue;
+          }
+
+          // Handle completion events
+          if (parsed.type === 'response.output_text.done') {
+            flushContentBuffer();
+            if (parsed.text) {
+              formattedChunks.push(`[Text Complete] Length: ${parsed.text.length} chars`);
+            }
+            chunkIndex++;
+            continue;
+          }
+
+          // Handle response completion
+          if (parsed.type === 'response.completed') {
+            flushContentBuffer();
+            const usage = parsed.response?.usage;
+            if (usage) {
+              formattedChunks.push(`[Response Complete] Usage: ${JSON.stringify(usage)}`);
+            }
+            chunkIndex++;
+            continue;
+          }
+
+          // Skip other Realtime API event types to reduce noise
+          if (parsed.type.startsWith('response.')) {
+            continue;
+          }
+        }
+
+        // Handle standard Chat Completions API format
         const delta = parsed.choices?.[0]?.delta;
         const finishReason = parsed.choices?.[0]?.finish_reason;
         const usage = parsed.usage;
 
-        let chunkSummary = `[Chunk ${chunkIndex}]`;
+        // Handle role separately (only once at the start)
+        if (delta?.role && !roleSet) {
+          flushContentBuffer(); // Flush any pending content before role
+          formattedChunks.push(`[Chunk ${chunkIndex}] Role: ${delta.role}`);
+          roleSet = true;
+          chunkIndex++;
+        }
 
-        // Build summary with all available delta information
-        const parts = [];
-        if (delta?.role) {
-          parts.push(`Role: ${delta.role}`);
-        }
+        // Accumulate content chunks instead of logging individually
         if (delta?.content) {
-          parts.push(`Content: ${JSON.stringify(delta.content)}`);
+          contentBuffer.push(delta.content);
+          chunkIndex++; // Still count chunk index for debugging
+        } else if (contentBuffer.length > 0) {
+          // Flush content when we hit a non-content chunk
+          flushContentBuffer();
         }
+
+        // Handle tool calls
         if (delta?.tool_calls) {
+          flushContentBuffer(); // Flush content before tool calls
+
           // Accumulate tool call data instead of showing raw chunks
           for (const toolCall of delta.tool_calls) {
             const index = toolCall.index ?? 0;
@@ -274,34 +348,38 @@ export function formatSSEChunks(bodyStr) {
               .map(tc => tc.name)
               .join(', ');
             if (toolNames) {
-              parts.push(`Tool call streaming: ${toolNames}`);
+              formattedChunks.push(`[Chunk ${chunkIndex}] Tool call streaming: ${toolNames}`);
               toolCallStreamingShown = true;
+              chunkIndex++;
             }
           }
         }
-        if (finishReason) {
-          parts.push(`Finish reason: ${finishReason}`);
-        }
-        if (usage) {
-          parts.push(`Usage: ${JSON.stringify(usage)}`);
-        }
 
-        if (parts.length > 0) {
-          chunkSummary += ' ' + parts.join(', ');
-          formattedChunks.push(chunkSummary);
+        // Handle finish_reason and usage
+        if (finishReason || usage) {
+          flushContentBuffer(); // Flush content before metadata
+          const parts = [];
+          if (finishReason) {
+            parts.push(`Finish reason: ${finishReason}`);
+          }
+          if (usage) {
+            parts.push(`Usage: ${JSON.stringify(usage)}`);
+          }
+          formattedChunks.push(`[Chunk ${chunkIndex}] ${parts.join(', ')}`);
           chunkIndex++;
         }
-        // Skip empty chunks (common during tool call streaming)
       } catch {
+        flushContentBuffer(); // Flush content before unparseable chunk
         // If parsing fails, just show the raw line
         formattedChunks.push(`[Chunk ${chunkIndex}] (unparseable) ${dataContent}`);
         chunkIndex++;
       }
-    } else if (line.trim()) {
-      // Non-data lines (e.g., event:, id:, etc.)
-      formattedChunks.push(`  ${line}`);
     }
+    // Skip other SSE metadata lines to reduce noise
   }
+
+  // Flush any remaining content at the end
+  flushContentBuffer();
 
   return formattedChunks.join('\n');
 }
