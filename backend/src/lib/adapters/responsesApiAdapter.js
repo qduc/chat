@@ -1116,7 +1116,19 @@ export class ResponsesAPIAdapter extends BaseAdapter {
 		}
 
 		const messages = Array.isArray(payload.messages) ? payload.messages : [];
-		const input = normalizeMessages(messages);
+
+		// When using previous_response_id, only send the latest user message
+		// The API already has the conversation context from the previous response
+		let input;
+		if (payload.previous_response_id) {
+			// Find the last user message
+			const lastUserMessage = messages.findLast(msg => msg?.role === 'user');
+			input = lastUserMessage ? normalizeMessages([lastUserMessage]) : [];
+		} else {
+			// Normal flow: send all messages including system prompt
+			input = normalizeMessages(messages);
+		}
+
 		if (input.length === 0 && typeof payload.input === 'string') {
 			input.push({ role: 'user', content: [{ type: 'input_text', text: payload.input }] });
 		}
@@ -1167,7 +1179,10 @@ export class ResponsesAPIAdapter extends BaseAdapter {
 		}
 
 		if (payload.reasoning_effort !== undefined) {
-			request.reasoning = { effort: payload.reasoning_effort };
+			request.reasoning = {
+				effort: payload.reasoning_effort,
+				summary: 'auto'
+			};
 		}
 		if (payload.verbosity !== undefined) {
 			request.text = { verbosity: payload.verbosity };
