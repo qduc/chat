@@ -1121,8 +1121,8 @@ export class ResponsesAPIAdapter extends BaseAdapter {
 		// The API already has the conversation context from the previous response
 		let input;
 		if (payload.previous_response_id) {
-			// Find the last user message
-			const lastUserMessage = messages.findLast(msg => msg?.role === 'user');
+			// Find the last user message or tool output message
+			const lastUserMessage = messages.findLast(msg => msg?.role === 'user' || msg?.role === 'tool');
 			input = lastUserMessage ? normalizeMessages([lastUserMessage]) : [];
 		} else {
 			// Normal flow: send all messages including system prompt
