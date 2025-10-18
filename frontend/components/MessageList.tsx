@@ -27,6 +27,7 @@ import {
   type ImageAttachment,
   type ImageContent,
 } from '../lib';
+import { useStreamingScroll } from '../hooks/useStreamingScroll';
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -206,6 +207,7 @@ interface MessageProps {
   onEditingPaste: (event: React.ClipboardEvent<HTMLTextAreaElement>) => void;
   onEditingImageUploadClick: () => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
+  toolbarRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 const Message = React.memo<MessageProps>(
@@ -234,6 +236,7 @@ const Message = React.memo<MessageProps>(
     onEditingPaste,
     onEditingImageUploadClick,
     fileInputRef,
+    toolbarRef,
   }) {
     const isUser = message.role === 'user';
     const isEditing = editingMessageId === message.id;
@@ -604,7 +607,10 @@ const Message = React.memo<MessageProps>(
               )}
 
               {!isEditing && (message.content || !isUser) && (
-                <div className="mt-1 flex items-center justify-between opacity-70 group-hover:opacity-100 transition-opacity text-xs">
+                <div
+                  className="mt-1 flex items-center justify-between opacity-70 group-hover:opacity-100 transition-opacity text-xs"
+                  ref={isUser && toolbarRef ? toolbarRef : undefined}
+                >
                   {/* Show stats for assistant messages */}
                   {!isUser && (
                     <div className="flex items-center gap-2">
@@ -711,7 +717,8 @@ const Message = React.memo<MessageProps>(
       prev.collapsedToolOutputs === next.collapsedToolOutputs &&
       prev.copiedMessageId === next.copiedMessageId &&
       prev.streamingStats?.tokensPerSecond === next.streamingStats?.tokensPerSecond &&
-      prev.editingImages === next.editingImages
+      prev.editingImages === next.editingImages &&
+      prev.toolbarRef === next.toolbarRef
     );
   }
 );
@@ -732,14 +739,15 @@ export function MessageList({
   containerRef: externalContainerRef,
 }: MessageListProps) {
   // Debug logging
-  const bottomRef = useRef<HTMLDivElement | null>(null);
   const internalContainerRef = useRef<HTMLDivElement | null>(null);
   const containerRef = externalContainerRef || internalContainerRef;
   const editingTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-  const lastUserMessageRef = useRef<HTMLDivElement | null>(null);
   const [collapsedToolOutputs, setCollapsedToolOutputs] = useState<Record<string, boolean>>({});
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
-  const [dynamicBottomPadding, setDynamicBottomPadding] = useState('8rem');
+  const { dynamicBottomPadding, lastUserMessageRef, toolbarRef, bottomRef } = useStreamingScroll(
+    messages,
+    pending
+  );
 
   // Streaming statistics - now calculated from actual token count
   const [streamingStats, setStreamingStats] = useState<{ tokensPerSecond: number } | null>(null);
@@ -884,62 +892,6 @@ export function MessageList({
     ta.style.height = `${ta.scrollHeight + 2}px`;
   };
 
-  const scrollUserMessageToTop = () => {
-    lastUserMessageRef.current?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
-    });
-  };
-
-  // Update dynamic padding based on viewport height and streaming state
-  useEffect(() => {
-    const updatePadding = () => {
-      const viewportHeight = window.innerHeight;
-
-      // If we're about to start streaming, use 70% of viewport height for better UX
-      if (pending.streaming && messages.length >= 2) {
-        const lastMessage = messages[messages.length - 1];
-        const secondLastMessage = messages[messages.length - 2];
-
-        if (
-          secondLastMessage?.role === 'user' &&
-          lastMessage?.role === 'assistant' &&
-          !lastMessage.content
-        ) {
-          setDynamicBottomPadding(`${Math.round(viewportHeight * 0.8)}px`);
-          return;
-        }
-      }
-
-      // Default padding - enough space for comfortable scrolling
-      setDynamicBottomPadding(`${Math.round(viewportHeight * 0.2)}px`);
-    };
-
-    updatePadding();
-    window.addEventListener('resize', updatePadding);
-
-    return () => window.removeEventListener('resize', updatePadding);
-  }, [pending.streaming, messages.length, messages]);
-
-  useEffect(() => {
-    // If we just started streaming, scroll user message to top for better UX
-    if (pending.streaming && messages.length >= 2) {
-      const lastMessage = messages[messages.length - 1];
-      const secondLastMessage = messages[messages.length - 2];
-
-      // If the pattern is user message followed by empty assistant message (streaming start)
-      if (
-        secondLastMessage?.role === 'user' &&
-        lastMessage?.role === 'assistant' &&
-        !lastMessage.content
-      ) {
-        // Small delay to ensure DOM is updated
-        setTimeout(() => scrollUserMessageToTop(), 50);
-        return;
-      }
-    }
-  }, [messages.length, pending.streaming, pending.abort, messages]);
-
   // When editing content changes (including on initial edit open), resize the textarea
   useEffect(() => {
     resizeEditingTextarea();
@@ -1036,6 +988,7 @@ export function MessageList({
               onRetryMessage={handleRetryMessage}
               editingTextareaRef={editingTextareaRef}
               lastUserMessageRef={isRecentUserMessage ? lastUserMessageRef : null}
+              toolbarRef={isRecentUserMessage ? toolbarRef : undefined}
               resizeEditingTextarea={resizeEditingTextarea}
               collapsedToolOutputs={collapsedToolOutputs}
               setCollapsedToolOutputs={setCollapsedToolOutputs}
