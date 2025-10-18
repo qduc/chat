@@ -458,19 +458,17 @@ export function MessageInput({
               <div className="flex items-center gap-6 text-xs scrollbar-hide">
                 {/* AI Controls Group */}
                 <div className="flex items-center gap-3">
-                  {/* Quality/Reasoning control */}
-                  {supportsThinking && (
-                    <Tooltip content="Reasoning effort level">
-                      <QualitySlider
-                        value={qualityLevel}
-                        onChange={onQualityLevelChange}
-                        icon={<Gauge className="w-4 h-4" />}
-                        ariaLabel="Reasoning Effort"
-                        className="flex-shrink-0"
-                        model={model.split('::').pop() || model}
-                      />
-                    </Tooltip>
-                  )}
+                  {/* Quality/Reasoning control - always visible */}
+                  <Tooltip content="Reasoning effort level">
+                    <QualitySlider
+                      value={qualityLevel}
+                      onChange={onQualityLevelChange}
+                      icon={<Gauge className="w-4 h-4" />}
+                      ariaLabel="Reasoning Effort"
+                      className="flex-shrink-0"
+                      model={model.split('::').pop() || model}
+                    />
+                  </Tooltip>
 
                   {/* Stream toggle */}
                   <Tooltip content="Stream responses in real-time">
