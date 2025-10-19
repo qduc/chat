@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 
 export type QualityLevel = 'unset' | 'minimal' | 'low' | 'medium' | 'high';
 
@@ -23,6 +23,12 @@ export function QualitySlider({
 }: QualitySliderProps) {
   // Check if model supports 'minimal' (gpt-5* or openai/gpt-5*)
   const supportsMinimal = model.startsWith('gpt-5') || model.startsWith('openai/gpt-5');
+
+  useEffect(() => {
+    if (value === 'minimal' && !supportsMinimal) {
+      onChange('unset');
+    }
+  }, [value, model, supportsMinimal, onChange]);
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     onChange(e.target.value as QualityLevel);
