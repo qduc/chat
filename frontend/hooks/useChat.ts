@@ -548,6 +548,9 @@ export function useChat() {
     setImages([]);
     setFiles([]);
     setCurrentConversationTitle(null);
+    // Reset quality level to unset so reasoning_effort is not included in requests
+    setQualityLevel('unset');
+    qualityLevelRef.current = 'unset';
     // When starting a new chat (no active conversation) prefer the saved model
     try {
       if (typeof window !== 'undefined') {
