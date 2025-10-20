@@ -22,60 +22,66 @@ const FAVORITES_KEY = 'chatforge-favorite-models';
 const RECENT_KEY = 'chatforge-recent-models';
 
 // Memoized ModelItem component to prevent unnecessary re-renders
-const ModelItem = React.memo(({
-  model,
-  isSelected,
-  isFavorite,
-  onToggleFavorite,
-  onSelect,
-  isHighlighted,
-  id
-}: {
-  model: ModelOption;
-  isSelected: boolean;
-  isFavorite: boolean;
-  onToggleFavorite: (value: string) => void;
-  onSelect: (value: string) => void;
-  isHighlighted: boolean;
-  id: string;
-}) => (
-  <div
-    id={id}
-    role="option"
-    aria-selected={isHighlighted}
-    className={`w-full flex items-center transition-colors ${
-      isHighlighted ? 'bg-slate-100 dark:bg-neutral-800' : (isSelected ? 'bg-blue-50 dark:bg-blue-900/20' : '')
-    } hover:bg-slate-100 dark:hover:bg-neutral-800`}
-  >
-    <button
-      onClick={(e) => {
-        e.stopPropagation();
-        onToggleFavorite(model.value);
-      }}
-      className="flex items-center justify-center w-10 h-9 hover:bg-slate-200 dark:hover:bg-neutral-700 transition-colors"
-      title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+const ModelItem = React.memo(
+  ({
+    model,
+    isSelected,
+    isFavorite,
+    onToggleFavorite,
+    onSelect,
+    isHighlighted,
+    id,
+  }: {
+    model: ModelOption;
+    isSelected: boolean;
+    isFavorite: boolean;
+    onToggleFavorite: (value: string) => void;
+    onSelect: (value: string) => void;
+    isHighlighted: boolean;
+    id: string;
+  }) => (
+    <div
+      id={id}
+      role="option"
+      aria-selected={isHighlighted}
+      className={`w-full flex items-center transition-colors ${
+        isHighlighted
+          ? 'bg-slate-100 dark:bg-neutral-800'
+          : isSelected
+            ? 'bg-blue-50 dark:bg-blue-900/20'
+            : ''
+      } hover:bg-slate-100 dark:hover:bg-neutral-800`}
     >
-      {isFavorite ? (
-        <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500" />
-      ) : (
-        <StarOff className="w-3.5 h-3.5 text-slate-400" />
-      )}
-    </button>
-    <button
-      onClick={() => onSelect(model.value)}
-      className={`flex-1 min-w-0 px-3 py-2 text-left transition-colors ${
-        isSelected ? 'text-blue-700 dark:text-blue-300' : 'text-slate-700 dark:text-slate-300'
-      }`}
-    >
-      <div className="text-sm font-medium truncate leading-tight">{model.label}</div>
-      {model.provider && (
-        <div className="text-xs text-slate-500 dark:text-slate-400 truncate leading-tight">
-          {model.provider}
-        </div>
-      )}
-    </button>
-  </div>
-));
+      <button
+        onClick={(e) => {
+          e.stopPropagation();
+          onToggleFavorite(model.value);
+        }}
+        className="flex items-center justify-center w-10 h-9 hover:bg-slate-200 dark:hover:bg-neutral-700 transition-colors"
+        title={isFavorite ? 'Remove from favorites' : 'Add to favorites'}
+      >
+        {isFavorite ? (
+          <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500" />
+        ) : (
+          <StarOff className="w-3.5 h-3.5 text-slate-400" />
+        )}
+      </button>
+      <button
+        onClick={() => onSelect(model.value)}
+        className={`flex-1 min-w-0 px-3 py-2 text-left transition-colors ${
+          isSelected ? 'text-blue-700 dark:text-blue-300' : 'text-slate-700 dark:text-slate-300'
+        }`}
+      >
+        <div className="text-sm font-medium truncate leading-tight">{model.label}</div>
+        {model.provider && (
+          <div className="text-xs text-slate-500 dark:text-slate-400 truncate leading-tight">
+            {model.provider}
+          </div>
+        )}
+      </button>
+    </div>
+  )
+);
 
 ModelItem.displayName = 'ModelItem';
 
@@ -85,7 +91,7 @@ export default function ModelSelector({
   groups,
   fallbackOptions,
   className = '',
-  ariaLabel = 'Select model'
+  ariaLabel = 'Select model',
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [shouldRenderDropdown, setShouldRenderDropdown] = useState(false);
@@ -122,18 +128,18 @@ export default function ModelSelector({
     // const start = performance.now(); // Disabled for performance
     let result;
     if (groups && groups.length > 0) {
-      result = groups.flatMap(group =>
-        group.options.map(option => ({
+      result = groups.flatMap((group) =>
+        group.options.map((option) => ({
           ...option,
           provider: group.label,
-          providerId: group.id
+          providerId: group.id,
         }))
       );
     } else {
-      result = fallbackOptions.map(option => ({
+      result = fallbackOptions.map((option) => ({
         ...option,
         provider: option.provider || 'Default',
-        providerId: 'default'
+        providerId: 'default',
       }));
     }
     // const end = performance.now();
@@ -146,11 +152,11 @@ export default function ModelSelector({
     const tabs = [{ id: 'all', label: 'All', count: allModels.length }];
 
     if (groups && groups.length > 1) {
-      groups.forEach(group => {
+      groups.forEach((group) => {
         tabs.push({
           id: group.id,
           label: group.label,
-          count: group.options.length
+          count: group.options.length,
         });
       });
     }
@@ -164,16 +170,17 @@ export default function ModelSelector({
 
     // Filter by selected tab
     if (selectedTab !== 'all') {
-      models = models.filter(model => model.providerId === selectedTab);
+      models = models.filter((model) => model.providerId === selectedTab);
     }
 
     // Filter by search query
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      models = models.filter(model =>
-        model.label.toLowerCase().includes(query) ||
-        model.value.toLowerCase().includes(query) ||
-        (model.provider && model.provider.toLowerCase().includes(query))
+      models = models.filter(
+        (model) =>
+          model.label.toLowerCase().includes(query) ||
+          model.value.toLowerCase().includes(query) ||
+          (model.provider && model.provider.toLowerCase().includes(query))
       );
     }
 
@@ -199,52 +206,60 @@ export default function ModelSelector({
     }
 
     // Sort recent models by recency
-    recentFilteredModels.sort((a, b) => recentModels.indexOf(a.value) - recentModels.indexOf(b.value));
+    recentFilteredModels.sort(
+      (a, b) => recentModels.indexOf(a.value) - recentModels.indexOf(b.value)
+    );
 
     const result = {
       favorites: favoriteModels,
       recent: recentFilteredModels,
-      other: otherModels
+      other: otherModels,
     };
     // const end = performance.now();
     // console.log(`[ModelSelector] organizedModels computed in ${(end - start).toFixed(2)}ms, fav:${result.favorites.length} recent:${result.recent.length} other:${result.other.length}`);
     return result;
   }, [filteredModels, favorites, recentModels]);
 
-  const toggleFavorite = useCallback((modelValue: string) => {
-    const newFavorites = new Set(favorites);
-    if (newFavorites.has(modelValue)) {
-      newFavorites.delete(modelValue);
-    } else {
-      newFavorites.add(modelValue);
-    }
-    setFavorites(newFavorites);
-
-    try {
-      localStorage.setItem(FAVORITES_KEY, JSON.stringify([...newFavorites]));
-    } catch (error) {
-      console.warn('Failed to save favorites:', error);
-    }
-  }, [favorites]);
-
-  const handleModelSelect = useCallback((modelValue: string) => {
-    onChange(modelValue);
-    setIsOpen(false);
-    setSearchQuery('');
-    setSelectedTab('all'); // Reset to All tab after selection
-
-    // Update recent models (max 5, exclude favorites)
-    if (!favorites.has(modelValue)) {
-      const newRecent = [modelValue, ...recentModels.filter(m => m !== modelValue)].slice(0, 5);
-      setRecentModels(newRecent);
+  const toggleFavorite = useCallback(
+    (modelValue: string) => {
+      const newFavorites = new Set(favorites);
+      if (newFavorites.has(modelValue)) {
+        newFavorites.delete(modelValue);
+      } else {
+        newFavorites.add(modelValue);
+      }
+      setFavorites(newFavorites);
 
       try {
-        localStorage.setItem(RECENT_KEY, JSON.stringify(newRecent));
+        localStorage.setItem(FAVORITES_KEY, JSON.stringify([...newFavorites]));
       } catch (error) {
-        console.warn('Failed to save recent models:', error);
+        console.warn('Failed to save favorites:', error);
       }
-    }
-  }, [onChange, favorites, recentModels]);
+    },
+    [favorites]
+  );
+
+  const handleModelSelect = useCallback(
+    (modelValue: string) => {
+      onChange(modelValue);
+      setIsOpen(false);
+      setSearchQuery('');
+      setSelectedTab('all'); // Reset to All tab after selection
+
+      // Update recent models (max 5, exclude favorites)
+      if (!favorites.has(modelValue)) {
+        const newRecent = [modelValue, ...recentModels.filter((m) => m !== modelValue)].slice(0, 5);
+        setRecentModels(newRecent);
+
+        try {
+          localStorage.setItem(RECENT_KEY, JSON.stringify(newRecent));
+        } catch (error) {
+          console.warn('Failed to save recent models:', error);
+        }
+      }
+    },
+    [onChange, favorites, recentModels]
+  );
 
   // Handle keyboard navigation
   // Build a flat list of visible models in the same order they are rendered
@@ -252,7 +267,8 @@ export default function ModelSelector({
     const list: ModelOption[] = [];
     if (organizedModels.favorites.length > 0) list.push(...organizedModels.favorites);
     if (organizedModels.recent.length > 0) list.push(...organizedModels.recent);
-    if (organizedModels.other.length > 0) list.push(...organizedModels.other.slice(0, visibleCount));
+    if (organizedModels.other.length > 0)
+      list.push(...organizedModels.other.slice(0, visibleCount));
     return list;
   }, [organizedModels, visibleCount]);
 
@@ -264,7 +280,8 @@ export default function ModelSelector({
       const itemTop = item.offsetTop;
       const itemBottom = itemTop + item.clientHeight;
       if (itemTop < parent.scrollTop) parent.scrollTop = itemTop - 8;
-      else if (itemBottom > parent.scrollTop + parent.clientHeight) parent.scrollTop = itemBottom - parent.clientHeight + 8;
+      else if (itemBottom > parent.scrollTop + parent.clientHeight)
+        parent.scrollTop = itemBottom - parent.clientHeight + 8;
     }
   }, []);
 
@@ -281,7 +298,7 @@ export default function ModelSelector({
 
     if (e.key === 'ArrowDown') {
       e.preventDefault();
-      setHighlightedIndex(prev => {
+      setHighlightedIndex((prev) => {
         const next = prev === null ? 0 : Math.min(prev + 1, flatVisibleModels.length - 1);
         scrollHighlightedIntoView(next);
         return next;
@@ -291,8 +308,9 @@ export default function ModelSelector({
 
     if (e.key === 'ArrowUp') {
       e.preventDefault();
-      setHighlightedIndex(prev => {
-        const next = prev === null ? Math.max(flatVisibleModels.length - 1, 0) : Math.max(prev - 1, 0);
+      setHighlightedIndex((prev) => {
+        const next =
+          prev === null ? Math.max(flatVisibleModels.length - 1, 0) : Math.max(prev - 1, 0);
         scrollHighlightedIntoView(next);
         return next;
       });
@@ -324,7 +342,7 @@ export default function ModelSelector({
     }
   }, [isOpen]);
 
-    // Defer dropdown rendering to next frame for smoother opening
+  // Defer dropdown rendering to next frame for smoother opening
   useEffect(() => {
     if (isOpen) {
       // Use setTimeout to defer heavy rendering to next frame
@@ -351,7 +369,7 @@ export default function ModelSelector({
 
       // Load more when scrolled 80% down
       if (scrollPercentage > 0.8 && visibleCount < organizedModels.other.length + 100) {
-        setVisibleCount(prev => Math.min(prev + 50, organizedModels.other.length + 100));
+        setVisibleCount((prev) => Math.min(prev + 50, organizedModels.other.length + 100));
       }
     };
 
@@ -370,20 +388,27 @@ export default function ModelSelector({
   // When filtered models change, reset highlighted index
   useEffect(() => {
     setHighlightedIndex(null);
-  }, [searchQuery, selectedTab, organizedModels.favorites.length, organizedModels.recent.length, organizedModels.other.length]);
+  }, [
+    searchQuery,
+    selectedTab,
+    organizedModels.favorites.length,
+    organizedModels.recent.length,
+    organizedModels.other.length,
+  ]);
 
-  const currentModel = allModels.find(model => model.value === value);
+  const currentModel = allModels.find((model) => model.value === value);
   const displayText = currentModel?.label || value || 'Select model';
 
   return (
-  <div className={`relative ${className}`} ref={dropdownRef}>
+    <div className={`relative ${className}`} ref={dropdownRef}>
       <button
         onClick={() => {
           const start = performance.now();
           setIsOpen(!isOpen);
           requestAnimationFrame(() => {
             const end = performance.now();
-            if (end - start > 100) { // Only log if slow
+            if (end - start > 100) {
+              // Only log if slow
               console.log(`[ModelSelector] Dropdown toggle took ${(end - start).toFixed(2)}ms`);
             }
           });
@@ -394,7 +419,9 @@ export default function ModelSelector({
         aria-haspopup="listbox"
       >
         <span className="text-sm truncate flex-1 text-left">{displayText}</span>
-        <ChevronDown className={`w-4 h-4 text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        <ChevronDown
+          className={`w-4 h-4 text-slate-500 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+        />
       </button>
 
       {isOpen && (
@@ -402,130 +429,138 @@ export default function ModelSelector({
           {!shouldRenderDropdown ? (
             <div className="p-8 text-center text-slate-500">Loading...</div>
           ) : (
-          <>
-          {/* Provider Tabs */}
-          {providerTabs.length > 1 && (
-            <div
-              className="flex flex-nowrap overflow-x-auto border-b border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800/50"
-              onWheel={(e) => {
-                e.preventDefault();
-                e.currentTarget.scrollLeft += e.deltaY;
-              }}
-            >
-              {providerTabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setSelectedTab(tab.id)}
-                  className={`flex-1 px-3 py-2 text-xs font-medium text-center border-b-2 transition-colors ${selectedTab === tab.id
-                      ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-white dark:bg-neutral-900'
-                      : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-neutral-700'
-                    }`}
+            <>
+              {/* Provider Tabs */}
+              {providerTabs.length > 1 && (
+                <div
+                  className="flex flex-nowrap overflow-x-auto border-b border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800/50"
+                  onWheel={(e) => {
+                    e.preventDefault();
+                    e.currentTarget.scrollLeft += e.deltaY;
+                  }}
                 >
-                  <div className="truncate">{tab.label}</div>
-                  <div className="text-xs opacity-75">({tab.count})</div>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* Search Header */}
-          <div className="p-2 border-b border-slate-200 dark:border-neutral-700">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Search models..."
-                className="w-full pl-10 pr-3 py-1.5 bg-slate-50 dark:bg-neutral-800 border border-slate-200 dark:border-neutral-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
-              />
-            </div>
-          </div>
-
-          {/* Model List */}
-          <div ref={listRef} className="overflow-y-auto max-h-[75vh]" style={{ contentVisibility: 'auto' }}>
-            {organizedModels.favorites.length > 0 && (
-              <div>
-                <div className="px-3 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide bg-slate-50 dark:bg-neutral-800/50">
-                  Favorites
+                  {providerTabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      onClick={() => setSelectedTab(tab.id)}
+                      className={`flex-1 px-3 py-2 text-xs font-medium text-center border-b-2 transition-colors ${
+                        selectedTab === tab.id
+                          ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-white dark:bg-neutral-900'
+                          : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-neutral-700'
+                      }`}
+                    >
+                      <div className="truncate">{tab.label}</div>
+                      <div className="text-xs opacity-75">({tab.count})</div>
+                    </button>
+                  ))}
                 </div>
-                {organizedModels.favorites.map((model, idx) => (
-                  <ModelItem
-                    key={`fav-${model.providerId}-${model.value}`}
-                    id={`model-item-${idx}`}
-                    model={model}
-                    isSelected={model.value === value}
-                    isFavorite={favorites.has(model.value)}
-                    onToggleFavorite={toggleFavorite}
-                    onSelect={handleModelSelect}
-                    isHighlighted={highlightedIndex === idx}
+              )}
+
+              {/* Search Header */}
+              <div className="p-2 border-b border-slate-200 dark:border-neutral-700">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    ref={searchInputRef}
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Search models..."
+                    className="w-full pl-10 pr-3 py-1.5 bg-slate-50 dark:bg-neutral-800 border border-slate-200 dark:border-neutral-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
                   />
-                ))}
-              </div>
-            )}
-
-            {organizedModels.recent.length > 0 && (
-              <div>
-                <div className="px-3 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide bg-slate-50 dark:bg-neutral-800/50">
-                  Recent
                 </div>
-                {organizedModels.recent.map((model, rIdx) => {
-                  const idx = organizedModels.favorites.length + rIdx;
-                  return (
-                    <ModelItem
-                      key={`recent-${model.providerId}-${model.value}`}
-                      id={`model-item-${idx}`}
-                      model={model}
-                      isSelected={model.value === value}
-                      isFavorite={favorites.has(model.value)}
-                      onToggleFavorite={toggleFavorite}
-                      onSelect={handleModelSelect}
-                      isHighlighted={highlightedIndex === idx}
-                    />
-                  );
-                })}
               </div>
-            )}
 
-            {organizedModels.other.length > 0 && (
-              <div>
-                {(organizedModels.favorites.length > 0 || organizedModels.recent.length > 0) && (
-                  <div className="px-3 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide bg-slate-50 dark:bg-neutral-800/50">
-                    All Models
+              {/* Model List */}
+              <div
+                ref={listRef}
+                className="overflow-y-auto max-h-[75vh]"
+                style={{ contentVisibility: 'auto' }}
+              >
+                {organizedModels.favorites.length > 0 && (
+                  <div>
+                    <div className="px-3 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide bg-slate-50 dark:bg-neutral-800/50">
+                      Favorites
+                    </div>
+                    {organizedModels.favorites.map((model, idx) => (
+                      <ModelItem
+                        key={`fav-${model.providerId}-${model.value}`}
+                        id={`model-item-${idx}`}
+                        model={model}
+                        isSelected={model.value === value}
+                        isFavorite={favorites.has(model.value)}
+                        onToggleFavorite={toggleFavorite}
+                        onSelect={handleModelSelect}
+                        isHighlighted={highlightedIndex === idx}
+                      />
+                    ))}
                   </div>
                 )}
-                {organizedModels.other.slice(0, visibleCount).map((model, oIdx) => {
-                  const idx = organizedModels.favorites.length + organizedModels.recent.length + oIdx;
-                  return (
-                    <ModelItem
-                      key={`other-${model.providerId}-${model.value}`}
-                      id={`model-item-${idx}`}
-                      model={model}
-                      isSelected={model.value === value}
-                      isFavorite={favorites.has(model.value)}
-                      onToggleFavorite={toggleFavorite}
-                      onSelect={handleModelSelect}
-                      isHighlighted={highlightedIndex === idx}
-                    />
-                  );
-                })}
-                {organizedModels.other.length > visibleCount && (
-                  <div className="px-3 py-2 text-center text-xs text-slate-500">
-                    Showing {visibleCount} of {organizedModels.other.length} models. Scroll for more...
+
+                {organizedModels.recent.length > 0 && (
+                  <div>
+                    <div className="px-3 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide bg-slate-50 dark:bg-neutral-800/50">
+                      Recent
+                    </div>
+                    {organizedModels.recent.map((model, rIdx) => {
+                      const idx = organizedModels.favorites.length + rIdx;
+                      return (
+                        <ModelItem
+                          key={`recent-${model.providerId}-${model.value}`}
+                          id={`model-item-${idx}`}
+                          model={model}
+                          isSelected={model.value === value}
+                          isFavorite={favorites.has(model.value)}
+                          onToggleFavorite={toggleFavorite}
+                          onSelect={handleModelSelect}
+                          isHighlighted={highlightedIndex === idx}
+                        />
+                      );
+                    })}
+                  </div>
+                )}
+
+                {organizedModels.other.length > 0 && (
+                  <div>
+                    {(organizedModels.favorites.length > 0 ||
+                      organizedModels.recent.length > 0) && (
+                      <div className="px-3 py-1.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide bg-slate-50 dark:bg-neutral-800/50">
+                        All Models
+                      </div>
+                    )}
+                    {organizedModels.other.slice(0, visibleCount).map((model, oIdx) => {
+                      const idx =
+                        organizedModels.favorites.length + organizedModels.recent.length + oIdx;
+                      return (
+                        <ModelItem
+                          key={`other-${model.providerId}-${model.value}`}
+                          id={`model-item-${idx}`}
+                          model={model}
+                          isSelected={model.value === value}
+                          isFavorite={favorites.has(model.value)}
+                          onToggleFavorite={toggleFavorite}
+                          onSelect={handleModelSelect}
+                          isHighlighted={highlightedIndex === idx}
+                        />
+                      );
+                    })}
+                    {organizedModels.other.length > visibleCount && (
+                      <div className="px-3 py-2 text-center text-xs text-slate-500">
+                        Showing {visibleCount} of {organizedModels.other.length} models. Scroll for
+                        more...
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {filteredModels.length === 0 && (
+                  <div className="px-3 py-6 text-center text-slate-500 dark:text-slate-400">
+                    No models found matching &quot;{searchQuery}&quot;
                   </div>
                 )}
               </div>
-            )}
-
-            {filteredModels.length === 0 && (
-              <div className="px-3 py-6 text-center text-slate-500 dark:text-slate-400">
-                No models found matching &quot;{searchQuery}&quot;
-              </div>
-            )}
-          </div>
-          </>
+            </>
           )}
         </div>
       )}

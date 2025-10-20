@@ -3,7 +3,7 @@
  */
 
 // Core API modules
-export { auth, chat, conversations, images, tools, providers } from './api';
+export { auth, chat, conversations, images, files, tools, providers } from './api';
 import { auth as _auth } from './api';
 
 // Use the canonical `auth` implementation from ./api as the exported
@@ -33,8 +33,10 @@ export {
   removeRefreshToken,
   clearTokens,
   isTokenExpired,
-  getUserFromToken
+  getUserFromToken,
 } from './storage';
+
+// Search engine API key storage helpers
 
 export {
   isAuthenticated,
@@ -43,7 +45,7 @@ export {
   resetAuthReady,
   setAuthReady,
   isAuthReady,
-  onTokensCleared
+  onTokensCleared,
 } from './storage';
 
 // Streaming utilities
@@ -57,7 +59,7 @@ export {
   hasImages,
   extractImagesFromContent,
   createMixedContent,
-  normalizeMessageContent
+  normalizeMessageContent,
 } from './contentUtils';
 
 // Model capabilities
@@ -92,6 +94,11 @@ export type {
   ImageValidationResult,
   ImageProcessingState,
   ImageUploadProgress,
+  FileAttachment,
+  FileConfig,
+  FileValidationResult,
+  FileProcessingState,
+  FileUploadProgress,
   ChatMessage,
   ChatEvent,
   ChatResponse,
@@ -111,5 +118,5 @@ export type {
   EditMessageResult,
 
   // Provider Types
-  Provider
+  Provider,
 } from './types';

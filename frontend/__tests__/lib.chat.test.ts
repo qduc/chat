@@ -1,5 +1,5 @@
 // Test stubs for frontend lib functions in lib/chat.ts
- 
+
 /// <reference types="jest" />
 
 import type { Role } from '../lib';
@@ -22,7 +22,6 @@ afterEach(() => {
 });
 
 describe('chat API', () => {
-
   test('sends only the latest user message to the backend', async () => {
     const fetchMock = jest.spyOn(global, 'fetch').mockImplementation((_url, init) => {
       const body = JSON.parse((init as RequestInit).body as string);
@@ -35,10 +34,10 @@ describe('chat API', () => {
             choices: [
               {
                 message: {
-                  content: 'ok'
-                }
-              }
-            ]
+                  content: 'ok',
+                },
+              },
+            ],
           }),
           { status: 200 }
         )
@@ -49,21 +48,25 @@ describe('chat API', () => {
       messages: [
         { role: 'user' as Role, content: 'first message' },
         { role: 'assistant' as Role, content: 'assistant reply' },
-        { role: 'user' as Role, content: 'latest message' }
+        { role: 'user' as Role, content: 'latest message' },
       ],
       stream: false,
-      providerId: 'test-provider'
+      providerId: 'test-provider',
     });
 
     expect(fetchMock).toHaveBeenCalled();
   });
 
   test('throws on non-OK responses with message from JSON', async () => {
-    jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({ error: 'bad' }), { status: 400 })
-    );
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(new Response(JSON.stringify({ error: 'bad' }), { status: 400 }));
     await expect(
-      chat.sendMessage({ messages: [{ role: 'user' as Role, content: 'hi' }], providerId: 'test-provider', stream: false })
+      chat.sendMessage({
+        messages: [{ role: 'user' as Role, content: 'hi' }],
+        providerId: 'test-provider',
+        stream: false,
+      })
     ).rejects.toThrow('HTTP 400: bad');
   });
 
@@ -71,9 +74,7 @@ describe('chat API', () => {
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(
-          encoder.encode(
-            'data: {"type":"response.output_text.delta","delta":"hi"}\n\n'
-          )
+          encoder.encode('data: {"type":"response.output_text.delta","delta":"hi"}\n\n')
         );
         // do not close to simulate ongoing stream
       },
@@ -126,9 +127,7 @@ describe('chat API', () => {
       'data: [DONE]\n\n',
     ];
 
-    jest
-      .spyOn(global, 'fetch')
-      .mockResolvedValue(new Response(sseStream(lines), { status: 200 }));
+    jest.spyOn(global, 'fetch').mockResolvedValue(new Response(sseStream(lines), { status: 200 }));
 
     const tokens: string[] = [];
     const events: any[] = [];
@@ -137,28 +136,26 @@ describe('chat API', () => {
       messages: [{ role: 'user' as Role, content: 'hi' }],
       tools: [],
       providerId: 'default-provider',
-      onToken: token => tokens.push(token),
-      onEvent: event => events.push(event),
+      onToken: (token) => tokens.push(token),
+      onEvent: (event) => events.push(event),
     });
 
     const joinedTokens = tokens.join('');
     expect(joinedTokens).toContain('</thinking><thinking>');
     expect(result.content).toContain('</thinking><thinking>');
-    const toolCallEvent = events.find(event => event.type === 'tool_call');
+    const toolCallEvent = events.find((event) => event.type === 'tool_call');
     expect(toolCallEvent).toBeDefined();
   });
 });
 
 describe('conversations API', () => {
-
   test('creates new conversation and returns conversation metadata', async () => {
     jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(
-        JSON.stringify({ id: '1', title: 't', model: 'm', created_at: 'now' }),
-        { status: 200 }
-      )
+      new Response(JSON.stringify({ id: '1', title: 't', model: 'm', created_at: 'now' }), {
+        status: 200,
+      })
     );
-  const meta = await conversations.create();
+    const meta = await conversations.create();
 
     // Test behavior: Should create conversation and return metadata
     expect(meta.id).toBe('1');
@@ -174,20 +171,20 @@ describe('conversations API', () => {
   test('propagates 501 when persistence is disabled', async () => {
     jest
       .spyOn(global, 'fetch')
-      .mockResolvedValue(
-        new Response(JSON.stringify({ error: 'nope' }), { status: 501 })
-      );
-  await expect(conversations.create()).rejects.toThrow('HTTP 501: nope');
+      .mockResolvedValue(new Response(JSON.stringify({ error: 'nope' }), { status: 501 }));
+    await expect(conversations.create()).rejects.toThrow('HTTP 501: nope');
   });
 
   test('lists conversations with pagination and returns items with next cursor', async () => {
-    jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(
-        JSON.stringify({ items: [{ id: '1', created_at: 'now' }], next_cursor: 'n' }),
-        { status: 200 }
-      )
-    );
-  const res = await conversations.list({ cursor: 'c', limit: 2 });
+    jest
+      .spyOn(global, 'fetch')
+      .mockResolvedValue(
+        new Response(
+          JSON.stringify({ items: [{ id: '1', created_at: 'now' }], next_cursor: 'n' }),
+          { status: 200 }
+        )
+      );
+    const res = await conversations.list({ cursor: 'c', limit: 2 });
 
     // Test behavior: Should return paginated conversation list
     expect(res.items).toHaveLength(1);
@@ -213,7 +210,7 @@ describe('conversations API', () => {
         { status: 200 }
       )
     );
-  const res = await conversations.get('x');
+    const res = await conversations.get('x');
 
     // Test behavior: Should return full conversation data
     expect(res.id).toBe('x');
@@ -240,7 +237,7 @@ describe('conversations API', () => {
         { status: 200 }
       )
     );
-  const res = await conversations.get('y', { after_seq: 5, limit: 10 });
+    const res = await conversations.get('y', { after_seq: 5, limit: 10 });
 
     // Test behavior: Should handle pagination parameters and return conversation
     expect(res.id).toBe('y');
@@ -251,10 +248,8 @@ describe('conversations API', () => {
   });
 
   test('deletes conversation and returns success status', async () => {
-    jest
-      .spyOn(global, 'fetch')
-      .mockResolvedValue(new Response(null, { status: 204 }));
-  await conversations.delete('z');
+    jest.spyOn(global, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+    await conversations.delete('z');
 
     // Test behavior: Should successfully delete
     expect(global.fetch).toHaveBeenCalledWith(

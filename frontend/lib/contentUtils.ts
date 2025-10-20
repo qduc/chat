@@ -16,7 +16,7 @@ export function extractTextFromContent(content: MessageContent): string {
   if (Array.isArray(content)) {
     return content
       .filter((item): item is TextContent => item.type === 'text')
-      .map(item => item.text)
+      .map((item) => item.text)
       .join('');
   }
 
@@ -46,7 +46,7 @@ export function hasImages(content: MessageContent): boolean {
   }
 
   if (Array.isArray(content)) {
-    return content.some(item => item.type === 'image_url');
+    return content.some((item) => item.type === 'image_url');
   }
 
   return false;
@@ -63,7 +63,7 @@ export function extractImagesFromContent(content: MessageContent): ImageContent[
   if (Array.isArray(content)) {
     return content
       .filter((item): item is ImageContent => item.type === 'image_url')
-      .map(item => ({
+      .map((item) => ({
         ...item,
         image_url: {
           ...item.image_url,
@@ -85,7 +85,7 @@ export function createMixedContent(text: string, images: ImageContent[] = []): M
   if (text.trim()) {
     items.push({
       type: 'text',
-      text: text
+      text: text,
     });
   }
 
@@ -114,7 +114,7 @@ export function normalizeMessageContent(content: MessageContent): MessageContent
 
   if (Array.isArray(content)) {
     // Filter out empty text items
-    const filtered = content.filter(item => {
+    const filtered = content.filter((item) => {
       if (item.type === 'text') {
         return item.text.trim().length > 0;
       }

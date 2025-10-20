@@ -1,3 +1,9 @@
+// Utility: Ensures content is a string or array, else returns empty string.
+function sanitizeContent(content) {
+  if (typeof content === 'string' || Array.isArray(content)) return content;
+  if (content === null || content === undefined) return '';
+  return String(content);
+}
 import { config } from '../env.js';
 import { generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
 import { handleToolsJson } from './toolsJson.js';
@@ -16,6 +22,9 @@ import { addPromptCaching } from './promptCaching.js';
 
 async function sanitizeIncomingBody(bodyIn, helpers = {}) {
   const body = { ...bodyIn };
+  const providerStreamInput = typeof bodyIn.provider_stream === 'boolean'
+    ? bodyIn.provider_stream
+    : (typeof bodyIn.providerStream === 'boolean' ? bodyIn.providerStream : undefined);
 
   // Normalize incoming system prompt
   const rawSystemPrompt = typeof bodyIn.system_prompt === 'string'
@@ -46,6 +55,13 @@ async function sanitizeIncomingBody(bodyIn, helpers = {}) {
   delete body.researchMode;
   delete body.qualityLevel;
   delete body.system_prompt;
+  delete body.providerStream;
+
+  if (providerStreamInput !== undefined) {
+    body.provider_stream = providerStreamInput;
+  } else if (typeof body.stream !== 'undefined') {
+    body.provider_stream = body.stream;
+  }
   // Default model
   // Default model is resolved later (may come from DB)
 
@@ -74,18 +90,18 @@ function validateAndNormalizeReasoningControls(body, { reasoningAllowed }) {
     if (!isAllowed) {
       delete body.reasoning_effort;
     } else {
-      const allowedEfforts = ['minimal', 'low', 'medium', 'high'];
-      if (!allowedEfforts.includes(body.reasoning_effort)) {
-        return {
-          ok: false,
-          status: 400,
-          payload: {
-            error: 'invalid_request_error',
-            message: `Invalid reasoning_effort. Must be one of ${allowedEfforts.join(', ')}`,
-          },
-        };
-      }
+    const allowedEfforts = ['minimal', 'low', 'medium', 'high'];
+    if (!allowedEfforts.includes(body.reasoning_effort)) {
+      return {
+        ok: false,
+        status: 400,
+        payload: {
+          error: 'invalid_request_error',
+          message: `Invalid reasoning_effort. Must be one of ${allowedEfforts.join(', ')}`,
+        },
+      };
     }
+  }
   }
 
   // Validate and handle verbosity
@@ -93,18 +109,18 @@ function validateAndNormalizeReasoningControls(body, { reasoningAllowed }) {
     if (!isAllowed) {
       delete body.verbosity;
     } else {
-      const allowedVerbosity = ['low', 'medium', 'high'];
-      if (!allowedVerbosity.includes(body.verbosity)) {
-        return {
-          ok: false,
-          status: 400,
-          payload: {
-            error: 'invalid_request_error',
-            message: `Invalid verbosity. Must be one of ${allowedVerbosity.join(', ')}`,
-          },
-        };
-      }
+    const allowedVerbosity = ['low', 'medium', 'high'];
+    if (!allowedVerbosity.includes(body.verbosity)) {
+      return {
+        ok: false,
+        status: 400,
+        payload: {
+          error: 'invalid_request_error',
+          message: `Invalid verbosity. Must be one of ${allowedVerbosity.join(', ')}`,
+        },
+      };
     }
+  }
   }
 
   return { ok: true };
@@ -112,8 +128,15 @@ function validateAndNormalizeReasoningControls(body, { reasoningAllowed }) {
 
 function getFlags({ body, provider }) {
   const hasTools = provider.supportsTools() && Array.isArray(body.tools) && body.tools.length > 0;
-  const stream = !!body.stream;
-  return { hasTools, stream };
+
+  // If stream was explicitly set to false, honor it (for backward compatibility and tests)
+  // Otherwise, default to true for frontend SSE
+  const streamToFrontend = body.stream !== false;
+
+  // Upstream streaming is controlled by provider_stream flag
+  const providerStream = body.provider_stream !== false;
+
+  return { hasTools, streamToFrontend, providerStream };
 }
 
 
@@ -271,7 +294,7 @@ async function handleRequest(context, req, res) {
 
   if (flags.hasTools) {
     // Tool orchestration path
-    if (flags.stream) {
+    if (flags.streamToFrontend) {
       return handleToolsStreaming({ body, bodyIn, config, res, req, persistence, provider, userId });
     } else {
       return handleToolsJson({ body, bodyIn, config, res, req, persistence, provider, userId });
@@ -282,6 +305,9 @@ async function handleRequest(context, req, res) {
 
   // Try to use previous_response_id optimization for existing conversations
   let requestBody = { ...body };
+  requestBody.stream = flags.providerStream;
+  delete requestBody.provider_stream;
+  delete requestBody.providerStream;
   if (persistence && persistence.persist && persistence.conversationId) {
     const { buildConversationMessagesOptimized } = await import('./toolOrchestrationUtils.js');
     const { messages, previousResponseId } = await buildConversationMessagesOptimized({
@@ -292,6 +318,8 @@ async function handleRequest(context, req, res) {
       provider
     });
     requestBody.messages = messages;
+    // previousResponseId is already validated inside buildConversationMessagesOptimized
+    // It will only be returned if it's valid (starts with 'resp_')
     if (previousResponseId) {
       requestBody.previous_response_id = previousResponseId;
     }
@@ -305,14 +333,58 @@ async function handleRequest(context, req, res) {
     hasTools: false
   });
 
-  const upstream = await createOpenAIRequest(config, requestBody, { providerId });
-  if (!upstream.ok) {
-  const { status, payload } = await handleUpstreamError(upstream, persistence);
-  return res.status(status).json(payload);
+  let upstream = await createOpenAIRequest(config, requestBody, { providerId });
+
+  // If request with previous_response_id failed due to invalid ID format, retry with full history
+  if (!upstream.ok && requestBody.previous_response_id) {
+    const upstreamBody = await readUpstreamError(upstream);
+    const isInvalidResponseIdError = upstream.status === 400
+      && upstreamBody?.error?.param === 'previous_response_id'
+      && upstreamBody?.error?.code === 'invalid_value';
+
+    if (isInvalidResponseIdError) {
+      logger.warn({
+        msg: 'invalid_previous_response_id',
+        previous_response_id: requestBody.previous_response_id,
+        error: upstreamBody?.error?.message,
+        retrying: 'with full history'
+      });
+
+      // Retry without previous_response_id (will use full history)
+      const retryBody = { ...requestBody };
+      delete retryBody.previous_response_id;
+
+      // Rebuild full message history
+      if (persistence && persistence.persist && persistence.conversationId) {
+        const { buildConversationMessagesAsync } = await import('./toolOrchestrationUtils.js');
+        const fullMessages = await buildConversationMessagesAsync({
+          body,
+          bodyIn,
+          persistence,
+          userId
+        });
+        retryBody.messages = fullMessages;
+      }
+
+      // Reapply prompt caching with full history
+      const retryBodyWithCaching = await addPromptCaching(retryBody, {
+        conversationId: persistence?.conversationId,
+        userId,
+        provider,
+        hasTools: false
+      });
+
+      upstream = await createOpenAIRequest(config, retryBodyWithCaching, { providerId });
+    }
   }
 
-  if (flags.stream) {
-    // Streaming response expected
+  if (!upstream.ok) {
+    const { status, payload } = await handleUpstreamError(upstream, persistence);
+    return res.status(status).json(payload);
+  }
+
+  if (flags.streamToFrontend) {
+    // Always stream to frontend (for consistent SSE protocol)
     // Check if upstream actually returned a stream or a JSON response
     const contentType = upstream.headers?.get?.('content-type') || '';
     const isStreamResponse = contentType.includes('text/event-stream') || contentType.includes('text/plain');
@@ -326,14 +398,16 @@ async function handleRequest(context, req, res) {
         if (persistence.persist && upstreamJson.choices?.[0]?.message) {
           const message = upstreamJson.choices[0].message;
           if (message.content !== undefined) {
-            persistence.setAssistantContent(message.content);
+            const safeContent = sanitizeContent(message.content);
+            persistence.setAssistantContent(safeContent);
           }
           if (Array.isArray(message.reasoning_details)) {
             persistence.setReasoningDetails(message.reasoning_details);
           }
           if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
-            const contentLength = message.content ?
-              (typeof message.content === 'string' ? message.content.length : 0) : 0;
+            const safeContent = sanitizeContent(message.content);
+            const contentLength = safeContent ?
+              (typeof safeContent === 'string' ? safeContent.length : 0) : 0;
             const toolCallsWithOffset = message.tool_calls.map((tc, idx) => ({
               ...tc,
               index: tc.index ?? idx,
@@ -372,11 +446,12 @@ async function handleRequest(context, req, res) {
           const { createChatCompletionChunk } = await import('./streamUtils.js');
 
           // Send content as chunk if present
-          if (message.content) {
+          if (message.content !== undefined) {
+            const safeContent = sanitizeContent(message.content);
             const chunk = createChatCompletionChunk(
               upstreamJson.id || 'fallback',
               upstreamJson.model || body.model,
-              { role: 'assistant', content: message.content },
+              { role: 'assistant', content: safeContent },
               null
             );
             writeAndFlush(res, `data: ${JSON.stringify(chunk)}\n\n`);
@@ -441,75 +516,15 @@ async function handleRequest(context, req, res) {
     setupStreamingHeaders(res);
     return handleRegularStreaming({ config, upstream, res, req, persistence });
   } else {
-    // JSON response
-    const upstreamJson = await upstream.json();
-
-    if (persistence.persist) {
-      let content = '';
-      let finishReason = null;
-      let responseId = null;
-
-      let contentHandled = false;
-
-      if (upstreamJson.choices && upstreamJson.choices[0] && upstreamJson.choices[0].message) {
-        content = upstreamJson.choices[0].message.content;
-        if (persistence.persist) {
-          const message = upstreamJson.choices[0].message;
-          if (message.content !== undefined) {
-            persistence.setAssistantContent(message.content);
-            contentHandled = true;
-          }
-          if (Array.isArray(message.reasoning_details)) {
-            persistence.setReasoningDetails(message.reasoning_details);
-          }
-          // Capture tool_calls from message
-          if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
-            logger.debug('[openaiProxy] Capturing tool calls from JSON response', {
-              count: message.tool_calls.length,
-              callIds: message.tool_calls.map(tc => tc?.id)
-            });
-
-            // For non-streaming responses, set textOffset based on whether there's content
-            // If there's content, assume tools appear at the end (common pattern)
-            // If no content, tools appear at position 0
-            const contentLength = message.content ?
-              (typeof message.content === 'string' ? message.content.length : 0) : 0;
-
-            const toolCallsWithOffset = message.tool_calls.map((tc, idx) => ({
-              ...tc,
-              index: tc.index ?? idx,
-              textOffset: contentLength
-            }));
-
-            persistence.addToolCalls(toolCallsWithOffset);
-          }
-        }
-      }
-      finishReason = upstreamJson.choices && upstreamJson.choices[0]
-        ? upstreamJson.choices[0].finish_reason
-        : null;
-
-      // Capture response_id from OpenAI for conversation state management
-      responseId = upstreamJson.id || null;
-
-      if (content && persistence.persist && !contentHandled) {
-        persistence.setAssistantContent(content);
-      }
-      if (persistence.persist) {
-        const reasoningTokens = upstreamJson?.usage?.reasoning_tokens
-          ?? upstreamJson?.usage?.completion_tokens_details?.reasoning_tokens
-          ?? upstreamJson?.usage?.reasoning_token_count
-          ?? null;
-        if (reasoningTokens != null) {
-          persistence.setReasoningTokens(reasoningTokens);
-        }
-      }
-      persistence.recordAssistantFinal({ finishReason, responseId });
+    // JSON response (for backward compatibility and when explicitly requested)
+    try {
+      const upstreamJson = await upstream.json();
+      const responseBody = { ...upstreamJson };
+      addConversationMetadata(responseBody, persistence);
+      return res.status(200).json(responseBody);
+    } catch (err) {
+      return res.status(500).json({ error: 'upstream_json_error', message: err?.message });
     }
-
-    const responseBody = { ...upstreamJson };
-    addConversationMetadata(responseBody, persistence);
-    return res.status(200).json(responseBody);
   }
 }
 

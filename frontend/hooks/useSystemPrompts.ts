@@ -48,10 +48,17 @@ interface UseSystemPromptsReturn {
   // Actions
   fetchPrompts: () => Promise<void>;
   createPrompt: (data: { name: string; body: string }) => Promise<CustomPrompt | null>;
-  updatePrompt: (id: string, updates: { name?: string; body?: string }) => Promise<CustomPrompt | null>;
+  updatePrompt: (
+    id: string,
+    updates: { name?: string; body?: string }
+  ) => Promise<CustomPrompt | null>;
   deletePrompt: (id: string) => Promise<boolean>;
   duplicatePrompt: (id: string) => Promise<CustomPrompt | null>;
-  selectPrompt: (promptId: string, conversationId: string, inlineOverride?: string) => Promise<boolean>;
+  selectPrompt: (
+    promptId: string,
+    conversationId: string,
+    inlineOverride?: string
+  ) => Promise<boolean>;
   clearPrompt: (conversationId: string) => Promise<boolean>;
 
   // Inline editing actions
@@ -108,7 +115,7 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
       setPrompts({
         built_ins: Array.isArray(data?.built_ins) ? data.built_ins : [],
         custom: Array.isArray(data?.custom) ? data.custom : [],
-        error: normalizedError || undefined
+        error: normalizedError || undefined,
       });
 
       // Show warning if there's a load error
@@ -129,14 +136,18 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
         setPrompts({
           built_ins: [],
           custom: [],
-          error: fallbackError
+          error: fallbackError,
         });
         setActivePromptId(null);
         return;
       }
 
-      const message = err instanceof HttpError ? err.message :
-                     err instanceof Error ? err.message : 'Failed to fetch prompts';
+      const message =
+        err instanceof HttpError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Failed to fetch prompts';
       setError(message);
       console.error('[useSystemPrompts] Fetch error:', err);
     } finally {
@@ -145,123 +156,158 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
   }, []);
 
   // Create custom prompt
-  const createPrompt = useCallback(async (data: { name: string; body: string }) => {
-    setError(null);
+  const createPrompt = useCallback(
+    async (data: { name: string; body: string }) => {
+      setError(null);
 
-    try {
-      const response = await httpClient.post<CustomPrompt>('/v1/system-prompts', data);
-      const newPrompt = response.data;
+      try {
+        const response = await httpClient.post<CustomPrompt>('/v1/system-prompts', data);
+        const newPrompt = response.data;
 
-      // Refresh prompts list
-      await fetchPrompts();
+        // Refresh prompts list
+        await fetchPrompts();
 
-      return newPrompt;
-    } catch (err) {
-      const message = err instanceof HttpError ? err.message :
-                     err instanceof Error ? err.message : 'Failed to create prompt';
-      setError(message);
-      console.error('[useSystemPrompts] Create error:', err);
-      return null;
-    }
-  }, [fetchPrompts]);
+        return newPrompt;
+      } catch (err) {
+        const message =
+          err instanceof HttpError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : 'Failed to create prompt';
+        setError(message);
+        console.error('[useSystemPrompts] Create error:', err);
+        return null;
+      }
+    },
+    [fetchPrompts]
+  );
 
   // Update custom prompt
-  const updatePrompt = useCallback(async (id: string, updates: { name?: string; body?: string }) => {
-    setError(null);
+  const updatePrompt = useCallback(
+    async (id: string, updates: { name?: string; body?: string }) => {
+      setError(null);
 
-    try {
-      const response = await httpClient.patch<CustomPrompt>(`/v1/system-prompts/${id}`, updates);
-      const updatedPrompt = response.data;
+      try {
+        const response = await httpClient.patch<CustomPrompt>(`/v1/system-prompts/${id}`, updates);
+        const updatedPrompt = response.data;
 
-      // Refresh prompts list
-      await fetchPrompts();
+        // Refresh prompts list
+        await fetchPrompts();
 
-      return updatedPrompt;
-    } catch (err) {
-      const message = err instanceof HttpError ? err.message :
-                     err instanceof Error ? err.message : 'Failed to update prompt';
-      setError(message);
-      console.error('[useSystemPrompts] Update error:', err);
-      return null;
-    }
-  }, [fetchPrompts]);
+        return updatedPrompt;
+      } catch (err) {
+        const message =
+          err instanceof HttpError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : 'Failed to update prompt';
+        setError(message);
+        console.error('[useSystemPrompts] Update error:', err);
+        return null;
+      }
+    },
+    [fetchPrompts]
+  );
 
   // Delete custom prompt
-  const deletePrompt = useCallback(async (id: string) => {
-    setError(null);
+  const deletePrompt = useCallback(
+    async (id: string) => {
+      setError(null);
 
-    try {
-      await httpClient.delete(`/v1/system-prompts/${id}`);
+      try {
+        await httpClient.delete(`/v1/system-prompts/${id}`);
 
-      // Clear active selection if deleting active prompt
-      if (activePromptId === id) {
-        setActivePromptId(null);
+        // Clear active selection if deleting active prompt
+        if (activePromptId === id) {
+          setActivePromptId(null);
+        }
+
+        // Clear any inline edit for this prompt
+        if (userId) {
+          localStorage.removeItem(`${STORAGE_PREFIX}${userId}-${id}`);
+          setInlineEdits((prev) => {
+            const rest = { ...prev };
+            delete (rest as Record<string, string>)[id];
+            return rest;
+          });
+        }
+
+        // Refresh prompts list
+        await fetchPrompts();
+
+        return true;
+      } catch (err) {
+        const message =
+          err instanceof HttpError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : 'Failed to delete prompt';
+        setError(message);
+        console.error('[useSystemPrompts] Delete error:', err);
+        return false;
       }
-
-      // Clear any inline edit for this prompt
-      if (userId) {
-        localStorage.removeItem(`${STORAGE_PREFIX}${userId}-${id}`);
-        setInlineEdits(prev => {
-          const rest = { ...prev };
-          delete (rest as Record<string, string>)[id];
-          return rest;
-        });
-      }
-
-      // Refresh prompts list
-      await fetchPrompts();
-
-      return true;
-    } catch (err) {
-      const message = err instanceof HttpError ? err.message :
-                     err instanceof Error ? err.message : 'Failed to delete prompt';
-      setError(message);
-      console.error('[useSystemPrompts] Delete error:', err);
-      return false;
-    }
-  }, [activePromptId, userId, fetchPrompts]);
+    },
+    [activePromptId, userId, fetchPrompts]
+  );
 
   // Duplicate prompt
-  const duplicatePrompt = useCallback(async (id: string) => {
-    setError(null);
+  const duplicatePrompt = useCallback(
+    async (id: string) => {
+      setError(null);
 
-    try {
-      const response = await httpClient.post<CustomPrompt>(`/v1/system-prompts/${id}/duplicate`);
-      const newPrompt = response.data;
+      try {
+        const response = await httpClient.post<CustomPrompt>(`/v1/system-prompts/${id}/duplicate`);
+        const newPrompt = response.data;
 
-      // Refresh prompts list
-      await fetchPrompts();
+        // Refresh prompts list
+        await fetchPrompts();
 
-      return newPrompt;
-    } catch (err) {
-      const message = err instanceof HttpError ? err.message :
-                     err instanceof Error ? err.message : 'Failed to duplicate prompt';
-      setError(message);
-      console.error('[useSystemPrompts] Duplicate error:', err);
-      return null;
-    }
-  }, [fetchPrompts]);
+        return newPrompt;
+      } catch (err) {
+        const message =
+          err instanceof HttpError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : 'Failed to duplicate prompt';
+        setError(message);
+        console.error('[useSystemPrompts] Duplicate error:', err);
+        return null;
+      }
+    },
+    [fetchPrompts]
+  );
 
   // Select prompt for conversation
-  const selectPrompt = useCallback(async (promptId: string, conversationId: string, inlineOverride?: string) => {
-    setError(null);
+  const selectPrompt = useCallback(
+    async (promptId: string, conversationId: string, inlineOverride?: string) => {
+      setError(null);
 
-    try {
-      await httpClient.post(`/v1/system-prompts/${promptId}/select`, {
-        conversation_id: conversationId,
-        inline_override: inlineOverride
-      });
+      try {
+        await httpClient.post(`/v1/system-prompts/${promptId}/select`, {
+          conversation_id: conversationId,
+          inline_override: inlineOverride,
+        });
 
-      setActivePromptId(promptId);
-      return true;
-    } catch (err) {
-      const message = err instanceof HttpError ? err.message :
-                     err instanceof Error ? err.message : 'Failed to select prompt';
-      setError(message);
-      console.error('[useSystemPrompts] Select error:', err);
-      return false;
-    }
-  }, []);
+        setActivePromptId(promptId);
+        return true;
+      } catch (err) {
+        const message =
+          err instanceof HttpError
+            ? err.message
+            : err instanceof Error
+              ? err.message
+              : 'Failed to select prompt';
+        setError(message);
+        console.error('[useSystemPrompts] Select error:', err);
+        return false;
+      }
+    },
+    []
+  );
 
   // Clear active prompt
   const clearPrompt = useCallback(async (conversationId: string) => {
@@ -269,14 +315,18 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
 
     try {
       await httpClient.post('/v1/system-prompts/none/select', {
-        conversation_id: conversationId
+        conversation_id: conversationId,
       });
 
       setActivePromptId(null);
       return true;
     } catch (err) {
-      const message = err instanceof HttpError ? err.message :
-                     err instanceof Error ? err.message : 'Failed to clear prompt';
+      const message =
+        err instanceof HttpError
+          ? err.message
+          : err instanceof Error
+            ? err.message
+            : 'Failed to clear prompt';
       setError(message);
       console.error('[useSystemPrompts] Clear error:', err);
       return false;
@@ -284,71 +334,92 @@ export function useSystemPrompts(userId?: string): UseSystemPromptsReturn {
   }, []);
 
   // Inline editing functions
-  const setInlineEdit = useCallback((promptId: string, content: string) => {
-    if (!userId) return;
+  const setInlineEdit = useCallback(
+    (promptId: string, content: string) => {
+      if (!userId) return;
 
-    const storageKey = `${STORAGE_PREFIX}${userId}-${promptId}`;
-    localStorage.setItem(storageKey, content);
+      const storageKey = `${STORAGE_PREFIX}${userId}-${promptId}`;
+      localStorage.setItem(storageKey, content);
 
-    setInlineEdits(prev => ({
-      ...prev,
-      [promptId]: content
-    }));
-  }, [userId]);
+      setInlineEdits((prev) => ({
+        ...prev,
+        [promptId]: content,
+      }));
+    },
+    [userId]
+  );
 
-  const clearInlineEdit = useCallback((promptId: string) => {
-    if (!userId) return;
+  const clearInlineEdit = useCallback(
+    (promptId: string) => {
+      if (!userId) return;
 
-    const storageKey = `${STORAGE_PREFIX}${userId}-${promptId}`;
-    localStorage.removeItem(storageKey);
+      const storageKey = `${STORAGE_PREFIX}${userId}-${promptId}`;
+      localStorage.removeItem(storageKey);
 
-    setInlineEdits(prev => {
-      const rest = { ...prev };
-      delete (rest as Record<string, string>)[promptId];
-      return rest;
-    });
-  }, [userId]);
+      setInlineEdits((prev) => {
+        const rest = { ...prev };
+        delete (rest as Record<string, string>)[promptId];
+        return rest;
+      });
+    },
+    [userId]
+  );
 
-  const saveInlineEdit = useCallback(async (promptId: string) => {
-    const inlineContent = inlineEdits[promptId];
-    if (!inlineContent) return false;
+  const saveInlineEdit = useCallback(
+    async (promptId: string) => {
+      const inlineContent = inlineEdits[promptId];
+      if (!inlineContent) return false;
 
-    const result = await updatePrompt(promptId, { body: inlineContent });
-    if (result) {
+      const result = await updatePrompt(promptId, { body: inlineContent });
+      if (result) {
+        clearInlineEdit(promptId);
+        return true;
+      }
+      return false;
+    },
+    [inlineEdits, updatePrompt, clearInlineEdit]
+  );
+
+  const discardInlineEdit = useCallback(
+    (promptId: string) => {
       clearInlineEdit(promptId);
-      return true;
-    }
-    return false;
-  }, [inlineEdits, updatePrompt, clearInlineEdit]);
-
-  const discardInlineEdit = useCallback((promptId: string) => {
-    clearInlineEdit(promptId);
-  }, [clearInlineEdit]);
+    },
+    [clearInlineEdit]
+  );
 
   // Utility functions
-  const getPromptById = useCallback((id: string): BuiltInPrompt | CustomPrompt | null => {
-    if (!prompts) return null;
+  const getPromptById = useCallback(
+    (id: string): BuiltInPrompt | CustomPrompt | null => {
+      if (!prompts) return null;
 
-    const builtIn = prompts.built_ins.find(p => p.id === id);
-    if (builtIn) return builtIn;
+      const builtIn = prompts.built_ins.find((p) => p.id === id);
+      if (builtIn) return builtIn;
 
-    const custom = prompts.custom.find(p => p.id === id);
-    if (custom) return custom;
+      const custom = prompts.custom.find((p) => p.id === id);
+      if (custom) return custom;
 
-    return null;
-  }, [prompts]);
+      return null;
+    },
+    [prompts]
+  );
 
-  const getEffectivePromptContent = useCallback((promptId: string): string => {
-    const inlineContent = inlineEdits[promptId];
-    if (inlineContent) return inlineContent;
+  const getEffectivePromptContent = useCallback(
+    (promptId: string): string => {
+      const inlineContent = inlineEdits[promptId];
+      if (inlineContent) return inlineContent;
 
-    const prompt = getPromptById(promptId);
-    return prompt?.body || '';
-  }, [inlineEdits, getPromptById]);
+      const prompt = getPromptById(promptId);
+      return prompt?.body || '';
+    },
+    [inlineEdits, getPromptById]
+  );
 
-  const hasUnsavedChanges = useCallback((promptId: string): boolean => {
-    return Boolean(inlineEdits[promptId]);
-  }, [inlineEdits]);
+  const hasUnsavedChanges = useCallback(
+    (promptId: string): boolean => {
+      return Boolean(inlineEdits[promptId]);
+    },
+    [inlineEdits]
+  );
 
   // Auto-fetch on mount
   useEffect(() => {

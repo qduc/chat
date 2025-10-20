@@ -4,8 +4,16 @@
  */
 
 import { httpClient, HttpError } from './http';
-import { getToken, setToken, setRefreshToken, clearTokens, getRefreshToken, waitForAuthReady } from './storage';
+import {
+  getToken,
+  setToken,
+  setRefreshToken,
+  clearTokens,
+  getRefreshToken,
+  waitForAuthReady,
+} from './storage';
 import { SSEParser, APIError, StreamingNotSupportedError } from './streaming';
+import { supportsReasoningControls } from './modelCapabilities';
 import type {
   User,
   LoginResponse,
@@ -27,15 +35,20 @@ import type {
   ImageConfig,
   ImageValidationResult,
   ImageUploadProgress,
+  FileAttachment,
+  FileConfig,
+  FileValidationResult,
+  FileUploadProgress,
   ToolsResponse,
   Provider,
-  Role
+  Role,
 } from './types';
 
 // Resolve API base URL
-const DEFAULT_API_BASE = typeof window !== 'undefined'
-  ? `${window.location.origin}/api`
-  : process.env.NEXT_PUBLIC_API_BASE || 'http://backend:3001/api';
+const DEFAULT_API_BASE =
+  typeof window !== 'undefined'
+    ? `${window.location.origin}/api`
+    : process.env.NEXT_PUBLIC_API_BASE || 'http://backend:3001/api';
 
 function resolveApiBase(): string {
   return DEFAULT_API_BASE;
@@ -61,7 +74,7 @@ class Cache<T> {
   set(key: string, data: T): void {
     this.cache.set(key, {
       data,
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
   }
 
@@ -174,9 +187,7 @@ export const auth = {
 
       return response.data;
     } catch (error) {
-      throw error instanceof HttpError
-        ? new Error(error.data?.message || 'Login failed')
-        : error;
+      throw error instanceof HttpError ? new Error(error.data?.message || 'Login failed') : error;
     }
   },
 
@@ -192,7 +203,7 @@ export const auth = {
       await httpClient.post(
         '/v1/auth/logout',
         { refreshToken: refreshTokenValue },
-        { skipAuth: true, headers: token ? { 'Authorization': `Bearer ${token}` } : {} }
+        { skipAuth: true, headers: token ? { Authorization: `Bearer ${token}` } : {} }
       );
     } catch (error) {
       // Ignore network errors during logout
@@ -252,7 +263,7 @@ export const auth = {
         error,
       };
     }
-  }
+  },
 };
 
 // ============================================================================
@@ -281,41 +292,30 @@ interface OpenAIStreamChunk {
 export const chat = {
   async sendMessage(options: ChatOptions | ChatOptionsExtended): Promise<ChatResponse> {
     await waitForAuthReady();
-    const {
-      apiBase = resolveApiBase(),
-      stream = true,
-      signal,
-      onEvent,
-      onToken
-    } = options;
+    const { apiBase = resolveApiBase(), stream = true, signal, onEvent, onToken } = options;
 
-    // Build request body
+    // Build request body - always request SSE from backend for real-time updates
     const bodyObj = buildRequestBody(options, stream);
 
     try {
-      const requestHeaders = stream
-        ? { 'Accept': 'text/event-stream' }
-        : { 'Accept': 'application/json' };
+      // Always use SSE for real-time tool updates, even when streaming is disabled
+      const requestHeaders = { Accept: 'text/event-stream' };
 
-      const httpResponse = await httpClient.post(
-        `${apiBase}/v1/chat/completions`,
-        bodyObj,
-        {
-          signal,
-          headers: requestHeaders
-        }
-      );
+      const httpResponse = await httpClient.post(`${apiBase}/v1/chat/completions`, bodyObj, {
+        signal,
+        headers: requestHeaders,
+      });
 
       let responseData = httpResponse.data;
 
-      if (stream && !isStreamingResponse(responseData)) {
+      if (!isStreamingResponse(responseData)) {
         if (typeof fetch !== 'function') {
           throw new Error('Streaming fetch is not available in this environment');
         }
 
         const fallbackHeaders: Record<string, string> = {
           'Content-Type': 'application/json',
-          ...requestHeaders
+          ...requestHeaders,
         };
 
         if (typeof window !== 'undefined') {
@@ -330,22 +330,19 @@ export const chat = {
           headers: fallbackHeaders,
           body: JSON.stringify(bodyObj),
           signal,
-          credentials: 'include'
+          credentials: 'include',
         });
       }
 
-      if (stream) {
-        return handleStreamingResponse(responseData as Response, onToken, onEvent);
-      }
-
-      return processNonStreamingData(responseData, onToken, onEvent);
+      // Always handle as streaming response since backend always returns SSE
+      return handleStreamingResponse(responseData as Response, onToken, onEvent);
     } catch (error) {
       if (error instanceof HttpError) {
         throw new APIError(error.status, error.message, error.data);
       }
       throw error;
     }
-  }
+  },
 };
 
 function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: boolean): any {
@@ -362,48 +359,67 @@ function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: bo
 
   const messageToSend = latestUserMessage ?? normalizedMessages[normalizedMessages.length - 1];
 
-  const outgoingMessages = messageToSend
-    ? [{ ...messageToSend, uuid: messageToSend.id }]
-    : [];
+  const outgoingMessages = messageToSend ? [{ ...messageToSend, uuid: messageToSend.id }] : [];
+
+  // Frontend always uses SSE (stream: true) to receive real-time updates
+  // providerStream controls upstream behavior based on user's streaming toggle
+  const providerStream =
+    extendedOptions.providerStream !== undefined ? extendedOptions.providerStream : stream;
 
   const bodyObj: any = {
     model,
     ...(outgoingMessages.length > 0 ? { messages: outgoingMessages } : {}),
-    stream,
+    stream: true, // Always true for frontend SSE connection
+    providerStream,
+    provider_stream: providerStream,
     provider_id: providerId,
     ...(responseId && { previous_response_id: responseId }),
     ...(extendedOptions.conversationId && { conversation_id: extendedOptions.conversationId }),
-    ...(extendedOptions.streamingEnabled !== undefined && { streamingEnabled: extendedOptions.streamingEnabled }),
-    ...(extendedOptions.toolsEnabled !== undefined && { toolsEnabled: extendedOptions.toolsEnabled }),
-    ...(extendedOptions.qualityLevel !== undefined && { qualityLevel: extendedOptions.qualityLevel }),
+    ...(extendedOptions.streamingEnabled !== undefined && {
+      streamingEnabled: extendedOptions.streamingEnabled,
+    }),
+    ...(extendedOptions.toolsEnabled !== undefined && {
+      toolsEnabled: extendedOptions.toolsEnabled,
+    }),
+    ...(extendedOptions.qualityLevel !== undefined && {
+      qualityLevel: extendedOptions.qualityLevel,
+    }),
     ...((options as any).systemPrompt && { system_prompt: (options as any).systemPrompt }),
-    ...((options as any).activeSystemPromptId && { active_system_prompt_id: (options as any).activeSystemPromptId })
+    ...((options as any).activeSystemPromptId && {
+      active_system_prompt_id: (options as any).activeSystemPromptId,
+    }),
   };
 
-  // Map qualityLevel to reasoning_effort (only if not 'unset')
-  if (extendedOptions.qualityLevel && extendedOptions.qualityLevel !== 'unset') {
-    bodyObj.reasoning_effort = extendedOptions.qualityLevel;
+  // Check if model supports reasoning before adding reasoning parameters
+  const modelCapabilities = (extendedOptions as any).modelCapabilities;
+  const supportsReasoning = supportsReasoningControls(model, modelCapabilities);
+
+  // Only add reasoning parameters if the model supports reasoning
+  if (true) {
+    if (extendedOptions.reasoning) {
+      if (extendedOptions.reasoning.effort) {
+        bodyObj.reasoning_effort = extendedOptions.reasoning.effort;
+      }
+      if (extendedOptions.reasoning.verbosity) {
+        bodyObj.verbosity = extendedOptions.reasoning.verbosity;
+      }
+      if (extendedOptions.reasoning.summary) {
+        bodyObj.reasoning_summary = extendedOptions.reasoning.summary;
+      }
+    }
+    if ((options as any).reasoningEffort) {
+      bodyObj.reasoning_effort = (options as any).reasoningEffort;
+    }
+    if ((options as any).verbosity) {
+      bodyObj.verbosity = (options as any).verbosity;
+    }
   }
 
-  if (extendedOptions.reasoning) {
-    if (extendedOptions.reasoning.effort) {
-      bodyObj.reasoning_effort = extendedOptions.reasoning.effort;
-    }
-    if (extendedOptions.reasoning.verbosity) {
-      bodyObj.verbosity = extendedOptions.reasoning.verbosity;
-    }
-    if (extendedOptions.reasoning.summary) {
-      bodyObj.reasoning_summary = extendedOptions.reasoning.summary;
-    }
-  }
-  if ((options as any).reasoningEffort) {
-    bodyObj.reasoning_effort = (options as any).reasoningEffort;
-  }
-  if ((options as any).verbosity) {
-    bodyObj.verbosity = (options as any).verbosity;
-  }
-
-  if (extendedOptions.tools && Array.isArray(extendedOptions.tools) && extendedOptions.tools.length > 0) {
+  if (
+    extendedOptions.tools &&
+    Array.isArray(extendedOptions.tools) &&
+    extendedOptions.tools.length > 0
+  ) {
     bodyObj.tools = extendedOptions.tools;
     if (extendedOptions.toolChoice !== undefined) {
       bodyObj.tool_choice = extendedOptions.toolChoice;
@@ -414,10 +430,12 @@ function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: bo
 }
 
 function isStreamingResponse(value: any): value is Response {
-  return !!value &&
+  return (
+    !!value &&
     typeof value === 'object' &&
     typeof (value as any).headers?.get === 'function' &&
-    (typeof (value as any).body !== 'undefined' || typeof (value as any).text === 'function');
+    (typeof (value as any).body !== 'undefined' || typeof (value as any).text === 'function')
+  );
 }
 
 function processNonStreamingData(
@@ -433,9 +451,11 @@ function processNonStreamingData(
     const errorMessage = json.error.message || json.error || JSON.stringify(json.error);
 
     // Check for organization verification error (streaming not supported)
-    if (typeof errorMessage === 'string' &&
-        (errorMessage.includes('Your organization must be verified to stream') ||
-         errorMessage.includes('organization must be verified'))) {
+    if (
+      typeof errorMessage === 'string' &&
+      (errorMessage.includes('Your organization must be verified to stream') ||
+        errorMessage.includes('organization must be verified'))
+    ) {
       throw new StreamingNotSupportedError(errorMessage);
     }
 
@@ -458,27 +478,27 @@ function processNonStreamingData(
     }
   }
 
-  const conversation = json._conversation ? {
-    id: json._conversation.id,
-    title: json._conversation.title,
-    model: json._conversation.model,
-    created_at: json._conversation.created_at,
-    ...(typeof json._conversation.tools_enabled === 'boolean'
-      ? { tools_enabled: json._conversation.tools_enabled }
-      : {}),
-    ...(Array.isArray(json._conversation.active_tools)
-      ? { active_tools: json._conversation.active_tools }
-      : {}),
-    ...(json._conversation.seq !== undefined
-      ? { seq: json._conversation.seq }
-      : {}),
-    ...(json._conversation.user_message_id !== undefined
-      ? { user_message_id: json._conversation.user_message_id }
-      : {}),
-    ...(json._conversation.assistant_message_id !== undefined
-      ? { assistant_message_id: json._conversation.assistant_message_id }
-      : {}),
-  } : undefined;
+  const conversation = json._conversation
+    ? {
+        id: json._conversation.id,
+        title: json._conversation.title,
+        model: json._conversation.model,
+        created_at: json._conversation.created_at,
+        ...(typeof json._conversation.tools_enabled === 'boolean'
+          ? { tools_enabled: json._conversation.tools_enabled }
+          : {}),
+        ...(Array.isArray(json._conversation.active_tools)
+          ? { active_tools: json._conversation.active_tools }
+          : {}),
+        ...(json._conversation.seq !== undefined ? { seq: json._conversation.seq } : {}),
+        ...(json._conversation.user_message_id !== undefined
+          ? { user_message_id: json._conversation.user_message_id }
+          : {}),
+        ...(json._conversation.assistant_message_id !== undefined
+          ? { assistant_message_id: json._conversation.assistant_message_id }
+          : {}),
+      }
+    : undefined;
 
   let content = '';
   let reasoningDetails: any[] | undefined;
@@ -511,7 +531,8 @@ function processNonStreamingData(
   if (json.model) usage.model = json.model;
   if (json.usage) {
     if (json.usage.prompt_tokens !== undefined) usage.prompt_tokens = json.usage.prompt_tokens;
-    if (json.usage.completion_tokens !== undefined) usage.completion_tokens = json.usage.completion_tokens;
+    if (json.usage.completion_tokens !== undefined)
+      usage.completion_tokens = json.usage.completion_tokens;
     if (json.usage.total_tokens !== undefined) usage.total_tokens = json.usage.total_tokens;
     if (json.usage.reasoning_tokens !== undefined) {
       usage.reasoning_tokens = json.usage.reasoning_tokens;
@@ -530,7 +551,7 @@ function processNonStreamingData(
     reasoning_summary: json?.reasoning_summary,
     ...(reasoningDetails ? { reasoning_details: reasoningDetails } : {}),
     ...(reasoningTokens !== undefined ? { reasoning_tokens: reasoningTokens } : {}),
-    ...(Object.keys(usage).length > 0 ? { usage } : {})
+    ...(Object.keys(usage).length > 0 ? { usage } : {}),
   };
 }
 
@@ -559,7 +580,7 @@ async function handleStreamingResponse(
     reasoning_summary,
     ...(reasoning_details ? { reasoning_details } : {}),
     ...(reasoning_tokens !== undefined ? { reasoning_tokens } : {}),
-    ...(usage ? { usage } : {})
+    ...(usage ? { usage } : {}),
   });
 
   const processChunk = (chunk: string): ChatResponse | undefined => {
@@ -578,7 +599,13 @@ async function handleStreamingResponse(
       }
 
       if (event.type === 'data' && event.data) {
-        const result = processStreamChunk(event.data, onToken, onEvent, reasoningStarted, lastSentUsage);
+        const result = processStreamChunk(
+          event.data,
+          onToken,
+          onEvent,
+          reasoningStarted,
+          lastSentUsage
+        );
         if (result.content) content += result.content;
         if (result.responseId) responseId = result.responseId;
         if (result.conversation) conversation = result.conversation;
@@ -621,7 +648,9 @@ async function handleStreamingResponse(
       }
       if (ArrayBuffer.isView?.(chunk)) {
         const view = chunk as ArrayBufferView;
-        return decoder.decode(new Uint8Array(view.buffer, view.byteOffset, view.byteLength), { stream: true });
+        return decoder.decode(new Uint8Array(view.buffer, view.byteOffset, view.byteLength), {
+          stream: true,
+        });
       }
       if (chunk?.type === 'Buffer' && Array.isArray(chunk?.data)) {
         return decoder.decode(Uint8Array.from(chunk.data), { stream: true });
@@ -722,7 +751,17 @@ function processStreamChunk(
   onEvent?: (event: any) => void,
   reasoningStarted?: boolean,
   lastSentUsage?: any
-): { content?: string; responseId?: string; conversation?: ConversationMeta; reasoningStarted?: boolean; reasoning_summary?: string; usage?: any; usageSent?: boolean; reasoningDetails?: any[]; reasoningTokens?: number } {
+): {
+  content?: string;
+  responseId?: string;
+  conversation?: ConversationMeta;
+  reasoningStarted?: boolean;
+  reasoning_summary?: string;
+  usage?: any;
+  usageSent?: boolean;
+  reasoningDetails?: any[];
+  reasoningTokens?: number;
+} {
   if (data._conversation) {
     return {
       conversation: {
@@ -736,26 +775,31 @@ function processStreamChunk(
         ...(Array.isArray(data._conversation.active_tools)
           ? { active_tools: data._conversation.active_tools }
           : {}),
-        ...(data._conversation.seq !== undefined
-          ? { seq: data._conversation.seq }
-          : {}),
+        ...(data._conversation.seq !== undefined ? { seq: data._conversation.seq } : {}),
         ...(data._conversation.user_message_id !== undefined
           ? { user_message_id: data._conversation.user_message_id }
           : {}),
         ...(data._conversation.assistant_message_id !== undefined
           ? { assistant_message_id: data._conversation.assistant_message_id }
           : {}),
-      }
+      },
     };
   }
 
   if (data.reasoning_summary) {
     return {
-      reasoning_summary: data.reasoning_summary
+      reasoning_summary: data.reasoning_summary,
     };
   }
 
-  const result: { content?: string; usage?: any; usageSent?: boolean; reasoningStarted?: boolean; reasoningDetails?: any[]; reasoningTokens?: number } = {};
+  const result: {
+    content?: string;
+    usage?: any;
+    usageSent?: boolean;
+    reasoningStarted?: boolean;
+    reasoningDetails?: any[];
+    reasoningTokens?: number;
+  } = {};
 
   if (data.usage || data.provider || data.model) {
     const usage: any = {};
@@ -763,7 +807,8 @@ function processStreamChunk(
     if (data.model) usage.model = data.model;
     if (data.usage) {
       if (data.usage.prompt_tokens !== undefined) usage.prompt_tokens = data.usage.prompt_tokens;
-      if (data.usage.completion_tokens !== undefined) usage.completion_tokens = data.usage.completion_tokens;
+      if (data.usage.completion_tokens !== undefined)
+        usage.completion_tokens = data.usage.completion_tokens;
       if (data.usage.total_tokens !== undefined) usage.total_tokens = data.usage.total_tokens;
       if (data.usage.reasoning_tokens !== undefined) {
         usage.reasoning_tokens = data.usage.reasoning_tokens;
@@ -773,7 +818,8 @@ function processStreamChunk(
 
     if (Object.keys(usage).length > 0) {
       // Only fire usage event if data has actually changed
-      const usageChanged = !lastSentUsage ||
+      const usageChanged =
+        !lastSentUsage ||
         lastSentUsage.provider !== usage.provider ||
         lastSentUsage.model !== usage.model ||
         lastSentUsage.prompt_tokens !== usage.prompt_tokens ||
@@ -808,7 +854,7 @@ function processStreamChunk(
     return {
       ...result,
       content: closingTag + delta.content,
-      reasoningStarted: false
+      reasoningStarted: false,
     };
   }
 
@@ -830,14 +876,16 @@ function processStreamChunk(
     return {
       ...result,
       content: contentToAdd,
-      reasoningStarted
+      reasoningStarted,
     };
   }
 
   if (delta?.content) {
     // Check for streaming not supported error
-    if (typeof delta.content === 'string' &&
-        delta.content.includes('Your organization must be verified to stream this model')) {
+    if (
+      typeof delta.content === 'string' &&
+      delta.content.includes('Your organization must be verified to stream this model')
+    ) {
       throw new StreamingNotSupportedError(delta.content);
     }
 
@@ -862,7 +910,7 @@ function processStreamChunk(
     return {
       ...result,
       ...(closingContent ? { content: closingContent } : {}),
-      reasoningStarted
+      reasoningStarted,
     };
   }
 
@@ -978,12 +1026,14 @@ export const conversations = {
   async migrateFromSession(): Promise<{ migrated: number; message: string }> {
     await waitForAuthReady();
     try {
-      const response = await httpClient.post<{ migrated: number; message: string }>('/v1/conversations/migrate');
+      const response = await httpClient.post<{ migrated: number; message: string }>(
+        '/v1/conversations/migrate'
+      );
       return response.data;
     } catch (error) {
       throw error instanceof HttpError ? new Error(error.message) : error;
     }
-  }
+  },
 };
 
 // ============================================================================
@@ -997,7 +1047,7 @@ export const images = {
   },
 
   async validateImages(files: File[], config?: ImageConfig): Promise<ImageValidationResult> {
-    const actualConfig = config || await this.getConfig();
+    const actualConfig = config || (await this.getConfig());
     const errors: string[] = [];
     const warnings: string[] = [];
 
@@ -1008,12 +1058,16 @@ export const images = {
     for (const file of files) {
       if (file.size > actualConfig.maxFileSize) {
         const maxSizeMB = actualConfig.maxFileSize / (1024 * 1024);
-        errors.push(`${file.name}: File size (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds ${maxSizeMB}MB limit`);
+        errors.push(
+          `${file.name}: File size (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds ${maxSizeMB}MB limit`
+        );
       }
 
       const ext = file.name.split('.').pop()?.toLowerCase();
       if (!ext || !actualConfig.allowedFormats.includes(ext)) {
-        errors.push(`${file.name}: Invalid file type. Allowed: ${actualConfig.allowedFormats.join(', ')}`);
+        errors.push(
+          `${file.name}: Invalid file type. Allowed: ${actualConfig.allowedFormats.join(', ')}`
+        );
       }
 
       if (!file.type.startsWith('image/')) {
@@ -1024,7 +1078,7 @@ export const images = {
     return {
       isValid: errors.length === 0,
       errors,
-      warnings: warnings.length > 0 ? warnings : undefined
+      warnings: warnings.length > 0 ? warnings : undefined,
     };
   },
 
@@ -1038,7 +1092,7 @@ export const images = {
     }
 
     const formData = new FormData();
-    files.forEach(file => {
+    files.forEach((file) => {
       formData.append('images', file);
     });
 
@@ -1063,7 +1117,7 @@ export const images = {
     }
 
     try {
-      progressData.forEach(p => {
+      progressData.forEach((p) => {
         p.state = 'uploading';
         p.progress = 0;
       });
@@ -1100,9 +1154,8 @@ export const images = {
       }
 
       return result;
-
     } catch (error: any) {
-      progressData.forEach(p => {
+      progressData.forEach((p) => {
         p.state = 'error';
         p.error = error.message || 'Upload failed';
       });
@@ -1134,7 +1187,140 @@ export const images = {
         detail,
       },
     };
-  }
+  },
+};
+
+// ============================================================================
+// Files API
+// ============================================================================
+
+export const files = {
+  async getConfig(): Promise<FileConfig> {
+    const response = await httpClient.get('/v1/files/config');
+    return response.data;
+  },
+
+  async validateFiles(files: File[], config?: FileConfig): Promise<FileValidationResult> {
+    const actualConfig = config || (await this.getConfig());
+    const errors: string[] = [];
+    const warnings: string[] = [];
+
+    if (files.length > actualConfig.maxFilesPerMessage) {
+      errors.push(`Maximum ${actualConfig.maxFilesPerMessage} files allowed per message`);
+    }
+
+    for (const file of files) {
+      if (file.size > actualConfig.maxFileSize) {
+        const maxSizeMB = actualConfig.maxFileSize / (1024 * 1024);
+        errors.push(
+          `${file.name}: File size (${(file.size / (1024 * 1024)).toFixed(1)}MB) exceeds ${maxSizeMB}MB limit`
+        );
+      }
+
+      const ext = file.name.split('.').pop()?.toLowerCase();
+      if (!ext || !actualConfig.allowedExtensions.includes(ext)) {
+        warnings.push(
+          `${file.name}: Extension '.${ext}' may not be supported. Allowed: ${actualConfig.allowedExtensions.slice(0, 10).join(', ')}...`
+        );
+      }
+
+      // Check MIME type if available
+      if (
+        file.type &&
+        !actualConfig.allowedMimeTypes.some((mime) => file.type.startsWith(mime.split('/')[0]))
+      ) {
+        warnings.push(`${file.name}: MIME type '${file.type}' may not be supported`);
+      }
+    }
+
+    return {
+      isValid: errors.length === 0,
+      errors,
+      warnings: warnings.length > 0 ? warnings : undefined,
+    };
+  },
+
+  async uploadFiles(
+    files: File[],
+    onProgress?: (progress: FileUploadProgress[]) => void
+  ): Promise<FileAttachment[]> {
+    const validation = await this.validateFiles(files);
+    if (!validation.isValid) {
+      throw new Error(`Validation failed: ${validation.errors.join(', ')}`);
+    }
+
+    const formData = new FormData();
+    files.forEach((file) => {
+      formData.append('files', file);
+    });
+
+    const apiBase = resolveApiBase();
+    const toAbsoluteUrl = (value?: string | null) => {
+      if (!value) return undefined;
+      if (/^https?:\/\//i.test(value)) {
+        return value;
+      }
+      const normalized = value.startsWith('/') ? value : `/${value}`;
+      return `${apiBase}${normalized}`;
+    };
+
+    const progressData: FileUploadProgress[] = files.map((file, index) => ({
+      fileId: `temp-${index}`,
+      state: 'pending' as const,
+      progress: 0,
+    }));
+
+    if (onProgress) {
+      onProgress(progressData);
+    }
+
+    try {
+      progressData.forEach((p) => {
+        p.state = 'uploading';
+        p.progress = 0;
+      });
+
+      if (onProgress) {
+        onProgress([...progressData]);
+      }
+
+      const response = await httpClient.post('/v1/files/upload', formData);
+
+      const uploadedFiles = response.data.files;
+      const result: FileAttachment[] = uploadedFiles.map((f: any, index: number) => {
+        progressData[index].state = 'ready';
+        progressData[index].progress = 100;
+        progressData[index].fileId = f.id;
+
+        return {
+          id: f.id,
+          file: files[index],
+          name: f.originalFilename || f.filename,
+          size: f.size,
+          type: f.type,
+          content: f.content, // Include text content from response
+          downloadUrl: toAbsoluteUrl(f.url),
+        };
+      });
+
+      if (onProgress) {
+        onProgress([...progressData]);
+      }
+
+      return result;
+    } catch (error: any) {
+      progressData.forEach((p) => {
+        p.state = 'error';
+        p.error = error.message || 'Upload failed';
+      });
+
+      if (onProgress) {
+        onProgress([...progressData]);
+      }
+
+      throw error;
+    }
+  },
 };
 
 // ============================================================================
@@ -1145,7 +1331,7 @@ export const tools = {
   async getToolSpecs(): Promise<ToolsResponse> {
     const response = await httpClient.get<ToolsResponse>('/v1/tools');
     return response.data;
-  }
+  },
 };
 
 // ============================================================================
@@ -1164,14 +1350,18 @@ export const providers = {
       await waitForAuthReady();
       const response = await httpClient.get<{ providers: Provider[] }>('/v1/providers');
 
-      const providerList: Provider[] = Array.isArray(response.data.providers) ? response.data.providers : [];
-      const enabledProviders = providerList.filter(p => p.enabled === 1);
+      const providerList: Provider[] = Array.isArray(response.data.providers)
+        ? response.data.providers
+        : [];
+      const enabledProviders = providerList.filter((p) => p.enabled === 1);
 
       if (enabledProviders.length === 0) {
         throw new Error('No enabled providers found');
       }
 
-      enabledProviders.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+      enabledProviders.sort(
+        (a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()
+      );
 
       cachedDefaultProvider = enabledProviders[0].id;
       return cachedDefaultProvider;
@@ -1183,5 +1373,5 @@ export const providers = {
 
   clearCache() {
     cachedDefaultProvider = null;
-  }
+  },
 };

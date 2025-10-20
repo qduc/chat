@@ -89,6 +89,19 @@ function hasWebSearchToolsEnabled(enabledTools) {
   });
 }
 
+/**
+ * Check if the journal tool is enabled in the request
+ * @param {Array} enabledTools - Array of tool specs or tool names that are enabled
+ * @returns {boolean} True if journal is enabled
+ */
+function hasJournalToolsEnabled(enabledTools) {
+  if (!Array.isArray(enabledTools) || enabledTools.length === 0) return false;
+  return enabledTools.some(tool => {
+    const toolName = typeof tool === 'string' ? tool : tool?.function?.name || tool?.name;
+    return toolName === 'journal';
+  });
+}
+
 function escapeRegExp(value) {
   return value.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
 }
@@ -193,7 +206,8 @@ async function loadSharedModules({ enabledTools = null, model = null } = {}) {
         return '';
       }
 
-      const hasWebSearch = hasWebSearchToolsEnabled(enabledTools);
+  const hasWebSearch = hasWebSearchToolsEnabled(enabledTools);
+  const hasJournal = hasJournalToolsEnabled(enabledTools);
       const moduleContents = [];
 
       for (const file of moduleFiles) {
@@ -201,6 +215,12 @@ async function loadSharedModules({ enabledTools = null, model = null } = {}) {
           // Skip web_search module if no web search tools are enabled
           if (file === 'web_search.md' && !hasWebSearch) {
             logger.debug('[toolOrchestrationUtils] Skipping web_search module (no web search tools enabled)');
+            continue;
+          }
+
+          // Skip journal module if no journal tool is enabled
+          if (file === 'journal.md' && !hasJournal) {
+            logger.debug('[toolOrchestrationUtils] Skipping journal module (journal tool not enabled)');
             continue;
           }
 
@@ -504,6 +524,16 @@ export async function buildConversationMessagesAsync({ body, bodyIn, persistence
 }
 
 /**
+ * Validate if a response_id is compatible with the Responses API
+ * The Responses API expects IDs that begin with 'resp_'
+ * @param {string} responseId - The response ID to validate
+ * @returns {boolean} True if valid for Responses API
+ */
+function isValidResponsesAPIId(responseId) {
+  return typeof responseId === 'string' && responseId.startsWith('resp_');
+}
+
+/**
  * Build conversation messages optimized for Responses API using previous_response_id
  * Falls back to full history if no response_id is available
  * @param {Object} params - Parameters object
@@ -540,8 +570,9 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
     try {
       const previousResponseId = getLastAssistantResponseId({ conversationId: persistence.conversationId });
 
-      if (previousResponseId) {
-        // We have a response_id - only send the latest user message
+      // Only use the optimization if we have a valid response_id
+      if (previousResponseId && isValidResponsesAPIId(previousResponseId)) {
+        // We have a valid response_id - only send the latest user message
         // OpenAI will manage conversation state server-side
         const allUserMessages = Array.isArray(bodyIn?.messages)
           ? bodyIn.messages.filter((m) => m && m.role === 'user')
@@ -558,6 +589,14 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
 
         debugLogMessages('buildConversationMessagesOptimized(previousResponseId)', messages, persistence);
         return { messages, previousResponseId };
+      }
+
+      if (previousResponseId && !isValidResponsesAPIId(previousResponseId)) {
+        logger.debug({
+          msg: 'skipping_invalid_previous_response_id_in_builder',
+          previous_response_id: previousResponseId,
+          reason: 'ID does not match Responses API format (expected resp_* prefix), using full history'
+        });
       }
 
       // No response_id yet - fall back to full history for this conversation
@@ -632,7 +671,7 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
   };
 }
 
-export async function executeToolCall(call) {
+export async function executeToolCall(call, userId = null) {
   const name = call?.function?.name;
   const argsStr = call?.function?.arguments || '{}';
   const tool = toolRegistry[name];
@@ -659,7 +698,8 @@ export async function executeToolCall(call) {
 
   try {
     const validated = tool.validate ? tool.validate(args) : args;
-    const output = await tool.handler(validated);
+    // Pass user context to tool handler as second parameter for tools that need it
+    const output = await tool.handler(validated, { userId });
     return { name, output };
   } catch (executionError) {
     return {

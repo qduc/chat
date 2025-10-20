@@ -18,7 +18,7 @@ export interface RequestOptions {
   body?: any;
   signal?: AbortSignal;
   credentials?: RequestCredentials;
-  skipAuth?: boolean;  // Skip adding auth headers
+  skipAuth?: boolean; // Skip adding auth headers
   skipRetry?: boolean; // Skip 401 retry logic
 }
 
@@ -57,12 +57,7 @@ export interface RegisterResponse {
   user: User;
 }
 
-export type VerifySessionReason =
-  | 'missing-token'
-  | 'expired'
-  | 'invalid'
-  | 'network'
-  | 'unknown';
+export type VerifySessionReason = 'missing-token' | 'expired' | 'invalid' | 'network' | 'unknown';
 
 export interface VerifySessionResult {
   valid: boolean;
@@ -111,30 +106,30 @@ export interface ImageAttachment {
 // Image configuration and constraints
 export interface ImageConfig {
   // File constraints
-  maxFileSize: number;           // Default: 10MB
-  maxDimensions: {width: number, height: number}; // Default: 4096x4096
-  maxImagesPerMessage: number;   // Default: 5
-  allowedFormats: string[];      // Default: ['jpeg', 'jpg', 'png', 'webp', 'gif']
+  maxFileSize: number; // Default: 10MB
+  maxDimensions: { width: number; height: number }; // Default: 4096x4096
+  maxImagesPerMessage: number; // Default: 5
+  allowedFormats: string[]; // Default: ['jpeg', 'jpg', 'png', 'webp', 'gif']
 
   // Storage settings
   storageProvider: 'local' | 's3'; // Default: 'local' for dev, 's3' for prod
-  localStoragePath: string;      // Default: './data/images'
+  localStoragePath: string; // Default: './data/images'
   s3Bucket?: string;
   s3Region?: string;
   cdnBaseUrl?: string;
 
   // Processing options
-  enableCompression: boolean;    // Default: true
-  compressionQuality: number;    // Default: 0.8
-  generateThumbnails: boolean;   // Default: true
+  enableCompression: boolean; // Default: true
+  compressionQuality: number; // Default: 0.8
+  generateThumbnails: boolean; // Default: true
 
   // Security settings
   enableMalwareScanning: boolean; // Default: false for dev, true for prod
   enableContentModeration: boolean; // Default: false
 
   // Rate limiting
-  uploadRateLimit: number;       // Default: 10 per minute
-  storageLimitPerUser: number;   // Default: 100MB
+  uploadRateLimit: number; // Default: 10 per minute
+  storageLimitPerUser: number; // Default: 100MB
 }
 
 // Image validation result
@@ -150,6 +145,51 @@ export type ImageProcessingState = 'pending' | 'uploading' | 'processing' | 'rea
 export interface ImageUploadProgress {
   imageId: string;
   state: ImageProcessingState;
+  progress: number; // 0-100
+  error?: string;
+}
+
+// ============================================================================
+// File Attachment Types (for text files like source code)
+// ============================================================================
+
+// File attachment for local handling (before API conversion)
+export interface FileAttachment {
+  id: string;
+  file: File;
+  name: string;
+  size: number;
+  type: string;
+  content?: string; // Text content for display/LLM context
+  downloadUrl?: string;
+  accessToken?: string;
+  expiresAt?: string;
+  expiresIn?: number;
+}
+
+// File configuration and constraints
+export interface FileConfig {
+  maxFileSize: number; // Default: 5MB for text files
+  maxFilesPerMessage: number; // Default: 3
+  allowedExtensions: string[]; // Default: ['.js', '.ts', '.py', '.md', '.txt', '.json', etc.]
+  allowedMimeTypes: string[]; // text/plain, application/json, etc.
+  uploadRateLimit: number; // Default: 10 per minute
+  storageLimitPerUser: number; // Default: 50MB
+}
+
+// File validation result
+export interface FileValidationResult {
+  isValid: boolean;
+  errors: string[];
+  warnings?: string[];
+}
+
+// File processing state (reuse ImageProcessingState)
+export type FileProcessingState = ImageProcessingState;
+
+export interface FileUploadProgress {
+  fileId: string;
+  state: FileProcessingState;
   progress: number; // 0-100
   error?: string;
 }
@@ -327,6 +367,7 @@ export interface ChatOptionsExtended extends ChatOptions {
   // Accept either full ToolSpec objects or simple tool name strings
   tools?: Array<ToolSpec | string>;
   toolChoice?: any;
+  providerStream?: boolean;
   reasoning?: {
     effort?: string;
     verbosity?: string;

@@ -21,18 +21,38 @@ interface ChatHeaderProps {
   modelToProvider?: Record<string, string> | Map<string, string>;
 }
 
-export function ChatHeader({ model, onModelChange, onProviderChange, onOpenSettings, onShowLogin, onShowRegister, onRefreshModels, isLoadingModels = false, groups, fallbackOptions, modelToProvider }: ChatHeaderProps) {
+export function ChatHeader({
+  model,
+  onModelChange,
+  onProviderChange,
+  onOpenSettings,
+  onShowLogin,
+  onShowRegister,
+  onRefreshModels,
+  isLoadingModels = false,
+  groups,
+  fallbackOptions,
+  modelToProvider,
+}: ChatHeaderProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
 
   type Option = { value: string; label: string };
-  const defaultOpenAIModels: Option[] = React.useMemo(() => ([
-    { value: 'gpt-5-mini', label: 'GPT-5 Mini' },
-    { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
-    { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
-    { value: 'gpt-4o', label: 'GPT-4o' }
-  ]), []);
+  const defaultOpenAIModels: Option[] = React.useMemo(
+    () => [
+      { value: 'gpt-5-mini', label: 'GPT-5 Mini' },
+      { value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' },
+      { value: 'gpt-4o-mini', label: 'GPT-4o Mini' },
+      { value: 'gpt-4o', label: 'GPT-4o' },
+    ],
+    []
+  );
 
-  const effectiveGroups = (groups && groups.length > 0) ? groups : (fallbackOptions ? [{ id: 'default', label: 'Models', options: fallbackOptions }] : [{ id: 'default', label: 'Models', options: defaultOpenAIModels }]);
+  const effectiveGroups =
+    groups && groups.length > 0
+      ? groups
+      : fallbackOptions
+        ? [{ id: 'default', label: 'Models', options: fallbackOptions }]
+        : [{ id: 'default', label: 'Models', options: defaultOpenAIModels }];
   const effectiveFallback = fallbackOptions ?? defaultOpenAIModels;
 
   const lastProviderIdRef = React.useRef<string | undefined>(undefined);
@@ -65,7 +85,6 @@ export function ChatHeader({ model, onModelChange, onProviderChange, onOpenSetti
     lastProviderIdRef.current = providerId;
     onProviderChange(providerId);
   }, [model, modelToProvider, onProviderChange]);
-
 
   const toggleTheme = () => {
     if (theme === 'dark') {

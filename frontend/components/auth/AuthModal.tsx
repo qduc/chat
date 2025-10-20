@@ -14,12 +14,7 @@ interface AuthModalProps {
   onSuccess?: () => void;
 }
 
-export function AuthModal({
-  open,
-  onClose,
-  initialMode = 'login',
-  onSuccess
-}: AuthModalProps) {
+export function AuthModal({ open, onClose, initialMode = 'login', onSuccess }: AuthModalProps) {
   const [mode, setMode] = useState<AuthMode>(initialMode);
 
   // Update mode when initialMode changes
@@ -43,15 +38,9 @@ export function AuthModal({
       maxWidthClassName="max-w-md"
     >
       {mode === 'login' ? (
-        <LoginForm
-          onSuccess={handleSuccess}
-          onSwitchToRegister={switchToRegister}
-        />
+        <LoginForm onSuccess={handleSuccess} onSwitchToRegister={switchToRegister} />
       ) : (
-        <RegisterForm
-          onSuccess={handleSuccess}
-          onSwitchToLogin={switchToLogin}
-        />
+        <RegisterForm onSuccess={handleSuccess} onSwitchToLogin={switchToLogin} />
       )}
     </Modal>
   );

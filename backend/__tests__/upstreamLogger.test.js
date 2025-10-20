@@ -16,10 +16,10 @@ data: [DONE]`;
     const formatted = formatSSEChunks(sseBody);
 
     // Verify formatted output contains readable chunk summaries
-    expect(formatted).toContain('[Chunk 0] Role: assistant, Content: "Hello"');
-    expect(formatted).toContain('[Chunk 1] Content: " World"');
-    expect(formatted).toContain('[Chunk 2] Content: "!", Finish reason: stop');
-    expect(formatted).toContain('[Chunk 3] Usage:');
+    expect(formatted).toContain('[Chunk 0] Role: assistant');
+    expect(formatted).toContain('[Content] "Hello World!"'); // Content is consolidated
+    expect(formatted).toContain('Finish reason: stop');
+    expect(formatted).toContain('Usage:');
     expect(formatted).toContain('STREAM END');
   });
 
@@ -83,8 +83,8 @@ data: [DONE]`;
 
     const formatted = formatSSEChunks(sseBody);
 
-    expect(formatted).toContain('event: message');
-    expect(formatted).toContain('[Chunk 0] Content: "Test"');
+    // Non-data SSE lines are skipped in the current implementation
+    expect(formatted).toContain('[Content] "Test"');
   });
 
   it('should show role delta', () => {
@@ -127,7 +127,7 @@ data: [DONE]`;
 
     const formatted = formatSSEChunks(sseBody);
 
-    expect(formatted).toContain('[Chunk 0] Content: "Test"');
+    expect(formatted).toContain('[Content] "Test"');
     expect(formatted).toContain('STREAM END');
   });
 

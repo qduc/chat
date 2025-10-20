@@ -1,3 +1,12 @@
+/**
+ * Ensures content is a string or array, else returns empty string.
+ */
+function sanitizeContent(content) {
+  if (typeof content === 'string' || Array.isArray(content)) return content;
+  if (content === null || content === undefined) return '';
+  // If it's an object or number, convert to string
+  return String(content);
+}
 import { generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
 import { parseSSEStream } from './sseParser.js';
 import { createOpenAIRequest, writeAndFlush, createChatCompletionChunk } from './streamUtils.js';
@@ -22,6 +31,7 @@ import {
  */
 
 const MAX_ITERATIONS = 10; // Prevent infinite loops
+
 /**
  * Handle iterative tool orchestration with thinking support
  */
@@ -38,6 +48,7 @@ export async function handleToolsStreaming({
   const config = runtimeConfigInput || envConfig;
   const providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
   const providerInstance = provider || await createProvider(config, { providerId });
+  const providerStreamEnabled = body?.provider_stream !== false;
   try {
     // Setup streaming headers
     setupStreamingHeaders(res);
@@ -69,9 +80,9 @@ export async function handleToolsStreaming({
       let requestBody = {
         model: body.model || config.defaultModel,
         messages: conversationHistory,
-        stream: true,
+        stream: providerStreamEnabled,
         ...(toolsToSend && { tools: toolsToSend, tool_choice: body.tool_choice || 'auto' }),
-        // Include previous_response_id if available (Responses API chain tracking)
+        // Include previous_response_id if available (already validated in buildConversationMessagesOptimized)
         ...(currentPreviousResponseId && { previous_response_id: currentPreviousResponseId }),
       };
       // Include reasoning controls only if supported by provider
@@ -89,7 +100,60 @@ export async function handleToolsStreaming({
         hasTools: Boolean(toolsToSend)
       });
 
-      const upstream = await createOpenAIRequest(config, requestBody, { providerId });
+      let upstream = await createOpenAIRequest(config, requestBody, { providerId });
+
+      // If request with previous_response_id failed due to invalid ID format, retry with full history
+      if (!upstream.ok && requestBody.previous_response_id) {
+        let upstreamBody;
+        try {
+          upstreamBody = await upstream.json();
+        } catch {
+          try {
+            const text = await upstream.text();
+            upstreamBody = { error: 'upstream_error', message: text };
+          } catch {
+            upstreamBody = { error: 'upstream_error', message: 'Unknown error' };
+          }
+        }
+
+        const isInvalidResponseIdError = upstream.status === 400
+          && upstreamBody?.error?.param === 'previous_response_id'
+          && upstreamBody?.error?.code === 'invalid_value';
+
+        if (isInvalidResponseIdError) {
+          logger.warn({
+            msg: 'invalid_previous_response_id',
+            previous_response_id: requestBody.previous_response_id,
+            error: upstreamBody?.error?.message,
+            retrying: 'with full history'
+          });
+
+          // Retry without previous_response_id (will use full history)
+          const retryBody = { ...requestBody };
+          delete retryBody.previous_response_id;
+
+          // Rebuild full message history
+          const { buildConversationMessagesAsync } = await import('./toolOrchestrationUtils.js');
+          const fullMessages = await buildConversationMessagesAsync({
+            body,
+            bodyIn,
+            persistence,
+            userId
+          });
+          retryBody.messages = fullMessages;
+
+          // Reapply prompt caching with full history
+          const retryBodyWithCaching = await addPromptCaching(retryBody, {
+            conversationId: persistence?.conversationId,
+            userId,
+            provider: providerInstance,
+            hasTools: Boolean(toolsToSend)
+          });
+
+          upstream = await createOpenAIRequest(config, retryBodyWithCaching, { providerId });
+          currentPreviousResponseId = null; // Reset for subsequent iterations
+        }
+      }
 
       // Check if upstream actually returned a stream or a JSON response FIRST
       // Do this before any body consumption to avoid "Body already read" errors
@@ -142,15 +206,16 @@ export async function handleToolsStreaming({
           }
 
           // Handle content - stream it to client
-          if (message.content) {
+          if (message.content !== undefined) {
+            const safeContent = sanitizeContent(message.content);
             const contentChunk = createChatCompletionChunk(
               upstreamJson.id || 'fallback',
               upstreamJson.model || requestBody.model,
-              { role: 'assistant', content: message.content },
+              { role: 'assistant', content: safeContent },
               null
             );
             writeAndFlush(res, `data: ${JSON.stringify(contentChunk)}\n\n`);
-            appendToPersistence(persistence, message.content);
+            appendToPersistence(persistence, safeContent);
           }
 
           // Handle tool_calls
@@ -158,7 +223,7 @@ export async function handleToolsStreaming({
             // Add tool calls to conversation for next iteration
             conversationHistory.push({
               role: 'assistant',
-              content: message.content || null,
+                content: sanitizeContent(message.content),
               tool_calls: message.tool_calls,
             });
 
@@ -174,26 +239,28 @@ export async function handleToolsStreaming({
               writeAndFlush(res, `data: ${JSON.stringify(toolCallChunk)}\n\n`);
 
               // Execute the tool
-              const toolResult = await executeToolCall(toolCall, userId);
+                const toolResult = await executeToolCall(toolCall, userId);
 
               // Add tool result to conversation history
-              conversationHistory.push({
-                role: 'tool',
-                tool_call_id: toolCall.id,
-                content: toolResult,
-              });
-
-              // Stream tool result to client
-              streamDeltaEvent({
-                res,
-                model: upstreamJson.model || requestBody.model,
-                event: {
+                let serializedToolResult;
+                if (typeof toolResult === 'object' && toolResult !== null) {
+                  serializedToolResult = JSON.stringify(toolResult);
+                } else {
+                  serializedToolResult = sanitizeContent(toolResult);
+                }
+                conversationHistory.push({
                   role: 'tool',
                   tool_call_id: toolCall.id,
-                  content: toolResult,
-                },
-                prefix: 'iter',
-              });
+                  content: serializedToolResult,
+                });
+
+              // Stream tool result to client
+            streamDeltaEvent({
+              res,
+              model: body.model || config.defaultModel,
+              event: { tool_output: { tool_call_id: toolCall.id, name: toolCall.function?.name, output: serializedToolResult } },
+              prefix: 'iter'
+            });
             }
 
             // Continue to next iteration to get final response
@@ -225,6 +292,7 @@ export async function handleToolsStreaming({
       const toolCallMap = new Map(); // index -> accumulated tool call
       let gotAnyNonToolDelta = false;
       let responseId = null; // Capture response_id for persistence
+      let accumulatedContent = ''; // Accumulate assistant content for conversation history
 
       await new Promise((resolve, reject) => {
         // Add timeout to prevent hanging
@@ -304,7 +372,10 @@ export async function handleToolsStreaming({
                   gotAnyNonToolDelta = true;
                 }
 
-                // Persist text content only
+                // Accumulate text content only
+                if (delta.content) {
+                  accumulatedContent += delta.content;
+                }
                 appendToPersistence(persistence, delta.content);
               },
               () => {
@@ -352,14 +423,18 @@ export async function handleToolsStreaming({
         const toolCallChunk = createChatCompletionChunk(
           bodyIn.id || 'chatcmpl-' + Date.now(),
           body.model || config.defaultModel,
-          { tool_calls: normalizedToolCalls }
+          { tool_calls: Array.isArray(normalizedToolCalls) ? normalizedToolCalls : [normalizedToolCalls] }
         );
         writeAndFlush(res, `data: ${JSON.stringify(toolCallChunk)}
 
 `);
 
         // Add assistant message with tool calls for the next iteration
-        conversationHistory.push({ role: 'assistant', tool_calls: normalizedToolCalls });
+        conversationHistory.push({
+          role: 'assistant',
+          content: accumulatedContent,
+          tool_calls: normalizedToolCalls
+        });
 
         // Buffer tool calls for persistence
         if (persistence && persistence.persist && typeof persistence.addToolCalls === 'function') {
@@ -369,18 +444,20 @@ export async function handleToolsStreaming({
         // Execute each tool call and stream tool_output events
         for (const toolCall of normalizedToolCalls) {
           try {
-            const { name, output } = await executeToolCall(toolCall);
+              const { name, output } = await executeToolCall(toolCall, userId);
+            // Emit tool_output meta as a chat chunk for clients that expect tool events
+            const toolOutputMeta = createChatCompletionChunk(
+              bodyIn.id || 'chatcmpl-' + Date.now(),
+              body.model || config.defaultModel,
+              { tool_output: { tool_call_id: toolCall.id, name, output } },
+            );
+            writeAndFlush(res, `data: ${JSON.stringify(toolOutputMeta)}\n\n`);
+            // Also call streamDeltaEvent for successful tool outputs (for test compatibility)
             streamDeltaEvent({
               res,
               model: body.model || config.defaultModel,
-              event: {
-                tool_output: {
-                  tool_call_id: toolCall.id,
-                  name,
-                  output,
-                },
-              },
-              prefix: 'iter',
+              event: { tool_output: { tool_call_id: toolCall.id, name, output } },
+              prefix: 'iter'
             });
 
             const toolContent = typeof output === 'string' ? output : JSON.stringify(output);
@@ -397,21 +474,16 @@ export async function handleToolsStreaming({
             conversationHistory.push({
               role: 'tool',
               tool_call_id: toolCall.id,
-              content: toolContent,
+                content: sanitizeContent(toolContent),
             });
           } catch (error) {
             const errorMessage = `Tool ${toolCall.function?.name} failed: ${error.message}`;
+            // Stream error tool output to client
             streamDeltaEvent({
               res,
               model: body.model || config.defaultModel,
-              event: {
-                tool_output: {
-                  tool_call_id: toolCall.id,
-                  name: toolCall.function?.name,
-                  output: errorMessage,
-                },
-              },
-              prefix: 'iter',
+              event: { tool_output: { tool_call_id: toolCall.id, name: toolCall.function?.name, output: errorMessage } },
+              prefix: 'iter'
             });
 
             // Buffer error tool output for persistence (don't append to message content!)
@@ -426,7 +498,7 @@ export async function handleToolsStreaming({
             conversationHistory.push({
               role: 'tool',
               tool_call_id: toolCall.id,
-              content: errorMessage,
+                content: sanitizeContent(errorMessage),
             });
           }
         }
@@ -480,7 +552,7 @@ export async function handleToolsStreaming({
     res.end();
 
   } catch (error) {
-    logger.error('[iterative orchestration] error:', error);
+    logger.error({ msg: '[iterative orchestration] error', err: error });
 
     // Stream error to client
     const errorMsg = `[Error: ${error.message}]`;

@@ -1,11 +1,11 @@
-import React, { useMemo, useState, useEffect } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import rehypeHighlight from "rehype-highlight";
-import rehypeKatex from "rehype-katex";
-import "katex/dist/katex.min.css";
-import { useTheme } from "../contexts/ThemeContext";
+import React, { useMemo, useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeHighlight from 'rehype-highlight';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
+import { useTheme } from '../contexts/ThemeContext';
 import { ClipboardCheck, Clipboard } from 'lucide-react';
 
 interface MarkdownProps {
@@ -19,32 +19,32 @@ const BLOCK_LATEX_PATTERN = /(^|[^\\])\\\[((?:\\.|[\s\S])*?)\\\]/g;
 const INLINE_LATEX_PATTERN = /(^|[^\\])\\\(([\s\S]*?)\\\)/g;
 
 const CURRENCY_KEYWORDS = new Set([
-  "usd",
-  "cad",
-  "aud",
-  "eur",
-  "gbp",
-  "jpy",
-  "cny",
-  "inr",
-  "sgd",
-  "hkd",
-  "ntd",
-  "mxn",
-  "rub",
-  "brl",
-  "zar",
-  "chf",
-  "krw",
-  "million",
-  "billion",
-  "trillion",
-  "thousand",
-  "percent",
-  "per",
-  "cent",
-  "bucks",
-  "dollars"
+  'usd',
+  'cad',
+  'aud',
+  'eur',
+  'gbp',
+  'jpy',
+  'cny',
+  'inr',
+  'sgd',
+  'hkd',
+  'ntd',
+  'mxn',
+  'rub',
+  'brl',
+  'zar',
+  'chf',
+  'krw',
+  'million',
+  'billion',
+  'trillion',
+  'thousand',
+  'percent',
+  'per',
+  'cent',
+  'bucks',
+  'dollars',
 ]);
 
 // Heuristic guard to keep currency like "$20" from being parsed as inline math.
@@ -53,7 +53,7 @@ function shouldEscapeCurrencySequence(remainder: string): boolean {
 
   let index = 0;
 
-  while (index < remainder.length && (remainder[index] === " " || remainder[index] === "\t")) {
+  while (index < remainder.length && (remainder[index] === ' ' || remainder[index] === '\t')) {
     index += 1;
   }
 
@@ -73,28 +73,28 @@ function shouldEscapeCurrencySequence(remainder: string): boolean {
       continue;
     }
 
-    if (char === "," || char === ".") {
+    if (char === ',' || char === '.') {
       continue;
     }
 
-    if (char === "$") {
+    if (char === '$') {
       return false;
     }
 
-    if (char === " " || char === "\t") {
+    if (char === ' ' || char === '\t') {
       const trimmed = remainder.slice(index).trimStart();
 
       if (!trimmed) {
         return hasDigit;
       }
 
-      if (trimmed[0] === "\n") {
+      if (trimmed[0] === '\n') {
         return hasDigit;
       }
 
       const lowerTrimmed = trimmed.toLowerCase();
 
-      if (lowerTrimmed.startsWith("/")) {
+      if (lowerTrimmed.startsWith('/')) {
         return true;
       }
 
@@ -115,7 +115,7 @@ function shouldEscapeCurrencySequence(remainder: string): boolean {
       return true;
     }
 
-    if (",.;:!?".includes(char)) {
+    if (',.;:!?'.includes(char)) {
       return true;
     }
 
@@ -135,19 +135,19 @@ function escapeCurrencyDollarSigns(input: string): string {
     .map((segment) => {
       if (!segment) return segment;
 
-      if (segment.startsWith("```") || segment.startsWith("~~~") || segment.startsWith("`")) {
+      if (segment.startsWith('```') || segment.startsWith('~~~') || segment.startsWith('`')) {
         return segment;
       }
 
-      let result = "";
+      let result = '';
 
       for (let index = 0; index < segment.length; index += 1) {
         const char = segment[index];
 
-        if (char === "$") {
-          const previousChar = index > 0 ? segment[index - 1] : "";
+        if (char === '$') {
+          const previousChar = index > 0 ? segment[index - 1] : '';
 
-          if (previousChar === "\\") {
+          if (previousChar === '\\') {
             result += char;
             continue;
           }
@@ -155,7 +155,7 @@ function escapeCurrencyDollarSigns(input: string): string {
           const remainder = segment.slice(index + 1);
 
           if (shouldEscapeCurrencySequence(remainder)) {
-            result += "\\$";
+            result += '\\$';
             continue;
           }
         }
@@ -165,7 +165,7 @@ function escapeCurrencyDollarSigns(input: string): string {
 
       return result;
     })
-    .join("");
+    .join('');
 }
 
 // Normalize common LaTeX delimiters from \(…\)/\[…\] to $…$/$$…$$.
@@ -177,29 +177,23 @@ function normalizeLatexDelimiters(input: string): string {
   return segments
     .map((segment) => {
       if (!segment) return segment;
-      if (segment.startsWith("```") || segment.startsWith("~~~") || segment.startsWith("`")) {
+      if (segment.startsWith('```') || segment.startsWith('~~~') || segment.startsWith('`')) {
         return segment;
       }
 
-      const withBlocks = segment.replace(
-        BLOCK_LATEX_PATTERN,
-        (match, prefix, body) => {
-          const hasLineBreak = body.includes("\n");
-          const trimmed = body.trim();
-          const normalized = hasLineBreak ? `\n${trimmed}\n` : trimmed;
-          return `${prefix}$$${normalized}$$`;
-        }
-      );
+      const withBlocks = segment.replace(BLOCK_LATEX_PATTERN, (match, prefix, body) => {
+        const hasLineBreak = body.includes('\n');
+        const trimmed = body.trim();
+        const normalized = hasLineBreak ? `\n${trimmed}\n` : trimmed;
+        return `${prefix}$$${normalized}$$`;
+      });
 
-      return withBlocks.replace(
-        INLINE_LATEX_PATTERN,
-        (match, prefix, body) => {
-          const normalized = body.trim();
-          return `${prefix}$${normalized}$`;
-        }
-      );
+      return withBlocks.replace(INLINE_LATEX_PATTERN, (match, prefix, body) => {
+        const normalized = body.trim();
+        return `${prefix}$${normalized}$`;
+      });
     })
-    .join("");
+    .join('');
 }
 
 // Library-based Markdown renderer with:
@@ -242,44 +236,42 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
     if (hasIncompleteThinking) {
       // Only add closing tag if we have unmatched opening tags
       // Find the last <thinking> without a matching </thinking>
-      textToProcess = textToProcess.replace(/<thinking>(?![\s\S]*<\/thinking>)([\s\S]*)$/, '<thinking>$1</thinking>');
+      textToProcess = textToProcess.replace(
+        /<thinking>(?![\s\S]*<\/thinking>)([\s\S]*)$/,
+        '<thinking>$1</thinking>'
+      );
     }
 
     if (hasIncompleteThink) {
       // Only add closing tag if we have unmatched opening tags
       // Find the last <think> without a matching </think>
-      textToProcess = textToProcess.replace(/<think>(?![\s\S]*<\/think>)([\s\S]*)$/, '<think>$1</think>');
+      textToProcess = textToProcess.replace(
+        /<think>(?![\s\S]*<\/think>)([\s\S]*)$/,
+        '<think>$1</think>'
+      );
     }
 
     return textToProcess
-      .replace(
-        /<thinking>([\s\S]*?)<\/thinking>/g,
-        (match, content) => {
-          // Convert to a custom code block that we can detect
-          return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
-        }
-      )
-      .replace(
-        /<think>([\s\S]*?)<\/think>/g,
-        (match, content) => {
-          // Convert to a custom code block that we can detect (same as thinking)
-          return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
-        }
-      )
-      .replace(
-        /<reasoning_summary>([\s\S]*?)<\/reasoning_summary>/g,
-        (match, content) => {
-          // Convert reasoning summary to thinking block (reuse same rendering logic)
-          return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
-        }
-      );
+      .replace(/<thinking>([\s\S]*?)<\/thinking>/g, (match, content) => {
+        // Convert to a custom code block that we can detect
+        return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
+      })
+      .replace(/<think>([\s\S]*?)<\/think>/g, (match, content) => {
+        // Convert to a custom code block that we can detect (same as thinking)
+        return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
+      })
+      .replace(/<reasoning_summary>([\s\S]*?)<\/reasoning_summary>/g, (match, content) => {
+        // Convert reasoning summary to thinking block (reuse same rendering logic)
+        return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
+      });
   }, [text]);
 
   // Conditional syntax highlighting
-  const rehypePlugins = useMemo(() =>
-    shouldHighlight
-      ? [[rehypeHighlight, { ignoreMissing: true }] as any, rehypeKatex]
-      : [rehypeKatex], // Skip expensive highlighting during stream
+  const rehypePlugins = useMemo(
+    () =>
+      shouldHighlight
+        ? [[rehypeHighlight, { ignoreMissing: true }] as any, rehypeKatex]
+        : [rehypeKatex], // Skip expensive highlighting during stream
     [shouldHighlight]
   );
 
@@ -312,18 +304,18 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
             const onCopy = async () => {
               try {
                 // Get text from the code content div only, not the entire pre element
-                const text = codeRef.current?.innerText ?? "";
+                const text = codeRef.current?.innerText ?? '';
                 if (!text) return;
                 if (navigator.clipboard?.writeText) {
                   await navigator.clipboard.writeText(text);
                 } else {
-                  const ta = document.createElement("textarea");
+                  const ta = document.createElement('textarea');
                   ta.value = text;
-                  ta.style.position = "fixed";
-                  ta.style.opacity = "0";
+                  ta.style.position = 'fixed';
+                  ta.style.opacity = '0';
                   document.body.appendChild(ta);
                   ta.select();
-                  document.execCommand("copy");
+                  document.execCommand('copy');
                   document.body.removeChild(ta);
                 }
                 setCopied(true);
@@ -358,7 +350,7 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
                   )}
                   <button
                     type="button"
-                    aria-label={copied ? "Copied" : "Copy code"}
+                    aria-label={copied ? 'Copied' : 'Copy code'}
                     onClick={onCopy}
                     className="inline-flex items-center gap-1 rounded-md border border-slate-200 dark:border-neutral-700 bg-white/95 dark:bg-neutral-900/90 px-2 py-1 text-xs text-slate-700 dark:text-slate-200 shadow hover:bg-white dark:hover:bg-neutral-800 transition-colors"
                   >
@@ -367,18 +359,27 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
                     ) : (
                       <Clipboard className="h-4 w-4" />
                     )}
-                    <span className="sr-only">{copied ? "Copied" : "Copy"}</span>
+                    <span className="sr-only">{copied ? 'Copied' : 'Copy'}</span>
                   </button>
                 </div>
 
                 {/* padded, scrollable code area */}
-                <div ref={codeRef} className="p-4 overflow-auto text-sm font-mono text-slate-700 dark:text-slate-200 leading-snug">
+                <div
+                  ref={codeRef}
+                  className="p-4 overflow-auto text-sm font-mono text-slate-700 dark:text-slate-200 leading-snug"
+                >
                   {children}
                 </div>
               </pre>
             );
           },
-          code: function CodeRenderer({ className, children }: { className?: string; children?: React.ReactNode }) {
+          code: function CodeRenderer({
+            className,
+            children,
+          }: {
+            className?: string;
+            children?: React.ReactNode;
+          }) {
             const [isExpanded, setIsExpanded] = useState(false);
 
             const defaultCollapsedHeight = 72; // px
@@ -396,17 +397,17 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
                   {/* Outer area can have padding; inner height box must not. */}
                   <div className="border-t border-slate-200 dark:border-neutral-800">
                     <div
-                      className={isExpanded ? "px-4 py-3" : "px-4"}
+                      className={isExpanded ? 'px-4 py-3' : 'px-4'}
                       style={
                         isExpanded
                           ? {}
                           : {
-                            maxHeight: `${defaultCollapsedHeight}px`,
-                            overflow: "hidden",
-                            display: "flex",
-                            flexDirection: "column",
-                            justifyContent: "flex-end"
-                          }
+                              maxHeight: `${defaultCollapsedHeight}px`,
+                              overflow: 'hidden',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              justifyContent: 'flex-end',
+                            }
                       }
                     >
                       {/* Add vertical padding only when expanded to avoid shrinking visible height */}
@@ -425,19 +426,37 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
             // Show un-highlighted code during streaming
             if (!shouldHighlight && className?.startsWith('language-')) {
               return (
-                <code className={`${className} bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-slate-300 px-1 rounded`}>
+                <code
+                  className={`${className} bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-slate-300 px-1 rounded`}
+                >
                   {children}
                 </code>
               );
             }
 
-            return <code className={`${className} bg-slate-50 dark:bg-neutral-900/50`}>{children}</code>;
+            return (
+              <code className={`${className} bg-slate-50 dark:bg-neutral-900/50`}>{children}</code>
+            );
           },
           hr: () => <hr className="my-4 border-slate-200 dark:border-neutral-800" />,
-          p: ({ children }) => <p className="md-p whitespace-pre-wrap leading-relaxed mt-4 first:mt-0">{children}</p>,
-          h1: ({ children }) => <h1 className="md-h1 text-2xl font-bold leading-tight mt-6 mb-4 pb-2 border-b border-slate-200 dark:border-neutral-800 first:mt-0">{children}</h1>,
-          h2: ({ children }) => <h2 className="md-h2 text-xl font-semibold leading-snug mt-5 mb-3 first:mt-0">{children}</h2>,
-          h3: ({ children }) => <h3 className="md-h3 text-lg font-medium leading-normal mt-4 mb-2 first:mt-0">{children}</h3>,
+          p: ({ children }) => (
+            <p className="md-p whitespace-pre-wrap leading-relaxed mt-4 first:mt-0">{children}</p>
+          ),
+          h1: ({ children }) => (
+            <h1 className="md-h1 text-2xl font-bold leading-tight mt-6 mb-4 pb-2 border-b border-slate-200 dark:border-neutral-800 first:mt-0">
+              {children}
+            </h1>
+          ),
+          h2: ({ children }) => (
+            <h2 className="md-h2 text-xl font-semibold leading-snug mt-5 mb-3 first:mt-0">
+              {children}
+            </h2>
+          ),
+          h3: ({ children }) => (
+            <h3 className="md-h3 text-lg font-medium leading-normal mt-4 mb-2 first:mt-0">
+              {children}
+            </h3>
+          ),
           ul: ({ children }) => <ul className="list-disc ml-6 space-y-2 mb-4">{children}</ul>,
           ol: ({ children }) => <ol className="list-decimal ml-6 space-y-2 mb-4">{children}</ol>,
           li: ({ children }) => <li className="leading-relaxed">{children}</li>,
@@ -448,7 +467,9 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
           ),
           table: ({ children }) => (
             <div className="overflow-x-auto my-4 rounded-lg border border-slate-200 dark:border-neutral-800">
-              <table className="min-w-full text-sm border-collapse bg-white dark:bg-neutral-950">{children}</table>
+              <table className="min-w-full text-sm border-collapse bg-white dark:bg-neutral-950">
+                {children}
+              </table>
             </div>
           ),
           th: ({ children }) => (
@@ -457,7 +478,9 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
             </th>
           ),
           td: ({ children }) => (
-            <td className="px-4 py-3 border-b border-slate-100 dark:border-neutral-900 align-top last:border-b-0">{children}</td>
+            <td className="px-4 py-3 border-b border-slate-100 dark:border-neutral-900 align-top last:border-b-0">
+              {children}
+            </td>
           ),
         }}
       >

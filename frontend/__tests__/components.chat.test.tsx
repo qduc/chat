@@ -16,14 +16,12 @@ jest.mock('../contexts/AuthContext', () => {
   };
 });
 
-
-
-type ConversationsApi = typeof import('../lib/api')['conversations'];
-type ChatApi = typeof import('../lib/api')['chat'];
-type ToolsApi = typeof import('../lib/api')['tools'];
-type ProvidersApi = typeof import('../lib/api')['providers'];
-type AuthApi = typeof import('../lib/api')['auth'];
-type HttpClient = typeof import('../lib/http')['httpClient'];
+type ConversationsApi = (typeof import('../lib/api'))['conversations'];
+type ChatApi = (typeof import('../lib/api'))['chat'];
+type ToolsApi = (typeof import('../lib/api'))['tools'];
+type ProvidersApi = (typeof import('../lib/api'))['providers'];
+type AuthApi = (typeof import('../lib/api'))['auth'];
+type HttpClient = (typeof import('../lib/http'))['httpClient'];
 
 jest.mock('../lib/api', () => {
   const actual = jest.requireActual('../lib/api');
@@ -80,23 +78,12 @@ jest.mock('../lib/http', () => {
   };
 });
 
-const {
-  conversations: mockConversations,
-  chat: mockChat,
-  tools: mockTools,
-  providers: mockProviders,
-  auth: mockAuth,
-} = require('../lib/api') as {
-  conversations: jest.Mocked<ConversationsApi>;
-  chat: jest.Mocked<ChatApi>;
-  tools: jest.Mocked<ToolsApi>;
-  providers: jest.Mocked<ProvidersApi>;
-  auth: jest.Mocked<AuthApi>;
-};
-
-const { httpClient: mockHttpClient } = require('../lib/http') as {
-  httpClient: jest.Mocked<HttpClient>;
-};
+// Use the mocked objects from jest.mock
+const mockConversations = jest.requireMock('../lib/api').conversations;
+const mockChat = jest.requireMock('../lib/api').chat;
+const mockTools = jest.requireMock('../lib/api').tools;
+const mockAuth = jest.requireMock('../lib/api').auth;
+const mockHttpClient = jest.requireMock('../lib/http').httpClient;
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -125,7 +112,7 @@ Object.defineProperty(global, 'crypto', {
 
 // Mock localStorage with key-aware behavior
 const mockLocalStorage = {
-  getItem: jest.fn((key: string) => null),
+  getItem: jest.fn(() => null),
   setItem: jest.fn(),
   removeItem: jest.fn(),
   clear: jest.fn(),
@@ -166,10 +153,7 @@ function setupHttpClient() {
       return Promise.resolve({
         data: {
           provider: { id: 'openai' },
-          models: [
-            { id: 'gpt-4o' },
-            { id: 'gpt-4o-mini' },
-          ],
+          models: [{ id: 'gpt-4o' }, { id: 'gpt-4o-mini' }],
         },
         status: 200,
         statusText: 'OK',
@@ -194,7 +178,7 @@ beforeEach(() => {
   mockConversations.create.mockRejectedValue(new Error('History not available'));
   mockChat.sendMessage.mockResolvedValue({
     content: 'Mock response',
-    responseId: 'mock-response-id'
+    responseId: 'mock-response-id',
   });
   mockTools.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] } as any);
   mockConversations.get.mockResolvedValue({
@@ -214,7 +198,7 @@ beforeEach(() => {
   setupHttpClient();
 
   // Mock localStorage to return false (expanded by default)
-  mockLocalStorage.getItem.mockImplementation((key: string) => null);
+  mockLocalStorage.getItem.mockImplementation(() => null);
 });
 
 describe('<Chat />', () => {
@@ -238,7 +222,9 @@ describe('<Chat />', () => {
     await waitFor(() => {
       expect(screen.getByText('Welcome to Chat')).toBeInTheDocument();
     });
-    expect(screen.getByText('Ask a question or start a conversation to get started.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Ask a question or start a conversation to get started.')
+    ).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Type your message...')).toBeInTheDocument();
   });
 
@@ -299,7 +285,9 @@ describe('<Chat />', () => {
   test('selecting a conversation loads its messages', async () => {
     const user = userEvent.setup();
     mockConversations.list.mockResolvedValue({
-      items: [{ id: 'conv-1', title: 'Test Conversation', model: 'gpt-4o', created_at: '2023-01-01' }],
+      items: [
+        { id: 'conv-1', title: 'Test Conversation', model: 'gpt-4o', created_at: '2023-01-01' },
+      ],
       next_cursor: null,
     });
     mockTools.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] });
@@ -309,8 +297,22 @@ describe('<Chat />', () => {
       model: 'gpt-4o',
       created_at: '2023-01-01',
       messages: [
-        { id: 1, seq: 1, role: 'user', status: 'sent', content: 'Hello', created_at: '2023-01-01T00:00:00Z' },
-        { id: 2, seq: 2, role: 'assistant', status: 'sent', content: 'Hi there!', created_at: '2023-01-01T00:01:00Z' },
+        {
+          id: 1,
+          seq: 1,
+          role: 'user',
+          status: 'sent',
+          content: 'Hello',
+          created_at: '2023-01-01T00:00:00Z',
+        },
+        {
+          id: 2,
+          seq: 2,
+          role: 'assistant',
+          status: 'sent',
+          content: 'Hi there!',
+          created_at: '2023-01-01T00:01:00Z',
+        },
       ],
       next_after_seq: null,
     });
@@ -492,7 +494,7 @@ describe('<Chat />', () => {
           role: 'user',
           status: 'sent',
           content: 'Original message',
-          created_at: '2023-01-01T00:00:00Z'
+          created_at: '2023-01-01T00:00:00Z',
         },
         {
           id: 2,
@@ -500,7 +502,7 @@ describe('<Chat />', () => {
           role: 'assistant',
           status: 'sent',
           content: 'Original response',
-          created_at: '2023-01-01T00:01:00Z'
+          created_at: '2023-01-01T00:01:00Z',
         },
       ],
       next_after_seq: null,
@@ -509,7 +511,7 @@ describe('<Chat />', () => {
       message: {
         id: '2',
         seq: 3,
-        content: 'Edited response'
+        content: 'Edited response',
       },
       new_conversation_id: 'new-conv',
     });
@@ -537,15 +539,25 @@ describe('<Chat />', () => {
     // First, set up a conversation with system prompt and active prompt ID
     mockConversations.list.mockResolvedValue({
       items: [
-        { id: 'conv-with-prompt', title: 'Chat with Prompt', model: 'gpt-4o', created_at: '2023-01-01' },
-        { id: 'conv-no-prompt', title: 'Chat without Prompt', model: 'gpt-4o', created_at: '2023-01-02' }
+        {
+          id: 'conv-with-prompt',
+          title: 'Chat with Prompt',
+          model: 'gpt-4o',
+          created_at: '2023-01-01',
+        },
+        {
+          id: 'conv-no-prompt',
+          title: 'Chat without Prompt',
+          model: 'gpt-4o',
+          created_at: '2023-01-02',
+        },
       ],
       next_cursor: null,
     });
     mockTools.getToolSpecs.mockResolvedValue({ tools: [], available_tools: [] });
 
     // First conversation has system prompt
-  mockConversations.get.mockImplementation((id: string) => {
+    mockConversations.get.mockImplementation((id: string) => {
       if (id === 'conv-with-prompt') {
         return Promise.resolve({
           id: 'conv-with-prompt',

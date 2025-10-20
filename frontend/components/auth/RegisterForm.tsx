@@ -36,11 +36,7 @@ export function RegisterForm({ onSuccess, onSwitchToLogin }: RegisterFormProps) 
     setLoading(true);
 
     try {
-      await register(
-        formData.email,
-        formData.password,
-        formData.displayName || undefined
-      );
+      await register(formData.email, formData.password, formData.displayName || undefined);
       onSuccess?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Registration failed');
@@ -51,7 +47,7 @@ export function RegisterForm({ onSuccess, onSwitchToLogin }: RegisterFormProps) 
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
+    setFormData((prev) => ({
       ...prev,
       [name]: value,
     }));

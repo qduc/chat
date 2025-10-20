@@ -25,7 +25,8 @@ afterEach(() => {
 
 describe('Streaming retry on verification error', () => {
   test('throws StreamingNotSupportedError when receiving organization verification error', async () => {
-    const errorMessage = 'Your organization must be verified to stream this model. Please go to: https://platform.openai.com/settings/organization/general';
+    const errorMessage =
+      'Your organization must be verified to stream this model. Please go to: https://platform.openai.com/settings/organization/general';
 
     const lines = [
       `data: {"choices":[{"delta":{"content":"${errorMessage}"}}]}\n\n`,
@@ -33,7 +34,10 @@ describe('Streaming retry on verification error', () => {
     ];
 
     jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(sseStream(lines), { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+      new Response(sseStream(lines), {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      })
     );
 
     await expect(
@@ -53,7 +57,10 @@ describe('Streaming retry on verification error', () => {
     ];
 
     jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(sseStream(lines), { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+      new Response(sseStream(lines), {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      })
     );
 
     const tokens: string[] = [];
@@ -69,7 +76,8 @@ describe('Streaming retry on verification error', () => {
   });
 
   test('throws when error is in error message format', async () => {
-    const errorMessage = '[Error: Upstream API error (400): Your organization must be verified to stream this model]';
+    const errorMessage =
+      '[Error: Upstream API error (400): Your organization must be verified to stream this model]';
 
     const lines = [
       `data: {"choices":[{"delta":{"content":"${errorMessage}"}}]}\n\n`,
@@ -77,7 +85,10 @@ describe('Streaming retry on verification error', () => {
     ];
 
     jest.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(sseStream(lines), { status: 200, headers: { 'Content-Type': 'text/event-stream' } })
+      new Response(sseStream(lines), {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      })
     );
 
     await expect(

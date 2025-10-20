@@ -20,8 +20,10 @@ export function supportsReasoningControls(
 
   // OpenRouter/Provider models: check supported_parameters
   if (modelData?.supported_parameters) {
-    return Array.isArray(modelData.supported_parameters) &&
-           modelData.supported_parameters.includes('reasoning');
+    return (
+      Array.isArray(modelData.supported_parameters) &&
+      modelData.supported_parameters.includes('reasoning')
+    );
   }
 
   // Fallback: hardcoded logic for known thinking models
@@ -29,6 +31,10 @@ export function supportsReasoningControls(
   const modelId = model.includes('::') ? model.split('::')[1] : model;
   const normalized = modelId.toLowerCase();
 
-  return (normalized.startsWith('gpt-5') || normalized.startsWith('o3') || normalized.startsWith('o4'))
-      && !normalized.includes('chat');
+  return (
+    (normalized.startsWith('gpt-5') ||
+      normalized.startsWith('o3') ||
+      normalized.startsWith('o4')) &&
+    !normalized.includes('chat')
+  );
 }

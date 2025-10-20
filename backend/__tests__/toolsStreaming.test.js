@@ -21,31 +21,31 @@ import { jest } from '@jest/globals';
 const toolsModulePath = new URL('../src/lib/tools.js', import.meta.url).href;
 await jest.unstable_mockModule(toolsModulePath, () => ({
   generateOpenAIToolSpecs: jest.fn(() => [
-    { type: 'function', function: { name: 'test_tool', description: 'Test tool' } }
+    { type: 'function', function: { name: 'test_tool', description: 'Test tool' } },
   ]),
-  generateToolSpecs: jest.fn(() => ['test_tool'])
+  generateToolSpecs: jest.fn(() => ['test_tool']),
 }));
 
 const sseParserPath = new URL('../src/lib/sseParser.js', import.meta.url).href;
 await jest.unstable_mockModule(sseParserPath, () => ({
-  parseSSEStream: jest.fn()
+  parseSSEStream: jest.fn(),
 }));
 
 const streamUtilsPath = new URL('../src/lib/streamUtils.js', import.meta.url).href;
 await jest.unstable_mockModule(streamUtilsPath, () => ({
   createOpenAIRequest: jest.fn(),
   writeAndFlush: jest.fn(),
-  createChatCompletionChunk: jest.fn()
+  createChatCompletionChunk: jest.fn(),
 }));
 
 const providersIndexPath = new URL('../src/lib/providers/index.js', import.meta.url).href;
 await jest.unstable_mockModule(providersIndexPath, () => ({
-  createProvider: jest.fn()
+  createProvider: jest.fn(),
 }));
 
 const streamingHandlerPath = new URL('../src/lib/streamingHandler.js', import.meta.url).href;
 await jest.unstable_mockModule(streamingHandlerPath, () => ({
-  setupStreamingHeaders: jest.fn()
+  setupStreamingHeaders: jest.fn(),
 }));
 
 const toolOrchestrationUtilsPath = new URL('../src/lib/toolOrchestrationUtils.js', import.meta.url).href;
@@ -57,7 +57,7 @@ await jest.unstable_mockModule(toolOrchestrationUtilsPath, () => ({
   recordFinalToPersistence: jest.fn(),
   emitConversationMetadata: jest.fn(),
   streamDeltaEvent: jest.fn(),
-  streamDone: jest.fn()
+  streamDone: jest.fn(),
 }));
 
 // Import the module under test AFTER mocking
@@ -75,7 +75,7 @@ const {
   appendToPersistence,
   recordFinalToPersistence,
   emitConversationMetadata,
-  streamDone
+  streamDone,
 } = await import('../src/lib/toolOrchestrationUtils.js');
 const { createProvider } = await import('../src/lib/providers/index.js');
 
@@ -87,21 +87,19 @@ describe('toolsStreaming', () => {
     jest.clearAllMocks();
 
     // Set up default mock implementations
-    buildConversationMessagesAsync.mockResolvedValue([
-      { role: 'user', content: 'Hello' }
-    ]);
+    buildConversationMessagesAsync.mockResolvedValue([{ role: 'user', content: 'Hello' }]);
     if (buildConversationMessagesOptimized) {
       buildConversationMessagesOptimized.mockResolvedValue({
         messages: [{ role: 'user', content: 'Hello' }],
-        previousResponseId: null
+        previousResponseId: null,
       });
     }
 
     createProvider.mockResolvedValue({
       getToolsetSpec: jest.fn(() => [
-        { type: 'function', function: { name: 'provider_tool', description: 'Provider tool' } }
+        { type: 'function', function: { name: 'provider_tool', description: 'Provider tool' } },
       ]),
-      supportsReasoningControls: jest.fn(() => false)
+      supportsReasoningControls: jest.fn(() => false),
     });
 
     // Mock response object
@@ -111,27 +109,27 @@ describe('toolsStreaming', () => {
       status: jest.fn(() => mockRes),
       json: jest.fn(),
       flush: jest.fn(),
-      writableEnded: false
+      writableEnded: false,
     };
 
     // Mock request object
     mockReq = {
       on: jest.fn(),
-      header: jest.fn(() => undefined)
+      header: jest.fn(() => undefined),
     };
 
     // Mock persistence
     mockPersistence = {
       persist: true,
-      markError: jest.fn()
+      markError: jest.fn(),
     };
 
     // Mock config
     mockConfig = {
       defaultModel: 'gpt-3.5-turbo',
       providerConfig: {
-        streamTimeoutMs: 30000
-      }
+        streamTimeoutMs: 30000,
+      },
     };
   });
 
@@ -139,7 +137,7 @@ describe('toolsStreaming', () => {
     test('handles simple streaming request without tools', async () => {
       const body = {
         messages: [{ role: 'user', content: 'Hello' }],
-        stream: true
+        stream: true,
       };
       const bodyIn = {};
 
@@ -150,13 +148,15 @@ describe('toolsStreaming', () => {
           on: jest.fn((event, handler) => {
             if (event === 'data') {
               // Simulate SSE chunk with text content
-              const chunk = Buffer.from('data: {"choices":[{"delta":{"content":"Hello world"},"finish_reason":null}]}\n\n');
+              const chunk = Buffer.from(
+                'data: {"choices":[{"delta":{"content":"Hello world"},"finish_reason":null}]}\n\n'
+              );
               handler(chunk);
             } else if (event === 'end') {
               handler();
             }
-          })
-        }
+          }),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
@@ -164,10 +164,12 @@ describe('toolsStreaming', () => {
       // Mock parseSSEStream to call onChunk with content
       parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
         onChunk({
-          choices: [{
-            delta: { content: 'Hello world' },
-            finish_reason: null
-          }]
+          choices: [
+            {
+              delta: { content: 'Hello world' },
+              finish_reason: null,
+            },
+          ],
         });
         onDone();
         return '';
@@ -179,17 +181,14 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // Should set up streaming headers
       expect(setupStreamingHeaders).toHaveBeenCalledWith(mockRes);
 
       // Should stream content directly
-      expect(writeAndFlush).toHaveBeenCalledWith(
-        mockRes,
-        expect.stringContaining('"content":"Hello world"')
-      );
+      expect(writeAndFlush).toHaveBeenCalledWith(mockRes, expect.stringContaining('"content":"Hello world"'));
 
       // Should persist text content
       expect(appendToPersistence).toHaveBeenCalledWith(mockPersistence, 'Hello world');
@@ -202,7 +201,7 @@ describe('toolsStreaming', () => {
     test('sets up streaming headers correctly', async () => {
       const body = {
         messages: [{ role: 'user', content: 'Hello' }],
-        stream: true
+        stream: true,
       };
       const bodyIn = {};
 
@@ -216,17 +215,19 @@ describe('toolsStreaming', () => {
             } else if (event === 'end') {
               handler();
             }
-          })
-        }
+          }),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
       parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
         onChunk({
-          choices: [{
-            delta: { content: 'Hello' },
-            finish_reason: 'stop'
-          }]
+          choices: [
+            {
+              delta: { content: 'Hello' },
+              finish_reason: 'stop',
+            },
+          ],
         });
         onDone();
         return '';
@@ -238,7 +239,7 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       expect(setupStreamingHeaders).toHaveBeenCalledWith(mockRes);
@@ -247,7 +248,7 @@ describe('toolsStreaming', () => {
     test('streams text content immediately', async () => {
       const body = {
         messages: [{ role: 'user', content: 'Hello' }],
-        stream: true
+        stream: true,
       };
       const bodyIn = {};
 
@@ -256,22 +257,26 @@ describe('toolsStreaming', () => {
         body: {
           on: jest.fn((event, handler) => {
             if (event === 'data') {
-              const chunk = Buffer.from('data: {"choices":[{"delta":{"content":"Immediate response"},"finish_reason":null}]}\n\n');
+              const chunk = Buffer.from(
+                'data: {"choices":[{"delta":{"content":"Immediate response"},"finish_reason":null}]}\n\n'
+              );
               handler(chunk);
             } else if (event === 'end') {
               handler();
             }
-          })
-        }
+          }),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
       parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
         onChunk({
-          choices: [{
-            delta: { content: 'Immediate response' },
-            finish_reason: null
-          }]
+          choices: [
+            {
+              delta: { content: 'Immediate response' },
+              finish_reason: null,
+            },
+          ],
         });
         onDone();
         return '';
@@ -283,20 +288,17 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // Should stream content immediately without buffering
-      expect(writeAndFlush).toHaveBeenCalledWith(
-        mockRes,
-        expect.stringContaining('"content":"Immediate response"')
-      );
+      expect(writeAndFlush).toHaveBeenCalledWith(mockRes, expect.stringContaining('"content":"Immediate response"'));
     });
 
     test('ends stream with proper SSE format', async () => {
       const body = {
         messages: [{ role: 'user', content: 'Hello' }],
-        stream: true
+        stream: true,
       };
       const bodyIn = {};
 
@@ -310,17 +312,19 @@ describe('toolsStreaming', () => {
             } else if (event === 'end') {
               handler();
             }
-          })
-        }
+          }),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
       parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
         onChunk({
-          choices: [{
-            delta: { content: 'Hello' },
-            finish_reason: 'stop'
-          }]
+          choices: [
+            {
+              delta: { content: 'Hello' },
+              finish_reason: 'stop',
+            },
+          ],
         });
         onDone();
         return '';
@@ -332,7 +336,7 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       expect(streamDone).toHaveBeenCalledWith(mockRes);
@@ -342,7 +346,7 @@ describe('toolsStreaming', () => {
     test('includes conversation metadata before [DONE]', async () => {
       const body = {
         messages: [{ role: 'user', content: 'Hello' }],
-        stream: true
+        stream: true,
       };
       const bodyIn = {};
 
@@ -356,17 +360,19 @@ describe('toolsStreaming', () => {
             } else if (event === 'end') {
               handler();
             }
-          })
-        }
+          }),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
       parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
         onChunk({
-          choices: [{
-            delta: { content: 'Hello' },
-            finish_reason: 'stop'
-          }]
+          choices: [
+            {
+              delta: { content: 'Hello' },
+              finish_reason: 'stop',
+            },
+          ],
         });
         onDone();
         return '';
@@ -378,13 +384,10 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
-      expect(emitConversationMetadata).toHaveBeenCalledWith(
-        mockRes,
-        mockPersistence
-      );
+      expect(emitConversationMetadata).toHaveBeenCalledWith(mockRes, mockPersistence);
     });
   });
 
@@ -393,7 +396,7 @@ describe('toolsStreaming', () => {
       const body = {
         messages: [{ role: 'user', content: 'What time is it?' }],
         stream: true,
-        tools: [{ type: 'function', function: { name: 'get_time' } }]
+        tools: [{ type: 'function', function: { name: 'get_time' } }],
       };
       const bodyIn = {};
 
@@ -406,18 +409,22 @@ describe('toolsStreaming', () => {
               streamCallCount++;
               if (streamCallCount === 1) {
                 // First chunk: partial tool call delta
-                const chunk1 = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time"}}]}}]}\n\n');
+                const chunk1 = Buffer.from(
+                  'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time"}}]}}]}\n\n'
+                );
                 handler(chunk1);
               } else if (streamCallCount === 2) {
                 // Second chunk: complete tool call arguments
-                const chunk2 = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{}"}}]}}]}\n\n');
+                const chunk2 = Buffer.from(
+                  'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{}"}}]}}]}\n\n'
+                );
                 handler(chunk2);
               }
             } else if (event === 'end') {
               handler();
             }
-          })
-        }
+          }),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
@@ -428,26 +435,34 @@ describe('toolsStreaming', () => {
         parseCallCount++;
         if (parseCallCount === 1) {
           onChunk({
-            choices: [{
-              delta: {
-                tool_calls: [{
-                  index: 0,
-                  id: 'call_123',
-                  function: { name: 'get_time' }
-                }]
-              }
-            }]
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: 'call_123',
+                      function: { name: 'get_time' },
+                    },
+                  ],
+                },
+              },
+            ],
           });
         } else if (parseCallCount === 2) {
           onChunk({
-            choices: [{
-              delta: {
-                tool_calls: [{
-                  index: 0,
-                  function: { arguments: '{}' }
-                }]
-              }
-            }]
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      function: { arguments: '{}' },
+                    },
+                  ],
+                },
+              },
+            ],
           });
           onDone();
         }
@@ -457,20 +472,24 @@ describe('toolsStreaming', () => {
       createChatCompletionChunk.mockReturnValue({
         id: 'chatcmpl-123',
         object: 'chat.completion.chunk',
-        choices: [{
-          delta: {
-            tool_calls: [{
-              id: 'call_123',
-              type: 'function',
-              function: { name: 'get_time', arguments: '{}' }
-            }]
-          }
-        }]
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  id: 'call_123',
+                  type: 'function',
+                  function: { name: 'get_time', arguments: '{}' },
+                },
+              ],
+            },
+          },
+        ],
       });
 
       executeToolCall.mockResolvedValue({
         name: 'get_time',
-        output: '3:00 PM'
+        output: '3:00 PM',
       });
 
       await handleToolsStreaming({
@@ -479,7 +498,7 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // Should produce at least one consolidated tool_calls chunk (buffered deltas)
@@ -487,16 +506,14 @@ describe('toolsStreaming', () => {
 
       // Inspect the last created chunk to ensure it contains tool_calls array
       const ccCalls = createChatCompletionChunk.mock.calls;
-      const lastCreatedChunkArgs = ccCalls[ccCalls.length - 1][2];
-      expect(Array.isArray(lastCreatedChunkArgs.tool_calls)).toBe(true);
-      expect(lastCreatedChunkArgs.tool_calls.length).toBeGreaterThan(0);
-      expect(lastCreatedChunkArgs.tool_calls[0].type).toBe('function');
+      // Find the first call with tool_calls present
+      const toolCallsArg = ccCalls.map((call) => call[2]).find((arg) => arg && Array.isArray(arg.tool_calls));
+      expect(Array.isArray(toolCallsArg.tool_calls)).toBe(true);
+      expect(toolCallsArg.tool_calls.length).toBeGreaterThan(0);
+      expect(toolCallsArg.tool_calls[0].type).toBe('function');
 
       // The server should write that consolidated chunk to the response (contains "tool_calls")
-      expect(writeAndFlush).toHaveBeenCalledWith(
-        mockRes,
-        expect.stringContaining('tool_calls')
-      );
+      expect(writeAndFlush).toHaveBeenCalledWith(mockRes, expect.stringContaining('tool_calls'));
 
       // Should execute the tool (called with a function-type tool call)
       expect(executeToolCall).toHaveBeenCalled();
@@ -513,10 +530,10 @@ describe('toolsStreaming', () => {
           tool_output: {
             tool_call_id: 'call_123',
             name: 'get_time',
-            output: '3:00 PM'
-          }
+            output: '3:00 PM',
+          },
         },
-        prefix: 'iter'
+        prefix: 'iter',
       });
     });
 
@@ -524,7 +541,7 @@ describe('toolsStreaming', () => {
       const body = {
         messages: [{ role: 'user', content: 'What time is it?' }],
         stream: true,
-        tools: [{ type: 'function', function: { name: 'get_time' } }]
+        tools: [{ type: 'function', function: { name: 'get_time' } }],
       };
       const bodyIn = {};
 
@@ -537,22 +554,28 @@ describe('toolsStreaming', () => {
               streamCallCount++;
               if (streamCallCount === 1) {
                 // Fragment 1: tool call ID and name
-                const chunk1 = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time"}}]}}]}\n\n');
+                const chunk1 = Buffer.from(
+                  'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time"}}]}}]}\n\n'
+                );
                 handler(chunk1);
               } else if (streamCallCount === 2) {
                 // Fragment 2: partial arguments
-                const chunk2 = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"timezone\\"}}]}}]}\n\n');
+                const chunk2 = Buffer.from(
+                  'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\\"timezone\\"}}]}}]}\n\n'
+                );
                 handler(chunk2);
               } else if (streamCallCount === 3) {
                 // Fragment 3: complete arguments
-                const chunk3 = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":":\\"UTC\\"}"}}]}}]}\n\n');
+                const chunk3 = Buffer.from(
+                  'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":":\\"UTC\\"}"}}]}}]}\n\n'
+                );
                 handler(chunk3);
               }
             } else if (event === 'end') {
               handler();
             }
-          })
-        }
+          }),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
@@ -562,37 +585,49 @@ describe('toolsStreaming', () => {
         parseCallCount++;
         if (parseCallCount === 1) {
           onChunk({
-            choices: [{
-              delta: {
-                tool_calls: [{
-                  index: 0,
-                  id: 'call_123',
-                  function: { name: 'get_time' }
-                }]
-              }
-            }]
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: 'call_123',
+                      function: { name: 'get_time' },
+                    },
+                  ],
+                },
+              },
+            ],
           });
         } else if (parseCallCount === 2) {
           onChunk({
-            choices: [{
-              delta: {
-                tool_calls: [{
-                  index: 0,
-                  function: { arguments: '{"timezone"' }
-                }]
-              }
-            }]
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      function: { arguments: '{"timezone"' },
+                    },
+                  ],
+                },
+              },
+            ],
           });
         } else if (parseCallCount === 3) {
           onChunk({
-            choices: [{
-              delta: {
-                tool_calls: [{
-                  index: 0,
-                  function: { arguments: ':"UTC"}' }
-                }]
-              }
-            }]
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      function: { arguments: ':"UTC"}' },
+                    },
+                  ],
+                },
+              },
+            ],
           });
           onDone();
         }
@@ -602,20 +637,24 @@ describe('toolsStreaming', () => {
       createChatCompletionChunk.mockReturnValue({
         id: 'chatcmpl-123',
         object: 'chat.completion.chunk',
-        choices: [{
-          delta: {
-            tool_calls: [{
-              id: 'call_123',
-              type: 'function',
-              function: { name: 'get_time', arguments: '{"timezone":"UTC"}' }
-            }]
-          }
-        }]
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  id: 'call_123',
+                  type: 'function',
+                  function: { name: 'get_time', arguments: '{"timezone":"UTC"}' },
+                },
+              ],
+            },
+          },
+        ],
       });
 
       executeToolCall.mockResolvedValue({
         name: 'get_time',
-        output: '3:00 PM UTC'
+        output: '3:00 PM UTC',
       });
 
       await handleToolsStreaming({
@@ -624,7 +663,7 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // Should execute tool (the implementation handles reconstruction internally)
@@ -639,7 +678,7 @@ describe('toolsStreaming', () => {
       const body = {
         messages: [{ role: 'user', content: 'What time is it?' }],
         stream: true,
-        tools: [{ type: 'function', function: { name: 'get_time' } }]
+        tools: [{ type: 'function', function: { name: 'get_time' } }],
       };
       const bodyIn = {};
 
@@ -652,18 +691,22 @@ describe('toolsStreaming', () => {
               streamCallCount++;
               if (streamCallCount === 1) {
                 // Partial tool call - should be buffered, not streamed
-                const chunk1 = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123"}]}}]}\n\n');
+                const chunk1 = Buffer.from(
+                  'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123"}]}}]}\n\n'
+                );
                 handler(chunk1);
               } else if (streamCallCount === 2) {
                 // Complete tool call
-                const chunk2 = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"get_time","arguments":"{}"}}]}}]}\n\n');
+                const chunk2 = Buffer.from(
+                  'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"name":"get_time","arguments":"{}"}}]}}]}\n\n'
+                );
                 handler(chunk2);
               }
             } else if (event === 'end') {
               handler();
             }
-          })
-        }
+          }),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
@@ -674,26 +717,34 @@ describe('toolsStreaming', () => {
         if (parseCallCount === 1) {
           // Partial tool call
           onChunk({
-            choices: [{
-              delta: {
-                tool_calls: [{
-                  index: 0,
-                  id: 'call_123'
-                }]
-              }
-            }]
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: 'call_123',
+                    },
+                  ],
+                },
+              },
+            ],
           });
         } else if (parseCallCount === 2) {
           // Complete tool call
           onChunk({
-            choices: [{
-              delta: {
-                tool_calls: [{
-                  index: 0,
-                  function: { name: 'get_time', arguments: '{}' }
-                }]
-              }
-            }]
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      function: { name: 'get_time', arguments: '{}' },
+                    },
+                  ],
+                },
+              },
+            ],
           });
           onDone();
         }
@@ -703,20 +754,24 @@ describe('toolsStreaming', () => {
       createChatCompletionChunk.mockReturnValue({
         id: 'chatcmpl-123',
         object: 'chat.completion.chunk',
-        choices: [{
-          delta: {
-            tool_calls: [{
-              id: 'call_123',
-              type: 'function',
-              function: { name: 'get_time', arguments: '{}' }
-            }]
-          }
-        }]
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  id: 'call_123',
+                  type: 'function',
+                  function: { name: 'get_time', arguments: '{}' },
+                },
+              ],
+            },
+          },
+        ],
       });
 
       executeToolCall.mockResolvedValue({
         name: 'get_time',
-        output: '3:00 PM'
+        output: '3:00 PM',
       });
 
       await handleToolsStreaming({
@@ -725,28 +780,28 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // Should not stream partial tool call deltas
       const writeAndFlushCalls = writeAndFlush.mock.calls;
-      const partialToolCallStreamed = writeAndFlushCalls.some(call =>
-        call[1].includes('tool_calls') && call[1].includes('"id":"call_123"') && !call[1].includes('"name":"get_time"')
+      const partialToolCallStreamed = writeAndFlushCalls.some(
+        (call) =>
+          call[1].includes('tool_calls') &&
+          call[1].includes('"id":"call_123"') &&
+          !call[1].includes('"name":"get_time"')
       );
       expect(partialToolCallStreamed).toBe(false);
 
       // Should only stream complete tool calls
-      expect(writeAndFlush).toHaveBeenCalledWith(
-        mockRes,
-        expect.stringContaining('tool_calls')
-      );
+      expect(writeAndFlush).toHaveBeenCalledWith(mockRes, expect.stringContaining('tool_calls'));
     });
 
     test('emits consolidated tool_calls chunk after accumulation', async () => {
       const body = {
         messages: [{ role: 'user', content: 'What time is it?' }],
         stream: true,
-        tools: [{ type: 'function', function: { name: 'get_time' } }]
+        tools: [{ type: 'function', function: { name: 'get_time' } }],
       };
       const bodyIn = {};
 
@@ -755,27 +810,33 @@ describe('toolsStreaming', () => {
         body: {
           on: jest.fn((event, handler) => {
             if (event === 'data') {
-              const chunk = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}}]}}]}\n\n');
+              const chunk = Buffer.from(
+                'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}}]}}]}\n\n'
+              );
               handler(chunk);
             } else if (event === 'end') {
               handler();
             }
-          })
-        }
+          }),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
       parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
         onChunk({
-          choices: [{
-            delta: {
-              tool_calls: [{
-                index: 0,
-                id: 'call_123',
-                function: { name: 'get_time', arguments: '{}' }
-              }]
-            }
-          }]
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'call_123',
+                    function: { name: 'get_time', arguments: '{}' },
+                  },
+                ],
+              },
+            },
+          ],
         });
         onDone();
         return '';
@@ -784,20 +845,24 @@ describe('toolsStreaming', () => {
       createChatCompletionChunk.mockReturnValue({
         id: 'chatcmpl-123',
         object: 'chat.completion.chunk',
-        choices: [{
-          delta: {
-            tool_calls: [{
-              id: 'call_123',
-              type: 'function',
-              function: { name: 'get_time', arguments: '{}' }
-            }]
-          }
-        }]
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  id: 'call_123',
+                  type: 'function',
+                  function: { name: 'get_time', arguments: '{}' },
+                },
+              ],
+            },
+          },
+        ],
       });
 
       executeToolCall.mockResolvedValue({
         name: 'get_time',
-        output: '3:00 PM'
+        output: '3:00 PM',
       });
 
       await handleToolsStreaming({
@@ -806,7 +871,7 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // Should create consolidated chunk with complete tool call
@@ -814,10 +879,9 @@ describe('toolsStreaming', () => {
 
       // Check that at least one call contains the expected tool_calls structure
       const chunkCalls = createChatCompletionChunk.mock.calls;
-      const hasToolCallsChunk = chunkCalls.some(call => {
+      const hasToolCallsChunk = chunkCalls.some((call) => {
         const delta = call[2];
-        return delta.tool_calls && delta.tool_calls.length > 0 &&
-          delta.tool_calls[0].function.name === 'get_time';
+        return delta.tool_calls && delta.tool_calls.length > 0 && delta.tool_calls[0].function.name === 'get_time';
       });
       expect(hasToolCallsChunk).toBe(true);
     });
@@ -826,7 +890,7 @@ describe('toolsStreaming', () => {
       const body = {
         messages: [{ role: 'user', content: 'Get current time' }],
         stream: true,
-        tools: [{ type: 'function', function: { name: 'get_time' } }]
+        tools: [{ type: 'function', function: { name: 'get_time' } }],
       };
       const bodyIn = {};
 
@@ -836,28 +900,34 @@ describe('toolsStreaming', () => {
           on: jest.fn((event, handler) => {
             if (event === 'data') {
               // Tool call with no arguments property
-              const chunk = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time"}}]}}]}\n\n');
+              const chunk = Buffer.from(
+                'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time"}}]}}]}\n\n'
+              );
               handler(chunk);
             } else if (event === 'end') {
               handler();
             }
-          })
-        }
+          }),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
       parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
         onChunk({
-          choices: [{
-            delta: {
-              tool_calls: [{
-                index: 0,
-                id: 'call_123',
-                function: { name: 'get_time' }
-                // No arguments property
-              }]
-            }
-          }]
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'call_123',
+                    function: { name: 'get_time' },
+                    // No arguments property
+                  },
+                ],
+              },
+            },
+          ],
         });
         onDone();
         return '';
@@ -866,20 +936,24 @@ describe('toolsStreaming', () => {
       createChatCompletionChunk.mockReturnValue({
         id: 'chatcmpl-123',
         object: 'chat.completion.chunk',
-        choices: [{
-          delta: {
-            tool_calls: [{
-              id: 'call_123',
-              type: 'function',
-              function: { name: 'get_time', arguments: '{}' }
-            }]
-          }
-        }]
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  id: 'call_123',
+                  type: 'function',
+                  function: { name: 'get_time', arguments: '{}' },
+                },
+              ],
+            },
+          },
+        ],
       });
 
       executeToolCall.mockResolvedValue({
         name: 'get_time',
-        output: '3:00 PM'
+        output: '3:00 PM',
       });
 
       await handleToolsStreaming({
@@ -888,7 +962,7 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // Should handle missing arguments gracefully
@@ -905,8 +979,8 @@ describe('toolsStreaming', () => {
         stream: true,
         tools: [
           { type: 'function', function: { name: 'get_time' } },
-          { type: 'function', function: { name: 'get_weather' } }
-        ]
+          { type: 'function', function: { name: 'get_weather' } },
+        ],
       };
       const bodyIn = {};
 
@@ -916,34 +990,38 @@ describe('toolsStreaming', () => {
           on: jest.fn((event, handler) => {
             if (event === 'data') {
               // Multiple tool calls in single response
-              const chunk = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}},{"index":1,"id":"call_456","function":{"name":"get_weather","arguments":"{\\"location\\":\\"NYC\\"}"}}]}}]}\n\n');
+              const chunk = Buffer.from(
+                'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}},{"index":1,"id":"call_456","function":{"name":"get_weather","arguments":"{\\"location\\":\\"NYC\\"}"}}]}}]}\n\n'
+              );
               handler(chunk);
             } else if (event === 'end') {
               handler();
             }
-          })
-        }
+          }),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
       parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
         onChunk({
-          choices: [{
-            delta: {
-              tool_calls: [
-                {
-                  index: 0,
-                  id: 'call_123',
-                  function: { name: 'get_time', arguments: '{}' }
-                },
-                {
-                  index: 1,
-                  id: 'call_456',
-                  function: { name: 'get_weather', arguments: '{"location":"NYC"}' }
-                }
-              ]
-            }
-          }]
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'call_123',
+                    function: { name: 'get_time', arguments: '{}' },
+                  },
+                  {
+                    index: 1,
+                    id: 'call_456',
+                    function: { name: 'get_weather', arguments: '{"location":"NYC"}' },
+                  },
+                ],
+              },
+            },
+          ],
         });
         onDone();
         return '';
@@ -952,32 +1030,34 @@ describe('toolsStreaming', () => {
       createChatCompletionChunk.mockReturnValue({
         id: 'chatcmpl-123',
         object: 'chat.completion.chunk',
-        choices: [{
-          delta: {
-            tool_calls: [
-              {
-                id: 'call_123',
-                type: 'function',
-                function: { name: 'get_time', arguments: '{}' }
-              },
-              {
-                id: 'call_456',
-                type: 'function',
-                function: { name: 'get_weather', arguments: '{"location":"NYC"}' }
-              }
-            ]
-          }
-        }]
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  id: 'call_123',
+                  type: 'function',
+                  function: { name: 'get_time', arguments: '{}' },
+                },
+                {
+                  id: 'call_456',
+                  type: 'function',
+                  function: { name: 'get_weather', arguments: '{"location":"NYC"}' },
+                },
+              ],
+            },
+          },
+        ],
       });
 
       executeToolCall
         .mockResolvedValueOnce({
           name: 'get_time',
-          output: '3:00 PM'
+          output: '3:00 PM',
         })
         .mockResolvedValueOnce({
           name: 'get_weather',
-          output: 'Sunny, 75°F'
+          output: 'Sunny, 75°F',
         });
 
       await handleToolsStreaming({
@@ -986,14 +1066,14 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // Should execute both tools (may be called multiple times due to iterations)
       expect(executeToolCall).toHaveBeenCalled();
 
       // Check that both tool names were called
-      const toolCalls = executeToolCall.mock.calls.map(call => call[0].function.name);
+      const toolCalls = executeToolCall.mock.calls.map((call) => call[0].function.name);
       expect(toolCalls).toContain('get_time');
       expect(toolCalls).toContain('get_weather');
     });
@@ -1004,7 +1084,7 @@ describe('toolsStreaming', () => {
       const body = {
         messages: [{ role: 'user', content: 'Get time then calculate' }],
         stream: true,
-        tools: [{ type: 'function', function: { name: 'get_time' } }]
+        tools: [{ type: 'function', function: { name: 'get_time' } }],
       };
       const bodyIn = {};
 
@@ -1021,13 +1101,15 @@ describe('toolsStreaming', () => {
             body: {
               on: jest.fn((event, handler) => {
                 if (event === 'data') {
-                  const chunk = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}}]}}]}\n\n');
+                  const chunk = Buffer.from(
+                    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}}]}}]}\n\n'
+                  );
                   handler(chunk);
                 } else if (event === 'end') {
                   handler();
                 }
-              })
-            }
+              }),
+            },
           });
         } else if (requestCallCount === 2) {
           // Second iteration: returns final text response
@@ -1036,13 +1118,15 @@ describe('toolsStreaming', () => {
             body: {
               on: jest.fn((event, handler) => {
                 if (event === 'data') {
-                  const chunk = Buffer.from('data: {"choices":[{"delta":{"content":"Based on the time 3:00 PM, here is the calculation"},"finish_reason":"stop"}]}\n\n');
+                  const chunk = Buffer.from(
+                    'data: {"choices":[{"delta":{"content":"Based on the time 3:00 PM, here is the calculation"},"finish_reason":"stop"}]}\n\n'
+                  );
                   handler(chunk);
                 } else if (event === 'end') {
                   handler();
                 }
-              })
-            }
+              }),
+            },
           });
         }
       });
@@ -1054,24 +1138,30 @@ describe('toolsStreaming', () => {
         if (parseCallCount === 1) {
           // First iteration: tool call
           onChunk({
-            choices: [{
-              delta: {
-                tool_calls: [{
-                  index: 0,
-                  id: 'call_123',
-                  function: { name: 'get_time', arguments: '{}' }
-                }]
-              }
-            }]
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: 'call_123',
+                      function: { name: 'get_time', arguments: '{}' },
+                    },
+                  ],
+                },
+              },
+            ],
           });
           onDone();
         } else if (parseCallCount === 2) {
           // Second iteration: final response
           onChunk({
-            choices: [{
-              delta: { content: 'Based on the time 3:00 PM, here is the calculation' },
-              finish_reason: 'stop'
-            }]
+            choices: [
+              {
+                delta: { content: 'Based on the time 3:00 PM, here is the calculation' },
+                finish_reason: 'stop',
+              },
+            ],
           });
           onDone();
         }
@@ -1081,20 +1171,24 @@ describe('toolsStreaming', () => {
       createChatCompletionChunk.mockReturnValue({
         id: 'chatcmpl-123',
         object: 'chat.completion.chunk',
-        choices: [{
-          delta: {
-            tool_calls: [{
-              id: 'call_123',
-              type: 'function',
-              function: { name: 'get_time', arguments: '{}' }
-            }]
-          }
-        }]
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  id: 'call_123',
+                  type: 'function',
+                  function: { name: 'get_time', arguments: '{}' },
+                },
+              ],
+            },
+          },
+        ],
       });
 
       executeToolCall.mockResolvedValue({
         name: 'get_time',
-        output: '3:00 PM'
+        output: '3:00 PM',
       });
 
       await handleToolsStreaming({
@@ -1103,7 +1197,7 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // Should make two OpenAI requests (two iterations)
@@ -1116,7 +1210,7 @@ describe('toolsStreaming', () => {
       expect(createOpenAIRequest).toHaveBeenCalledWith(
         mockConfig,
         expect.objectContaining({
-          messages: expect.arrayContaining([{ role: 'user', content: 'Hello' }])
+          messages: expect.arrayContaining([{ role: 'user', content: 'Hello' }]),
         }),
         expect.any(Object)
       );
@@ -1125,26 +1219,21 @@ describe('toolsStreaming', () => {
       expect(createOpenAIRequest).toHaveBeenCalledWith(
         mockConfig,
         expect.objectContaining({
-          messages: expect.arrayContaining([
-            expect.objectContaining({ role: 'tool', tool_call_id: 'call_123' })
-          ])
+          messages: expect.arrayContaining([expect.objectContaining({ role: 'tool', tool_call_id: 'call_123' })]),
         }),
         expect.any(Object)
       );
 
       // Should execute tool and stream final content
       expect(executeToolCall).toHaveBeenCalledTimes(1);
-      expect(writeAndFlush).toHaveBeenCalledWith(
-        mockRes,
-        expect.stringContaining('Based on the time 3:00 PM')
-      );
+      expect(writeAndFlush).toHaveBeenCalledWith(mockRes, expect.stringContaining('Based on the time 3:00 PM'));
     });
 
     test('respects MAX_ITERATIONS limit (10)', async () => {
       const body = {
         messages: [{ role: 'user', content: 'Keep calling tools forever' }],
         stream: true,
-        tools: [{ type: 'function', function: { name: 'infinite_tool' } }]
+        tools: [{ type: 'function', function: { name: 'infinite_tool' } }],
       };
       const bodyIn = {};
 
@@ -1158,13 +1247,17 @@ describe('toolsStreaming', () => {
           body: {
             on: jest.fn((event, handler) => {
               if (event === 'data') {
-                const chunk = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_' + requestCallCount + '","function":{"name":"infinite_tool","arguments":"{}"}}]}}]}\n\n');
+                const chunk = Buffer.from(
+                  'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_' +
+                    requestCallCount +
+                    '","function":{"name":"infinite_tool","arguments":"{}"}}]}}]}\n\n'
+                );
                 handler(chunk);
               } else if (event === 'end') {
                 handler();
               }
-            })
-          }
+            }),
+          },
         });
       });
 
@@ -1172,15 +1265,19 @@ describe('toolsStreaming', () => {
       parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
         parseCallCount++;
         onChunk({
-          choices: [{
-            delta: {
-              tool_calls: [{
-                index: 0,
-                id: 'call_' + parseCallCount,
-                function: { name: 'infinite_tool', arguments: '{}' }
-              }]
-            }
-          }]
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: 'call_' + parseCallCount,
+                    function: { name: 'infinite_tool', arguments: '{}' },
+                  },
+                ],
+              },
+            },
+          ],
         });
         onDone();
         return '';
@@ -1189,20 +1286,24 @@ describe('toolsStreaming', () => {
       createChatCompletionChunk.mockImplementation(() => ({
         id: 'chatcmpl-123',
         object: 'chat.completion.chunk',
-        choices: [{
-          delta: {
-            tool_calls: [{
-              id: 'call_' + requestCallCount,
-              type: 'function',
-              function: { name: 'infinite_tool', arguments: '{}' }
-            }]
-          }
-        }]
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  id: 'call_' + requestCallCount,
+                  type: 'function',
+                  function: { name: 'infinite_tool', arguments: '{}' },
+                },
+              ],
+            },
+          },
+        ],
       }));
 
       executeToolCall.mockResolvedValue({
         name: 'infinite_tool',
-        output: 'tool result'
+        output: 'tool result',
       });
 
       await handleToolsStreaming({
@@ -1211,7 +1312,7 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // Should stop at exactly 10 iterations (MAX_ITERATIONS)
@@ -1223,21 +1324,18 @@ describe('toolsStreaming', () => {
         res: mockRes,
         model: 'gpt-3.5-turbo',
         event: { content: '\n\n[Maximum iterations reached]' },
-        prefix: 'iter'
+        prefix: 'iter',
       });
 
       // Should persist max iterations message
-      expect(appendToPersistence).toHaveBeenCalledWith(
-        mockPersistence,
-        '\n\n[Maximum iterations reached]'
-      );
+      expect(appendToPersistence).toHaveBeenCalledWith(mockPersistence, '\n\n[Maximum iterations reached]');
     });
 
     test('builds conversation history across iterations', async () => {
       const body = {
         messages: [{ role: 'user', content: 'Get time then calculate something' }],
         stream: true,
-        tools: [{ type: 'function', function: { name: 'get_time' } }]
+        tools: [{ type: 'function', function: { name: 'get_time' } }],
       };
       const bodyIn = {};
 
@@ -1252,13 +1350,15 @@ describe('toolsStreaming', () => {
             body: {
               on: jest.fn((event, handler) => {
                 if (event === 'data') {
-                  const chunk = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}}]}}]}\n\n');
+                  const chunk = Buffer.from(
+                    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}}]}}]}\n\n'
+                  );
                   handler(chunk);
                 } else if (event === 'end') {
                   handler();
                 }
-              })
-            }
+              }),
+            },
           });
         } else if (requestCallCount === 2) {
           // Second iteration: returns final response
@@ -1267,13 +1367,15 @@ describe('toolsStreaming', () => {
             body: {
               on: jest.fn((event, handler) => {
                 if (event === 'data') {
-                  const chunk = Buffer.from('data: {"choices":[{"delta":{"content":"Based on the current time, the calculation is complete."},"finish_reason":"stop"}]}\n\n');
+                  const chunk = Buffer.from(
+                    'data: {"choices":[{"delta":{"content":"Based on the current time, the calculation is complete."},"finish_reason":"stop"}]}\n\n'
+                  );
                   handler(chunk);
                 } else if (event === 'end') {
                   handler();
                 }
-              })
-            }
+              }),
+            },
           });
         }
       });
@@ -1285,24 +1387,30 @@ describe('toolsStreaming', () => {
         if (parseCallCount === 1) {
           // First iteration: tool call
           onChunk({
-            choices: [{
-              delta: {
-                tool_calls: [{
-                  index: 0,
-                  id: 'call_123',
-                  function: { name: 'get_time', arguments: '{}' }
-                }]
-              }
-            }]
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: 'call_123',
+                      function: { name: 'get_time', arguments: '{}' },
+                    },
+                  ],
+                },
+              },
+            ],
           });
           onDone();
         } else if (parseCallCount === 2) {
           // Second iteration: final response
           onChunk({
-            choices: [{
-              delta: { content: 'Based on the current time, the calculation is complete.' },
-              finish_reason: 'stop'
-            }]
+            choices: [
+              {
+                delta: { content: 'Based on the current time, the calculation is complete.' },
+                finish_reason: 'stop',
+              },
+            ],
           });
           onDone();
         }
@@ -1312,20 +1420,24 @@ describe('toolsStreaming', () => {
       createChatCompletionChunk.mockReturnValue({
         id: 'chatcmpl-123',
         object: 'chat.completion.chunk',
-        choices: [{
-          delta: {
-            tool_calls: [{
-              id: 'call_123',
-              type: 'function',
-              function: { name: 'get_time', arguments: '{}' }
-            }]
-          }
-        }]
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  id: 'call_123',
+                  type: 'function',
+                  function: { name: 'get_time', arguments: '{}' },
+                },
+              ],
+            },
+          },
+        ],
       });
 
       executeToolCall.mockResolvedValue({
         name: 'get_time',
-        output: '3:00 PM'
+        output: '3:00 PM',
       });
 
       await handleToolsStreaming({
@@ -1334,22 +1446,22 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // First request should have original user message
-      expect(createOpenAIRequest).toHaveBeenNthCalledWith(1,
+      expect(createOpenAIRequest).toHaveBeenNthCalledWith(
+        1,
         mockConfig,
         expect.objectContaining({
-          messages: expect.arrayContaining([
-            { role: 'user', content: 'Hello' }
-          ])
+          messages: expect.arrayContaining([{ role: 'user', content: 'Hello' }]),
         }),
         expect.any(Object)
       );
 
       // Second request should include conversation history with tool results
-      expect(createOpenAIRequest).toHaveBeenNthCalledWith(2,
+      expect(createOpenAIRequest).toHaveBeenNthCalledWith(
+        2,
         mockConfig,
         expect.objectContaining({
           messages: expect.arrayContaining([
@@ -1360,16 +1472,16 @@ describe('toolsStreaming', () => {
                 expect.objectContaining({
                   id: 'call_123',
                   type: 'function',
-                  function: { name: 'get_time', arguments: '{}' }
-                })
-              ])
+                  function: { name: 'get_time', arguments: '{}' },
+                }),
+              ]),
             }),
             expect.objectContaining({
               role: 'tool',
               tool_call_id: 'call_123',
-              content: '3:00 PM'
-            })
-          ])
+              content: '3:00 PM',
+            }),
+          ]),
         }),
         expect.any(Object)
       );
@@ -1379,7 +1491,7 @@ describe('toolsStreaming', () => {
       const body = {
         messages: [{ role: 'user', content: 'Get time and weather' }],
         stream: true,
-        tools: [{ type: 'function', function: { name: 'get_time' } }]
+        tools: [{ type: 'function', function: { name: 'get_time' } }],
       };
       const bodyIn = {};
 
@@ -1394,13 +1506,15 @@ describe('toolsStreaming', () => {
             body: {
               on: jest.fn((event, handler) => {
                 if (event === 'data') {
-                  const chunk = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}}]}}]}\n\n');
+                  const chunk = Buffer.from(
+                    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}}]}}]}\n\n'
+                  );
                   handler(chunk);
                 } else if (event === 'end') {
                   handler();
                 }
-              })
-            }
+              }),
+            },
           });
         } else if (requestCallCount === 2) {
           // Second iteration: continues after tool execution
@@ -1409,13 +1523,15 @@ describe('toolsStreaming', () => {
             body: {
               on: jest.fn((event, handler) => {
                 if (event === 'data') {
-                  const chunk = Buffer.from('data: {"choices":[{"delta":{"content":"The current time is 3:00 PM. Now let me get the weather for you."},"finish_reason":"stop"}]}\n\n');
+                  const chunk = Buffer.from(
+                    'data: {"choices":[{"delta":{"content":"The current time is 3:00 PM. Now let me get the weather for you."},"finish_reason":"stop"}]}\n\n'
+                  );
                   handler(chunk);
                 } else if (event === 'end') {
                   handler();
                 }
-              })
-            }
+              }),
+            },
           });
         }
       });
@@ -1427,24 +1543,30 @@ describe('toolsStreaming', () => {
         if (parseCallCount === 1) {
           // First iteration: tool call
           onChunk({
-            choices: [{
-              delta: {
-                tool_calls: [{
-                  index: 0,
-                  id: 'call_123',
-                  function: { name: 'get_time', arguments: '{}' }
-                }]
-              }
-            }]
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: 'call_123',
+                      function: { name: 'get_time', arguments: '{}' },
+                    },
+                  ],
+                },
+              },
+            ],
           });
           onDone();
         } else if (parseCallCount === 2) {
           // Second iteration: final response
           onChunk({
-            choices: [{
-              delta: { content: 'The current time is 3:00 PM. Now let me get the weather for you.' },
-              finish_reason: 'stop'
-            }]
+            choices: [
+              {
+                delta: { content: 'The current time is 3:00 PM. Now let me get the weather for you.' },
+                finish_reason: 'stop',
+              },
+            ],
           });
           onDone();
         }
@@ -1454,20 +1576,24 @@ describe('toolsStreaming', () => {
       createChatCompletionChunk.mockReturnValue({
         id: 'chatcmpl-123',
         object: 'chat.completion.chunk',
-        choices: [{
-          delta: {
-            tool_calls: [{
-              id: 'call_123',
-              type: 'function',
-              function: { name: 'get_time', arguments: '{}' }
-            }]
-          }
-        }]
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  id: 'call_123',
+                  type: 'function',
+                  function: { name: 'get_time', arguments: '{}' },
+                },
+              ],
+            },
+          },
+        ],
       });
 
       executeToolCall.mockResolvedValue({
         name: 'get_time',
-        output: '3:00 PM'
+        output: '3:00 PM',
       });
 
       await handleToolsStreaming({
@@ -1476,7 +1602,7 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // Should execute tool first
@@ -1486,17 +1612,14 @@ describe('toolsStreaming', () => {
       expect(createOpenAIRequest).toHaveBeenCalledTimes(2);
 
       // Should stream content from second iteration
-      expect(writeAndFlush).toHaveBeenCalledWith(
-        mockRes,
-        expect.stringContaining('The current time is 3:00 PM')
-      );
+      expect(writeAndFlush).toHaveBeenCalledWith(mockRes, expect.stringContaining('The current time is 3:00 PM'));
     });
 
     test('completes when no tool calls requested', async () => {
       const body = {
         messages: [{ role: 'user', content: 'Just say hello' }],
         stream: true,
-        tools: [{ type: 'function', function: { name: 'get_time' } }]
+        tools: [{ type: 'function', function: { name: 'get_time' } }],
       };
       const bodyIn = {};
 
@@ -1506,22 +1629,26 @@ describe('toolsStreaming', () => {
         body: {
           on: jest.fn((event, handler) => {
             if (event === 'data') {
-              const chunk = Buffer.from('data: {"choices":[{"delta":{"content":"Hello! How can I help you today?"},"finish_reason":"stop"}]}\n\n');
+              const chunk = Buffer.from(
+                'data: {"choices":[{"delta":{"content":"Hello! How can I help you today?"},"finish_reason":"stop"}]}\n\n'
+              );
               handler(chunk);
             } else if (event === 'end') {
               handler();
             }
-          })
-        }
+          }),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
       parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
         onChunk({
-          choices: [{
-            delta: { content: 'Hello! How can I help you today?' },
-            finish_reason: 'stop'
-          }]
+          choices: [
+            {
+              delta: { content: 'Hello! How can I help you today?' },
+              finish_reason: 'stop',
+            },
+          ],
         });
         onDone();
         return '';
@@ -1533,7 +1660,7 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // Should make only one request (no iterations needed)
@@ -1543,10 +1670,7 @@ describe('toolsStreaming', () => {
       expect(executeToolCall).not.toHaveBeenCalled();
 
       // Should stream text content directly
-      expect(writeAndFlush).toHaveBeenCalledWith(
-        mockRes,
-        expect.stringContaining('Hello! How can I help you today?')
-      );
+      expect(writeAndFlush).toHaveBeenCalledWith(mockRes, expect.stringContaining('Hello! How can I help you today?'));
 
       // Should complete successfully
       expect(streamDone).toHaveBeenCalledWith(mockRes);
@@ -1557,7 +1681,7 @@ describe('toolsStreaming', () => {
       const body = {
         messages: [{ role: 'user', content: 'Get time and tell me about it' }],
         stream: true,
-        tools: [{ type: 'function', function: { name: 'get_time' } }]
+        tools: [{ type: 'function', function: { name: 'get_time' } }],
       };
       const bodyIn = {};
 
@@ -1576,18 +1700,22 @@ describe('toolsStreaming', () => {
                   chunkCount++;
                   if (chunkCount === 1) {
                     // Text content first
-                    const chunk1 = Buffer.from('data: {"choices":[{"delta":{"content":"Let me check the time for you."},"finish_reason":null}]}\n\n');
+                    const chunk1 = Buffer.from(
+                      'data: {"choices":[{"delta":{"content":"Let me check the time for you."},"finish_reason":null}]}\n\n'
+                    );
                     handler(chunk1);
                   } else if (chunkCount === 2) {
                     // Tool call
-                    const chunk2 = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}}]},"finish_reason":null}]}\n\n');
+                    const chunk2 = Buffer.from(
+                      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}}]},"finish_reason":null}]}\n\n'
+                    );
                     handler(chunk2);
                   }
                 } else if (event === 'end') {
                   handler();
                 }
-              })
-            }
+              }),
+            },
           });
         } else if (requestCallCount === 2) {
           // Second iteration: final response after tool execution
@@ -1596,13 +1724,15 @@ describe('toolsStreaming', () => {
             body: {
               on: jest.fn((event, handler) => {
                 if (event === 'data') {
-                  const chunk = Buffer.from('data: {"choices":[{"delta":{"content":"The current time is 3:00 PM. It\'s a great time to be productive!"},"finish_reason":"stop"}]}\n\n');
+                  const chunk = Buffer.from(
+                    'data: {"choices":[{"delta":{"content":"The current time is 3:00 PM. It\'s a great time to be productive!"},"finish_reason":"stop"}]}\n\n'
+                  );
                   handler(chunk);
                 } else if (event === 'end') {
                   handler();
                 }
-              })
-            }
+              }),
+            },
           });
         }
       });
@@ -1614,32 +1744,40 @@ describe('toolsStreaming', () => {
         if (parseCallCount === 1) {
           // Text content
           onChunk({
-            choices: [{
-              delta: { content: 'Let me check the time for you.' },
-              finish_reason: null
-            }]
+            choices: [
+              {
+                delta: { content: 'Let me check the time for you.' },
+                finish_reason: null,
+              },
+            ],
           });
         } else if (parseCallCount === 2) {
           // Tool call - this should trigger tool execution
           onChunk({
-            choices: [{
-              delta: {
-                tool_calls: [{
-                  index: 0,
-                  id: 'call_123',
-                  function: { name: 'get_time', arguments: '{}' }
-                }]
-              }
-            }]
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: 'call_123',
+                      function: { name: 'get_time', arguments: '{}' },
+                    },
+                  ],
+                },
+              },
+            ],
           });
           onDone(); // Complete this iteration to trigger tool execution
         } else if (parseCallCount === 3) {
           // Final response
           onChunk({
-            choices: [{
-              delta: { content: "The current time is 3:00 PM. It's a great time to be productive!" },
-              finish_reason: 'stop'
-            }]
+            choices: [
+              {
+                delta: { content: "The current time is 3:00 PM. It's a great time to be productive!" },
+                finish_reason: 'stop',
+              },
+            ],
           });
           onDone();
         }
@@ -1649,20 +1787,24 @@ describe('toolsStreaming', () => {
       createChatCompletionChunk.mockReturnValue({
         id: 'chatcmpl-123',
         object: 'chat.completion.chunk',
-        choices: [{
-          delta: {
-            tool_calls: [{
-              id: 'call_123',
-              type: 'function',
-              function: { name: 'get_time', arguments: '{}' }
-            }]
-          }
-        }]
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  id: 'call_123',
+                  type: 'function',
+                  function: { name: 'get_time', arguments: '{}' },
+                },
+              ],
+            },
+          },
+        ],
       });
 
       executeToolCall.mockResolvedValue({
         name: 'get_time',
-        output: '3:00 PM'
+        output: '3:00 PM',
       });
 
       await handleToolsStreaming({
@@ -1671,14 +1813,11 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // Should stream initial text content immediately
-      expect(writeAndFlush).toHaveBeenCalledWith(
-        mockRes,
-        expect.stringContaining('Let me check the time for you.')
-      );
+      expect(writeAndFlush).toHaveBeenCalledWith(mockRes, expect.stringContaining('Let me check the time for you.'));
 
       // Should make at least one request
       expect(createOpenAIRequest).toHaveBeenCalled();
@@ -1687,10 +1826,7 @@ describe('toolsStreaming', () => {
       // The important thing is that the function completes without error
 
       // Should stream at least the initial text content
-      expect(writeAndFlush).toHaveBeenCalledWith(
-        mockRes,
-        expect.stringContaining('Let me check the time for you.')
-      );
+      expect(writeAndFlush).toHaveBeenCalledWith(mockRes, expect.stringContaining('Let me check the time for you.'));
 
       // Should persist at least the initial text content
       expect(appendToPersistence).toHaveBeenCalledWith(mockPersistence, 'Let me check the time for you.');
@@ -1703,7 +1839,7 @@ describe('toolsStreaming', () => {
 
       const body = {
         messages: [{ role: 'user', content: 'Hello' }],
-        stream: true
+        stream: true,
       };
       const bodyIn = {};
 
@@ -1711,8 +1847,8 @@ describe('toolsStreaming', () => {
       const mockUpstream = {
         ok: true,
         body: {
-          on: jest.fn()
-        }
+          on: jest.fn(),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
@@ -1723,7 +1859,7 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       await jest.advanceTimersByTimeAsync(30001);
@@ -1733,7 +1869,7 @@ describe('toolsStreaming', () => {
         res: mockRes,
         model: 'gpt-3.5-turbo',
         event: { content: '[Error: Stream timeout - no response from upstream API]' },
-        prefix: 'iter'
+        prefix: 'iter',
       });
       expect(mockPersistence.markError).toHaveBeenCalled();
 
@@ -1743,7 +1879,7 @@ describe('toolsStreaming', () => {
     test('parses SSE stream chunks correctly', async () => {
       const body = {
         messages: [{ role: 'user', content: 'Hello' }],
-        stream: true
+        stream: true,
       };
       const bodyIn = {};
 
@@ -1753,13 +1889,15 @@ describe('toolsStreaming', () => {
           on: jest.fn((event, handler) => {
             if (event === 'data') {
               // Valid SSE chunk
-              const chunk = Buffer.from('data: {"choices":[{"delta":{"content":"Hello world"},"finish_reason":null}]}\n\n');
+              const chunk = Buffer.from(
+                'data: {"choices":[{"delta":{"content":"Hello world"},"finish_reason":null}]}\n\n'
+              );
               handler(chunk);
             } else if (event === 'end') {
               handler();
             }
-          })
-        }
+          }),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
@@ -1772,10 +1910,12 @@ describe('toolsStreaming', () => {
         expect(typeof onDone).toBe('function');
 
         onChunk({
-          choices: [{
-            delta: { content: 'Hello world' },
-            finish_reason: null
-          }]
+          choices: [
+            {
+              delta: { content: 'Hello world' },
+              finish_reason: null,
+            },
+          ],
         });
         onDone();
         return '';
@@ -1787,7 +1927,7 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       expect(parseSSEStream).toHaveBeenCalled();
@@ -1796,7 +1936,7 @@ describe('toolsStreaming', () => {
     test('handles malformed SSE data gracefully', async () => {
       const body = {
         messages: [{ role: 'user', content: 'Hello' }],
-        stream: true
+        stream: true,
       };
       const bodyIn = {};
 
@@ -1811,8 +1951,8 @@ describe('toolsStreaming', () => {
             } else if (event === 'end') {
               handler();
             }
-          })
-        }
+          }),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
@@ -1832,14 +1972,16 @@ describe('toolsStreaming', () => {
       });
 
       // Should not throw an error
-      await expect(handleToolsStreaming({
-        body,
-        bodyIn,
-        config: mockConfig,
-        res: mockRes,
-        req: mockReq,
-        persistence: mockPersistence
-      })).resolves.not.toThrow();
+      await expect(
+        handleToolsStreaming({
+          body,
+          bodyIn,
+          config: mockConfig,
+          res: mockRes,
+          req: mockReq,
+          persistence: mockPersistence,
+        })
+      ).resolves.not.toThrow();
 
       expect(parseSSEStream).toHaveBeenCalled();
     });
@@ -1847,7 +1989,7 @@ describe('toolsStreaming', () => {
     test('processes stream end events', async () => {
       const body = {
         messages: [{ role: 'user', content: 'Hello' }],
-        stream: true
+        stream: true,
       };
       const bodyIn = {};
 
@@ -1863,17 +2005,19 @@ describe('toolsStreaming', () => {
               endHandlerCalled = true;
               handler();
             }
-          })
-        }
+          }),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
       parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
         onChunk({
-          choices: [{
-            delta: { content: 'Hello' },
-            finish_reason: 'stop'
-          }]
+          choices: [
+            {
+              delta: { content: 'Hello' },
+              finish_reason: 'stop',
+            },
+          ],
         });
         onDone();
         return '';
@@ -1885,7 +2029,7 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // Should have processed the end event
@@ -1896,7 +2040,7 @@ describe('toolsStreaming', () => {
     test('handles stream error events', async () => {
       const body = {
         messages: [{ role: 'user', content: 'Hello' }],
-        stream: true
+        stream: true,
       };
       const bodyIn = {};
 
@@ -1911,8 +2055,8 @@ describe('toolsStreaming', () => {
             } else if (event === 'end') {
               handler();
             }
-          })
-        }
+          }),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
@@ -1923,7 +2067,7 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // Should handle stream error gracefully
@@ -1934,7 +2078,7 @@ describe('toolsStreaming', () => {
     test('manages leftover buffer between chunks', async () => {
       const body = {
         messages: [{ role: 'user', content: 'Hello' }],
-        stream: true
+        stream: true,
       };
       const bodyIn = {};
 
@@ -1957,8 +2101,8 @@ describe('toolsStreaming', () => {
             } else if (event === 'end') {
               handler();
             }
-          })
-        }
+          }),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
@@ -1977,10 +2121,12 @@ describe('toolsStreaming', () => {
           // Second chunk completes the message
           const completeData = leftoverBuffer + 'lo world"},"finish_reason":"stop"}]}\n\n';
           onChunk({
-            choices: [{
-              delta: { content: 'Hello world' },
-              finish_reason: 'stop'
-            }]
+            choices: [
+              {
+                delta: { content: 'Hello world' },
+                finish_reason: 'stop',
+              },
+            ],
           });
           onDone();
           return '';
@@ -1994,7 +2140,7 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // Should have called parseSSEStream (at least once for processing chunks)
@@ -2012,7 +2158,7 @@ describe('toolsStreaming', () => {
         const body = {
           messages: [{ role: 'user', content: 'What time is it?' }],
           stream: true,
-          tools: [{ type: 'function', function: { name: 'get_time' } }]
+          tools: [{ type: 'function', function: { name: 'get_time' } }],
         };
         const bodyIn = {};
 
@@ -2021,28 +2167,34 @@ describe('toolsStreaming', () => {
           body: {
             on: jest.fn((event, handler) => {
               if (event === 'data') {
-                const chunk = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}}]}}]}\n\n');
+                const chunk = Buffer.from(
+                  'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}}]}}]}\n\n'
+                );
                 handler(chunk);
               } else if (event === 'end') {
                 handler();
               }
-            })
-          }
+            }),
+          },
         };
 
         createOpenAIRequest.mockResolvedValue(mockUpstream);
 
         parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
           onChunk({
-            choices: [{
-              delta: {
-                tool_calls: [{
-                  index: 0,
-                  id: 'call_123',
-                  function: { name: 'get_time' }
-                }]
-              }
-            }]
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: 'call_123',
+                      function: { name: 'get_time' },
+                    },
+                  ],
+                },
+              },
+            ],
           });
           onDone();
           return '';
@@ -2051,15 +2203,19 @@ describe('toolsStreaming', () => {
         createChatCompletionChunk.mockReturnValue({
           id: 'chatcmpl-123',
           object: 'chat.completion.chunk',
-          choices: [{
-            delta: {
-              tool_calls: [{
-                id: 'call_123',
-                type: 'function',
-                function: { name: 'get_time', arguments: '{}' }
-              }]
-            }
-          }]
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    id: 'call_123',
+                    type: 'function',
+                    function: { name: 'get_time', arguments: '{}' },
+                  },
+                ],
+              },
+            },
+          ],
         });
 
         // Mock tool execution failure
@@ -2071,7 +2227,7 @@ describe('toolsStreaming', () => {
           config: mockConfig,
           res: mockRes,
           req: mockReq,
-          persistence: mockPersistence
+          persistence: mockPersistence,
         });
 
         // Should stream error message for failed tool
@@ -2082,10 +2238,10 @@ describe('toolsStreaming', () => {
             tool_output: {
               tool_call_id: 'call_123',
               name: 'get_time',
-              output: 'Tool get_time failed: Time service unavailable'
-            }
+              output: 'Tool get_time failed: Time service unavailable',
+            },
           },
-          prefix: 'iter'
+          prefix: 'iter',
         });
 
         // Tool error outputs should NOT be appended to message content
@@ -2104,7 +2260,7 @@ describe('toolsStreaming', () => {
         const body = {
           messages: [{ role: 'user', content: 'What time is it?' }],
           stream: true,
-          tools: [{ type: 'function', function: { name: 'get_time' } }]
+          tools: [{ type: 'function', function: { name: 'get_time' } }],
         };
         const bodyIn = {};
 
@@ -2113,27 +2269,33 @@ describe('toolsStreaming', () => {
           body: {
             on: jest.fn((event, handler) => {
               if (event === 'data') {
-                const chunk = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}}]}}]}\n\n');
+                const chunk = Buffer.from(
+                  'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}}]}}]}\n\n'
+                );
                 handler(chunk);
               } else if (event === 'end') {
                 handler();
               }
-            })
-          }
+            }),
+          },
         };
 
         createOpenAIRequest.mockResolvedValue(mockUpstream);
         parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
           onChunk({
-            choices: [{
-              delta: {
-                tool_calls: [{
-                  index: 0,
-                  id: 'call_123',
-                  function: { name: 'get_time' }
-                }]
-              }
-            }]
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: 'call_123',
+                      function: { name: 'get_time' },
+                    },
+                  ],
+                },
+              },
+            ],
           });
           onDone();
           return '';
@@ -2142,15 +2304,19 @@ describe('toolsStreaming', () => {
         createChatCompletionChunk.mockReturnValue({
           id: 'chatcmpl-123',
           object: 'chat.completion.chunk',
-          choices: [{
-            delta: {
-              tool_calls: [{
-                id: 'call_123',
-                type: 'function',
-                function: { name: 'get_time', arguments: '{}' }
-              }]
-            }
-          }]
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    id: 'call_123',
+                    type: 'function',
+                    function: { name: 'get_time', arguments: '{}' },
+                  },
+                ],
+              },
+            },
+          ],
         });
 
         // Mock tool execution failure
@@ -2162,7 +2328,7 @@ describe('toolsStreaming', () => {
           config: mockConfig,
           res: mockRes,
           req: mockReq,
-          persistence: mockPersistence
+          persistence: mockPersistence,
         });
 
         // Should stream error message
@@ -2173,10 +2339,10 @@ describe('toolsStreaming', () => {
             tool_output: {
               tool_call_id: 'call_123',
               name: 'get_time',
-              output: 'Tool get_time failed: Network timeout'
-            }
+              output: 'Tool get_time failed: Network timeout',
+            },
           },
-          prefix: 'iter'
+          prefix: 'iter',
         });
       });
 
@@ -2184,7 +2350,7 @@ describe('toolsStreaming', () => {
         const body = {
           messages: [{ role: 'user', content: 'Get time then tell me a joke' }],
           stream: true,
-          tools: [{ type: 'function', function: { name: 'get_time' } }]
+          tools: [{ type: 'function', function: { name: 'get_time' } }],
         };
         const bodyIn = {};
 
@@ -2199,13 +2365,15 @@ describe('toolsStreaming', () => {
               body: {
                 on: jest.fn((event, handler) => {
                   if (event === 'data') {
-                    const chunk = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}}]}}]}\n\n');
+                    const chunk = Buffer.from(
+                      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}}]}}]}\n\n'
+                    );
                     handler(chunk);
                   } else if (event === 'end') {
                     handler();
                   }
-                })
-              }
+                }),
+              },
             });
           } else if (requestCallCount === 2) {
             // Second iteration: continues with text response after tool error
@@ -2214,13 +2382,15 @@ describe('toolsStreaming', () => {
               body: {
                 on: jest.fn((event, handler) => {
                   if (event === 'data') {
-                    const chunk = Buffer.from('data: {"choices":[{"delta":{"content":"Here\'s a joke instead: Why did the chicken cross the road?"},"finish_reason":"stop"}]}\n\n');
+                    const chunk = Buffer.from(
+                      'data: {"choices":[{"delta":{"content":"Here\'s a joke instead: Why did the chicken cross the road?"},"finish_reason":"stop"}]}\n\n'
+                    );
                     handler(chunk);
                   } else if (event === 'end') {
                     handler();
                   }
-                })
-              }
+                }),
+              },
             });
           }
         });
@@ -2231,23 +2401,29 @@ describe('toolsStreaming', () => {
 
           if (parseCallCount === 1) {
             onChunk({
-              choices: [{
-                delta: {
-                  tool_calls: [{
-                    index: 0,
-                    id: 'call_123',
-                    function: { name: 'get_time', arguments: '{}' }
-                  }]
-                }
-              }]
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: 'call_123',
+                        function: { name: 'get_time', arguments: '{}' },
+                      },
+                    ],
+                  },
+                },
+              ],
             });
             onDone();
           } else if (parseCallCount === 2) {
             onChunk({
-              choices: [{
-                delta: { content: "Here's a joke instead: Why did the chicken cross the road?" },
-                finish_reason: 'stop'
-              }]
+              choices: [
+                {
+                  delta: { content: "Here's a joke instead: Why did the chicken cross the road?" },
+                  finish_reason: 'stop',
+                },
+              ],
             });
             onDone();
           }
@@ -2257,15 +2433,19 @@ describe('toolsStreaming', () => {
         createChatCompletionChunk.mockReturnValue({
           id: 'chatcmpl-123',
           object: 'chat.completion.chunk',
-          choices: [{
-            delta: {
-              tool_calls: [{
-                id: 'call_123',
-                type: 'function',
-                function: { name: 'get_time', arguments: '{}' }
-              }]
-            }
-          }]
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    id: 'call_123',
+                    type: 'function',
+                    function: { name: 'get_time', arguments: '{}' },
+                  },
+                ],
+              },
+            },
+          ],
         });
 
         // Mock tool failure
@@ -2277,24 +2457,21 @@ describe('toolsStreaming', () => {
           config: mockConfig,
           res: mockRes,
           req: mockReq,
-          persistence: mockPersistence
+          persistence: mockPersistence,
         });
 
         // Should make two requests (continue after tool error)
         expect(createOpenAIRequest).toHaveBeenCalledTimes(2);
 
         // Should stream final content after tool error
-        expect(writeAndFlush).toHaveBeenCalledWith(
-          mockRes,
-          expect.stringContaining("Here's a joke instead")
-        );
+        expect(writeAndFlush).toHaveBeenCalledWith(mockRes, expect.stringContaining("Here's a joke instead"));
       });
 
       test('adds error tool results to conversation history', async () => {
         const body = {
           messages: [{ role: 'user', content: 'What time is it?' }],
           stream: true,
-          tools: [{ type: 'function', function: { name: 'get_time' } }]
+          tools: [{ type: 'function', function: { name: 'get_time' } }],
         };
         const bodyIn = {};
 
@@ -2309,13 +2486,15 @@ describe('toolsStreaming', () => {
               body: {
                 on: jest.fn((event, handler) => {
                   if (event === 'data') {
-                    const chunk = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}}]}}]}\n\n');
+                    const chunk = Buffer.from(
+                      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}}]}}]}\n\n'
+                    );
                     handler(chunk);
                   } else if (event === 'end') {
                     handler();
                   }
-                })
-              }
+                }),
+              },
             });
           } else if (requestCallCount === 2) {
             // Second iteration: response after tool error
@@ -2324,13 +2503,15 @@ describe('toolsStreaming', () => {
               body: {
                 on: jest.fn((event, handler) => {
                   if (event === 'data') {
-                    const chunk = Buffer.from('data: {"choices":[{"delta":{"content":"I apologize, I cannot get the current time right now."},"finish_reason":"stop"}]}\n\n');
+                    const chunk = Buffer.from(
+                      'data: {"choices":[{"delta":{"content":"I apologize, I cannot get the current time right now."},"finish_reason":"stop"}]}\n\n'
+                    );
                     handler(chunk);
                   } else if (event === 'end') {
                     handler();
                   }
-                })
-              }
+                }),
+              },
             });
           }
         });
@@ -2341,23 +2522,29 @@ describe('toolsStreaming', () => {
 
           if (parseCallCount === 1) {
             onChunk({
-              choices: [{
-                delta: {
-                  tool_calls: [{
-                    index: 0,
-                    id: 'call_123',
-                    function: { name: 'get_time', arguments: '{}' }
-                  }]
-                }
-              }]
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: 'call_123',
+                        function: { name: 'get_time', arguments: '{}' },
+                      },
+                    ],
+                  },
+                },
+              ],
             });
             onDone();
           } else if (parseCallCount === 2) {
             onChunk({
-              choices: [{
-                delta: { content: 'I apologize, I cannot get the current time right now.' },
-                finish_reason: 'stop'
-              }]
+              choices: [
+                {
+                  delta: { content: 'I apologize, I cannot get the current time right now.' },
+                  finish_reason: 'stop',
+                },
+              ],
             });
             onDone();
           }
@@ -2367,15 +2554,19 @@ describe('toolsStreaming', () => {
         createChatCompletionChunk.mockReturnValue({
           id: 'chatcmpl-123',
           object: 'chat.completion.chunk',
-          choices: [{
-            delta: {
-              tool_calls: [{
-                id: 'call_123',
-                type: 'function',
-                function: { name: 'get_time', arguments: '{}' }
-              }]
-            }
-          }]
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    id: 'call_123',
+                    type: 'function',
+                    function: { name: 'get_time', arguments: '{}' },
+                  },
+                ],
+              },
+            },
+          ],
         });
 
         // Mock tool failure
@@ -2387,20 +2578,21 @@ describe('toolsStreaming', () => {
           config: mockConfig,
           res: mockRes,
           req: mockReq,
-          persistence: mockPersistence
+          persistence: mockPersistence,
         });
 
         // Should include error tool result in second request's conversation history
-        expect(createOpenAIRequest).toHaveBeenNthCalledWith(2,
+        expect(createOpenAIRequest).toHaveBeenNthCalledWith(
+          2,
           mockConfig,
           expect.objectContaining({
             messages: expect.arrayContaining([
               expect.objectContaining({
                 role: 'tool',
                 tool_call_id: 'call_123',
-                content: 'Tool get_time failed: Connection failed'
-              })
-            ])
+                content: 'Tool get_time failed: Connection failed',
+              }),
+            ]),
           }),
           expect.any(Object)
         );
@@ -2411,7 +2603,7 @@ describe('toolsStreaming', () => {
       test('handles upstream API errors', async () => {
         const body = {
           messages: [{ role: 'user', content: 'Hello' }],
-          stream: true
+          stream: true,
         };
         const bodyIn = {};
 
@@ -2419,7 +2611,7 @@ describe('toolsStreaming', () => {
         createOpenAIRequest.mockResolvedValue({
           ok: false,
           status: 429,
-          text: jest.fn().mockResolvedValue('Rate limit exceeded')
+          text: jest.fn().mockResolvedValue('Rate limit exceeded'),
         });
 
         await handleToolsStreaming({
@@ -2428,7 +2620,7 @@ describe('toolsStreaming', () => {
           config: mockConfig,
           res: mockRes,
           req: mockReq,
-          persistence: mockPersistence
+          persistence: mockPersistence,
         });
 
         // Should stream error message
@@ -2436,7 +2628,7 @@ describe('toolsStreaming', () => {
           res: mockRes,
           model: 'gpt-3.5-turbo',
           event: { content: '[Error: Upstream API error (429): Rate limit exceeded]' },
-          prefix: 'iter'
+          prefix: 'iter',
         });
 
         // Should mark persistence error
@@ -2452,7 +2644,7 @@ describe('toolsStreaming', () => {
 
         const body = {
           messages: [{ role: 'user', content: 'Hello' }],
-          stream: true
+          stream: true,
         };
         const bodyIn = {};
 
@@ -2462,8 +2654,8 @@ describe('toolsStreaming', () => {
           body: {
             on: jest.fn((event, handler) => {
               // Don't call handlers - simulate hanging stream
-            })
-          }
+            }),
+          },
         };
 
         createOpenAIRequest.mockResolvedValue(mockUpstream);
@@ -2474,7 +2666,7 @@ describe('toolsStreaming', () => {
           config: mockConfig,
           res: mockRes,
           req: mockReq,
-          persistence: mockPersistence
+          persistence: mockPersistence,
         });
 
         // Fast-forward past timeout (30 seconds)
@@ -2486,7 +2678,7 @@ describe('toolsStreaming', () => {
           res: mockRes,
           model: 'gpt-3.5-turbo',
           event: { content: '[Error: Stream timeout - no response from upstream API]' },
-          prefix: 'iter'
+          prefix: 'iter',
         });
 
         // Should mark persistence as error
@@ -2498,7 +2690,7 @@ describe('toolsStreaming', () => {
       test('processes network interruption gracefully', async () => {
         const body = {
           messages: [{ role: 'user', content: 'Hello' }],
-          stream: true
+          stream: true,
         };
         const bodyIn = {};
 
@@ -2517,8 +2709,8 @@ describe('toolsStreaming', () => {
               } else if (event === 'end') {
                 // Won't be called due to error
               }
-            })
-          }
+            }),
+          },
         };
 
         createOpenAIRequest.mockResolvedValue(mockUpstream);
@@ -2535,7 +2727,7 @@ describe('toolsStreaming', () => {
           config: mockConfig,
           res: mockRes,
           req: mockReq,
-          persistence: mockPersistence
+          persistence: mockPersistence,
         });
 
         // Should handle network error gracefully
@@ -2546,7 +2738,7 @@ describe('toolsStreaming', () => {
       test('handles client disconnect scenarios', async () => {
         const body = {
           messages: [{ role: 'user', content: 'Hello' }],
-          stream: true
+          stream: true,
         };
         const bodyIn = {};
 
@@ -2558,22 +2750,26 @@ describe('toolsStreaming', () => {
           body: {
             on: jest.fn((event, handler) => {
               if (event === 'data') {
-                const chunk = Buffer.from('data: {"choices":[{"delta":{"content":"Hello world"},"finish_reason":"stop"}]}\n\n');
+                const chunk = Buffer.from(
+                  'data: {"choices":[{"delta":{"content":"Hello world"},"finish_reason":"stop"}]}\n\n'
+                );
                 handler(chunk);
               } else if (event === 'end') {
                 handler();
               }
-            })
-          }
+            }),
+          },
         };
 
         createOpenAIRequest.mockResolvedValue(mockUpstream);
         parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
           onChunk({
-            choices: [{
-              delta: { content: 'Hello world' },
-              finish_reason: 'stop'
-            }]
+            choices: [
+              {
+                delta: { content: 'Hello world' },
+                finish_reason: 'stop',
+              },
+            ],
           });
           onDone();
           return '';
@@ -2585,7 +2781,7 @@ describe('toolsStreaming', () => {
           config: mockConfig,
           res: mockRes,
           req: mockReq,
-          persistence: mockPersistence
+          persistence: mockPersistence,
         });
 
         // Should detect client disconnect and not attempt to write
@@ -2606,16 +2802,16 @@ describe('toolsStreaming', () => {
       test('falls back to default tool specifications', async () => {
         const body = {
           messages: [{ role: 'user', content: 'Hello' }],
-          stream: true
+          stream: true,
           // No tools specified in request
         };
         const bodyIn = {};
 
         const mockProvider = {
           getToolsetSpec: jest.fn(() => [
-            { type: 'function', function: { name: 'provider_tool', description: 'Provider tool' } }
+            { type: 'function', function: { name: 'provider_tool', description: 'Provider tool' } },
           ]),
-          supportsReasoningControls: jest.fn(() => false)
+          supportsReasoningControls: jest.fn(() => false),
         };
 
         createProvider.mockResolvedValue(mockProvider);
@@ -2625,23 +2821,27 @@ describe('toolsStreaming', () => {
           body: {
             on: jest.fn((event, handler) => {
               if (event === 'data') {
-                const chunk = Buffer.from('data: {"choices":[{"delta":{"content":"Hello world"},"finish_reason":"stop"}]}\n\n');
+                const chunk = Buffer.from(
+                  'data: {"choices":[{"delta":{"content":"Hello world"},"finish_reason":"stop"}]}\n\n'
+                );
                 handler(chunk);
               } else if (event === 'end') {
                 handler();
               }
-            })
-          }
+            }),
+          },
         };
 
         createOpenAIRequest.mockResolvedValue(mockUpstream);
 
         parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
           onChunk({
-            choices: [{
-              delta: { content: 'Hello world' },
-              finish_reason: 'stop'
-            }]
+            choices: [
+              {
+                delta: { content: 'Hello world' },
+                finish_reason: 'stop',
+              },
+            ],
           });
           onDone();
           return '';
@@ -2653,17 +2853,15 @@ describe('toolsStreaming', () => {
           config: mockConfig,
           res: mockRes,
           req: mockReq,
-          persistence: mockPersistence
+          persistence: mockPersistence,
         });
 
         // Should use provider tool specifications when no tools in request
         expect(createOpenAIRequest).toHaveBeenCalledWith(
           mockConfig,
           expect.objectContaining({
-            tools: [
-              { type: 'function', function: { name: 'provider_tool', description: 'Provider tool' } }
-            ],
-            tool_choice: 'auto'
+            tools: [{ type: 'function', function: { name: 'provider_tool', description: 'Provider tool' } }],
+            tool_choice: 'auto',
           }),
           expect.objectContaining({ providerId: undefined })
         );
@@ -2681,12 +2879,12 @@ describe('toolsStreaming', () => {
 
         const customProviderTools = [
           { type: 'function', function: { name: 'custom_search', description: 'Custom search tool' } },
-          { type: 'function', function: { name: 'custom_calc', description: 'Custom calculator' } }
+          { type: 'function', function: { name: 'custom_calc', description: 'Custom calculator' } },
         ];
 
         const mockProvider = {
           getToolsetSpec: jest.fn(() => customProviderTools),
-          supportsReasoningControls: jest.fn(() => true)
+          supportsReasoningControls: jest.fn(() => true),
         };
 
         createProvider.mockResolvedValue(mockProvider);
@@ -2696,22 +2894,26 @@ describe('toolsStreaming', () => {
           body: {
             on: jest.fn((event, handler) => {
               if (event === 'data') {
-                const chunk = Buffer.from('data: {"choices":[{"delta":{"content":"Hello from custom provider"},"finish_reason":"stop"}]}\n\n');
+                const chunk = Buffer.from(
+                  'data: {"choices":[{"delta":{"content":"Hello from custom provider"},"finish_reason":"stop"}]}\n\n'
+                );
                 handler(chunk);
               } else if (event === 'end') {
                 handler();
               }
-            })
-          }
+            }),
+          },
         };
 
         createOpenAIRequest.mockResolvedValue(mockUpstream);
         parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
           onChunk({
-            choices: [{
-              delta: { content: 'Hello from custom provider' },
-              finish_reason: 'stop'
-            }]
+            choices: [
+              {
+                delta: { content: 'Hello from custom provider' },
+                finish_reason: 'stop',
+              },
+            ],
           });
           onDone();
           return '';
@@ -2723,7 +2925,7 @@ describe('toolsStreaming', () => {
           config: mockConfig,
           res: mockRes,
           req: mockReq,
-          persistence: mockPersistence
+          persistence: mockPersistence,
         });
 
         // Should create provider with correct ID
@@ -2734,7 +2936,7 @@ describe('toolsStreaming', () => {
           mockConfig,
           expect.objectContaining({
             tools: customProviderTools,
-            tool_choice: 'auto'
+            tool_choice: 'auto',
           }),
           expect.objectContaining({ providerId: 'custom-provider' })
         );
@@ -2746,13 +2948,13 @@ describe('toolsStreaming', () => {
         const body = {
           messages: [{ role: 'user', content: 'Hello' }],
           stream: true,
-          reasoning: true // Request reasoning controls
+          reasoning: true, // Request reasoning controls
         };
         const bodyIn = { provider_id: 'reasoning-provider' };
 
         const mockProvider = {
           getToolsetSpec: jest.fn(() => []),
-          supportsReasoningControls: jest.fn(() => true)
+          supportsReasoningControls: jest.fn(() => true),
         };
 
         createProvider.mockResolvedValue(mockProvider);
@@ -2762,22 +2964,26 @@ describe('toolsStreaming', () => {
           body: {
             on: jest.fn((event, handler) => {
               if (event === 'data') {
-                const chunk = Buffer.from('data: {"choices":[{"delta":{"content":"Reasoning response"},"finish_reason":"stop"}]}\n\n');
+                const chunk = Buffer.from(
+                  'data: {"choices":[{"delta":{"content":"Reasoning response"},"finish_reason":"stop"}]}\n\n'
+                );
                 handler(chunk);
               } else if (event === 'end') {
                 handler();
               }
-            })
-          }
+            }),
+          },
         };
 
         createOpenAIRequest.mockResolvedValue(mockUpstream);
         parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
           onChunk({
-            choices: [{
-              delta: { content: 'Reasoning response' },
-              finish_reason: 'stop'
-            }]
+            choices: [
+              {
+                delta: { content: 'Reasoning response' },
+                finish_reason: 'stop',
+              },
+            ],
           });
           onDone();
           return '';
@@ -2789,7 +2995,7 @@ describe('toolsStreaming', () => {
           config: mockConfig,
           res: mockRes,
           req: mockReq,
-          persistence: mockPersistence
+          persistence: mockPersistence,
         });
 
         // Should check reasoning controls support
@@ -2808,19 +3014,19 @@ describe('toolsStreaming', () => {
         const body = {
           messages: [{ role: 'user', content: 'Hello' }],
           stream: true,
-          model: 'provider-specific-model'
+          model: 'provider-specific-model',
         };
         const bodyIn = {
           provider_id: 'special-provider',
           temperature: 0.8,
-          max_tokens: 2000
+          max_tokens: 2000,
         };
 
         const mockProvider = {
           getToolsetSpec: jest.fn(() => [
-            { type: 'function', function: { name: 'provider_tool', description: 'Provider tool' } }
+            { type: 'function', function: { name: 'provider_tool', description: 'Provider tool' } },
           ]),
-          supportsReasoningControls: jest.fn(() => false)
+          supportsReasoningControls: jest.fn(() => false),
         };
 
         createProvider.mockResolvedValue(mockProvider);
@@ -2830,22 +3036,26 @@ describe('toolsStreaming', () => {
           body: {
             on: jest.fn((event, handler) => {
               if (event === 'data') {
-                const chunk = Buffer.from('data: {"choices":[{"delta":{"content":"Provider response"},"finish_reason":"stop"}]}\n\n');
+                const chunk = Buffer.from(
+                  'data: {"choices":[{"delta":{"content":"Provider response"},"finish_reason":"stop"}]}\n\n'
+                );
                 handler(chunk);
               } else if (event === 'end') {
                 handler();
               }
-            })
-          }
+            }),
+          },
         };
 
         createOpenAIRequest.mockResolvedValue(mockUpstream);
         parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
           onChunk({
-            choices: [{
-              delta: { content: 'Provider response' },
-              finish_reason: 'stop'
-            }]
+            choices: [
+              {
+                delta: { content: 'Provider response' },
+                finish_reason: 'stop',
+              },
+            ],
           });
           onDone();
           return '';
@@ -2857,17 +3067,17 @@ describe('toolsStreaming', () => {
           config: mockConfig,
           res: mockRes,
           req: mockReq,
-          persistence: mockPersistence
+          persistence: mockPersistence,
         });
 
         // Should pass provider-specific configurations
         expect(createOpenAIRequest).toHaveBeenCalledWith(
           mockConfig,
           expect.objectContaining({
-            model: 'provider-specific-model'
+            model: 'provider-specific-model',
           }),
           expect.objectContaining({
-            providerId: 'special-provider'
+            providerId: 'special-provider',
           })
         );
       });
@@ -2893,7 +3103,7 @@ describe('toolsStreaming', () => {
       test('handles empty/null assistant content', async () => {
         const body = {
           messages: [{ role: 'user', content: 'Hello' }],
-          stream: true
+          stream: true,
         };
         const bodyIn = {};
 
@@ -2908,17 +3118,19 @@ describe('toolsStreaming', () => {
               } else if (event === 'end') {
                 handler();
               }
-            })
-          }
+            }),
+          },
         };
 
         createOpenAIRequest.mockResolvedValue(mockUpstream);
         parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
           onChunk({
-            choices: [{
-              delta: {}, // Empty delta
-              finish_reason: 'stop'
-            }]
+            choices: [
+              {
+                delta: {}, // Empty delta
+                finish_reason: 'stop',
+              },
+            ],
           });
           onDone();
           return '';
@@ -2930,7 +3142,7 @@ describe('toolsStreaming', () => {
           config: mockConfig,
           res: mockRes,
           req: mockReq,
-          persistence: mockPersistence
+          persistence: mockPersistence,
         });
 
         // Should handle empty content gracefully
@@ -2942,7 +3154,7 @@ describe('toolsStreaming', () => {
         const body = {
           messages: [{ role: 'user', content: 'Get time and tell me about it' }],
           stream: true,
-          tools: [{ type: 'function', function: { name: 'get_time' } }]
+          tools: [{ type: 'function', function: { name: 'get_time' } }],
         };
         const bodyIn = {};
 
@@ -2955,18 +3167,22 @@ describe('toolsStreaming', () => {
                 streamCallCount++;
                 if (streamCallCount === 1) {
                   // Text content first
-                  const chunk1 = Buffer.from('data: {"choices":[{"delta":{"content":"Let me get the current time for you."},"finish_reason":null}]}\n\n');
+                  const chunk1 = Buffer.from(
+                    'data: {"choices":[{"delta":{"content":"Let me get the current time for you."},"finish_reason":null}]}\n\n'
+                  );
                   handler(chunk1);
                 } else if (streamCallCount === 2) {
                   // Tool call
-                  const chunk2 = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}}]},"finish_reason":null}]}\n\n');
+                  const chunk2 = Buffer.from(
+                    'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_time","arguments":"{}"}}]},"finish_reason":null}]}\n\n'
+                  );
                   handler(chunk2);
                 }
               } else if (event === 'end') {
                 handler();
               }
-            })
-          }
+            }),
+          },
         };
 
         createOpenAIRequest.mockResolvedValue(mockUpstream);
@@ -2976,23 +3192,29 @@ describe('toolsStreaming', () => {
           parseCallCount++;
           if (parseCallCount === 1) {
             onChunk({
-              choices: [{
-                delta: { content: 'Let me get the current time for you.' },
-                finish_reason: null
-              }]
+              choices: [
+                {
+                  delta: { content: 'Let me get the current time for you.' },
+                  finish_reason: null,
+                },
+              ],
             });
           } else if (parseCallCount === 2) {
             onChunk({
-              choices: [{
-                delta: {
-                  tool_calls: [{
-                    index: 0,
-                    id: 'call_123',
-                    function: { name: 'get_time', arguments: '{}' }
-                  }]
+              choices: [
+                {
+                  delta: {
+                    tool_calls: [
+                      {
+                        index: 0,
+                        id: 'call_123',
+                        function: { name: 'get_time', arguments: '{}' },
+                      },
+                    ],
+                  },
+                  finish_reason: null,
                 },
-                finish_reason: null
-              }]
+              ],
             });
             onDone();
           }
@@ -3002,20 +3224,24 @@ describe('toolsStreaming', () => {
         createChatCompletionChunk.mockReturnValue({
           id: 'chatcmpl-123',
           object: 'chat.completion.chunk',
-          choices: [{
-            delta: {
-              tool_calls: [{
-                id: 'call_123',
-                type: 'function',
-                function: { name: 'get_time', arguments: '{}' }
-              }]
-            }
-          }]
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    id: 'call_123',
+                    type: 'function',
+                    function: { name: 'get_time', arguments: '{}' },
+                  },
+                ],
+              },
+            },
+          ],
         });
 
         executeToolCall.mockResolvedValue({
           name: 'get_time',
-          output: '3:00 PM'
+          output: '3:00 PM',
         });
 
         await handleToolsStreaming({
@@ -3024,7 +3250,7 @@ describe('toolsStreaming', () => {
           config: mockConfig,
           res: mockRes,
           req: mockReq,
-          persistence: mockPersistence
+          persistence: mockPersistence,
         });
 
         // Should stream text content immediately
@@ -3044,7 +3270,7 @@ describe('toolsStreaming', () => {
         const body = {
           messages: [{ role: 'user', content: 'Get large data' }],
           stream: true,
-          tools: [{ type: 'function', function: { name: 'get_large_data' } }]
+          tools: [{ type: 'function', function: { name: 'get_large_data' } }],
         };
         const bodyIn = {};
 
@@ -3053,27 +3279,33 @@ describe('toolsStreaming', () => {
           body: {
             on: jest.fn((event, handler) => {
               if (event === 'data') {
-                const chunk = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_large_data","arguments":"{}"}}]}}]}\n\n');
+                const chunk = Buffer.from(
+                  'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"get_large_data","arguments":"{}"}}]}}]}\n\n'
+                );
                 handler(chunk);
               } else if (event === 'end') {
                 handler();
               }
-            })
-          }
+            }),
+          },
         };
 
         createOpenAIRequest.mockResolvedValue(mockUpstream);
         parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
           onChunk({
-            choices: [{
-              delta: {
-                tool_calls: [{
-                  index: 0,
-                  id: 'call_123',
-                  function: { name: 'get_large_data', arguments: '{}' }
-                }]
-              }
-            }]
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: 'call_123',
+                      function: { name: 'get_large_data', arguments: '{}' },
+                    },
+                  ],
+                },
+              },
+            ],
           });
           onDone();
           return '';
@@ -3082,22 +3314,26 @@ describe('toolsStreaming', () => {
         createChatCompletionChunk.mockReturnValue({
           id: 'chatcmpl-123',
           object: 'chat.completion.chunk',
-          choices: [{
-            delta: {
-              tool_calls: [{
-                id: 'call_123',
-                type: 'function',
-                function: { name: 'get_large_data', arguments: '{}' }
-              }]
-            }
-          }]
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    id: 'call_123',
+                    type: 'function',
+                    function: { name: 'get_large_data', arguments: '{}' },
+                  },
+                ],
+              },
+            },
+          ],
         });
 
         // Large tool output (10KB)
         const largeOutput = 'x'.repeat(10000);
         executeToolCall.mockResolvedValue({
           name: 'get_large_data',
-          output: largeOutput
+          output: largeOutput,
         });
 
         await handleToolsStreaming({
@@ -3106,7 +3342,7 @@ describe('toolsStreaming', () => {
           config: mockConfig,
           res: mockRes,
           req: mockReq,
-          persistence: mockPersistence
+          persistence: mockPersistence,
         });
 
         // Should handle large output without issues
@@ -3117,10 +3353,10 @@ describe('toolsStreaming', () => {
             tool_output: {
               tool_call_id: 'call_123',
               name: 'get_large_data',
-              output: largeOutput
-            }
+              output: largeOutput,
+            },
           },
-          prefix: 'iter'
+          prefix: 'iter',
         });
 
         // Tool outputs should NOT be appended to message content
@@ -3132,7 +3368,7 @@ describe('toolsStreaming', () => {
         const body = {
           messages: [{ role: 'user', content: 'Search for special text' }],
           stream: true,
-          tools: [{ type: 'function', function: { name: 'search' } }]
+          tools: [{ type: 'function', function: { name: 'search' } }],
         };
         const bodyIn = {};
 
@@ -3143,27 +3379,33 @@ describe('toolsStreaming', () => {
           body: {
             on: jest.fn((event, handler) => {
               if (event === 'data') {
-                const chunk = Buffer.from(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"search","arguments":"${specialArgs.replace(/"/g, '\\"')}"}}]}}]}\n\n`);
+                const chunk = Buffer.from(
+                  `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"search","arguments":"${specialArgs.replace(/"/g, '\\"')}"}}]}}]}\n\n`
+                );
                 handler(chunk);
               } else if (event === 'end') {
                 handler();
               }
-            })
-          }
+            }),
+          },
         };
 
         createOpenAIRequest.mockResolvedValue(mockUpstream);
         parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
           onChunk({
-            choices: [{
-              delta: {
-                tool_calls: [{
-                  index: 0,
-                  id: 'call_123',
-                  function: { name: 'search', arguments: specialArgs }
-                }]
-              }
-            }]
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: 'call_123',
+                      function: { name: 'search', arguments: specialArgs },
+                    },
+                  ],
+                },
+              },
+            ],
           });
           onDone();
           return '';
@@ -3172,20 +3414,24 @@ describe('toolsStreaming', () => {
         createChatCompletionChunk.mockReturnValue({
           id: 'chatcmpl-123',
           object: 'chat.completion.chunk',
-          choices: [{
-            delta: {
-              tool_calls: [{
-                id: 'call_123',
-                type: 'function',
-                function: { name: 'search', arguments: specialArgs }
-              }]
-            }
-          }]
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    id: 'call_123',
+                    type: 'function',
+                    function: { name: 'search', arguments: specialArgs },
+                  },
+                ],
+              },
+            },
+          ],
         });
 
         executeToolCall.mockResolvedValue({
           name: 'search',
-          output: 'Found results with special characters'
+          output: 'Found results with special characters',
         });
 
         await handleToolsStreaming({
@@ -3194,7 +3440,7 @@ describe('toolsStreaming', () => {
           config: mockConfig,
           res: mockRes,
           req: mockReq,
-          persistence: mockPersistence
+          persistence: mockPersistence,
         });
 
         // Should handle special characters in arguments correctly
@@ -3212,7 +3458,7 @@ describe('toolsStreaming', () => {
         const body = {
           messages: [{ role: 'user', content: 'Keep calling tools' }],
           stream: true,
-          tools: [{ type: 'function', function: { name: 'infinite_tool' } }]
+          tools: [{ type: 'function', function: { name: 'infinite_tool' } }],
         };
         const bodyIn = {};
 
@@ -3226,27 +3472,33 @@ describe('toolsStreaming', () => {
             body: {
               on: jest.fn((event, handler) => {
                 if (event === 'data') {
-                  const chunk = Buffer.from(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_${iterationCount}","function":{"name":"loop_tool","arguments":"{}"}}]}}]}\n\n`);
+                  const chunk = Buffer.from(
+                    `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_${iterationCount}","function":{"name":"loop_tool","arguments":"{}"}}]}}]}\n\n`
+                  );
                   handler(chunk);
                 } else if (event === 'end') {
                   handler();
                 }
-              })
-            }
+              }),
+            },
           });
         });
 
         parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
           onChunk({
-            choices: [{
-              delta: {
-                tool_calls: [{
-                  index: 0,
-                  id: `call_${iterationCount}`,
-                  function: { name: 'loop_tool', arguments: '{}' }
-                }]
-              }
-            }]
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: `call_${iterationCount}`,
+                      function: { name: 'loop_tool', arguments: '{}' },
+                    },
+                  ],
+                },
+              },
+            ],
           });
           onDone();
           return '';
@@ -3255,20 +3507,24 @@ describe('toolsStreaming', () => {
         createChatCompletionChunk.mockImplementation(() => ({
           id: 'chatcmpl-123',
           object: 'chat.completion.chunk',
-          choices: [{
-            delta: {
-              tool_calls: [{
-                id: `call_${iterationCount}`,
-                type: 'function',
-                function: { name: 'loop_tool', arguments: '{}' }
-              }]
-            }
-          }]
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    id: `call_${iterationCount}`,
+                    type: 'function',
+                    function: { name: 'loop_tool', arguments: '{}' },
+                  },
+                ],
+              },
+            },
+          ],
         }));
 
         executeToolCall.mockResolvedValue({
           name: 'loop_tool',
-          output: 'continuing loop...'
+          output: 'continuing loop...',
         });
 
         await handleToolsStreaming({
@@ -3277,7 +3533,7 @@ describe('toolsStreaming', () => {
           config: mockConfig,
           res: mockRes,
           req: mockReq,
-          persistence: mockPersistence
+          persistence: mockPersistence,
         });
 
         // Should stop at MAX_ITERATIONS (10) and not continue infinitely
@@ -3289,7 +3545,7 @@ describe('toolsStreaming', () => {
           res: mockRes,
           model: 'gpt-3.5-turbo',
           event: { content: '\n\n[Maximum iterations reached]' },
-          prefix: 'iter'
+          prefix: 'iter',
         });
       });
 
@@ -3297,7 +3553,7 @@ describe('toolsStreaming', () => {
         const body = {
           messages: [{ role: 'user', content: 'Hello' }],
           stream: true,
-          tools: [{ type: 'function', function: { name: 'test_tool' } }]
+          tools: [{ type: 'function', function: { name: 'test_tool' } }],
         };
         const bodyIn = {};
 
@@ -3312,17 +3568,19 @@ describe('toolsStreaming', () => {
               } else if (event === 'end') {
                 handler();
               }
-            })
-          }
+            }),
+          },
         };
 
         createOpenAIRequest.mockResolvedValue(mockUpstream);
         parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
           onChunk({
-            choices: [{
-              delta: { tool_calls: [] }, // Empty array
-              finish_reason: 'stop'
-            }]
+            choices: [
+              {
+                delta: { tool_calls: [] }, // Empty array
+                finish_reason: 'stop',
+              },
+            ],
           });
           onDone();
           return '';
@@ -3334,7 +3592,7 @@ describe('toolsStreaming', () => {
           config: mockConfig,
           res: mockRes,
           req: mockReq,
-          persistence: mockPersistence
+          persistence: mockPersistence,
         });
 
         // Should handle empty tool calls gracefully
@@ -3347,7 +3605,7 @@ describe('toolsStreaming', () => {
         const body = {
           messages: [{ role: 'user', content: 'Hello' }],
           stream: true,
-          tools: [{ type: 'function', function: { name: 'test_tool' } }]
+          tools: [{ type: 'function', function: { name: 'test_tool' } }],
         };
         const bodyIn = {};
 
@@ -3357,27 +3615,33 @@ describe('toolsStreaming', () => {
             on: jest.fn((event, handler) => {
               if (event === 'data') {
                 // Malformed tool call with invalid JSON arguments
-                const chunk = Buffer.from('data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"test_tool","arguments":"invalid json {"}}]}}]}\n\n');
+                const chunk = Buffer.from(
+                  'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_123","function":{"name":"test_tool","arguments":"invalid json {"}}]}}]}\n\n'
+                );
                 handler(chunk);
               } else if (event === 'end') {
                 handler();
               }
-            })
-          }
+            }),
+          },
         };
 
         createOpenAIRequest.mockResolvedValue(mockUpstream);
         parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
           onChunk({
-            choices: [{
-              delta: {
-                tool_calls: [{
-                  index: 0,
-                  id: 'call_123',
-                  function: { name: 'test_tool', arguments: 'invalid json {' }
-                }]
-              }
-            }]
+            choices: [
+              {
+                delta: {
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: 'call_123',
+                      function: { name: 'test_tool', arguments: 'invalid json {' },
+                    },
+                  ],
+                },
+              },
+            ],
           });
           onDone();
           return '';
@@ -3386,15 +3650,19 @@ describe('toolsStreaming', () => {
         createChatCompletionChunk.mockReturnValue({
           id: 'chatcmpl-123',
           object: 'chat.completion.chunk',
-          choices: [{
-            delta: {
-              tool_calls: [{
-                id: 'call_123',
-                type: 'function',
-                function: { name: 'test_tool', arguments: 'invalid json {' }
-              }]
-            }
-          }]
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    id: 'call_123',
+                    type: 'function',
+                    function: { name: 'test_tool', arguments: 'invalid json {' },
+                  },
+                ],
+              },
+            },
+          ],
         });
 
         // Mock executeToolCall to handle malformed JSON gracefully
@@ -3406,7 +3674,7 @@ describe('toolsStreaming', () => {
           config: mockConfig,
           res: mockRes,
           req: mockReq,
-          persistence: mockPersistence
+          persistence: mockPersistence,
         });
 
         // Should attempt to execute tool despite malformed JSON
@@ -3420,10 +3688,10 @@ describe('toolsStreaming', () => {
             tool_output: {
               tool_call_id: 'call_123',
               name: 'test_tool',
-              output: 'Tool test_tool failed: Invalid JSON in tool arguments'
-            }
+              output: 'Tool test_tool failed: Invalid JSON in tool arguments',
+            },
           },
-          prefix: 'iter'
+          prefix: 'iter',
         });
       });
 
@@ -3431,7 +3699,7 @@ describe('toolsStreaming', () => {
         const body = {
           messages: [{ role: 'user', content: 'Process large history' }],
           stream: true,
-          tools: [{ type: 'function', function: { name: 'process_tool' } }]
+          tools: [{ type: 'function', function: { name: 'process_tool' } }],
         };
         const bodyIn = {};
 
@@ -3446,7 +3714,7 @@ describe('toolsStreaming', () => {
         if (buildConversationMessagesOptimized) {
           buildConversationMessagesOptimized.mockResolvedValue({
             messages: largeHistory,
-            previousResponseId: null
+            previousResponseId: null,
           });
         }
 
@@ -3455,22 +3723,26 @@ describe('toolsStreaming', () => {
           body: {
             on: jest.fn((event, handler) => {
               if (event === 'data') {
-                const chunk = Buffer.from('data: {"choices":[{"delta":{"content":"Processed large history successfully"},"finish_reason":"stop"}]}\n\n');
+                const chunk = Buffer.from(
+                  'data: {"choices":[{"delta":{"content":"Processed large history successfully"},"finish_reason":"stop"}]}\n\n'
+                );
                 handler(chunk);
               } else if (event === 'end') {
                 handler();
               }
-            })
-          }
+            }),
+          },
         };
 
         createOpenAIRequest.mockResolvedValue(mockUpstream);
         parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
           onChunk({
-            choices: [{
-              delta: { content: 'Processed large history successfully' },
-              finish_reason: 'stop'
-            }]
+            choices: [
+              {
+                delta: { content: 'Processed large history successfully' },
+                finish_reason: 'stop',
+              },
+            ],
           });
           onDone();
           return '';
@@ -3482,14 +3754,14 @@ describe('toolsStreaming', () => {
           config: mockConfig,
           res: mockRes,
           req: mockReq,
-          persistence: mockPersistence
+          persistence: mockPersistence,
         });
 
         // Should handle large conversation history
         expect(createOpenAIRequest).toHaveBeenCalledWith(
           mockConfig,
           expect.objectContaining({
-            messages: largeHistory
+            messages: largeHistory,
           }),
           expect.any(Object)
         );
@@ -3517,7 +3789,7 @@ describe('toolsStreaming', () => {
       const body = {
         messages: [{ role: 'user', content: 'Start infinite loop' }],
         stream: true,
-        tools: [{ type: 'function', function: { name: 'loop_tool' } }]
+        tools: [{ type: 'function', function: { name: 'loop_tool' } }],
       };
       const bodyIn = {};
 
@@ -3531,27 +3803,33 @@ describe('toolsStreaming', () => {
           body: {
             on: jest.fn((event, handler) => {
               if (event === 'data') {
-                const chunk = Buffer.from(`data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_${iterationCount}","function":{"name":"loop_tool","arguments":"{}"}}]}}]}\n\n`);
+                const chunk = Buffer.from(
+                  `data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_${iterationCount}","function":{"name":"loop_tool","arguments":"{}"}}]}}]}\n\n`
+                );
                 handler(chunk);
               } else if (event === 'end') {
                 handler();
               }
-            })
-          }
+            }),
+          },
         });
       });
 
       parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
         onChunk({
-          choices: [{
-            delta: {
-              tool_calls: [{
-                index: 0,
-                id: `call_${iterationCount}`,
-                function: { name: 'loop_tool', arguments: '{}' }
-              }]
-            }
-          }]
+          choices: [
+            {
+              delta: {
+                tool_calls: [
+                  {
+                    index: 0,
+                    id: `call_${iterationCount}`,
+                    function: { name: 'loop_tool', arguments: '{}' },
+                  },
+                ],
+              },
+            },
+          ],
         });
         onDone();
         return '';
@@ -3560,20 +3838,24 @@ describe('toolsStreaming', () => {
       createChatCompletionChunk.mockImplementation(() => ({
         id: 'chatcmpl-123',
         object: 'chat.completion.chunk',
-        choices: [{
-          delta: {
-            tool_calls: [{
-              id: `call_${iterationCount}`,
-              type: 'function',
-              function: { name: 'loop_tool', arguments: '{}' }
-            }]
-          }
-        }]
+        choices: [
+          {
+            delta: {
+              tool_calls: [
+                {
+                  id: `call_${iterationCount}`,
+                  type: 'function',
+                  function: { name: 'loop_tool', arguments: '{}' },
+                },
+              ],
+            },
+          },
+        ],
       }));
 
       executeToolCall.mockResolvedValue({
         name: 'loop_tool',
-        output: 'continuing loop...'
+        output: 'continuing loop...',
       });
 
       await handleToolsStreaming({
@@ -3582,7 +3864,7 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // Should stop at MAX_ITERATIONS (10) and not continue infinitely
@@ -3594,14 +3876,14 @@ describe('toolsStreaming', () => {
         res: mockRes,
         model: 'gpt-3.5-turbo',
         event: { content: '\n\n[Maximum iterations reached]' },
-        prefix: 'iter'
+        prefix: 'iter',
       });
     });
 
     test('handles memory efficiently with large streams', async () => {
       const body = {
         messages: [{ role: 'user', content: 'Generate large response' }],
-        stream: true
+        stream: true,
       };
       const bodyIn = {};
 
@@ -3619,7 +3901,9 @@ describe('toolsStreaming', () => {
                 if (chunksSent < totalChunks) {
                   chunksSent++;
                   const content = 'x'.repeat(largeChunkSize);
-                  const chunk = Buffer.from(`data: {"choices":[{"delta":{"content":"${content}"},"finish_reason":null}]}\n\n`);
+                  const chunk = Buffer.from(
+                    `data: {"choices":[{"delta":{"content":"${content}"},"finish_reason":null}]}\n\n`
+                  );
                   handler(chunk);
 
                   // Send next chunk asynchronously to simulate streaming
@@ -3636,8 +3920,8 @@ describe('toolsStreaming', () => {
             } else if (event === 'end') {
               handler();
             }
-          })
-        }
+          }),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
@@ -3654,18 +3938,22 @@ describe('toolsStreaming', () => {
               const content = match[1];
               totalContentReceived += content;
               onChunk({
-                choices: [{
-                  delta: { content },
-                  finish_reason: null
-                }]
+                choices: [
+                  {
+                    delta: { content },
+                    finish_reason: null,
+                  },
+                ],
               });
             }
           } else if (chunkStr.includes('"finish_reason":"stop"')) {
             onChunk({
-              choices: [{
-                delta: {},
-                finish_reason: 'stop'
-              }]
+              choices: [
+                {
+                  delta: {},
+                  finish_reason: 'stop',
+                },
+              ],
             });
             onDone();
           }
@@ -3686,7 +3974,7 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // Should handle large stream without memory issues
@@ -3700,7 +3988,7 @@ describe('toolsStreaming', () => {
 
       const body = {
         messages: [{ role: 'user', content: 'Slow response' }],
-        stream: true
+        stream: true,
       };
       const bodyIn = {};
 
@@ -3712,7 +4000,9 @@ describe('toolsStreaming', () => {
             if (event === 'data') {
               // Simulate very slow response - don't send data immediately
               setTimeout(() => {
-                const chunk = Buffer.from('data: {"choices":[{"delta":{"content":"Slow response"},"finish_reason":"stop"}]}\n\n');
+                const chunk = Buffer.from(
+                  'data: {"choices":[{"delta":{"content":"Slow response"},"finish_reason":"stop"}]}\n\n'
+                );
                 handler(chunk);
               }, 35000); // 35 seconds - longer than 30s timeout
             } else if (event === 'end') {
@@ -3720,8 +4010,8 @@ describe('toolsStreaming', () => {
                 handler();
               }, 35000);
             }
-          })
-        }
+          }),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
@@ -3732,7 +4022,7 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // Fast-forward past timeout
@@ -3744,7 +4034,7 @@ describe('toolsStreaming', () => {
         res: mockRes,
         model: 'gpt-3.5-turbo',
         event: { content: '[Error: Stream timeout - no response from upstream API]' },
-        prefix: 'iter'
+        prefix: 'iter',
       });
 
       expect(mockPersistence.markError).toHaveBeenCalled();
@@ -3755,7 +4045,7 @@ describe('toolsStreaming', () => {
     test('cleans up resources on early termination', async () => {
       const body = {
         messages: [{ role: 'user', content: 'Hello' }],
-        stream: true
+        stream: true,
       };
       const bodyIn = {};
 
@@ -3772,8 +4062,8 @@ describe('toolsStreaming', () => {
             }
           }),
           removeListener: jest.fn(),
-          destroy: jest.fn()
-        }
+          destroy: jest.fn(),
+        },
       };
 
       createOpenAIRequest.mockResolvedValue(mockUpstream);
@@ -3784,7 +4074,7 @@ describe('toolsStreaming', () => {
         config: mockConfig,
         res: mockRes,
         req: mockReq,
-        persistence: mockPersistence
+        persistence: mockPersistence,
       });
 
       // Should handle early termination gracefully

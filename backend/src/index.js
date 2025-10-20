@@ -9,7 +9,9 @@ import { conversationsRouter } from './routes/conversations.js';
 import { providersRouter } from './routes/providers.js';
 import { systemPromptsRouter } from './routes/systemPrompts.js';
 import { imagesRouter } from './routes/images.js';
+import { filesRouter } from './routes/files.js';
 import authRouter from './routes/auth.js';
+import { userSettingsRouter } from './routes/userSettings.js';
 import { requestLogger, errorLogger } from './middleware/logger.js';
 import { logger } from './logger.js';
 
@@ -44,8 +46,10 @@ if (process.env.NODE_ENV === 'production') {
 app.use(healthRouter);
 app.use('/v1/auth', authRouter);
 app.use(imagesRouter);  // Must be before auth-protected routers
+app.use(filesRouter);   // File upload routes
 app.use(conversationsRouter);
 app.use(providersRouter);
+app.use(userSettingsRouter);
 app.use(systemPromptsRouter);
 app.use(chatRouter);
 

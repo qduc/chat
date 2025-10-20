@@ -21,7 +21,7 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
     const padded = padding ? `${base64}${'='.repeat(padding)}` : base64;
     const decoded = window.atob(padded);
     return JSON.parse(decoded);
-  } catch (_error) {
+  } catch {
     return null;
   }
 }
@@ -83,6 +83,10 @@ export function clearTokens(): void {
   // Notify listeners that tokens were cleared
   notifyTokensCleared();
 }
+
+// Note: search API key is now persisted server-side via authenticated endpoints.
+// Frontend storage helpers for tokens remain in this file; search key helpers were
+// moved to the frontend API client to call the backend.
 
 /**
  * Check if a JWT token is expired
@@ -202,15 +206,15 @@ let tokensClearedListeners: TokensClearedListener[] = [];
 
 export function onTokensCleared(listener: TokensClearedListener): () => void {
   tokensClearedListeners.push(listener);
-  
+
   // Return unsubscribe function
   return () => {
-    tokensClearedListeners = tokensClearedListeners.filter(l => l !== listener);
+    tokensClearedListeners = tokensClearedListeners.filter((l) => l !== listener);
   };
 }
 
 function notifyTokensCleared(): void {
-  tokensClearedListeners.forEach(listener => {
+  tokensClearedListeners.forEach((listener) => {
     try {
       listener();
     } catch (error) {

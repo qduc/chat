@@ -65,10 +65,7 @@ function arrangeHttpMocks() {
       return Promise.resolve(
         createHttpResponse({
           provider: { id: 'openai' },
-          models: [
-            { id: 'gpt-4o' },
-            { id: 'gpt-4o-mini' },
-          ],
+          models: [{ id: 'gpt-4o' }, { id: 'gpt-4o-mini' }],
         })
       );
     }
@@ -101,7 +98,9 @@ describe('useChat hook', () => {
       });
     }
     if (typeof (global.crypto as any).randomUUID !== 'function') {
-      (global.crypto as any).randomUUID = jest.fn(() => `uuid-${Math.random().toString(16).slice(2)}`);
+      (global.crypto as any).randomUUID = jest.fn(
+        () => `uuid-${Math.random().toString(16).slice(2)}`
+      );
     }
   });
 
@@ -312,9 +311,11 @@ describe('useChat hook', () => {
       await result.current.sendMessage();
     });
 
-    expect(mockChat.sendMessage).toHaveBeenLastCalledWith(expect.objectContaining({
-      providerId: 'provider-b',
-    }));
+    expect(mockChat.sendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        providerId: 'provider-b',
+      })
+    );
 
     await act(async () => {
       await result.current.selectConversation('conv-1');
@@ -332,9 +333,11 @@ describe('useChat hook', () => {
       await result.current.sendMessage();
     });
 
-    expect(mockChat.sendMessage).toHaveBeenLastCalledWith(expect.objectContaining({
-      providerId: 'provider-b',
-    }));
+    expect(mockChat.sendMessage).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        providerId: 'provider-b',
+      })
+    );
 
     expect(conv2Calls).toBe(2);
   });
@@ -392,7 +395,9 @@ describe('useChat hook', () => {
 
     await waitFor(() => {
       expect(result.current.error).toBe('Upstream provider error (status 401): Unauthorized');
-      expect(result.current.pending.error).toBe('Upstream provider error (status 401): Unauthorized');
+      expect(result.current.pending.error).toBe(
+        'Upstream provider error (status 401): Unauthorized'
+      );
     });
   });
 

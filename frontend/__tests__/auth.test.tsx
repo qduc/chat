@@ -3,7 +3,14 @@
  */
 
 import React from 'react';
-import { act, render, screen, fireEvent, waitFor, waitForElementToBeRemoved } from '@testing-library/react';
+import {
+  act,
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  waitForElementToBeRemoved,
+} from '@testing-library/react';
 import '@testing-library/jest-dom';
 
 // Mock token functions
@@ -24,7 +31,7 @@ jest.mock('../lib/storage', () => {
   };
 });
 
-type AuthApi = typeof import('../lib/api')['auth'];
+type AuthApi = (typeof import('../lib/api'))['auth'];
 
 // Mock verification helper and expose the same auth object everywhere.
 jest.mock('../lib/api', () => {
@@ -34,7 +41,9 @@ jest.mock('../lib/api', () => {
     login: jest.fn(),
     logout: jest.fn(),
     getProfile: jest.fn(),
-    verifySession: jest.fn(() => Promise.resolve({ valid: false, user: null, reason: 'missing-token' as const })),
+    verifySession: jest.fn(() =>
+      Promise.resolve({ valid: false, user: null, reason: 'missing-token' as const })
+    ),
   } as jest.Mocked<AuthApi>;
   return {
     ...actual,
@@ -69,11 +78,7 @@ function AuthButtonWithModal() {
           setOpen(true);
         }}
       />
-      <AuthModal
-        open={open}
-        onClose={() => setOpen(false)}
-        initialMode={mode}
-      />
+      <AuthModal open={open} onClose={() => setOpen(false)} initialMode={mode} />
     </>
   );
 }
@@ -82,11 +87,7 @@ async function renderWithAuth(children: React.ReactNode) {
   let utils: ReturnType<typeof render>;
 
   await act(async () => {
-    utils = render(
-      <AuthProvider>
-        {children}
-      </AuthProvider>
-    );
+    utils = render(<AuthProvider>{children}</AuthProvider>);
   });
 
   const loadingNode = screen.queryByText('Loading...');
@@ -105,19 +106,11 @@ function TestAuthComponent() {
 
   return (
     <div>
-      <div data-testid="user-state">
-        {user ? `Logged in as ${user.email}` : 'Not logged in'}
-      </div>
-      <button
-        onClick={() => login('test@example.com', 'password')}
-        data-testid="login-btn"
-      >
+      <div data-testid="user-state">{user ? `Logged in as ${user.email}` : 'Not logged in'}</div>
+      <button onClick={() => login('test@example.com', 'password')} data-testid="login-btn">
         Login
       </button>
-      <button
-        onClick={logout}
-        data-testid="logout-btn"
-      >
+      <button onClick={logout} data-testid="logout-btn">
         Logout
       </button>
     </div>
@@ -180,7 +173,7 @@ describe('Authentication System', () => {
           displayName: 'Test User',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-        }
+        },
       });
 
       await renderWithAuth(<TestAuthComponent />);
@@ -250,10 +243,10 @@ describe('Authentication System', () => {
       );
 
       fireEvent.change(screen.getByLabelText('Email'), {
-        target: { value: 'test@example.com' }
+        target: { value: 'test@example.com' },
       });
       fireEvent.change(screen.getByLabelText('Password'), {
-        target: { value: 'password123' }
+        target: { value: 'password123' },
       });
 
       const submitButton = screen.getByRole('button', { name: 'Sign in' });
@@ -280,13 +273,13 @@ describe('Authentication System', () => {
       await renderWithAuth(<RegisterForm />);
 
       fireEvent.change(screen.getByLabelText('Email'), {
-        target: { value: 'test@example.com' }
+        target: { value: 'test@example.com' },
       });
       fireEvent.change(screen.getByLabelText('Password'), {
-        target: { value: 'password123' }
+        target: { value: 'password123' },
       });
       fireEvent.change(screen.getByLabelText('Confirm Password'), {
-        target: { value: 'different' }
+        target: { value: 'different' },
       });
 
       fireEvent.click(screen.getByRole('button', { name: 'Create account' }));
@@ -300,13 +293,13 @@ describe('Authentication System', () => {
       await renderWithAuth(<RegisterForm />);
 
       fireEvent.change(screen.getByLabelText('Email'), {
-        target: { value: 'test@example.com' }
+        target: { value: 'test@example.com' },
       });
       fireEvent.change(screen.getByLabelText('Password'), {
-        target: { value: 'short' }
+        target: { value: 'short' },
       });
       fireEvent.change(screen.getByLabelText('Confirm Password'), {
-        target: { value: 'short' }
+        target: { value: 'short' },
       });
 
       fireEvent.click(screen.getByRole('button', { name: 'Create account' }));

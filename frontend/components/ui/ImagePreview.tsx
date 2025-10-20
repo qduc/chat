@@ -16,16 +16,22 @@ interface SelectedPreview {
   src: string;
 }
 
-export function ImagePreview({ images, uploadProgress, onRemove, className = '' }: ImagePreviewProps) {
+export function ImagePreview({
+  images,
+  uploadProgress,
+  onRemove,
+  className = '',
+}: ImagePreviewProps) {
   const [selectedImage, setSelectedImage] = React.useState<SelectedPreview | null>(null);
 
   const handleClosePreview = () => setSelectedImage(null);
 
   const getProgressForImage = (imageId: string) => {
-    return uploadProgress?.find(p => p.imageId === imageId);
+    return uploadProgress?.find((p) => p.imageId === imageId);
   };
 
-  if (images.length === 0) {  // ← Move after hooks
+  if (images.length === 0) {
+    // ← Move after hooks
     return null;
   }
 
@@ -42,31 +48,33 @@ export function ImagePreview({ images, uploadProgress, onRemove, className = '' 
           />
         ))}
       </div>
-      {selectedImage && typeof document !== 'undefined' && ReactDOM.createPortal(
-        <div
-          className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={handleClosePreview}
-          role="dialog"
-          aria-modal="true"
-        >
-          <div className="relative max-h-full max-w-full" onClick={(e) => e.stopPropagation()}>
-            <button
-              type="button"
-              onClick={handleClosePreview}
-              className="absolute -top-3 -right-3 md:-top-4 md:-right-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-lg hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
-              aria-label="Close image preview"
-            >
-              <X className="h-4 w-4" />
-            </button>
-            <img
-              src={selectedImage.src}
-              alt={selectedImage.image.alt || selectedImage.image.name}
-              className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
-            />
-          </div>
-        </div>,
-        document.body
-      )}
+      {selectedImage &&
+        typeof document !== 'undefined' &&
+        ReactDOM.createPortal(
+          <div
+            className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={handleClosePreview}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="relative max-h-full max-w-full" onClick={(e) => e.stopPropagation()}>
+              <button
+                type="button"
+                onClick={handleClosePreview}
+                className="absolute -top-3 -right-3 md:-top-4 md:-right-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-lg hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                aria-label="Close image preview"
+              >
+                <X className="h-4 w-4" />
+              </button>
+              <img
+                src={selectedImage.src}
+                alt={selectedImage.image.alt || selectedImage.image.name}
+                className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
+              />
+            </div>
+          </div>,
+          document.body
+        )}
     </>
   );
 }
@@ -118,11 +126,7 @@ function PreviewItem({ image, progress, onRemove, onPreview }: PreviewItemProps)
         <div className="absolute inset-0 flex items-center justify-center bg-black/20">
           <div className="flex flex-col items-center gap-1">
             <Loader2 className="w-4 h-4 text-white animate-spin" />
-            {progress && (
-              <div className="text-xs text-white font-medium">
-                {progress.progress}%
-              </div>
-            )}
+            {progress && <div className="text-xs text-white font-medium">{progress.progress}%</div>}
           </div>
         </div>
       )}
@@ -182,9 +186,7 @@ export function ImageUploadZone({
 
     if (disabled) return;
 
-    const files = Array.from(e.dataTransfer.files).filter(file =>
-      file.type.startsWith('image/')
-    );
+    const files = Array.from(e.dataTransfer.files).filter((file) => file.type.startsWith('image/'));
 
     if (files.length > 0) {
       onFiles(files.slice(0, maxFiles));
@@ -266,21 +268,27 @@ export function ImageUploadZone({
 
   return (
     <>
-      {fullPage && dragOver && ReactDOM.createPortal(
-        <div
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-auto"
-          style={{ backgroundColor: 'rgba(2,6,23,0.35)' }}
-        >
-          <div className="text-center p-6 rounded-lg bg-white/90 dark:bg-neutral-900/90 border border-slate-200 dark:border-neutral-700 shadow-lg">
-            <div className="text-lg font-medium text-slate-900 dark:text-slate-100">Drop images here</div>
-            <div className="text-sm text-slate-600 dark:text-slate-300 mt-1">They will be uploaded and attached to your message</div>
-          </div>
-        </div>,
-        document.body,
-      )}
+      {fullPage &&
+        dragOver &&
+        ReactDOM.createPortal(
+          <div
+            onDrop={handleDrop}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-auto"
+            style={{ backgroundColor: 'rgba(2,6,23,0.35)' }}
+          >
+            <div className="text-center p-6 rounded-lg bg-white/90 dark:bg-neutral-900/90 border border-slate-200 dark:border-neutral-700 shadow-lg">
+              <div className="text-lg font-medium text-slate-900 dark:text-slate-100">
+                Drop images here
+              </div>
+              <div className="text-sm text-slate-600 dark:text-slate-300 mt-1">
+                They will be uploaded and attached to your message
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
 
       <div
         onDrop={!fullPage ? handleDrop : undefined}

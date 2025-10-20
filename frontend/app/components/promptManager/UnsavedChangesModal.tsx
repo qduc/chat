@@ -17,7 +17,7 @@ export default function UnsavedChangesModal({
   onDiscard,
   onSave,
   onSaveAsNew,
-  onCancel
+  onCancel,
 }: UnsavedChangesModalProps) {
   if (!isOpen) return null;
 
@@ -26,13 +26,16 @@ export default function UnsavedChangesModal({
   const previewId = 'unsaved-changes-preview';
 
   return (
-    <div className="fixed inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm flex items-center justify-center z-50" role="presentation">
+    <div
+      className="fixed inset-0 bg-black/40 dark:bg-black/60 backdrop-blur-sm flex items-center justify-center z-50"
+      role="presentation"
+    >
       <div
         className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-  aria-describedby={`${descriptionId} ${previewId}`}
+        aria-describedby={`${descriptionId} ${previewId}`}
         tabIndex={-1}
       >
         {/* Header */}
@@ -56,10 +59,7 @@ export default function UnsavedChangesModal({
           >
             <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Preview:</div>
             <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-              {inlineContent.length > 200
-                ? `${inlineContent.substring(0, 200)}...`
-                : inlineContent
-              }
+              {inlineContent.length > 200 ? `${inlineContent.substring(0, 200)}...` : inlineContent}
             </div>
           </div>
         </div>

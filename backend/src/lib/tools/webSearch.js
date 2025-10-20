@@ -1,5 +1,6 @@
 import { createTool } from './baseTool.js';
 import { logger } from '../../logger.js';
+import { getUserSetting } from '../../db/userSettings.js';
 
 const TOOL_NAME = 'web_search';
 
@@ -122,10 +123,24 @@ async function handler({
   time_range,
   start_date,
   end_date
-}) {
-  const apiKey = process.env.TAVILY_API_KEY;
+}, context = {}) {
+  // context may include userId when invoked from server orchestration
+  const userId = context?.userId || null;
+  let apiKey = null;
+  if (userId) {
+    try {
+      // Use per-tool key name for Tavily
+      const row = getUserSetting(userId, 'tavily_api_key');
+      if (row && row.value) apiKey = row.value;
+    } catch (err) {
+      logger.warn('Failed to read user tavily_api_key from DB', { userId, err: err?.message || err });
+    }
+  }
   if (!apiKey) {
-    throw new Error('TAVILY_API_KEY environment variable is not set');
+    apiKey = process.env.TAVILY_API_KEY;
+  }
+  if (!apiKey) {
+    throw new Error('Tavily API key is not configured (no per-user key or TAVILY_API_KEY env var)');
   }
 
   const url = 'https://api.tavily.com/search';

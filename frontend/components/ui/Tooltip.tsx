@@ -34,13 +34,8 @@ export default function Tooltip({
   const [open, setOpen] = useState(false);
 
   const middleware = useMemo(
-    () => [
-      offset(8),
-      flip({ padding: 8 }),
-      shift({ padding: 8 }),
-      arrow({ element: arrowRef }),
-    ],
-    [],
+    () => [offset(8), flip({ padding: 8 }), shift({ padding: 8 }), arrow({ element: arrowRef })],
+    []
   );
 
   const {
@@ -73,11 +68,7 @@ export default function Tooltip({
 
   return (
     <>
-      <div
-        ref={refs.setReference}
-        className="inline-flex"
-        {...getReferenceProps()}
-      >
+      <div ref={refs.setReference} className="inline-flex" {...getReferenceProps()}>
         {children}
       </div>
       {open && content && (

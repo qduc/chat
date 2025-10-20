@@ -1,11 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextResponse } from 'next/server';
 
 export function GET() {
   return NextResponse.json(
     {
-      status: "ok",
+      status: 'ok',
       timestamp: new Date().toISOString(),
     },
-    { headers: { "Cache-Control": "no-store" } },
+    { headers: { 'Cache-Control': 'no-store' } }
   );
 }

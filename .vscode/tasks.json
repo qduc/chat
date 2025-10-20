@@ -9,6 +9,30 @@
       "problemMatcher": []
     },
     {
+      "label": "Restart docker dev server",
+      "type": "shell",
+      "command": "./dev.sh restart",
+      "problemMatcher": []
+    },
+    {
+      "label": "Build",
+      "type": "shell",
+      "command": "./dev.sh build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Tail log backend",
+      "type": "shell",
+      "command": "./dev.sh logs backend -f --tail 100",
+      "problemMatcher": []
+    },
+    {
+      "label": "Tail log frontend",
+      "type": "shell",
+      "command": "./dev.sh logs frontend -f --tail 100",
+      "problemMatcher": []
+    },
+    {
       "label": "Backend: dev",
       "type": "shell",
       "command": "npm --prefix backend run dev",

@@ -10,7 +10,7 @@ import {
   useDismiss,
   useRole,
   useInteractions,
-  FloatingFocusManager
+  FloatingFocusManager,
 } from '@floating-ui/react';
 
 type Option = { value: string; label: string };
@@ -32,38 +32,28 @@ export function IconSelect({
   value,
   onChange,
   options,
-  className = ''
+  className = '',
 }: IconSelectProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const selectedOption = options.find(o => o.value === value);
+  const selectedOption = options.find((o) => o.value === value);
 
   const { refs, floatingStyles, context, isPositioned } = useFloating({
     open: isOpen,
     onOpenChange: setIsOpen,
     strategy: 'fixed',
     transform: false,
-    middleware: [
-      offset(4),
-      flip(),
-      shift({ padding: 8 })
-    ],
+    middleware: [offset(4), flip(), shift({ padding: 8 })],
     whileElementsMounted: (reference, floating, update) =>
-      autoUpdate(reference, floating, update, { animationFrame: true })
+      autoUpdate(reference, floating, update, { animationFrame: true }),
   });
 
   const click = useClick(context);
   const dismiss = useDismiss(context);
   const role = useRole(context, { role: 'listbox' });
 
-  const { getReferenceProps, getFloatingProps } = useInteractions([
-    click,
-    dismiss,
-    role
-  ]);
-
+  const { getReferenceProps, getFloatingProps } = useInteractions([click, dismiss, role]);
 
   const buttonClass = `rounded-lg px-3 py-1.5 text-sm bg-transparent hover:bg-slate-100 dark:hover:bg-neutral-800 border-none text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-pointer flex items-center justify-between gap-2 min-w-0 ${className}`;
-
 
   return (
     <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
@@ -91,7 +81,7 @@ export function IconSelect({
               minWidth: '120px',
               maxHeight: '240px',
               overflowY: 'auto',
-              visibility: isPositioned ? 'visible' : 'hidden'
+              visibility: isPositioned ? 'visible' : 'hidden',
             }}
             className={`py-1 bg-white dark:bg-neutral-900 rounded-lg shadow-lg backdrop-blur-lg z-[9999] ${isPositioned ? 'transition-opacity duration-150' : 'transition-none'}`}
             {...getFloatingProps()}
@@ -108,7 +98,7 @@ export function IconSelect({
                     : 'text-slate-700 dark:text-slate-300'
                 }`}
                 style={{
-                  border: 'none'
+                  border: 'none',
                 }}
                 onClick={() => {
                   onChange(option.value);

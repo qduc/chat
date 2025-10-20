@@ -1,10 +1,29 @@
 import { useEffect, useRef, useState, useMemo } from 'react';
-import { Send, Loader2, Gauge, Wrench, Zap, ImagePlus, Search, Plus, Globe } from 'lucide-react';
+import {
+  Send,
+  Loader2,
+  Gauge,
+  Wrench,
+  Zap,
+  ImagePlus,
+  FileText,
+  Globe,
+  Paperclip,
+} from 'lucide-react';
 import type { PendingState } from '@/hooks/useChat';
-import { images as imageUtils, supportsReasoningControls, type ImageAttachment, type ImageUploadProgress } from '../lib';
+import {
+  images as imageUtils,
+  files as filesApi,
+  supportsReasoningControls,
+  type ImageAttachment,
+  type ImageUploadProgress,
+  type FileAttachment,
+  type FileUploadProgress,
+} from '../lib';
 import Toggle from './ui/Toggle';
 import QualitySlider from './ui/QualitySlider';
 import { ImagePreview, ImageUploadZone } from './ui/ImagePreview';
+import { FilePreview } from './ui/FilePreview';
 import Tooltip from './ui/Tooltip';
 import type { QualityLevel } from './ui/QualitySlider';
 
@@ -26,6 +45,8 @@ interface MessageInputProps {
   modelCapabilities?: Record<string, any>; // Model capabilities from provider
   images?: ImageAttachment[];
   onImagesChange?: (images: ImageAttachment[]) => void;
+  files?: FileAttachment[];
+  onFilesChange?: (files: FileAttachment[]) => void;
 }
 
 export function MessageInput({
@@ -45,18 +66,26 @@ export function MessageInput({
   modelCapabilities = {},
   images = [],
   onImagesChange,
+  files = [],
+  onFilesChange,
 }: MessageInputProps) {
   // ===== REFS =====
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const toolsDropdownRef = useRef<HTMLDivElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const attachDropdownRef = useRef<HTMLDivElement | null>(null);
 
   // ===== STATE =====
   const [toolsOpen, setToolsOpen] = useState(false);
-  const [availableTools, setAvailableTools] = useState<{ name: string; description?: string }[]>([]);
+  const [availableTools, setAvailableTools] = useState<{ name: string; description?: string }[]>(
+    []
+  );
   const [toolFilter, setToolFilter] = useState('');
   const [localSelected, setLocalSelected] = useState<string[]>(enabledTools);
-  const [uploadProgress, setUploadProgress] = useState<ImageUploadProgress[]>([]);
+  const [imageUploadProgress, setImageUploadProgress] = useState<ImageUploadProgress[]>([]);
+  const [fileUploadProgress, setFileUploadProgress] = useState<FileUploadProgress[]>([]);
+  const [attachOpen, setAttachOpen] = useState(false);
 
   // ===== COMPUTED VALUES =====
   // Check if both search tools are enabled
@@ -101,34 +130,59 @@ export function MessageInput({
     }
   }, [toolsOpen]);
 
+  // Click outside to close attach dropdown
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (attachDropdownRef.current && !attachDropdownRef.current.contains(event.target as Node)) {
+        setAttachOpen(false);
+      }
+    };
+
+    if (attachOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [attachOpen]);
+
   // Load tool specs for the selector UI
   useEffect(() => {
     let mounted = true;
-    import('../lib/api').then(mod => {
-      const apiTools = (mod as any).tools;
-      if (!apiTools || typeof apiTools.getToolSpecs !== 'function') {
-        if (mounted) setAvailableTools([]);
-        return;
-      }
-
-      apiTools.getToolSpecs()
-        .then((res: any) => {
-          if (!mounted) return;
-          const specs = Array.isArray(res?.tools) ? res.tools : [];
-          const names = Array.isArray(res?.available_tools) ? res.available_tools : [];
-
-          const tools = specs.length > 0
-            ? specs.map((t: any) => ({ name: t.function?.name || t.name, description: t.function?.description || t.description }))
-            : names.map((n: string) => ({ name: n, description: undefined }));
-
-          setAvailableTools(tools);
-        })
-        .catch(() => {
+    import('../lib/api')
+      .then((mod) => {
+        const apiTools = (mod as any).tools;
+        if (!apiTools || typeof apiTools.getToolSpecs !== 'function') {
           if (mounted) setAvailableTools([]);
-        });
-    }).catch(() => { if (mounted) setAvailableTools([]); });
+          return;
+        }
 
-    return () => { mounted = false; };
+        apiTools
+          .getToolSpecs()
+          .then((res: any) => {
+            if (!mounted) return;
+            const specs = Array.isArray(res?.tools) ? res.tools : [];
+            const names = Array.isArray(res?.available_tools) ? res.available_tools : [];
+
+            const tools =
+              specs.length > 0
+                ? specs.map((t: any) => ({
+                    name: t.function?.name || t.name,
+                    description: t.function?.description || t.description,
+                  }))
+                : names.map((n: string) => ({ name: n, description: undefined }));
+
+            setAvailableTools(tools);
+          })
+          .catch(() => {
+            if (mounted) setAvailableTools([]);
+          });
+      })
+      .catch(() => {
+        if (mounted) setAvailableTools([]);
+      });
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   // ===== EVENT HANDLERS =====
@@ -147,7 +201,7 @@ export function MessageInput({
     const items = Array.from(event.clipboardData?.items || []);
     const files: File[] = [];
 
-    items.forEach(item => {
+    items.forEach((item) => {
       if (item.kind === 'file') {
         const file = item.getAsFile();
         if (file && file.type.startsWith('image/')) {
@@ -158,7 +212,7 @@ export function MessageInput({
 
     if (files.length === 0) {
       const fileList = Array.from(event.clipboardData?.files || []);
-      fileList.forEach(file => {
+      fileList.forEach((file) => {
         if (file.type.startsWith('image/')) {
           files.push(file);
         }
@@ -172,11 +226,11 @@ export function MessageInput({
   };
 
   // Image handling
-  const handleImageFiles = async (files: File[]) => {
+  const handleImageFiles = async (imageFiles: File[]) => {
     if (!onImagesChange || !images) return;
 
     try {
-      const uploadedImages = await imageUtils.uploadImages(files, setUploadProgress);
+      const uploadedImages = await imageUtils.uploadImages(imageFiles, setImageUploadProgress);
       onImagesChange([...images, ...uploadedImages]);
     } catch (error) {
       console.error('Image upload failed:', error);
@@ -187,22 +241,53 @@ export function MessageInput({
   const handleRemoveImage = (imageId: string) => {
     if (!onImagesChange || !images) return;
 
-    const imageToRemove = images.find(img => img.id === imageId);
+    const imageToRemove = images.find((img) => img.id === imageId);
     if (imageToRemove) {
       // Revoke blob URL to free memory
       imageUtils.revokePreviewUrl(imageToRemove.url);
-      onImagesChange(images.filter(img => img.id !== imageId));
+      onImagesChange(images.filter((img) => img.id !== imageId));
     }
   };
 
   const handleImageUploadClick = () => {
+    imageInputRef.current?.click();
+  };
+
+  const handleImageInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const imageFiles = Array.from(e.target.files || []);
+    if (imageFiles.length > 0) {
+      handleImageFiles(imageFiles);
+    }
+    // Reset input value so same file can be selected again
+    e.target.value = '';
+  };
+
+  // File handling
+  const handleFileFiles = async (textFiles: File[]) => {
+    if (!onFilesChange || !files) return;
+
+    try {
+      const uploadedFiles = await filesApi.uploadFiles(textFiles, setFileUploadProgress);
+      onFilesChange([...files, ...uploadedFiles]);
+    } catch (error) {
+      console.error('File upload failed:', error);
+      // TODO: Show error toast/notification
+    }
+  };
+
+  const handleRemoveFile = (fileId: string) => {
+    if (!onFilesChange || !files) return;
+    onFilesChange(files.filter((f) => f.id !== fileId));
+  };
+
+  const handleFileUploadClick = () => {
     fileInputRef.current?.click();
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length > 0) {
-      handleImageFiles(files);
+    const textFiles = Array.from(e.target.files || []);
+    if (textFiles.length > 0) {
+      handleFileFiles(textFiles);
     }
     // Reset input value so same file can be selected again
     e.target.value = '';
@@ -218,7 +303,7 @@ export function MessageInput({
       next = [...new Set([...localSelected, ...searchTools])];
     } else {
       // Remove both search tools
-      next = localSelected.filter(t => !searchTools.includes(t));
+      next = localSelected.filter((t) => !searchTools.includes(t));
     }
 
     setLocalSelected(next);
@@ -236,48 +321,122 @@ export function MessageInput({
     >
       <form
         className=""
-        onSubmit={e => { e.preventDefault(); if (pending.streaming) onStop(); else onSend(); }}
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (pending.streaming) onStop();
+          else onSend();
+        }}
       >
         <div className="px-2">
           <div className="relative rounded-2xl bg-white/95 dark:bg-neutral-900/95 border border-slate-200 dark:border-neutral-700 shadow-xl transition-shadow duration-200">
-
             {/* ===== IMAGE PREVIEWS ===== */}
             {images.length > 0 && (
               <div className="p-4 pb-2 border-b border-slate-200 dark:border-neutral-700">
                 <ImagePreview
                   images={images}
-                  uploadProgress={uploadProgress}
+                  uploadProgress={imageUploadProgress}
                   onRemove={onImagesChange ? handleRemoveImage : undefined}
                 />
               </div>
             )}
 
-            {/* ===== TEXT INPUT WITH IMAGE UPLOAD ===== */}
+            {/* ===== FILE PREVIEWS ===== */}
+            {files.length > 0 && (
+              <div className="p-4 pb-2 border-b border-slate-200 dark:border-neutral-700">
+                <FilePreview
+                  files={files}
+                  uploadProgress={fileUploadProgress}
+                  onRemove={onFilesChange ? handleRemoveFile : undefined}
+                />
+              </div>
+            )}
+
+            {/* ===== TEXT INPUT WITH IMAGE/FILE UPLOAD ===== */}
             <div className="flex items-start gap-2 p-4">
-              {/* Image upload button */}
-              {onImagesChange && (
-                <Tooltip content="Upload images">
-                  <button
-                    type="button"
-                    onClick={handleImageUploadClick}
-                    disabled={pending.streaming}
-                    className={`flex-shrink-0 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${images.length > 0
-                      ? 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20'
-                      : 'text-slate-500 dark:text-slate-400'
+              {/* Attach button */}
+              {(onImagesChange || onFilesChange) && (
+                <div className="relative" ref={attachDropdownRef}>
+                  {attachOpen ? (
+                    <button
+                      type="button"
+                      onClick={() => setAttachOpen(!attachOpen)}
+                      disabled={pending.streaming}
+                      className={`flex-shrink-0 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${
+                        images.length > 0 || files.length > 0
+                          ? 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20'
+                          : 'text-slate-500 dark:text-slate-400'
                       }`}
-                    aria-label="Add Images"
-                  >
+                      aria-label="Attach Files"
+                    >
+                      <Paperclip className="w-5 h-5" />
+                    </button>
+                  ) : (
+                    <Tooltip content="Attach files">
+                      <button
+                        type="button"
+                        onClick={() => setAttachOpen(!attachOpen)}
+                        disabled={pending.streaming}
+                        className={`flex-shrink-0 p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed ${
+                          images.length > 0 || files.length > 0
+                            ? 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-900/20'
+                            : 'text-slate-500 dark:text-slate-400'
+                        }`}
+                        aria-label="Attach Files"
+                      >
+                        <Paperclip className="w-5 h-5" />
+                      </button>
+                    </Tooltip>
+                  )}
+                  {attachOpen && (
+                    <div className="absolute bottom-full mb-2 left-0 w-48 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 shadow-xl rounded-lg p-2 z-50">
+                      {onImagesChange && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAttachOpen(false);
+                            handleImageUploadClick();
+                          }}
+                          className="w-full text-left p-2 rounded-md hover:bg-slate-50 dark:hover:bg-neutral-800 text-sm flex items-center"
+                        >
+                          <ImagePlus className="w-4 h-4 mr-2" /> Upload Image
+                        </button>
+                      )}
+                      {onFilesChange && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAttachOpen(false);
+                            handleFileUploadClick();
+                          }}
+                          className="w-full text-left p-2 rounded-md hover:bg-slate-50 dark:hover:bg-neutral-800 text-sm flex items-center"
+                        >
+                          <FileText className="w-4 h-4 mr-2" /> Upload File
+                        </button>
+                      )}
+                    </div>
+                  )}
+                  {/* Hidden inputs */}
+                  {onImagesChange && (
                     <input
-                      ref={fileInputRef}
+                      ref={imageInputRef}
                       type="file"
                       accept="image/*"
                       multiple
                       className="hidden"
+                      onChange={handleImageInputChange}
+                    />
+                  )}
+                  {onFilesChange && (
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".js,.jsx,.ts,.tsx,.py,.rb,.java,.cpp,.go,.html,.css,.scss,.json,.xml,.yaml,.yml,.md,.txt,.csv,.log,.sh,.bash,.sql,.graphql"
+                      multiple
+                      className="hidden"
                       onChange={handleFileInputChange}
                     />
-                    <ImagePlus className="w-5 h-5" />
-                  </button>
-                </Tooltip>
+                  )}
+                </div>
               )}
 
               {/* Text input */}
@@ -286,7 +445,7 @@ export function MessageInput({
                 className="flex-1 resize-none bg-transparent border-0 outline-none text-sm placeholder-slate-500 dark:placeholder-slate-400 text-slate-800 dark:text-slate-200"
                 placeholder="Type your message..."
                 value={input}
-                onChange={e => onInputChange(e.target.value)}
+                onChange={(e) => onInputChange(e.target.value)}
                 onKeyDown={handleKey}
                 onPaste={handlePaste}
                 rows={1}
@@ -299,19 +458,17 @@ export function MessageInput({
               <div className="flex items-center gap-6 text-xs scrollbar-hide">
                 {/* AI Controls Group */}
                 <div className="flex items-center gap-3">
-                  {/* Quality/Reasoning control */}
-                  {supportsThinking && (
-                    <Tooltip content="Reasoning effort level">
-                      <QualitySlider
-                        value={qualityLevel}
-                        onChange={onQualityLevelChange}
-                        icon={<Gauge className="w-4 h-4" />}
-                        ariaLabel="Reasoning Effort"
-                        className="flex-shrink-0"
-                        model={model.split('::').pop() || model}
-                      />
-                    </Tooltip>
-                  )}
+                  {/* Quality/Reasoning control - always visible */}
+                  <Tooltip content="Reasoning effort level">
+                    <QualitySlider
+                      value={qualityLevel}
+                      onChange={onQualityLevelChange}
+                      icon={<Gauge className="w-4 h-4" />}
+                      ariaLabel="Reasoning Effort"
+                      className="flex-shrink-0"
+                      model={model.split('::').pop() || model}
+                    />
+                  </Tooltip>
 
                   {/* Stream toggle */}
                   <Tooltip content="Stream responses in real-time">
@@ -359,14 +516,17 @@ export function MessageInput({
                       <button
                         type="button"
                         aria-label="Tools"
-                        onClick={() => setToolsOpen(v => !v)}
+                        onClick={() => setToolsOpen((v) => !v)}
                         className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors duration-150"
                       >
                         <Wrench className="w-4 h-4" />
-                        <span className={`text-xs px-1.5 py-0.5 rounded-full transition-colors ${localSelected.length > 0
-                          ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
-                          : 'text-slate-600 dark:text-slate-300'
-                          }`}>
+                        <span
+                          className={`text-xs px-1.5 py-0.5 rounded-full transition-colors ${
+                            localSelected.length > 0
+                              ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300'
+                              : 'text-slate-600 dark:text-slate-300'
+                          }`}
+                        >
                           {localSelected.length || 'None'}
                         </span>
                       </button>
@@ -378,7 +538,9 @@ export function MessageInput({
                           <div className="flex items-center justify-between mb-2">
                             <div className="flex items-center gap-3">
                               <div className="text-sm font-semibold">Tools</div>
-                              <div className="text-xs text-slate-500 dark:text-slate-400">{availableTools.length} available</div>
+                              <div className="text-xs text-slate-500 dark:text-slate-400">
+                                {availableTools.length} available
+                              </div>
                             </div>
                             <div className="flex items-center gap-2">
                               <Toggle
@@ -390,7 +552,7 @@ export function MessageInput({
                                     onEnabledToolsChange?.([]);
                                     onUseToolsChange?.(false);
                                   } else if (availableTools.length > 0) {
-                                    const all = availableTools.map(t => t.name);
+                                    const all = availableTools.map((t) => t.name);
                                     setLocalSelected(all);
                                     onEnabledToolsChange?.(all);
                                     onUseToolsChange?.(all.length > 0);
@@ -405,20 +567,22 @@ export function MessageInput({
                             <input
                               type="text"
                               value={toolFilter}
-                              onChange={e => setToolFilter(e.target.value)}
+                              onChange={(e) => setToolFilter(e.target.value)}
                               placeholder="Search tools..."
                               className="flex-1 text-xs px-2 py-1 border border-slate-200 dark:border-neutral-800 rounded-md bg-slate-50 dark:bg-neutral-800 text-slate-800 dark:text-slate-200"
                             />
                             <button
                               type="button"
                               onClick={() => {
-                                const all = availableTools.map(t => t.name);
+                                const all = availableTools.map((t) => t.name);
                                 setLocalSelected(all);
                                 onEnabledToolsChange?.(all);
                                 onUseToolsChange?.(all.length > 0);
                               }}
                               className="text-xs px-2 py-1 rounded-md bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700"
-                            >Select all</button>
+                            >
+                              Select all
+                            </button>
                             <button
                               type="button"
                               onClick={() => {
@@ -427,7 +591,9 @@ export function MessageInput({
                                 onUseToolsChange?.(false);
                               }}
                               className="text-xs px-2 py-1 rounded-md bg-transparent border border-slate-100 dark:border-neutral-800 hover:bg-slate-50 dark:hover:bg-neutral-800"
-                            >Clear</button>
+                            >
+                              Clear
+                            </button>
                           </div>
 
                           {/* Tools list */}
@@ -438,8 +604,14 @@ export function MessageInput({
 
                             <div className="grid grid-cols-1 gap-2">
                               {availableTools
-                                .filter(t => t.name.toLowerCase().includes(toolFilter.toLowerCase()) || (t.description || '').toLowerCase().includes(toolFilter.toLowerCase()))
-                                .map(t => {
+                                .filter(
+                                  (t) =>
+                                    t.name.toLowerCase().includes(toolFilter.toLowerCase()) ||
+                                    (t.description || '')
+                                      .toLowerCase()
+                                      .includes(toolFilter.toLowerCase())
+                                )
+                                .map((t) => {
                                   const id = t.name;
                                   const checked = localSelected.includes(id);
                                   return (
@@ -447,7 +619,9 @@ export function MessageInput({
                                       key={id}
                                       type="button"
                                       onClick={() => {
-                                        const next = checked ? localSelected.filter(x => x !== id) : [...localSelected, id];
+                                        const next = checked
+                                          ? localSelected.filter((x) => x !== id)
+                                          : [...localSelected, id];
                                         setLocalSelected(next);
                                         onEnabledToolsChange?.(next);
                                         onUseToolsChange?.(next.length > 0);
@@ -455,8 +629,14 @@ export function MessageInput({
                                       className={`w-full text-left p-2 rounded-md transition-colors duration-150 flex items-center justify-between ${checked ? 'bg-slate-100 dark:bg-neutral-800 ring-1 ring-slate-200 dark:ring-neutral-700' : 'hover:bg-slate-50 dark:hover:bg-neutral-800'}`}
                                     >
                                       <div>
-                                        <div className="text-xs font-medium text-slate-800 dark:text-slate-200">{t.name}</div>
-                                        {t.description && <div className="text-[11px] text-slate-500 dark:text-slate-400">{t.description}</div>}
+                                        <div className="text-xs font-medium text-slate-800 dark:text-slate-200">
+                                          {t.name}
+                                        </div>
+                                        {t.description && (
+                                          <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                                            {t.description}
+                                          </div>
+                                        )}
                                       </div>
                                       <div className="flex items-center">
                                         <input
@@ -478,15 +658,15 @@ export function MessageInput({
                               type="button"
                               onClick={() => setToolsOpen(false)}
                               className="text-xs px-3 py-1 rounded-md bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700 cursor-pointer transition-colors duration-150"
-                            >Done</button>
+                            >
+                              Done
+                            </button>
                           </div>
                         </div>
                       )}
                     </div>
                   </Tooltip>
                 </div>
-
-
               </div>
 
               {/* ===== SEND BUTTON ===== */}

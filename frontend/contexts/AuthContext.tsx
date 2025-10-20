@@ -1,7 +1,17 @@
 'use client';
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { auth, getToken, getUserFromToken, clearTokens, markAuthReady, resetAuthReady, waitForAuthReady, onTokensCleared, type User } from '../lib';
+import {
+  auth,
+  getToken,
+  getUserFromToken,
+  clearTokens,
+  markAuthReady,
+  resetAuthReady,
+  waitForAuthReady,
+  onTokensCleared,
+  type User,
+} from '../lib';
 
 interface AuthContextType {
   user: User | null;
@@ -146,9 +156,5 @@ export function AuthProvider({ children }: AuthProviderProps) {
     refreshUser,
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

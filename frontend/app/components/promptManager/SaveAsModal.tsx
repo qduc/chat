@@ -15,7 +15,7 @@ export default function SaveAsModal({
   content,
   existingNames,
   onSave,
-  onCancel
+  onCancel,
 }: SaveAsModalProps) {
   const [name, setName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -23,19 +23,22 @@ export default function SaveAsModal({
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Generate unique name by adding (1), (2), etc.
-  const generateUniqueName = useCallback((baseName: string): string => {
-    if (!existingNames.includes(baseName)) {
-      return baseName;
-    }
+  const generateUniqueName = useCallback(
+    (baseName: string): string => {
+      if (!existingNames.includes(baseName)) {
+        return baseName;
+      }
 
-    let counter = 1;
-    let uniqueName = `${baseName} (${counter})`;
-    while (existingNames.includes(uniqueName)) {
-      counter++;
-      uniqueName = `${baseName} (${counter})`;
-    }
-    return uniqueName;
-  }, [existingNames]);
+      let counter = 1;
+      let uniqueName = `${baseName} (${counter})`;
+      while (existingNames.includes(uniqueName)) {
+        counter++;
+        uniqueName = `${baseName} (${counter})`;
+      }
+      return uniqueName;
+    },
+    [existingNames]
+  );
 
   // Reset form when modal opens
   useEffect(() => {
@@ -147,7 +150,10 @@ export default function SaveAsModal({
 
             {/* Name input */}
             <div className="mb-4">
-              <label htmlFor="prompt-name" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label
+                htmlFor="prompt-name"
+                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+              >
                 Prompt Name
               </label>
               <input
@@ -175,7 +181,11 @@ export default function SaveAsModal({
 
               {/* Error message */}
               {error && (
-                <div id={errorId} className="mt-2 text-sm text-red-600 dark:text-red-400" role="alert">
+                <div
+                  id={errorId}
+                  className="mt-2 text-sm text-red-600 dark:text-red-400"
+                  role="alert"
+                >
                   {error}
                 </div>
               )}
@@ -190,8 +200,7 @@ export default function SaveAsModal({
                 <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
                   {content.length > 200
                     ? `${content.substring(0, 200)}...`
-                    : content || '(Empty content)'
-                  }
+                    : content || '(Empty content)'}
                 </div>
               </div>
               <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 text-right">

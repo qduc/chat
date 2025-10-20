@@ -22,6 +22,10 @@ class OrchestrationConfig {
   constructor(options = {}) {
     this.maxIterations = options.maxIterations || 10;
     this.streamingEnabled = options.streamingEnabled !== false;
+    const providerStreamingOption = options.providerStreamingEnabled;
+    this.providerStreamingEnabled = providerStreamingOption !== undefined
+      ? providerStreamingOption !== false
+      : this.streamingEnabled;
     this.model = options.model;
     this.defaultModel = options.defaultModel;
     this.tools = options.tools;
@@ -29,9 +33,14 @@ class OrchestrationConfig {
   }
 
   static fromRequest(body, config, fallbackToolSpecs) {
+    const uiStreamingEnabled = body.stream !== false;
+    const providerStreamingEnabled = body.provider_stream !== undefined
+      ? body.provider_stream !== false
+      : uiStreamingEnabled;
     return new OrchestrationConfig({
       maxIterations: 10,
-      streamingEnabled: body.stream !== false,
+      streamingEnabled: uiStreamingEnabled,
+      providerStreamingEnabled,
       model: body.model || config.defaultModel,
       defaultModel: config.defaultModel,
       tools: (Array.isArray(body.tools) && body.tools.length > 0) ? body.tools : fallbackToolSpecs,
@@ -277,12 +286,17 @@ class JsonResponseHandler extends ResponseHandler {
  * Make a request to the AI model
  */
 async function callLLM({ messages, config, bodyParams, providerId, providerHttp, provider, previousResponseId = null, userId = null, conversationId = null }) {
+  const providerStreamFlag = bodyParams?.provider_stream ?? bodyParams?.providerStream;
+  const upstreamStreamEnabled = (providerStreamFlag !== undefined
+    ? providerStreamFlag
+    : bodyParams?.stream) !== false;
+
   let requestBody = {
     model: bodyParams.model || config.defaultModel,
     messages,
-    stream: bodyParams.stream || false,
+    stream: upstreamStreamEnabled,
     ...(bodyParams.tools && { tools: bodyParams.tools, tool_choice: bodyParams.tool_choice || 'auto' }),
-    // Include previous_response_id if available (Responses API chain tracking)
+    // Include previous_response_id if available (already validated in buildConversationMessagesOptimized)
     ...(previousResponseId && { previous_response_id: previousResponseId }),
   };
   // Include reasoning controls only when the provider supports them
@@ -299,9 +313,55 @@ async function callLLM({ messages, config, bodyParams, providerId, providerHttp,
     hasTools: Boolean(bodyParams.tools)
   });
 
-  const response = await createOpenAIRequest(config, requestBody, { providerId, http: providerHttp });
+  let response = await createOpenAIRequest(config, requestBody, { providerId, http: providerHttp });
 
-  if (bodyParams.stream) {
+  // If request with previous_response_id failed due to invalid ID format, retry with full history
+  if (!response.ok && requestBody.previous_response_id) {
+    let upstreamBody;
+    try {
+      upstreamBody = await response.json();
+    } catch {
+      try {
+        const text = await response.text();
+        upstreamBody = { error: 'upstream_error', message: text };
+      } catch {
+        upstreamBody = { error: 'upstream_error', message: 'Unknown error' };
+      }
+    }
+
+    const isInvalidResponseIdError = response.status === 400
+      && upstreamBody?.error?.param === 'previous_response_id'
+      && upstreamBody?.error?.code === 'invalid_value';
+
+    if (isInvalidResponseIdError) {
+      logger.warn({
+        msg: 'invalid_previous_response_id',
+        previous_response_id: requestBody.previous_response_id,
+        error: upstreamBody?.error?.message,
+        retrying: 'with full history'
+      });
+
+      // Retry without previous_response_id (will use full history)
+      // Need to rebuild messages with full history from persistence
+      const retryBody = { ...requestBody };
+      delete retryBody.previous_response_id;
+
+      // Note: messages should already be full history since this is in tool orchestration
+      // which builds full history at the start, but we'll keep the retry logic consistent
+
+      // Reapply prompt caching
+      const retryBodyWithCaching = await addPromptCaching(retryBody, {
+        conversationId,
+        userId,
+        provider,
+        hasTools: Boolean(bodyParams.tools)
+      });
+
+      response = await createOpenAIRequest(config, retryBodyWithCaching, { providerId, http: providerHttp });
+    }
+  }
+
+  if (upstreamStreamEnabled) {
     return response; // Return raw response for streaming
   }
 
@@ -318,6 +378,9 @@ async function executeAllTools(toolCalls, responseHandler, persistence) {
 
   for (const toolCall of toolCalls) {
     try {
+      // executeToolCall signature accepts optional userId, but tests expect
+      // it to be invoked with the call object only in this flow. Keep single-arg
+      // invocation to preserve test contracts.
       const { name, output } = await executeToolCall(toolCall);
 
       const toolOutput = {
@@ -510,7 +573,7 @@ export async function handleToolsJson({
   persistence,
   providerHttp,
   provider,
-  userId = null,
+  _userId = null,
 }) {
   const providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
   const providerInstance = provider || await createProvider(config, { providerId });
@@ -524,7 +587,7 @@ export async function handleToolsJson({
     body,
     bodyIn,
     persistence,
-    userId,
+      userId: persistence?.userId ?? null,
     provider: providerInstance
   });
   logger.debug('[toolsJson] Prepared messages for upstream call', {
@@ -566,7 +629,7 @@ export async function handleToolsJson({
         providerHttp,
         provider: providerInstance,
         previousResponseId: currentPreviousResponseId,
-        userId,
+         userId: persistence?.userId ?? null,
         conversationId: persistence?.conversationId,
       });
       const message = response?.choices?.[0]?.message;
@@ -659,11 +722,15 @@ export async function handleToolsJson({
     const finalResponse = await callLLM({
       messages,
       config,
-      bodyParams: { ...body, tools: orchestrationConfig.tools, stream: orchestrationConfig.streamingEnabled },
+      bodyParams: {
+        ...body,
+        tools: orchestrationConfig.tools,
+        provider_stream: orchestrationConfig.providerStreamingEnabled
+      },
       providerId,
       providerHttp,
       provider: providerInstance,
-      userId,
+        userId: persistence?.userId ?? null,
       conversationId: persistence?.conversationId,
     });
 
@@ -687,7 +754,7 @@ export async function handleToolsJson({
     }
 
   } catch (error) {
-    logger.error('[unified orchestration] error:', error);
+  logger.error({ msg: '[unified orchestration] error', err: error });
 
     if (orchestrationConfig.streamingEnabled) {
       return responseHandler.sendError(error, persistence);

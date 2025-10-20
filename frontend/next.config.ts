@@ -1,4 +1,4 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next';
 
 const backendOrigin = (process.env.BACKEND_ORIGIN || 'http://localhost:3001').replace(/\/+$/, '');
 

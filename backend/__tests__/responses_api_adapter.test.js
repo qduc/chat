@@ -79,7 +79,6 @@ describe('ResponsesAPIAdapter', () => {
         ],
         tools: [{ type: 'function', function: { name: 'lookup', parameters: { type: 'object', properties: {} } } }],
         tool_choice: { type: 'function', function: { name: 'lookup' } },
-        previous_response_id: 'resp_prev',
         stream: true,
         max_tokens: 128,
       });
@@ -108,10 +107,32 @@ describe('ResponsesAPIAdapter', () => {
       ]);
       expect(request.tool_choice).toEqual({ type: 'function', name: 'lookup' });
       expect(request.max_output_tokens).toBe(128);
-      expect(request.previous_response_id).toBe('resp_prev');
       expect(request.stream).toBe(true);
       expect(Object.keys(request)).not.toContain('__endpoint');
       expect(request.__endpoint).toBe('/v1/responses');
+    });
+
+    test('only sends latest user message when previous_response_id is present', () => {
+      const adapter = createAdapter();
+      const request = adapter.translateRequest({
+        messages: [
+          { role: 'system', content: 'Be helpful' },
+          { role: 'user', content: 'First message' },
+          { role: 'assistant', content: 'First response' },
+          { role: 'user', content: [{ type: 'text', text: 'Second message' }] },
+        ],
+        previous_response_id: 'resp_prev',
+        stream: true,
+        max_tokens: 128,
+      });
+
+      expect(request.model).toBe('gpt-default');
+      // Only the last user message should be included
+      expect(request.input).toHaveLength(1);
+      expect(request.input[0]).toMatchObject({ role: 'user', content: [{ type: 'input_text', text: 'Second message' }] });
+      expect(request.previous_response_id).toBe('resp_prev');
+      expect(request.stream).toBe(true);
+      expect(request.max_output_tokens).toBe(128);
     });
 
     test('falls back to default model and enforces message requirement', () => {

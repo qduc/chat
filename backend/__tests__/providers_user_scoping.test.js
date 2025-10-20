@@ -22,10 +22,12 @@ const insertTestUser = ({ email, displayName }) => {
   const now = new Date().toISOString();
   const id = randomUUID();
 
-  db.prepare(`
+  db.prepare(
+    `
     INSERT INTO users (id, email, password_hash, display_name, created_at, updated_at, email_verified, last_login_at, deleted_at)
     VALUES (@id, @email, 'test-hash', @display_name, @now, @now, 1, NULL, NULL)
-  `).run({ id, email, display_name: displayName || null, now });
+  `
+  ).run({ id, email, display_name: displayName || null, now });
 
   return { id, email, displayName };
 };
@@ -43,6 +45,7 @@ afterAll(() => {
 
 describe('User-scoped Providers', () => {
   let app;
+  let server;
   let user1, user2, token1, token2;
   let user1PrivateId, user1EditableId, user1DefaultId;
   let user1ProviderData, user2ProviderData; // Store provider data for tests
@@ -52,16 +55,17 @@ describe('User-scoped Providers', () => {
     const db = getDb();
     db.exec('DELETE FROM providers; DELETE FROM users;');
     app = createTestApp();
+    server = app.listen();
 
     const timestamp = Date.now();
 
     user1 = insertTestUser({
       email: `user1-${timestamp}@test.com`,
-      displayName: 'User 1'
+      displayName: 'User 1',
     });
     user2 = insertTestUser({
       email: `user2-${timestamp}@test.com`,
-      displayName: 'User 2'
+      displayName: 'User 2',
     });
 
     // Generate tokens for authentication
@@ -71,12 +75,15 @@ describe('User-scoped Providers', () => {
 
   afterEach(() => {
     resetDbCache();
+    if (server && typeof server.close === 'function') {
+      server.close();
+    }
   });
 
   describe('Provider creation and ownership', () => {
     test('authenticated user can create personal provider', async () => {
       const timestamp = Date.now() + Math.random();
-      const response = await request(app)
+      const response = await request(server)
         .post('/v1/providers')
         .set('Authorization', `Bearer ${token1}`)
         .send({
@@ -98,7 +105,7 @@ describe('User-scoped Providers', () => {
       const timestamp = Date.now() + Math.random();
 
       // User1's personal provider
-      const user1Response = await request(app)
+      const user1Response = await request(server)
         .post('/v1/providers')
         .set('Authorization', `Bearer ${token1}`)
         .send({
@@ -110,7 +117,7 @@ describe('User-scoped Providers', () => {
       user1ProviderData = user1Response.body;
 
       // User2's personal provider
-      const user2Response = await request(app)
+      const user2Response = await request(server)
         .post('/v1/providers')
         .set('Authorization', `Bearer ${token2}`)
         .send({
@@ -123,12 +130,10 @@ describe('User-scoped Providers', () => {
     });
 
     test('user1 sees only their own providers', async () => {
-      const response = await request(app)
-        .get('/v1/providers')
-        .set('Authorization', `Bearer ${token1}`);
+      const response = await request(server).get('/v1/providers').set('Authorization', `Bearer ${token1}`);
 
       expect(response.status).toBe(200);
-      const providerNames = response.body.providers.map(p => p.name);
+      const providerNames = response.body.providers.map((p) => p.name);
 
       // User1 should see their personal provider but NOT user2's provider
       expect(providerNames).toContain(user1ProviderData.name);
@@ -136,12 +141,10 @@ describe('User-scoped Providers', () => {
     });
 
     test('user2 sees only their own providers', async () => {
-      const response = await request(app)
-        .get('/v1/providers')
-        .set('Authorization', `Bearer ${token2}`);
+      const response = await request(server).get('/v1/providers').set('Authorization', `Bearer ${token2}`);
 
       expect(response.status).toBe(200);
-      const providerNames = response.body.providers.map(p => p.name);
+      const providerNames = response.body.providers.map((p) => p.name);
 
       // User2 should see their personal provider but NOT user1's provider
       expect(providerNames).toContain(user2ProviderData.name);
@@ -157,7 +160,7 @@ describe('User-scoped Providers', () => {
       const timestamp = Date.now() + Math.random();
       user1PrivateId = `user1-private-${timestamp}`;
 
-      const user1Response = await request(app)
+      const user1Response = await request(server)
         .post('/v1/providers')
         .set('Authorization', `Bearer ${token1}`)
         .send({
@@ -170,7 +173,7 @@ describe('User-scoped Providers', () => {
     });
 
     test('user can access their own provider', async () => {
-      const response = await request(app)
+      const response = await request(server)
         .get(`/v1/providers/${user1PrivateId}`)
         .set('Authorization', `Bearer ${token1}`);
 
@@ -179,7 +182,7 @@ describe('User-scoped Providers', () => {
     });
 
     test('user cannot access another users provider', async () => {
-      const response = await request(app)
+      const response = await request(server)
         .get(`/v1/providers/${user1PrivateId}`)
         .set('Authorization', `Bearer ${token2}`);
 
@@ -188,13 +191,12 @@ describe('User-scoped Providers', () => {
   });
 
   describe('Provider modification control', () => {
-
     beforeEach(async () => {
       // Create test providers with unique IDs
       const timestamp = Date.now() + Math.random();
       user1EditableId = `user1-editable-${timestamp}`;
 
-      await request(app)
+      await request(server)
         .post('/v1/providers')
         .set('Authorization', `Bearer ${token1}`)
         .send({
@@ -206,7 +208,7 @@ describe('User-scoped Providers', () => {
     });
 
     test('user can update their own provider', async () => {
-      const response = await request(app)
+      const response = await request(server)
         .put(`/v1/providers/${user1EditableId}`)
         .set('Authorization', `Bearer ${token1}`)
         .send({
@@ -218,7 +220,7 @@ describe('User-scoped Providers', () => {
     });
 
     test('user cannot update another users provider', async () => {
-      const response = await request(app)
+      const response = await request(server)
         .put(`/v1/providers/${user1EditableId}`)
         .set('Authorization', `Bearer ${token2}`)
         .send({
@@ -229,7 +231,7 @@ describe('User-scoped Providers', () => {
     });
 
     test('user can delete their own provider', async () => {
-      const response = await request(app)
+      const response = await request(server)
         .delete(`/v1/providers/${user1EditableId}`)
         .set('Authorization', `Bearer ${token1}`);
 
@@ -237,7 +239,7 @@ describe('User-scoped Providers', () => {
     });
 
     test('user cannot delete another users provider', async () => {
-      const response = await request(app)
+      const response = await request(server)
         .delete(`/v1/providers/${user1EditableId}`)
         .set('Authorization', `Bearer ${token2}`);
 
@@ -253,7 +255,7 @@ describe('User-scoped Providers', () => {
       const timestamp = Date.now() + Math.random();
       user1DefaultId = `user1-default-${timestamp}`;
 
-      const user1Response = await request(app)
+      const user1Response = await request(server)
         .post('/v1/providers')
         .set('Authorization', `Bearer ${token1}`)
         .send({
@@ -266,7 +268,7 @@ describe('User-scoped Providers', () => {
     });
 
     test('user can set their provider as default', async () => {
-      const response = await request(app)
+      const response = await request(server)
         .post(`/v1/providers/${user1DefaultId}/default`)
         .set('Authorization', `Bearer ${token1}`);
 

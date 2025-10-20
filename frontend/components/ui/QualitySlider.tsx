@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 
 export type QualityLevel = 'unset' | 'minimal' | 'low' | 'medium' | 'high';
 
@@ -12,9 +12,23 @@ interface QualitySliderProps {
   model?: string;
 }
 
-export function QualitySlider({ value, onChange, ariaLabel, disabled, icon, className = '', model = '' }: QualitySliderProps) {
+export function QualitySlider({
+  value,
+  onChange,
+  ariaLabel,
+  disabled,
+  icon,
+  className = '',
+  model = '',
+}: QualitySliderProps) {
   // Check if model supports 'minimal' (gpt-5* or openai/gpt-5*)
   const supportsMinimal = model.startsWith('gpt-5') || model.startsWith('openai/gpt-5');
+
+  useEffect(() => {
+    if (value === 'minimal' && !supportsMinimal) {
+      onChange('unset');
+    }
+  }, [value, model, supportsMinimal, onChange]);
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     onChange(e.target.value as QualityLevel);
@@ -22,7 +36,9 @@ export function QualitySlider({ value, onChange, ariaLabel, disabled, icon, clas
 
   return (
     <div className={`flex items-center gap-2 ${className}`}>
-      {icon && <span className="w-4 h-4 flex items-center text-slate-600 dark:text-slate-400">{icon}</span>}
+      {icon && (
+        <span className="w-4 h-4 flex items-center text-slate-600 dark:text-slate-400">{icon}</span>
+      )}
 
       <select
         value={value}

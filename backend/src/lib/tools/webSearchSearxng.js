@@ -1,5 +1,6 @@
 import { createTool } from './baseTool.js';
 import { logger } from '../../logger.js';
+import { getUserSetting } from '../../db/userSettings.js';
 
 const TOOL_NAME = 'web_search_searxng';
 
@@ -75,7 +76,19 @@ async function handler({
   time_range,
   safesearch,
   max_results = 10,
-}) {
+}, context = {}) {
+  // SearXNG uses a base URL rather than API key, but we accept user context
+  // for potential per-user routing in the future
+  const userId = context?.userId || null;
+  if (userId) {
+    // Currently no-op, but keep for future extensibility. Read per-tool key name if present.
+    try {
+      // read to ensure permission; ignore value if any
+      getUserSetting(userId, 'searxng_api_key');
+    } catch (err) {
+      logger.warn('Failed to read user searxng_api_key from DB', { userId, err: err?.message || err });
+    }
+  }
   const searxngUrl = process.env.SEARXNG_BASE_URL;
   if (!searxngUrl) {
     throw new Error('SEARXNG_BASE_URL environment variable is not set');
@@ -263,14 +276,16 @@ async function handler({
 
 export const webSearchSearxngTool = createTool({
   name: TOOL_NAME,
-  description: 'Privacy-focused metasearch engine aggregating results from multiple sources. Best for privacy-conscious searches, accessing diverse search engines, and avoiding tracking. Self-hosted and highly configurable.',
+  description:
+    'Privacy-focused metasearch engine aggregating results from multiple sources. Best for privacy-conscious searches, accessing diverse search engines, and avoiding tracking. Self-hosted and highly configurable.',
   validate,
   handler,
   openAI: {
     type: 'function',
     function: {
       name: TOOL_NAME,
-      description: 'Privacy-focused metasearch engine that aggregates results from multiple sources (Google, Bing, DuckDuckGo, Wikipedia, etc.) without tracking. Self-hosted solution ideal for privacy-conscious searches, accessing diverse search engines simultaneously, and custom search configurations. Requires SEARXNG_BASE_URL to be configured.',
+      description:
+        'Privacy‑focused metasearch (SearXNG) that pulls results from multiple engines (Google, Bing, DuckDuckGo, Wikipedia, etc.) without tracking. It aggregates headlines/snippets (not full content)—pair with the web fetch tool for full pages',
       parameters: {
         type: 'object',
         properties: {
@@ -280,11 +295,13 @@ export const webSearchSearxngTool = createTool({
           },
           categories: {
             type: 'string',
-            description: 'Comma-separated list of search categories (e.g., "general", "images", "videos", "news", "music", "files", "it", "science", "map"). Default is "general".',
+            description:
+              'Comma-separated list of search categories (e.g., "general", "images", "videos", "news", "music", "files", "it", "science", "map"). Default is "general".',
           },
           engines: {
             type: 'string',
-            description: 'Comma-separated list of specific search engines to use (e.g., "google,duckduckgo,wikipedia"). Restricts search to only these engines.',
+            description:
+              'Comma-separated list of specific search engines to use (e.g., "google,duckduckgo,wikipedia"). Restricts search to only these engines.',
           },
           language: {
             type: 'string',
@@ -292,7 +309,8 @@ export const webSearchSearxngTool = createTool({
           },
           pageno: {
             type: 'integer',
-            description: 'Page number for pagination (default: 1). Each page typically returns 10-20 results depending on engines.',
+            description:
+              'Page number for pagination (default: 1). Each page typically returns 10-20 results depending on engines.',
             minimum: 1,
           },
           time_range: {
@@ -308,7 +326,8 @@ export const webSearchSearxngTool = createTool({
           },
           max_results: {
             type: 'integer',
-            description: 'Maximum number of search results to display (default: 10, max: 50). Note: SearXNG may return fewer results depending on available engines.',
+            description:
+              'Maximum number of search results to display (default: 10, max: 50). Note: SearXNG may return fewer results depending on available engines.',
             minimum: 1,
             maximum: 50,
           },
