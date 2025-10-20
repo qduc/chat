@@ -36,6 +36,7 @@ export function ChatV2() {
   const frameRef = useRef<number | null>(null);
   const messageListRef = useRef<HTMLDivElement>(null!);
   const [scrollButtons, setScrollButtons] = useState({ showTop: false, showBottom: false });
+  const isLoadingConversationRef = useRef(false);
 
   // Simple event handlers
   const handleCopy = useCallback(async (text: string) => {
@@ -53,6 +54,18 @@ export function ChatV2() {
     setAuthMode('register');
     setShowAuthModal(true);
   }, []);
+
+  const handleSelectConversation = useCallback(
+    async (id: string) => {
+      isLoadingConversationRef.current = true;
+      try {
+        await chat.selectConversation(id);
+      } finally {
+        isLoadingConversationRef.current = false;
+      }
+    },
+    [chat]
+  );
 
   useEffect(() => {
     const storedWidth =
@@ -211,7 +224,10 @@ export function ChatV2() {
     if (initLoadingRef.current) return;
     const cid = searchParams.get('c');
     if (cid && cid !== chat.conversationId) {
-      void chat.selectConversation(cid);
+      isLoadingConversationRef.current = true;
+      void chat.selectConversation(cid).finally(() => {
+        isLoadingConversationRef.current = false;
+      });
     } else if (!cid && chat.conversationId) {
       chat.newChat();
     }
@@ -272,11 +288,13 @@ export function ChatV2() {
     const cid = searchParams?.get('c');
     if (cid && !chat.conversationId) {
       initLoadingRef.current = true;
+      isLoadingConversationRef.current = true;
       (async () => {
         try {
           await chat.selectConversation(cid);
         } finally {
           initLoadingRef.current = false;
+          isLoadingConversationRef.current = false;
         }
       })();
     }
@@ -302,9 +320,9 @@ export function ChatV2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat.conversationId]);
 
-  // Scroll to bottom when a conversation is loaded
+  // Scroll to bottom when a conversation is loaded (not when first created)
   useEffect(() => {
-    if (chat.conversationId) {
+    if (chat.conversationId && isLoadingConversationRef.current) {
       // Use a timeout to allow the message list to render before scrolling
       setTimeout(() => scrollToBottom('auto'), 0);
     }
@@ -368,7 +386,7 @@ export function ChatV2() {
           loadingConversations={chat.loadingConversations}
           conversationId={chat.conversationId}
           collapsed={chat.sidebarCollapsed}
-          onSelectConversation={chat.selectConversation}
+          onSelectConversation={handleSelectConversation}
           onDeleteConversation={chat.deleteConversation}
           onLoadMore={chat.loadMoreConversations}
           onRefresh={chat.refreshConversations}
