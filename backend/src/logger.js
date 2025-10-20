@@ -8,6 +8,12 @@ const pretty = (process.env.LOG_PRETTY ?? '').toLowerCase() !== 'false' && proce
 // Log retention configuration
 const maxRetentionDays = parseInt(process.env.MAX_LOG_RETENTION_DAYS) || 3;
 
+// Ensure logs directory exists
+const logsDir = './logs';
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+}
+
 // Configure pino to write to both stdout and file with date-based rotation
 export const logger = pino({
   level,

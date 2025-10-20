@@ -23,6 +23,7 @@ RUN apk add --no-cache su-exec sqlite-libs
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node . .
 RUN chmod +x entrypoint.sh
+RUN mkdir -p logs && chown -R node:node logs
 EXPOSE 3001
 ENV INSTALL_ON_START=1
 USER root
@@ -39,7 +40,8 @@ COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node . .
 RUN apk add --no-cache su-exec
 RUN chmod +x entrypoint.sh
-USER root
+RUN mkdir -p logs && chown -R node:node logs
+USER node
 EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
   CMD ["node", "-e", "fetch(`http://127.0.0.1:${process.env.PORT || 3001}/health`).then(res => { if (res.ok) process.exit(0); process.exit(1); }).catch(() => process.exit(1));"]
