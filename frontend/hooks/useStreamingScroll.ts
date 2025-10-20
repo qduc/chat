@@ -74,7 +74,7 @@ export function useStreamingScroll(
       }
 
       // Default padding - enough space for comfortable scrolling
-      setDynamicBottomPadding(`${Math.round(viewportHeight * 0.2)}px`);
+      setDynamicBottomPadding(`${Math.round(viewportHeight * 0.1)}px`);
     };
 
     updatePadding();

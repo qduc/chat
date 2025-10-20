@@ -234,7 +234,7 @@ export function ChatV2() {
       const base = chat.messages.slice(0, idx);
       chat.regenerate(base);
     },
-    [chat.messages, chat.status]
+    [chat]
   );
 
   const handleApplyLocalEdit = useCallback(
@@ -258,7 +258,7 @@ export function ChatV2() {
         chat.regenerate(baseMessages);
       }
     },
-    [chat.messages, chat.status]
+    [chat]
   );
 
   // Load conversations and hydrate from URL on first load
@@ -302,6 +302,16 @@ export function ChatV2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat.conversationId]);
 
+  // Scroll to bottom when a conversation is loaded
+  useEffect(() => {
+    if (chat.conversationId) {
+      // Use a timeout to allow the message list to render before scrolling
+      setTimeout(() => scrollToBottom('auto'), 0);
+    }
+    // We only want to run this when the conversation ID changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chat.conversationId]);
+
   useEffect(() => {
     if (typeof document === 'undefined') return;
 
@@ -340,11 +350,11 @@ export function ChatV2() {
     messageListRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
   }, []);
 
-  const scrollToBottom = useCallback(() => {
+  const scrollToBottom = useCallback((behavior: 'smooth' | 'auto' = 'smooth') => {
     if (messageListRef.current) {
       messageListRef.current.scrollTo({
         top: messageListRef.current.scrollHeight,
-        behavior: 'smooth',
+        behavior,
       });
     }
   }, []);
@@ -415,7 +425,7 @@ export function ChatV2() {
               )}
               {scrollButtons.showBottom && (
                 <button
-                  onClick={scrollToBottom}
+                  onClick={() => scrollToBottom()}
                   className="pointer-events-auto p-2 rounded-full bg-white/60 dark:bg-neutral-800/60 backdrop-blur-md hover:bg-white/80 dark:hover:bg-neutral-700/80 text-slate-700 dark:text-slate-200 shadow-lg transition-all duration-200 hover:scale-110 border border-slate-200/50 dark:border-neutral-600/50"
                   aria-label="Scroll to bottom"
                   title="Scroll to bottom"
