@@ -58,11 +58,7 @@ export function ChatV2() {
   const handleSelectConversation = useCallback(
     async (id: string) => {
       isLoadingConversationRef.current = true;
-      try {
-        await chat.selectConversation(id);
-      } finally {
-        isLoadingConversationRef.current = false;
-      }
+      await chat.selectConversation(id);
     },
     [chat]
   );
@@ -225,9 +221,7 @@ export function ChatV2() {
     const cid = searchParams.get('c');
     if (cid && cid !== chat.conversationId) {
       isLoadingConversationRef.current = true;
-      void chat.selectConversation(cid).finally(() => {
-        isLoadingConversationRef.current = false;
-      });
+      void chat.selectConversation(cid);
     } else if (!cid && chat.conversationId) {
       chat.newChat();
     }
@@ -294,7 +288,6 @@ export function ChatV2() {
           await chat.selectConversation(cid);
         } finally {
           initLoadingRef.current = false;
-          isLoadingConversationRef.current = false;
         }
       })();
     }
@@ -324,7 +317,11 @@ export function ChatV2() {
   useEffect(() => {
     if (chat.conversationId && isLoadingConversationRef.current) {
       // Use a timeout to allow the message list to render before scrolling
-      setTimeout(() => scrollToBottom('auto'), 0);
+      setTimeout(() => {
+        scrollToBottom('auto');
+        // Reset the ref after scrolling
+        isLoadingConversationRef.current = false;
+      }, 0);
     }
     // We only want to run this when the conversation ID changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
