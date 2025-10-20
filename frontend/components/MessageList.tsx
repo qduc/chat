@@ -746,7 +746,8 @@ export function MessageList({
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const { dynamicBottomPadding, lastUserMessageRef, toolbarRef, bottomRef } = useStreamingScroll(
     messages,
-    pending
+    pending,
+    containerRef
   );
 
   // Streaming statistics - now calculated from actual token count

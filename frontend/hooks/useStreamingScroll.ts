@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PendingState } from './useChat';
 
 interface ChatMessage {
@@ -37,7 +37,8 @@ interface UseStreamingScrollReturn {
  */
 export function useStreamingScroll(
   messages: ChatMessage[],
-  pending: PendingState
+  pending: PendingState,
+  containerRef?: React.RefObject<HTMLElement | null>
 ): UseStreamingScrollReturn {
   const lastUserMessageRef = useRef<HTMLDivElement | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
@@ -46,16 +47,45 @@ export function useStreamingScroll(
   const [dynamicBottomPadding, setDynamicBottomPadding] = useState('8rem');
 
   /**
-   * Scrolls the user's message to the top of the viewport via the toolbar ref.
-   * We scroll to the toolbar (below the message) rather than the message itself
-   * to ensure the full message text is visible and naturally positioned.
+   * Scrolls to show only the last 3 lines of the user's message at the top of viewport.
+   * This creates a natural reading flow where the user sees their question's conclusion
+   * followed immediately by the streaming assistant response.
+   * Accounts for ChatHeader height to position content correctly below the sticky header.
    */
-  const scrollUserMessageToTop = () => {
-    toolbarRef.current?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start',
-    });
-  };
+  const scrollUserMessageToTop = useCallback(
+    (offset = 0) => {
+      console.log('scrollUserMessageToTop called with offset:', offset);
+      const element = lastUserMessageRef.current;
+      const container = containerRef?.current;
+      if (!element || !container) {
+        return;
+      }
+
+      // Get the element's dimensions
+      const elementHeight = element.offsetHeight;
+      const lineHeight = parseFloat(getComputedStyle(element).lineHeight) || 24; // fallback to 24px
+      const linesToShow = 5;
+      const heightToShow = lineHeight * linesToShow;
+
+      // Calculate how much of the message to hide (from the top)
+      const hideHeight = Math.max(0, elementHeight - heightToShow);
+
+      // Find ChatHeader height if it exists
+      const header = document.querySelector('header');
+      const headerHeight = header ? header.offsetHeight : 0;
+
+      // Calculate the target scroll position
+      // Element's top relative to container + amount to hide - header height - offset
+      const targetScrollTop = element.offsetTop + hideHeight - headerHeight + offset;
+
+      // Single smooth scroll to final position
+      container.scrollTo({
+        top: targetScrollTop,
+        behavior: 'smooth',
+      });
+    },
+    [containerRef]
+  );
 
   // Update dynamic padding based on viewport height and streaming state
   useEffect(() => {
@@ -96,7 +126,7 @@ export function useStreamingScroll(
         // Scroll if content is empty (initial) or just started appearing
         if (currentLength === 0 || (currentLength > 0 && prevContentLength.current === 0)) {
           // Small delay to ensure DOM is updated
-          setTimeout(() => scrollUserMessageToTop(), 50);
+          setTimeout(() => scrollUserMessageToTop(60), 50);
         }
         prevContentLength.current = currentLength;
         return;
@@ -104,7 +134,7 @@ export function useStreamingScroll(
     }
     // Reset when not streaming
     prevContentLength.current = 0;
-  }, [messages.length, pending.streaming, pending.abort, messages]);
+  }, [messages.length, pending.streaming, pending.abort, messages, scrollUserMessageToTop]);
 
   return {
     dynamicBottomPadding,
