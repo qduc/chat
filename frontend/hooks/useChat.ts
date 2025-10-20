@@ -5,6 +5,7 @@ import { conversations as conversationsApi, chat, auth } from '../lib/api';
 import { httpClient } from '../lib/http';
 import { APIError, StreamingNotSupportedError } from '../lib/streaming';
 import type { ConversationMeta, Provider, ChatOptionsExtended } from '../lib/types';
+import { supportsReasoningControls } from '../lib';
 
 // Types
 export interface PendingState {
@@ -548,9 +549,6 @@ export function useChat() {
     setImages([]);
     setFiles([]);
     setCurrentConversationTitle(null);
-    // Reset quality level to unset so reasoning_effort is not included in requests
-    setQualityLevel('unset');
-    qualityLevelRef.current = 'unset';
     // When starting a new chat (no active conversation) prefer the saved model
     try {
       if (typeof window !== 'undefined') {
@@ -562,6 +560,21 @@ export function useChat() {
       }
     } catch {
       // ignore localStorage errors
+    }
+
+    // Reset quality level to unset so `reasoning_effort` is not included in
+    // requests when the selected model does NOT support reasoning controls.
+    // Use the resolved model (modelRef.current) and the current
+    // `modelCapabilities` map to determine support.
+    try {
+      const modelToCheck = modelRef.current;
+      const supports = supportsReasoningControls(modelToCheck, modelCapabilities);
+      if (!supports) {
+        setQualityLevel('unset');
+        qualityLevelRef.current = 'unset';
+      }
+    } catch {
+      // conservative fallback: don't change user selection on errors
     }
   }, []);
 
@@ -1057,7 +1070,7 @@ export function useChat() {
         }));
       }
     },
-    [input, images, files, conversationId]
+    [input, images, files, conversationId, modelCapabilities]
   );
 
   const stopStreaming = useCallback(() => {
