@@ -15,13 +15,9 @@ export const logger = pino({
     targets: [
       // Always write JSON logs to file with date-based filenames
       {
-        target: 'pino-pretty',
+        target: 'pino/file',
         level,
         options: {
-          colorize: false,
-          translateTime: 'SYS:standard',
-          singleLine: true,
-          ignore: 'pid,hostname',
           destination: `./logs/app-${new Date().toISOString().slice(0, 10)}.log`,
         },
       },
