@@ -29,9 +29,9 @@ export class BaseProvider {
     return context;
   }
 
-  translateRequest(internalRequest = {}, context = {}) {
+  async translateRequest(internalRequest = {}, context = {}) {
     const adapterContext = this.buildAdapterContext(context);
-    return this.getAdapter().translateRequest(internalRequest, adapterContext);
+    return await this.getAdapter().translateRequest(internalRequest, adapterContext);
   }
 
   translateResponse(providerResponse, context = {}) {
@@ -46,14 +46,14 @@ export class BaseProvider {
 
   async sendRequest(internalRequest = {}, context = {}) {
     const adapterContext = this.buildAdapterContext(context);
-    const translatedRequest = this.getAdapter().translateRequest(internalRequest, adapterContext);
+    const translatedRequest = await this.translateRequest(internalRequest, adapterContext);
     const providerResponse = await this.makeHttpRequest(translatedRequest, adapterContext);
     return this.getAdapter().translateResponse(providerResponse, adapterContext);
   }
 
   async streamRequest(internalRequest = {}, context = {}) {
     const adapterContext = this.buildAdapterContext(context);
-    const translatedRequest = this.getAdapter().translateRequest(internalRequest, adapterContext);
+    const translatedRequest = await this.translateRequest(internalRequest, adapterContext);
     const providerResponse = await this.makeStreamRequest(translatedRequest, adapterContext);
     return this.getAdapter().translateResponse(providerResponse, adapterContext);
   }
@@ -68,8 +68,8 @@ export class BaseProvider {
   }
 
   // Backward-compatibility helpers for legacy callers.
-  normalizeRequest(internalRequest = {}, context = {}) {
-    return this.translateRequest(internalRequest, context);
+  async normalizeRequest(internalRequest = {}, context = {}) {
+    return await this.translateRequest(internalRequest, context);
   }
 
   normalizeResponse(providerResponse, context = {}) {
