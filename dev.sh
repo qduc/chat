@@ -123,24 +123,6 @@ fi
 cmd=${1:-}
 shift || true
 case "$cmd" in
-  up)
-    "${DC[@]}" up "$@"
-    ;;
-  down)
-    "${DC[@]}" down "$@"
-    ;;
-  restart)
-    "${DC[@]}" restart "$@"
-    ;;
-  build)
-    "${DC[@]}" build "$@"
-    ;;
-  logs)
-    "${DC[@]}" logs "$@"
-    ;;
-  ps)
-    "${DC[@]}" ps "$@"
-    ;;
   exec)
     # Add -T flag to disable TTY allocation for non-interactive environments (CI, AI tools)
     if [ -t 0 ] && [ -t 1 ]; then
@@ -188,8 +170,7 @@ case "$cmd" in
     esac
     ;;
   *)
-    echo "Unknown command: $cmd" >&2
-    usage
-    exit 2
+    # Pass through to docker compose for any other command
+    "${DC[@]}" "$cmd" "$@"
     ;;
 esac
