@@ -368,11 +368,11 @@ export function RightSidebar({
           transition: isResizing ? 'none' : 'width 0.3s ease-in-out',
           willChange: isResizing ? 'width' : undefined,
         }}
-        className={`z-30 flex flex-col bg-white/95 dark:bg-neutral-900/95 relative border-l border-gray-200 dark:border-gray-700`}
+        className={`z-30 flex flex-col bg-white/70 dark:bg-neutral-900/70 backdrop-blur-md relative border-l border-slate-200/60 dark:border-neutral-800/60 shadow-sm`}
       >
         {/* Collapse/Expand Button */}
         <button
-          className="absolute -left-3 top-6 z-40 w-6 h-6 rounded-full bg-white dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 cursor-pointer"
+          className="absolute -left-3 top-6 z-40 w-6 h-6 rounded-full bg-white/80 dark:bg-neutral-800/80 backdrop-blur-md border border-slate-200/60 dark:border-neutral-700/60 shadow-sm hover:shadow-md transition-all duration-200 flex items-center justify-center text-slate-600 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 cursor-pointer"
           onClick={onToggleCollapse}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >
@@ -390,7 +390,7 @@ export function RightSidebar({
           // Expanded state - full prompt manager UI
           <div className="flex flex-col h-full">
             {/* Header */}
-            <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+            <div className="p-4 border-b border-slate-200/60 dark:border-neutral-800/60">
               <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                 System Prompts
               </h2>

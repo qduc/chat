@@ -490,7 +490,7 @@ export function ChatV2() {
               role="separator"
               aria-orientation="vertical"
               aria-label="Resize right sidebar"
-              className={`flex-shrink-0 self-stretch w-1 cursor-col-resize select-none transition-colors duration-150 ${isResizingRightSidebar ? 'bg-blue-400/60 dark:bg-blue-500/50' : 'bg-transparent hover:bg-blue-400/40 dark:hover:bg-blue-500/30'}`}
+              className={`flex-shrink-0 self-stretch w-1 cursor-col-resize select-none transition-colors duration-150 ${isResizingRightSidebar ? 'bg-slate-400/60 dark:bg-neutral-600/60' : 'bg-transparent hover:bg-slate-400/40 dark:hover:bg-neutral-600/40'}`}
               onPointerDown={handleResizeStart}
               onDoubleClick={handleResizeDoubleClick}
             />
