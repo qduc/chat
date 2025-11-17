@@ -100,7 +100,7 @@ function normalizeToolSpec(tool) {
   return spec;
 }
 
-function normalizeMessage(message) {
+async function normalizeMessage(message) {
   if (!message || typeof message !== 'object') return null;
   const role = typeof message.role === 'string' ? message.role : undefined;
   if (!role) return null;
@@ -109,9 +109,9 @@ function normalizeMessage(message) {
   if ('content' in message) {
     const content = message.content;
     if (Array.isArray(content)) {
-      normalized.content = content.map((part) => convertContentPartImage(part));
+      normalized.content = await Promise.all(content.map((part) => convertContentPartImage(part)));
     } else if (content === null || typeof content === 'object') {
-      normalized.content = convertContentPartImage(content);
+      normalized.content = await convertContentPartImage(content);
     } else if (content !== undefined) {
       normalized.content = String(content);
     }
@@ -126,9 +126,7 @@ function normalizeMessage(message) {
   }
 
   if (Array.isArray(message.tool_calls)) {
-    const normalizedCalls = message.tool_calls
-      .map(normalizeToolCall)
-      .filter(Boolean);
+    const normalizedCalls = message.tool_calls.map(normalizeToolCall).filter(Boolean);
     if (normalizedCalls.length > 0) {
       normalized.tool_calls = normalizedCalls;
       if (!('content' in normalized)) normalized.content = null;
@@ -140,9 +138,7 @@ function normalizeMessage(message) {
     const normalizedFn = {};
     if (typeof fn.name === 'string') normalizedFn.name = fn.name;
     if ('arguments' in fn) {
-      normalizedFn.arguments = typeof fn.arguments === 'string'
-        ? fn.arguments
-        : JSON.stringify(fn.arguments ?? {});
+      normalizedFn.arguments = typeof fn.arguments === 'string' ? fn.arguments : JSON.stringify(fn.arguments ?? {});
     }
     if (Object.keys(normalizedFn).length > 0) {
       normalized.function_call = normalizedFn;
@@ -157,11 +153,10 @@ function normalizeMessage(message) {
   return normalized;
 }
 
-function normalizeMessages(messages) {
+async function normalizeMessages(messages) {
   if (!Array.isArray(messages)) return [];
-  return messages
-    .map(normalizeMessage)
-    .filter(Boolean);
+  const normalized = await Promise.all(messages.map((message) => normalizeMessage(message)));
+  return normalized.filter(Boolean);
 }
 
 function normalizeTools(tools) {
@@ -183,12 +178,11 @@ function omitReservedKeys(payload) {
 export class ChatCompletionsAdapter extends BaseAdapter {
   constructor(options = {}) {
     super(options);
-    this.supportsReasoningControls = options.supportsReasoningControls
-      || ((_model) => false);
+    this.supportsReasoningControls = options.supportsReasoningControls || ((_model) => false);
     this.getDefaultModel = options.getDefaultModel || (() => undefined);
   }
 
-  translateRequest(internalRequest = {}, context = {}) {
+  async translateRequest(internalRequest = {}, context = {}) {
     const payload = omitReservedKeys(internalRequest);
 
     const resolveDefaultModel = context.getDefaultModel || this.getDefaultModel;
@@ -199,7 +193,7 @@ export class ChatCompletionsAdapter extends BaseAdapter {
 
     const normalized = {
       model,
-      messages: normalizeMessages(payload.messages),
+      messages: await normalizeMessages(payload.messages),
     };
 
     if (normalized.messages.length === 0) {
@@ -220,7 +214,8 @@ export class ChatCompletionsAdapter extends BaseAdapter {
 
     for (const [key, value] of Object.entries(payload)) {
       if (value === undefined) continue;
-      if (key === 'messages' || key === 'model' || key === 'tools' || key === 'tool_choice' || key === 'stream') continue;
+      if (key === 'messages' || key === 'model' || key === 'tools' || key === 'tool_choice' || key === 'stream')
+        continue;
       if (key === 'reasoning_effort') continue; // handled separately below
       if (OPENAI_ALLOWED_REQUEST_KEYS.has(key)) {
         normalized[key] = value;
