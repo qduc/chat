@@ -4,7 +4,6 @@ import fetch from 'node-fetch';
 import { getImageMetadata } from './images/metadataStore.js';
 
 const DEFAULT_STORAGE_PATH = process.env.IMAGE_STORAGE_PATH || './data/images';
-const LOCAL_HOSTNAMES = new Set(['localhost', '127.0.0.1', '0.0.0.0', '::1']);
 const MIME_BY_EXT = {
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
@@ -25,17 +24,10 @@ function isLocalImageUrl(url) {
 
   try {
     const parsed = new URL(url, 'http://localhost');
-    const hostname = parsed.hostname || 'localhost';
-    if (!LOCAL_HOSTNAMES.has(hostname)) {
-      return false;
-    }
-    if (
-      !parsed.pathname ||
-      (!parsed.pathname.startsWith('/v1/images/') && !parsed.pathname.startsWith('/api/v1/images/'))
-    ) {
-      return false;
-    }
-    return true;
+    return (
+      Boolean(parsed.pathname) &&
+      (parsed.pathname.startsWith('/v1/images/') || parsed.pathname.startsWith('/api/v1/images/'))
+    );
   } catch {
     return false;
   }
