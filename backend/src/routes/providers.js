@@ -143,7 +143,6 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
 
       const baseUrl = String(row.base_url || '').replace(/\/v1\/?$/, '');
       if (!baseUrl) return res.status(400).json({ error: 'invalid_provider', message: 'Missing base_url' });
-      if (!row.api_key) return res.status(400).json({ error: 'invalid_provider', message: 'Missing api_key' });
 
     let extra = {};
     try {
