@@ -22,7 +22,7 @@ export function QualitySlider({
   model = '',
 }: QualitySliderProps) {
   // Check if model supports 'minimal' (gpt-5* or openai/gpt-5*)
-  const supportsMinimal = model.startsWith('gpt-5') || model.startsWith('openai/gpt-5');
+  const supportsMinimal = (model.startsWith('gpt-5') || model.startsWith('openai/gpt-5')) && !model.includes('gpt-5.1');
 
   useEffect(() => {
     if (value === 'minimal' && !supportsMinimal) {
