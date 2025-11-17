@@ -77,9 +77,10 @@ export default function Tooltip({
             ref={refs.setFloating}
             {...getFloatingProps()}
             style={floatingStyles}
-            className="pointer-events-none z-[9999] rounded-md bg-slate-900 px-2 py-1 text-xs text-white shadow-lg outline-none transition-opacity duration-100 dark:bg-slate-700"
+            className="pointer-events-none z-[9999] rounded-md bg-slate-900 px-2 py-1 text-xs text-white shadow-lg outline-none transition-opacity duration-100 dark:bg-slate-700 max-w-[12rem] sm:max-w-[16rem] md:max-w-[20rem] lg:max-w-[24rem]"
           >
-            <span className="pointer-events-none whitespace-nowrap">{content}</span>
+            {/* allow wrapping for long content and constrain width responsively */}
+            <span className="pointer-events-none break-words whitespace-normal">{content}</span>
             <svg
               ref={arrowRef}
               className={`pointer-events-none absolute h-2 w-2 ${arrowPlacementClass}`}

@@ -29,7 +29,8 @@ export function ChatSidebar({
   onToggleCollapse,
 }: ChatSidebarProps) {
   return (
-    <aside className={`${collapsed ? 'w-16' : 'w-72'} z-50 p-4 flex flex-col bg-neutral-100/95 dark:bg-neutral-800/95 transition-[width] duration-300 ease-in-out relative`}
+    <aside
+      className={`${collapsed ? 'w-16' : 'w-72'} z-50 p-4 flex flex-col bg-neutral-100/95 dark:bg-neutral-800/95 transition-[width] duration-300 ease-in-out relative`}
     >
       {/* Collapse/Expand Button */}
       <button
