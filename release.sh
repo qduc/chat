@@ -41,6 +41,12 @@ if [[ ! $CURRENT_BRANCH =~ ^develop_[0-9]+$ ]]; then
     error "Must be on a develop_X branch (e.g., develop_5). Current branch: ${CURRENT_BRANCH}"
 fi
 
+# Run lint check
+info "Running lint checks..."
+if ! npm --prefix backend run lint || ! npm --prefix frontend run lint; then
+    error "Lint checks failed. Please fix the issues and try again."
+fi
+
 # Extract develop branch number
 DEVELOP_NUM=$(echo "$CURRENT_BRANCH" | sed 's/develop_//')
 NEXT_DEVELOP_NUM=$((DEVELOP_NUM + 1))
