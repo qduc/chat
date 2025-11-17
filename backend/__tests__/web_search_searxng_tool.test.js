@@ -75,13 +75,13 @@ describe('web_search_searxng tool', () => {
     }
   });
 
-  test('handler throws when SEARXNG_BASE_URL is missing', async () => {
+  test('handler throws when SearXNG base URL is not configured', async () => {
     const originalUrl = process.env.SEARXNG_BASE_URL;
     delete process.env.SEARXNG_BASE_URL;
 
     try {
       const args = webSearchSearxngTool.validate({ query: 'test' });
-      await assert.rejects(() => webSearchSearxngTool.handler(args), /SEARXNG_BASE_URL environment variable is not set/);
+      await assert.rejects(() => webSearchSearxngTool.handler(args), /SearXNG base URL is not configured/);
     } finally {
       if (originalUrl !== undefined) {
         process.env.SEARXNG_BASE_URL = originalUrl;

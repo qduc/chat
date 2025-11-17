@@ -76,6 +76,9 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
     exa: null,
     searxng: null,
   });
+  const [searxBaseUrl, setSearxBaseUrl] = React.useState('');
+  const [searxBaseUrlSaving, setSearxBaseUrlSaving] = React.useState(false);
+  const [searxBaseUrlError, setSearxBaseUrlError] = React.useState<string | null>(null);
   // Per-engine reveal/hide state for API keys
   const [searchReveal, setSearchReveal] = React.useState<Record<SearchEngine, boolean>>({
     tavily: false,
@@ -168,12 +171,15 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
             searxng: keys.searxng_api_key || '',
           });
           setSearchErrors({ tavily: null, exa: null, searxng: null });
+          setSearxBaseUrl(keys.searxng_base_url || '');
+          setSearxBaseUrlError(null);
         } catch (err: any) {
           setSearchErrors({
             tavily: err?.message || 'Failed to load Tavily API key',
             exa: err?.message || 'Failed to load Exa API key',
             searxng: err?.message || 'Failed to load SearXNG API key',
           });
+          setSearxBaseUrlError(err?.message || 'Failed to load SearXNG base URL');
         }
       })();
     }
@@ -873,6 +879,69 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
 
               <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-4 shadow-sm">
                 <div className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                      SearXNG Base URL
+                    </label>
+                    <input
+                      type="url"
+                      className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                      value={searxBaseUrl}
+                      onChange={(e) => {
+                        setSearxBaseUrl(e.target.value);
+                        setSearxBaseUrlError(null);
+                      }}
+                      placeholder="https://searx.example/search"
+                    />
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          setSearxBaseUrlSaving(true);
+                          setSearxBaseUrlError(null);
+                          setSuccess(null);
+                          try {
+                            const trimmedValue = searxBaseUrl.trim();
+                            if (
+                              trimmedValue &&
+                              !/^https?:\/\//i.test(trimmedValue)
+                            ) {
+                              throw new Error(
+                                'Please enter a valid SearXNG base URL starting with http:// or https://'
+                              );
+                            }
+                            await httpClient.put('/v1/user-settings', {
+                              searxng_base_url: trimmedValue || null,
+                            });
+                            setSuccess('SearXNG base URL saved successfully!');
+                          } catch (err: any) {
+                            setSearxBaseUrlError(
+                              err?.message || 'Failed to save SearXNG base URL'
+                            );
+                          } finally {
+                            setSearxBaseUrlSaving(false);
+                          }
+                        }}
+                        className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors"
+                        disabled={searxBaseUrlSaving}
+                      >
+                        {searxBaseUrlSaving ? (
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Save className="w-4 h-4" />
+                        )}
+                        {searxBaseUrlSaving ? 'Saving...' : 'Save SearXNG URL'}
+                      </button>
+                    </div>
+                    {searxBaseUrlError && (
+                      <p className="text-xs text-red-600 dark:text-red-400 mt-2">
+                        {searxBaseUrlError}
+                      </p>
+                    )}
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Stored securely with your account. Leave empty to fall back to the legacy configuration.
+                    </p>
+                  </div>
                   {searchEngines.map((engine) => (
                     <div key={engine} className="space-y-2">
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">

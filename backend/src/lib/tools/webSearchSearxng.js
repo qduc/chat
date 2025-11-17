@@ -67,40 +67,51 @@ function validate(args) {
   return validated;
 }
 
-async function handler({
-  query,
-  categories,
-  engines,
-  language,
-  pageno,
-  time_range,
-  safesearch,
-  max_results = 10,
-}, context = {}) {
-  // SearXNG uses a base URL rather than API key, but we accept user context
-  // for potential per-user routing in the future
-  const userId = context?.userId || null;
+function resolveSearxngBaseUrl(userId) {
   if (userId) {
-    // Currently no-op, but keep for future extensibility. Read per-tool key name if present.
     try {
-      // read to ensure permission; ignore value if any
-      getUserSetting(userId, 'searxng_api_key');
+      const row = getUserSetting(userId, 'searxng_base_url');
+      const rawValue = row?.value;
+      const trimmedValue = typeof rawValue === 'string' ? rawValue.trim() : rawValue;
+      if (trimmedValue) {
+        return trimmedValue;
+      }
     } catch (err) {
-      logger.warn('Failed to read user searxng_api_key from DB', { userId, err: err?.message || err });
+      logger.warn('Failed to read user searxng_base_url from DB', { userId, err: err?.message || err });
     }
   }
-  const searxngUrl = process.env.SEARXNG_BASE_URL;
+
+  const envValue =
+    typeof process.env.SEARXNG_BASE_URL === 'string'
+      ? process.env.SEARXNG_BASE_URL.trim()
+      : process.env.SEARXNG_BASE_URL;
+
+  if (envValue) {
+    return envValue;
+  }
+
+  return null;
+}
+
+async function handler(
+  { query, categories, engines, language, pageno, time_range, safesearch, max_results = 10 },
+  context = {}
+) {
+  const userId = context?.userId || null;
+  const searxngUrl = resolveSearxngBaseUrl(userId);
   if (!searxngUrl) {
-    throw new Error('SEARXNG_BASE_URL environment variable is not set');
+    throw new Error(
+      'SearXNG base URL is not configured. Please enter a SearXNG Base URL in your user settings or set SEARXNG_BASE_URL as a fallback.'
+    );
   }
   // Basic URL sanity check to provide clearer errors for bad config
   try {
     const parsed = new URL(searxngUrl);
     if (!parsed.protocol || !/^https?:$/.test(parsed.protocol)) {
-      throw new Error('SEARXNG_BASE_URL must start with http:// or https://');
+      throw new Error('SearXNG base URL must start with http:// or https://');
     }
   } catch (e) {
-    throw new Error(`Invalid SEARXNG_BASE_URL: ${e.message || String(e)}`);
+    throw new Error(`Invalid SearXNG base URL: ${e.message || String(e)}`);
   }
 
   // Build URL with query parameters
@@ -123,7 +134,7 @@ async function handler({
     const response = await fetch(url.toString(), {
       method: 'GET',
       headers: {
-        'Accept': 'application/json',
+        Accept: 'application/json',
       },
       signal: AbortSignal.timeout(30000), // 30 second timeout
     });
@@ -142,12 +153,16 @@ async function handler({
 
       // 400 Bad Request - LLM can fix these by adjusting parameters
       if (response.status === 400) {
-        throw new Error(`Invalid request parameters: ${apiErrorMessage}. Please adjust the tool call parameters and try again.`);
+        throw new Error(
+          `Invalid request parameters: ${apiErrorMessage}. Please adjust the tool call parameters and try again.`
+        );
       }
 
       // 404 - Endpoint not found
       if (response.status === 404) {
-        throw new Error(`SearXNG API endpoint not found. Please check SEARXNG_BASE_URL configuration: ${searxngUrl}`);
+        throw new Error(
+          `SearXNG API endpoint not found. Please check your SearXNG base URL configuration: ${searxngUrl}`
+        );
       }
 
       // 500+ - Server errors
@@ -176,9 +191,12 @@ async function handler({
       output += 'Search Results:\n\n';
       limitedResults.forEach((result, index) => {
         const title = result?.title || 'Untitled';
-        const snippet = typeof result?.content === 'string'
-          ? (result.content.length > 800 ? `${result.content.slice(0, 800).trim()}…` : result.content)
-          : undefined;
+        const snippet =
+          typeof result?.content === 'string'
+            ? result.content.length > 800
+              ? `${result.content.slice(0, 800).trim()}…`
+              : result.content
+            : undefined;
         const urlStr = typeof result?.url === 'string' ? result.url : 'N/A';
         const source = result?.engine;
         const published = result?.publishedDate || result?.published || result?.date;
@@ -228,9 +246,10 @@ async function handler({
         if (infobox?.infobox) {
           output += `\n${index + 1}. ${infobox.infobox}\n`;
           if (infobox.content) {
-            const info = typeof infobox.content === 'string' && infobox.content.length > 800
-              ? `${infobox.content.slice(0, 800).trim()}…`
-              : infobox.content;
+            const info =
+              typeof infobox.content === 'string' && infobox.content.length > 800
+                ? `${infobox.content.slice(0, 800).trim()}…`
+                : infobox.content;
             if (info) output += `   ${info}\n`;
           }
           if (Array.isArray(infobox.urls) && infobox.urls.length > 0) {
@@ -247,7 +266,7 @@ async function handler({
       query,
       categories,
       engines,
-      language
+      language,
     });
 
     // Handle timeout errors
@@ -259,7 +278,9 @@ async function handler({
     if (error.message && !error.message.includes('SearXNG')) {
       // Network or fetch errors
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        throw new Error(`Network error while connecting to SearXNG: ${error.message}. Please check SEARXNG_BASE_URL: ${searxngUrl}`);
+        throw new Error(
+          `Network error while connecting to SearXNG: ${error.message}. Please check your SearXNG base URL configuration: ${searxngUrl}`
+        );
       }
       // JSON parsing errors
       if (error instanceof SyntaxError) {
