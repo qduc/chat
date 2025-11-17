@@ -95,8 +95,8 @@ export function ChatHeader({
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white/70 dark:bg-neutral-900/70 backdrop-blur-md border-b border-slate-200/60 dark:border-neutral-800/60 shadow-sm">
-      <div className="px-6 py-4 flex items-center justify-between">
+    <header className="sticky top-0 z-40 bg-white dark:bg-neutral-950 border-b border-slate-200/70 dark:border-neutral-800/70">
+      <div className="px-4 sm:px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <ModelSelector
             value={model}
@@ -110,40 +110,40 @@ export function ChatHeader({
             <button
               onClick={onRefreshModels}
               disabled={isLoadingModels}
-              className="w-9 h-9 rounded-lg bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700 flex items-center justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-8 h-8 rounded-md border border-slate-200/80 dark:border-neutral-700/80 bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-neutral-800 flex items-center justify-center text-slate-600 dark:text-slate-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               title="Refresh model list"
               aria-label="Refresh model list"
               type="button"
             >
               {isLoadingModels ? (
-                <Loader2 className="w-4 h-4 text-slate-600 dark:text-slate-300 animate-spin" />
+                <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
-                <RefreshCw className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+                <RefreshCw className="w-4 h-4" />
               )}
             </button>
           )}
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <button
             onClick={onOpenSettings}
-            className="w-9 h-9 rounded-lg bg-slate-200 dark:bg-neutral-800 hover:bg-slate-300 dark:hover:bg-neutral-700 flex items-center justify-center shadow-sm transition-colors"
+            className="w-8 h-8 rounded-md border border-slate-200/80 dark:border-neutral-700/80 bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-neutral-800 flex items-center justify-center text-slate-700 dark:text-slate-200 transition-colors"
             title="Open settings"
             aria-label="Open settings"
             type="button"
           >
-            <Settings className="w-4 h-4 text-slate-700 dark:text-slate-200" />
+            <Settings className="w-4 h-4" />
           </button>
           <button
             onClick={toggleTheme}
-            className="w-9 h-9 rounded-lg bg-slate-200 dark:bg-neutral-800 hover:bg-slate-300 dark:hover:bg-neutral-700 flex items-center justify-center shadow-sm transition-colors"
+            className="w-8 h-8 rounded-md border border-slate-200/80 dark:border-neutral-700/80 bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-neutral-800 flex items-center justify-center text-slate-700 dark:text-slate-200 transition-colors"
             title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} theme`}
             type="button"
           >
-            {resolvedTheme === 'dark' ? (
-              <Sun className="w-4 h-4 text-slate-700 dark:text-slate-200" />
+          {resolvedTheme === 'dark' ? (
+              <Sun className="w-4 h-4" />
             ) : (
-              <Moon className="w-4 h-4 text-slate-700 dark:text-slate-200" />
+              <Moon className="w-4 h-4" />
             )}
           </button>
           <AuthButton onShowLogin={onShowLogin} onShowRegister={onShowRegister} />

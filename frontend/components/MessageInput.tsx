@@ -344,7 +344,7 @@ export function MessageInput({
         }}
       >
         <div className="px-2">
-          <div className="relative rounded-2xl bg-white/95 dark:bg-neutral-900/95 border border-slate-200 dark:border-neutral-700 shadow-xl transition-shadow duration-200">
+          <div className="relative rounded-xl bg-white dark:bg-neutral-950 border border-slate-200/80 dark:border-neutral-800/80 shadow-sm">
             {/* ===== IMAGE PREVIEWS ===== */}
             {images.length > 0 && (
               <div className="p-4 pb-2 border-b border-slate-200 dark:border-neutral-700">
