@@ -32,6 +32,7 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
     name: string;
     provider_type: string;
     base_url?: string | null;
+    api_key?: string | null;
     enabled?: number | boolean;
     extra_headers?: Record<string, any>;
     metadata?: Record<string, any>;
@@ -86,6 +87,7 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
     null
   );
   const [toggleLoading, setToggleLoading] = React.useState<Set<string>>(new Set());
+  const [showApiKey, setShowApiKey] = React.useState(false);
 
   // Generate user-friendly ID from provider name
   const generateIdFromName = React.useCallback((name: string): string => {
@@ -118,7 +120,7 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
       provider_type: r.provider_type,
       base_url: r.base_url || '',
       enabled: Boolean(r.enabled),
-      api_key: '', // not returned by API; allow setting new value
+      api_key: r.api_key || '',
       model_filter: (r.metadata as any)?.model_filter || '',
     });
     setTestResult(null);
@@ -510,14 +512,6 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                           Manage and toggle existing configurations
                         </p>
                       </div>
-                      <button
-                        type="button"
-                        onClick={resetForm}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-slate-600 hover:bg-slate-700 text-white transition-colors font-medium"
-                      >
-                        <Plus className="w-4 h-4" />
-                        Add New
-                      </button>
                     </div>
 
                     <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 divide-y divide-slate-200/60 dark:divide-neutral-700 max-h-48 lg:max-h-64 xl:max-h-80 overflow-auto shadow-sm">
@@ -595,6 +589,18 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
 
                 {/* Provider Configuration Section */}
                 <div className="lg:col-span-2 bg-slate-50/60 dark:bg-neutral-800/30 rounded-lg p-3 lg:p-4 border border-slate-200/30 dark:border-neutral-700/30">
+                  {/* Add New button moved above the form */}
+                  <div className="flex justify-end mb-3 lg:mb-4">
+                    <button
+                      type="button"
+                      onClick={resetForm}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-slate-600 hover:bg-slate-700 text-white transition-colors font-medium"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add New
+                    </button>
+                  </div>
+
                   <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-3 lg:p-4 shadow-sm">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 lg:mb-5 gap-2">
                       <div>
@@ -687,7 +693,7 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                         </p>
                       </div>
 
-                      <div className="space-y-1.5">
+                      <div className="space-y-1.5 relative">
                         <label
                           htmlFor="api-key"
                           className="block text-sm font-medium text-slate-700 dark:text-slate-300"
@@ -696,8 +702,8 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                         </label>
                         <input
                           id="api-key"
-                          type="password"
-                          className="w-full px-3 py-2 lg:py-2.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                          type={showApiKey ? 'text' : 'password'}
+                          className="w-full px-3 py-2 lg:py-2.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors pr-10"
                           value={form.api_key || ''}
                           onChange={(e) => setForm((f) => ({ ...f, api_key: e.target.value }))}
                           placeholder={
@@ -705,8 +711,19 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                               ? '••••••••••••••••••••'
                               : "sk-proj-abc123... or your provider's API key"
                           }
-                          // required removed: API key is now optional
                         />
+                        <button
+                          type="button"
+                          onClick={() => setShowApiKey(!showApiKey)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400"
+                          aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
+                        >
+                          {showApiKey ? (
+                            <EyeOff className="w-5 h-5" />
+                          ) : (
+                            <Eye className="w-5 h-5" />
+                          )}
+                        </button>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
                           {form.id
                             ? 'Leave blank to keep existing key. Keys are stored securely and encrypted.'

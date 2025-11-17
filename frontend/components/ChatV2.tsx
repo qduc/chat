@@ -375,7 +375,7 @@ export function ChatV2() {
   }, []);
 
   return (
-    <div className="flex h-dvh max-h-dvh bg-gradient-to-br from-slate-50 via-white to-slate-100/40 dark:from-neutral-950 dark:via-neutral-950 dark:to-neutral-900/20">
+    <div className="flex h-dvh max-h-dvh bg-white dark:bg-neutral-950">
       {chat.historyEnabled && (
         <ChatSidebar
           conversations={chat.conversations}
@@ -426,12 +426,12 @@ export function ChatV2() {
               containerRef={messageListRef}
             />
 
-            {/* Scroll Buttons - positioned in the center of message area, avoiding sidebars */}
+            {/* Scroll Buttons - centered but visually minimal */}
             <div className="absolute bottom-40 left-1/2 transform -translate-x-1/2 flex flex-col gap-2 z-40 pointer-events-none">
               {scrollButtons.showTop && (
                 <button
                   onClick={scrollToTop}
-                  className="pointer-events-auto p-2 rounded-full bg-white/60 dark:bg-neutral-800/60 backdrop-blur-md hover:bg-white/80 dark:hover:bg-neutral-700/80 text-slate-700 dark:text-slate-200 shadow-lg transition-all duration-200 hover:scale-110 border border-slate-200/50 dark:border-neutral-600/50"
+                  className="pointer-events-auto p-1.5 rounded-md bg-white dark:bg-neutral-900 text-slate-600 dark:text-slate-200 border border-slate-200/70 dark:border-neutral-700/70 hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors"
                   aria-label="Scroll to top"
                   title="Scroll to top"
                 >
@@ -441,7 +441,7 @@ export function ChatV2() {
               {scrollButtons.showBottom && (
                 <button
                   onClick={() => scrollToBottom()}
-                  className="pointer-events-auto p-2 rounded-full bg-white/60 dark:bg-neutral-800/60 backdrop-blur-md hover:bg-white/80 dark:hover:bg-neutral-700/80 text-slate-700 dark:text-slate-200 shadow-lg transition-all duration-200 hover:scale-110 border border-slate-200/50 dark:border-neutral-600/50"
+                  className="pointer-events-auto p-1.5 rounded-md bg-white dark:bg-neutral-900 text-slate-600 dark:text-slate-200 border border-slate-200/70 dark:border-neutral-700/70 hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors"
                   aria-label="Scroll to bottom"
                   title="Scroll to bottom"
                 >
@@ -490,7 +490,7 @@ export function ChatV2() {
               role="separator"
               aria-orientation="vertical"
               aria-label="Resize right sidebar"
-              className={`flex-shrink-0 self-stretch w-1 cursor-col-resize select-none transition-colors duration-150 ${isResizingRightSidebar ? 'bg-blue-400/60 dark:bg-blue-500/50' : 'bg-transparent hover:bg-blue-400/40 dark:hover:bg-blue-500/30'}`}
+              className={`flex-shrink-0 self-stretch w-1 cursor-col-resize select-none transition-colors duration-150 ${isResizingRightSidebar ? 'bg-slate-400/60 dark:bg-neutral-600/60' : 'bg-transparent hover:bg-slate-400/40 dark:hover:bg-neutral-600/40'}`}
               onPointerDown={handleResizeStart}
               onDoubleClick={handleResizeDoubleClick}
             />

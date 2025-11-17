@@ -10,9 +10,9 @@ function createAdapter(overrides = {}) {
 
 describe('ChatCompletionsAdapter', () => {
   describe('translateRequest', () => {
-    test('normalizes messages and strips reserved keys', () => {
+    test('normalizes messages and strips reserved keys', async () => {
       const adapter = createAdapter();
-      const result = adapter.translateRequest({
+      const result = await adapter.translateRequest({
         conversation_id: 'conv-123',
         provider_id: 'openai',
         model: 'gpt-custom',
@@ -39,25 +39,28 @@ describe('ChatCompletionsAdapter', () => {
       expect(result.provider_id).toBeUndefined();
     });
 
-    test('uses default model from context when not provided', () => {
+    test('uses default model from context when not provided', async () => {
       const adapter = createAdapter();
-      const result = adapter.translateRequest({
-        messages: [{ role: 'user', content: 'hi' }],
-      }, {
-        getDefaultModel: () => 'context-model',
-      });
+      const result = await adapter.translateRequest(
+        {
+          messages: [{ role: 'user', content: 'hi' }],
+        },
+        {
+          getDefaultModel: () => 'context-model',
+        }
+      );
 
       expect(result.model).toBe('context-model');
     });
 
-    test('throws when messages are missing', () => {
+    test('throws when messages are missing', async () => {
       const adapter = createAdapter();
-      expect(() => adapter.translateRequest({})).toThrow('requires at least one message');
+      await expect(adapter.translateRequest({})).rejects.toThrow('requires at least one message');
     });
 
-    test('expands string tool definitions', () => {
+    test('expands string tool definitions', async () => {
       const adapter = createAdapter();
-      const result = adapter.translateRequest({
+      const result = await adapter.translateRequest({
         messages: [{ role: 'user', content: 'call tool' }],
         tools: ['get_weather'],
       });
@@ -74,9 +77,9 @@ describe('ChatCompletionsAdapter', () => {
       ]);
     });
 
-    test('passes through reasoning controls from frontend', () => {
+    test('passes through reasoning controls from frontend', async () => {
       const adapter = createAdapter();
-      const result = adapter.translateRequest({
+      const result = await adapter.translateRequest({
         messages: [{ role: 'user', content: 'hi' }],
         reasoning_effort: 'medium',
         verbosity: 'high',
@@ -86,9 +89,9 @@ describe('ChatCompletionsAdapter', () => {
       expect(result.verbosity).toBe('high');
     });
 
-    test('handles reasoning controls for any model', () => {
+    test('handles reasoning controls for any model', async () => {
       const adapter = createAdapter();
-      const result = adapter.translateRequest({
+      const result = await adapter.translateRequest({
         model: 'gpt-5.1-mini',
         messages: [{ role: 'user', content: 'hi' }],
         reasoning_effort: 'medium',

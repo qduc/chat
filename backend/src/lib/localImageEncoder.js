@@ -111,24 +111,19 @@ export async function convertContentPartImage(part) {
 
   if (typeof part.image_url === 'string') {
     const encoded = await maybeConvertLocalImageUrl(part.image_url);
-    if (encoded !== part.image_url) {
-      return { ...part, image_url: encoded };
-    }
-    return part;
+    return { ...part, image_url: encoded };
   }
 
   if (part.image_url && typeof part.image_url === 'object') {
     const url = part.image_url.url;
     const encoded = await maybeConvertLocalImageUrl(url);
-    if (encoded !== url) {
-      return {
-        ...part,
-        image_url: {
-          ...part.image_url,
-          url: encoded,
-        },
-      };
-    }
+    return {
+      ...part,
+      image_url: {
+        ...part.image_url,
+        url: encoded,
+      },
+    };
   }
 
   return part;

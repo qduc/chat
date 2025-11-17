@@ -173,15 +173,50 @@ export function teeStreamWithPreview(readable, { maxBytes = 64 * 1024, encoding 
 
 const LOG_DIR = resolveLogDir();
 
+/**
+ * Sanitize an object for logging by truncating base64 image data
+ * @param {*} obj - The object to sanitize
+ * @param {number} maxBase64Length - Maximum length of base64 data to keep
+ * @returns {*} - The sanitized object
+ */
+function sanitizeForLogging(obj, maxBase64Length = 100) {
+  if (typeof obj === 'string') {
+    const match = obj.match(/^data:image\/[^;]+;base64,(.+)$/);
+    if (match) {
+      const prefix = obj.slice(0, obj.indexOf(match[1]));
+      const base64 = match[1];
+      if (base64.length > maxBase64Length) {
+        return prefix + base64.slice(0, maxBase64Length) + '...[truncated]';
+      }
+    }
+    return obj;
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(item => sanitizeForLogging(item, maxBase64Length));
+  }
+  if (obj && typeof obj === 'object') {
+    const sanitized = {};
+    for (const key in obj) {
+      sanitized[key] = sanitizeForLogging(obj[key], maxBase64Length);
+    }
+    return sanitized;
+  }
+  return obj;
+}
+
 export function logUpstreamRequest({ url, headers, body }) {
   if (process.env.NODE_ENV === 'test') return;
 
-  const logEntry = `[${new Date().toISOString()}] UPSTREAM REQUEST\n${JSON.stringify({
-    url,
-    method: 'POST',
-    headers: { ...headers, Authorization: headers?.Authorization ? '[REDACTED]' : undefined },
-    body: { ...body, tools: body?.tools ? '[OMITTED]' : undefined },
-  }, null, 2)}\n\n`;
+  const logEntry = `[${new Date().toISOString()}] UPSTREAM REQUEST\n${JSON.stringify(
+    {
+      url,
+      method: 'POST',
+      headers: { ...headers, Authorization: headers?.Authorization ? '[REDACTED]' : undefined },
+      body: sanitizeForLogging({ ...body, tools: body?.tools ? '[OMITTED]' : undefined }),
+    },
+    null,
+    2
+  )}\n\n`;
 
   try {
     cleanupOldLogs(LOG_DIR);
