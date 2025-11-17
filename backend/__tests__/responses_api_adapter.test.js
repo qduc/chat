@@ -59,9 +59,9 @@ class MockStreamResponse {
 
 describe('ResponsesAPIAdapter', () => {
   describe('translateRequest', () => {
-    test('maps chat-style payload into responses format', () => {
+    test('maps chat-style payload into responses format', async () => {
       const adapter = createAdapter();
-      const request = adapter.translateRequest({
+      const request = await adapter.translateRequest({
         messages: [
           { role: 'system', content: 'Be helpful' },
           { role: 'user', content: [{ type: 'text', text: 'Hello' }] },
@@ -112,9 +112,9 @@ describe('ResponsesAPIAdapter', () => {
       expect(request.__endpoint).toBe('/v1/responses');
     });
 
-    test('only sends latest user message when previous_response_id is present', () => {
+    test('only sends latest user message when previous_response_id is present', async () => {
       const adapter = createAdapter();
-      const request = adapter.translateRequest({
+      const request = await adapter.translateRequest({
         messages: [
           { role: 'system', content: 'Be helpful' },
           { role: 'user', content: 'First message' },
@@ -129,27 +129,30 @@ describe('ResponsesAPIAdapter', () => {
       expect(request.model).toBe('gpt-default');
       // Only the last user message should be included
       expect(request.input).toHaveLength(1);
-      expect(request.input[0]).toMatchObject({ role: 'user', content: [{ type: 'input_text', text: 'Second message' }] });
+      expect(request.input[0]).toMatchObject({
+        role: 'user',
+        content: [{ type: 'input_text', text: 'Second message' }],
+      });
       expect(request.previous_response_id).toBe('resp_prev');
       expect(request.stream).toBe(true);
       expect(request.max_output_tokens).toBe(128);
     });
 
-    test('falls back to default model and enforces message requirement', () => {
+    test('falls back to default model and enforces message requirement', async () => {
       const adapter = createAdapter({ getDefaultModel: () => 'gpt-fallback' });
 
-      expect(() => adapter.translateRequest({})).toThrow('requires at least one message');
+      await expect(adapter.translateRequest({})).rejects.toThrow('requires at least one message');
 
-      const request = adapter.translateRequest({
+      const request = await adapter.translateRequest({
         messages: [{ role: 'user', content: 'hi' }],
       });
       expect(request.model).toBe('gpt-fallback');
       expect(request.input[0].content[0]).toEqual({ type: 'input_text', text: 'hi' });
     });
 
-    test('prioritizes call_id over id when both are present', () => {
+    test('prioritizes call_id over id when both are present', async () => {
       const adapter = createAdapter();
-      const request = adapter.translateRequest({
+      const request = await adapter.translateRequest({
         messages: [
           { role: 'user', content: 'Search for something' },
           {

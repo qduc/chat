@@ -79,10 +79,13 @@ export function useStreamingScroll(
       const targetScrollTop = element.offsetTop + hideHeight - headerHeight + offset;
 
       // Single smooth scroll to final position
-      container.scrollTo({
-        top: targetScrollTop,
-        behavior: 'smooth',
-      });
+      // JSDOM in tests doesn't provide element.scrollTo, so fallback to setting scrollTop.
+      if (typeof (container as any).scrollTo === 'function') {
+        (container as any).scrollTo({ top: targetScrollTop, behavior: 'smooth' });
+      } else {
+        // Fallback for environments without scrollTo (JSDOM)
+        container.scrollTop = targetScrollTop;
+      }
     },
     [containerRef]
   );
