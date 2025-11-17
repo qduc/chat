@@ -27,6 +27,12 @@ warning() {
     echo -e "${YELLOW}⚠${NC} $1"
 }
 
+DRY_RUN=false
+if [[ "$1" == "--dry-run" ]]; then
+    DRY_RUN=true
+    info "Dry run mode enabled. Will stop after frontend build."
+fi
+
 # Check if we're in a git repository
 if ! git rev-parse --git-dir > /dev/null 2>&1; then
     error "Not in a git repository"
@@ -45,6 +51,17 @@ fi
 info "Running lint checks..."
 if ! npm --prefix backend run lint || ! npm --prefix frontend run lint; then
     error "Lint checks failed. Please fix the issues and try again."
+fi
+
+# Make sure frontend build succeeds
+info "Building frontend..."
+if ! npm --prefix frontend run build; then
+    error "Frontend build failed. Please fix the issues and try again."
+fi
+
+if [ "$DRY_RUN" = true ]; then
+    success "Dry run: Frontend build successful. Stopping here."
+    exit 0
 fi
 
 # Extract develop branch number
