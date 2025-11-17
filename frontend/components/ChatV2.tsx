@@ -362,15 +362,23 @@ export function ChatV2() {
 
   // Scroll functions
   const scrollToTop = useCallback(() => {
-    messageListRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    const container = messageListRef.current;
+    if (!container) return;
+    if (typeof (container as any).scrollTo === 'function') {
+      (container as any).scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      container.scrollTop = 0;
+    }
   }, []);
 
   const scrollToBottom = useCallback((behavior: 'smooth' | 'auto' = 'smooth') => {
-    if (messageListRef.current) {
-      messageListRef.current.scrollTo({
-        top: messageListRef.current.scrollHeight,
-        behavior,
-      });
+    const container = messageListRef.current;
+    if (!container) return;
+    const top = container.scrollHeight;
+    if (typeof (container as any).scrollTo === 'function') {
+      (container as any).scrollTo({ top, behavior });
+    } else {
+      container.scrollTop = top;
     }
   }, []);
 
