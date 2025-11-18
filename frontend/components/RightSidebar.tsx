@@ -214,8 +214,14 @@ export function RightSidebar({
       }
       // Select the new prompt
       setSelectedPromptId(newPrompt.id);
+      let selectionApplied = true;
+
       if (conversationId) {
-        await selectPrompt(newPrompt.id, conversationId);
+        selectionApplied = await selectPrompt(newPrompt.id, conversationId);
+      }
+
+      if (selectionApplied && onActivePromptIdChange) {
+        onActivePromptIdChange(newPrompt.id);
       }
       return true;
     }
