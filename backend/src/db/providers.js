@@ -19,7 +19,7 @@ export function listProviders(userId) {
     SELECT id, name, provider_type, base_url, api_key, is_default, enabled, extra_headers, metadata, created_at, updated_at, user_id
     FROM providers
     WHERE deleted_at IS NULL AND user_id = @userId
-    ORDER BY is_default DESC, updated_at DESC
+    ORDER BY is_default DESC, created_at ASC
   `;
 
   const rows = db.prepare(query).all({ userId });
