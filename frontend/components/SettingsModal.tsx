@@ -595,17 +595,21 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
 
                 {/* Provider Configuration Section */}
                 <div className="lg:col-span-2 bg-slate-50/60 dark:bg-neutral-800/30 rounded-lg p-3 lg:p-4 border border-slate-200/30 dark:border-neutral-700/30">
-                  {/* Add New button moved above the form */}
-                  <div className="flex justify-end mb-3 lg:mb-4">
-                    <button
-                      type="button"
-                      onClick={resetForm}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-slate-600 hover:bg-slate-700 text-white transition-colors font-medium"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Add New
-                    </button>
-                  </div>
+                  {form.id && (
+                    <>
+                      {/* Add New button moved above the form */}
+                      <div className="flex justify-end mb-3 lg:mb-4">
+                        <button
+                          type="button"
+                          onClick={resetForm}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-slate-600 hover:bg-slate-700 text-white transition-colors font-medium"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Add New
+                        </button>
+                      </div>
+                    </>
+                  )}
 
                   <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-3 lg:p-4 shadow-sm">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 lg:mb-5 gap-2">
@@ -902,10 +906,7 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                           setSuccess(null);
                           try {
                             const trimmedValue = searxBaseUrl.trim();
-                            if (
-                              trimmedValue &&
-                              !/^https?:\/\//i.test(trimmedValue)
-                            ) {
+                            if (trimmedValue && !/^https?:\/\//i.test(trimmedValue)) {
                               throw new Error(
                                 'Please enter a valid SearXNG base URL starting with http:// or https://'
                               );
@@ -915,9 +916,7 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                             });
                             setSuccess('SearXNG base URL saved successfully!');
                           } catch (err: any) {
-                            setSearxBaseUrlError(
-                              err?.message || 'Failed to save SearXNG base URL'
-                            );
+                            setSearxBaseUrlError(err?.message || 'Failed to save SearXNG base URL');
                           } finally {
                             setSearxBaseUrlSaving(false);
                           }
@@ -939,7 +938,8 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                       </p>
                     )}
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Stored securely with your account. Leave empty to fall back to the legacy configuration.
+                      Stored securely with your account. Leave empty to fall back to the legacy
+                      configuration.
                     </p>
                   </div>
                   {searchEngines.map((engine) => (
