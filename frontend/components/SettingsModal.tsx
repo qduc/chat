@@ -87,7 +87,9 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
     searxng: false,
   });
   // Track initial values to detect changes
-  const [initialSearchApiKeys, setInitialSearchApiKeys] = React.useState<Record<SearchEngine, string>>({
+  const [initialSearchApiKeys, setInitialSearchApiKeys] = React.useState<
+    Record<SearchEngine, string>
+  >({
     tavily: '',
     exa: '',
     searxng: '',
