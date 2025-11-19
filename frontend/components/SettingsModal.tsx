@@ -12,6 +12,8 @@ import {
   XCircle,
   Eye,
   EyeOff,
+  ExternalLink,
+  Check,
 } from 'lucide-react';
 import Modal from './ui/Modal';
 import Toggle from './ui/Toggle';
@@ -60,7 +62,6 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
   const [activeTab, setActiveTab] = React.useState('providers');
   // Per-engine search API key state
   type SearchEngine = 'tavily' | 'exa' | 'searxng';
-  const searchEngines: SearchEngine[] = React.useMemo(() => ['tavily', 'exa', 'searxng'], []);
   const [searchApiKeys, setSearchApiKeys] = React.useState<Record<SearchEngine, string>>({
     tavily: '',
     exa: '',
@@ -76,12 +77,24 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
     exa: null,
     searxng: null,
   });
+  const [searxBaseUrl, setSearxBaseUrl] = React.useState('');
+  const [searxBaseUrlSaving, setSearxBaseUrlSaving] = React.useState(false);
+  const [searxBaseUrlError, setSearxBaseUrlError] = React.useState<string | null>(null);
   // Per-engine reveal/hide state for API keys
   const [searchReveal, setSearchReveal] = React.useState<Record<SearchEngine, boolean>>({
     tavily: false,
     exa: false,
     searxng: false,
   });
+  // Track initial values to detect changes
+  const [initialSearchApiKeys, setInitialSearchApiKeys] = React.useState<
+    Record<SearchEngine, string>
+  >({
+    tavily: '',
+    exa: '',
+    searxng: '',
+  });
+  const [initialSearxBaseUrl, setInitialSearxBaseUrl] = React.useState('');
   const [testing, setTesting] = React.useState(false);
   const [testResult, setTestResult] = React.useState<{ success: boolean; message: string } | null>(
     null
@@ -162,18 +175,25 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
         try {
           const res = await httpClient.get('/v1/user-settings');
           const keys = res.data || {};
-          setSearchApiKeys({
+          const loadedKeys = {
             tavily: keys.tavily_api_key || '',
             exa: keys.exa_api_key || '',
             searxng: keys.searxng_api_key || '',
-          });
+          };
+          setSearchApiKeys(loadedKeys);
+          setInitialSearchApiKeys(loadedKeys);
           setSearchErrors({ tavily: null, exa: null, searxng: null });
+          const loadedBaseUrl = keys.searxng_base_url || '';
+          setSearxBaseUrl(loadedBaseUrl);
+          setInitialSearxBaseUrl(loadedBaseUrl);
+          setSearxBaseUrlError(null);
         } catch (err: any) {
           setSearchErrors({
             tavily: err?.message || 'Failed to load Tavily API key',
             exa: err?.message || 'Failed to load Exa API key',
             searxng: err?.message || 'Failed to load SearXNG API key',
           });
+          setSearxBaseUrlError(err?.message || 'Failed to load SearXNG base URL');
         }
       })();
     }
@@ -589,17 +609,21 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
 
                 {/* Provider Configuration Section */}
                 <div className="lg:col-span-2 bg-slate-50/60 dark:bg-neutral-800/30 rounded-lg p-3 lg:p-4 border border-slate-200/30 dark:border-neutral-700/30">
-                  {/* Add New button moved above the form */}
-                  <div className="flex justify-end mb-3 lg:mb-4">
-                    <button
-                      type="button"
-                      onClick={resetForm}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-slate-600 hover:bg-slate-700 text-white transition-colors font-medium"
-                    >
-                      <Plus className="w-4 h-4" />
-                      Add New
-                    </button>
-                  </div>
+                  {form.id && (
+                    <>
+                      {/* Add New button moved above the form */}
+                      <div className="flex justify-end mb-3 lg:mb-4">
+                        <button
+                          type="button"
+                          onClick={resetForm}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-slate-600 hover:bg-slate-700 text-white transition-colors font-medium"
+                        >
+                          <Plus className="w-4 h-4" />
+                          Add New
+                        </button>
+                      </div>
+                    </>
+                  )}
 
                   <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-3 lg:p-4 shadow-sm">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 lg:mb-5 gap-2">
@@ -851,13 +875,13 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
           )}
 
           {activeTab === 'search' && (
-            <div className="space-y-3">
+            <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-sm font-medium text-slate-900 dark:text-slate-100">
                     Search Engines API Keys
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                     Store API keys to enable third-party web search tools. Keys are encrypted and
                     scoped to your account.
                   </p>
@@ -871,96 +895,463 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                 </div>
               )}
 
-              <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-4 shadow-sm">
-                <div className="space-y-6">
-                  {searchEngines.map((engine) => (
-                    <div key={engine} className="space-y-2">
+              {/* Two-column grid layout on larger screens */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-5">
+                {/* SearXNG Configuration Card */}
+                <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-5 shadow-sm space-y-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                        SearXNG
+                      </h4>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        Self-hosted metasearch engine
+                      </p>
+                    </div>
+                    <a
+                      href="https://github.com/searxng/searxng"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 transition-colors"
+                      title="View SearXNG documentation"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  </div>
+
+                  {/* Base URL Section */}
+                  <div className="space-y-3 pb-5 border-b border-slate-200/70 dark:border-neutral-700">
+                    <div className="flex items-center gap-2">
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                        {engine.charAt(0).toUpperCase() + engine.slice(1)} API Key
+                        Base URL
                       </label>
-                      <div className="relative flex items-center">
-                        <input
-                          type={searchReveal[engine] ? 'text' : 'password'}
-                          className="w-full px-3 py-2 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors pr-10"
-                          value={searchApiKeys[engine] || ''}
-                          onChange={(e) =>
-                            setSearchApiKeys((prev) => ({ ...prev, [engine]: e.target.value }))
-                          }
-                          placeholder={`Paste your ${engine} API key here`}
-                        />
-                        <button
-                          type="button"
-                          aria-label={searchReveal[engine] ? 'Hide API key' : 'Show API key'}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400"
-                          tabIndex={0}
-                          onClick={() =>
-                            setSearchReveal((prev) => ({ ...prev, [engine]: !prev[engine] }))
-                          }
-                        >
-                          {searchReveal[engine] ? (
-                            <EyeOff className="w-5 h-5" />
-                          ) : (
-                            <Eye className="w-5 h-5" />
-                          )}
-                        </button>
-                      </div>
-                      <div className="flex gap-2 pt-2">
-                        <button
-                          type="button"
-                          onClick={async () => {
-                            setSearchSaving((prev) => ({ ...prev, [engine]: true }));
-                            setSearchErrors((prev) => ({ ...prev, [engine]: null }));
-                            setSuccess(null);
-                            try {
-                              if (searchApiKeys[engine] && searchApiKeys[engine].trim() !== '') {
-                                // Use unified update route
-                                const keyMap = {
-                                  tavily: 'tavily_api_key',
-                                  exa: 'exa_api_key',
-                                  searxng: 'searxng_api_key',
-                                };
-                                const body = { [keyMap[engine]]: searchApiKeys[engine].trim() };
-                                await httpClient.put('/v1/user-settings', body);
-                                setSuccess(
-                                  `${engine.charAt(0).toUpperCase() + engine.slice(1)} API key saved successfully!`
-                                );
-                              } else {
-                                setSearchErrors((prev) => ({
-                                  ...prev,
-                                  [engine]: 'Please enter a valid API key to save',
-                                }));
-                              }
-                            } catch (err: any) {
-                              setSearchErrors((prev) => ({
-                                ...prev,
-                                [engine]: err?.message || 'Failed to save key',
-                              }));
-                            } finally {
-                              setSearchSaving((prev) => ({ ...prev, [engine]: false }));
-                            }
-                          }}
-                          className="inline-flex items-center gap-2 px-3 py-2 text-sm rounded-md bg-blue-600 hover:bg-blue-700 text-white transition-colors"
-                          disabled={searchSaving[engine]}
-                        >
-                          {searchSaving[engine] ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Save className="w-4 h-4" />
-                          )}
-                          {searchSaving[engine] ? 'Saving...' : 'Save Key'}
-                        </button>
-                      </div>
-                      {searchErrors[engine] && (
-                        <p className="text-xs text-red-600 dark:text-red-400 mt-2">
-                          {searchErrors[engine]}
-                        </p>
+                      {initialSearxBaseUrl && searxBaseUrl === initialSearxBaseUrl && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium">
+                          <Check className="w-3 h-3" />
+                          Saved
+                        </span>
                       )}
                     </div>
-                  ))}
-                  <p className="text-xs text-slate-500 dark:text-slate-400 pt-2">
-                    Keys are stored securely on the server and only accessible by your account.
-                  </p>
+
+                    <input
+                      type="url"
+                      className="w-full px-3 py-2.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                      value={searxBaseUrl}
+                      onChange={(e) => {
+                        setSearxBaseUrl(e.target.value);
+                        setSearxBaseUrlError(null);
+                      }}
+                      placeholder="https://searx.example/search"
+                    />
+
+                    {searxBaseUrlError && (
+                      <p className="text-xs text-red-600 dark:text-red-400 flex items-start gap-1.5">
+                        <XCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                        <span>{searxBaseUrlError}</span>
+                      </p>
+                    )}
+
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Leave empty to use legacy configuration
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setSearxBaseUrlSaving(true);
+                        setSearxBaseUrlError(null);
+                        setSuccess(null);
+                        try {
+                          const trimmedValue = searxBaseUrl.trim();
+                          if (trimmedValue && !/^https?:\/\//i.test(trimmedValue)) {
+                            throw new Error(
+                              'Please enter a valid SearXNG base URL starting with http:// or https://'
+                            );
+                          }
+                          await httpClient.put('/v1/user-settings', {
+                            searxng_base_url: trimmedValue || null,
+                          });
+                          setInitialSearxBaseUrl(trimmedValue);
+                          setSuccess('SearXNG base URL saved successfully!');
+                        } catch (err: any) {
+                          setSearxBaseUrlError(err?.message || 'Failed to save SearXNG base URL');
+                        } finally {
+                          setSearxBaseUrlSaving(false);
+                        }
+                      }}
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-neutral-700 text-white disabled:cursor-not-allowed transition-colors shadow-sm"
+                      disabled={searxBaseUrlSaving || searxBaseUrl === initialSearxBaseUrl}
+                    >
+                      {searxBaseUrlSaving ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4" />
+                          {searxBaseUrl === initialSearxBaseUrl ? 'Saved' : 'Save URL'}
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {/* API Key Section */}
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                        API Key (Optional)
+                      </label>
+                      {initialSearchApiKeys.searxng &&
+                        searchApiKeys.searxng === initialSearchApiKeys.searxng && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium">
+                            <Check className="w-3 h-3" />
+                            Saved
+                          </span>
+                        )}
+                    </div>
+
+                    <div className="relative">
+                      <input
+                        type={searchReveal.searxng ? 'text' : 'password'}
+                        className="w-full px-3 py-2.5 pr-10 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                        value={searchApiKeys.searxng || ''}
+                        onChange={(e) => {
+                          setSearchApiKeys((prev) => ({ ...prev, searxng: e.target.value }));
+                          setSearchErrors((prev) => ({ ...prev, searxng: null }));
+                        }}
+                        placeholder="Optional authentication key"
+                      />
+                      <button
+                        type="button"
+                        aria-label={searchReveal.searxng ? 'Hide API key' : 'Show API key'}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        onClick={() =>
+                          setSearchReveal((prev) => ({ ...prev, searxng: !prev.searxng }))
+                        }
+                      >
+                        {searchReveal.searxng ? (
+                          <EyeOff className="w-4 h-4" />
+                        ) : (
+                          <Eye className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+
+                    {searchErrors.searxng && (
+                      <p className="text-xs text-red-600 dark:text-red-400 flex items-start gap-1.5">
+                        <XCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                        <span>{searchErrors.searxng}</span>
+                      </p>
+                    )}
+
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Encrypted and stored securely with your account
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setSearchSaving((prev) => ({ ...prev, searxng: true }));
+                        setSearchErrors((prev) => ({ ...prev, searxng: null }));
+                        setSuccess(null);
+                        try {
+                          if (searchApiKeys.searxng && searchApiKeys.searxng.trim() !== '') {
+                            await httpClient.put('/v1/user-settings', {
+                              searxng_api_key: searchApiKeys.searxng.trim(),
+                            });
+                            setInitialSearchApiKeys((prev) => ({
+                              ...prev,
+                              searxng: searchApiKeys.searxng,
+                            }));
+                            setSuccess('SearXNG API key saved successfully!');
+                          } else {
+                            setSearchErrors((prev) => ({
+                              ...prev,
+                              searxng: 'Please enter a valid API key to save',
+                            }));
+                          }
+                        } catch (err: any) {
+                          setSearchErrors((prev) => ({
+                            ...prev,
+                            searxng: err?.message || 'Failed to save key',
+                          }));
+                        } finally {
+                          setSearchSaving((prev) => ({ ...prev, searxng: false }));
+                        }
+                      }}
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-neutral-700 text-white disabled:cursor-not-allowed transition-colors shadow-sm"
+                      disabled={
+                        searchSaving.searxng ||
+                        searchApiKeys.searxng === initialSearchApiKeys.searxng
+                      }
+                    >
+                      {searchSaving.searxng ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4" />
+                          {searchApiKeys.searxng === initialSearchApiKeys.searxng
+                            ? 'Saved'
+                            : 'Save Key'}
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
+
+                {/* Tavily API Key Card */}
+                <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-5 shadow-sm space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <label className="block text-sm font-semibold text-slate-900 dark:text-slate-100">
+                          Tavily API Key
+                        </label>
+                        {initialSearchApiKeys.tavily &&
+                          searchApiKeys.tavily === initialSearchApiKeys.tavily && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium">
+                              <Check className="w-3 h-3" />
+                              Saved
+                            </span>
+                          )}
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        Real-time web search API
+                      </p>
+                    </div>
+                    <a
+                      href="https://tavily.com"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 transition-colors"
+                      title="Get Tavily API key"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="relative">
+                      <input
+                        type={searchReveal.tavily ? 'text' : 'password'}
+                        className="w-full px-3 py-2.5 pr-10 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                        value={searchApiKeys.tavily || ''}
+                        onChange={(e) => {
+                          setSearchApiKeys((prev) => ({ ...prev, tavily: e.target.value }));
+                          setSearchErrors((prev) => ({ ...prev, tavily: null }));
+                        }}
+                        placeholder="Paste your Tavily API key here"
+                      />
+                      <button
+                        type="button"
+                        aria-label={searchReveal.tavily ? 'Hide API key' : 'Show API key'}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        onClick={() =>
+                          setSearchReveal((prev) => ({ ...prev, tavily: !prev.tavily }))
+                        }
+                      >
+                        {searchReveal.tavily ? (
+                          <EyeOff className="w-4 h-4" />
+                        ) : (
+                          <Eye className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+
+                    {searchErrors.tavily && (
+                      <p className="text-xs text-red-600 dark:text-red-400 flex items-start gap-1.5">
+                        <XCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                        <span>{searchErrors.tavily}</span>
+                      </p>
+                    )}
+
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Encrypted and stored securely with your account
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setSearchSaving((prev) => ({ ...prev, tavily: true }));
+                        setSearchErrors((prev) => ({ ...prev, tavily: null }));
+                        setSuccess(null);
+                        try {
+                          if (searchApiKeys.tavily && searchApiKeys.tavily.trim() !== '') {
+                            await httpClient.put('/v1/user-settings', {
+                              tavily_api_key: searchApiKeys.tavily.trim(),
+                            });
+                            setInitialSearchApiKeys((prev) => ({
+                              ...prev,
+                              tavily: searchApiKeys.tavily,
+                            }));
+                            setSuccess('Tavily API key saved successfully!');
+                          } else {
+                            setSearchErrors((prev) => ({
+                              ...prev,
+                              tavily: 'Please enter a valid API key to save',
+                            }));
+                          }
+                        } catch (err: any) {
+                          setSearchErrors((prev) => ({
+                            ...prev,
+                            tavily: err?.message || 'Failed to save key',
+                          }));
+                        } finally {
+                          setSearchSaving((prev) => ({ ...prev, tavily: false }));
+                        }
+                      }}
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-neutral-700 text-white disabled:cursor-not-allowed transition-colors shadow-sm"
+                      disabled={
+                        searchSaving.tavily || searchApiKeys.tavily === initialSearchApiKeys.tavily
+                      }
+                    >
+                      {searchSaving.tavily ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4" />
+                          {searchApiKeys.tavily === initialSearchApiKeys.tavily
+                            ? 'Saved'
+                            : 'Save Key'}
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Exa API Key Card */}
+                <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-5 shadow-sm space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2">
+                        <label className="block text-sm font-semibold text-slate-900 dark:text-slate-100">
+                          Exa API Key
+                        </label>
+                        {initialSearchApiKeys.exa &&
+                          searchApiKeys.exa === initialSearchApiKeys.exa && (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium">
+                              <Check className="w-3 h-3" />
+                              Saved
+                            </span>
+                          )}
+                      </div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        Neural search for the web
+                      </p>
+                    </div>
+                    <a
+                      href="https://exa.ai"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 transition-colors"
+                      title="Get Exa API key"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div className="relative">
+                      <input
+                        type={searchReveal.exa ? 'text' : 'password'}
+                        className="w-full px-3 py-2.5 pr-10 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                        value={searchApiKeys.exa || ''}
+                        onChange={(e) => {
+                          setSearchApiKeys((prev) => ({ ...prev, exa: e.target.value }));
+                          setSearchErrors((prev) => ({ ...prev, exa: null }));
+                        }}
+                        placeholder="Paste your Exa API key here"
+                      />
+                      <button
+                        type="button"
+                        aria-label={searchReveal.exa ? 'Hide API key' : 'Show API key'}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        onClick={() => setSearchReveal((prev) => ({ ...prev, exa: !prev.exa }))}
+                      >
+                        {searchReveal.exa ? (
+                          <EyeOff className="w-4 h-4" />
+                        ) : (
+                          <Eye className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+
+                    {searchErrors.exa && (
+                      <p className="text-xs text-red-600 dark:text-red-400 flex items-start gap-1.5">
+                        <XCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                        <span>{searchErrors.exa}</span>
+                      </p>
+                    )}
+
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Encrypted and stored securely with your account
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        setSearchSaving((prev) => ({ ...prev, exa: true }));
+                        setSearchErrors((prev) => ({ ...prev, exa: null }));
+                        setSuccess(null);
+                        try {
+                          if (searchApiKeys.exa && searchApiKeys.exa.trim() !== '') {
+                            await httpClient.put('/v1/user-settings', {
+                              exa_api_key: searchApiKeys.exa.trim(),
+                            });
+                            setInitialSearchApiKeys((prev) => ({
+                              ...prev,
+                              exa: searchApiKeys.exa,
+                            }));
+                            setSuccess('Exa API key saved successfully!');
+                          } else {
+                            setSearchErrors((prev) => ({
+                              ...prev,
+                              exa: 'Please enter a valid API key to save',
+                            }));
+                          }
+                        } catch (err: any) {
+                          setSearchErrors((prev) => ({
+                            ...prev,
+                            exa: err?.message || 'Failed to save key',
+                          }));
+                        } finally {
+                          setSearchSaving((prev) => ({ ...prev, exa: false }));
+                        }
+                      }}
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-neutral-700 text-white disabled:cursor-not-allowed transition-colors shadow-sm"
+                      disabled={searchSaving.exa || searchApiKeys.exa === initialSearchApiKeys.exa}
+                    >
+                      {searchSaving.exa ? (
+                        <>
+                          <RefreshCw className="w-4 h-4 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-4 h-4" />
+                          {searchApiKeys.exa === initialSearchApiKeys.exa ? 'Saved' : 'Save Key'}
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-slate-50/60 dark:bg-neutral-800/30 rounded-lg p-4 border border-slate-200/30 dark:border-neutral-700/30">
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                  <strong className="font-semibold text-slate-700 dark:text-slate-300">
+                    Security:
+                  </strong>{' '}
+                  All API keys are encrypted and stored securely on the server. They are only
+                  accessible by your account and never shared or logged.
+                </p>
               </div>
             </div>
           )}

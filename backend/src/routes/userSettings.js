@@ -13,13 +13,15 @@ export function createUserSettingsRouter() {
     try {
       const userId = req.user.id;
       const body = req.body || {};
-      const supportedKeys = ['tavily_api_key', 'exa_api_key', 'searxng_api_key'];
+      const supportedKeys = ['tavily_api_key', 'exa_api_key', 'searxng_api_key', 'searxng_base_url'];
       const updated = {};
       for (const key of supportedKeys) {
         if (Object.hasOwn(body, key)) {
           const value = body[key];
-          upsertUserSetting(userId, key, value);
-          updated[key] = value;
+          const normalized = typeof value === 'string' ? value.trim() : value;
+          const storedValue = normalized === '' ? null : normalized;
+          upsertUserSetting(userId, key, storedValue);
+          updated[key] = storedValue;
         }
       }
       res.status(200).json({ success: true, updated });
