@@ -519,9 +519,9 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
               )}
 
               {/* Main Content - Responsive Grid */}
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 lg:gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 lg:gap-6 lg:max-h-[600px]">
                 {/* Provider List Section */}
-                <div className="lg:col-span-1 space-y-4">
+                <div className="lg:col-span-1 space-y-4 lg:overflow-y-auto lg:pr-2">
                   <div className="bg-slate-50/60 dark:bg-neutral-800/30 rounded-lg p-3 border border-slate-200/30 dark:border-neutral-700/30">
                     <div className="flex items-center justify-between mb-3">
                       <div>
@@ -534,7 +534,7 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                       </div>
                     </div>
 
-                    <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 divide-y divide-slate-200/60 dark:divide-neutral-700 max-h-48 lg:max-h-64 xl:max-h-80 overflow-auto shadow-sm">
+                    <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 divide-y divide-slate-200/60 dark:divide-neutral-700 shadow-sm">
                       {loadingProviders && (
                         <div className="p-3 text-sm text-slate-500 text-center">
                           Loading providers...
@@ -608,7 +608,7 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                 </div>
 
                 {/* Provider Configuration Section */}
-                <div className="lg:col-span-2 bg-slate-50/60 dark:bg-neutral-800/30 rounded-lg p-3 lg:p-4 border border-slate-200/30 dark:border-neutral-700/30">
+                <div className="lg:col-span-2 bg-slate-50/60 dark:bg-neutral-800/30 rounded-lg p-3 lg:p-4 border border-slate-200/30 dark:border-neutral-700/30 lg:overflow-y-auto lg:pr-2">
                   {form.id && (
                     <>
                       {/* Add New button moved above the form */}
