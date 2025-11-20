@@ -251,12 +251,12 @@ const Message = React.memo<MessageProps>(
         ref={lastUserMessageRef}
       >
         {!isUser && (
-          <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-neutral-800 flex items-center justify-center flex-shrink-0 shadow-sm">
+          <div className="hidden">
             <Bot className="w-4 h-4 text-slate-700 dark:text-slate-200" />
           </div>
         )}
         <div
-          className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? 'max-w-[50%] order-first' : 'max-w-[95%]'}`}
+          className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? 'max-w-[50%] order-first' : 'w-full'}`}
         >
           {isEditing ? (
             <ImageUploadZone
@@ -349,7 +349,7 @@ const Message = React.memo<MessageProps>(
               ) : (
                 <div className="space-y-3">
                   {assistantSegments.length === 0 ? (
-                    <div className="rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50">
+                    <div className="text-base leading-relaxed text-slate-800 dark:text-slate-200">
                       {pending.streaming || pending.abort ? (
                         <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
                           <span
@@ -380,7 +380,7 @@ const Message = React.memo<MessageProps>(
                         return (
                           <div
                             key={`text-${segmentIndex}`}
-                            className="rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-white dark:bg-neutral-900 text-slate-800 dark:text-slate-200 border border-slate-200/50 dark:border-neutral-700/50"
+                            className="text-base leading-relaxed text-slate-800 dark:text-slate-200"
                           >
                             <Markdown text={segment.text} isStreaming={isStreaming} />
                           </div>
@@ -946,7 +946,7 @@ export function MessageList({
       style={{ willChange: 'scroll-position' }}
     >
       <div
-        className="mx-auto max-w-4xl px-6 py-6 space-y-6"
+        className="mx-auto max-w-3xl px-6 py-6 space-y-6"
         style={{ paddingBottom: dynamicBottomPadding }}
       >
         {messages.length === 0 && (

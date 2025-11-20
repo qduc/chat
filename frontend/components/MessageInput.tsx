@@ -357,7 +357,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
           else onSend();
         }}
       >
-        <div className="px-2">
+        <div>
           <div className="relative rounded-xl bg-white dark:bg-neutral-950 border border-slate-200/80 dark:border-neutral-800/80 shadow-sm">
             {/* ===== IMAGE PREVIEWS ===== */}
             {images.length > 0 && (
