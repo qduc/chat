@@ -19,6 +19,7 @@ interface ChatHeaderProps {
   groups?: TabGroup[] | null;
   fallbackOptions?: { value: string; label: string }[];
   modelToProvider?: Record<string, string> | Map<string, string>;
+  onFocusMessageInput?: () => void;
 }
 
 export function ChatHeader({
@@ -33,6 +34,7 @@ export function ChatHeader({
   groups,
   fallbackOptions,
   modelToProvider,
+  onFocusMessageInput,
 }: ChatHeaderProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
 
@@ -105,6 +107,7 @@ export function ChatHeader({
             fallbackOptions={effectiveFallback}
             className="text-lg"
             ariaLabel="Model"
+            onAfterChange={onFocusMessageInput}
           />
           {onRefreshModels && (
             <button

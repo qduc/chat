@@ -7,7 +7,7 @@ import { useChat } from '../hooks/useChat';
 import { ChatSidebar } from './ChatSidebar';
 import { ChatHeader } from './ChatHeader';
 import { MessageList } from './MessageList';
-import { MessageInput } from './MessageInput';
+import { MessageInput, type MessageInputRef } from './MessageInput';
 import { RightSidebar } from './RightSidebar';
 import SettingsModal from './SettingsModal';
 import { AuthModal, AuthMode } from './auth/AuthModal';
@@ -37,6 +37,7 @@ export function ChatV2() {
   const messageListRef = useRef<HTMLDivElement>(null!);
   const [scrollButtons, setScrollButtons] = useState({ showTop: false, showBottom: false });
   const isLoadingConversationRef = useRef(false);
+  const messageInputRef = useRef<MessageInputRef>(null);
 
   // Simple event handlers
   const handleCopy = useCallback(async (text: string) => {
@@ -62,6 +63,18 @@ export function ChatV2() {
     },
     [chat]
   );
+
+  const handleNewChat = useCallback(() => {
+    chat.newChat();
+    // Focus the message input after a short delay to ensure the component is ready
+    setTimeout(() => {
+      messageInputRef.current?.focus();
+    }, 0);
+  }, [chat]);
+
+  const handleFocusMessageInput = useCallback(() => {
+    messageInputRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     const storedWidth =
@@ -395,14 +408,14 @@ export function ChatV2() {
           onDeleteConversation={chat.deleteConversation}
           onLoadMore={chat.loadMoreConversations}
           onRefresh={chat.refreshConversations}
-          onNewChat={chat.newChat}
+          onNewChat={handleNewChat}
           onToggleCollapse={chat.toggleSidebar}
         />
       )}
       <div className="flex flex-col flex-1">
         <ChatHeader
           isStreaming={chat.status === 'streaming'}
-          onNewChat={chat.newChat}
+          onNewChat={handleNewChat}
           model={chat.model}
           onModelChange={chat.setModel}
           onProviderChange={chat.setProviderId}
@@ -414,6 +427,7 @@ export function ChatV2() {
           groups={chat.modelGroups}
           fallbackOptions={chat.modelOptions}
           modelToProvider={chat.modelToProvider}
+          onFocusMessageInput={handleFocusMessageInput}
         />
         <div className="flex flex-1 min-h-0">
           <div className="flex flex-col flex-1 relative">
@@ -459,8 +473,9 @@ export function ChatV2() {
             </div>
 
             {/* Removed soft fade to keep a cleaner boundaryless look */}
-            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-4xl px-6 z-30">
+            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-3xl px-6 z-30">
               <MessageInput
+                ref={messageInputRef}
                 input={chat.input}
                 pending={chat.pending}
                 onInputChange={chat.setInput}
