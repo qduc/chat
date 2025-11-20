@@ -16,6 +16,7 @@ interface ModelSelectorProps {
   fallbackOptions: ModelOption[];
   className?: string;
   ariaLabel?: string;
+  onAfterChange?: () => void;
 }
 
 const FAVORITES_KEY = 'chatforge-favorite-models';
@@ -92,6 +93,7 @@ export default function ModelSelector({
   fallbackOptions,
   className = '',
   ariaLabel = 'Select model',
+  onAfterChange,
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [shouldRenderDropdown, setShouldRenderDropdown] = useState(false);
@@ -257,8 +259,16 @@ export default function ModelSelector({
           console.warn('Failed to save recent models:', error);
         }
       }
+
+      // Focus message input after model selection
+      if (onAfterChange) {
+        // Use setTimeout to ensure dropdown is closed first
+        setTimeout(() => {
+          onAfterChange();
+        }, 0);
+      }
     },
-    [onChange, favorites, recentModels]
+    [onChange, favorites, recentModels, onAfterChange]
   );
 
   // Handle keyboard navigation

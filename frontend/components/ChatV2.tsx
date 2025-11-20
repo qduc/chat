@@ -72,6 +72,10 @@ export function ChatV2() {
     }, 0);
   }, [chat]);
 
+  const handleFocusMessageInput = useCallback(() => {
+    messageInputRef.current?.focus();
+  }, []);
+
   useEffect(() => {
     const storedWidth =
       typeof window !== 'undefined' ? window.localStorage.getItem('rightSidebarWidth') : null;
@@ -423,6 +427,7 @@ export function ChatV2() {
           groups={chat.modelGroups}
           fallbackOptions={chat.modelOptions}
           modelToProvider={chat.modelToProvider}
+          onFocusMessageInput={handleFocusMessageInput}
         />
         <div className="flex flex-1 min-h-0">
           <div className="flex flex-col flex-1 relative">
