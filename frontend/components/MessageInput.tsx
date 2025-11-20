@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from 'react';
+import { useEffect, useRef, useState, useMemo, useImperativeHandle, forwardRef } from 'react';
 import {
   Send,
   Loader2,
@@ -49,32 +49,46 @@ interface MessageInputProps {
   onFilesChange?: (files: FileAttachment[]) => void;
 }
 
-export function MessageInput({
-  input,
-  pending,
-  onInputChange,
-  onSend,
-  onStop,
-  shouldStream,
-  onUseToolsChange,
-  enabledTools = [],
-  onEnabledToolsChange,
-  onShouldStreamChange,
-  model,
-  qualityLevel,
-  onQualityLevelChange,
-  modelCapabilities = {},
-  images = [],
-  onImagesChange,
-  files = [],
-  onFilesChange,
-}: MessageInputProps) {
+export interface MessageInputRef {
+  focus: () => void;
+}
+
+export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(function MessageInput(
+  {
+    input,
+    pending,
+    onInputChange,
+    onSend,
+    onStop,
+    shouldStream,
+    onUseToolsChange,
+    enabledTools = [],
+    onEnabledToolsChange,
+    onShouldStreamChange,
+    model,
+    qualityLevel,
+    onQualityLevelChange,
+    modelCapabilities = {},
+    images = [],
+    onImagesChange,
+    files = [],
+    onFilesChange,
+  },
+  ref
+) {
   // ===== REFS =====
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const toolsDropdownRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const attachDropdownRef = useRef<HTMLDivElement | null>(null);
+
+  // Expose focus method to parent
+  useImperativeHandle(ref, () => ({
+    focus: () => {
+      inputRef.current?.focus();
+    },
+  }));
 
   // ===== STATE =====
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -755,4 +769,4 @@ export function MessageInput({
       </form>
     </ImageUploadZone>
   );
-}
+});
