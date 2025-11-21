@@ -4,17 +4,23 @@ This document provides essential knowledge for AI agents to be immediately produ
 
 ## Project Overview
 
-**ChatForge** is a modern chat application with a Next.js frontend and Node.js backend, designed as an OpenAI API proxy with enhanced features like conversation persistence, tool orchestration, multi-provider support, image handling, and advanced reasoning capabilities.
+**ChatForge** is a modern chat application with a Next.js frontend and Node.js backend, designed as an OpenAI API proxy with enhanced features like conversation persistence, tool orchestration, multi-provider support, JWT authentication, user-scoped multi-tenancy, image/file uploads, advanced reasoning controls, prompt caching optimization, and persistent memory via journal tool.
 
 ## Architecture Overview
 
 ### High-Level Structure
 ```
 chat/
-  frontend/             # Next.js frontend
-  backend/              # Node.js backend
+  frontend/             # Next.js 15 + React 19 + TypeScript
+  backend/              # Node.js + Express + SQLite
   docs/                 # Architecture docs and ADRs
+  proxy/                # Nginx reverse proxy config
+  integration/          # Integration tests
+  requests/             # HTTP request examples
   dev.sh                # Development orchestration script
+  prod.sh               # Production management script
+  release.sh            # Release management script
+  AGENTS.md             # This file - AI onboarding guide
 ```
 
 ### Service Boundaries
@@ -32,12 +38,17 @@ chat/
 
 ### Core Design Principles
 
-1. **User-Based Data Isolation**: All data operations are scoped to authenticated users
-2. **Server-Side Tool Orchestration**: Tools execute on the backend, not client
-3. **OpenAI API Compatibility**: Backend presents OpenAI-compatible interface while adding features
-4. **Real-time Streaming**: SSE-based streaming for chat and tool execution
-5. **Conversation Settings Persistence**: Complete snapshots of conversation settings (model, provider, tools, reasoning controls) persist across edits and regenerations
-6. **Image Support**: Full image handling with upload, paste, preview, and secure metadata storage
+1. **User-Based Data Isolation**: All data operations are scoped to authenticated users (enforced at database level with NOT NULL user_id constraints)
+2. **JWT Authentication**: Secure authentication with JWT access tokens and refresh tokens
+3. **Multi-Tenancy**: Per-user provider configurations, conversations, settings, and resources
+4. **Server-Side Tool Orchestration**: Tools execute on the backend, not client
+5. **OpenAI API Compatibility**: Backend presents OpenAI-compatible interface while adding features
+6. **Real-time Streaming**: SSE-based streaming for chat and tool execution
+7. **Conversation Settings Persistence**: Complete snapshots of conversation settings (model, provider, tools, reasoning controls) persist across edits and regenerations
+8. **Multimodal Support**: Full image and file handling with upload, paste, preview, and secure metadata storage
+9. **Reasoning Controls**: Support for reasoning effort levels and extended thinking modes
+10. **Prompt Caching**: Automatic prompt caching with cache breakpoints to reduce costs and latency
+11. **Persistent Memory**: Journal tool provides AI with cross-conversation memory storage
 
 ## Development Workflow
 
@@ -91,6 +102,27 @@ chat/
 # Provides password-less login for SQLite database inspection
 ```
 
+### Production Management
+```bash
+./prod.sh up [--build]     # Start production services (detached)
+./prod.sh down             # Stop services (requires confirmation)
+./prod.sh restart          # Restart services
+./prod.sh ps               # Show service status
+./prod.sh logs [-f]        # View logs
+./prod.sh health           # Check health status
+./prod.sh migrate status   # Check migration status
+./prod.sh migrate up       # Apply migrations (with confirmation + auto-backup)
+./prod.sh migrate fresh    # Reset database (requires double confirmation)
+./prod.sh backup           # Create database backup
+./prod.sh exec <service> <command>  # Execute command in container
+```
+
+### Release Management
+```bash
+./release.sh               # Interactive release process (merge develop to main, tag, create next develop)
+./release.sh --dry-run     # Validate without releasing (lint + build only)
+```
+
 ## Key Architectural Patterns
 
 ### Backend Patterns
@@ -110,9 +142,13 @@ chat/
 
 **Database Philosophy**:
 - User-based data isolation at query level (enforced with NOT NULL constraints on user_id)
-- Migration-driven schema evolution
-- Automatic cleanup for data retention
+- Migration-driven schema evolution (20+ migrations applied)
+- Automatic cleanup for data retention (default 30 days)
 - In-memory caching with TTL support for performance optimization
+- Password security with bcrypt hashing (cost factor 10)
+- JWT secrets stored in environment (never in database)
+- Image and file metadata stored with user ownership validation
+- Journal entries scoped per user for persistent AI memory
 
 ### Frontend Patterns
 
@@ -131,10 +167,13 @@ chat/
 **Component Philosophy**:
 - Separation between container and presentational components
 - Tool visualization integrated into message rendering
-- Authentication-aware UI components
+- Authentication-aware UI components with login/register flows
 - Image handling with drag-and-drop, paste support, and preview modals
-- Enhanced markdown rendering with language detection and copy functionality
+- File upload support with drag-and-drop for text files
+- Enhanced markdown rendering with language detection, syntax highlighting, and copy functionality
 - Model capabilities dynamically adjust UI based on selected model features
+- Reasoning controls (effort slider) shown conditionally based on model support
+- User settings UI for per-user API key management
 
 ## Core Conventions
 
@@ -161,16 +200,21 @@ chat/
 
 ## Important Architectural Decisions
 
-- **Provider Adapters**: System automatically selects appropriate API adapter based on upstream provider URL
+- **Provider Adapters**: System automatically selects appropriate API adapter based on upstream provider URL (ChatCompletions API vs Responses API)
 - **Tool Execution**: Always server-side, never client-side
-- **Data Isolation**: All queries filtered by authenticated user (enforced at database level)
+- **Data Isolation**: All queries filtered by authenticated user (enforced at database level with NOT NULL constraints)
+- **JWT Authentication**: Token-based authentication with bcrypt password hashing and refresh token support
 - **Streaming Protocol**: SSE for real-time updates with usage metadata tracking
 - **API Compatibility**: Maintains OpenAI API contract while extending functionality
-- **Reverse Proxy**: Supports proxying requests to external services
-- **Image Storage**: Secure image metadata storage with path-based access control
+- **Reverse Proxy**: Nginx proxy routes /api requests to backend in Docker deployments
+- **Image Storage**: Secure image metadata storage with path-based access control and validation (max 10MB, 5 images/message)
+- **File Storage**: Text file uploads with content extraction (max 5MB, 3 files/message, 30+ file types supported)
 - **Conversation Snapshots**: Each conversation maintains complete settings snapshot for reproducibility
-- **Reasoning Controls**: Advanced reasoning features available across compatible models
-- **Performance**: In-memory caching, model filtering by provider, and optimized rendering
+- **Reasoning Controls**: Advanced reasoning features (effort levels, extended thinking) available across compatible models
+- **Prompt Caching**: Automatic cache breakpoint insertion for Anthropic models to reduce token costs
+- **User Settings**: Per-user API keys for tools (Tavily, Exa, SearXNG) stored securely
+- **Journal Tool**: Persistent memory system allowing AI to store and retrieve notes across conversations
+- **Performance**: In-memory caching, model filtering by provider, optimized rendering, and batch database operations
 
 ## Finding Your Way Around
 
@@ -196,14 +240,14 @@ chat/
   - Settings: `SettingsModal.tsx`
   - UI primitives: `components/ui/`
 **Image handling**: Check `frontend/components/ui/ImagePreview.tsx` (exports both `ImagePreview` and `ImageUploadZone`)
+**File handling**: Check `backend/src/routes/files.js` for file upload API and `frontend/lib/api.ts` for client integration
+**Authentication**: Check `backend/src/routes/auth.js` for auth routes and `frontend/contexts/AuthContext.tsx` for client-side auth state
+**User settings**: Check `backend/src/routes/settings.js` for settings API and `frontend/hooks/useSettings.ts` (if exists) for client integration
+**Journal tool**: Check `backend/src/lib/tools/journal.js` for persistent memory implementation
 **Documentation**: Check `docs/` for ADRs and detailed specs
 **Backend API Specification**: Check `docs/backend_api_spec.md` for the complete backend API specification
 **Linting**: ESLint configs in both `frontend/` and `backend/` directories
 **Upstream Logging**: Request and response of upstream API are in `backend/logs/` folder. These files are very long, only read a dozen of lines from the bottom. You can read them without executing in docker container, they have been mounted to this project directory.
-
-## Instructions for Claude/Copilot AI
-
-- Creating documents after finishing a task is not necessary and should only be done if requested.
 
 ---
 
