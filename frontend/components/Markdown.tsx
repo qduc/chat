@@ -344,9 +344,7 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
                 {/* Header with language and copy button */}
                 <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-200/50 dark:border-neutral-800/50 bg-slate-50/50 dark:bg-neutral-900/30">
                   {language && (
-                    <span className="text-xs text-slate-500 dark:text-slate-500">
-                      {language}
-                    </span>
+                    <span className="text-xs text-slate-500 dark:text-slate-500">{language}</span>
                   )}
                   <button
                     type="button"
