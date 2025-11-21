@@ -452,7 +452,13 @@ export default function ModelSelector({
                   {providerTabs.map((tab) => (
                     <button
                       key={tab.id}
-                      onClick={() => setSelectedTab(tab.id)}
+                      onClick={() => {
+                        setSelectedTab(tab.id);
+                        // Keep focus on search input
+                        if (searchInputRef.current) {
+                          searchInputRef.current.focus();
+                        }
+                      }}
                       className={`flex-1 px-3 py-2 text-xs font-medium text-center border-b-2 transition-colors ${
                         selectedTab === tab.id
                           ? 'border-blue-500 text-blue-600 dark:text-blue-400 bg-white dark:bg-neutral-900'
