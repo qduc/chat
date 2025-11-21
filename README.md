@@ -13,11 +13,20 @@ ChatForge is a full-stack AI chat application featuring a Next.js 15 frontend an
 - **🤖 Server-Side Tool Orchestration** - Unified tool calling with iterative workflows, thinking support, and intelligent error handling
 - **💬 Real-Time Streaming** - Server-Sent Events (SSE) with tool execution visibility and abort support
 - **💾 Conversation Persistence** - SQLite-backed storage with automatic retention cleanup and migration system
-- **🔌 Multi-Provider Support** - OpenAI-compatible interface supporting multiple AI providers with automatic API adapter selection
+- **🔌 Multi-Provider Support** - OpenAI-compatible interface with OpenAI, Anthropic, and Gemini providers featuring automatic API adapter selection, Responses API optimization, and per-user provider configuration
 - **🎨 Modern UI** - React 19 with quality controls, markdown rendering, syntax highlighting, and responsive design
 - **🗂️ Prompt Management** - Built-in and custom system prompts with conversation-aware selection
 - **🧪 Comprehensive Testing** - Jest test suites for both frontend and backend with integration utilities
 - **🐳 Docker Ready** - Development and production Docker configurations with hot reload support
+- **🔐 Authentication & User Management** - JWT-based authentication with registration, login, refresh tokens, and user session management
+- **👤 User-Scoped Multi-Tenancy** - Per-user provider configuration with isolated conversations, messages, and settings
+- **🖼️ Image Upload & Vision Support** - Multimodal vision support with image upload, local/S3 storage, drag-and-drop UI, and validation
+- **📎 File Attachment Support** - Text file upload for code and documentation with content extraction and context injection
+- **🧠 Reasoning Controls & Extended Thinking** - Support for reasoning effort and verbosity controls with thinking blocks and token tracking
+- **💾 Prompt Caching Optimization** - Automatic prompt caching with cache breakpoints to reduce token costs and latency
+- **🔍 Model Filtering & Capabilities Detection** - Provider-level model filtering with wildcard patterns and automatic capability detection
+- **⚙️ User Settings & Preferences** - Persistent user preferences including search API keys and conversation settings
+- **📓 Journal Tool** - Persistent memory tool allowing AI to store and retrieve notes across conversations
 
 ## Prerequisites
 
@@ -36,7 +45,9 @@ cd chat
 
 # Set up backend
 cp backend/.env.example backend/.env
-# Edit backend/.env and add your OPENAI_API_KEY
+# Edit backend/.env and set:
+# - OPENAI_API_KEY (your API key)
+# - JWT_SECRET (a secure random string for authentication)
 npm --prefix backend install
 
 # Set up frontend
@@ -59,7 +70,9 @@ In production the proxy exposes the backend at `https://<your-domain>/api`.
 ```bash
 # Copy environment files
 cp backend/.env.example backend/.env
-# Edit backend/.env and add your OPENAI_API_KEY
+# Edit backend/.env and set:
+# - OPENAI_API_KEY (your API key)
+# - JWT_SECRET (a secure random string for authentication)
 
 # Start with hot reload
 ./dev.sh up --build
@@ -75,7 +88,9 @@ API requests from the browser can now target `http://localhost:3003/api` via the
 ### Docker Production
 
 ```bash
-# Ensure API key is set in backend/.env
+# Ensure required variables are set in backend/.env:
+# - OPENAI_API_KEY
+# - JWT_SECRET
 ./prod.sh up --build
 
 # Check service health
@@ -91,61 +106,178 @@ Visit http://localhost:3000
 
 ```
 chat/
-├── frontend/          # Next.js 15 + React 19 + TypeScript
-├── backend/           # Node.js + Express + SQLite
-├── docs/              # Architecture documentation and ADRs
-├── dev.sh             # Development orchestration script
-├── prod.sh            # Production management script
+├── frontend/                      # Next.js 15 + React 19 + TypeScript
+│   ├── app/                       # Next.js App Router pages
+│   ├── components/                # React UI components
+│   ├── hooks/                     # Custom React hooks (useChat, useSystemPrompts)
+│   ├── contexts/                  # React context providers
+│   ├── lib/                       # Utilities and type definitions
+│   └── __tests__/                 # Frontend test suite
+├── backend/                       # Node.js + Express + SQLite
+│   ├── src/                       # Main source code
+│   │   ├── routes/                # API endpoints
+│   │   ├── lib/                   # Core logic (tools, orchestrators, persistence)
+│   │   ├── middleware/            # Express middleware
+│   │   ├── db/                    # Database layer
+│   │   └── prompts/               # System prompt templates
+│   ├── scripts/                   # Database migrations
+│   └── __tests__/                 # Backend test suite (45+ test files)
+├── docs/                          # Architecture documentation
+│   ├── adapters/                  # API adapter specifications
+│   ├── reasoning/                 # Reasoning implementation docs
+│   ├── backend_api_spec.md        # Backend API documentation
+│   ├── backend_code_flow.md       # Backend architecture flow
+│   ├── frontend_code_flow.md      # Frontend architecture flow
+│   └── tool_orchestration_deep_dive.md
+├── proxy/                         # Nginx reverse proxy configuration
+├── integration/                   # Integration tests
+├── requests/                      # HTTP request examples for API testing
+├── AGENTS.md                      # AI agent onboarding guide
+├── dev.sh                         # Development orchestration script
+├── prod.sh                        # Production management script
+├── release.sh                     # Release management script
 ├── docker-compose.yml             # Production Docker setup
 ├── docker-compose.dev.yml         # Development Docker setup
-└── package.json       # Root workspace scripts
+└── package.json                   # Root workspace scripts
 ```
 
 ## Development
 
 ### Available Scripts
 
+#### Development (dev.sh)
+
 ```bash
+# Service management
+./dev.sh up [--build]      # Start services (optionally rebuild)
+./dev.sh down              # Stop and remove services
+./dev.sh restart           # Restart services
+./dev.sh build             # Build service images
+./dev.sh ps                # Show service status
+
+# Logs
+./dev.sh logs [-f]         # View logs (optionally follow)
+./dev.sh logs -f frontend  # Follow specific service logs
+
 # Testing
 ./dev.sh test              # Run all tests
 ./dev.sh test:backend      # Backend tests only
 ./dev.sh test:frontend     # Frontend tests only
 
-# Linting
-./dev.sh exec backend npm run lint
-./dev.sh exec frontend npm run lint
-
 # Database migrations
-./dev.sh migrate up        # Apply migrations
-./dev.sh migrate down      # Rollback migrations
+./dev.sh migrate status    # Check migration status
+./dev.sh migrate up        # Apply pending migrations
+./dev.sh migrate fresh     # Reset database (destructive)
 
-# Docker management
-./dev.sh up --build        # Start dev environment
-./dev.sh down              # Stop containers
-./dev.sh logs -f           # Follow logs
+# Execute commands
 ./dev.sh exec <service> <command>  # Run command in container
+./dev.sh exec backend npm run lint # Example: backend linting
+```
+
+#### Production (prod.sh)
+
+```bash
+# Service management
+./prod.sh up [--build]     # Start services (detached, optionally rebuild)
+./prod.sh down             # Stop services (requires confirmation)
+./prod.sh restart          # Restart services
+./prod.sh ps               # Show service status
+
+# Monitoring
+./prod.sh logs [-f]        # View logs (optionally follow)
+./prod.sh health           # Check health status
+
+# Database operations
+./prod.sh migrate status   # Check migration status
+./prod.sh migrate up       # Apply migrations (with confirmation + auto-backup)
+./prod.sh migrate fresh    # Reset database (requires double confirmation)
+./prod.sh backup           # Create database backup
+
+# Execute commands
+./prod.sh exec <service> <command>  # Run command in container
+```
+
+#### Release Management (release.sh)
+
+```bash
+./release.sh               # Interactive release process
+./release.sh --dry-run     # Validate without releasing (lint + build)
 ```
 
 ### Environment Variables
 
 #### Backend (`backend/.env`)
 
+**Required:**
 ```env
-OPENAI_API_KEY=your-api-key-here
-TAVILY_API_KEY=your-tavily-key-here  # Optional: for web_search tool
-EXA_API_KEY=your-exa-key-here       # Optional: for web_search_exa tool
-PORT=3001
-LOG_LEVEL=info
-RATE_LIMIT_MAX=100
-RATE_LIMIT_WINDOW_MS=60000
-RETENTION_DAYS=30
+OPENAI_API_KEY=your-api-key-here          # OpenAI API key (or use PROVIDER_API_KEY)
+JWT_SECRET=your-secret-key-here           # Secret for JWT authentication (required)
+DEFAULT_MODEL=gpt-4o-mini                 # Default AI model
+DEFAULT_TITLE_MODEL=gpt-4o-mini           # Model for conversation titles
+PORT=3001                                  # Server port
+RATE_LIMIT_WINDOW=60                       # Rate limit window in seconds
+RATE_LIMIT_MAX=50                          # Max requests per window
+CORS_ORIGIN=http://localhost:3000         # CORS allowed origin
+```
+
+**Optional - Provider Configuration:**
+```env
+PROVIDER=openai                            # Provider selection (openai, anthropic, gemini)
+PROVIDER_BASE_URL=                         # Custom provider base URL
+PROVIDER_API_KEY=                          # Generic provider API key
+PROVIDER_CUSTOM_HEADERS={}                 # Custom headers as JSON
+OPENAI_BASE_URL=https://api.openai.com/v1 # OpenAI base URL
+```
+
+**Optional - Tool Configuration:**
+```env
+TAVILY_API_KEY=your-tavily-key            # Tavily web search (optional)
+EXA_API_KEY=your-exa-key                  # Exa web search (optional)
+SEARXNG_BASE_URL=                         # SearXNG instance URL (optional)
+```
+
+**Optional - Timeouts:**
+```env
+PROVIDER_TIMEOUT=10000                     # Provider operation timeout (ms)
+MODEL_TIMEOUT=3000                         # Model fetching timeout (ms)
+STREAMING_TIMEOUT=300000                   # Streaming timeout (ms)
+```
+
+**Optional - Logging:**
+```env
+LOG_LEVEL=info                             # Log level (trace/debug/info/warn/error/fatal)
+PRETTY_LOGS=true                           # Human-friendly logs (dev only)
+MAX_LOG_RETENTION_DAYS=3                   # Log retention days
+```
+
+**Optional - Persistence:**
+```env
+ENABLE_PERSISTENCE=true                    # Enable conversation persistence
+DATABASE_URL=                              # Database URL (defaults to SQLite)
+RETENTION_DAYS=30                          # Days to retain conversations
+MAX_CONVERSATIONS_PER_SESSION=100          # Conversation limit per session
+MAX_MESSAGES_PER_CONVERSATION=1000         # Message limit per conversation
+BATCH_FLUSH_INTERVAL=250                   # Batch flush interval (ms)
+```
+
+**Optional - Storage:**
+```env
+IMAGE_STORAGE_PATH=./data/images           # Local image storage path
+FILE_STORAGE_PATH=./data/files             # Local file storage path
+```
+
+**Optional - JWT:**
+```env
+JWT_EXPIRES_IN=1h                          # JWT token expiration
+JWT_REFRESH_EXPIRES_IN=7d                  # Refresh token expiration
 ```
 
 #### Frontend (`frontend/.env.local`)
 
 ```env
-NEXT_PUBLIC_API_BASE=/api
-BACKEND_ORIGIN=http://localhost:3001
+NEXT_PUBLIC_API_BASE=/api                  # API base path (required)
+BACKEND_ORIGIN=http://localhost:3001       # Backend server origin (required)
+NEXT_PUBLIC_APP_NAME=ChatForge             # Application name (optional)
 ```
 
 ### Adding New Tools
@@ -177,18 +309,30 @@ Tools are automatically registered and available via the `/v1/tools` endpoint.
 ### Tech Stack
 
 **Frontend:**
-- Next.js 15 (App Router)
+- Next.js 15.4 (App Router)
 - React 19
-- TypeScript
+- TypeScript 5.9
 - Tailwind CSS 4
-- React Markdown
+- React Markdown with rehype plugins
+- Lucide React (icons)
+- highlight.js (syntax highlighting)
+- KaTeX (math rendering)
+- @floating-ui/react (tooltips/dropdowns)
 
 **Backend:**
 - Node.js with ES modules
-- Express.js
-- SQLite with better-sqlite3
-- Pino logging
-- node-fetch for provider APIs
+- Express.js 5.1
+- SQLite with better-sqlite3 9.4
+- Pino logging 9.3 with rotation
+- node-fetch 3.3 (provider APIs)
+- bcryptjs (password hashing)
+- jsonwebtoken (JWT authentication)
+- multer (file uploads)
+- zod (validation)
+- express-rate-limit (rate limiting)
+- @mozilla/readability (web scraping)
+- turndown (HTML to Markdown)
+- jsdom (DOM manipulation)
 
 ### Key Components
 
@@ -200,13 +344,61 @@ Tools are automatically registered and available via the `/v1/tools` endpoint.
 
 ### API Endpoints
 
-- `POST /v1/chat/completions` - OpenAI-compatible chat endpoint with streaming support
-- `GET /v1/conversations` - List conversations
-- `GET /v1/conversations/:id` - Get conversation details
-- `DELETE /v1/conversations/:id` - Delete conversation
+**Authentication:**
+- `POST /v1/auth/register` - Register new user
+- `POST /v1/auth/login` - Login and get JWT tokens
+- `POST /v1/auth/refresh` - Refresh access token
+- `GET /v1/auth/me` - Get current user profile
+- `POST /v1/auth/logout` - Logout (client-side)
+
+**Chat:**
+- `POST /v1/chat/completions` - OpenAI-compatible chat endpoint with streaming
 - `GET /v1/tools` - List available tools
-- `GET /v1/providers` - List configured providers
-- `GET /v1/system-prompts` - Get system prompts
+
+**Conversations:**
+- `GET /v1/conversations` - List conversations (paginated)
+- `POST /v1/conversations` - Create conversation
+- `GET /v1/conversations/:id` - Get conversation with messages
+- `DELETE /v1/conversations/:id` - Delete conversation
+- `PUT /v1/conversations/:id/messages/:messageId/edit` - Edit message and fork
+- `POST /v1/conversations/migrate` - Migrate anonymous conversations
+
+**Providers:**
+- `GET /v1/providers` - List user's providers
+- `GET /v1/providers/default` - Get effective default provider
+- `GET /v1/providers/:id` - Get provider details
+- `POST /v1/providers` - Create provider
+- `PUT /v1/providers/:id` - Update provider
+- `DELETE /v1/providers/:id` - Delete provider
+- `POST /v1/providers/:id/default` - Set as default
+- `GET /v1/providers/:id/models` - List provider models
+- `POST /v1/providers/test` - Test provider connection
+- `POST /v1/providers/:id/test` - Test existing provider
+
+**System Prompts:**
+- `GET /v1/system-prompts` - List all prompts
+- `POST /v1/system-prompts` - Create custom prompt
+- `PUT /v1/system-prompts/:id` - Update prompt
+- `DELETE /v1/system-prompts/:id` - Delete prompt
+- `POST /v1/system-prompts/:id/duplicate` - Duplicate prompt
+- `POST /v1/system-prompts/:id/select` - Select for conversation
+- `POST /v1/system-prompts/none/select` - Clear selection
+
+**Images & Files:**
+- `POST /v1/images` - Upload images
+- `GET /v1/images/config` - Get image limits
+- `GET /v1/images/:id` - Serve image (authenticated)
+- `POST /v1/files` - Upload text files
+- `GET /v1/files/config` - Get file limits
+- `GET /v1/files/:id` - Serve file (authenticated)
+
+**User Settings:**
+- `GET /v1/settings` - Get user settings
+- `PUT /v1/settings` - Update user settings
+
+**Health:**
+- `GET /health` - Health check
+- `GET /healthz` - Health check (alias)
 
 ## Testing
 
@@ -232,6 +424,7 @@ npm run test:frontend:watch
 
 ## Roadmap
 
+**Core Features (Complete):**
 - [x] OpenAI-compatible API proxy with streaming
 - [x] Server-side tool orchestration
 - [x] Conversation persistence with SQLite
@@ -239,9 +432,21 @@ npm run test:frontend:watch
 - [x] Docker development environment
 - [x] Comprehensive testing infrastructure
 - [x] Prompt management system
-- [ ] Authentication and authorization
-- [ ] Per-user rate limiting
-- [ ] Advanced tool system with custom integrations
+- [x] Authentication and authorization
+- [x] Image and file upload system
+- [x] Advanced reasoning controls
+- [x] Per-user API key management
+- [x] Multi-user provider management
+- [x] Journal/memory tool
+- [x] User data isolation
+
+**Planned Enhancements:**
+- [ ] Per-user rate limiting (currently IP-based)
+- [ ] Advanced tool system with plugin architecture
+- [ ] Conversation sharing and collaboration
+- [ ] Advanced analytics and usage tracking
+- [ ] Cloud storage integration (S3, GCS)
+- [ ] Additional AI provider support
 
 ## Contributing
 
