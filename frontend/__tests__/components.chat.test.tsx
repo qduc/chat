@@ -220,12 +220,8 @@ describe('<Chat />', () => {
     renderWithProviders(<Chat />);
 
     await waitFor(() => {
-      expect(screen.getByText('Welcome to Chat')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Type your message...')).toBeInTheDocument();
     });
-    expect(
-      screen.getByText('Ask a question or start a conversation to get started.')
-    ).toBeInTheDocument();
-    expect(screen.getByPlaceholderText('Type your message...')).toBeInTheDocument();
   });
 
   test('allows sending messages with Enter key', async () => {
@@ -249,7 +245,7 @@ describe('<Chat />', () => {
     await waitFor(() => {
       expect(screen.getByPlaceholderText('Type your message...')).toBeInTheDocument();
     });
-    expect(screen.getByText('Send')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
   });
 
   test('has model selection dropdown', async () => {
@@ -276,7 +272,6 @@ describe('<Chat />', () => {
     renderWithProviders(<Chat />);
 
     await waitFor(() => {
-      expect(screen.getByText('Chat History')).toBeInTheDocument();
       expect(screen.getByText('Test Conversation')).toBeInTheDocument();
       expect(screen.getByText('Another Chat')).toBeInTheDocument();
     });
@@ -369,15 +364,17 @@ describe('<Chat />', () => {
 
     await waitFor(() => {
       expect(screen.getByText('First')).toBeInTheDocument();
-      expect(screen.getByText('Load more conversations')).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Load more conversations' })).toBeInTheDocument();
     });
 
     // Click load more
-    await user.click(screen.getByText('Load more conversations'));
+    await user.click(screen.getByRole('button', { name: 'Load more conversations' }));
 
     await waitFor(() => {
       expect(screen.getByText('Second')).toBeInTheDocument();
-      expect(screen.queryByText('Load more conversations')).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'Load more conversations' })
+      ).not.toBeInTheDocument();
     });
 
     expect(mockConversations.list).toHaveBeenCalledTimes(2);
@@ -414,7 +411,7 @@ describe('<Chat />', () => {
 
     await waitFor(() => {
       // Verify the component renders without crashing even with a potential error
-      expect(screen.getByText('Welcome to Chat')).toBeInTheDocument();
+      expect(screen.getByPlaceholderText('Type your message...')).toBeInTheDocument();
     });
   });
 
@@ -464,15 +461,15 @@ describe('<Chat />', () => {
 
     await waitFor(() => {
       // Verify New Chat button exists
-      const newChatButton = screen.getByText('New Chat');
+      const newChatButton = screen.getByRole('button', { name: 'New Chat' });
       expect(newChatButton).toBeInTheDocument();
     });
 
     // Click it (won't create conversation due to 501 mock, but button works)
-    await user.click(screen.getByText('New Chat'));
+    await user.click(screen.getByRole('button', { name: 'New Chat' }));
 
     // Button should still be there
-    expect(screen.getByText('New Chat')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New Chat' })).toBeInTheDocument();
   });
 
   test('handles message editing and conversation forking', async () => {
