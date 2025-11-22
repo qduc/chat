@@ -16,6 +16,7 @@ export interface PendingState {
     count: number;
     startTime: number;
     messageId: string;
+    lastUpdated: number;
   };
 }
 
@@ -340,6 +341,7 @@ export function useChat() {
     count: number;
     startTime: number;
     messageId: string;
+    lastUpdated: number;
   } | null>(null);
 
   // Actions - Sidebar
@@ -576,7 +578,7 @@ export function useChat() {
     } catch {
       // conservative fallback: don't change user selection on errors
     }
-  }, []);
+  }, [modelCapabilities]);
 
   // On mount, when there is no active conversation, load the saved selected model
   useEffect(() => {
@@ -617,6 +619,7 @@ export function useChat() {
           count: 0,
           startTime: Date.now(),
           messageId,
+          lastUpdated: Date.now(),
         };
         setPending({
           streaming: true,
@@ -744,6 +747,7 @@ export function useChat() {
               if (isFirstToken) {
                 tokenStatsRef.current.startTime = Date.now();
               }
+              tokenStatsRef.current.lastUpdated = Date.now();
             }
 
             setMessages((prev) => {
@@ -769,6 +773,7 @@ export function useChat() {
                 if (isFirstContent) {
                   tokenStatsRef.current.startTime = Date.now();
                 }
+                tokenStatsRef.current.lastUpdated = Date.now();
               }
 
               // Handle text events from tool_events (non-streaming responses)
