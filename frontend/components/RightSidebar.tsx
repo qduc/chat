@@ -374,7 +374,7 @@ export function RightSidebar({
           transition: isResizing ? 'none' : 'width 0.3s ease-in-out',
           willChange: isResizing ? 'width' : undefined,
         }}
-        className={`z-30 flex flex-col bg-white dark:bg-neutral-950 relative border-l border-slate-200/70 dark:border-neutral-800/70`}
+        className={`z-30 flex flex-col bg-white dark:bg-neutral-950 relative`}
       >
         {/* Collapse/Expand Button */}
         <button
@@ -396,7 +396,7 @@ export function RightSidebar({
           // Expanded state - full prompt manager UI
           <div className="flex flex-col h-full">
             {/* Header */}
-            <div className="p-4 border-b border-slate-200/60 dark:border-neutral-800/60">
+              <div className="p-4">
               <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                 System Prompts
               </h2>
@@ -478,7 +478,7 @@ export function RightSidebar({
                           }
                         }
                       }}
-                      className="flex-1 p-3 border border-gray-300 dark:border-gray-600 rounded-md resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+                          className="flex-1 p-4 rounded-xl resize-none focus:outline-none bg-slate-50 dark:bg-neutral-900 text-gray-900 dark:text-gray-100 placeholder-slate-400 dark:placeholder-neutral-500 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-neutral-800 scrollbar-track-transparent"
                       placeholder={
                         effectiveSelectedPromptId
                           ? isBuiltIn
@@ -501,7 +501,7 @@ export function RightSidebar({
                   </div>
 
                   {/* Action Buttons */}
-                  <div className="p-4 border-t border-gray-200 dark:border-gray-700">
+                      <div className="p-4">
                     <div className="flex justify-end space-x-2">
                       <button
                         onClick={handleShowSaveAs}
@@ -536,7 +536,7 @@ export function RightSidebar({
             </div>
 
             {/* Footer info */}
-            <div className="p-3 border-t border-gray-200 dark:border-gray-700 text-xs text-slate-500 dark:text-slate-400">
+              <div className="px-4 pb-2 text-xs text-slate-400 dark:text-slate-500">
               {effectiveSelectedPromptId ? (
                 <span>Active prompt will be used for new messages</span>
               ) : (

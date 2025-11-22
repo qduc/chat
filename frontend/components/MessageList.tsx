@@ -345,7 +345,7 @@ const Message = React.memo<MessageProps>(
           ) : (
             <>
               {isUser ? (
-                <div className="rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-slate-100 text-black dark:bg-slate-700 dark:text-white">
+                  <div className="rounded-2xl px-4 py-3 text-base leading-relaxed bg-slate-100 text-black dark:bg-slate-700 dark:text-white">
                   <MessageContentRenderer content={message.content} isStreaming={false} />
                 </div>
               ) : (

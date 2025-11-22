@@ -30,7 +30,7 @@ export function ChatSidebar({
 }: ChatSidebarProps) {
   return (
     <aside
-      className={`${collapsed ? 'w-16' : 'w-72'} z-40 p-4 flex flex-col bg-white dark:bg-neutral-950 border-r border-slate-200/70 dark:border-neutral-800/70 transition-[width] duration-300 ease-in-out relative`}
+      className={`${collapsed ? 'w-16' : 'w-72'} z-40 p-4 flex flex-col bg-slate-50 dark:bg-neutral-900 transition-[width] duration-300 ease-in-out relative`}
     >
       {/* Collapse/Expand Button */}
       <button
@@ -105,7 +105,7 @@ export function ChatSidebar({
             {conversations.map((c) => (
               <div
                 key={c.id}
-                className={`group flex items-center gap-2 text-sm p-3 rounded-md transition-colors duration-100 cursor-pointer ${conversationId === c.id ? 'bg-slate-50 dark:bg-neutral-900 border border-slate-200/70 dark:border-neutral-800/70' : 'hover:bg-slate-50 dark:hover:bg-neutral-900 border border-transparent'}`}
+                className={`group flex items-center gap-2 text-sm p-3 rounded-md transition-all duration-200 cursor-pointer ${conversationId === c.id ? 'bg-white dark:bg-neutral-800' : 'hover:bg-slate-200/50 dark:hover:bg-neutral-800/50'}`}
                 onClick={() => onSelectConversation(c.id)}
                 tabIndex={0}
                 role="button"

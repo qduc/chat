@@ -97,7 +97,7 @@ export function ChatHeader({
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white dark:bg-neutral-950 border-b border-slate-200/70 dark:border-neutral-800/70">
+    <header className="sticky top-0 z-40 bg-white dark:bg-neutral-950">
       <div className="px-4 sm:px-6 py-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <ModelSelector
