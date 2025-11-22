@@ -396,7 +396,7 @@ export function RightSidebar({
           // Expanded state - full prompt manager UI
           <div className="flex flex-col h-full">
             {/* Header */}
-              <div className="p-4">
+            <div className="p-4">
               <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                 System Prompts
               </h2>
@@ -478,7 +478,7 @@ export function RightSidebar({
                           }
                         }
                       }}
-                          className="flex-1 p-4 rounded-xl resize-none focus:outline-none bg-slate-50 dark:bg-neutral-900 text-gray-900 dark:text-gray-100 placeholder-slate-400 dark:placeholder-neutral-500 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-neutral-800 scrollbar-track-transparent"
+                      className="flex-1 p-4 rounded-xl resize-none focus:outline-none bg-slate-50 dark:bg-neutral-900 text-gray-900 dark:text-gray-100 placeholder-slate-400 dark:placeholder-neutral-500 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-neutral-800 scrollbar-track-transparent"
                       placeholder={
                         effectiveSelectedPromptId
                           ? isBuiltIn
@@ -501,7 +501,7 @@ export function RightSidebar({
                   </div>
 
                   {/* Action Buttons */}
-                      <div className="p-4">
+                  <div className="p-4">
                     <div className="flex justify-end space-x-2">
                       <button
                         onClick={handleShowSaveAs}
@@ -536,7 +536,7 @@ export function RightSidebar({
             </div>
 
             {/* Footer info */}
-              <div className="px-4 pb-2 text-xs text-slate-400 dark:text-slate-500">
+            <div className="px-4 pb-2 text-xs text-slate-400 dark:text-slate-500">
               {effectiveSelectedPromptId ? (
                 <span>Active prompt will be used for new messages</span>
               ) : (

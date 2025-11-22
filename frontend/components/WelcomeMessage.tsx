@@ -33,25 +33,27 @@ export function WelcomeMessage({ onSuggestionClick }: WelcomeMessageProps) {
           icon={<Code className="w-4 h-4" />}
           text="Write a new component"
           subtext="Generate clean, modern code"
-          onClick={() => onSuggestionClick?.("Write a new React component that displays a user profile card")}
+          onClick={() =>
+            onSuggestionClick?.('Write a new React component that displays a user profile card')
+          }
         />
         <SuggestionCard
           icon={<Zap className="w-4 h-4" />}
           text="Debug an issue"
           subtext="Find and fix errors quickly"
-          onClick={() => onSuggestionClick?.("Help me debug this error: ")}
+          onClick={() => onSuggestionClick?.('Help me debug this error: ')}
         />
         <SuggestionCard
           icon={<Lightbulb className="w-4 h-4" />}
           text="Brainstorm ideas"
           subtext="Get creative solutions"
-          onClick={() => onSuggestionClick?.("Brainstorm 5 creative ideas for a ")}
+          onClick={() => onSuggestionClick?.('Brainstorm 5 creative ideas for a ')}
         />
         <SuggestionCard
           icon={<HelpCircle className="w-4 h-4" />}
           text="Explain a concept"
           subtext="Understand complex topics"
-          onClick={() => onSuggestionClick?.("Explain how React Server Components work")}
+          onClick={() => onSuggestionClick?.('Explain how React Server Components work')}
         />
       </div>
     </div>
@@ -78,9 +80,7 @@ function SuggestionCard({ icon, text, subtext, onClick }: SuggestionCardProps) {
         <div className="font-medium text-slate-900 dark:text-slate-200 text-sm group-hover:text-blue-700 dark:group-hover:text-blue-300 transition-colors">
           {text}
         </div>
-        <div className="text-xs text-slate-500 dark:text-slate-500 mt-0.5">
-          {subtext}
-        </div>
+        <div className="text-xs text-slate-500 dark:text-slate-500 mt-0.5">{subtext}</div>
       </div>
     </button>
   );
