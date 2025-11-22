@@ -608,7 +608,7 @@ const Message = React.memo<MessageProps>(
 
               {!isEditing && (message.content || !isUser) && (
                 <div
-                  className="mt-1 flex items-center justify-between opacity-70 group-hover:opacity-100 transition-opacity text-xs"
+                  className={`mt-1 flex items-center ${isUser ? 'justify-end' : 'justify-between'} opacity-70 group-hover:opacity-100 transition-opacity text-xs`}
                   ref={isUser && toolbarRef ? toolbarRef : undefined}
                 >
                   {/* Show stats for assistant messages */}
@@ -748,6 +748,7 @@ export function MessageList({
 
   // Streaming statistics - now calculated from actual token count
   const [streamingStats, setStreamingStats] = useState<{ tokensPerSecond: number } | null>(null);
+  const lastTokenStatsMessageIdRef = useRef<string | null>(null);
 
   // Editing images state - tracks images being edited
   const [editingImages, setEditingImages] = useState<ImageAttachment[]>([]);
@@ -896,21 +897,48 @@ export function MessageList({
 
   // Track streaming statistics using actual token count
   useEffect(() => {
-    if (!pending.tokenStats) {
+    const stats = pending.tokenStats;
+
+    if (!stats) {
+      lastTokenStatsMessageIdRef.current = null;
       setStreamingStats(null);
       return;
     }
 
-    const { count, startTime } = pending.tokenStats;
-
-    // Calculate tokens per second from actual token count
-    const elapsedSeconds = (Date.now() - startTime) / 1000;
-    if (elapsedSeconds > 0.1 && count > 0) {
-      // Only show after 100ms and at least 1 token
-      const tokensPerSecond = count / elapsedSeconds;
-      setStreamingStats({ tokensPerSecond });
+    if (stats.messageId !== lastTokenStatsMessageIdRef.current) {
+      lastTokenStatsMessageIdRef.current = stats.messageId;
+      setStreamingStats(null);
     }
-  }, [pending.tokenStats]);
+
+    const { count, startTime, lastUpdated } = stats;
+
+    if (!Number.isFinite(startTime) || count <= 0) {
+      return;
+    }
+
+    const endTimestamp =
+      pending.streaming || !Number.isFinite(lastUpdated) ? Date.now() : lastUpdated;
+    const elapsedSeconds = (endTimestamp - startTime) / 1000;
+
+    if (elapsedSeconds <= 0.1) {
+      return;
+    }
+
+    const tokensPerSecond = count / elapsedSeconds;
+
+    if (!Number.isFinite(tokensPerSecond) || tokensPerSecond <= 0) {
+      return;
+    }
+
+    setStreamingStats({ tokensPerSecond });
+  }, [
+    pending.streaming,
+    pending.tokenStats,
+    pending.tokenStats?.messageId,
+    pending.tokenStats?.count,
+    pending.tokenStats?.startTime,
+    pending.tokenStats?.lastUpdated,
+  ]);
 
   // Split messages with tool calls into separate messages
   const processedMessages = useMemo(() => splitMessagesWithToolCalls(messages), [messages]);
