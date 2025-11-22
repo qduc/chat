@@ -395,6 +395,14 @@ export function ChatV2() {
     }
   }, []);
 
+  const handleSuggestionClick = useCallback(
+    (text: string) => {
+      chat.setInput(text);
+      messageInputRef.current?.focus();
+    },
+    [chat.setInput]
+  );
+
   return (
     <div className="flex h-dvh max-h-dvh bg-white dark:bg-neutral-950">
       {chat.historyEnabled && (
@@ -446,6 +454,7 @@ export function ChatV2() {
               onRetryMessage={handleRetryMessage}
               onScrollStateChange={setScrollButtons}
               containerRef={messageListRef}
+              onSuggestionClick={handleSuggestionClick}
             />
 
             {/* Scroll Buttons - centered but visually minimal */}

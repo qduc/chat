@@ -2,8 +2,6 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import React from 'react';
 import {
   Bot,
-  User as UserIcon,
-  MessageSquareText,
   Clock,
   Search,
   Zap,
@@ -28,6 +26,7 @@ import {
   type ImageContent,
 } from '../lib';
 import { useStreamingScroll } from '../hooks/useStreamingScroll';
+import { WelcomeMessage } from './WelcomeMessage';
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -44,6 +43,7 @@ interface MessageListProps {
   onRetryMessage: (messageId: string) => void;
   onScrollStateChange?: (state: { showTop: boolean; showBottom: boolean }) => void;
   containerRef?: React.RefObject<HTMLDivElement>;
+  onSuggestionClick?: (text: string) => void;
 }
 
 // Helper function to split messages with tool calls into separate messages
@@ -343,7 +343,7 @@ const Message = React.memo<MessageProps>(
           ) : (
             <>
               {isUser ? (
-                <div className="rounded-2xl px-4 py-3 text-base leading-relaxed shadow-sm bg-slate-100 text-black dark:bg-slate-700 dark:text-white">
+                <div className="rounded-2xl px-4 py-3 text-base leading-relaxed bg-slate-100 text-black dark:bg-slate-700 dark:text-white">
                   <MessageContentRenderer content={message.content} isStreaming={false} />
                 </div>
               ) : (
@@ -695,11 +695,6 @@ const Message = React.memo<MessageProps>(
             </>
           )}
         </div>
-        {isUser && (
-          <div className="w-8 h-8 rounded-full bg-slate-800 dark:bg-slate-700 flex items-center justify-center flex-shrink-0 shadow-sm">
-            <UserIcon className="w-4 h-4 text-white" />
-          </div>
-        )}
       </div>
     );
   },
@@ -737,6 +732,7 @@ export function MessageList({
   onRetryMessage,
   onScrollStateChange,
   containerRef: externalContainerRef,
+  onSuggestionClick,
 }: MessageListProps) {
   // Debug logging
   const internalContainerRef = useRef<HTMLDivElement | null>(null);
@@ -949,19 +945,7 @@ export function MessageList({
         className="mx-auto max-w-3xl px-6 py-6 space-y-6"
         style={{ paddingBottom: dynamicBottomPadding }}
       >
-        {messages.length === 0 && (
-          <div className="rounded-2xl border border-dashed border-slate-300 dark:border-neutral-700 bg-gradient-to-br from-white/80 to-slate-50/80 dark:from-neutral-900/80 dark:to-neutral-800/80 p-8 text-center backdrop-blur-sm shadow-sm">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-slate-200 dark:bg-neutral-800 flex items-center justify-center shadow-lg">
-              <MessageSquareText className="w-8 h-8 text-slate-700 dark:text-slate-200" />
-            </div>
-            <div className="font-semibold text-lg text-slate-800 dark:text-slate-200 mb-2">
-              Welcome to Chat
-            </div>
-            <div className="text-slate-600 dark:text-slate-400">
-              Ask a question or start a conversation to get started.
-            </div>
-          </div>
-        )}
+        {messages.length === 0 && <WelcomeMessage onSuggestionClick={onSuggestionClick} />}
         {processedMessages.map((m, idx) => {
           const isUser = m.role === 'user';
           const isStreaming = pending.streaming && idx === processedMessages.length - 1;
