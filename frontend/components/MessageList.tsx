@@ -2,8 +2,6 @@ import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import React from 'react';
 import {
   Bot,
-  User as UserIcon,
-  MessageSquareText,
   Clock,
   Search,
   Zap,
@@ -345,7 +343,7 @@ const Message = React.memo<MessageProps>(
           ) : (
             <>
               {isUser ? (
-                  <div className="rounded-2xl px-4 py-3 text-base leading-relaxed bg-slate-100 text-black dark:bg-slate-700 dark:text-white">
+                <div className="rounded-2xl px-4 py-3 text-base leading-relaxed bg-slate-100 text-black dark:bg-slate-700 dark:text-white">
                   <MessageContentRenderer content={message.content} isStreaming={false} />
                 </div>
               ) : (
@@ -697,11 +695,6 @@ const Message = React.memo<MessageProps>(
             </>
           )}
         </div>
-        {isUser && (
-          <div className="w-8 h-8 rounded-full bg-slate-800 dark:bg-slate-700 flex items-center justify-center flex-shrink-0 shadow-sm">
-            <UserIcon className="w-4 h-4 text-white" />
-          </div>
-        )}
       </div>
     );
   },

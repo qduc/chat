@@ -45,7 +45,7 @@ export function ChatSidebar({
         // Collapsed state - minimal UI
         <div className="flex flex-col items-center space-y-4">
           <button
-            className="w-8 h-8 rounded-full border border-slate-200/70 dark:border-neutral-800/70 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-neutral-900 transition-colors duration-150 flex items-center justify-center group"
+            className="w-8 h-8 rounded-full border border-slate-200/70 dark:border-neutral-800/70 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-neutral-900 transition-colors duration-150 flex items-center justify-center group cursor-pointer"
             onClick={onNewChat}
             title="New Chat"
             aria-label="Start new chat"
@@ -53,7 +53,7 @@ export function ChatSidebar({
             <Plus className="w-4 h-4" />
           </button>
           <button
-            className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 dark:bg-neutral-900 dark:hover:bg-neutral-800 text-slate-600 dark:text-slate-400 transition-colors duration-150 disabled:opacity-50 flex items-center justify-center group"
+            className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 dark:bg-neutral-900 dark:hover:bg-neutral-800 text-slate-600 dark:text-slate-400 transition-colors duration-150 disabled:opacity-50 flex items-center justify-center group cursor-pointer"
             onClick={onRefresh}
             disabled={loadingConversations}
             title="Refresh conversations"
@@ -83,7 +83,7 @@ export function ChatSidebar({
         <>
           <div className="flex items-center justify-between mb-4">
             <button
-              className="text-xs p-1.5 rounded-full bg-transparent hover:bg-slate-100 dark:hover:bg-neutral-900 text-slate-500 dark:text-slate-400 transition-colors duration-150 disabled:opacity-50"
+              className="text-xs p-1.5 rounded-full bg-transparent hover:bg-slate-100 dark:hover:bg-neutral-900 text-slate-500 dark:text-slate-400 transition-colors duration-150 disabled:opacity-50 cursor-pointer"
               onClick={onRefresh}
               disabled={loadingConversations}
               title="Refresh"
@@ -94,7 +94,7 @@ export function ChatSidebar({
               Chat History
             </div>
             <button
-              className="text-xs px-3 py-1.5 rounded-md border border-slate-200/70 dark:border-neutral-800/70 hover:bg-slate-50 dark:hover:bg-neutral-900 text-slate-700 dark:text-slate-200 transition-colors duration-150 flex items-center gap-2"
+              className="text-xs px-3 py-1.5 rounded-md border border-slate-200/70 dark:border-neutral-800/70 hover:bg-slate-50 dark:hover:bg-neutral-900 text-slate-700 dark:text-slate-200 transition-colors duration-150 flex items-center gap-2 cursor-pointer"
               onClick={onNewChat}
             >
               <Plus className="w-3 h-3" />
