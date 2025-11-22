@@ -608,7 +608,7 @@ const Message = React.memo<MessageProps>(
 
               {!isEditing && (message.content || !isUser) && (
                 <div
-                  className="mt-1 flex items-center justify-between opacity-70 group-hover:opacity-100 transition-opacity text-xs"
+                  className={`mt-1 flex items-center ${isUser ? 'justify-end' : 'justify-between'} opacity-70 group-hover:opacity-100 transition-opacity text-xs`}
                   ref={isUser && toolbarRef ? toolbarRef : undefined}
                 >
                   {/* Show stats for assistant messages */}
