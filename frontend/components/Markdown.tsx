@@ -342,7 +342,7 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
                 className={`md-pre relative my-3 overflow-hidden rounded border border-slate-200/50 dark:border-neutral-800/50 bg-slate-50/30 dark:bg-neutral-900/30`}
               >
                 {/* Header with language and copy button */}
-                <div className="flex items-center justify-between px-3 py-1.5 border-b border-slate-200/50 dark:border-neutral-800/50 bg-slate-50/50 dark:bg-neutral-900/30">
+                <div className="flex items-center px-3 py-1.5 border-b border-slate-200/50 dark:border-neutral-800/50 bg-slate-50/50 dark:bg-neutral-900/30">
                   {language && (
                     <span className="text-xs text-slate-500 dark:text-slate-500">{language}</span>
                   )}
@@ -350,7 +350,7 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
                     type="button"
                     aria-label={copied ? 'Copied' : 'Copy code'}
                     onClick={onCopy}
-                    className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-slate-500 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100/50 dark:hover:bg-neutral-800/50 transition-colors"
+                    className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-slate-500 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100/50 dark:hover:bg-neutral-800/50 transition-colors ml-auto"
                   >
                     {copied ? (
                       <ClipboardCheck className="h-3.5 w-3.5" />
