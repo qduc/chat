@@ -418,7 +418,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                     </Tooltip>
                   )}
                   {attachOpen && (
-                    <div className="absolute bottom-full mb-2 left-0 w-48 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 shadow-xl rounded-lg p-2 z-50">
+                    <div className="absolute bottom-full mb-2 left-0 w-48 sm:w-56 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 shadow-xl rounded-lg p-2 z-50">
                       {onImagesChange && (
                         <button
                           type="button"
@@ -563,7 +563,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
                       {/* Tools dropdown */}
                       {toolsOpen && (
-                        <div className="absolute bottom-full mb-2 right-0 w-[420px] bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 shadow-xl rounded-lg z-50 overflow-hidden">
+                        <div className="fixed sm:absolute bottom-20 sm:bottom-full left-2 right-2 sm:left-auto sm:right-0 sm:mb-2 w-auto sm:w-[420px] bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 shadow-xl rounded-lg z-50 overflow-hidden max-h-[60vh] sm:max-h-[500px]">
                           {/* Dropdown header */}
                           <div className="flex items-center justify-between p-3 border-b border-slate-100 dark:border-neutral-800">
                             <div className="flex items-center gap-3">
