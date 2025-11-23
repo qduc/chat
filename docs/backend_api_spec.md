@@ -119,12 +119,14 @@ Deletes provider. 204 empty or 404 not_found.
 
 ### GET /v1/providers/{id}/models
 Fetch upstream models via stored credentials. Applies optional model filtering.
+Note: If provider's `base_url` is not set, defaults are used based on `provider_type`. Authentication headers are automatically set based on provider type (Anthropic uses `x-api-key`, others use `Authorization: Bearer`).
 Success: `{ provider: { id, name, provider_type }, models: [ { id, ...upstream } ] }`
 Errors: 400 invalid_provider | disabled | bad request reasons; 404 not_found; 502 bad_gateway/provider_error; 500 internal_server_error.
 
 ### POST /v1/providers/test
 Test a provider configuration without saving.
 Body requires: `name`, `provider_type`, `api_key`; optional `base_url`, `extra_headers`, `metadata.model_filter`.
+Note: If `base_url` is omitted, defaults are used based on `provider_type` (e.g., Anthropic → `https://api.anthropic.com`, OpenAI → `https://api.openai.com`).
 Success 200: `{ success: true, message: "Connection successful! Found X models (sample1, sample2, ...).", models: <count> }`
 Errors 400 test_failed (with detail), 400 invalid_request.
 

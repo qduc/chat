@@ -34,6 +34,9 @@ export const config = {
   // Backward-compat: legacy OpenAI fields still present
   openaiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
   openaiApiKey: process.env.OPENAI_API_KEY,
+  // Anthropic provider overrides
+  anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com',
+  anthropicApiKey: process.env.ANTHROPIC_API_KEY,
   // Generic provider config; falls back to OpenAI values
   providerConfig: {
     baseUrl: process.env.PROVIDER_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
@@ -62,10 +65,8 @@ export const config = {
   persistence: {
     enabled: bool(process.env.PERSIST_TRANSCRIPTS, true),
     dbUrl: process.env.DB_URL || '',
-    maxConversationsPerSession:
-      Number(process.env.MAX_CONVERSATIONS_PER_SESSION) || 100,
-    maxMessagesPerConversation:
-      Number(process.env.MAX_MESSAGES_PER_CONVERSATION) || 1000,
+    maxConversationsPerSession: Number(process.env.MAX_CONVERSATIONS_PER_SESSION) || 100,
+    maxMessagesPerConversation: Number(process.env.MAX_MESSAGES_PER_CONVERSATION) || 1000,
     historyBatchFlushMs: Number(process.env.HISTORY_BATCH_FLUSH_MS) || 250,
     retentionDays: Number(process.env.RETENTION_DAYS) || 30,
   },

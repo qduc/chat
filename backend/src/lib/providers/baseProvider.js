@@ -34,9 +34,9 @@ export class BaseProvider {
     return await this.getAdapter().translateRequest(internalRequest, adapterContext);
   }
 
-  translateResponse(providerResponse, context = {}) {
+  async translateResponse(providerResponse, context = {}) {
     const adapterContext = this.buildAdapterContext(context);
-    return this.getAdapter().translateResponse(providerResponse, adapterContext);
+    return await this.getAdapter().translateResponse(providerResponse, adapterContext);
   }
 
   translateStreamChunk(chunk, context = {}) {
@@ -48,14 +48,24 @@ export class BaseProvider {
     const adapterContext = this.buildAdapterContext(context);
     const translatedRequest = await this.translateRequest(internalRequest, adapterContext);
     const providerResponse = await this.makeHttpRequest(translatedRequest, adapterContext);
-    return this.getAdapter().translateResponse(providerResponse, adapterContext);
+    return await this.getAdapter().translateResponse(providerResponse, adapterContext);
+  }
+
+  /**
+   * Execute a request but return the raw upstream response for callers that
+   * need full Response semantics (status, headers, body stream).
+   */
+  async sendRawRequest(internalRequest = {}, context = {}) {
+    const adapterContext = this.buildAdapterContext(context);
+    const translatedRequest = await this.translateRequest(internalRequest, adapterContext);
+    return await this.makeHttpRequest(translatedRequest, adapterContext);
   }
 
   async streamRequest(internalRequest = {}, context = {}) {
     const adapterContext = this.buildAdapterContext(context);
     const translatedRequest = await this.translateRequest(internalRequest, adapterContext);
     const providerResponse = await this.makeStreamRequest(translatedRequest, adapterContext);
-    return this.getAdapter().translateResponse(providerResponse, adapterContext);
+    return await this.getAdapter().translateResponse(providerResponse, adapterContext);
   }
 
   // Subclasses must provide the HTTP invocation used by sendRequest/streamRequest.
@@ -72,8 +82,8 @@ export class BaseProvider {
     return await this.translateRequest(internalRequest, context);
   }
 
-  normalizeResponse(providerResponse, context = {}) {
-    return this.translateResponse(providerResponse, context);
+  async normalizeResponse(providerResponse, context = {}) {
+    return await this.translateResponse(providerResponse, context);
   }
 
   normalizeStreamChunk(chunk, context = {}) {
@@ -97,6 +107,10 @@ export class BaseProvider {
 
   supportsPromptCaching() {
     // TODO: report whether the provider supports prompt caching.
+    return false;
+  }
+
+  needsStreamingTranslation() {
     return false;
   }
 
