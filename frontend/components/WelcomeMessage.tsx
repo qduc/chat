@@ -1,5 +1,5 @@
 import React from 'react';
-import { MessageSquareText, Code, Zap, Lightbulb, HelpCircle } from 'lucide-react';
+import { Code, Zap, Lightbulb, HelpCircle } from 'lucide-react';
 
 interface WelcomeMessageProps {
   onSuggestionClick?: (text: string) => void;
@@ -14,8 +14,8 @@ export function WelcomeMessage({ onSuggestionClick }: WelcomeMessageProps) {
       </div>
 
       {/* Main Icon */}
-      <div className="mb-8 p-4 bg-white dark:bg-neutral-800 rounded-2xl shadow-sm border border-slate-100 dark:border-neutral-700 ring-4 ring-slate-50/50 dark:ring-neutral-900/50">
-        <MessageSquareText className="w-8 h-8 text-blue-600 dark:text-blue-400" strokeWidth={2} />
+      <div className="mb-8">
+        <img src="/logo.png" alt="Logo" className="w-16 h-16 rounded-2xl" />
       </div>
 
       {/* Heading */}
