@@ -8,6 +8,14 @@ export class BaseProvider {
     this.adapter = null;
   }
 
+  get httpClient() {
+    if (this.http) return this.http;
+    if (typeof globalThis.fetch === 'function') {
+      return globalThis.fetch.bind(globalThis);
+    }
+    return null;
+  }
+
   createAdapter() {
     throw new Error('createAdapter must be implemented');
   }
@@ -90,6 +98,36 @@ export class BaseProvider {
     return this.translateStreamChunk(chunk, context);
   }
 
+  normalizeModelEntry(model) {
+    if (!model) return null;
+    if (typeof model === 'string') {
+      return { id: model };
+    }
+    if (typeof model.name === 'string' && !model.id && model.name.startsWith('models/')) {
+      return {
+        ...model,
+        id: model.name.replace('models/', ''),
+      };
+    }
+    if (model.id) {
+      return model;
+    }
+    return null;
+  }
+
+  normalizeModelListPayload(payload) {
+    let models = [];
+    if (Array.isArray(payload?.data)) models = payload.data;
+    else if (Array.isArray(payload?.models)) models = payload.models;
+    else if (Array.isArray(payload)) models = payload;
+
+    return models.map((model) => this.normalizeModelEntry(model)).filter(Boolean);
+  }
+
+  async listModels(_options = {}) {
+    throw new Error(`${this.constructor.name} does not implement listModels`);
+  }
+
   getToolsetSpec(_toolRegistry) {
     // TODO: expose the tool schema that this provider understands.
     return [];
@@ -122,5 +160,14 @@ export class BaseProvider {
   isConfigured() {
     // TODO: verify that the provider has the minimum configuration to run.
     return false;
+  }
+}
+
+export class ProviderModelsError extends Error {
+  constructor(message, { status, body } = {}) {
+    super(message);
+    this.name = 'ProviderModelsError';
+    this.status = status;
+    this.body = body;
   }
 }

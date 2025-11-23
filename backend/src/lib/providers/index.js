@@ -114,6 +114,20 @@ function selectProviderConstructor(providerType) {
   return providerConstructors[key] || OpenAIProvider;
 }
 
+export function createProviderWithSettings(config, providerType, settings = {}, options = {}) {
+  const normalizedType = (providerType || settings?.providerType || config?.provider || 'openai').toLowerCase();
+  const ProviderClass = selectProviderConstructor(normalizedType);
+  return new ProviderClass({
+    config,
+    providerId: options.providerId,
+    http: options.http,
+    settings: {
+      ...settings,
+      providerType: normalizedType,
+    },
+  });
+}
+
 export async function createProvider(config, options = {}) {
   const settings = await resolveProviderSettings(config, options);
   const ProviderClass = selectProviderConstructor(settings.providerType);
