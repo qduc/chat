@@ -512,7 +512,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                       }`}
                     >
                       <Zap className="w-3 h-3 sm:w-4 sm:h-4" />
-                      <span className="text-xs sm:text-sm font-medium hidden sm:inline">Stream</span>
+                      <span className="text-xs sm:text-sm font-medium hidden sm:inline">
+                        Stream
+                      </span>
                     </button>
                   </Tooltip>
                 </div>
@@ -536,7 +538,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                       }`}
                     >
                       <Globe className="w-3 h-3 sm:w-4 sm:h-4" />
-                      <span className="text-xs sm:text-sm font-medium hidden sm:inline">Search</span>
+                      <span className="text-xs sm:text-sm font-medium hidden sm:inline">
+                        Search
+                      </span>
                     </button>
                   </Tooltip>
 

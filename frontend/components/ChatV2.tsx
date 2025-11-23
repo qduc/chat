@@ -60,7 +60,12 @@ export function ChatV2() {
     }
 
     hasCheckedMobileRef.current = true;
-  }, [chat.sidebarCollapsed, chat.rightSidebarCollapsed, chat.toggleSidebar, chat.toggleRightSidebar]);
+  }, [
+    chat.sidebarCollapsed,
+    chat.rightSidebarCollapsed,
+    chat.toggleSidebar,
+    chat.toggleRightSidebar,
+  ]);
 
   // Track window resize for responsive behavior
   useEffect(() => {

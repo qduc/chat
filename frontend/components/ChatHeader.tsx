@@ -164,7 +164,11 @@ export function ChatHeader({
             title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} theme`}
             type="button"
           >
-            {resolvedTheme === 'dark' ? <Sun className="w-3 h-3 sm:w-4 sm:h-4" /> : <Moon className="w-3 h-3 sm:w-4 sm:h-4" />}
+            {resolvedTheme === 'dark' ? (
+              <Sun className="w-3 h-3 sm:w-4 sm:h-4" />
+            ) : (
+              <Moon className="w-3 h-3 sm:w-4 sm:h-4" />
+            )}
           </button>
           <div className="hidden sm:block">
             <AuthButton onShowLogin={onShowLogin} onShowRegister={onShowRegister} />
