@@ -689,11 +689,14 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                         >
                           <option value="openai">OpenAI Compatible</option>
                           <option value="anthropic">Anthropic</option>
+                          <option value="gemini">Google Gemini</option>
                         </select>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
                           {form.provider_type === 'anthropic'
                             ? 'Native Anthropic Claude API support with Messages API'
-                            : 'Compatible with OpenAI API format (ChatGPT, Claude, most providers)'}
+                            : form.provider_type === 'gemini'
+                              ? 'Native Google Gemini API support'
+                              : 'Compatible with OpenAI API format (ChatGPT, Claude, most providers)'}
                         </p>
                       </div>
 
@@ -740,7 +743,9 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                               ? '••••••••••••••••••••'
                               : form.provider_type === 'anthropic'
                                 ? 'sk-ant-api03-...'
-                                : "sk-proj-abc123... or your provider's API key"
+                                : form.provider_type === 'gemini'
+                                  ? 'AIzaSy...'
+                                  : "sk-proj-abc123... or your provider's API key"
                           }
                         />
                         <button

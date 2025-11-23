@@ -25,6 +25,7 @@ function getDefaultBaseUrl(providerType) {
   const defaults = {
     anthropic: 'https://api.anthropic.com',
     openai: 'https://api.openai.com',
+    gemini: 'https://generativelanguage.googleapis.com',
   };
   return defaults[providerType] || 'https://api.openai.com';
 }
@@ -43,6 +44,8 @@ function setAuthHeader(headers, providerType, apiKey) {
 
   if (providerType === 'anthropic') {
     headers['x-api-key'] = apiKey;
+  } else if (providerType === 'gemini') {
+    headers['x-goog-api-key'] = apiKey;
   } else {
     // OpenAI and other providers use Bearer token
     headers.Authorization = `Bearer ${apiKey}`;
@@ -185,7 +188,10 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
         extra = {};
       }
 
-      const url = `${baseUrl}/v1/models`;
+      let url = `${baseUrl}/v1/models`;
+      if (row.provider_type === 'gemini') {
+        url = `${baseUrl}/v1beta/models`;
+      }
       const headers = {
         Accept: 'application/json',
         ...extra,
@@ -232,7 +238,14 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
       else if (Array.isArray(json)) models = json;
 
       // Normalize to { id, ... }
-      models = models.map((m) => (typeof m === 'string' ? { id: m } : m)).filter((m) => m && m.id);
+      models = models.map((m) => {
+        if (typeof m === 'string') return { id: m };
+        // Gemini returns { name: 'models/gemini-pro', ... }
+        if (m.name && m.name.startsWith('models/')) {
+          return { ...m, id: m.name.replace('models/', '') };
+        }
+        return m;
+      }).filter((m) => m && m.id);
 
       // Filter OpenRouter models to only show those released in the last 1 year
       if (baseUrl.includes('openrouter.ai')) {
@@ -306,7 +319,10 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
       }
 
       // Test connection by attempting to list models
-      const url = `${base_url}/v1/models`;
+      let url = `${base_url}/v1/models`;
+      if (provider_type === 'gemini') {
+        url = `${base_url}/v1beta/models`;
+      }
       const headers = {
         Accept: 'application/json',
         ...extra,
@@ -352,7 +368,13 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
       else if (Array.isArray(json?.models)) models = json.models;
       else if (Array.isArray(json)) models = json;
 
-      models = models.map((m) => (typeof m === 'string' ? { id: m } : m)).filter((m) => m && m.id);
+      models = models.map((m) => {
+        if (typeof m === 'string') return { id: m };
+        if (m.name && m.name.startsWith('models/')) {
+          return { ...m, id: m.name.replace('models/', '') };
+        }
+        return m;
+      }).filter((m) => m && m.id);
 
       // Filter OpenRouter models to only show those released in the last 1 year
       if (base_url.includes('openrouter.ai')) {
@@ -433,7 +455,10 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
     }
 
     // Test connection by attempting to list models
-    const url = `${testBaseUrl}/v1/models`;
+    let url = `${testBaseUrl}/v1/models`;
+    if (existingProvider.provider_type === 'gemini') {
+      url = `${testBaseUrl}/v1beta/models`;
+    }
     const headers = {
       Accept: 'application/json',
       ...extra,
@@ -480,7 +505,13 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
     else if (Array.isArray(json)) models = json;
 
     models = models
-      .map((m) => (typeof m === 'string' ? { id: m } : m))
+      .map((m) => {
+        if (typeof m === 'string') return { id: m };
+        if (m.name && m.name.startsWith('models/')) {
+          return { ...m, id: m.name.replace('models/', '') };
+        }
+        return m;
+      })
       .filter((m) => m && m.id);
 
     // Filter OpenRouter models to only show those released in the last 1 year
