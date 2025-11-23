@@ -38,6 +38,13 @@ export class GeminiProvider extends BaseProvider {
     });
   }
 
+  buildAdapterContext(context = {}) {
+    return {
+      getDefaultModel: () => this.getDefaultModel(),
+      ...context,
+    };
+  }
+
   get apiKey() {
     return (
       this.settings?.apiKey ||
@@ -248,5 +255,9 @@ export class GeminiProvider extends BaseProvider {
 
   getDefaultModel() {
     return this.settings?.defaultModel || this.config?.defaultModel || 'gemini-1.5-flash';
+  }
+
+  needsStreamingTranslation() {
+    return true;
   }
 }

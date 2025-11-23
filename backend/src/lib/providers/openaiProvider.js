@@ -307,6 +307,10 @@ export class OpenAIProvider extends BaseProvider {
     return false;
   }
 
+  needsStreamingTranslation() {
+    return false;
+  }
+
   getDefaultModel() {
     return this.settings?.defaultModel || this.config?.defaultModel || FALLBACK_MODEL;
   }

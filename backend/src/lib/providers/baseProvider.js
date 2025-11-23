@@ -153,7 +153,11 @@ export class BaseProvider {
   }
 
   needsStreamingTranslation() {
-    return false;
+    throw new Error(
+      `${this.constructor.name} must implement needsStreamingTranslation(). ` +
+      `Return true if this provider's API format differs from OpenAI format; ` +
+      `return false only if the provider uses OpenAI-compatible format.`
+    );
   }
 
   getDefaultModel() {
