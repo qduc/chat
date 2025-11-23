@@ -12,6 +12,28 @@ function parseJSONSafe(value, fallback) {
   }
 }
 
+function normalizeBaseUrl(url) {
+  if (!url) return undefined;
+  return String(url).trim().replace(/\/$/, '').replace(/\/v1$/, '');
+}
+
+function getProviderDefaults(providerType, config) {
+  const type = (providerType || config?.provider || 'openai').toLowerCase();
+  switch (type) {
+    case 'anthropic':
+      return {
+        baseUrl: config?.anthropicBaseUrl || 'https://api.anthropic.com',
+        apiKey: config?.anthropicApiKey,
+      };
+    case 'openai':
+    default:
+      return {
+        baseUrl: config?.openaiBaseUrl || config?.providerConfig?.baseUrl || 'https://api.openai.com/v1',
+        apiKey: config?.openaiApiKey || config?.providerConfig?.apiKey,
+      };
+  }
+}
+
 export async function resolveProviderSettings(config, options = {}) {
   try {
     const db = getDb();
@@ -42,14 +64,18 @@ export async function resolveProviderSettings(config, options = {}) {
         const headers = parseJSONSafe(row.extra_headers, {});
         const metadata = parseJSONSafe(row.metadata, {});
         const responsesApiEnabled =
-          typeof metadata?.responses_api_enabled === 'boolean'
-            ? metadata.responses_api_enabled
-            : undefined;
+          typeof metadata?.responses_api_enabled === 'boolean' ? metadata.responses_api_enabled : undefined;
+        const providerType = (row.provider_type || config?.provider || 'openai').toLowerCase();
+        const defaults = getProviderDefaults(providerType, config);
+        const baseUrl = normalizeBaseUrl(
+          row.base_url || defaults.baseUrl || config?.providerConfig?.baseUrl || config?.openaiBaseUrl
+        );
+
         return {
           source: 'db',
-          providerType: row.provider_type || (config?.provider || 'openai'),
-          baseUrl: row.base_url || config?.providerConfig?.baseUrl || config?.openaiBaseUrl,
-          apiKey: row.api_key || config?.providerConfig?.apiKey || config?.openaiApiKey,
+          providerType,
+          baseUrl,
+          apiKey: row.api_key || defaults.apiKey || config?.providerConfig?.apiKey || config?.openaiApiKey,
           headers,
           defaultModel: config?.defaultModel, // Only use config defaultModel, not from metadata
           responsesApiEnabled,
@@ -61,11 +87,15 @@ export async function resolveProviderSettings(config, options = {}) {
     // TODO: surface diagnostics when provider resolution fails.
   }
 
+  const providerType = config?.provider || 'openai';
+  const defaults = getProviderDefaults(providerType, config);
+  const baseUrl = normalizeBaseUrl(config?.providerConfig?.baseUrl || defaults.baseUrl || config?.openaiBaseUrl);
+
   return {
     source: 'env',
-    providerType: (config?.provider || 'openai'),
-    baseUrl: config?.providerConfig?.baseUrl || config?.openaiBaseUrl,
-    apiKey: config?.providerConfig?.apiKey || config?.openaiApiKey,
+    providerType,
+    baseUrl,
+    apiKey: config?.providerConfig?.apiKey || defaults.apiKey || config?.openaiApiKey,
     headers: { ...(config?.providerConfig?.headers || {}) },
     defaultModel: config?.defaultModel,
     responsesApiEnabled: config?.featureFlags?.responsesApiEnabled,
@@ -116,5 +146,5 @@ export async function providerChatCompletions(config, requestBody, options = {})
     providerId: options.providerId || provider.providerId,
     ...options.context,
   };
-  return provider.sendRequest(requestBody, context);
+  return provider.sendRawRequest(requestBody, context);
 }

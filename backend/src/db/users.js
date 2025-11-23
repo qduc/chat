@@ -38,7 +38,14 @@ export function createUser({ email, passwordHash, displayName }) {
   try {
     createDefaultProviders(id);
   } catch (error) {
-    logger.warn(`Failed to create default providers for user ${id}:`, error.message);
+    logger.warn(
+      {
+        err: error,
+        userId: id,
+        email,
+      },
+      '[users#createUser] Failed to create default providers'
+    );
     // Don't fail user creation if provider creation fails
   }
 

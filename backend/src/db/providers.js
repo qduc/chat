@@ -306,7 +306,17 @@ export function createDefaultProviders(userId) {
       const provider = createProvider(providerConfig);
       createdProviders.push(provider);
     } catch (error) {
-      logger.warn(`Failed to create default provider ${providerConfig.name} for user ${userId}:`, error.message);
+      logger.warn(
+        {
+          err: error,
+          userId,
+          providerId: providerConfig.id,
+          providerName: providerConfig.name,
+          providerType: providerConfig.provider_type,
+          baseUrl: providerConfig.base_url,
+        },
+        '[providers#createDefaultProviders] Failed to create default provider'
+      );
       // Continue with other providers even if one fails
     }
   }

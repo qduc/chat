@@ -396,7 +396,7 @@ async function handleRequest(context, req, res) {
 
         // Persist the response
         if (persistence.persist && upstreamJson.choices?.[0]?.message) {
-          const message = upstreamJson.choices[0].message;
+          const message = upstreamJson.choices?.[0]?.message;
           if (message.content !== undefined) {
             const safeContent = sanitizeContent(message.content);
             persistence.setAssistantContent(safeContent);
@@ -416,7 +416,7 @@ async function handleRequest(context, req, res) {
             persistence.addToolCalls(toolCallsWithOffset);
           }
 
-          const finishReason = upstreamJson.choices[0].finish_reason || null;
+          const finishReason = upstreamJson.choices?.[0]?.finish_reason || null;
           const responseId = upstreamJson.id || null;
 
           const reasoningTokens = upstreamJson?.usage?.reasoning_tokens
@@ -441,7 +441,7 @@ async function handleRequest(context, req, res) {
         }
 
         // Convert to streaming chunks
-        const message = upstreamJson.choices[0]?.message;
+        const message = upstreamJson.choices?.[0]?.message;
         if (message) {
           const { createChatCompletionChunk } = await import('./streamUtils.js');
 
@@ -475,7 +475,7 @@ async function handleRequest(context, req, res) {
             upstreamJson.id || 'fallback',
             upstreamJson.model || body.model,
             {},
-            upstreamJson.choices[0].finish_reason || 'stop'
+            upstreamJson.choices?.[0]?.finish_reason || 'stop'
           );
           writeAndFlush(res, `data: ${JSON.stringify(finalChunk)}\n\n`);
         }
@@ -514,12 +514,11 @@ async function handleRequest(context, req, res) {
 
     // Normal streaming response
     setupStreamingHeaders(res);
-    return handleRegularStreaming({ config, upstream, res, req, persistence });
+    return handleRegularStreaming({ config, upstream, res, req, persistence, provider });
   } else {
     // JSON response (for backward compatibility and when explicitly requested)
     try {
-      const upstreamJson = await upstream.json();
-      const responseBody = { ...upstreamJson };
+      const responseBody = await upstream.json();
       addConversationMetadata(responseBody, persistence);
       return res.status(200).json(responseBody);
     } catch (err) {

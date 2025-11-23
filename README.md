@@ -227,6 +227,8 @@ PROVIDER_BASE_URL=                         # Custom provider base URL
 PROVIDER_API_KEY=                          # Generic provider API key
 PROVIDER_CUSTOM_HEADERS={}                 # Custom headers as JSON
 OPENAI_BASE_URL=https://api.openai.com/v1 # OpenAI base URL
+ANTHROPIC_BASE_URL=https://api.anthropic.com # Anthropic base URL
+ANTHROPIC_API_KEY=                         # Anthropic API key (if different from PROVIDER_API_KEY)
 ```
 
 **Optional - Tool Configuration:**
