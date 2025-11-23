@@ -381,13 +381,15 @@ export function RightSidebar({
       >
         {collapsed ? (
           // Collapsed state - compact indicator
-          <div className="flex flex-col items-center justify-center flex-1 p-4 space-y-4">
-            <div className="w-8 h-8 rounded-full border border-slate-200/70 dark:border-neutral-800/70 text-slate-700 dark:text-slate-300 flex items-center justify-center text-xs font-semibold">
+          <div className="flex flex-col items-center space-y-3 pt-2 p-4">
+            {/* System Prompts indicator */}
+            <div className="w-10 h-10 rounded-md border border-slate-200/80 dark:border-neutral-700/80 bg-white dark:bg-neutral-900 text-slate-700 dark:text-slate-300 flex items-center justify-center text-xs font-semibold shadow-sm mb-1">
               SP
             </div>
+
             {/* Expand button - Desktop only */}
             <button
-              className="hidden md:flex w-8 h-8 rounded-md border border-slate-200/80 dark:border-neutral-700/80 bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors items-center justify-center text-slate-600 dark:text-slate-300 cursor-pointer"
+              className="hidden md:flex w-10 h-10 rounded-md border border-slate-200/80 dark:border-neutral-700/80 bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-neutral-800 transition-all duration-200 items-center justify-center text-slate-600 dark:text-slate-300 cursor-pointer shadow-sm hover:shadow"
               onClick={onToggleCollapse}
               title="Expand sidebar"
               aria-label="Expand sidebar"
