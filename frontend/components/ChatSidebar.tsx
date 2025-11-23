@@ -43,12 +43,12 @@ export function ChatSidebar({
         <div className="flex flex-col items-center space-y-3 pt-2">
           {/* Logo */}
           <div className="mb-1">
-            <img src="/logo.png" alt="Logo" className="w-9 h-9 rounded-xl" />
+            <img src="/logo.png" alt="Logo" className="w-8 h-8 rounded-xl" />
           </div>
 
           {/* Expand button - Desktop only */}
           <button
-            className="hidden md:flex w-10 h-10 rounded-md border border-slate-200/80 dark:border-neutral-700/80 bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-neutral-800 transition-all duration-200 items-center justify-center text-slate-600 dark:text-slate-300 cursor-pointer shadow-sm hover:shadow"
+            className="hidden md:flex w-10 h-10 rounded-md hover:bg-slate-200/50 dark:hover:bg-neutral-800 transition-colors items-center justify-center text-slate-500 dark:text-slate-400 cursor-pointer"
             onClick={onToggleCollapse}
             title="Expand sidebar"
             aria-label="Expand sidebar"
@@ -58,7 +58,7 @@ export function ChatSidebar({
 
           {/* New Chat button */}
           <button
-            className="w-10 h-10 rounded-md border border-slate-200/80 dark:border-neutral-700/80 bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-neutral-800 transition-all duration-200 flex items-center justify-center text-slate-600 dark:text-slate-300 cursor-pointer shadow-sm hover:shadow"
+            className="w-10 h-10 rounded-md hover:bg-slate-200/50 dark:hover:bg-neutral-800 transition-colors flex items-center justify-center text-slate-500 dark:text-slate-400 cursor-pointer"
             onClick={onNewChat}
             title="New Chat"
             aria-label="Start new chat"
@@ -68,7 +68,7 @@ export function ChatSidebar({
 
           {/* Refresh button */}
           <button
-            className="w-10 h-10 rounded-md border border-slate-200/80 dark:border-neutral-700/80 bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-neutral-800 transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-slate-600 dark:text-slate-300 cursor-pointer shadow-sm hover:shadow"
+            className="w-10 h-10 rounded-md hover:bg-slate-200/50 dark:hover:bg-neutral-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-slate-500 dark:text-slate-400 cursor-pointer"
             onClick={onRefresh}
             disabled={loadingConversations}
             title="Refresh conversations"
@@ -85,7 +85,7 @@ export function ChatSidebar({
           {/* Show conversation count when collapsed */}
           {conversations.length > 0 && (
             <div
-              className="text-xs font-medium text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-neutral-800 rounded-md w-10 h-8 flex items-center justify-center border border-slate-200/50 dark:border-neutral-700/50"
+              className="text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-neutral-800 rounded-md w-10 h-8 flex items-center justify-center"
               title={`${conversations.length} conversation${conversations.length === 1 ? '' : 's'}`}
             >
               {conversations.length > 99 ? '99+' : conversations.length}
