@@ -5,7 +5,7 @@ import { MessagesAdapter } from '../adapters/messagesAdapter.js';
 import { logger } from '../../logger.js';
 
 const FALLBACK_MODEL = 'claude-3-5-sonnet-20241022';
-const ANTHROPIC_API_VERSION = '2023-06-01';
+export const ANTHROPIC_API_VERSION = '2023-06-01';
 
 function wrapStreamingResponse(response) {
   if (!response || !response.body) return response;

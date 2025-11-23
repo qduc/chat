@@ -331,4 +331,33 @@ describe('Providers connectivity', () => {
     assert.ok(body.models.some((m) => m.id === 'model-recent'));
     assert.ok(body.models.some((m) => m.id === 'model-old'));
   });
+
+  test('GET /v1/providers/:id/models uses default Anthropic base URL when not provided', async () => {
+    const mockHttp = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: [{ id: 'claude-3-5-sonnet' }] }),
+    });
+
+    const { createProvidersRouter } = await import('../src/routes/providers.js');
+    const app = makeApp(createProvidersRouter({ http: mockHttp }));
+    const agent = request(app);
+
+    // Seed Anthropic provider without base_url
+    const db = getDb();
+    db.exec('DELETE FROM providers;');
+    db.prepare(
+      `INSERT INTO providers (id, user_id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
+                VALUES ('anthropic-provider', @user_id, 'Anthropic','anthropic','sk-ant-123',NULL,1,1,'{}','{}',datetime('now'),datetime('now'))`
+    ).run({ user_id: testUser.id });
+
+    const res = await agent.get('/v1/providers/anthropic-provider/models');
+    assert.equal(res.status, 200);
+
+    // Verify the mock was called with the correct Anthropic base URL and auth header
+    assert.equal(mockHttp.mock.calls.length, 1);
+    const [url, options] = mockHttp.mock.calls[0];
+    assert.ok(url.includes('https://api.anthropic.com'), `Expected Anthropic base URL, got: ${url}`);
+    assert.equal(options.headers['x-api-key'], 'sk-ant-123', 'Expected x-api-key header for Anthropic');
+    assert.ok(!options.headers.Authorization, 'Should not use Authorization header for Anthropic');
+  });
 });
