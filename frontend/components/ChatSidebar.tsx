@@ -40,29 +40,35 @@ export function ChatSidebar({
     >
       {collapsed ? (
         // Collapsed state - minimal UI
-        <div className="flex flex-col items-center space-y-4">
-          <div className="mb-2">
+        <div className="flex flex-col items-center space-y-3 pt-2">
+          {/* Logo */}
+          <div className="mb-1">
             <img src="/logo.png" alt="Logo" className="w-8 h-8 rounded-xl" />
           </div>
+
           {/* Expand button - Desktop only */}
           <button
-            className="hidden md:flex w-8 h-8 rounded-md border border-slate-200/80 dark:border-neutral-700/80 bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors items-center justify-center text-slate-600 dark:text-slate-300 cursor-pointer"
+            className="hidden md:flex w-10 h-10 rounded-md hover:bg-slate-200/50 dark:hover:bg-neutral-800 transition-colors items-center justify-center text-slate-500 dark:text-slate-400 cursor-pointer"
             onClick={onToggleCollapse}
             title="Expand sidebar"
             aria-label="Expand sidebar"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
+
+          {/* New Chat button */}
           <button
-            className="w-8 h-8 rounded-full border border-slate-200/70 dark:border-neutral-800/70 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-neutral-900 transition-colors duration-150 flex items-center justify-center group cursor-pointer"
+            className="w-10 h-10 rounded-md hover:bg-slate-200/50 dark:hover:bg-neutral-800 transition-colors flex items-center justify-center text-slate-500 dark:text-slate-400 cursor-pointer"
             onClick={onNewChat}
             title="New Chat"
             aria-label="Start new chat"
           >
             <Plus className="w-4 h-4" />
           </button>
+
+          {/* Refresh button */}
           <button
-            className="w-8 h-8 rounded-full bg-slate-50 hover:bg-slate-100 dark:bg-neutral-900 dark:hover:bg-neutral-800 text-slate-600 dark:text-slate-400 transition-colors duration-150 disabled:opacity-50 flex items-center justify-center group cursor-pointer"
+            className="w-10 h-10 rounded-md hover:bg-slate-200/50 dark:hover:bg-neutral-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-slate-500 dark:text-slate-400 cursor-pointer"
             onClick={onRefresh}
             disabled={loadingConversations}
             title="Refresh conversations"
@@ -70,19 +76,26 @@ export function ChatSidebar({
           >
             <RefreshCw className={`w-4 h-4 ${loadingConversations ? 'animate-spin' : ''}`} />
           </button>
+
+          {/* Divider */}
+          {(conversations.length > 0 || conversationId) && (
+            <div className="w-8 h-px bg-slate-200 dark:bg-neutral-700 my-1" />
+          )}
+
           {/* Show conversation count when collapsed */}
           {conversations.length > 0 && (
             <div
-              className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-neutral-800 rounded-full w-6 h-6 flex items-center justify-center"
+              className="text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-neutral-800 rounded-md w-10 h-8 flex items-center justify-center"
               title={`${conversations.length} conversation${conversations.length === 1 ? '' : 's'}`}
             >
               {conversations.length > 99 ? '99+' : conversations.length}
             </div>
           )}
+
           {/* Show active conversation indicator */}
           {conversationId && (
             <div
-              className="w-2 h-2 rounded-full bg-blue-500 dark:bg-blue-400 pulse"
+              className="w-2 h-2 rounded-full bg-blue-500 dark:bg-blue-400 animate-pulse"
               title="Active conversation"
             ></div>
           )}
