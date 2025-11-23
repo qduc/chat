@@ -739,8 +739,8 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                             form.id
                               ? '••••••••••••••••••••'
                               : form.provider_type === 'anthropic'
-                              ? 'sk-ant-api03-...'
-                              : "sk-proj-abc123... or your provider's API key"
+                                ? 'sk-ant-api03-...'
+                                : "sk-proj-abc123... or your provider's API key"
                           }
                         />
                         <button
