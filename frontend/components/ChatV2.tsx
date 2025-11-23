@@ -38,6 +38,47 @@ export function ChatV2() {
   const [scrollButtons, setScrollButtons] = useState({ showTop: false, showBottom: false });
   const isLoadingConversationRef = useRef(false);
   const messageInputRef = useRef<MessageInputRef>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const hasCheckedMobileRef = useRef(false);
+
+  // Detect mobile screen size and auto-collapse sidebars on mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (hasCheckedMobileRef.current) return;
+
+    const mobile = window.innerWidth < 768; // md breakpoint
+    setIsMobile(mobile);
+
+    // Auto-collapse both sidebars on initial mount if mobile
+    if (mobile) {
+      if (!chat.sidebarCollapsed) {
+        chat.toggleSidebar();
+      }
+      if (!chat.rightSidebarCollapsed) {
+        chat.toggleRightSidebar();
+      }
+    }
+
+    hasCheckedMobileRef.current = true;
+  }, [
+    chat.sidebarCollapsed,
+    chat.rightSidebarCollapsed,
+    chat.toggleSidebar,
+    chat.toggleRightSidebar,
+  ]);
+
+  // Track window resize for responsive behavior
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Simple event handlers
   const handleCopy = useCallback(async (text: string) => {
@@ -404,23 +445,45 @@ export function ChatV2() {
   );
 
   return (
-    <div className="flex h-dvh max-h-dvh bg-white dark:bg-neutral-950">
-      {chat.historyEnabled && (
-        <ChatSidebar
-          conversations={chat.conversations}
-          nextCursor={chat.nextCursor}
-          loadingConversations={chat.loadingConversations}
-          conversationId={chat.conversationId}
-          collapsed={chat.sidebarCollapsed}
-          onSelectConversation={handleSelectConversation}
-          onDeleteConversation={chat.deleteConversation}
-          onLoadMore={chat.loadMoreConversations}
-          onRefresh={chat.refreshConversations}
-          onNewChat={handleNewChat}
-          onToggleCollapse={chat.toggleSidebar}
+    <div className="flex h-dvh max-h-dvh bg-white dark:bg-neutral-950 relative">
+      {/* Mobile Backdrop */}
+      {(!chat.sidebarCollapsed || !chat.rightSidebarCollapsed) && (
+        <div
+          className="md:hidden fixed inset-0 bg-black/50 z-40 transition-opacity"
+          onClick={() => {
+            if (!chat.sidebarCollapsed) chat.toggleSidebar();
+            if (!chat.rightSidebarCollapsed) chat.toggleRightSidebar();
+          }}
+          aria-hidden="true"
         />
       )}
-      <div className="flex flex-col flex-1">
+
+      {/* Left Sidebar - Overlay on mobile, static on desktop */}
+      {chat.historyEnabled && (
+        <div
+          className={`
+            ${chat.sidebarCollapsed ? '-translate-x-full md:translate-x-0' : 'translate-x-0'}
+            fixed md:relative inset-y-0 left-0 z-50 md:z-auto
+            transition-transform duration-300 ease-in-out
+          `}
+        >
+          <ChatSidebar
+            conversations={chat.conversations}
+            nextCursor={chat.nextCursor}
+            loadingConversations={chat.loadingConversations}
+            conversationId={chat.conversationId}
+            collapsed={chat.sidebarCollapsed}
+            onSelectConversation={handleSelectConversation}
+            onDeleteConversation={chat.deleteConversation}
+            onLoadMore={chat.loadMoreConversations}
+            onRefresh={chat.refreshConversations}
+            onNewChat={handleNewChat}
+            onToggleCollapse={chat.toggleSidebar}
+          />
+        </div>
+      )}
+
+      <div className="flex flex-col flex-1 min-w-0">
         <ChatHeader
           isStreaming={chat.status === 'streaming'}
           onNewChat={handleNewChat}
@@ -436,6 +499,10 @@ export function ChatV2() {
           fallbackOptions={chat.modelOptions}
           modelToProvider={chat.modelToProvider}
           onFocusMessageInput={handleFocusMessageInput}
+          onToggleLeftSidebar={chat.toggleSidebar}
+          onToggleRightSidebar={chat.toggleRightSidebar}
+          showLeftSidebarButton={chat.historyEnabled}
+          showRightSidebarButton={true}
         />
         <div className="flex flex-1 min-h-0">
           <div className="flex flex-col flex-1 relative">
@@ -458,7 +525,7 @@ export function ChatV2() {
             />
 
             {/* Scroll Buttons - centered but visually minimal */}
-            <div className="absolute bottom-40 left-1/2 transform -translate-x-1/2 flex flex-col gap-2 z-40 pointer-events-none">
+            <div className="absolute bottom-32 sm:bottom-40 left-1/2 transform -translate-x-1/2 flex flex-col gap-2 z-40 pointer-events-none">
               {scrollButtons.showTop && (
                 <button
                   onClick={scrollToTop}
@@ -466,7 +533,7 @@ export function ChatV2() {
                   aria-label="Scroll to top"
                   title="Scroll to top"
                 >
-                  <ArrowUp className="w-4 h-4" />
+                  <ArrowUp className="w-3 h-3 sm:w-4 sm:h-4" />
                 </button>
               )}
               {scrollButtons.showBottom && (
@@ -476,13 +543,13 @@ export function ChatV2() {
                   aria-label="Scroll to bottom"
                   title="Scroll to bottom"
                 >
-                  <ArrowDown className="w-4 h-4" />
+                  <ArrowDown className="w-3 h-3 sm:w-4 sm:h-4" />
                 </button>
               )}
             </div>
 
             {/* Removed soft fade to keep a cleaner boundaryless look */}
-            <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-3xl px-6 z-30">
+            <div className="absolute bottom-2 sm:bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-3xl px-2 sm:px-4 md:px-6 z-30">
               <MessageInput
                 ref={messageInputRef}
                 input={chat.input}
@@ -517,28 +584,39 @@ export function ChatV2() {
               initialMode={authMode}
             />
           </div>
+          {/* Right Sidebar Resize Handle - Desktop only */}
           {!chat.rightSidebarCollapsed && (
             <div
               role="separator"
               aria-orientation="vertical"
               aria-label="Resize right sidebar"
-              className={`flex-shrink-0 self-stretch w-1 cursor-col-resize select-none transition-colors duration-150 ${isResizingRightSidebar ? 'bg-slate-400/60 dark:bg-neutral-600/60' : 'bg-transparent hover:bg-slate-400/40 dark:hover:bg-neutral-600/40'}`}
+              className={`hidden md:block flex-shrink-0 self-stretch w-1 cursor-col-resize select-none transition-colors duration-150 ${isResizingRightSidebar ? 'bg-slate-400/60 dark:bg-neutral-600/60' : 'bg-transparent hover:bg-slate-400/40 dark:hover:bg-neutral-600/40'}`}
               onPointerDown={handleResizeStart}
               onDoubleClick={handleResizeDoubleClick}
             />
           )}
-          <RightSidebar
-            userId={chat.user?.id}
-            conversationId={chat.conversationId || undefined}
-            collapsed={chat.rightSidebarCollapsed}
-            onToggleCollapse={chat.toggleRightSidebar}
-            onEffectivePromptChange={chat.setInlineSystemPromptOverride}
-            onActivePromptIdChange={chat.setActiveSystemPromptId}
-            conversationActivePromptId={chat.activeSystemPromptId}
-            conversationSystemPrompt={chat.systemPrompt}
-            width={rightSidebarWidth}
-            isResizing={isResizingRightSidebar}
-          />
+
+          {/* Right Sidebar - Overlay on mobile, static on desktop */}
+          <div
+            className={`
+              ${chat.rightSidebarCollapsed ? 'translate-x-full md:translate-x-0' : 'translate-x-0'}
+              fixed md:relative inset-y-0 right-0 z-50 md:z-auto
+              transition-transform duration-300 ease-in-out
+            `}
+          >
+            <RightSidebar
+              userId={chat.user?.id}
+              conversationId={chat.conversationId || undefined}
+              collapsed={chat.rightSidebarCollapsed}
+              onToggleCollapse={chat.toggleRightSidebar}
+              onEffectivePromptChange={chat.setInlineSystemPromptOverride}
+              onActivePromptIdChange={chat.setActiveSystemPromptId}
+              conversationActivePromptId={chat.activeSystemPromptId}
+              conversationSystemPrompt={chat.systemPrompt}
+              width={rightSidebarWidth}
+              isResizing={isResizingRightSidebar}
+            />
+          </div>
         </div>
       </div>
     </div>
