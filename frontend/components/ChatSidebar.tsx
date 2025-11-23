@@ -30,11 +30,17 @@ export function ChatSidebar({
 }: ChatSidebarProps) {
   return (
     <aside
-      className={`${collapsed ? 'w-16' : 'w-72'} z-40 p-4 flex flex-col bg-slate-50 dark:bg-neutral-900 transition-[width] duration-300 ease-in-out relative`}
+      className={`
+        ${collapsed ? 'w-16' : 'w-72 md:w-72'}
+        h-full z-40 p-4 flex flex-col bg-slate-50 dark:bg-neutral-900
+        md:transition-[width] md:duration-300 md:ease-in-out
+        relative
+        ${!collapsed ? 'w-72 sm:w-80' : ''}
+      `}
     >
-      {/* Collapse/Expand Button */}
+      {/* Collapse/Expand Button - Desktop only */}
       <button
-        className="absolute -right-3 top-6 w-6 h-6 rounded-full bg-white dark:bg-neutral-950 border border-slate-200/70 dark:border-neutral-800/70 transition-colors duration-200 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-neutral-900 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+        className="hidden md:flex absolute -right-3 top-6 w-6 h-6 rounded-full bg-white dark:bg-neutral-950 border border-slate-200/70 dark:border-neutral-800/70 transition-colors duration-200 items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-neutral-900 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
         onClick={onToggleCollapse}
         title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
       >

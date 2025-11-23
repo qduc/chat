@@ -382,7 +382,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
             )}
 
             {/* ===== TEXT INPUT WITH IMAGE/FILE UPLOAD ===== */}
-            <div className="flex items-start gap-2 p-4">
+            <div className="flex items-start gap-2 p-2 sm:p-3 md:p-4">
               {/* Attach button */}
               {(onImagesChange || onFilesChange) && (
                 <div className="relative" ref={attachDropdownRef}>
@@ -483,11 +483,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
             </div>
 
             {/* ===== CONTROLS BAR ===== */}
-            <div className="flex items-center justify-between px-4 pb-4">
+            <div className="flex items-center justify-between px-2 sm:px-4 pb-3 sm:pb-4 gap-2">
               {/* Left side controls - grouped logically */}
-              <div className="flex items-center gap-6 text-xs scrollbar-hide">
+              <div className="flex items-center gap-2 sm:gap-4 md:gap-6 text-xs scrollbar-hide overflow-x-auto flex-1 min-w-0">
                 {/* AI Controls Group */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-3">
                   {/* Quality/Reasoning control - always visible */}
                   <Tooltip content="Reasoning effort level">
                     <QualitySlider
@@ -505,38 +505,38 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                     <button
                       type="button"
                       onClick={() => onShouldStreamChange(!shouldStream)}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all duration-200 ${
+                      className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg border transition-all duration-200 ${
                         shouldStream
                           ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
                           : 'border-transparent hover:bg-slate-100 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400'
                       }`}
                     >
-                      <Zap className="w-4 h-4" />
-                      <span className="text-sm font-medium">Stream</span>
+                      <Zap className="w-3 h-3 sm:w-4 sm:h-4" />
+                      <span className="text-xs sm:text-sm font-medium hidden sm:inline">Stream</span>
                     </button>
                   </Tooltip>
                 </div>
 
                 {/* Visual separator */}
                 {(supportsThinking || true) && (
-                  <div className="w-px h-6 bg-slate-200 dark:bg-neutral-700" />
+                  <div className="hidden md:block w-px h-6 bg-slate-200 dark:bg-neutral-700" />
                 )}
 
                 {/* Tools Group */}
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2 sm:gap-3">
                   {/* Search toggle */}
                   <Tooltip content="Enable web search (Tavily + Exa)">
                     <button
                       type="button"
                       onClick={() => handleSearchToggle(!searchEnabled)}
-                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border transition-all duration-200 ${
+                      className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg border transition-all duration-200 ${
                         searchEnabled
                           ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
                           : 'border-transparent hover:bg-slate-100 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400'
                       }`}
                     >
-                      <Globe className="w-4 h-4" />
-                      <span className="text-sm font-medium">Search</span>
+                      <Globe className="w-3 h-3 sm:w-4 sm:h-4" />
+                      <span className="text-xs sm:text-sm font-medium hidden sm:inline">Search</span>
                     </button>
                   </Tooltip>
 
@@ -749,17 +749,17 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   }
                 }}
                 disabled={!canSend && !pending.streaming}
-                className="flex items-center gap-2 px-4 py-2 text-sm rounded-xl bg-slate-800 hover:bg-slate-700 dark:bg-slate-600 dark:hover:bg-slate-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg disabled:hover:shadow-md transform hover:scale-[1.02] disabled:hover:scale-100"
+                className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg sm:rounded-xl bg-slate-800 hover:bg-slate-700 dark:bg-slate-600 dark:hover:bg-slate-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg disabled:hover:shadow-md transform hover:scale-[1.02] disabled:hover:scale-100 flex-shrink-0"
               >
                 {pending.streaming ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Stop
+                    <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
+                    <span className="hidden sm:inline">Stop</span>
                   </>
                 ) : (
                   <>
-                    <Send className="w-4 h-4" />
-                    Send
+                    <Send className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <span className="hidden sm:inline">Send</span>
                   </>
                 )}
               </button>
