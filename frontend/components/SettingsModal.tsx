@@ -688,34 +688,39 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                           required
                         >
                           <option value="openai">OpenAI Compatible</option>
+                          <option value="anthropic">Anthropic</option>
                         </select>
                         <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Compatible with OpenAI API format (ChatGPT, Claude, most providers)
+                          {form.provider_type === 'anthropic'
+                            ? 'Native Anthropic Claude API support with Messages API'
+                            : 'Compatible with OpenAI API format (ChatGPT, Claude, most providers)'}
                         </p>
                       </div>
 
-                      <div className="space-y-1.5">
-                        <label
-                          htmlFor="base-url"
-                          className="block text-sm font-medium text-slate-700 dark:text-slate-300"
-                        >
-                          Base URL
-                          <span className="text-xs font-normal text-slate-500 dark:text-slate-400 ml-2">
-                            (Optional)
-                          </span>
-                        </label>
-                        <input
-                          id="base-url"
-                          type="url"
-                          className="w-full px-3 py-2 lg:py-2.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
-                          value={form.base_url}
-                          onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
-                          placeholder="https://api.openai.com/v1 (auto-filled if empty)"
-                        />
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
-                          Custom API endpoint. Leave empty for OpenAI&apos;s default endpoint.
-                        </p>
-                      </div>
+                      {form.provider_type === 'openai' && (
+                        <div className="space-y-1.5">
+                          <label
+                            htmlFor="base-url"
+                            className="block text-sm font-medium text-slate-700 dark:text-slate-300"
+                          >
+                            Base URL
+                            <span className="text-xs font-normal text-slate-500 dark:text-slate-400 ml-2">
+                              (Optional)
+                            </span>
+                          </label>
+                          <input
+                            id="base-url"
+                            type="url"
+                            className="w-full px-3 py-2 lg:py-2.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                            value={form.base_url}
+                            onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
+                            placeholder="https://api.openai.com/v1 (auto-filled if empty)"
+                          />
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            Custom API endpoint. Leave empty for OpenAI&apos;s default endpoint.
+                          </p>
+                        </div>
+                      )}
 
                       <div className="space-y-1.5 relative">
                         <label
@@ -733,6 +738,8 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                           placeholder={
                             form.id
                               ? '••••••••••••••••••••'
+                              : form.provider_type === 'anthropic'
+                              ? 'sk-ant-api03-...'
                               : "sk-proj-abc123... or your provider's API key"
                           }
                         />
