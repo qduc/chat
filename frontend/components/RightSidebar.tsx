@@ -368,17 +368,20 @@ export function RightSidebar({
     <>
       <aside
         style={{
-          width: `${computedWidth}px`,
-          minWidth: `${computedWidth}px`,
+          width: collapsed ? `${collapsedWidth}px` : `${computedWidth}px`,
+          minWidth: collapsed ? `${collapsedWidth}px` : `${computedWidth}px`,
           flexShrink: 0,
           transition: isResizing ? 'none' : 'width 0.3s ease-in-out',
           willChange: isResizing ? 'width' : undefined,
         }}
-        className={`z-30 flex flex-col bg-white dark:bg-neutral-950 relative`}
+        className={`
+          z-30 flex flex-col bg-white dark:bg-neutral-950 relative h-full
+          ${!collapsed ? 'w-72 sm:w-80 md:w-auto' : 'w-16 md:w-auto'}
+        `}
       >
-        {/* Collapse/Expand Button */}
+        {/* Collapse/Expand Button - Desktop only */}
         <button
-          className="absolute -left-3 top-6 z-40 w-6 h-6 rounded-full bg-white dark:bg-neutral-950 border border-slate-200/70 dark:border-neutral-800/70 transition-colors duration-200 flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-neutral-900 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
+          className="hidden md:flex absolute -left-3 top-6 z-40 w-6 h-6 rounded-full bg-white dark:bg-neutral-950 border border-slate-200/70 dark:border-neutral-800/70 transition-colors duration-200 items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-neutral-900 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
           onClick={onToggleCollapse}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
         >

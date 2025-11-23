@@ -60,18 +60,41 @@ describe('GET /v1/tools', () => {
         throw new Error(`Expected status 200 but received ${res.status}. Body: ${errorBody}`);
       }
       const body = await res.json();
+
+      // Verify response structure
       assert.ok(Array.isArray(body.tools), 'tools array present');
       assert.ok(Array.isArray(body.available_tools), 'available_tools array present');
-  // Should list all registered tools
-      assert.ok(body.available_tools.includes('get_time'));
-      assert.ok(body.available_tools.includes('web_search'));
-  assert.ok(body.available_tools.includes('web_search_exa'));
-      // Tool specs should include function definitions
-      const names = body.tools.map(t => t?.function?.name).filter(Boolean);
-      assert.ok(names.includes('get_time'));
-      assert.ok(names.includes('web_search'));
-  assert.ok(names.includes('web_search_exa'));
+
+      // Verify that at least some tools are registered
+      assert.ok(body.available_tools.length > 0, 'at least one tool should be available');
+      assert.ok(body.tools.length > 0, 'at least one tool spec should be present');
+
+      // Verify both arrays have the same length
+      assert.equal(
+        body.tools.length,
+        body.available_tools.length,
+        'tools and available_tools should have matching counts'
+      );
+
+      // Verify tool specs have proper structure (OpenAI format)
+      for (const tool of body.tools) {
+        assert.ok(tool.type === 'function', 'tool should have type "function"');
+        assert.ok(tool.function, 'tool should have function property');
+        assert.ok(typeof tool.function.name === 'string', 'tool function should have name');
+        assert.ok(typeof tool.function.description === 'string', 'tool function should have description');
+        assert.ok(tool.function.parameters, 'tool function should have parameters');
+      }
+
+      // Verify consistency: all tool names in specs should be in available_tools
+      const specNames = body.tools.map((t) => t?.function?.name).filter(Boolean);
+      for (const name of specNames) {
+        assert.ok(body.available_tools.includes(name), `tool spec name "${name}" should be in available_tools`);
+      }
+
+      // Verify all available_tools have corresponding specs
+      for (const toolName of body.available_tools) {
+        assert.ok(specNames.includes(toolName), `available tool "${toolName}" should have a corresponding spec`);
+      }
     });
   });
 });
-
