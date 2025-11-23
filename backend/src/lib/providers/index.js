@@ -17,18 +17,37 @@ function normalizeBaseUrl(url) {
   return String(url).trim().replace(/\/$/, '').replace(/\/v1$/, '');
 }
 
+const providerConstructors = {
+  openai: OpenAIProvider,
+  anthropic: AnthropicProvider,
+  gemini: GeminiProvider,
+};
+
+export function selectProviderConstructor(providerType) {
+  const key = (providerType || 'openai').toLowerCase();
+  return providerConstructors[key] || OpenAIProvider;
+}
+
 function getProviderDefaults(providerType, config) {
   const type = (providerType || config?.provider || 'openai').toLowerCase();
+  const ProviderClass = selectProviderConstructor(type);
+  const defaultBaseUrl = ProviderClass.defaultBaseUrl;
+
   switch (type) {
     case 'anthropic':
       return {
-        baseUrl: config?.anthropicBaseUrl || 'https://api.anthropic.com',
+        baseUrl: config?.anthropicBaseUrl || defaultBaseUrl,
         apiKey: config?.anthropicApiKey,
+      };
+    case 'gemini':
+      return {
+        baseUrl: config?.geminiBaseUrl || defaultBaseUrl,
+        apiKey: config?.geminiApiKey,
       };
     case 'openai':
     default:
       return {
-        baseUrl: config?.openaiBaseUrl || config?.providerConfig?.baseUrl || 'https://api.openai.com/v1',
+        baseUrl: config?.openaiBaseUrl || config?.providerConfig?.baseUrl || defaultBaseUrl,
         apiKey: config?.openaiApiKey || config?.providerConfig?.apiKey,
       };
   }
@@ -101,17 +120,6 @@ export async function resolveProviderSettings(config, options = {}) {
     responsesApiEnabled: config?.featureFlags?.responsesApiEnabled,
     raw: null,
   };
-}
-
-const providerConstructors = {
-  openai: OpenAIProvider,
-  anthropic: AnthropicProvider,
-  gemini: GeminiProvider,
-};
-
-function selectProviderConstructor(providerType) {
-  const key = (providerType || 'openai').toLowerCase();
-  return providerConstructors[key] || OpenAIProvider;
 }
 
 export function createProviderWithSettings(config, providerType, settings = {}, options = {}) {

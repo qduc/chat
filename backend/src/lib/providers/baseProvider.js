@@ -8,6 +8,10 @@ export class BaseProvider {
     this.adapter = null;
   }
 
+  static get defaultBaseUrl() {
+    return null;
+  }
+
   get httpClient() {
     if (this.http) return this.http;
     if (typeof globalThis.fetch === 'function') {

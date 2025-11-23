@@ -26,6 +26,10 @@ function wrapStreamingResponse(response) {
 }
 
 export class GeminiProvider extends BaseProvider {
+  static get defaultBaseUrl() {
+    return 'https://generativelanguage.googleapis.com/v1beta';
+  }
+
   createAdapter() {
     return new GeminiAdapter({
       config: this.config,

@@ -33,6 +33,10 @@ function wrapStreamingResponse(response) {
 }
 
 export class AnthropicProvider extends BaseProvider {
+  static get defaultBaseUrl() {
+    return 'https://api.anthropic.com';
+  }
+
   createAdapter() {
     return new MessagesAdapter({
       config: this.config,

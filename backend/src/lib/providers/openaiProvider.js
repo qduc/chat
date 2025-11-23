@@ -34,6 +34,10 @@ function wrapStreamingResponse(response) {
 }
 
 export class OpenAIProvider extends BaseProvider {
+  static get defaultBaseUrl() {
+    return 'https://api.openai.com/v1';
+  }
+
   createAdapter() {
     if (this.shouldUseResponsesAPI()) {
       const ResponsesAPIAdapter = this.resolveResponsesAdapter();

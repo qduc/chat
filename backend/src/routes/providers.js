@@ -13,7 +13,7 @@ import {
   getDefaultProvider,
 } from '../db/providers.js';
 import { ProviderModelsError } from '../lib/providers/baseProvider.js';
-import { createProviderWithSettings } from '../lib/providers/index.js';
+import { createProviderWithSettings, selectProviderConstructor } from '../lib/providers/index.js';
 import { filterModels } from '../lib/modelFilter.js';
 import { authenticateToken } from '../middleware/auth.js';
 
@@ -23,12 +23,8 @@ import { authenticateToken } from '../middleware/auth.js';
  * @returns {string} The default base URL
  */
 function getDefaultBaseUrl(providerType) {
-  const defaults = {
-    anthropic: 'https://api.anthropic.com',
-    openai: 'https://api.openai.com',
-    gemini: 'https://generativelanguage.googleapis.com',
-  };
-  return defaults[providerType] || 'https://api.openai.com';
+  const ProviderClass = selectProviderConstructor(providerType);
+  return ProviderClass.defaultBaseUrl || 'https://api.openai.com';
 }
 
 function normalizeProviderType(providerType) {
