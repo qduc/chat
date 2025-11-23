@@ -57,13 +57,25 @@ export class AnthropicProvider extends BaseProvider {
   get baseUrl() {
     const seededDefaultUrl = 'https://api.anthropic.com';
     const dbBaseUrl = this.settings?.baseUrl;
-    const overrideBaseUrl = this.config?.providerConfig?.baseUrl || this.config?.anthropicBaseUrl;
-    const shouldPreferOverride = Boolean(overrideBaseUrl)
-      && (!dbBaseUrl || dbBaseUrl === seededDefaultUrl);
+    const normalizedDbBase = dbBaseUrl ? String(dbBaseUrl).replace(/\/$/, '').replace(/\/v1$/, '') : '';
+    const isMismatchedDbBase = normalizedDbBase && /api\.openai\.com/i.test(normalizedDbBase);
+    const effectiveDbBase = isMismatchedDbBase ? null : normalizedDbBase || null;
+
+    const normalizedAnthropicOverride = this.config?.anthropicBaseUrl
+      ? String(this.config.anthropicBaseUrl).replace(/\/$/, '').replace(/\/v1$/, '')
+      : null;
+    const normalizedProviderOverride = this.config?.providerConfig?.baseUrl
+      ? String(this.config.providerConfig.baseUrl).replace(/\/$/, '').replace(/\/v1$/, '')
+      : null;
+    const providerOverride =
+      normalizedProviderOverride && /anthropic/i.test(normalizedProviderOverride) ? normalizedProviderOverride : null;
+    const overrideBaseUrl = normalizedAnthropicOverride || providerOverride;
+
+    const shouldPreferOverride = Boolean(overrideBaseUrl) && (!effectiveDbBase || effectiveDbBase === seededDefaultUrl);
     const configuredBase = shouldPreferOverride
       ? overrideBaseUrl
-      : dbBaseUrl || overrideBaseUrl || seededDefaultUrl;
-    return String(configuredBase).replace(/\/$/, '');
+      : effectiveDbBase || overrideBaseUrl || seededDefaultUrl;
+    return String(configuredBase).replace(/\/$/, '').replace(/\/v1$/, '');
   }
 
   get defaultHeaders() {
