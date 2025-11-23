@@ -38,6 +38,42 @@ export function ChatV2() {
   const [scrollButtons, setScrollButtons] = useState({ showTop: false, showBottom: false });
   const isLoadingConversationRef = useRef(false);
   const messageInputRef = useRef<MessageInputRef>(null);
+  const [isMobile, setIsMobile] = useState(false);
+  const hasCheckedMobileRef = useRef(false);
+
+  // Detect mobile screen size and auto-collapse sidebars on mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (hasCheckedMobileRef.current) return;
+
+    const mobile = window.innerWidth < 768; // md breakpoint
+    setIsMobile(mobile);
+
+    // Auto-collapse both sidebars on initial mount if mobile
+    if (mobile) {
+      if (!chat.sidebarCollapsed) {
+        chat.toggleSidebar();
+      }
+      if (!chat.rightSidebarCollapsed) {
+        chat.toggleRightSidebar();
+      }
+    }
+
+    hasCheckedMobileRef.current = true;
+  }, [chat.sidebarCollapsed, chat.rightSidebarCollapsed, chat.toggleSidebar, chat.toggleRightSidebar]);
+
+  // Track window resize for responsive behavior
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   // Simple event handlers
   const handleCopy = useCallback(async (text: string) => {
