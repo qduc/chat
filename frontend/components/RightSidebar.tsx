@@ -379,30 +379,38 @@ export function RightSidebar({
           ${!collapsed ? 'w-72 sm:w-80 md:w-auto' : 'w-16 md:w-auto'}
         `}
       >
-        {/* Collapse/Expand Button - Desktop only */}
-        <button
-          className="hidden md:flex absolute -left-3 top-6 z-40 w-6 h-6 rounded-full bg-white dark:bg-neutral-950 border border-slate-200/70 dark:border-neutral-800/70 transition-colors duration-200 items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-neutral-900 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-          onClick={onToggleCollapse}
-          title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-        >
-          {collapsed ? <ChevronLeft className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-        </button>
-
         {collapsed ? (
           // Collapsed state - compact indicator
-          <div className="flex flex-col items-center justify-center flex-1 p-4">
+          <div className="flex flex-col items-center justify-center flex-1 p-4 space-y-4">
             <div className="w-8 h-8 rounded-full border border-slate-200/70 dark:border-neutral-800/70 text-slate-700 dark:text-slate-300 flex items-center justify-center text-xs font-semibold">
               SP
             </div>
+            {/* Expand button - Desktop only */}
+            <button
+              className="hidden md:flex w-8 h-8 rounded-md border border-slate-200/80 dark:border-neutral-700/80 bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors items-center justify-center text-slate-600 dark:text-slate-300 cursor-pointer"
+              onClick={onToggleCollapse}
+              title="Expand sidebar"
+              aria-label="Expand sidebar"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
           </div>
         ) : (
           // Expanded state - full prompt manager UI
           <div className="flex flex-col h-full">
             {/* Header */}
-            <div className="p-4">
+            <div className="p-4 flex items-center justify-between">
               <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
                 System Prompts
               </h2>
+              {/* Collapse button - Desktop only */}
+              <button
+                className="hidden md:flex p-1.5 rounded-md hover:bg-slate-200/50 dark:hover:bg-neutral-800 text-slate-500 dark:text-slate-400 transition-colors items-center justify-center"
+                onClick={onToggleCollapse}
+                title="Collapse sidebar"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
             </div>
 
             {/* Content */}

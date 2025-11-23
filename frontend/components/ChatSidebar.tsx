@@ -38,21 +38,21 @@ export function ChatSidebar({
         ${!collapsed ? 'w-72 sm:w-80' : ''}
       `}
     >
-      {/* Collapse/Expand Button - Desktop only */}
-      <button
-        className="hidden md:flex absolute -right-3 top-6 w-6 h-6 rounded-full bg-white dark:bg-neutral-950 border border-slate-200/70 dark:border-neutral-800/70 transition-colors duration-200 items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-neutral-900 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
-        onClick={onToggleCollapse}
-        title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-      >
-        {collapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
-      </button>
-
       {collapsed ? (
         // Collapsed state - minimal UI
         <div className="flex flex-col items-center space-y-4">
           <div className="mb-2">
-            <img src="/logo.svg" alt="Logo" className="w-8 h-8 rounded-xl" />
+            <img src="/logo.png" alt="Logo" className="w-8 h-8 rounded-xl" />
           </div>
+          {/* Expand button - Desktop only */}
+          <button
+            className="hidden md:flex w-8 h-8 rounded-md border border-slate-200/80 dark:border-neutral-700/80 bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors items-center justify-center text-slate-600 dark:text-slate-300 cursor-pointer"
+            onClick={onToggleCollapse}
+            title="Expand sidebar"
+            aria-label="Expand sidebar"
+          >
+            <ChevronRight className="w-4 h-4" />
+          </button>
           <button
             className="w-8 h-8 rounded-full border border-slate-200/70 dark:border-neutral-800/70 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-neutral-900 transition-colors duration-150 flex items-center justify-center group cursor-pointer"
             onClick={onNewChat}
@@ -90,30 +90,40 @@ export function ChatSidebar({
       ) : (
         // Expanded state - full UI
         <>
-            <div className="flex items-center justify-between mb-6 px-1">
-              <div className="flex items-center gap-2">
-                <img src="/logo.svg" alt="Logo" className="w-8 h-8 rounded-xl" />
-                <span className="font-bold text-lg text-slate-800 dark:text-slate-100 tracking-tight">
-                  Chat
-                </span>
-              </div>
-              <div className="flex items-center gap-1">
-                <button
-                  className="p-1.5 rounded-md hover:bg-slate-200/50 dark:hover:bg-neutral-800 text-slate-500 dark:text-slate-400 transition-colors"
-                  onClick={onRefresh}
-                  disabled={loadingConversations}
-                  title="Refresh history"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 ${loadingConversations ? 'animate-spin' : ''}`} />
-                </button>
-                <button
-                  className="p-1.5 rounded-md hover:bg-slate-200/50 dark:hover:bg-neutral-800 text-slate-500 dark:text-slate-400 transition-colors"
-                  onClick={onNewChat}
-                  title="New Chat"
-                >
-                  <Plus className="w-4 h-4" />
-                </button>
-              </div>
+          <div className="flex items-center justify-between mb-6 px-1">
+            <div className="flex items-center gap-2">
+              <img src="/logo.png" alt="Logo" className="w-8 h-8 rounded-xl" />
+              <span className="font-bold text-lg text-slate-800 dark:text-slate-100 tracking-tight">
+                Chat
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                className="p-1.5 rounded-md hover:bg-slate-200/50 dark:hover:bg-neutral-800 text-slate-500 dark:text-slate-400 transition-colors"
+                onClick={onRefresh}
+                disabled={loadingConversations}
+                title="Refresh history"
+              >
+                <RefreshCw
+                  className={`w-3.5 h-3.5 ${loadingConversations ? 'animate-spin' : ''}`}
+                />
+              </button>
+              <button
+                className="p-1.5 rounded-md hover:bg-slate-200/50 dark:hover:bg-neutral-800 text-slate-500 dark:text-slate-400 transition-colors"
+                onClick={onNewChat}
+                title="New Chat"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+              {/* Collapse button - Desktop only */}
+              <button
+                className="hidden md:flex p-1.5 rounded-md hover:bg-slate-200/50 dark:hover:bg-neutral-800 text-slate-500 dark:text-slate-400 transition-colors items-center justify-center"
+                onClick={onToggleCollapse}
+                title="Collapse sidebar"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto space-y-2 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-neutral-700 scrollbar-track-transparent">
             {conversations.map((c) => (

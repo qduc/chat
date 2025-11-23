@@ -14,8 +14,8 @@ export function WelcomeMessage({ onSuggestionClick }: WelcomeMessageProps) {
       </div>
 
       {/* Main Icon */}
-      <div className="mb-8 p-4 bg-white dark:bg-neutral-800 rounded-2xl shadow-sm border border-slate-100 dark:border-neutral-700 ring-4 ring-slate-50/50 dark:ring-neutral-900/50">
-        <img src="/logo.svg" alt="Logo" className="w-12 h-12" />
+      <div className="mb-8">
+        <img src="/logo.png" alt="Logo" className="w-16 h-16 rounded-2xl" />
       </div>
 
       {/* Heading */}
