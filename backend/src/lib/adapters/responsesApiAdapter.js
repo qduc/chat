@@ -1127,13 +1127,22 @@ export class ResponsesAPIAdapter extends BaseAdapter {
 
     const messages = Array.isArray(payload.messages) ? payload.messages : [];
 
-    // When using previous_response_id, only send the latest user message
+    // When using previous_response_id, only send new messages since the previous response
     // The API already has the conversation context from the previous response
     let input;
     if (payload.previous_response_id) {
-      // Find the last user message or tool output message
-      const lastUserMessage = messages.findLast((msg) => msg?.role === 'user' || msg?.role === 'tool');
-      input = lastUserMessage ? await normalizeMessages([lastUserMessage]) : [];
+      // Find the last assistant message (which would have tool_calls in a tool orchestration scenario)
+      const lastAssistantIndex = messages.findLastIndex((msg) => msg?.role === 'assistant');
+
+      if (lastAssistantIndex >= 0) {
+        // Send all messages AFTER the last assistant message (tool outputs or new user message)
+        const newMessages = messages.slice(lastAssistantIndex + 1);
+        input = await normalizeMessages(newMessages);
+      } else {
+        // No assistant message found, send the last user message
+        const lastUserMessage = messages.findLast((msg) => msg?.role === 'user');
+        input = lastUserMessage ? await normalizeMessages([lastUserMessage]) : [];
+      }
     } else {
       // Normal flow: send all messages including system prompt
       input = await normalizeMessages(messages);

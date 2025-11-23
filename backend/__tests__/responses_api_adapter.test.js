@@ -259,4 +259,77 @@ describe('ResponsesAPIAdapter', () => {
       expect(adapter.translateStreamChunk('invalid')).toBeNull();
     });
   });
+
+  describe('parallel tool calls with previous_response_id', () => {
+    test('includes all tool outputs when using previous_response_id', async () => {
+      const adapter = createAdapter();
+
+      // Simulate a conversation history with parallel tool calls
+      const request = await adapter.translateRequest({
+        messages: [
+          { role: 'system', content: 'You are helpful' },
+          { role: 'user', content: 'Compare these two URLs' },
+          {
+            role: 'assistant',
+            content: '',
+            tool_calls: [
+              {
+                id: 'call_1',
+                type: 'function',
+                function: { name: 'web_fetch', arguments: '{"url":"https://example.com/1"}' },
+              },
+              {
+                id: 'call_2',
+                type: 'function',
+                function: { name: 'web_fetch', arguments: '{"url":"https://example.com/2"}' },
+              },
+            ],
+          },
+          { role: 'tool', tool_call_id: 'call_1', content: 'Result from URL 1' },
+          { role: 'tool', tool_call_id: 'call_2', content: 'Result from URL 2' },
+        ],
+        previous_response_id: 'resp_previous123',
+        stream: true,
+      });
+
+      expect(request.previous_response_id).toBe('resp_previous123');
+
+      // Should include BOTH tool outputs, not just the last one
+      expect(request.input).toHaveLength(2);
+      expect(request.input[0]).toEqual({
+        type: 'function_call_output',
+        call_id: 'call_1',
+        output: 'Result from URL 1',
+      });
+      expect(request.input[1]).toEqual({
+        type: 'function_call_output',
+        call_id: 'call_2',
+        output: 'Result from URL 2',
+      });
+    });
+
+    test('includes only new user message when no tool outputs present', async () => {
+      const adapter = createAdapter();
+
+      const request = await adapter.translateRequest({
+        messages: [
+          { role: 'system', content: 'You are helpful' },
+          { role: 'user', content: 'First question' },
+          { role: 'assistant', content: 'First answer' },
+          { role: 'user', content: 'Second question' },
+        ],
+        previous_response_id: 'resp_previous456',
+        stream: true,
+      });
+
+      expect(request.previous_response_id).toBe('resp_previous456');
+
+      // Should only include the new user message after the last assistant
+      expect(request.input).toHaveLength(1);
+      expect(request.input[0]).toMatchObject({
+        role: 'user',
+        content: [{ type: 'input_text', text: 'Second question' }],
+      });
+    });
+  });
 });
