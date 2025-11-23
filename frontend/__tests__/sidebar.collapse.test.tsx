@@ -130,6 +130,15 @@ function renderWithProviders(ui: React.ReactElement) {
   return render(<ThemeProvider>{ui}</ThemeProvider>);
 }
 
+async function waitForLeftSidebar() {
+  const conversationButton = await screen.findByRole('button', { name: 'Test Conversation' });
+  const sidebar = conversationButton.closest('aside');
+  if (!sidebar) {
+    throw new Error('Unable to locate left sidebar element');
+  }
+  return sidebar as HTMLElement;
+}
+
 function setupHttpClient() {
   mockHttpClient.get.mockImplementation((url: string) => {
     if (url === '/v1/providers') {
@@ -220,40 +229,31 @@ describe('Sidebar Collapse Functionality', () => {
   test('sidebar is expanded by default', async () => {
     renderWithProviders(<Chat />);
 
-    await waitFor(() => {
-      expect(screen.getByText('Chat History')).toBeInTheDocument();
-      expect(screen.getByText('Test Conversation')).toBeInTheDocument();
-    });
+    const leftSidebar = await waitForLeftSidebar();
+    expect(
+      within(leftSidebar).getByRole('button', { name: 'Test Conversation' })
+    ).toBeInTheDocument();
+    expect(within(leftSidebar).getByTitle('Collapse sidebar')).toBeInTheDocument();
   });
 
   test('sidebar can be collapsed and expanded', async () => {
     const user = userEvent.setup();
     renderWithProviders(<Chat />);
 
-    await waitFor(() => {
-      expect(screen.getByText('Chat History')).toBeInTheDocument();
-    });
-
-    // Find and click the collapse button
-    const collapseButton = screen.getAllByTitle('Collapse sidebar')[0];
-    expect(collapseButton).toBeInTheDocument();
-
+    const leftSidebar = await waitForLeftSidebar();
+    const collapseButton = within(leftSidebar).getByTitle('Collapse sidebar');
     await user.click(collapseButton);
 
-    // After collapsing, the "Chat History" text should not be visible
     await waitFor(() => {
-      expect(screen.queryByText('Chat History')).not.toBeInTheDocument();
+      expect(within(leftSidebar).queryByTitle('Collapse sidebar')).not.toBeInTheDocument();
+      expect(within(leftSidebar).getByTitle('Expand sidebar')).toBeInTheDocument();
     });
 
-    // Find and click the expand button
-    const expandButton = screen.getByTitle('Expand sidebar');
-    expect(expandButton).toBeInTheDocument();
-
+    const expandButton = within(leftSidebar).getByTitle('Expand sidebar');
     await user.click(expandButton);
 
-    // After expanding, the "Chat History" text should be visible again
     await waitFor(() => {
-      expect(screen.getByText('Chat History')).toBeInTheDocument();
+      expect(within(leftSidebar).getByTitle('Collapse sidebar')).toBeInTheDocument();
     });
   });
 
@@ -261,21 +261,15 @@ describe('Sidebar Collapse Functionality', () => {
     const user = userEvent.setup();
     renderWithProviders(<Chat />);
 
-    await waitFor(() => {
-      expect(screen.getByText('Chat History')).toBeInTheDocument();
-    });
-
-    // Click collapse button
-    const leftSidebar = screen.getByText('Chat History').closest('aside');
-    expect(leftSidebar).not.toBeNull();
-    const collapseButton = within(leftSidebar as HTMLElement).getByTitle('Collapse sidebar');
+    const leftSidebar = await waitForLeftSidebar();
+    const collapseButton = within(leftSidebar).getByTitle('Collapse sidebar');
     await user.click(collapseButton);
 
     // Verify localStorage.setItem was called with 'true'
     expect(mockLocalStorage.setItem).toHaveBeenCalledWith('sidebarCollapsed', 'true');
 
     // Click expand button
-    const expandButton = screen.getByTitle('Expand sidebar');
+    const expandButton = within(leftSidebar).getByTitle('Expand sidebar');
     await user.click(expandButton);
 
     // Verify localStorage.setItem was called with 'false'
@@ -291,9 +285,7 @@ describe('Sidebar Collapse Functionality', () => {
     renderWithProviders(<Chat />);
 
     await waitFor(() => {
-      // Should not show "Chat History" text when collapsed
-      expect(screen.queryByText('Chat History')).not.toBeInTheDocument();
-      // Should show expand button(s) - there may be left and right sidebars
+      expect(screen.getByLabelText('Start new chat')).toBeInTheDocument();
       expect(screen.getAllByTitle('Expand sidebar').length).toBeGreaterThanOrEqual(1);
     });
   });
@@ -302,22 +294,20 @@ describe('Sidebar Collapse Functionality', () => {
     const user = userEvent.setup();
     renderWithProviders(<Chat />);
 
-    await waitFor(() => {
-      expect(screen.getByText('Chat History')).toBeInTheDocument();
-    });
+    const leftSidebar = await waitForLeftSidebar();
 
     // Press Ctrl+\ to collapse
     await user.keyboard('{Control>}\\{/Control}');
 
     await waitFor(() => {
-      expect(screen.queryByText('Chat History')).not.toBeInTheDocument();
+      expect(within(leftSidebar).queryByTitle('Collapse sidebar')).not.toBeInTheDocument();
     });
 
     // Press Ctrl+\ again to expand
     await user.keyboard('{Control>}\\{/Control}');
 
     await waitFor(() => {
-      expect(screen.getByText('Chat History')).toBeInTheDocument();
+      expect(within(leftSidebar).getByTitle('Collapse sidebar')).toBeInTheDocument();
     });
   });
 
@@ -325,22 +315,14 @@ describe('Sidebar Collapse Functionality', () => {
     const user = userEvent.setup();
     renderWithProviders(<Chat />);
 
-    await waitFor(() => {
-      expect(screen.getByText('Chat History')).toBeInTheDocument();
-    });
-
-    // Collapse the sidebar
-    const leftSidebar = screen.getByText('Chat History').closest('aside');
-    expect(leftSidebar).not.toBeNull();
-    const collapseButton = within(leftSidebar as HTMLElement).getByTitle('Collapse sidebar');
+    const leftSidebar = await waitForLeftSidebar();
+    const collapseButton = within(leftSidebar).getByTitle('Collapse sidebar');
     await user.click(collapseButton);
 
     await waitFor(() => {
-      // Should show minimal buttons
-      expect(screen.getByTitle('New Chat')).toBeInTheDocument();
-      expect(screen.getByTitle('Refresh conversations')).toBeInTheDocument();
-      // Should not show full "Chat History" header
-      expect(screen.queryByText('Chat History')).not.toBeInTheDocument();
+      // Should show minimal buttons specific to collapsed state
+      expect(screen.getByLabelText('Start new chat')).toBeInTheDocument();
+      expect(screen.getByLabelText('Refresh conversation list')).toBeInTheDocument();
     });
   });
 
@@ -348,14 +330,8 @@ describe('Sidebar Collapse Functionality', () => {
     const user = userEvent.setup();
     renderWithProviders(<Chat />);
 
-    await waitFor(() => {
-      expect(screen.getByText('Chat History')).toBeInTheDocument();
-    });
-
-    // Collapse the sidebar
-    const leftSidebar = screen.getByText('Chat History').closest('aside');
-    expect(leftSidebar).not.toBeNull();
-    const collapseButton = within(leftSidebar as HTMLElement).getByTitle('Collapse sidebar');
+    const leftSidebar = await waitForLeftSidebar();
+    const collapseButton = within(leftSidebar).getByTitle('Collapse sidebar');
     await user.click(collapseButton);
 
     await waitFor(() => {

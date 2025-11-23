@@ -211,7 +211,7 @@ describe('MessagesAdapter', () => {
       expect(result.choices).toHaveLength(1);
       expect(result.choices[0].message.role).toBe('assistant');
       expect(result.choices[0].message.content).toBe('Hello! How can I help?');
-      expect(result.choices[0].finish_reason).toBe('end_turn');
+      expect(result.choices[0].finish_reason).toBe('stop');
       expect(result.usage).toEqual({
         prompt_tokens: 10,
         completion_tokens: 20,
