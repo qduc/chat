@@ -241,6 +241,10 @@ export class AnthropicProvider extends BaseProvider {
     return true;
   }
 
+  needsStreamingTranslation() {
+    return true;
+  }
+
   getDefaultModel() {
     return this.settings?.defaultModel
       || this.config?.defaultModel

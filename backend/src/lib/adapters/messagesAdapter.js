@@ -285,10 +285,30 @@ export class MessagesAdapter extends BaseAdapter {
     return normalized;
   }
 
-  translateResponse(providerResponse, _context = {}) {
+  async translateResponse(providerResponse, _context = {}) {
+    if (!providerResponse) return providerResponse;
+
     if (typeof providerResponse === 'string') {
       try {
         const parsed = JSON.parse(providerResponse);
+        return this.convertAnthropicToOpenAI(parsed);
+      } catch {
+        return providerResponse;
+      }
+    }
+    // Handle Response objects from fetch API
+    if (providerResponse && typeof providerResponse === 'object' && typeof providerResponse.json === 'function') {
+      try {
+        // Check if body is already used
+        if (providerResponse.bodyUsed) {
+           // If body is used, we can't read it again.
+           // Assuming it was read elsewhere and we received the parsed object or string.
+           // If we received the Response object here, it implies we need to read it.
+           // However, if it's already used, we might be in a tricky spot.
+           // For now, let's return it as is or try to clone if possible (but clone won't work if used).
+           return providerResponse;
+        }
+        const parsed = await providerResponse.json();
         return this.convertAnthropicToOpenAI(parsed);
       } catch {
         return providerResponse;
@@ -316,6 +336,24 @@ export class MessagesAdapter extends BaseAdapter {
       return this.convertAnthropicStreamToOpenAI(chunk);
     }
     return chunk;
+  }
+
+  /**
+   * Map Anthropic stop_reason to OpenAI finish_reason
+   */
+  mapStopReason(stopReason) {
+    switch (stopReason) {
+      case 'end_turn':
+        return 'stop';
+      case 'max_tokens':
+        return 'length';
+      case 'tool_use':
+        return 'tool_calls';
+      case 'stop_sequence':
+        return 'stop';
+      default:
+        return stopReason || null;
+    }
   }
 
   /**
@@ -373,7 +411,7 @@ export class MessagesAdapter extends BaseAdapter {
     openAIResponse.choices.push({
       index: 0,
       message,
-      finish_reason: anthropicResponse.stop_reason || 'stop',
+      finish_reason: this.mapStopReason(anthropicResponse.stop_reason),
     });
 
     // Add usage information
@@ -498,7 +536,7 @@ export class MessagesAdapter extends BaseAdapter {
             {
               index: 0,
               delta: {},
-              finish_reason: event.delta?.stop_reason || null,
+              finish_reason: this.mapStopReason(event.delta?.stop_reason),
             },
           ],
           usage: event.usage

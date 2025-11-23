@@ -192,7 +192,7 @@ describe('MessagesAdapter', () => {
   });
 
   describe('translateResponse', () => {
-    test('converts Anthropic response to OpenAI format', () => {
+    test('converts Anthropic response to OpenAI format', async () => {
       const anthropicResponse = {
         id: 'msg_123',
         type: 'message',
@@ -203,7 +203,7 @@ describe('MessagesAdapter', () => {
         usage: { input_tokens: 10, output_tokens: 20 },
       };
 
-      const result = adapter.translateResponse(anthropicResponse);
+      const result = await adapter.translateResponse(anthropicResponse);
 
       expect(result.id).toBe('msg_123');
       expect(result.object).toBe('chat.completion');
@@ -219,7 +219,7 @@ describe('MessagesAdapter', () => {
       });
     });
 
-    test('converts tool use in response', () => {
+    test('converts tool use in response', async () => {
       const anthropicResponse = {
         id: 'msg_123',
         type: 'message',
@@ -238,7 +238,7 @@ describe('MessagesAdapter', () => {
         usage: { input_tokens: 10, output_tokens: 20 },
       };
 
-      const result = adapter.translateResponse(anthropicResponse);
+      const result = await adapter.translateResponse(anthropicResponse);
 
       expect(result.choices[0].message.content).toBe('Let me check that.');
       expect(result.choices[0].message.tool_calls).toHaveLength(1);

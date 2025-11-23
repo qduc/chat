@@ -27,10 +27,51 @@ export function createChatCompletionChunk(id, model, delta, finishReason = null)
  * @param {Object} requestBody - Request body to send
  * @returns {Promise<Response>} Fetch response promise
  */
+const TRANSLATED_JSON = Symbol('chatforgeTranslatedJson');
+
+function wrapResponseJson(response, provider, context = {}) {
+  if (!response || typeof response.json !== 'function') return response;
+  if (response[TRANSLATED_JSON]) return response;
+
+  const needsTranslation = typeof provider?.needsStreamingTranslation === 'function'
+    ? provider.needsStreamingTranslation()
+    : false;
+
+  // Only translate successful JSON responses; let error payloads pass through unchanged.
+  if (!needsTranslation || response.ok === false) {
+    return response;
+  }
+
+  const originalJson = response.json.bind(response);
+  let translatedPromise = null;
+
+  response.json = async () => {
+    if (!translatedPromise) {
+      translatedPromise = (async () => {
+        const raw = await originalJson();
+        try {
+          return await provider.translateResponse(raw, context);
+        } catch {
+          return raw;
+        }
+      })();
+    }
+    return translatedPromise;
+  };
+
+  response[TRANSLATED_JSON] = true;
+  return response;
+}
+
 export async function createOpenAIRequest(config, requestBody, options = {}) {
-  // Backward-compat shim: delegate to provider registry
-  const { providerChatCompletions } = await import('./providers/index.js');
-  return providerChatCompletions(config, requestBody, options);
+  const { createProvider } = await import('./providers/index.js');
+  const provider = await createProvider(config, options);
+  const context = {
+    providerId: options.providerId || provider.providerId,
+    ...(options.context || {}),
+  };
+  const upstream = await provider.sendRawRequest(requestBody, context);
+  return wrapResponseJson(upstream, provider, context);
 }
 
 // Optional alias with a more generic name for future call sites

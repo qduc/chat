@@ -77,6 +77,95 @@ function setupStreamEventHandlers({
 }
 
 /**
+ * Process a parsed chunk for persistence
+ */
+function processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason) {
+  let finishReason = null;
+
+  // Capture response_id from any chunk
+  if (obj?.id) {
+    persistence.setResponseId(obj.id);
+  }
+
+  const choice = obj?.choices?.[0];
+  const delta = choice?.delta;
+
+  if (delta) {
+    const deltaContent = delta.content;
+    if (deltaContent !== undefined) {
+      persistence.appendContent(deltaContent);
+    }
+
+    const reasoningText = delta.reasoning_content ?? delta.reasoning;
+    if (reasoningText) {
+      persistence.appendReasoningText(reasoningText);
+    }
+
+    if (Array.isArray(delta.reasoning_details) && delta.reasoning_details.length > 0) {
+      persistence.setReasoningDetails(delta.reasoning_details);
+    }
+
+    // Capture tool_calls from delta (streaming tool calls)
+    if (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) {
+      for (const tcDelta of delta.tool_calls) {
+        const idx = tcDelta.index ?? 0;
+        const isNewToolCall = !toolCallMap.has(idx);
+
+        const existing = toolCallMap.get(idx) || {
+          id: tcDelta.id,
+          type: 'function',
+          index: idx,
+          function: { name: '', arguments: '' }
+        };
+
+        // Capture textOffset when tool call first appears
+        if (isNewToolCall && persistence) {
+          existing.textOffset = persistence.getContentLength();
+        }
+
+        if (tcDelta.id) existing.id = tcDelta.id;
+        if (tcDelta.type) existing.type = tcDelta.type;
+        if (tcDelta.function?.name) {
+          existing.function.name = tcDelta.function.name;
+        }
+        if (tcDelta.function?.arguments) {
+          existing.function.arguments += tcDelta.function.arguments;
+        }
+
+        toolCallMap.set(idx, existing);
+      }
+    }
+
+    finishReason = choice?.finish_reason ?? finishReason;
+  }
+
+  // Capture reasoning_tokens from usage (check both locations)
+  const reasoningTokens = obj?.usage?.reasoning_tokens
+    ?? obj?.usage?.completion_tokens_details?.reasoning_tokens
+    ?? null;
+  if (reasoningTokens != null) {
+    persistence.setReasoningTokens(reasoningTokens);
+  }
+
+  const message = choice?.message;
+  if (message?.reasoning_details) {
+    persistence.setReasoningDetails(message.reasoning_details);
+  }
+
+  // Capture complete tool_calls from message (non-streaming or final)
+  if (Array.isArray(message?.tool_calls) && message.tool_calls.length > 0) {
+    for (const toolCall of message.tool_calls) {
+      const idx = toolCall.index ?? toolCallMap.size;
+      toolCallMap.set(idx, toolCall);
+    }
+  }
+
+  if (finishReason) {
+    lastFinishReason.value = finishReason;
+  }
+}
+
+/**
  * Handle regular streaming (non-tool orchestration)
  * @param {Object} params - Streaming parameters
  */
@@ -85,10 +174,11 @@ export async function handleRegularStreaming({
   res,
   req,
   persistence,
+  provider,
 }) {
   let leftover = '';
+  let translationLeftover = '';
   let lastFinishReason = { value: null };
-  let responseId = null; // Track response_id from chunks
   let toolCallMap = new Map(); // Accumulate streamed tool calls
 
   // Emit conversation metadata upfront if available so clients receive
@@ -105,104 +195,48 @@ export async function handleRegularStreaming({
 
   upstream.body.on('data', (chunk) => {
     try {
-      // Direct passthrough for Chat Completions API
-      writeAndFlush(res, chunk);
+      if (provider?.needsStreamingTranslation()) {
+        // Translate chunks before writing and persistence
+        translationLeftover = parseSSEStream(
+          chunk,
+          translationLeftover,
+          (obj) => {
+            const translated = provider.translateStreamChunk(obj);
+            if (translated === '[DONE]') {
+              writeAndFlush(res, 'data: [DONE]\n\n');
+            } else if (translated) {
+              writeAndFlush(res, `data: ${JSON.stringify(translated)}\n\n`);
 
-      // Update persistence buffer if enabled
-      if (!persistence || !persistence.persist) return;
-
-      leftover = parseSSEStream(
-        chunk,
-        leftover,
-        (obj) => {
-          let finishReason = null;
-
-          // Capture response_id from any chunk
-          if (obj?.id && !responseId) {
-            responseId = obj.id;
-            if (persistence) persistence.setResponseId(responseId);
-          }
-
-          const choice = obj?.choices?.[0];
-          const delta = choice?.delta;
-
-          if (delta) {
-            const deltaContent = delta.content;
-            if (deltaContent !== undefined) {
-              persistence.appendContent(deltaContent);
-            }
-
-            const reasoningText = delta.reasoning_content ?? delta.reasoning;
-            if (reasoningText) {
-              persistence.appendReasoningText(reasoningText);
-            }
-
-            if (Array.isArray(delta.reasoning_details) && delta.reasoning_details.length > 0) {
-              persistence.setReasoningDetails(delta.reasoning_details);
-            }
-
-            // Capture tool_calls from delta (streaming tool calls)
-            if (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) {
-              for (const tcDelta of delta.tool_calls) {
-                const idx = tcDelta.index ?? 0;
-                const isNewToolCall = !toolCallMap.has(idx);
-
-                const existing = toolCallMap.get(idx) || {
-                  id: tcDelta.id,
-                  type: 'function',
-                  index: idx,
-                  function: { name: '', arguments: '' }
-                };
-
-                // Capture textOffset when tool call first appears
-                if (isNewToolCall && persistence) {
-                  existing.textOffset = persistence.getContentLength();
-                }
-
-                if (tcDelta.id) existing.id = tcDelta.id;
-                if (tcDelta.type) existing.type = tcDelta.type;
-                if (tcDelta.function?.name) {
-                  existing.function.name = tcDelta.function.name;
-                }
-                if (tcDelta.function?.arguments) {
-                  existing.function.arguments += tcDelta.function.arguments;
-                }
-
-                toolCallMap.set(idx, existing);
+              // Update persistence with translated chunk
+              if (persistence && persistence.persist) {
+                processPersistenceChunk(translated, persistence, toolCallMap, lastFinishReason);
               }
             }
-
-            finishReason = choice?.finish_reason ?? finishReason;
+          },
+          () => {
+             writeAndFlush(res, 'data: [DONE]\n\n');
+          },
+          (err) => {
+             logger.warn('Error parsing upstream SSE JSON for translation', err);
           }
+        );
+      } else {
+        // Direct passthrough for Chat Completions API
+        writeAndFlush(res, chunk);
 
-          // Capture reasoning_tokens from usage (check both locations)
-          const reasoningTokens = obj?.usage?.reasoning_tokens
-            ?? obj?.usage?.completion_tokens_details?.reasoning_tokens
-            ?? null;
-          if (reasoningTokens != null) {
-            persistence.setReasoningTokens(reasoningTokens);
-          }
-
-          const message = choice?.message;
-          if (message?.reasoning_details) {
-            persistence.setReasoningDetails(message.reasoning_details);
-          }
-
-          // Capture complete tool_calls from message (non-streaming or final)
-          if (Array.isArray(message?.tool_calls) && message.tool_calls.length > 0) {
-            for (const toolCall of message.tool_calls) {
-              const idx = toolCall.index ?? toolCallMap.size;
-              toolCallMap.set(idx, toolCall);
-            }
-          }
-
-          if (finishReason) {
-            lastFinishReason.value = finishReason;
-          }
-        },
-        () => { },
-        () => { }
-      );
+        // Update persistence buffer if enabled
+        if (persistence && persistence.persist) {
+          leftover = parseSSEStream(
+            chunk,
+            leftover,
+            (obj) => {
+              processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason);
+            },
+            () => { },
+            () => { }
+          );
+        }
+      }
     } catch (e) {
       logger.error('[stream data] error', e);
     }

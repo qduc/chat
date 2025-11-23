@@ -146,5 +146,5 @@ export async function providerChatCompletions(config, requestBody, options = {})
     providerId: options.providerId || provider.providerId,
     ...options.context,
   };
-  return provider.sendRequest(requestBody, context);
+  return provider.sendRawRequest(requestBody, context);
 }
