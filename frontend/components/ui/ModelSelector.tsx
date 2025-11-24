@@ -570,10 +570,16 @@ export default function ModelSelector({
                   </div>
                 )}
 
-                {filteredModels.length === 0 && (
+                {allModels.length === 0 ? (
                   <div className="px-3 py-6 text-center text-slate-500 dark:text-slate-400">
-                    No models found matching &quot;{searchQuery}&quot;
+                    No models available. Please add a provider in settings.
                   </div>
+                ) : (
+                  filteredModels.length === 0 && (
+                    <div className="px-3 py-6 text-center text-slate-500 dark:text-slate-400">
+                      No models found matching &quot;{searchQuery}&quot;
+                    </div>
+                  )
                 )}
               </div>
             </>

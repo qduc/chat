@@ -18,12 +18,12 @@
  */
 export function parseSSEStream(chunk, leftover, onDataChunk, onDone, onError) {
   const s = String(chunk);
-  let data = leftover + s;
-  const parts = data.split(/\n\n/);
+  const data = leftover + s;
+  const parts = data.split(/\r?\n\r?\n/);
   const newLeftover = parts.pop() || '';
 
   for (const part of parts) {
-    const lines = part.split('\n');
+    const lines = part.split(/\r?\n/);
     for (const line of lines) {
       const m = line.match(/^data:\s*(.*)$/);
       if (!m) continue;

@@ -38,6 +38,8 @@ export function ChatV2() {
   const [scrollButtons, setScrollButtons] = useState({ showTop: false, showBottom: false });
   const isLoadingConversationRef = useRef(false);
   const messageInputRef = useRef<MessageInputRef>(null);
+  const messageInputContainerRef = useRef<HTMLDivElement>(null);
+  const [messageInputHeight, setMessageInputHeight] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
   const hasCheckedMobileRef = useRef(false);
 
@@ -441,8 +443,23 @@ export function ChatV2() {
       chat.setInput(text);
       messageInputRef.current?.focus();
     },
-    [chat.setInput]
+    [chat]
   );
+
+  // Observe MessageInput container height changes
+  useEffect(() => {
+    const container = messageInputContainerRef.current;
+    if (!container) return;
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setMessageInputHeight(entry.contentRect.height);
+      }
+    });
+
+    resizeObserver.observe(container);
+    return () => resizeObserver.disconnect();
+  }, []);
 
   return (
     <div className="flex h-dvh max-h-dvh bg-white dark:bg-neutral-950 relative">
@@ -525,11 +542,16 @@ export function ChatV2() {
             />
 
             {/* Scroll Buttons - centered but visually minimal */}
-            <div className="absolute bottom-32 sm:bottom-40 left-1/2 transform -translate-x-1/2 flex flex-col gap-2 z-40 pointer-events-none">
+            <div
+              className="absolute left-1/2 transform -translate-x-1/2 flex flex-col gap-2 z-10 pointer-events-none transition-[bottom] duration-150"
+              style={{
+                bottom: `${messageInputHeight + 32}px`, // 32px gap above MessageInput
+              }}
+            >
               {scrollButtons.showTop && (
                 <button
                   onClick={scrollToTop}
-                  className="pointer-events-auto p-1.5 rounded-md bg-white dark:bg-neutral-900 text-slate-600 dark:text-slate-200 border border-slate-200/70 dark:border-neutral-700/70 hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors"
+                  className="pointer-events-auto p-1.5 rounded-full bg-white dark:bg-neutral-900 text-slate-600 dark:text-slate-200 border border-slate-200/70 dark:border-neutral-700/70 hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors aspect-square"
                   aria-label="Scroll to top"
                   title="Scroll to top"
                 >
@@ -539,7 +561,7 @@ export function ChatV2() {
               {scrollButtons.showBottom && (
                 <button
                   onClick={() => scrollToBottom()}
-                  className="pointer-events-auto p-1.5 rounded-md bg-white dark:bg-neutral-900 text-slate-600 dark:text-slate-200 border border-slate-200/70 dark:border-neutral-700/70 hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors"
+                  className="pointer-events-auto p-1.5 rounded-full bg-white dark:bg-neutral-900 text-slate-600 dark:text-slate-200 border border-slate-200/70 dark:border-neutral-700/70 hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors aspect-square"
                   aria-label="Scroll to bottom"
                   title="Scroll to bottom"
                 >
@@ -549,7 +571,10 @@ export function ChatV2() {
             </div>
 
             {/* Removed soft fade to keep a cleaner boundaryless look */}
-            <div className="absolute bottom-2 sm:bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-3xl px-2 sm:px-4 md:px-6 z-30">
+            <div
+              ref={messageInputContainerRef}
+              className="absolute bottom-2 sm:bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-3xl px-2 sm:px-4 md:px-6 z-30"
+            >
               <MessageInput
                 ref={messageInputRef}
                 input={chat.input}

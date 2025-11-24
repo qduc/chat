@@ -71,7 +71,32 @@ export async function createOpenAIRequest(config, requestBody, options = {}) {
     ...(options.context || {}),
   };
   const upstream = await provider.sendRawRequest(requestBody, context);
-  return wrapResponseJson(upstream, provider, context);
+
+  const needsTranslation =
+    typeof provider?.needsStreamingTranslation === 'function' ? provider.needsStreamingTranslation() : false;
+
+  const wantsStream = requestBody?.stream !== false;
+  let response = upstream;
+  let translatedForStreaming = false;
+
+  if (needsTranslation && wantsStream) {
+    try {
+      const translated = await provider.translateResponse(upstream, context);
+      if (translated) {
+        response = translated;
+        translatedForStreaming = true;
+      }
+    } catch {
+      // If translation fails, fall back to the raw upstream response
+      response = upstream;
+    }
+  }
+
+  if (!translatedForStreaming) {
+    response = wrapResponseJson(response, provider, context);
+  }
+
+  return response;
 }
 
 // Optional alias with a more generic name for future call sites

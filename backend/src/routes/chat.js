@@ -3,6 +3,7 @@ import { proxyOpenAIRequest } from '../lib/openaiProxy.js';
 import { generateOpenAIToolSpecs, getAvailableTools } from '../lib/tools.js';
 import { logger } from '../logger.js';
 import { authenticateToken } from '../middleware/auth.js';
+import { getUserSetting } from '../db/userSettings.js';
 
 export const chatRouter = Router();
 
@@ -16,10 +17,65 @@ chatRouter.get('/v1/tools', (req, res) => {
   try {
     const specs = generateOpenAIToolSpecs();
     const availableTools = getAvailableTools();
+    const userId = req.user?.id;
+
+    // Check API key status for tools that require them
+    const toolApiKeyStatus = {};
+
+    // Define which tools require which API keys
+    const toolApiKeyMapping = {
+      'web_search': { settingKey: 'tavily_api_key', envVar: 'TAVILY_API_KEY', label: 'Tavily API Key' },
+      'web_search_exa': { settingKey: 'exa_api_key', envVar: 'EXA_API_KEY', label: 'Exa API Key' },
+      'web_search_searxng': { settingKey: 'searxng_base_url', envVar: 'SEARXNG_BASE_URL', label: 'SearXNG Base URL' }
+    };
+
+    // Check each tool's API key status
+    for (const toolName of availableTools) {
+      const apiKeyInfo = toolApiKeyMapping[toolName];
+
+      if (apiKeyInfo) {
+        let hasKey = false;
+
+        // Check user-specific setting first
+        if (userId) {
+          try {
+            const userSetting = getUserSetting(userId, apiKeyInfo.settingKey);
+            if (userSetting && userSetting.value) {
+              hasKey = true;
+            }
+          } catch (err) {
+            logger.warn('Failed to check user setting for tool', {
+              toolName,
+              userId,
+              settingKey: apiKeyInfo.settingKey,
+              err: err?.message
+            });
+          }
+        }
+
+        // Fall back to environment variable if no user setting
+        if (!hasKey && process.env[apiKeyInfo.envVar]) {
+          hasKey = true;
+        }
+
+        toolApiKeyStatus[toolName] = {
+          hasApiKey: hasKey,
+          requiresApiKey: true,
+          missingKeyLabel: apiKeyInfo.label
+        };
+      } else {
+        // Tool doesn't require an API key
+        toolApiKeyStatus[toolName] = {
+          hasApiKey: true,
+          requiresApiKey: false
+        };
+      }
+    }
 
     res.json({
       tools: specs,
-      available_tools: availableTools
+      available_tools: availableTools,
+      tool_api_key_status: toolApiKeyStatus
     });
   } catch (error) {
     logger.error({

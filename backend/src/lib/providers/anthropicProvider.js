@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream';
 import { logUpstreamRequest, logUpstreamResponse, teeStreamWithPreview } from '../logging/upstreamLogger.js';
-import { BaseProvider } from './baseProvider.js';
+import { BaseProvider, ProviderModelsError } from './baseProvider.js';
 import { MessagesAdapter } from '../adapters/messagesAdapter.js';
 import { logger } from '../../logger.js';
 
@@ -33,6 +33,10 @@ function wrapStreamingResponse(response) {
 }
 
 export class AnthropicProvider extends BaseProvider {
+  static get defaultBaseUrl() {
+    return 'https://api.anthropic.com';
+  }
+
   createAdapter() {
     return new MessagesAdapter({
       config: this.config,
@@ -49,9 +53,7 @@ export class AnthropicProvider extends BaseProvider {
   }
 
   get apiKey() {
-    return this.settings?.apiKey
-      || this.config?.providerConfig?.apiKey
-      || this.config?.anthropicApiKey;
+    return this.settings?.apiKey || this.config?.providerConfig?.apiKey || this.config?.anthropicApiKey;
   }
 
   get baseUrl() {
@@ -129,9 +131,10 @@ export class AnthropicProvider extends BaseProvider {
 
     // Log the upstream response for debugging
     try {
-      const responseHeaders = response.headers && typeof response.headers.entries === 'function'
-        ? Object.fromEntries(response.headers.entries())
-        : {};
+      const responseHeaders =
+        response.headers && typeof response.headers.entries === 'function'
+          ? Object.fromEntries(response.headers.entries())
+          : {};
 
       // Check if response is actually a stream by inspecting content-type
       const contentType = response.headers?.get?.('content-type') || '';
@@ -142,20 +145,22 @@ export class AnthropicProvider extends BaseProvider {
         const wrappedResponse = wrapStreamingResponse(response);
         const { previewPromise, stream: loggedStream } = teeStreamWithPreview(wrappedResponse.body, {
           maxBytes: 128 * 1024, // Capture up to 128KB of SSE data
-          encoding: 'utf8'
+          encoding: 'utf8',
         });
 
         // Log asynchronously without blocking the response
-        previewPromise.then((preview) => {
-          logUpstreamResponse({
-            url,
-            status: response.status,
-            headers: responseHeaders,
-            body: preview
+        previewPromise
+          .then((preview) => {
+            logUpstreamResponse({
+              url,
+              status: response.status,
+              headers: responseHeaders,
+              body: preview,
+            });
+          })
+          .catch((err) => {
+            logger.error('Failed to capture streaming response preview:', err?.message || err);
           });
-        }).catch((err) => {
-          logger.error('Failed to capture streaming response preview:', err?.message || err);
-        });
 
         // Return response with the logged stream
         return new Proxy(wrappedResponse, {
@@ -179,7 +184,7 @@ export class AnthropicProvider extends BaseProvider {
           url,
           status: response.status,
           headers: responseHeaders,
-          body: responseBody
+          body: responseBody,
         });
         return response;
       }
@@ -191,6 +196,58 @@ export class AnthropicProvider extends BaseProvider {
       }
       return response;
     }
+  }
+
+  async listModels({ timeoutMs } = {}) {
+    const client = this.httpClient;
+    if (!client) {
+      throw new Error('No HTTP client available for Anthropic provider');
+    }
+
+    const url = `${this.baseUrl}/v1/models`;
+    const headers = {
+      Accept: 'application/json',
+      'anthropic-version': ANTHROPIC_API_VERSION,
+      ...this.defaultHeaders,
+    };
+
+    if (this.apiKey && !headers['x-api-key']) {
+      headers['x-api-key'] = this.apiKey;
+    }
+
+    const response = await client(url, {
+      method: 'GET',
+      headers,
+      timeout: timeoutMs,
+    });
+
+    if (!response.ok) {
+      const errorBody = typeof response.text === 'function' ? await response.text().catch(() => '') : '';
+      throw new ProviderModelsError('Failed to fetch models', {
+        status: response.status,
+        body: errorBody,
+      });
+    }
+
+    let payload = {};
+    if (typeof response.json === 'function') {
+      try {
+        payload = await response.json();
+      } catch {
+        payload = {};
+      }
+    } else if (typeof response.text === 'function') {
+      const raw = await response.text().catch(() => '');
+      if (raw) {
+        try {
+          payload = JSON.parse(raw);
+        } catch {
+          payload = {};
+        }
+      }
+    }
+
+    return this.normalizeModelListPayload(payload);
   }
 
   getToolsetSpec(toolRegistry) {
@@ -246,8 +303,6 @@ export class AnthropicProvider extends BaseProvider {
   }
 
   getDefaultModel() {
-    return this.settings?.defaultModel
-      || this.config?.defaultModel
-      || FALLBACK_MODEL;
+    return this.settings?.defaultModel || this.config?.defaultModel || FALLBACK_MODEL;
   }
 }

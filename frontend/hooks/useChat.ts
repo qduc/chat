@@ -275,7 +275,7 @@ export function useChat() {
   const SELECTED_MODEL_KEY = 'selectedModel';
 
   // model state - internal setter is kept separate from the persisted setter
-  const [model, setModelState] = useState<string>('gpt-4');
+  const [model, setModelState] = useState<string>('');
   // persisted setter - saves last manually selected model to localStorage
   const setModel = useCallback((m: string) => {
     setModelState(m);
@@ -308,13 +308,15 @@ export function useChat() {
   const [files, setFiles] = useState<any[]>([]);
 
   // System Prompt State
-  const [activeSystemPromptId, setActiveSystemPromptId] = useState<string | null>(null);
+  const [activeSystemPromptId, setActiveSystemPromptId] = useState<string | null | undefined>(
+    undefined
+  );
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
 
   // Refs to track latest values to avoid stale closures in sendMessage
   const systemPromptRef = useRef<string | null>(null);
-  const activeSystemPromptIdRef = useRef<string | null>(null);
-  const modelRef = useRef<string>('gpt-4');
+  const activeSystemPromptIdRef = useRef<string | null | undefined>(undefined);
+  const modelRef = useRef<string>('');
   const providerIdRef = useRef<string | null>(null);
   const shouldStreamRef = useRef<boolean>(true);
   const providerStreamRef = useRef<boolean>(true);
@@ -485,8 +487,8 @@ export function useChat() {
         systemPromptRef.current = promptFromData;
       }
 
-      // Apply active system prompt ID
-      if (data.active_system_prompt_id) {
+      // Apply active system prompt ID (always set, even if null)
+      if ('active_system_prompt_id' in data) {
         setActiveSystemPromptId(data.active_system_prompt_id);
         activeSystemPromptIdRef.current = data.active_system_prompt_id;
       }
@@ -1289,7 +1291,7 @@ export function useChat() {
     qualityLevelRef.current = level;
   }, []);
 
-  const setActiveSystemPromptIdWrapper = useCallback((id: string | null) => {
+  const setActiveSystemPromptIdWrapper = useCallback((id: string | null | undefined) => {
     setActiveSystemPromptId(id);
     activeSystemPromptIdRef.current = id;
   }, []);
@@ -1320,8 +1322,9 @@ export function useChat() {
     if (systemPromptsLoading) return;
     if (!systemPrompts) return;
 
-    // If chat already has a system prompt (from user selections) don't override
-    if (activeSystemPromptIdRef.current || systemPromptRef.current) {
+    // If conversation loaded (activeSystemPromptIdRef.current !== undefined),
+    // don't override with default, even if null
+    if (activeSystemPromptIdRef.current !== undefined || systemPromptRef.current) {
       defaultPromptAssignedRef.current = true;
       return;
     }

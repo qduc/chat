@@ -275,3 +275,20 @@ del {
     opacity: 0.5;
   }
 }
+
+/*
+  Hide browser-native password reveal / clear buttons so they don't appear
+  alongside the custom "eye" toggle in inputs. Some browsers (Safari,
+  Edge) render a native reveal/clear control on password inputs which can
+  result in two visible eye icons. These rules target common vendor
+  pseudo-elements used by browsers to render those controls.
+*/
+input[type="password"]::-ms-reveal,
+input[type="password"]::-ms-clear {
+  display: none;
+}
+input[type="password"]::-webkit-password-reveal-button,
+input[type="password"]::-webkit-credentials-auto-fill-button,
+input[type="password"]::-webkit-textfield-decoration-container {
+  display: none !important;
+}

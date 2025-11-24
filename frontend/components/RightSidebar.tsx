@@ -11,9 +11,9 @@ interface RightSidebarProps {
   collapsed?: boolean;
   onToggleCollapse?: () => void;
   onEffectivePromptChange?: (content: string) => void;
-  onActivePromptIdChange?: (promptId: string | null) => void;
+  onActivePromptIdChange?: (promptId: string | null | undefined) => void;
   // Active system prompt ID from loaded conversation
-  conversationActivePromptId?: string | null;
+  conversationActivePromptId?: string | null | undefined;
   conversationSystemPrompt?: string | null;
   width?: number;
   collapsedWidth?: number;
@@ -382,11 +382,6 @@ export function RightSidebar({
         {collapsed ? (
           // Collapsed state - compact indicator
           <div className="flex flex-col items-center space-y-3 pt-2 p-4">
-            {/* System Prompts indicator */}
-            <div className="w-10 h-10 rounded-md bg-slate-100 dark:bg-neutral-800 text-slate-500 dark:text-slate-400 flex items-center justify-center text-xs font-semibold mb-1">
-              SP
-            </div>
-
             {/* Expand button - Desktop only */}
             <button
               className="hidden md:flex w-10 h-10 rounded-md hover:bg-slate-200/50 dark:hover:bg-neutral-800 transition-colors items-center justify-center text-slate-500 dark:text-slate-400 cursor-pointer"

@@ -330,9 +330,16 @@ export interface ToolSpec {
   };
 }
 
+export interface ToolApiKeyStatus {
+  hasApiKey: boolean;
+  requiresApiKey: boolean;
+  missingKeyLabel?: string;
+}
+
 export interface ToolsResponse {
   tools: ToolSpec[];
   available_tools: string[];
+  tool_api_key_status?: Record<string, ToolApiKeyStatus>;
 }
 
 // Core chat options - simplified and focused

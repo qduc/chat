@@ -59,7 +59,7 @@ export async function handleToolsStreaming({
       bodyIn,
       persistence,
       userId,
-      provider: providerInstance
+      provider: providerInstance,
     });
 
     let iteration = 0;
@@ -72,11 +72,12 @@ export async function handleToolsStreaming({
       // Stream the model response for this iteration, buffering only tool calls
       // Prefer the frontend-provided tools (expanded by sanitizeIncomingBody) when present.
       // Otherwise fall back to the server-side registry.
-      const fallbackToolSpecs = providerInstance.getToolsetSpec({
-        generateOpenAIToolSpecs,
-        generateToolSpecs,
-      }) || generateOpenAIToolSpecs();
-      const toolsToSend = (Array.isArray(body.tools) && body.tools.length) ? body.tools : fallbackToolSpecs;
+      const fallbackToolSpecs =
+        providerInstance.getToolsetSpec({
+          generateOpenAIToolSpecs,
+          generateToolSpecs,
+        }) || generateOpenAIToolSpecs();
+      const toolsToSend = Array.isArray(body.tools) && body.tools.length ? body.tools : fallbackToolSpecs;
       let requestBody = {
         model: body.model || config.defaultModel,
         messages: conversationHistory,
@@ -97,7 +98,7 @@ export async function handleToolsStreaming({
         conversationId: persistence?.conversationId,
         userId,
         provider: providerInstance,
-        hasTools: Boolean(toolsToSend)
+        hasTools: Boolean(toolsToSend),
       });
 
       let upstream = await createOpenAIRequest(config, requestBody, { providerId });
@@ -116,16 +117,17 @@ export async function handleToolsStreaming({
           }
         }
 
-        const isInvalidResponseIdError = upstream.status === 400
-          && upstreamBody?.error?.param === 'previous_response_id'
-          && upstreamBody?.error?.code === 'invalid_value';
+        const isInvalidResponseIdError =
+          upstream.status === 400 &&
+          upstreamBody?.error?.param === 'previous_response_id' &&
+          upstreamBody?.error?.code === 'invalid_value';
 
         if (isInvalidResponseIdError) {
           logger.warn({
             msg: 'invalid_previous_response_id',
             previous_response_id: requestBody.previous_response_id,
             error: upstreamBody?.error?.message,
-            retrying: 'with full history'
+            retrying: 'with full history',
           });
 
           // Retry without previous_response_id (will use full history)
@@ -138,7 +140,7 @@ export async function handleToolsStreaming({
             body,
             bodyIn,
             persistence,
-            userId
+            userId,
           });
           retryBody.messages = fullMessages;
 
@@ -147,7 +149,7 @@ export async function handleToolsStreaming({
             conversationId: persistence?.conversationId,
             userId,
             provider: providerInstance,
-            hasTools: Boolean(toolsToSend)
+            hasTools: Boolean(toolsToSend),
           });
 
           upstream = await createOpenAIRequest(config, retryBodyWithCaching, { providerId });
@@ -158,11 +160,10 @@ export async function handleToolsStreaming({
       // Check if upstream actually returned a stream or a JSON response FIRST
       // Do this before any body consumption to avoid "Body already read" errors
       const contentType = upstream.headers?.get?.('content-type') || '';
-      const isStreamResponse = (
+      const isStreamResponse =
         contentType.includes('text/event-stream') ||
         contentType.includes('text/plain') ||
-        typeof upstream.body?.on === 'function'
-      );
+        typeof upstream.body?.on === 'function';
 
       // Check upstream response status
       if (!upstream.ok) {
@@ -198,9 +199,10 @@ export async function handleToolsStreaming({
             }
           }
 
-          const reasoningTokens = upstreamJson?.usage?.reasoning_tokens
-            ?? upstreamJson?.usage?.completion_tokens_details?.reasoning_tokens
-            ?? null;
+          const reasoningTokens =
+            upstreamJson?.usage?.reasoning_tokens ??
+            upstreamJson?.usage?.completion_tokens_details?.reasoning_tokens ??
+            null;
           if (reasoningTokens != null && persistence && typeof persistence.setReasoningTokens === 'function') {
             persistence.setReasoningTokens(reasoningTokens);
           }
@@ -223,7 +225,7 @@ export async function handleToolsStreaming({
             // Add tool calls to conversation for next iteration
             conversationHistory.push({
               role: 'assistant',
-                content: sanitizeContent(message.content),
+              content: sanitizeContent(message.content),
               tool_calls: message.tool_calls,
             });
 
@@ -239,28 +241,34 @@ export async function handleToolsStreaming({
               writeAndFlush(res, `data: ${JSON.stringify(toolCallChunk)}\n\n`);
 
               // Execute the tool
-                const toolResult = await executeToolCall(toolCall, userId);
+              const toolResult = await executeToolCall(toolCall, userId);
 
               // Add tool result to conversation history
-                let serializedToolResult;
-                if (typeof toolResult === 'object' && toolResult !== null) {
-                  serializedToolResult = JSON.stringify(toolResult);
-                } else {
-                  serializedToolResult = sanitizeContent(toolResult);
-                }
-                conversationHistory.push({
-                  role: 'tool',
-                  tool_call_id: toolCall.id,
-                  content: serializedToolResult,
-                });
+              let serializedToolResult;
+              if (typeof toolResult === 'object' && toolResult !== null) {
+                serializedToolResult = JSON.stringify(toolResult);
+              } else {
+                serializedToolResult = sanitizeContent(toolResult);
+              }
+              conversationHistory.push({
+                role: 'tool',
+                tool_call_id: toolCall.id,
+                content: serializedToolResult,
+              });
 
               // Stream tool result to client
-            streamDeltaEvent({
-              res,
-              model: body.model || config.defaultModel,
-              event: { tool_output: { tool_call_id: toolCall.id, name: toolCall.function?.name, output: serializedToolResult } },
-              prefix: 'iter'
-            });
+              streamDeltaEvent({
+                res,
+                model: body.model || config.defaultModel,
+                event: {
+                  tool_output: {
+                    tool_call_id: toolCall.id,
+                    name: toolCall.function?.name,
+                    output: serializedToolResult,
+                  },
+                },
+                prefix: 'iter',
+              });
             }
 
             // Continue to next iteration to get final response
@@ -309,7 +317,7 @@ export async function handleToolsStreaming({
             leftoverIter = parseSSEStream(
               chunk,
               leftoverIter,
-              (obj) => {
+              ((obj) => {
                 // Capture response_id from any chunk
                 if (obj?.id && !responseId) {
                   responseId = obj.id;
@@ -335,7 +343,10 @@ export async function handleToolsStreaming({
                 }
 
                 // Capture reasoning_tokens from usage
-                if (obj?.usage?.reasoning_tokens != null || obj?.usage?.completion_tokens_details?.reasoning_tokens != null) {
+                if (
+                  obj?.usage?.reasoning_tokens != null ||
+                  obj?.usage?.completion_tokens_details?.reasoning_tokens != null
+                ) {
                   const tokens = obj.usage.reasoning_tokens ?? obj.usage.completion_tokens_details.reasoning_tokens;
                   if (persistence && typeof persistence.setReasoningTokens === 'function') {
                     persistence.setReasoningTokens(tokens);
@@ -366,9 +377,12 @@ export async function handleToolsStreaming({
                   }
                 } else {
                   // Stream any non-tool delta chunk directly to the client
-                  writeAndFlush(res, `data: ${JSON.stringify(obj)}
+                  writeAndFlush(
+                    res,
+                    `data: ${JSON.stringify(obj)}
 
-`);
+`
+                  );
                   gotAnyNonToolDelta = true;
                 }
 
@@ -382,7 +396,9 @@ export async function handleToolsStreaming({
                 cleanup();
                 resolve();
               },
-              () => { /* ignore JSON parse errors for this stream */ }
+              () => {
+                /* ignore JSON parse errors for this stream */
+              })
             );
           } catch (e) {
             cleanup();
@@ -411,12 +427,12 @@ export async function handleToolsStreaming({
 
       if (toolCalls.length > 0) {
         // Normalize tool calls: ensure arguments is valid JSON (convert empty string to '{}')
-        const normalizedToolCalls = toolCalls.map(tc => ({
+        const normalizedToolCalls = toolCalls.map((tc) => ({
           ...tc,
           function: {
             ...tc.function,
-            arguments: tc.function.arguments || '{}'
-          }
+            arguments: tc.function.arguments || '{}',
+          },
         }));
 
         // Emit a single consolidated tool_calls chunk (buffered deltas)
@@ -425,15 +441,18 @@ export async function handleToolsStreaming({
           body.model || config.defaultModel,
           { tool_calls: Array.isArray(normalizedToolCalls) ? normalizedToolCalls : [normalizedToolCalls] }
         );
-        writeAndFlush(res, `data: ${JSON.stringify(toolCallChunk)}
+        writeAndFlush(
+          res,
+          `data: ${JSON.stringify(toolCallChunk)}
 
-`);
+`
+        );
 
         // Add assistant message with tool calls for the next iteration
         conversationHistory.push({
           role: 'assistant',
           content: accumulatedContent,
-          tool_calls: normalizedToolCalls
+          tool_calls: normalizedToolCalls,
         });
 
         // Buffer tool calls for persistence
@@ -444,12 +463,12 @@ export async function handleToolsStreaming({
         // Execute each tool call and stream tool_output events
         for (const toolCall of normalizedToolCalls) {
           try {
-              const { name, output } = await executeToolCall(toolCall, userId);
+            const { name, output } = await executeToolCall(toolCall, userId);
             // Emit tool_output meta as a chat chunk for clients that expect tool events
             const toolOutputMeta = createChatCompletionChunk(
               bodyIn.id || 'chatcmpl-' + Date.now(),
               body.model || config.defaultModel,
-              { tool_output: { tool_call_id: toolCall.id, name, output } },
+              { tool_output: { tool_call_id: toolCall.id, name, output } }
             );
             writeAndFlush(res, `data: ${JSON.stringify(toolOutputMeta)}\n\n`);
             // Also call streamDeltaEvent for successful tool outputs (for test compatibility)
@@ -457,24 +476,26 @@ export async function handleToolsStreaming({
               res,
               model: body.model || config.defaultModel,
               event: { tool_output: { tool_call_id: toolCall.id, name, output } },
-              prefix: 'iter'
+              prefix: 'iter',
             });
 
             const toolContent = typeof output === 'string' ? output : JSON.stringify(output);
 
             // Buffer tool output for persistence (don't append to message content!)
             if (persistence && persistence.persist && typeof persistence.addToolOutputs === 'function') {
-              persistence.addToolOutputs([{
-                tool_call_id: toolCall.id,
-                output: toolContent,
-                status: 'success'
-              }]);
+              persistence.addToolOutputs([
+                {
+                  tool_call_id: toolCall.id,
+                  output: toolContent,
+                  status: 'success',
+                },
+              ]);
             }
 
             conversationHistory.push({
               role: 'tool',
               tool_call_id: toolCall.id,
-                content: sanitizeContent(toolContent),
+              content: sanitizeContent(toolContent),
             });
           } catch (error) {
             const errorMessage = `Tool ${toolCall.function?.name} failed: ${error.message}`;
@@ -482,23 +503,27 @@ export async function handleToolsStreaming({
             streamDeltaEvent({
               res,
               model: body.model || config.defaultModel,
-              event: { tool_output: { tool_call_id: toolCall.id, name: toolCall.function?.name, output: errorMessage } },
-              prefix: 'iter'
+              event: {
+                tool_output: { tool_call_id: toolCall.id, name: toolCall.function?.name, output: errorMessage },
+              },
+              prefix: 'iter',
             });
 
             // Buffer error tool output for persistence (don't append to message content!)
             if (persistence && persistence.persist && typeof persistence.addToolOutputs === 'function') {
-              persistence.addToolOutputs([{
-                tool_call_id: toolCall.id,
-                output: errorMessage,
-                status: 'error'
-              }]);
+              persistence.addToolOutputs([
+                {
+                  tool_call_id: toolCall.id,
+                  output: errorMessage,
+                  status: 'error',
+                },
+              ]);
             }
 
             conversationHistory.push({
               role: 'tool',
               tool_call_id: toolCall.id,
-                content: sanitizeContent(errorMessage),
+              content: sanitizeContent(errorMessage),
             });
           }
         }
@@ -527,22 +552,6 @@ export async function handleToolsStreaming({
       }
     }
 
-    // Send final completion chunk
-    const finalChunk = {
-      id: `iter_final_${Date.now()}`,
-      object: 'chat.completion.chunk',
-      created: Math.floor(Date.now() / 1000),
-      model: config.model || config.defaultModel,
-      choices: [{
-        index: 0,
-        delta: {},
-        finish_reason: 'stop',
-      }],
-    };
-    res.write(`data: ${JSON.stringify(finalChunk)}
-
-`);
-
     // Include conversation metadata before [DONE] if auto-created
     emitConversationMetadata(res, persistence);
     streamDone(res);
@@ -550,7 +559,6 @@ export async function handleToolsStreaming({
     recordFinalToPersistence(persistence, 'stop');
 
     res.end();
-
   } catch (error) {
     logger.error({ msg: '[iterative orchestration] error', err: error });
 

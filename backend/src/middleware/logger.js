@@ -14,14 +14,14 @@ export function requestLogger(req, res, next) {
   const originalJson = res.json.bind(res);
   const originalSend = res.send.bind(res);
 
-  res.json = function(body) {
+  res.json = function (body) {
     if (res.statusCode >= 400) {
       responseBody = body;
     }
     return originalJson(body);
   };
 
-  res.send = function(body) {
+  res.send = function (body) {
     if (res.statusCode >= 400 && typeof body === 'string') {
       try {
         responseBody = JSON.parse(body);
@@ -83,23 +83,4 @@ export function requestLogger(req, res, next) {
 }
 
 // Error logging helper middleware (to be used before final error handler if desired)
-export function errorLogger(err, req, res, next) {
-  logger.error({
-    msg: 'request:error',
-    err: {
-      message: err.message,
-      stack: err.stack,
-      name: err.name,
-      code: err.code,
-    },
-    req: {
-      id: req?.id,
-      method: req?.method,
-      url: req?.originalUrl || req?.url,
-      sessionId: req?.sessionId,
-      body: req?.body ? JSON.stringify(req.body, null, 2) : undefined,
-      headers: req?.headers,
-    },
-  });
-  next(err);
-}
+

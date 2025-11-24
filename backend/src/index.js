@@ -12,7 +12,7 @@ import { imagesRouter } from './routes/images.js';
 import { filesRouter } from './routes/files.js';
 import authRouter from './routes/auth.js';
 import { userSettingsRouter } from './routes/userSettings.js';
-import { requestLogger, errorLogger } from './middleware/logger.js';
+import { requestLogger } from './middleware/logger.js';
 import { logger } from './logger.js';
 
 const app = express();
@@ -53,11 +53,9 @@ app.use(userSettingsRouter);
 app.use(systemPromptsRouter);
 app.use(chatRouter);
 
-app.use(errorLogger);
-app.use((err, req, res, _next) => {
-  logger.error({ msg: 'Unhandled error', err });
-  res.status(500).json({ error: 'internal_server_error' });
-});
+import { exceptionHandler } from './middleware/exceptionHandler.js';
+
+app.use(exceptionHandler);
 
 // Database initialization and retention worker (Sprint 3)
 import { getDb } from './db/client.js';

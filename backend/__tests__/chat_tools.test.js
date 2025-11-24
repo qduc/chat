@@ -97,4 +97,66 @@ describe('GET /v1/tools', () => {
       }
     });
   });
+
+  test('returns API key status for all tools', async () => {
+    const app = makeApp();
+    await withServer(app, async (port) => {
+      const res = await fetch(`http://127.0.0.1:${port}/v1/tools`);
+      assert.equal(res.status, 200, 'Expected status 200');
+      const body = await res.json();
+
+      // Verify tool_api_key_status is present
+      assert.ok(body.tool_api_key_status, 'tool_api_key_status should be present');
+      assert.equal(typeof body.tool_api_key_status, 'object', 'tool_api_key_status should be an object');
+
+      // Verify every tool has an API key status entry
+      for (const toolName of body.available_tools) {
+        assert.ok(
+          body.tool_api_key_status[toolName],
+          `tool "${toolName}" should have an API key status entry`
+        );
+
+        const status = body.tool_api_key_status[toolName];
+        assert.equal(typeof status.hasApiKey, 'boolean', 'hasApiKey should be a boolean');
+        assert.equal(typeof status.requiresApiKey, 'boolean', 'requiresApiKey should be a boolean');
+
+        // If tool requires an API key but doesn't have one, verify missingKeyLabel is present
+        if (status.requiresApiKey && !status.hasApiKey) {
+          assert.ok(status.missingKeyLabel, 'missingKeyLabel should be present when API key is missing');
+          assert.equal(typeof status.missingKeyLabel, 'string', 'missingKeyLabel should be a string');
+        }
+      }
+
+      // Verify specific tools that require API keys are marked correctly
+      const toolsRequiringKeys = ['web_search', 'web_search_exa', 'web_search_searxng'];
+      for (const toolName of toolsRequiringKeys) {
+        if (body.available_tools.includes(toolName)) {
+          const status = body.tool_api_key_status[toolName];
+          assert.equal(
+            status.requiresApiKey,
+            true,
+            `tool "${toolName}" should require an API key`
+          );
+        }
+      }
+
+      // Verify tools that don't require API keys
+      const toolsNotRequiringKeys = ['web_fetch', 'journal'];
+      for (const toolName of toolsNotRequiringKeys) {
+        if (body.available_tools.includes(toolName)) {
+          const status = body.tool_api_key_status[toolName];
+          assert.equal(
+            status.requiresApiKey,
+            false,
+            `tool "${toolName}" should not require an API key`
+          );
+          assert.equal(
+            status.hasApiKey,
+            true,
+            `tool "${toolName}" should have hasApiKey set to true`
+          );
+        }
+      }
+    });
+  });
 });

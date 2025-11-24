@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import { createChatProxyTestContext, MockUpstream } from '../test_utils/chatProxyTestUtils.js';
+import { OpenAIProvider } from '../src/lib/providers/openaiProvider.js';
 import { getDb, upsertSession, createConversation, updateConversationMetadata } from '../src/db/index.js';
 import { config } from '../src/env.js';
 
@@ -34,6 +35,28 @@ describe('Format transformation', () => {
     assert.ok(text.includes('data: '));
     assert.ok(text.includes('[DONE]'));
     assert.ok(text.includes('delta'));
+  });
+
+  test('streams Responses API output as chat completions when OpenAI provider routes via /v1/responses', async () => {
+    const app = makeApp({ mockUser });
+    const originalShouldUseResponsesAPI = OpenAIProvider.prototype.shouldUseResponsesAPI;
+    OpenAIProvider.prototype.shouldUseResponsesAPI = () => true;
+
+    try {
+      const res = await request(app)
+        .post('/v1/chat/completions')
+        .send({ messages: [{ role: 'user', content: 'Hello via responses' }], stream: true });
+
+      assert.equal(res.status, 200);
+      assert.ok(upstream.lastResponsesRequestBody, 'should hit the Responses API endpoint upstream');
+
+      const text = res.text;
+      assert.ok(text.includes('"object":"chat.completion.chunk"'));
+      assert.ok(text.includes('"role":"assistant"'));
+      assert.ok(text.includes('[DONE]'));
+    } finally {
+      OpenAIProvider.prototype.shouldUseResponsesAPI = originalShouldUseResponsesAPI;
+    }
   });
 });
 
