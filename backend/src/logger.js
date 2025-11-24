@@ -25,6 +25,7 @@ export const logger = pino({
         level,
         options: {
           destination: `./logs/app-${new Date().toISOString().slice(0, 10)}.log`,
+          ignore: 'pid,hostname',
         },
       },
       // Pretty console output in development, plain JSON in production

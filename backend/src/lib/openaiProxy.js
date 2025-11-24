@@ -1,9 +1,3 @@
-// Utility: Ensures content is a string or array, else returns empty string.
-function sanitizeContent(content) {
-  if (typeof content === 'string' || Array.isArray(content)) return content;
-  if (content === null || content === undefined) return '';
-  return String(content);
-}
 import { config } from '../env.js';
 import { generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
 import { handleToolsJson } from './toolsJson.js';
@@ -16,9 +10,13 @@ import { addConversationMetadata, getConversationMetadata } from './responseUtil
 import { logger } from '../logger.js';
 import { addPromptCaching } from './promptCaching.js';
 
-// --- Constants ---
-
 // --- Helpers: sanitize, validate, selection, and error shaping ---
+
+function sanitizeContent(content) {
+  if (typeof content === 'string' || Array.isArray(content)) return content;
+  if (content === null || content === undefined) return '';
+  return String(content);
+}
 
 async function sanitizeIncomingBody(bodyIn, helpers = {}) {
   const body = { ...bodyIn };
@@ -90,18 +88,18 @@ function validateAndNormalizeReasoningControls(body, { reasoningAllowed }) {
     if (!isAllowed) {
       delete body.reasoning_effort;
     } else {
-    const allowedEfforts = ['minimal', 'low', 'medium', 'high'];
-    if (!allowedEfforts.includes(body.reasoning_effort)) {
-      return {
-        ok: false,
-        status: 400,
-        payload: {
-          error: 'invalid_request_error',
-          message: `Invalid reasoning_effort. Must be one of ${allowedEfforts.join(', ')}`,
-        },
-      };
+      const allowedEfforts = ['minimal', 'low', 'medium', 'high'];
+      if (!allowedEfforts.includes(body.reasoning_effort)) {
+        return {
+          ok: false,
+          status: 400,
+          payload: {
+            error: 'invalid_request_error',
+            message: `Invalid reasoning_effort. Must be one of ${allowedEfforts.join(', ')}`,
+          },
+        };
+      }
     }
-  }
   }
 
   // Validate and handle verbosity
@@ -109,18 +107,18 @@ function validateAndNormalizeReasoningControls(body, { reasoningAllowed }) {
     if (!isAllowed) {
       delete body.verbosity;
     } else {
-    const allowedVerbosity = ['low', 'medium', 'high'];
-    if (!allowedVerbosity.includes(body.verbosity)) {
-      return {
-        ok: false,
-        status: 400,
-        payload: {
-          error: 'invalid_request_error',
-          message: `Invalid verbosity. Must be one of ${allowedVerbosity.join(', ')}`,
-        },
-      };
+      const allowedVerbosity = ['low', 'medium', 'high'];
+      if (!allowedVerbosity.includes(body.verbosity)) {
+        return {
+          ok: false,
+          status: 400,
+          payload: {
+            error: 'invalid_request_error',
+            message: `Invalid verbosity. Must be one of ${allowedVerbosity.join(', ')}`,
+          },
+        };
+      }
     }
-  }
   }
 
   return { ok: true };
