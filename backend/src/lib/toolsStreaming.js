@@ -392,13 +392,13 @@ export async function handleToolsStreaming({
                 }
                 appendToPersistence(persistence, delta.content);
               },
-                () => {
-                  cleanup();
-                  resolve();
-                },
-                () => {
-                  /* ignore JSON parse errors for this stream */
-                });
+              () => {
+                cleanup();
+                resolve();
+              },
+              () => {
+                /* ignore JSON parse errors for this stream */
+              })
             );
           } catch (e) {
             cleanup();

@@ -11,9 +11,9 @@ interface RightSidebarProps {
   collapsed?: boolean;
   onToggleCollapse?: () => void;
   onEffectivePromptChange?: (content: string) => void;
-  onActivePromptIdChange?: (promptId: string | null) => void;
+  onActivePromptIdChange?: (promptId: string | null | undefined) => void;
   // Active system prompt ID from loaded conversation
-  conversationActivePromptId?: string | null;
+  conversationActivePromptId?: string | null | undefined;
   conversationSystemPrompt?: string | null;
   width?: number;
   collapsedWidth?: number;
