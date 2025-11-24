@@ -275,7 +275,7 @@ export function useChat() {
   const SELECTED_MODEL_KEY = 'selectedModel';
 
   // model state - internal setter is kept separate from the persisted setter
-  const [model, setModelState] = useState<string>('gpt-4');
+  const [model, setModelState] = useState<string>('');
   // persisted setter - saves last manually selected model to localStorage
   const setModel = useCallback((m: string) => {
     setModelState(m);
@@ -314,7 +314,7 @@ export function useChat() {
   // Refs to track latest values to avoid stale closures in sendMessage
   const systemPromptRef = useRef<string | null>(null);
   const activeSystemPromptIdRef = useRef<string | null | undefined>(undefined);
-  const modelRef = useRef<string>('gpt-4');
+  const modelRef = useRef<string>('');
   const providerIdRef = useRef<string | null>(null);
   const shouldStreamRef = useRef<boolean>(true);
   const providerStreamRef = useRef<boolean>(true);
