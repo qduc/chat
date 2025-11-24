@@ -308,7 +308,9 @@ export function useChat() {
   const [files, setFiles] = useState<any[]>([]);
 
   // System Prompt State
-  const [activeSystemPromptId, setActiveSystemPromptId] = useState<string | null | undefined>(undefined);
+  const [activeSystemPromptId, setActiveSystemPromptId] = useState<string | null | undefined>(
+    undefined
+  );
   const [systemPrompt, setSystemPrompt] = useState<string | null>(null);
 
   // Refs to track latest values to avoid stale closures in sendMessage
