@@ -308,7 +308,7 @@ export class OpenAIProvider extends BaseProvider {
   }
 
   needsStreamingTranslation() {
-    return false;
+    return true;
   }
 
   getDefaultModel() {
