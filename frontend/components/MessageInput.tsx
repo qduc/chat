@@ -382,7 +382,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
             )}
 
             {/* ===== TEXT INPUT WITH IMAGE/FILE UPLOAD ===== */}
-            <div className="flex items-start gap-2 p-2 sm:p-3 md:p-4">
+            <div className="flex items-start gap-3 p-3 sm:p-4">
               {/* Attach button */}
               {(onImagesChange || onFilesChange) && (
                 <div className="relative" ref={attachDropdownRef}>
@@ -398,7 +398,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                       }`}
                       aria-label="Attach Files"
                     >
-                      <Paperclip className="w-5 h-5" />
+                      <Paperclip className="w-4 h-4" />
                     </button>
                   ) : (
                     <Tooltip content="Attach files">
@@ -413,7 +413,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                         }`}
                         aria-label="Attach Files"
                       >
-                        <Paperclip className="w-5 h-5" />
+                        <Paperclip className="w-4 h-4" />
                       </button>
                     </Tooltip>
                   )}
@@ -483,9 +483,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
             </div>
 
             {/* ===== CONTROLS BAR ===== */}
-            <div className="flex items-center justify-between px-2 sm:px-4 pb-3 sm:pb-4 gap-2">
+            <div className="flex items-center justify-between px-3 sm:px-4 py-3 sm:py-4 gap-2">
               {/* Left side controls - grouped logically */}
-              <div className="flex items-center gap-2 sm:gap-4 md:gap-6 text-xs scrollbar-hide overflow-x-auto flex-1 min-w-0">
+              <div className="flex items-center gap-3 sm:gap-4 text-xs scrollbar-hide overflow-x-auto flex-1 min-w-0">
                 {/* AI Controls Group */}
                 <div className="flex items-center gap-2 sm:gap-3">
                   {/* Quality/Reasoning control - always visible */}
@@ -505,7 +505,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                     <button
                       type="button"
                       onClick={() => onShouldStreamChange(!shouldStream)}
-                      className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg border transition-all duration-200 ${
+                      className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg border transition-all duration-200 ${
                         shouldStream
                           ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
                           : 'border-transparent hover:bg-slate-100 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400'
@@ -531,7 +531,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                     <button
                       type="button"
                       onClick={() => handleSearchToggle(!searchEnabled)}
-                      className={`flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 rounded-lg border transition-all duration-200 ${
+                      className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg border transition-all duration-200 ${
                         searchEnabled
                           ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300'
                           : 'border-transparent hover:bg-slate-100 dark:hover:bg-neutral-700 text-slate-600 dark:text-slate-400'
@@ -551,7 +551,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                         type="button"
                         aria-label="Tools"
                         onClick={() => setToolsOpen((v) => !v)}
-                        className="flex items-center gap-2 px-2 py-1 rounded-md hover:bg-slate-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors duration-150"
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-neutral-800 cursor-pointer transition-colors duration-150"
                       >
                         <Wrench className="w-4 h-4" />
                         <span
@@ -622,7 +622,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                                   onEnabledToolsChange?.(all);
                                   onUseToolsChange?.(all.length > 0);
                                 }}
-                                className="text-xs px-2.5 py-1 rounded-md bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-300 transition-colors"
+                                className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-300 transition-colors"
                               >
                                 Select all
                               </button>
@@ -635,7 +635,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                                   onEnabledToolsChange?.(next);
                                   onUseToolsChange?.(next.length > 0);
                                 }}
-                                className="text-xs px-2.5 py-1 rounded-md bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-300 transition-colors"
+                                className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-neutral-800 hover:bg-slate-200 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-300 transition-colors"
                               >
                                 Select visible
                               </button>
@@ -646,7 +646,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                                   onEnabledToolsChange?.([]);
                                   onUseToolsChange?.(false);
                                 }}
-                                className="text-xs px-2.5 py-1 rounded-md bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 hover:bg-slate-50 dark:hover:bg-neutral-800 text-slate-700 dark:text-slate-300 transition-colors"
+                                className="text-xs px-3 py-1.5 rounded-lg bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 hover:bg-slate-50 dark:hover:bg-neutral-800 text-slate-700 dark:text-slate-300 transition-colors"
                               >
                                 Clear
                               </button>
@@ -659,7 +659,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                                   onEnabledToolsChange?.(next);
                                   onUseToolsChange?.(next.length > 0);
                                 }}
-                                className="text-xs px-2.5 py-1 rounded-md bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 hover:bg-slate-50 dark:hover:bg-neutral-800 text-slate-700 dark:text-slate-300 transition-colors"
+                                className="text-xs px-3 py-1.5 rounded-lg bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 hover:bg-slate-50 dark:hover:bg-neutral-800 text-slate-700 dark:text-slate-300 transition-colors"
                               >
                                 Clear visible
                               </button>
@@ -730,7 +730,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                             <button
                               type="button"
                               onClick={() => setToolsOpen(false)}
-                              className="text-sm px-4 py-1.5 rounded-md bg-slate-800 dark:bg-slate-600 hover:bg-slate-700 dark:hover:bg-slate-500 text-white cursor-pointer transition-colors duration-150 font-medium"
+                              className="text-sm px-4 py-2 rounded-lg bg-slate-800 dark:bg-slate-600 hover:bg-slate-700 dark:hover:bg-slate-500 text-white cursor-pointer transition-colors duration-150 font-medium"
                             >
                               Done
                             </button>
@@ -753,7 +753,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   }
                 }}
                 disabled={!canSend && !pending.streaming}
-                className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm rounded-lg sm:rounded-xl bg-slate-800 hover:bg-slate-700 dark:bg-slate-600 dark:hover:bg-slate-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg disabled:hover:shadow-md transform hover:scale-[1.02] disabled:hover:scale-100 flex-shrink-0"
+                className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm rounded-lg bg-slate-800 hover:bg-slate-700 dark:bg-slate-600 dark:hover:bg-slate-500 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-md hover:shadow-lg disabled:hover:shadow-md transform hover:scale-[1.02] disabled:hover:scale-100 flex-shrink-0"
               >
                 {pending.streaming ? (
                   <>
