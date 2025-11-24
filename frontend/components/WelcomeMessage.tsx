@@ -13,7 +13,7 @@ export function WelcomeMessage({ onSuggestionClick }: WelcomeMessageProps) {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-blue-500/5 rounded-full blur-[100px]" />
       </div>
 
-       {/* Heading */}
+      {/* Heading */}
       <h1 className="mb-3 text-3xl font-semibold text-slate-900 dark:text-white tracking-tight">
         Welcome to Chat
       </h1>

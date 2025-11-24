@@ -196,6 +196,25 @@ Object.defineProperty(global, 'fetch', {
 // Mock scrollIntoView as it's not available in jsdom
 Element.prototype.scrollIntoView = jest.fn();
 
+// ResizeObserver is not implemented in the Jest DOM environment; provide a minimal mock.
+if (typeof global.ResizeObserver === 'undefined') {
+  class ResizeObserverMock {
+    constructor(callback) {
+      this._callback = callback;
+    }
+    observe() {
+      return null;
+    }
+    unobserve() {
+      return null;
+    }
+    disconnect() {
+      return null;
+    }
+  }
+  global.ResizeObserver = ResizeObserverMock;
+}
+
 // Mock the HTTP client to prevent real network requests during tests while still
 // flowing through the Jest-level fetch mocks used by unit tests.
 jest.mock('./lib/http', () => {
