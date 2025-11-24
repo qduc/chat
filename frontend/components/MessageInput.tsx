@@ -95,6 +95,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   const [availableTools, setAvailableTools] = useState<{ name: string; description?: string }[]>(
     []
   );
+  const [toolApiKeyStatus, setToolApiKeyStatus] = useState<
+    Record<string, { hasApiKey: boolean; requiresApiKey: boolean; missingKeyLabel?: string }>
+  >({});
   const [toolFilter, setToolFilter] = useState('');
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [localSelected, setLocalSelected] = useState<string[]>(enabledTools);
@@ -116,12 +119,33 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   // Check if we can send (have text or images)
   const canSend = input.trim().length > 0 || images.length > 0;
 
+  // Helper to check if a tool is disabled due to missing API key
+  const isToolDisabled = (name: string) => {
+    const keyStatus = toolApiKeyStatus[name];
+    return !!(keyStatus?.requiresApiKey && !keyStatus?.hasApiKey);
+  };
+
   // Filtered tools for UI
-  const filteredTools = availableTools.filter(
-    (t) =>
-      t.name.toLowerCase().includes(toolFilter.toLowerCase()) ||
-      (t.description || '').toLowerCase().includes(toolFilter.toLowerCase())
-  );
+  const filteredTools = availableTools
+    .filter(
+      (t) =>
+        t.name.toLowerCase().includes(toolFilter.toLowerCase()) ||
+        (t.description || '').toLowerCase().includes(toolFilter.toLowerCase())
+    )
+    .sort((a, b) => {
+      const aDisabled = isToolDisabled(a.name);
+      const bDisabled = isToolDisabled(b.name);
+      if (aDisabled && !bDisabled) return 1;
+      if (!aDisabled && bDisabled) return -1;
+      // both same disabled status
+      if (!aDisabled) {
+        const aSelected = localSelected.includes(a.name);
+        const bSelected = localSelected.includes(b.name);
+        if (aSelected && !bSelected) return -1;
+        if (!aSelected && bSelected) return 1;
+      }
+      return 0;
+    });
 
   // ===== EFFECTS =====
   // Auto-grow textarea up to ~200px
@@ -191,6 +215,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
             if (!mounted) return;
             const specs = Array.isArray(res?.tools) ? res.tools : [];
             const names = Array.isArray(res?.available_tools) ? res.available_tools : [];
+            const apiKeyStatus = res?.tool_api_key_status || {};
 
             const tools =
               specs.length > 0
@@ -201,13 +226,20 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                 : names.map((n: string) => ({ name: n, description: undefined }));
 
             setAvailableTools(tools);
+            setToolApiKeyStatus(apiKeyStatus);
           })
           .catch(() => {
-            if (mounted) setAvailableTools([]);
+            if (mounted) {
+              setAvailableTools([]);
+              setToolApiKeyStatus({});
+            }
           });
       })
       .catch(() => {
-        if (mounted) setAvailableTools([]);
+        if (mounted) {
+          setAvailableTools([]);
+          setToolApiKeyStatus({});
+        }
       });
 
     return () => {
@@ -588,7 +620,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                                     onEnabledToolsChange?.([]);
                                     onUseToolsChange?.(false);
                                   } else if (availableTools.length > 0) {
-                                    const all = availableTools.map((t) => t.name);
+                                    const all = availableTools
+                                      .filter((t) => !isToolDisabled(t.name))
+                                      .map((t) => t.name);
                                     setLocalSelected(all);
                                     onEnabledToolsChange?.(all);
                                     onUseToolsChange?.(all.length > 0);
@@ -617,7 +651,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const all = availableTools.map((t) => t.name);
+                                  const all = availableTools
+                                    .filter((t) => !isToolDisabled(t.name))
+                                    .map((t) => t.name);
                                   setLocalSelected(all);
                                   onEnabledToolsChange?.(all);
                                   onUseToolsChange?.(all.length > 0);
@@ -629,7 +665,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const visibleIds = filteredTools.map((t) => t.name);
+                                  const visibleIds = filteredTools
+                                    .filter((t) => !isToolDisabled(t.name))
+                                    .map((t) => t.name);
                                   const next = [...new Set([...localSelected, ...visibleIds])];
                                   setLocalSelected(next);
                                   onEnabledToolsChange?.(next);
@@ -678,11 +716,21 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                               {filteredTools.map((t) => {
                                 const id = t.name;
                                 const checked = localSelected.includes(id);
-                                return (
+                                const keyStatus = toolApiKeyStatus[id];
+                                const isDisabled =
+                                  keyStatus?.requiresApiKey && !keyStatus?.hasApiKey;
+                                const disabledTooltip = isDisabled
+                                  ? `This tool requires ${
+                                      keyStatus?.missingKeyLabel || 'an API key'
+                                    }. Please configure it in Settings.`
+                                  : undefined;
+
+                                const toolButton = (
                                   <button
                                     key={id}
                                     type="button"
                                     onClick={() => {
+                                      if (isDisabled) return;
                                       const next = checked
                                         ? localSelected.filter((x) => x !== id)
                                         : [...localSelected, id];
@@ -690,10 +738,13 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                                       onEnabledToolsChange?.(next);
                                       onUseToolsChange?.(next.length > 0);
                                     }}
+                                    disabled={isDisabled}
                                     className={`w-full text-left p-2.5 rounded-lg transition-all duration-150 flex items-start gap-3 group ${
-                                      checked
-                                        ? 'bg-blue-50 dark:bg-blue-900/20 ring-1 ring-blue-200 dark:ring-blue-800'
-                                        : 'hover:bg-slate-50 dark:hover:bg-neutral-800'
+                                      isDisabled
+                                        ? 'opacity-50 cursor-not-allowed bg-slate-50 dark:bg-neutral-800/50'
+                                        : checked
+                                          ? 'bg-blue-50 dark:bg-blue-900/20 ring-1 ring-blue-200 dark:ring-blue-800'
+                                          : 'hover:bg-slate-50 dark:hover:bg-neutral-800'
                                     }`}
                                   >
                                     <div className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-md bg-slate-200 dark:bg-neutral-700 text-xs font-semibold text-slate-700 dark:text-slate-300 group-hover:bg-slate-300 dark:group-hover:bg-neutral-600 transition-colors">
@@ -703,23 +754,37 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                                       <div className="text-sm font-medium text-slate-800 dark:text-slate-200 mb-0.5">
                                         {t.name}
                                       </div>
-                                      {t.description && (
-                                        <Tooltip content={t.description}>
+                                      {t.description &&
+                                        (isDisabled ? (
                                           <div className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
                                             {t.description}
                                           </div>
-                                        </Tooltip>
-                                      )}
+                                        ) : (
+                                          <Tooltip content={t.description}>
+                                            <div className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
+                                              {t.description}
+                                            </div>
+                                          </Tooltip>
+                                        ))}
                                     </div>
                                     <div className="flex-shrink-0 flex items-center pt-0.5">
                                       <input
                                         type="checkbox"
-                                        className="w-4 h-4 cursor-pointer accent-blue-600 dark:accent-blue-500"
+                                        className="w-4 h-4 cursor-pointer accent-blue-600 dark:accent-blue-500 disabled:cursor-not-allowed"
                                         checked={checked}
+                                        disabled={isDisabled}
                                         readOnly
                                       />
                                     </div>
                                   </button>
+                                );
+
+                                return isDisabled && disabledTooltip ? (
+                                  <Tooltip key={id} content={disabledTooltip}>
+                                    {toolButton}
+                                  </Tooltip>
+                                ) : (
+                                  toolButton
                                 );
                               })}
                             </div>
