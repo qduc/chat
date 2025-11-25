@@ -256,7 +256,7 @@ const Message = React.memo<MessageProps>(
           </div>
         )}
         <div
-          className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? 'max-w-[50%] order-first' : 'w-full'}`}
+          className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? 'max-w-full sm:max-w-[85%] md:max-w-[70%] lg:max-w-[50%] order-first' : 'w-full'}`}
         >
           {isEditing ? (
             <ImageUploadZone
@@ -970,7 +970,7 @@ export function MessageList({
       style={{ willChange: 'scroll-position' }}
     >
       <div
-        className="mx-auto max-w-3xl px-6 py-6 space-y-6"
+        className="mx-auto max-w-3xl px-4 sm:px-4 md:px-6 py-6 space-y-6"
         style={{ paddingBottom: dynamicBottomPadding }}
       >
         {messages.length === 0 && <WelcomeMessage onSuggestionClick={onSuggestionClick} />}

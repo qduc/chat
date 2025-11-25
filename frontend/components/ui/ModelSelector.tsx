@@ -423,7 +423,7 @@ export default function ModelSelector({
             }
           });
         }}
-        className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 rounded-lg hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors min-w-48 w-56"
+        className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-neutral-900 border border-slate-200 dark:border-neutral-700 rounded-lg hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors min-w-0 w-full sm:min-w-48 sm:w-56"
         aria-label={ariaLabel}
         aria-expanded={isOpen}
         aria-haspopup="listbox"
