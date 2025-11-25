@@ -1,4 +1,6 @@
 import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import cors from 'cors';
 import { config } from './env.js';
 import { rateLimit } from './middleware/rateLimit.js';
@@ -56,6 +58,21 @@ app.use(chatRouter);
 import { exceptionHandler } from './middleware/exceptionHandler.js';
 
 app.use(exceptionHandler);
+
+// Serve static files from the React app
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const buildPath = path.join(__dirname, '../public');
+
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(buildPath));
+
+  // The "catchall" handler: for any request that doesn't
+  // match one above, send back React's index.html file.
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(buildPath, 'index.html'));
+  });
+}
 
 // Database initialization and retention worker (Sprint 3)
 import { getDb } from './db/client.js';

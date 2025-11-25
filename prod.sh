@@ -29,8 +29,8 @@ Production Management Commands:
 Examples:
   $(basename "$0") up                    # Start services in detached mode
   $(basename "$0") up --build            # Rebuild and start services
-  $(basename "$0") logs -f backend       # Follow backend logs
-  $(basename "$0") exec backend sh       # Open shell in backend container
+  $(basename "$0") logs -f app           # Follow app logs
+  $(basename "$0") exec app sh           # Open shell in app container
   $(basename "$0") health                # Check health of all services
   $(basename "$0") migrate status        # Check migration status
   $(basename "$0") migrate up            # Apply pending migrations
@@ -62,7 +62,7 @@ check_health() {
     echo "Checking service health..."
     local all_healthy=true
 
-    for service in backend frontend; do
+    for service in app; do
         if "${DC[@]}" ps --status running "$service" &>/dev/null; then
             if docker inspect "$("${DC[@]}" ps -q "$service" 2>/dev/null || echo '')" --format='{{.State.Health.Status}}' 2>/dev/null | grep -q "healthy"; then
                 echo -e "${GREEN}✓${NC} $service is healthy"
@@ -96,15 +96,15 @@ backup_database() {
 
     echo "Creating database backup..."
 
-    # Check if backend is running
-    backend_cid="$("${DC[@]}" ps -q backend 2>/dev/null || echo '')"
+    # Check if app is running
+    backend_cid="$("${DC[@]}" ps -q app 2>/dev/null || echo '')"
 
     if [ -n "$backend_cid" ]; then
-        "${DC[@]}" exec -T backend sh -c "cp /data/prod.db /data/backup_$timestamp.db"
+        "${DC[@]}" exec -T app sh -c "cp /data/prod.db /data/backup_$timestamp.db"
         docker cp "$backend_cid:/data/backup_$timestamp.db" "$backup_file"
-        "${DC[@]}" exec -T backend sh -c "rm /data/backup_$timestamp.db"
+        "${DC[@]}" exec -T app sh -c "rm /data/backup_$timestamp.db"
     else
-        echo -e "${YELLOW}Backend is not running. Attempting to backup from volume...${NC}"
+        echo -e "${YELLOW}App is not running. Attempting to backup from volume...${NC}"
         # Create a temporary container to access the volume
         docker run --rm -v chat_db_data:/data -v "$backup_dir:/backup" alpine cp /data/prod.db "/backup/prod_db_backup_$timestamp.db"
     fi
@@ -131,7 +131,7 @@ migrate_command() {
     case "$subcommand" in
         status)
             echo "Checking migration status..."
-            "${DC[@]}" exec -T backend npm run migrate status "$@"
+            "${DC[@]}" exec -T app npm run migrate status "$@"
             ;;
         up)
             echo -e "${YELLOW}Applying pending migrations...${NC}"
@@ -139,7 +139,7 @@ migrate_command() {
                 # Create backup before migration
                 backup_database
                 echo "Running migrations..."
-                "${DC[@]}" exec -T backend npm run migrate up "$@"
+                "${DC[@]}" exec -T app npm run migrate up "$@"
                 echo -e "${GREEN}✓${NC} Migrations applied successfully"
             fi
             ;;
@@ -151,7 +151,7 @@ migrate_command() {
                     # Create backup before destructive operation
                     backup_database
                     echo "Resetting database..."
-                    "${DC[@]}" exec -T backend npm run migrate fresh "$@"
+                    "${DC[@]}" exec -T app npm run migrate fresh "$@"
                     echo -e "${GREEN}✓${NC} Database reset complete"
                 else
                     echo -e "${RED}Operation cancelled.${NC}"

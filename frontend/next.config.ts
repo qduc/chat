@@ -5,6 +5,7 @@ const backendOrigin = (process.env.BACKEND_ORIGIN || 'http://localhost:3001').re
 const nextConfig: NextConfig = {
   // Disable gzip compression to ensure SSE streams flush properly
   compress: false,
+  output: 'export',
   async rewrites() {
     return [
       {
