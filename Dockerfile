@@ -33,6 +33,7 @@ COPY --from=frontend-builder --chown=node:node /app/frontend/out ./public
 
 # Setup permissions and directories
 RUN mkdir -p logs && chown node:node logs
+RUN mkdir -p /data && chown node:node /data
 RUN chmod +x entrypoint.sh && chown node:node entrypoint.sh
 
 ENV NODE_ENV=production
