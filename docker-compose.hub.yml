@@ -1,0 +1,97 @@
+# ChatForge - One-Click Deployment
+#
+# Quick Start:
+#   1. Create a .env file with your settings:
+#      echo "OPENAI_API_KEY=sk-your-key-here" > .env
+#   2. Start the stack:
+#      docker compose -f docker-compose.hub.yml up -d
+#   3. Visit http://localhost:3000 and register your first user
+#
+# Optional environment variables (add to .env file):
+#   JWT_SECRET=your-secret-here           # Auto-generated if not set
+#   OPENAI_BASE_URL=https://api.openai.com/v1  # Custom OpenAI-compatible endpoint
+#   DEFAULT_MODEL=gpt-4.1-mini            # Default model to use
+#   ANTHROPIC_API_KEY=sk-ant-...          # For Anthropic provider
+#   GOOGLE_API_KEY=...                    # For Google/Gemini provider
+#   TAVILY_API_KEY=...                    # For Tavily web search tool
+#   EXA_API_KEY=...                       # For Exa web search tool
+#
+# For more options, see: https://github.com/qduc/chat/blob/main/docs/ENVIRONMENT_VARIABLES.md
+
+services:
+  backend:
+    image: qduc/chatforge-backend:latest
+    environment:
+      # Required: Your OpenAI API key (or compatible provider)
+      - OPENAI_API_KEY=${OPENAI_API_KEY:?Please set OPENAI_API_KEY in .env file}
+
+      # Security: JWT secret (auto-generated if not provided)
+      - JWT_SECRET=${JWT_SECRET:-}
+
+      # Optional: Custom OpenAI-compatible endpoint
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+
+      # Optional: Default model
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-gpt-4.1-mini}
+
+      # Optional: Additional provider API keys
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
+
+      # Optional: Tool API keys
+      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
+      - EXA_API_KEY=${EXA_API_KEY:-}
+      - SEARXNG_BASE_URL=${SEARXNG_BASE_URL:-}
+
+      # Internal configuration (do not change unless you know what you're doing)
+      - PERSIST_TRANSCRIPTS=1
+      - IMAGE_STORAGE_PATH=/data/images
+      - FILE_STORAGE_PATH=/data/files
+      - DB_URL=file:/data/prod.db
+      - NODE_ENV=production
+      - PORT=3001
+      - CORS_ORIGIN=*
+    volumes:
+      - chatforge_data:/data
+      - chatforge_logs:/app/logs
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(res => { if (res.ok) process.exit(0); process.exit(1); }).catch(() => process.exit(1));"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+  frontend:
+    image: qduc/chatforge-frontend:latest
+    environment:
+      - NEXT_PUBLIC_API_BASE=/api
+      - BACKEND_ORIGIN=http://backend:3001
+      - NODE_ENV=production
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(res => { if (res.ok) process.exit(0); process.exit(1); }).catch(() => process.exit(1));"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+  proxy:
+    image: qduc/chatforge-proxy:latest
+    depends_on:
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_healthy
+    ports:
+      - "${PORT:-3000}:80"
+    restart: unless-stopped
+
+volumes:
+  chatforge_data:
+    driver: local
+  chatforge_logs:
+    driver: local

@@ -33,9 +33,38 @@ ChatForge is a full-stack AI chat application featuring a Next.js 15 frontend an
 
 ## Quick Start
 
-**Recommended: Docker Development**
+### Option 1: One-Click Docker Hub Deployment (Recommended)
+
+Pull pre-built images from Docker Hub - no cloning required:
 
 ```bash
+# Download the compose file
+curl -O https://raw.githubusercontent.com/qduc/chat/main/docker-compose.hub.yml
+
+# Create .env with your API key
+echo "OPENAI_API_KEY=sk-your-key-here" > .env
+
+# Start the stack
+docker compose -f docker-compose.hub.yml up -d
+```
+
+Visit http://localhost:3000 and register your first user. That's it!
+
+**Optional configuration** (add to `.env` file):
+```bash
+JWT_SECRET=your-secret-here        # Auto-generated if not set
+DEFAULT_MODEL=gpt-4.1-mini         # Default model
+ANTHROPIC_API_KEY=sk-ant-...       # For Anthropic provider
+GOOGLE_API_KEY=...                 # For Google/Gemini provider
+PORT=3000                          # External port (default: 3000)
+```
+
+### Option 2: Docker Development (with hot reload)
+
+```bash
+# Clone the repository
+git clone https://github.com/qduc/chat.git && cd chat
+
 # Copy environment files
 cp backend/.env.example backend/.env
 # Edit backend/.env and set OPENAI_API_KEY and JWT_SECRET
