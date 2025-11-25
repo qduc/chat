@@ -5,47 +5,27 @@
 ### Required
 
 ```env
-OPENAI_API_KEY=your-api-key-here          # OpenAI API key (or use PROVIDER_API_KEY)
 JWT_SECRET=your-secret-key-here           # Secret for JWT authentication (required)
 ```
 
 ### Optional - Core Settings
 
 ```env
-DEFAULT_MODEL=gpt-4o-mini                 # Default AI model
-DEFAULT_TITLE_MODEL=gpt-4o-mini           # Model for conversation titles
 PORT=3001                                  # Server port
 RATE_LIMIT_WINDOW=60                       # Rate limit window in seconds
 RATE_LIMIT_MAX=50                          # Max requests per window
 CORS_ORIGIN=http://localhost:3000         # CORS allowed origin
 ```
 
-### Optional - Provider Configuration
-
-```env
-PROVIDER=openai                            # Provider selection (openai, anthropic, gemini)
-PROVIDER_BASE_URL=                         # Custom provider base URL
-PROVIDER_API_KEY=                          # Generic provider API key
-PROVIDER_CUSTOM_HEADERS={}                 # Custom headers as JSON
-OPENAI_BASE_URL=https://api.openai.com/v1 # OpenAI base URL
-ANTHROPIC_BASE_URL=https://api.anthropic.com # Anthropic base URL
-ANTHROPIC_API_KEY=                         # Anthropic API key (if different from PROVIDER_API_KEY)
-```
-
-### Optional - Tool Configuration
-
-```env
-TAVILY_API_KEY=your-tavily-key            # Tavily web search (optional)
-EXA_API_KEY=your-exa-key                  # Exa web search (optional)
-SEARXNG_BASE_URL=                         # SearXNG instance URL (optional)
-```
+> **Note:** Provider API keys, base URLs, and default model selections now live in user settings.
+> Configure them through the app (Settings → Providers & Tools); they are no longer read from `.env` files.
 
 ### Optional - Timeouts
 
 ```env
-PROVIDER_TIMEOUT=10000                     # Provider operation timeout (ms)
-MODEL_TIMEOUT=3000                         # Model fetching timeout (ms)
-STREAMING_TIMEOUT=300000                   # Streaming timeout (ms)
+PROVIDER_TIMEOUT_MS=10000                  # Provider operation timeout (ms)
+PROVIDER_MODEL_FETCH_TIMEOUT_MS=3000       # Model fetching timeout (ms)
+PROVIDER_STREAM_TIMEOUT_MS=300000          # Streaming timeout (ms)
 ```
 
 ### Optional - Logging

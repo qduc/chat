@@ -24,9 +24,9 @@ chatRouter.get('/v1/tools', (req, res) => {
 
     // Define which tools require which API keys
     const toolApiKeyMapping = {
-      'web_search': { settingKey: 'tavily_api_key', envVar: 'TAVILY_API_KEY', label: 'Tavily API Key' },
-      'web_search_exa': { settingKey: 'exa_api_key', envVar: 'EXA_API_KEY', label: 'Exa API Key' },
-      'web_search_searxng': { settingKey: 'searxng_base_url', envVar: 'SEARXNG_BASE_URL', label: 'SearXNG Base URL' }
+      web_search: { settingKey: 'tavily_api_key', label: 'Tavily API Key' },
+      web_search_exa: { settingKey: 'exa_api_key', label: 'Exa API Key' },
+      web_search_searxng: { settingKey: 'searxng_base_url', label: 'SearXNG Base URL' },
     };
 
     // Check each tool's API key status
@@ -51,11 +51,6 @@ chatRouter.get('/v1/tools', (req, res) => {
               err: err?.message
             });
           }
-        }
-
-        // Fall back to environment variable if no user setting
-        if (!hasKey && process.env[apiKeyInfo.envVar]) {
-          hasKey = true;
         }
 
         toolApiKeyStatus[toolName] = {

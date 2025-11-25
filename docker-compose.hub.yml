@@ -2,19 +2,14 @@
 #
 # Quick Start:
 #   1. Create a .env file with your settings:
-#      echo "OPENAI_API_KEY=sk-your-key-here" > .env
+#      echo "JWT_SECRET=change-me" > .env
 #   2. Start the stack:
 #      docker compose -f docker-compose.hub.yml up -d
-#   3. Visit http://localhost:3000 and register your first user
+#   3. Visit http://localhost:3000, register your first user, and add your provider API key via Settings → Providers & Tools
 #
 # Optional environment variables (add to .env file):
 #   JWT_SECRET=your-secret-here           # Auto-generated if not set
-#   OPENAI_BASE_URL=https://api.openai.com/v1  # Custom OpenAI-compatible endpoint
-#   DEFAULT_MODEL=gpt-4.1-mini            # Default model to use
-#   ANTHROPIC_API_KEY=sk-ant-...          # For Anthropic provider
-#   GOOGLE_API_KEY=...                    # For Google/Gemini provider
-#   TAVILY_API_KEY=...                    # For Tavily web search tool
-#   EXA_API_KEY=...                       # For Exa web search tool
+#   PORT=3000                             # External port (defaults to 3000)
 #
 # For more options, see: https://github.com/qduc/chat/blob/main/docs/ENVIRONMENT_VARIABLES.md
 
@@ -22,26 +17,8 @@ services:
   backend:
     image: qduc/chatforge-backend:latest
     environment:
-      # Required: Your OpenAI API key (or compatible provider)
-      - OPENAI_API_KEY=${OPENAI_API_KEY:?Please set OPENAI_API_KEY in .env file}
-
       # Security: JWT secret (auto-generated if not provided)
       - JWT_SECRET=${JWT_SECRET:-}
-
-      # Optional: Custom OpenAI-compatible endpoint
-      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
-
-      # Optional: Default model
-      - DEFAULT_MODEL=${DEFAULT_MODEL:-gpt-4.1-mini}
-
-      # Optional: Additional provider API keys
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY:-}
-
-      # Optional: Tool API keys
-      - TAVILY_API_KEY=${TAVILY_API_KEY:-}
-      - EXA_API_KEY=${EXA_API_KEY:-}
-      - SEARXNG_BASE_URL=${SEARXNG_BASE_URL:-}
 
       # Internal configuration (do not change unless you know what you're doing)
       - PERSIST_TRANSCRIPTS=1

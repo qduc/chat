@@ -29,7 +29,7 @@ ChatForge is a full-stack AI chat application featuring a Next.js 15 frontend an
 
 - Node.js 18 or higher
 - Docker and Docker Compose (for containerized deployment)
-- OpenAI API key or compatible provider API key
+- An OpenAI (or compatible) API key that you'll enter through Settings → Providers & Tools
 
 ## Quick Start
 
@@ -41,21 +41,18 @@ Pull pre-built images from Docker Hub - no cloning required:
 # Download the compose file
 curl -O https://raw.githubusercontent.com/qduc/chat/main/docker-compose.hub.yml
 
-# Create .env with your API key
-echo "OPENAI_API_KEY=sk-your-key-here" > .env
+# (Optional) Provide infrastructure secrets
+echo "JWT_SECRET=change-me" > .env
 
 # Start the stack
 docker compose -f docker-compose.hub.yml up -d
 ```
 
-Visit http://localhost:3000 and register your first user. That's it!
+Visit http://localhost:3000, register your first user, then open **Settings → Providers & Tools** to enter your API key and base URL.
 
-**Optional configuration** (add to `.env` file):
+**Optional infrastructure config** (add to `.env` file):
 ```bash
-JWT_SECRET=your-secret-here        # Auto-generated if not set
-DEFAULT_MODEL=gpt-4.1-mini         # Default model
-ANTHROPIC_API_KEY=sk-ant-...       # For Anthropic provider
-GOOGLE_API_KEY=...                 # For Google/Gemini provider
+JWT_SECRET=your-secret-here        # Overrides auto-generated secret
 PORT=3000                          # External port (default: 3000)
 ```
 
@@ -67,7 +64,7 @@ git clone https://github.com/qduc/chat.git && cd chat
 
 # Copy environment files
 cp backend/.env.example backend/.env
-# Edit backend/.env and set OPENAI_API_KEY and JWT_SECRET
+# Edit backend/.env and set JWT_SECRET
 
 # Start with hot reload
 ./dev.sh up --build

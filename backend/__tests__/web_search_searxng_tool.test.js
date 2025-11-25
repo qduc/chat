@@ -76,19 +76,8 @@ describe('web_search_searxng tool', () => {
   });
 
   test('handler throws when SearXNG base URL is not configured', async () => {
-    const originalUrl = process.env.SEARXNG_BASE_URL;
-    delete process.env.SEARXNG_BASE_URL;
-
-    try {
-      const args = webSearchSearxngTool.validate({ query: 'test' });
-      await assert.rejects(() => webSearchSearxngTool.handler(args), /SearXNG base URL is not configured/);
-    } finally {
-      if (originalUrl !== undefined) {
-        process.env.SEARXNG_BASE_URL = originalUrl;
-      } else {
-        delete process.env.SEARXNG_BASE_URL;
-      }
-    }
+    const args = webSearchSearxngTool.validate({ query: 'test' });
+    await assert.rejects(() => webSearchSearxngTool.handler(args), /SearXNG base URL is not configured/);
   });
 
   test('validate handles optional parameters correctly', () => {

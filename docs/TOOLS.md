@@ -241,10 +241,10 @@ Response includes tool schemas formatted for your AI provider.
 
 ## Configuration
 
-Tool behavior can be configured via environment variables:
+Provider and tool credentials are now stored per user. Open **Settings → Search & Web Tools** in the app to add:
 
-- `TAVILY_API_KEY` - Tavily web search API key
-- `EXA_API_KEY` - Exa web search API key
-- `SEARXNG_BASE_URL` - SearXNG instance URL
+- **Tavily API Key** (for the `web_search` tool)
+- **Exa API Key** (for the `web_search_exa` tool)
+- **SearXNG Base URL** (for the `web_search_searxng` tool)
 
-See [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md) for complete configuration options.
+No additional environment variables are required for these tools anymore.

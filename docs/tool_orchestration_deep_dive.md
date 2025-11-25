@@ -1089,7 +1089,7 @@ async function handler(args, context = {}) {
   }
 
   if (!apiKey) {
-    apiKey = process.env.TAVILY_API_KEY;  // Fall back to global key
+    throw new Error('Tavily API key is not configured. Please add it in Settings → Search & Web Tools.');
   }
 
   // ... execute search with apiKey
@@ -1214,7 +1214,9 @@ if (!response.ok) {
 
   // 401/403 - Authentication/authorization issues (infra)
   if (response.status === 401 || response.status === 403) {
-    throw new Error(`Tavily API authentication failed: ${apiErrorMessage} (Check TAVILY_API_KEY configuration)`);
+    throw new Error(
+      `Tavily API authentication failed: ${apiErrorMessage} (Verify your Tavily API key under Settings → Search & Web Tools)`
+    );
   }
 
   // 429 - Rate limiting (infra)

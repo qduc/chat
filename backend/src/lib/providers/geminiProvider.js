@@ -46,12 +46,7 @@ export class GeminiProvider extends BaseProvider {
   }
 
   get apiKey() {
-    return (
-      this.settings?.apiKey ||
-      this.config?.providerConfig?.apiKey ||
-      this.config?.geminiApiKey ||
-      process.env.GEMINI_API_KEY
-    );
+    return this.settings?.apiKey || this.config?.providerConfig?.apiKey || null;
   }
 
   get baseUrl() {

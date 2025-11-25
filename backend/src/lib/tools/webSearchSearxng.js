@@ -80,16 +80,6 @@ function resolveSearxngBaseUrl(userId) {
       logger.warn('Failed to read user searxng_base_url from DB', { userId, err: err?.message || err });
     }
   }
-
-  const envValue =
-    typeof process.env.SEARXNG_BASE_URL === 'string'
-      ? process.env.SEARXNG_BASE_URL.trim()
-      : process.env.SEARXNG_BASE_URL;
-
-  if (envValue) {
-    return envValue;
-  }
-
   return null;
 }
 
@@ -101,7 +91,7 @@ async function handler(
   const searxngUrl = resolveSearxngBaseUrl(userId);
   if (!searxngUrl) {
     throw new Error(
-      'SearXNG base URL is not configured. Please enter a SearXNG Base URL in your user settings or set SEARXNG_BASE_URL as a fallback.'
+      'SearXNG base URL is not configured. Please enter a SearXNG Base URL under Settings → Search & Web Tools.'
     );
   }
   // Basic URL sanity check to provide clearer errors for bad config

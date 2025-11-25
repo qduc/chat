@@ -137,10 +137,7 @@ async function handler({
     }
   }
   if (!apiKey) {
-    apiKey = process.env.TAVILY_API_KEY;
-  }
-  if (!apiKey) {
-    throw new Error('Tavily API key is not configured (no per-user key or TAVILY_API_KEY env var)');
+    throw new Error('Tavily API key is not configured. Please add it in Settings → Search & Web Tools.');
   }
 
   const url = 'https://api.tavily.com/search';
@@ -188,17 +185,23 @@ async function handler({
 
       // 400 Bad Request - LLM can fix these by adjusting parameters
       if (response.status === 400) {
-        throw new Error(`Invalid request parameters: ${apiErrorMessage}. Please adjust the tool call parameters and try again.`);
+        throw new Error(
+          `Invalid request parameters: ${apiErrorMessage}. Please adjust the tool call parameters and try again.`
+        );
       }
 
       // 401/403 - Authentication/authorization issues (infra)
       if (response.status === 401 || response.status === 403) {
-        throw new Error(`Tavily API authentication failed: ${apiErrorMessage} (Check TAVILY_API_KEY configuration)`);
+        throw new Error(
+          `Tavily API authentication failed: ${apiErrorMessage} (Verify your Tavily API key under Settings → Search & Web Tools)`
+        );
       }
 
       // 429 - Rate limiting (infra)
       if (response.status === 429) {
-        throw new Error(`Tavily API rate limit exceeded: ${apiErrorMessage} (API quota exhausted - please try again later)`);
+        throw new Error(
+          `Tavily API rate limit exceeded: ${apiErrorMessage} (API quota exhausted - please try again later)`
+        );
       }
 
       // 500+ - Server errors (infra)
@@ -208,7 +211,8 @@ async function handler({
 
       // Other errors - provide full context
       throw new Error(`Tavily API request failed with status ${response.status}: ${apiErrorMessage}`);
-    } const results = await response.json();
+    }
+    const results = await response.json();
     let output = '';
 
     if (results.answer) {
