@@ -14,7 +14,7 @@ chat/
   frontend/             # Next.js 15 + React 19 + TypeScript
   backend/              # Node.js + Express + SQLite
   docs/                 # Architecture docs and ADRs
-  proxy/                # Nginx reverse proxy config
+  proxy/                # Dev-only Nginx reverse proxy config (compose.dev)
   integration/          # Integration tests
   requests/             # HTTP request examples
   dev.sh                # Development orchestration script
@@ -35,6 +35,8 @@ chat/
 - SQLite for persistence
 - Server-side tool orchestration
 - User-based authentication and authorization
+
+> **Production bundling:** The root multi-stage `Dockerfile` exports the Next.js app and copies it into the Express backend, so the `app` container (managed by `prod.sh` / `docker-compose.yml`) serves both `/api` and static assets. The standalone `frontend`, `backend`, and `proxy` containers only exist in the development compose stack for hot reload.
 
 ### Core Design Principles
 
@@ -116,6 +118,7 @@ chat/
 ./prod.sh backup           # Create database backup
 ./prod.sh exec <service> <command>  # Execute command in container
 ```
+> In production there is a single `app` service. Most `prod.sh exec` commands therefore look like `./prod.sh exec app <command>`.
 
 ### Release Management
 ```bash
@@ -206,7 +209,7 @@ chat/
 - **JWT Authentication**: Token-based authentication with bcrypt password hashing and refresh token support
 - **Streaming Protocol**: SSE for real-time updates with usage metadata tracking
 - **API Compatibility**: Maintains OpenAI API contract while extending functionality
-- **Reverse Proxy**: Nginx proxy routes /api requests to backend in Docker deployments
+- **Dev Reverse Proxy**: Nginx proxy routes /api requests to backend in the Docker *development* stack (production bundles everything into one container)
 - **Image Storage**: Secure image metadata storage with path-based access control and validation (max 10MB, 5 images/message)
 - **File Storage**: Text file uploads with content extraction (max 5MB, 3 files/message, 30+ file types supported)
 - **Conversation Snapshots**: Each conversation maintains complete settings snapshot for reproducibility

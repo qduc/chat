@@ -34,6 +34,8 @@ npm --prefix frontend run dev
 
 Visit http://localhost:3000
 
+The production compose stack now exposes a single `app` container built from the root `Dockerfile`. That image bundles the Express API and the exported Next.js UI, so `/api` and the frontend are both served from port 3000 (or whatever you set via `PORT`).
+
 ### Option 2: Docker Development (Recommended)
 
 ```bash

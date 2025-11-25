@@ -51,7 +51,7 @@ chat/
 │   ├── scripts/                   # Database migrations
 │   └── __tests__/                 # Backend test suite
 ├── docs/                          # Architecture documentation
-├── proxy/                         # Nginx reverse proxy configuration
+├── proxy/                         # Dev-only Nginx reverse proxy configuration
 ├── integration/                   # Integration tests
 ├── requests/                      # HTTP request examples
 └── docker-compose files           # Container orchestration
@@ -167,17 +167,16 @@ See [TOOLS.md](TOOLS.md) for adding new tools.
 
 ### Development
 
-- **Docker Compose** - Orchestrates frontend, backend, proxy, and adminer
+- **Docker Compose** - Orchestrates frontend, backend, proxy, and adminer for hot reload
 - **Hot Reload** - Changes automatically reload during development
 - **Unified Network** - Containers communicate via docker network
 
 ### Production
 
-- **Nginx Proxy** - Reverse proxy at port 3000
-- **Frontend** - Next.js on port 3001
-- **Backend** - Express on port 3002
-- **Database** - SQLite persistent volume
-- **Backups** - Automatic database backup support
+- **Single App Container** - Multi-stage `Dockerfile` builds the frontend export and copies it into the Express backend, which serves both `/api` and the UI from one process
+- **Volumes** - `/data` for SQLite + uploads, `/app/logs` for rolling logs
+- **Runtime** - Same Express server handles health checks and static assets on port 3000 (configurable)
+- **Backups** - `prod.sh backup` copies the SQLite database from the shared volume
 
 ## Documentation
 
