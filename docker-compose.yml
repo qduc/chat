@@ -29,7 +29,7 @@ services:
       - DB_URL=file:/data/prod.db
       - NODE_ENV=production
       - PORT=3000
-      - CORS_ORIGIN=*
+      - ALLOWED_ORIGIN=*
     volumes:
       - chatforge_data:/data
       - chatforge_logs:/app/logs

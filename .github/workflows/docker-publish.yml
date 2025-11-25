@@ -1,4 +1,4 @@
-name: Build and Publish Docker Images
+name: Build and Publish Docker Image
 
 on:
   push:
@@ -13,9 +13,7 @@ on:
 
 env:
   REGISTRY: docker.io
-  BACKEND_IMAGE: qduc/chatforge-backend
-  FRONTEND_IMAGE: qduc/chatforge-frontend
-  PROXY_IMAGE: qduc/chatforge-proxy
+  IMAGE_NAME: qduc/chatforge
 
 jobs:
   build-and-push:
@@ -51,63 +49,39 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "version_short=${VERSION#v}" >> $GITHUB_OUTPUT
 
-      - name: Build and push backend image
+      - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./backend
+          context: .
+          target: runner
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ env.BACKEND_IMAGE }}:${{ steps.version.outputs.version }}
-            ${{ env.BACKEND_IMAGE }}:${{ steps.version.outputs.version_short }}
-            ${{ env.BACKEND_IMAGE }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push frontend image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          platforms: linux/amd64,linux/arm64
-          push: true
-          build-args: |
-            NEXT_PUBLIC_API_BASE=/api
-            BACKEND_ORIGIN=http://backend:3001
-          tags: |
-            ${{ env.FRONTEND_IMAGE }}:${{ steps.version.outputs.version }}
-            ${{ env.FRONTEND_IMAGE }}:${{ steps.version.outputs.version_short }}
-            ${{ env.FRONTEND_IMAGE }}:latest
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Build and push proxy image
-        uses: docker/build-push-action@v5
-        with:
-          context: ./proxy
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ${{ env.PROXY_IMAGE }}:${{ steps.version.outputs.version }}
-            ${{ env.PROXY_IMAGE }}:${{ steps.version.outputs.version_short }}
-            ${{ env.PROXY_IMAGE }}:latest
+            ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+            ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version_short }}
+            ${{ env.IMAGE_NAME }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Create release summary
         run: |
-          echo "## Docker Images Published 🚀" >> $GITHUB_STEP_SUMMARY
+          echo "## Docker Image Published 🚀" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "Version: \`${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Images" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ env.BACKEND_IMAGE }}:${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ env.FRONTEND_IMAGE }}:${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "- \`${{ env.PROXY_IMAGE }}:${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "### Image" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- \`${{ env.IMAGE_NAME }}:latest\`" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Quick Start" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "curl -O https://raw.githubusercontent.com/qduc/chat/main/docker-compose.hub.yml" >> $GITHUB_STEP_SUMMARY
-          echo "echo 'JWT_SECRET=change-me' > .env" >> $GITHUB_STEP_SUMMARY
-          echo "docker compose -f docker-compose.hub.yml up -d" >> $GITHUB_STEP_SUMMARY
+          echo "docker run -d -p 3000:3000 -v chatforge_data:/data ${{ env.IMAGE_NAME }}:latest" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Or with docker-compose:" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
+          echo "curl -O https://raw.githubusercontent.com/qduc/chat/main/docker-compose.yml" >> $GITHUB_STEP_SUMMARY
+          echo "docker compose up -d" >> $GITHUB_STEP_SUMMARY
+          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
           echo "Then visit http://localhost:3000 and add your provider API key via Settings → Providers & Tools." >> $GITHUB_STEP_SUMMARY

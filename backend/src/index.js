@@ -46,14 +46,18 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 app.use(healthRouter);
-app.use('/v1/auth', authRouter);
-app.use(imagesRouter);  // Must be before auth-protected routers
-app.use(filesRouter);   // File upload routes
-app.use(conversationsRouter);
-app.use(providersRouter);
-app.use(userSettingsRouter);
-app.use(systemPromptsRouter);
-app.use(chatRouter);
+
+const apiRouter = express.Router();
+apiRouter.use('/v1/auth', authRouter);
+apiRouter.use(imagesRouter); // Must be before auth-protected routers
+apiRouter.use(filesRouter); // File upload routes
+apiRouter.use(conversationsRouter);
+apiRouter.use(providersRouter);
+apiRouter.use(userSettingsRouter);
+apiRouter.use(systemPromptsRouter);
+apiRouter.use(chatRouter);
+
+app.use('/api', apiRouter);
 
 import { exceptionHandler } from './middleware/exceptionHandler.js';
 
