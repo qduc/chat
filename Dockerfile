@@ -32,8 +32,8 @@ COPY --chown=node:node backend/ .
 COPY --from=frontend-builder --chown=node:node /app/frontend/out ./public
 
 # Setup permissions and directories
-RUN mkdir -p logs && chown -R node:node /app
-RUN chmod +x entrypoint.sh
+RUN mkdir -p logs && chown node:node logs
+RUN chmod +x entrypoint.sh && chown node:node entrypoint.sh
 
 ENV NODE_ENV=production
 ENV PORT=3000
