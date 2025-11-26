@@ -5,7 +5,7 @@ import { BaseProvider } from '../src/lib/providers/baseProvider.js';
 
 describe('Provider Interface Compliance', () => {
   const providers = [
-    { name: 'OpenAIProvider', Provider: OpenAIProvider, expectedTranslation: false },
+    { name: 'OpenAIProvider', Provider: OpenAIProvider, expectedTranslation: true },
     { name: 'AnthropicProvider', Provider: AnthropicProvider, expectedTranslation: true },
     { name: 'GeminiProvider', Provider: GeminiProvider, expectedTranslation: true },
   ];
