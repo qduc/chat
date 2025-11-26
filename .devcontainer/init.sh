@@ -9,7 +9,7 @@ cd "$REPO_ROOT"
 if [ ! -f backend/.env ]; then
   if [ -f backend/.env.example ]; then
     cp backend/.env.example backend/.env
-    echo "Created backend/.env from example. Remember to set OPENAI_API_KEY."
+    echo "Created backend/.env from example. Remember to set JWT_SECRET."
     echo "Note: ALLOWED_ORIGIN is set for devcontainer (port 3003)."
   else
     echo "Warning: backend/.env.example not found; create backend/.env manually." >&2

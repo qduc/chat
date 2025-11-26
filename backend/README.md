@@ -4,14 +4,14 @@ Express-based proxy for OpenAI-compatible chat completions, with pluggable provi
 
 ## Endpoints
 
-- `POST /v1/chat/completions` – proxies to `${PROVIDER_BASE_URL||OPENAI_BASE_URL}/v1/chat/completions` (supports streaming)
+- `POST /v1/chat/completions` – proxies requests to the configured provider (supports streaming)
 - `POST /v1/conversations` – create a conversation (feature-flagged)
 - `GET /v1/conversations/:id` – fetch conversation metadata (feature-flagged)
 - `GET /healthz` – health/status info
 
 ## Env Vars (.env)
 
-See `.env.example` for required variables. You can select a provider via `PROVIDER` (default: `openai`). Generic keys `PROVIDER_BASE_URL`, `PROVIDER_API_KEY`, and optional `PROVIDER_HEADERS_JSON` are supported; OpenAI-specific vars remain for backward compatibility.
+See `.env.example` for required infrastructure variables (e.g., `JWT_SECRET`, `PORT`). Provider API keys, base URLs, and default models now live in the database via per-user settings.
 
 Additional (Sprint 1):
 
@@ -50,7 +50,7 @@ This reduces database write load and avoids timer-based flushes while preserving
 1. Create env file (not copied into image):
    ```bash
    cp .env.example .env
-   # edit PROVIDER/OPENAI variables as needed
+   # set infrastructure-only variables (e.g., JWT secret)
    ```
 2. Build & run (from repo root):
    ```bash

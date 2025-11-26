@@ -52,13 +52,7 @@ export const logger = pino({
   },
   redact: {
     // Best-effort redactions for common sensitive fields
-    paths: [
-      'req.headers.authorization',
-      'headers.authorization',
-      'config.openaiApiKey',
-      'OPENAI_API_KEY',
-      'body.apiKey',
-    ],
+    paths: ['req.headers.authorization', 'headers.authorization', 'config.openaiApiKey', 'body.apiKey'],
     remove: true,
   },
 });

@@ -5,8 +5,6 @@ import { logger } from './logger.js';
 const isTest = process.env.NODE_ENV === 'test' || typeof process.env.JEST_WORKER_ID !== 'undefined';
 
 const required = [
-  // Provider config is flexible; default remains OpenAI-compatible
-  'DEFAULT_MODEL',
   'PORT',
   'RATE_LIMIT_WINDOW_SEC',
   'RATE_LIMIT_MAX',
@@ -28,34 +26,33 @@ const bool = (v, def = false) => {
   return s === '1' || s === 'true' || s === 'yes' || s === 'on';
 };
 
+const DEFAULT_MODEL = 'gpt-4.1-mini';
+const DEFAULT_TITLE_MODEL = 'gpt-4.1-mini';
+const OPENAI_BASE_URL = 'https://api.openai.com/v1';
+const ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
+
+const providerHeaders = undefined;
+
 export const config = {
   // Provider selection (default to openai for backward-compat)
-  provider: process.env.PROVIDER || 'openai',
-  // Backward-compat: legacy OpenAI fields still present
-  openaiBaseUrl: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
-  openaiApiKey: process.env.OPENAI_API_KEY,
+  provider: 'openai',
+  // Backward-compat: legacy OpenAI fields still present (now static defaults)
+  openaiBaseUrl: OPENAI_BASE_URL,
+  openaiApiKey: null,
   // Anthropic provider overrides
-  anthropicBaseUrl: process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com',
-  anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+  anthropicBaseUrl: ANTHROPIC_BASE_URL,
+  anthropicApiKey: null,
   // Generic provider config; falls back to OpenAI values
   providerConfig: {
-    baseUrl: process.env.PROVIDER_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
-    apiKey: process.env.PROVIDER_API_KEY || process.env.OPENAI_API_KEY,
-    headers: (() => {
-      try {
-        return process.env.PROVIDER_HEADERS_JSON ? JSON.parse(process.env.PROVIDER_HEADERS_JSON) : undefined;
-      } catch {
-        // Avoid noisy warnings during automated tests
-        if (!isTest) logger.warn('[env] Invalid PROVIDER_HEADERS_JSON; expected JSON');
-        return undefined;
-      }
-    })(),
+    baseUrl: OPENAI_BASE_URL,
+    apiKey: null,
+    headers: providerHeaders,
     timeoutMs: Number(process.env.PROVIDER_TIMEOUT_MS) || 10000, // 10 second default for provider operations
     modelFetchTimeoutMs: Number(process.env.PROVIDER_MODEL_FETCH_TIMEOUT_MS) || 3000, // 3 second default for model fetching
     streamTimeoutMs: Number(process.env.PROVIDER_STREAM_TIMEOUT_MS) || 300000, // 300 second default for streaming operations
   },
-  defaultModel: process.env.DEFAULT_MODEL || 'gpt-4.1-mini',
-  titleModel: process.env.TITLE_MODEL || 'gpt-4.1-mini',
+  defaultModel: DEFAULT_MODEL,
+  titleModel: DEFAULT_TITLE_MODEL,
   port: Number(process.env.PORT) || 3001,
   rate: {
     windowSec: Number(process.env.RATE_LIMIT_WINDOW_SEC) || 60,

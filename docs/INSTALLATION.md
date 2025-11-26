@@ -4,7 +4,7 @@
 
 - Node.js 18 or higher
 - Docker and Docker Compose (for containerized deployment)
-- OpenAI API key or compatible provider API key
+- An OpenAI (or compatible) API key that you'll enter via in-app user settings
 
 ## Quick Start
 
@@ -18,7 +18,6 @@ cd chat
 # Set up backend
 cp backend/.env.example backend/.env
 # Edit backend/.env and set:
-# - OPENAI_API_KEY (your API key)
 # - JWT_SECRET (a secure random string for authentication)
 npm --prefix backend install
 
@@ -35,13 +34,14 @@ npm --prefix frontend run dev
 
 Visit http://localhost:3000
 
+The production compose stack now exposes a single `app` container built from the root `Dockerfile`. That image bundles the Express API and the exported Next.js UI, so `/api` and the frontend are both served from port 3000 (or whatever you set via `PORT`).
+
 ### Option 2: Docker Development (Recommended)
 
 ```bash
 # Copy environment files
 cp backend/.env.example backend/.env
 # Edit backend/.env and set:
-# - OPENAI_API_KEY (your API key)
 # - JWT_SECRET (a secure random string for authentication)
 
 # Start with hot reload
@@ -59,7 +59,6 @@ API requests from the browser can now target `http://localhost:3003/api` via the
 
 ```bash
 # Ensure required variables are set in backend/.env:
-# - OPENAI_API_KEY
 # - JWT_SECRET
 ./prod.sh up --build
 
@@ -79,8 +78,9 @@ Visit http://localhost:3000
 See [ENVIRONMENT_VARIABLES.md](ENVIRONMENT_VARIABLES.md) for detailed environment variable documentation.
 
 **Minimal required configuration:**
-- `OPENAI_API_KEY` - Your API key
 - `JWT_SECRET` - A secure random string for JWT authentication
+
+Provider API keys, base URLs, and default models are now configured per user inside the product (Settings → Providers & Tools).
 
 ## Next Steps
 

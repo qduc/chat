@@ -22,19 +22,8 @@ describe('web_search_exa tool', () => {
     assert.throws(() => webSearchExaTool.validate({}), /requires a "query"/);
   });
 
-  test('handler throws when EXA_API_KEY is missing', async () => {
-    const originalKey = process.env.EXA_API_KEY;
-    delete process.env.EXA_API_KEY;
-
-    try {
-      const args = webSearchExaTool.validate({ query: 'test' });
-      await assert.rejects(() => webSearchExaTool.handler(args), /EXA_API_KEY environment variable is not set/);
-    } finally {
-      if (originalKey !== undefined) {
-        process.env.EXA_API_KEY = originalKey;
-      } else {
-        delete process.env.EXA_API_KEY;
-      }
-    }
+  test('handler throws when Exa API key is missing', async () => {
+    const args = webSearchExaTool.validate({ query: 'test' });
+    await assert.rejects(() => webSearchExaTool.handler(args), /Exa API key is not configured/);
   });
 });

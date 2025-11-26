@@ -161,10 +161,8 @@ async function handler({
       logger.warn('Failed to read user exa_api_key from DB', { userId, err: err?.message || err });
     }
   }
-  if (!apiKey) apiKey = process.env.EXA_API_KEY;
   if (!apiKey) {
-    // Keep an exact message expected by unit tests
-    throw new Error('EXA_API_KEY environment variable is not set');
+    throw new Error('Exa API key is not configured. Please add it in Settings → Search & Web Tools.');
   }
 
   const url = 'https://api.exa.ai/search';
@@ -213,15 +211,21 @@ async function handler({
       }
 
       if (response.status === 400) {
-        throw new Error(`Invalid Exa request parameters: ${apiErrorMessage}. Please adjust the tool call parameters and try again.`);
+        throw new Error(
+          `Invalid Exa request parameters: ${apiErrorMessage}. Please adjust the tool call parameters and try again.`
+        );
       }
 
       if (response.status === 401 || response.status === 403) {
-        throw new Error(`Exa API authentication failed: ${apiErrorMessage} (Check EXA_API_KEY configuration)`);
+        throw new Error(
+          `Exa API authentication failed: ${apiErrorMessage} (Verify your Exa API key under Settings → Search & Web Tools)`
+        );
       }
 
       if (response.status === 429) {
-        throw new Error(`Exa API rate limit exceeded: ${apiErrorMessage} (API quota exhausted - please try again later)`);
+        throw new Error(
+          `Exa API rate limit exceeded: ${apiErrorMessage} (API quota exhausted - please try again later)`
+        );
       }
 
       if (response.status >= 500) {

@@ -789,17 +789,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                               })}
                             </div>
                           </div>
-
-                          {/* Dropdown footer */}
-                          <div className="flex justify-end p-3 border-t border-slate-100 dark:border-neutral-800 bg-slate-50/50 dark:bg-neutral-800/50">
-                            <button
-                              type="button"
-                              onClick={() => setToolsOpen(false)}
-                              className="text-sm px-4 py-2 rounded-lg bg-slate-800 dark:bg-slate-600 hover:bg-slate-700 dark:hover:bg-slate-500 text-white cursor-pointer transition-colors duration-150 font-medium"
-                            >
-                              Done
-                            </button>
-                          </div>
                         </div>
                       )}
                     </div>

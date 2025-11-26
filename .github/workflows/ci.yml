@@ -19,15 +19,10 @@ jobs:
           cache: 'npm'
           cache-dependency-path: backend/package-lock.json
 
-      - name: Install Backend Dependencies
-        run: npm --prefix backend install
-
-      - name: Lint Backend
-        run: npm --prefix backend run lint
-
-      - name: Test Backend
-        run: npm --prefix backend test
-        timeout-minutes: 1
+      - name: Run Backend CI
+        run: |
+          chmod +x ci.sh
+          ./ci.sh backend
 
   frontend:
     runs-on: ubuntu-latest
@@ -43,15 +38,10 @@ jobs:
           cache: 'npm'
           cache-dependency-path: frontend/package-lock.json
 
-      - name: Install Frontend Dependencies
-        run: npm --prefix frontend install
-
-      - name: Lint Frontend
-        run: npm --prefix frontend run lint
-
-      - name: Test Frontend
-        run: npm --prefix frontend test
-        timeout-minutes: 1
+      - name: Run Frontend CI
+        run: |
+          chmod +x ci.sh
+          ./ci.sh frontend
 
   # This job will only run if both backend and frontend jobs succeed
   # The workflow will fail if either backend or frontend fails

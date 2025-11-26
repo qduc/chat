@@ -1,4 +1,6 @@
 import express from 'express';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import cors from 'cors';
 import { config } from './env.js';
 import { rateLimit } from './middleware/rateLimit.js';
@@ -44,18 +46,37 @@ if (process.env.NODE_ENV === 'production') {
 }
 
 app.use(healthRouter);
-app.use('/v1/auth', authRouter);
-app.use(imagesRouter);  // Must be before auth-protected routers
-app.use(filesRouter);   // File upload routes
-app.use(conversationsRouter);
-app.use(providersRouter);
-app.use(userSettingsRouter);
-app.use(systemPromptsRouter);
-app.use(chatRouter);
+
+const apiRouter = express.Router();
+apiRouter.use('/v1/auth', authRouter);
+apiRouter.use(imagesRouter); // Must be before auth-protected routers
+apiRouter.use(filesRouter); // File upload routes
+apiRouter.use(conversationsRouter);
+apiRouter.use(providersRouter);
+apiRouter.use(userSettingsRouter);
+apiRouter.use(systemPromptsRouter);
+apiRouter.use(chatRouter);
+
+app.use('/api', apiRouter);
 
 import { exceptionHandler } from './middleware/exceptionHandler.js';
 
 app.use(exceptionHandler);
+
+// Serve static files from the React app
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const buildPath = path.join(__dirname, '../public');
+
+if (process.env.NODE_ENV === 'production') {
+  app.use(express.static(buildPath));
+
+  // The "catchall" handler: for any request that doesn't
+  // match one above, send back React's index.html file.
+  app.get('/{*path}', (req, res) => {
+    res.sendFile(path.join(buildPath, 'index.html'));
+  });
+}
 
 // Database initialization and retention worker (Sprint 3)
 import { getDb } from './db/client.js';

@@ -317,7 +317,7 @@ export async function handleToolsStreaming({
             leftoverIter = parseSSEStream(
               chunk,
               leftoverIter,
-              ((obj) => {
+              (obj) => {
                 // Capture response_id from any chunk
                 if (obj?.id && !responseId) {
                   responseId = obj.id;
@@ -398,7 +398,7 @@ export async function handleToolsStreaming({
               },
               () => {
                 /* ignore JSON parse errors for this stream */
-              })
+              }
             );
           } catch (e) {
             cleanup();

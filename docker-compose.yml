@@ -1,83 +1,54 @@
+# ChatForge - Production Deployment
+#
+# Quick Start:
+#   1. Create a .env file with your settings:
+#      echo "JWT_SECRET=change-me" > .env
+#   2. Start the stack:
+#      ./prod.sh up -d
+#
+# Optional environment variables (add to .env file):
+#   JWT_SECRET=your-secret-here           # Auto-generated if not set
+#   PORT=3000                             # External port (defaults to 3000)
+#
+# For more options, see: https://github.com/qduc/chat/blob/main/docs/ENVIRONMENT_VARIABLES.md
+
 services:
-  backend:
+  app:
     build:
-      context: ./backend
-    env_file:
-      - ./backend/.env
+      context: .
+      target: runner
+    image: qduc/chatforge:latest
     environment:
+      # Security: JWT secret (auto-generated if not provided)
+      - JWT_SECRET=${JWT_SECRET:-}
+
+      # Internal configuration
       - PERSIST_TRANSCRIPTS=1
-      # Store uploaded images on a Docker volume
       - IMAGE_STORAGE_PATH=/data/images
+      - FILE_STORAGE_PATH=/data/files
       - DB_URL=file:/data/prod.db
       - NODE_ENV=production
-    volumes:
-      - db_data:/data
-      # store uploaded images in a separate named volume mounted at /data/images
-      - images_data:/data/images
-      # persist application logs
-      - logs_data:/app/logs
-    restart: unless-stopped
-    healthcheck:
-      test:
-        ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then(res => { if (res.ok) process.exit(0); process.exit(1); }).catch(() => process.exit(1));"]
-      interval: 30s
-      timeout: 10s
-      start_period: 30s
-      retries: 3
-  frontend:
-    build:
-      context: ./frontend
-      args:
-        NEXT_PUBLIC_API_BASE: /api
-        BACKEND_ORIGIN: http://backend:3001
-    environment:
-      - NEXT_PUBLIC_API_BASE=/api
-      - BACKEND_ORIGIN=http://backend:3001
-      - NODE_ENV=production
-    depends_on:
-      backend:
-        condition: service_healthy
-    restart: unless-stopped
-    healthcheck:
-      test:
-        ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(res => { if (res.ok) process.exit(0); process.exit(1); }).catch(() => process.exit(1));"]
-      interval: 30s
-      timeout: 10s
-      start_period: 30s
-      retries: 3
-  proxy:
-    image: nginx:1.27-alpine
-    init: true
-    hostname: chatforge-proxy
-    depends_on:
-      frontend:
-        condition: service_started
-      backend:
-        condition: service_healthy
-    volumes:
-      - ./proxy/nginx.conf:/etc/nginx/nginx.conf:ro
-    ports:
-      - "3000:80"
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1/health || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    networks:
-      - frontend
-      - default
+      - PORT=3000
+      - ALLOWED_ORIGIN=*
 
-networks:
-  frontend:
+      # Rate limiting (optional)
+      - RATE_LIMIT_WINDOW_SEC=${RATE_LIMIT_WINDOW_SEC:-60}
+      - RATE_LIMIT_MAX=${RATE_LIMIT_MAX:-100}
+    volumes:
+      - chatforge_data:/data
+      - chatforge_logs:/app/logs
+    ports:
+      - "${PORT:-3000}:3000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(res => { if (res.ok) process.exit(0); process.exit(1); }).catch(() => process.exit(1));"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
 
 volumes:
-  db_data:
+  chatforge_data:
     driver: local
-  # Optional separate volume if you want to separate DB and images
-  images_data:
-    driver: local
-  # Persist application logs
-  logs_data:
+  chatforge_logs:
     driver: local

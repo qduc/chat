@@ -25,6 +25,8 @@ All development commands run in Docker via `./dev.sh` or directly via npm.
 ./prod.sh ps               # Show service status
 ```
 
+> Production currently runs a single `app` container (built from the root `Dockerfile`) that bundles the Express backend and exported Next.js frontend. When you run `./prod.sh exec`, target the `app` service.
+
 ### Logs
 
 #### Development

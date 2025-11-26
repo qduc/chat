@@ -1,6 +1,6 @@
 ### POST request to openAI completions API
 POST https://api.openai.com/v1/chat/completions
-Authorization: Bearer {{OPENAI_API_KEY}}
+Authorization: Bearer {{UPSTREAM_API_KEY}}
 Accept: text/event-stream
 Content-Type: application/json
 
