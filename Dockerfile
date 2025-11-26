@@ -4,22 +4,30 @@ ARG NODE_IMAGE=node:22.18.0-bookworm-slim
 FROM ${NODE_IMAGE} AS frontend-builder
 WORKDIR /app/frontend
 COPY frontend/package*.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 COPY frontend/ .
-ENV NEXT_PUBLIC_API_BASE=/api
-RUN npm run build
+ENV NEXT_PUBLIC_API_BASE=/api \
+    NEXT_TELEMETRY_DISABLED=1
+RUN --mount=type=cache,target=/app/frontend/.next/cache \
+    npm run build
 
 # --- Backend Build Stage ---
 FROM ${NODE_IMAGE} AS backend-builder
 WORKDIR /app/backend
 
 # Install build dependencies for native modules
-RUN apt-get update && apt-get install -y python3 make g++ && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/var/cache/apt \
+    --mount=type=cache,target=/var/lib/apt \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    apt-get update && apt-get install -y python3 make g++
 
 COPY backend/package*.json ./
 
 # Clean install to ensure proper compilation in container
-RUN npm ci --omit=dev --build-from-source
+RUN --mount=type=cache,target=/root/.npm \
+    --mount=type=cache,target=/root/.cache/node-gyp \
+    npm ci --omit=dev
 
 # Verify better-sqlite3 was built correctly
 RUN node -e "require('better-sqlite3'); console.log('better-sqlite3 loaded successfully')"
@@ -29,7 +37,10 @@ FROM ${NODE_IMAGE} AS runner
 WORKDIR /app
 
 # Install runtime dependencies (gosu is Debian equivalent of su-exec)
-RUN apt-get update && apt-get install -y gosu libsqlite3-0 && rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/var/cache/apt \
+    --mount=type=cache,target=/var/lib/apt \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    apt-get update && apt-get install -y gosu libsqlite3-0
 
 # Copy backend dependencies
 COPY --from=backend-builder --chown=node:node /app/backend/node_modules ./node_modules
