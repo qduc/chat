@@ -4,10 +4,10 @@ import { authenticateToken } from '../middleware/auth.js';
 import { upsertUserSetting } from '../db/userSettings.js';
 import { getAllUserSettings } from '../db/getAllUserSettings.js';
 
-const router = Router();
-router.use(authenticateToken);
-
 export function createUserSettingsRouter() {
+  const router = Router();
+  router.use(authenticateToken);
+
   // Unified update route for all keys
   router.put('/v1/user-settings', (req, res) => {
     try {

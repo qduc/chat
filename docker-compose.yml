@@ -30,6 +30,10 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - ALLOWED_ORIGIN=*
+
+      # Rate limiting (optional)
+      - RATE_LIMIT_WINDOW_SEC=${RATE_LIMIT_WINDOW_SEC:-60}
+      - RATE_LIMIT_MAX=${RATE_LIMIT_MAX:-100}
     volumes:
       - chatforge_data:/data
       - chatforge_logs:/app/logs

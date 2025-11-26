@@ -39,7 +39,12 @@ if [ "$(id -u)" = "0" ]; then
 
   if [ -z "$SU_EXEC_DONE" ]; then
     export SU_EXEC_DONE=1
-    exec su-exec "$APP_USER:$APP_GROUP" "$0" "$@"
+    # Use gosu on Debian or su-exec on Alpine
+    if command -v gosu >/dev/null 2>&1; then
+      exec gosu "$APP_USER:$APP_GROUP" "$0" "$@"
+    else
+      exec su-exec "$APP_USER:$APP_GROUP" "$0" "$@"
+    fi
   else
     echo "Already switched user, not re-executing."
     exit 1
