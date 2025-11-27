@@ -7,7 +7,7 @@ import { StreamingNotSupportedError } from './streaming';
 
 const DEFAULT_API_BASE =
   typeof window !== 'undefined'
-    ? `${window.location.origin}/api`
+    ? (window as any).__API_BASE_URL__ || `${window.location.origin}/api`
     : process.env.NEXT_PUBLIC_API_BASE || 'http://backend:3001/api';
 
 export interface HttpClientOptions {

@@ -1,15 +1,21 @@
 import pino from 'pino';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
-const level = process.env.NODE_ENV === 'test' ? 'silent' : process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug');
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+const level =
+  process.env.NODE_ENV === 'test'
+    ? 'silent'
+    : process.env.LOG_LEVEL || (process.env.NODE_ENV === 'production' ? 'info' : 'debug');
 const pretty = (process.env.LOG_PRETTY ?? '').toLowerCase() !== 'false' && process.env.NODE_ENV !== 'production';
 
 // Log retention configuration
 const maxRetentionDays = parseInt(process.env.MAX_LOG_RETENTION_DAYS) || 3;
 
 // Ensure logs directory exists
-const logsDir = './logs';
+const logsDir = process.env.LOGS_DIR || './logs';
 if (!fs.existsSync(logsDir)) {
   fs.mkdirSync(logsDir, { recursive: true });
 }
@@ -21,10 +27,10 @@ export const logger = pino({
     targets: [
       // Laravel-style file logging
       {
-        target: path.resolve('./src/lib/custom-transport.js'),
+        target: path.join(__dirname, 'lib/custom-transport.js'),
         level,
         options: {
-          destination: `./logs/app-${new Date().toISOString().slice(0, 10)}.log`,
+          destination: path.join(logsDir, `app-${new Date().toISOString().slice(0, 10)}.log`),
           ignore: 'pid,hostname',
         },
       },
@@ -59,8 +65,6 @@ export const logger = pino({
 
 // Function to cleanup old log files
 export function cleanupOldLogs() {
-  const logsDir = './logs';
-
   try {
     // Check if logs directory exists
     if (!fs.existsSync(logsDir)) {
