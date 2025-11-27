@@ -102,5 +102,9 @@ if (process.env.NODE_ENV !== 'test') {
   cleanupOldLogs();
 
   // Run cleanup daily
-  setInterval(cleanupOldLogs, 24 * 60 * 60 * 1000); // 24 hours
+  const logCleanupTimer = setInterval(cleanupOldLogs, 24 * 60 * 60 * 1000); // 24 hours
+  // Allow Node.js to exit even if the timer is still active (useful for graceful shutdown)
+  if (typeof logCleanupTimer.unref === 'function') {
+    logCleanupTimer.unref();
+  }
 }
