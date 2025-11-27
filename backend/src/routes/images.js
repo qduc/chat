@@ -6,6 +6,7 @@ import { nanoid } from 'nanoid';
 import { authenticateToken } from '../middleware/auth.js';
 import { logger } from '../logger.js';
 import { storeImageMetadata, getImageMetadataForUser } from '../lib/images/metadataStore.js';
+import { config } from '../env.js';
 
 const router = express.Router();
 
@@ -16,8 +17,8 @@ const IMAGE_CONFIG = {
   maxImagesPerMessage: 5,
   allowedFormats: ['jpeg', 'jpg', 'png', 'webp', 'gif'],
   storageProvider: 'local',
-  // Allow overriding storage path via env so it can be mounted to a volume
-  localStoragePath: process.env.IMAGE_STORAGE_PATH || './data/images',
+  // Storage path from centralized config
+  localStoragePath: config.storage.imagePath,
   enableCompression: true,
   compressionQuality: 0.8,
   generateThumbnails: false, // Disable for now

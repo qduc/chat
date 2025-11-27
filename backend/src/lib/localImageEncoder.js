@@ -2,8 +2,9 @@ import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import fetch from 'node-fetch';
 import { getImageMetadata } from './images/metadataStore.js';
+import { config } from '../env.js';
 
-const DEFAULT_STORAGE_PATH = process.env.IMAGE_STORAGE_PATH || './data/images';
+const DEFAULT_STORAGE_PATH = config.storage.imagePath;
 const MIME_BY_EXT = {
   jpg: 'image/jpeg',
   jpeg: 'image/jpeg',
