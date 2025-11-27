@@ -91,7 +91,6 @@ run_electron() {
 
   # Run the electron app headlessly to check for startup errors
   log_info "Testing electron app startup..."
-  export DISPLAY=:99
   export ELECTRON_ENABLE_LOGGING=1
 
   # Find the unpacked app binary
@@ -107,8 +106,31 @@ run_electron() {
 
   if [ -f "$ELECTRON_APP" ]; then
     log_info "Running electron app: $ELECTRON_APP"
-    # Run the app with a timeout and capture any startup errors
-    timeout 30 "$ELECTRON_APP" --no-sandbox 2>&1 | head -50 || true
+
+    # Check if we have a display available, otherwise use Xvfb
+    if [ -z "${DISPLAY:-}" ]; then
+      # No display available, try to use Xvfb if installed
+      if command -v Xvfb &> /dev/null; then
+        log_info "Starting Xvfb virtual framebuffer..."
+        Xvfb :99 -screen 0 1024x768x24 &
+        XVFB_PID=$!
+        export DISPLAY=:99
+        sleep 1  # Give Xvfb time to start
+
+        # Run the app with a timeout and capture any startup errors
+        timeout 10 "$ELECTRON_APP" --no-sandbox 2>&1 | head -50 || true
+
+        # Clean up Xvfb
+        kill $XVFB_PID 2>/dev/null || true
+      else
+        log_info "No display available and Xvfb not installed, skipping runtime test."
+        log_info "Install xvfb package to enable electron runtime testing in headless environments."
+      fi
+    else
+      # Display is available, run directly
+      timeout 10 "$ELECTRON_APP" --no-sandbox 2>&1 | head -50 || true
+    fi
+
     log_success "Electron app startup test completed."
   else
     log_info "Electron binary not found at expected path, skipping runtime test."
