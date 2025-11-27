@@ -34,6 +34,11 @@ const ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
 const providerHeaders = undefined;
 
 export const config = {
+  // Storage paths
+  storage: {
+    imagePath: process.env.IMAGE_STORAGE_PATH || './data/images',
+    filePath: process.env.FILE_STORAGE_PATH || './data/files',
+  },
   // Provider selection (default to openai for backward-compat)
   provider: 'openai',
   // Backward-compat: legacy OpenAI fields still present (now static defaults)
@@ -61,7 +66,7 @@ export const config = {
   allowedOrigin: process.env.ALLOWED_ORIGIN || 'http://localhost:3000',
   persistence: {
     enabled: bool(process.env.PERSIST_TRANSCRIPTS, true),
-    dbUrl: process.env.DB_URL || '',
+    dbUrl: process.env.DB_URL || 'file:/data/prod.db',
     maxConversationsPerSession: Number(process.env.MAX_CONVERSATIONS_PER_SESSION) || 100,
     maxMessagesPerConversation: Number(process.env.MAX_MESSAGES_PER_CONVERSATION) || 1000,
     historyBatchFlushMs: Number(process.env.HISTORY_BATCH_FLUSH_MS) || 250,

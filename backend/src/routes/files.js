@@ -6,6 +6,7 @@ import { nanoid } from 'nanoid';
 import { authenticateToken } from '../middleware/auth.js';
 import { logger } from '../logger.js';
 import { createFileRecord, getFileRecordForUser } from '../db/files.js';
+import { config } from '../env.js';
 
 const router = express.Router();
 
@@ -14,14 +15,46 @@ const FILE_CONFIG = {
   maxFileSize: 5 * 1024 * 1024, // 5MB
   maxFilesPerMessage: 3,
   allowedExtensions: [
-    'js', 'jsx', 'ts', 'tsx', // JavaScript/TypeScript
-    'py', 'rb', 'java', 'cpp', 'c', 'h', 'cs', 'go', 'rs', 'php', // Other languages
-    'html', 'css', 'scss', 'sass', 'less', // Web
-    'json', 'xml', 'yaml', 'yml', 'toml', 'ini', 'env', // Config
-    'md', 'txt', 'csv', 'log', // Documents
-    'sh', 'bash', 'zsh', 'fish', // Shell scripts
-    'sql', 'graphql', // Query languages
-    'dockerfile', 'makefile', 'gitignore', 'editorconfig' // Build/config files
+    'js',
+    'jsx',
+    'ts',
+    'tsx', // JavaScript/TypeScript
+    'py',
+    'rb',
+    'java',
+    'cpp',
+    'c',
+    'h',
+    'cs',
+    'go',
+    'rs',
+    'php', // Other languages
+    'html',
+    'css',
+    'scss',
+    'sass',
+    'less', // Web
+    'json',
+    'xml',
+    'yaml',
+    'yml',
+    'toml',
+    'ini',
+    'env', // Config
+    'md',
+    'txt',
+    'csv',
+    'log', // Documents
+    'sh',
+    'bash',
+    'zsh',
+    'fish', // Shell scripts
+    'sql',
+    'graphql', // Query languages
+    'dockerfile',
+    'makefile',
+    'gitignore',
+    'editorconfig', // Build/config files
   ],
   allowedMimeTypes: [
     'text/plain',
@@ -37,10 +70,10 @@ const FILE_CONFIG = {
     'text/html',
     'text/css',
     'application/x-yaml',
-    'text/yaml'
+    'text/yaml',
   ],
-  // Allow overriding storage path via env so it can be mounted to a volume
-  localStoragePath: process.env.FILE_STORAGE_PATH || './data/files',
+  // Storage path from centralized config
+  localStoragePath: config.storage.filePath,
   uploadRateLimit: 10, // per minute
   storageLimitPerUser: 50 * 1024 * 1024, // 50MB
 };
