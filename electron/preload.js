@@ -1,3 +1,19 @@
-const { contextBridge } = require('electron');
+const { contextBridge, ipcRenderer } = require("electron");
 
-contextBridge.exposeInMainWorld('__API_BASE_URL__', 'http://localhost:3001/api');
+// Expose a function to get the API base URL from the main process
+contextBridge.exposeInMainWorld("electronAPI", {
+  getApiBaseUrl: () => ipcRenderer.invoke("get-api-base-url"),
+});
+
+// For backwards compatibility, also expose a promise-based getter
+// The frontend will need to await this before making API calls
+let apiBaseUrlPromise = null;
+
+contextBridge.exposeInMainWorld("__API_BASE_URL_PROMISE__", {
+  get: () => {
+    if (!apiBaseUrlPromise) {
+      apiBaseUrlPromise = ipcRenderer.invoke("get-api-base-url");
+    }
+    return apiBaseUrlPromise;
+  },
+});
