@@ -35,6 +35,7 @@ const providerHeaders = undefined;
 
 export const config = {
   // Storage paths
+  // Defaults use relative './data' for local development; Docker overrides to '/data' via env vars
   storage: {
     imagePath: process.env.IMAGE_STORAGE_PATH || './data/images',
     filePath: process.env.FILE_STORAGE_PATH || './data/files',
@@ -66,7 +67,7 @@ export const config = {
   allowedOrigin: process.env.ALLOWED_ORIGIN || 'http://localhost:3000',
   persistence: {
     enabled: bool(process.env.PERSIST_TRANSCRIPTS, true),
-    dbUrl: process.env.DB_URL || 'file:/data/prod.db',
+    dbUrl: process.env.DB_URL || 'file:./data/dev.db',
     maxConversationsPerSession: Number(process.env.MAX_CONVERSATIONS_PER_SESSION) || 100,
     maxMessagesPerConversation: Number(process.env.MAX_MESSAGES_PER_CONVERSATION) || 1000,
     historyBatchFlushMs: Number(process.env.HISTORY_BATCH_FLUSH_MS) || 250,
