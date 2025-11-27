@@ -79,9 +79,10 @@ jobs:
         shell: bash
         run: |
           mkdir -p electron/backend
-          rsync -a --exclude='node_modules' --exclude='__tests__' --exclude='coverage' \
-            --exclude='*.test.js' --exclude='.env*' --exclude='logs' --exclude='data' \
-            backend/ electron/backend/
+          cp -r backend/* electron/backend/
+          rm -rf electron/backend/node_modules electron/backend/__tests__ electron/backend/coverage electron/backend/logs electron/backend/data
+          find electron/backend -name "*.test.js" -delete
+          find electron/backend -name ".env*" -delete
 
       - name: Copy frontend build to electron
         shell: bash
