@@ -7,12 +7,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 // Configuration
-const PORT = 3001;
 const IS_DEV = !app.isPackaged;
 
 // Set environment variables for the backend
-process.env.SKIP_AUTO_START = 'true';
-process.env.PORT = PORT.toString();
+process.env.SKIP_AUTO_START = "true";
 process.env.NODE_ENV = IS_DEV ? 'development' : 'production';
 process.env.DATA_DIR = app.getPath('userData');
 process.env.DB_URL = `file:${path.join(app.getPath('userData'), 'chat.sqlite')}`;
@@ -33,19 +31,23 @@ process.env.UI_DIST_PATH = frontendDistPath;
 
 let mainWindow;
 let server;
+let backendPort; // Will be assigned dynamically
 
 async function startBackend() {
   try {
-    console.log('Starting backend from:', backendPath);
+    console.log("Starting backend from:", backendPath);
     const backend = await import(backendPath);
     if (backend.startServer) {
-      server = backend.startServer(PORT);
-      console.log(`Backend started on port ${PORT}`);
+      // Use port 0 to let the OS assign an available port
+      server = backend.startServer(0);
+      // Get the actual port assigned by the OS
+      backendPort = server.address().port;
+      console.log(`Backend started on dynamic port ${backendPort}`);
     } else {
-      console.error('Backend module does not export startServer');
+      console.error("Backend module does not export startServer");
     }
   } catch (err) {
-    console.error('Failed to start backend:', err);
+    console.error("Failed to start backend:", err);
   }
 }
 
@@ -54,7 +56,7 @@ function createWindow() {
     width: 1280,
     height: 800,
     webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
+      preload: path.join(__dirname, "preload.js"),
       nodeIntegration: false,
       contextIsolation: true,
     },
@@ -65,20 +67,20 @@ function createWindow() {
     // In dev, we assume Next.js is running on 3000
     // Or we can serve the out directory if built
     // For now, let's try to load localhost:3000 if available, else file
-    mainWindow.loadURL('http://localhost:3000').catch(() => {
-      console.log('Next.js dev server not found, loading static build...');
-      const staticPath = path.join(frontendDistPath, 'index.html');
+    mainWindow.loadURL("http://localhost:3000").catch(() => {
+      console.log("Next.js dev server not found, loading static build...");
+      const staticPath = path.join(frontendDistPath, "index.html");
       if (fs.existsSync(staticPath)) {
         mainWindow.loadFile(staticPath);
       }
     });
   } else {
     // In prod, wait for the bundled backend to serve the exported frontend
-    const backendUrl = `http://localhost:${PORT}`;
+    const backendUrl = `http://localhost:${backendPort}`;
     const attemptLoad = (retries = 5) => {
       mainWindow.loadURL(backendUrl).catch((err) => {
         if (retries <= 0) {
-          console.error('Failed to load backend UI, giving up:', err);
+          console.error("Failed to load backend UI, giving up:", err);
           return;
         }
         setTimeout(() => attemptLoad(retries - 1), 500);
@@ -89,15 +91,21 @@ function createWindow() {
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
-    return { action: 'deny' };
+    return { action: "deny" };
   });
 }
 
 app.whenReady().then(async () => {
   await startBackend();
+
+  // Set up IPC handler to provide the backend port to the renderer
+  ipcMain.handle("get-api-base-url", () => {
+    return `http://localhost:${backendPort}/api`;
+  });
+
   createWindow();
 
-  app.on('activate', () => {
+  app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });
 });
