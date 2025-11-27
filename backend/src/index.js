@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
 import { config } from './env.js';
@@ -66,21 +67,28 @@ app.use(exceptionHandler);
 // Serve static files from the React app
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const buildPath = path.join(__dirname, '../public');
+const defaultBuildPath = path.join(__dirname, '../public');
+const customBuildPath = process.env.UI_DIST_PATH ? path.resolve(process.env.UI_DIST_PATH) : null;
+const buildPath = customBuildPath || defaultBuildPath;
 
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(buildPath));
+  if (fs.existsSync(buildPath)) {
+    app.use(express.static(buildPath));
 
-  // The "catchall" handler: for any request that doesn't
-  // match one above, send back React's index.html file.
-  app.get('/{*path}', (req, res) => {
-    res.sendFile(path.join(buildPath, 'index.html'));
-  });
+    // The "catchall" handler: for any request that doesn't
+    // match one above, send back React's index.html file.
+    app.get('/*', (req, res) => {
+      res.sendFile(path.join(buildPath, 'index.html'));
+    });
+  } else {
+    logger.warn({ msg: 'static:not_found', buildPath });
+  }
 }
 
 // Database initialization and retention worker (Sprint 3)
 import { getDb } from './db/client.js';
 import { retentionSweep } from './db/retention.js';
+import { resetDbCache } from './db/client.js';
 
 // Initialize database and run seeders on server startup
 if (config.persistence.enabled && process.env.NODE_ENV !== 'test') {
@@ -91,19 +99,21 @@ if (config.persistence.enabled && process.env.NODE_ENV !== 'test') {
 
     // Set up retention worker
     const intervalMs = 60 * 60 * 1000; // hourly
-    setInterval(() => {
+    const retentionInterval = setInterval(() => {
       try {
         const days = config.persistence.retentionDays;
         const result = retentionSweep({ days });
         if (result.deleted) {
-          logger.info(
-            { msg: 'retention:deleted', deleted: result.deleted, days },
-          );
+          logger.info({ msg: 'retention:deleted', deleted: result.deleted, days });
         }
       } catch (e) {
         logger.error({ msg: 'retention:sweep_error', err: e });
       }
     }, intervalMs);
+    // Allow Node to exit during shutdown even if timer is still active
+    if (typeof retentionInterval.unref === 'function') {
+      retentionInterval.unref();
+    }
     logger.info({
       msg: 'retention:started',
       intervalSec: Math.round(intervalMs / 1000),
@@ -116,8 +126,57 @@ if (config.persistence.enabled && process.env.NODE_ENV !== 'test') {
   logger.info({ msg: 'database:disabled', persistence: false });
 }
 
-if (process.env.NODE_ENV !== 'test') {
-  app.listen(config.port, () => {
+// Start server and keep a reference so we can close it gracefully when auto-starting
+if (process.env.NODE_ENV !== 'test' && !process.env.SKIP_AUTO_START) {
+  const server = app.listen(config.port, () => {
     logger.info({ msg: 'server:listening', port: config.port });
   });
+
+  // Graceful shutdown helper
+  let shuttingDown = false;
+  async function shutdown(signal) {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info({ msg: 'shutdown:initiated', signal });
+
+    // Stop accepting new connections
+    try {
+      if (server && typeof server.close === 'function') {
+        await new Promise((resolve, reject) => {
+          server.close((err) => {
+            if (err) return reject(err);
+            resolve();
+          });
+          // Fallback: forcefully exit after timeout if server doesn't close
+          setTimeout(() => reject(new Error('server:close:timeout')), 20000);
+        });
+        logger.info({ msg: 'shutdown:server_closed' });
+      }
+    } catch (err) {
+      logger.error({ msg: 'shutdown:error_closing_server', err });
+    }
+
+    // Clear/close various resources
+    try {
+      resetDbCache();
+      logger.info({ msg: 'shutdown:db_reset' });
+    } catch (err) {
+      logger.error({ msg: 'shutdown:error_reset_db', err });
+    }
+
+    // Give a short grace for other async cleanup, then exit
+    setTimeout(() => {
+      logger.info({ msg: 'shutdown:exiting' });
+      process.exit(0);
+    }, 100);
+  }
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
+
+export const startServer = (port) => {
+  return app.listen(port || config.port, () => {
+    logger.info({ msg: 'server:listening', port: port || config.port });
+  });
+};

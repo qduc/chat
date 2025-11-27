@@ -5,6 +5,42 @@
 import { getToken, clearTokens, setAuthReady } from './storage';
 import { StreamingNotSupportedError } from './streaming';
 
+// Helper to get API base URL, supporting async Electron IPC
+let cachedApiBaseUrl: string | null = null;
+
+async function getElectronApiBaseUrl(): Promise<string | null> {
+  if (typeof window === 'undefined') return null;
+  const electronAPI = (window as any).__API_BASE_URL_PROMISE__;
+  if (electronAPI && typeof electronAPI.get === 'function') {
+    try {
+      return await electronAPI.get();
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+async function resolveApiBaseUrl(): Promise<string> {
+  if (cachedApiBaseUrl) return cachedApiBaseUrl;
+
+  if (typeof window !== 'undefined') {
+    // First try Electron IPC (async)
+    const electronUrl = await getElectronApiBaseUrl();
+    if (electronUrl) {
+      cachedApiBaseUrl = electronUrl;
+      return electronUrl;
+    }
+    // Fall back to window origin
+    cachedApiBaseUrl = `${window.location.origin}/api`;
+    return cachedApiBaseUrl;
+  }
+
+  // Server-side fallback
+  return process.env.NEXT_PUBLIC_API_BASE || 'http://backend:3001/api';
+}
+
+// Synchronous default for initial construction (will be updated async)
 const DEFAULT_API_BASE =
   typeof window !== 'undefined'
     ? `${window.location.origin}/api`
@@ -53,6 +89,7 @@ export interface QueuedRequest {
 
 class AuthenticatedHttpClient {
   private baseUrl: string;
+  private baseUrlResolved: boolean = false;
   private timeout: number;
   private retries: number;
   private isRefreshing = false;
@@ -63,6 +100,24 @@ class AuthenticatedHttpClient {
     this.baseUrl = options.baseUrl || DEFAULT_API_BASE;
     this.timeout = options.timeout || 30000;
     this.retries = options.retries || 1;
+
+    // Asynchronously resolve the actual base URL (for Electron dynamic port)
+    if (!options.baseUrl && typeof window !== 'undefined') {
+      resolveApiBaseUrl().then((resolvedUrl) => {
+        this.baseUrl = resolvedUrl;
+        this.baseUrlResolved = true;
+      });
+    }
+  }
+
+  /**
+   * Ensure base URL is resolved before making requests
+   */
+  private async ensureBaseUrlResolved(): Promise<void> {
+    if (!this.baseUrlResolved && typeof window !== 'undefined') {
+      this.baseUrl = await resolveApiBaseUrl();
+      this.baseUrlResolved = true;
+    }
   }
 
   /**
@@ -76,6 +131,9 @@ class AuthenticatedHttpClient {
    * Make an HTTP request with automatic 401 handling
    */
   async request<T = any>(url: string, options: RequestOptions = {}): Promise<HttpResponse<T>> {
+    // Ensure we have the correct base URL (important for Electron)
+    await this.ensureBaseUrlResolved();
+
     const fullUrl = url.startsWith('http')
       ? url
       : `${this.baseUrl}${url.startsWith('/') ? url : `/${url}`}`;
