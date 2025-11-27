@@ -1,5 +1,6 @@
 import express from 'express';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import cors from 'cors';
 import { config } from './env.js';
@@ -66,16 +67,22 @@ app.use(exceptionHandler);
 // Serve static files from the React app
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const buildPath = path.join(__dirname, '../public');
+const defaultBuildPath = path.join(__dirname, '../public');
+const customBuildPath = process.env.UI_DIST_PATH ? path.resolve(process.env.UI_DIST_PATH) : null;
+const buildPath = customBuildPath || defaultBuildPath;
 
 if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(buildPath));
+  if (fs.existsSync(buildPath)) {
+    app.use(express.static(buildPath));
 
-  // The "catchall" handler: for any request that doesn't
-  // match one above, send back React's index.html file.
-  app.get('/{*path}', (req, res) => {
-    res.sendFile(path.join(buildPath, 'index.html'));
-  });
+    // The "catchall" handler: for any request that doesn't
+    // match one above, send back React's index.html file.
+    app.get('/*', (req, res) => {
+      res.sendFile(path.join(buildPath, 'index.html'));
+    });
+  } else {
+    logger.warn({ msg: 'static:not_found', buildPath });
+  }
 }
 
 // Database initialization and retention worker (Sprint 3)
@@ -119,8 +126,8 @@ if (config.persistence.enabled && process.env.NODE_ENV !== 'test') {
   logger.info({ msg: 'database:disabled', persistence: false });
 }
 
-if (process.env.NODE_ENV !== 'test') {
-  // Start server and keep a reference so we can close it gracefully
+// Start server and keep a reference so we can close it gracefully when auto-starting
+if (process.env.NODE_ENV !== 'test' && !process.env.SKIP_AUTO_START) {
   const server = app.listen(config.port, () => {
     logger.info({ msg: 'server:listening', port: config.port });
   });
@@ -167,3 +174,9 @@ if (process.env.NODE_ENV !== 'test') {
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
+
+export const startServer = (port) => {
+  return app.listen(port || config.port, () => {
+    logger.info({ msg: 'server:listening', port: port || config.port });
+  });
+};

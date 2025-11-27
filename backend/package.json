@@ -24,7 +24,7 @@
     "express": "^5.1.0",
     "express-rate-limit": "^8.1.0",
     "js-yaml": "^4.1.0",
-    "jsdom": "^27.0.0",
+    "jsdom": "^24.1.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.0.2",
     "nanoid": "^5.1.6",
