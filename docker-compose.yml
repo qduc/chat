@@ -1,39 +1,14 @@
-# ChatForge - Production Deployment
-#
-# Quick Start:
-#   1. Create a .env file with your settings:
-#      echo "JWT_SECRET=change-me" > .env
-#   2. Start the stack:
-#      ./prod.sh up -d
-#
-# Optional environment variables (add to .env file):
-#   JWT_SECRET=your-secret-here           # Auto-generated if not set
-#   PORT=3000                             # External port (defaults to 3000)
-#
-# For more options, see: https://github.com/qduc/chat/blob/main/docs/ENVIRONMENT_VARIABLES.md
-
 services:
   app:
-    build:
-      context: .
-      target: runner
-    image: qduc/chatforge:latest
+    # Uncomment this to build from local Dockerfile
+    # build:
+    #   context: .
+    #   target: runner
+    image: qduc/chat:latest
     environment:
-      # Security: JWT secret (auto-generated if not provided)
-      - JWT_SECRET=${JWT_SECRET:-}
-
-      # Internal configuration
-      - PERSIST_TRANSCRIPTS=1
-      - IMAGE_STORAGE_PATH=/data/images
-      - FILE_STORAGE_PATH=/data/files
-      - DB_URL=file:/data/prod.db
-      - NODE_ENV=production
-      - PORT=3000
-      - ALLOWED_ORIGIN=*
-
-      # Rate limiting (optional)
-      - RATE_LIMIT_WINDOW_SEC=${RATE_LIMIT_WINDOW_SEC:-60}
-      - RATE_LIMIT_MAX=${RATE_LIMIT_MAX:-100}
+    - IMAGE_STORAGE_PATH=/data/images
+    - FILE_STORAGE_PATH=/data/files
+    - DB_URL=file:/data/prod.db
     volumes:
       - chatforge_data:/data
       - chatforge_logs:/app/logs
