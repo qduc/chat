@@ -1,5 +1,9 @@
 {
   "name": "chat-electron",
+  "author": {
+    "name": "Duc Nguyen",
+    "email": "chatforge@qduc.me"
+  },
   "version": "1.0.0",
   "main": "main.js",
   "type": "module",
@@ -41,6 +45,7 @@
   "build": {
     "appId": "com.chatforge.app",
     "productName": "ChatForge",
+    "icon": "assets/icon.png",
     "directories": {
       "output": "dist"
     },
