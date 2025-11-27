@@ -17,8 +17,8 @@ FROM ${NODE_IMAGE} AS backend-builder
 WORKDIR /app/backend
 
 # Install build dependencies for native modules
-RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=/var/lib/apt \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
     rm -f /etc/apt/apt.conf.d/docker-clean && \
     apt-get update && apt-get install -y python3 make g++
 
@@ -37,8 +37,8 @@ FROM ${NODE_IMAGE} AS runner
 WORKDIR /app
 
 # Install runtime dependencies (gosu is Debian equivalent of su-exec)
-RUN --mount=type=cache,target=/var/cache/apt \
-    --mount=type=cache,target=/var/lib/apt \
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
     rm -f /etc/apt/apt.conf.d/docker-clean && \
     apt-get update && apt-get install -y gosu libsqlite3-0
 
