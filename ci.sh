@@ -59,7 +59,11 @@ run_electron() {
 
   # Copy backend to electron directory for packaging
   log_info "Copying backend to electron directory..."
-  cp -r "$ROOT/backend" "$ROOT/electron/backend"
+  mkdir -p "$ROOT/electron/backend"
+  # Copy only source files, excluding node_modules, tests, and development artifacts
+  rsync -a --exclude='node_modules' --exclude='__tests__' --exclude='coverage' \
+    --exclude='*.test.js' --exclude='.env*' --exclude='logs' \
+    "$ROOT/backend/" "$ROOT/electron/backend/"
 
   # Copy frontend build output to electron directory for packaging
   log_info "Copying frontend build to electron directory..."
@@ -104,7 +108,7 @@ run_electron() {
   if [ -f "$ELECTRON_APP" ]; then
     log_info "Running electron app: $ELECTRON_APP"
     # Run the app with a timeout and capture any startup errors
-    timeout 10 "$ELECTRON_APP" --no-sandbox 2>&1 | head -50 || true
+    timeout 30 "$ELECTRON_APP" --no-sandbox 2>&1 | head -50 || true
     log_success "Electron app startup test completed."
   else
     log_info "Electron binary not found at expected path, skipping runtime test."
