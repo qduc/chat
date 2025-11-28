@@ -2,6 +2,8 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import Database from 'better-sqlite3';
+import { migrate } from '@blackglory/better-sqlite3-migrations';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,6 +38,31 @@ let backendPort; // Will be assigned dynamically
 async function startBackend() {
   try {
     console.log("Starting backend from:", backendPath);
+
+    // Inject Database constructor to ensure we use the one built for Electron
+    const clientPath = path.join(path.dirname(backendPath), 'db/client.js');
+    try {
+      const dbClient = await import(clientPath);
+      if (dbClient.setDatabaseConstructor) {
+        dbClient.setDatabaseConstructor(Database);
+        console.log("Injected better-sqlite3 into backend");
+      }
+    } catch (e) {
+      console.error("Failed to inject better-sqlite3:", e);
+    }
+
+    // Inject migrate function
+    const migrationsPath = path.join(path.dirname(backendPath), 'db/migrations.js');
+    try {
+      const migrationsMod = await import(migrationsPath);
+      if (migrationsMod.setMigrate) {
+        migrationsMod.setMigrate(migrate);
+        console.log("Injected migrate into backend");
+      }
+    } catch (e) {
+      console.error("Failed to inject migrate:", e);
+    }
+
     const backend = await import(backendPath);
     if (backend.startServer) {
       // Use port 0 to let the OS assign an available port

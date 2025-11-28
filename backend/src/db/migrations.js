@@ -1,4 +1,21 @@
-import { migrate } from '@blackglory/better-sqlite3-migrations';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+
+let migrate;
+
+export function setMigrate(fn) {
+  migrate = fn;
+}
+
+function getMigrate() {
+  if (migrate) return migrate;
+  try {
+    const mod = require('@blackglory/better-sqlite3-migrations');
+    return mod.migrate;
+  } catch (err) {
+    throw new Error(`Failed to load @blackglory/better-sqlite3-migrations: ${err.message}`);
+  }
+}
 import { readdir } from 'fs/promises';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -36,7 +53,8 @@ const migrations = await loadMigrations();
 
 export function runMigrations(db) {
   try {
-    migrate(db, migrations);
+    const doMigrate = getMigrate();
+    doMigrate(db, migrations);
     if (process.env.NODE_ENV !== 'test') {
       logger.info('[db] Migrations completed successfully');
     }
