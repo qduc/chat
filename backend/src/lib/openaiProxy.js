@@ -234,15 +234,54 @@ function handleValidationError(res, validation) {
   return res.status(validation.status).json(validation.payload);
 }
 
+/**
+ * Extract a human-readable error message from various upstream response formats.
+ * Handles OpenAI, Anthropic, Gemini, and other provider error structures.
+ */
+function extractUpstreamMessage(body) {
+  if (typeof body === 'string') {
+    return body;
+  }
+  if (!body || typeof body !== 'object') {
+    return undefined;
+  }
+
+  // Direct message field (OpenAI style)
+  if (typeof body.message === 'string') {
+    return body.message;
+  }
+
+  // Direct error string
+  if (typeof body.error === 'string') {
+    return body.error;
+  }
+
+  // Nested error object with message (Anthropic/OpenAI style)
+  if (body.error && typeof body.error === 'object' && typeof body.error.message === 'string') {
+    return body.error.message;
+  }
+
+  // Array of errors (Gemini style: [{error: {message: "..."}}])
+  if (Array.isArray(body) && body.length > 0) {
+    const first = body[0];
+    if (first && typeof first === 'object') {
+      if (typeof first.message === 'string') {
+        return first.message;
+      }
+      if (first.error && typeof first.error === 'object' && typeof first.error.message === 'string') {
+        return first.error.message;
+      }
+    }
+  }
+
+  return undefined;
+}
+
 async function handleUpstreamError(upstream, persistence) {
   const upstreamBody = await readUpstreamError(upstream);
   if (persistence.persist) persistence.markError();
 
-  const upstreamMessage = typeof upstreamBody === 'string'
-    ? upstreamBody
-    : (typeof upstreamBody?.message === 'string'
-      ? upstreamBody.message
-      : (typeof upstreamBody?.error === 'string' ? upstreamBody.error : undefined));
+  const upstreamMessage = extractUpstreamMessage(upstreamBody);
 
   logger.warn({
     msg: 'upstream_error_response',
@@ -250,9 +289,12 @@ async function handleUpstreamError(upstream, persistence) {
     upstreamMessage,
   });
 
+  // Use the extracted upstream message as the primary message if available
+  const displayMessage = upstreamMessage || 'Upstream provider returned an error response.';
+
   const payload = {
     error: 'upstream_error',
-    message: 'Upstream provider returned an error response.',
+    message: displayMessage,
     upstream: {
       status: upstream.status,
       ...(upstreamMessage ? { message: upstreamMessage } : {}),
