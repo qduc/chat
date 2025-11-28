@@ -64,25 +64,23 @@ import { exceptionHandler } from './middleware/exceptionHandler.js';
 
 app.use(exceptionHandler);
 
-// Serve static files from the React app
+// Serve static files for the UI (Next.js export or bundled frontend)
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const defaultBuildPath = path.join(__dirname, '../public');
 const customBuildPath = process.env.UI_DIST_PATH ? path.resolve(process.env.UI_DIST_PATH) : null;
 const buildPath = customBuildPath || defaultBuildPath;
 
-if (process.env.NODE_ENV === 'production') {
-  if (fs.existsSync(buildPath)) {
-    app.use(express.static(buildPath));
+if (fs.existsSync(buildPath)) {
+  app.use(express.static(buildPath));
 
-    // The "catchall" handler: for any request that doesn't
-    // match one above, send back React's index.html file.
-    app.get('/*', (req, res) => {
-      res.sendFile(path.join(buildPath, 'index.html'));
-    });
-  } else {
-    logger.warn({ msg: 'static:not_found', buildPath });
-  }
+  // The "catchall" handler: for any request that doesn't
+  // match one above, send back React/Next's index.html file.
+  app.get('/*', (req, res) => {
+    res.sendFile(path.join(buildPath, 'index.html'));
+  });
+} else {
+  logger.warn({ msg: 'static:not_found', buildPath });
 }
 
 // Database initialization and retention worker (Sprint 3)
