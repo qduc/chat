@@ -63,8 +63,24 @@ export class OpenAIProvider extends BaseProvider {
     return {
       getDefaultModel: () => this.getDefaultModel(),
       supportsReasoningControls: (model) => this.supportsReasoningControls(model),
+      reasoningFormat: this.getReasoningFormat(),
       ...context,
     };
+  }
+
+  /**
+   * Returns the reasoning format this provider expects.
+   * Override in subclasses if the provider uses a different format.
+   * @returns {'nested'|'flat'|'none'} The reasoning format
+   */
+  getReasoningFormat() {
+    const baseUrl = (this.baseUrl || '').toLowerCase();
+    // OpenRouter and OpenAI use nested format: reasoning: { effort: value }
+    if (baseUrl.includes('openrouter.ai') || baseUrl.includes('openai.com')) {
+      return 'nested';
+    }
+    // Other OpenAI-compatible providers use flat format: reasoning_effort: value
+    return 'flat';
   }
 
   shouldUseResponsesAPI() {

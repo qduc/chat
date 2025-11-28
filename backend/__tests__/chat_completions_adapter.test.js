@@ -101,6 +101,74 @@ describe('ChatCompletionsAdapter', () => {
       expect(result.reasoning).toEqual({ effort: 'medium' });
       expect(result.verbosity).toBe('high');
     });
+
+    test('uses nested reasoning format by default', async () => {
+      const adapter = createAdapter();
+      const result = await adapter.translateRequest({
+        messages: [{ role: 'user', content: 'hi' }],
+        reasoning_effort: 'high',
+      });
+
+      expect(result.reasoning).toEqual({ effort: 'high' });
+      expect(result.reasoning_effort).toBeUndefined();
+    });
+
+    test('uses flat reasoning format when configured', async () => {
+      const adapter = createAdapter({ reasoningFormat: 'flat' });
+      const result = await adapter.translateRequest({
+        messages: [{ role: 'user', content: 'hi' }],
+        reasoning_effort: 'low',
+      });
+
+      expect(result.reasoning_effort).toBe('low');
+      expect(result.reasoning).toBeUndefined();
+    });
+
+    test('omits reasoning fields when format is none', async () => {
+      const adapter = createAdapter({ reasoningFormat: 'none' });
+      const result = await adapter.translateRequest({
+        messages: [{ role: 'user', content: 'hi' }],
+        reasoning_effort: 'medium',
+      });
+
+      expect(result.reasoning).toBeUndefined();
+      expect(result.reasoning_effort).toBeUndefined();
+    });
+
+    test('context reasoningFormat overrides adapter default', async () => {
+      const adapter = createAdapter({ reasoningFormat: 'nested' });
+      const result = await adapter.translateRequest(
+        {
+          messages: [{ role: 'user', content: 'hi' }],
+          reasoning_effort: 'high',
+        },
+        { reasoningFormat: 'flat' }
+      );
+
+      expect(result.reasoning_effort).toBe('high');
+      expect(result.reasoning).toBeUndefined();
+    });
+
+    test('accepts nested reasoning object from input', async () => {
+      const adapter = createAdapter();
+      const result = await adapter.translateRequest({
+        messages: [{ role: 'user', content: 'hi' }],
+        reasoning: { effort: 'medium' },
+      });
+
+      expect(result.reasoning).toEqual({ effort: 'medium' });
+    });
+
+    test('prefers reasoning_effort over reasoning.effort when both provided', async () => {
+      const adapter = createAdapter();
+      const result = await adapter.translateRequest({
+        messages: [{ role: 'user', content: 'hi' }],
+        reasoning_effort: 'high',
+        reasoning: { effort: 'low' },
+      });
+
+      expect(result.reasoning).toEqual({ effort: 'high' });
+    });
   });
 
   describe('translateResponse', () => {

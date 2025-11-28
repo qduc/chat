@@ -147,6 +147,18 @@ export class BaseProvider {
     return false;
   }
 
+  /**
+   * Returns the reasoning format this provider expects.
+   * @returns {'nested'|'flat'|'none'} The reasoning format:
+   *   - 'nested': Use `reasoning: { effort: value }` (OpenAI o1/o3 style)
+   *   - 'flat': Use `reasoning_effort: value` as top-level field
+   *   - 'none': Don't include reasoning fields (provider doesn't support it)
+   */
+  getReasoningFormat() {
+    // Default to 'none' - subclasses should override if they support reasoning
+    return 'none';
+  }
+
   supportsPromptCaching() {
     // TODO: report whether the provider supports prompt caching.
     return false;
@@ -155,8 +167,8 @@ export class BaseProvider {
   needsStreamingTranslation() {
     throw new Error(
       `${this.constructor.name} must implement needsStreamingTranslation(). ` +
-      `Return true if this provider's API format differs from OpenAI format; ` +
-      `return false only if the provider uses OpenAI-compatible format.`
+        `Return true if this provider's API format differs from OpenAI format; ` +
+        `return false only if the provider uses OpenAI-compatible format.`
     );
   }
 
