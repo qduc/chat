@@ -2,6 +2,8 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import Database from 'better-sqlite3';
+import { migrate } from '@blackglory/better-sqlite3-migrations';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -36,6 +38,31 @@ let backendPort; // Will be assigned dynamically
 async function startBackend() {
   try {
     console.log("Starting backend from:", backendPath);
+
+    // Inject Database constructor to ensure we use the one built for Electron
+    const clientPath = path.join(path.dirname(backendPath), 'db/client.js');
+    try {
+      const dbClient = await import(clientPath);
+      if (dbClient.setDatabaseConstructor) {
+        dbClient.setDatabaseConstructor(Database);
+        console.log("Injected better-sqlite3 into backend");
+      }
+    } catch (e) {
+      console.error("Failed to inject better-sqlite3:", e);
+    }
+
+    // Inject migrate function
+    const migrationsPath = path.join(path.dirname(backendPath), 'db/migrations.js');
+    try {
+      const migrationsMod = await import(migrationsPath);
+      if (migrationsMod.setMigrate) {
+        migrationsMod.setMigrate(migrate);
+        console.log("Injected migrate into backend");
+      }
+    } catch (e) {
+      console.error("Failed to inject migrate:", e);
+    }
+
     const backend = await import(backendPath);
     if (backend.startServer) {
       // Use port 0 to let the OS assign an available port
@@ -63,32 +90,30 @@ function createWindow() {
     },
   });
 
-  // Frontend path
-  if (IS_DEV) {
-    // In dev, we assume Next.js is running on 3000
-    // Or we can serve the out directory if built
-    // For now, let's try to load localhost:3000 if available, else file
-    mainWindow.loadURL("http://localhost:3000").catch(() => {
-      console.log("Next.js dev server not found, loading static build...");
-      const staticPath = path.join(frontendDistPath, "index.html");
-      if (fs.existsSync(staticPath)) {
-        mainWindow.loadFile(staticPath);
+  // In both dev and prod, load the UI from the backend server
+  // The backend serves the exported Next.js frontend from UI_DIST_PATH
+  const loadFromBackend = (retries = 10) => {
+    if (!backendPort) {
+      if (retries <= 0) {
+        console.error("Backend port is not available, cannot load UI");
+        return;
       }
-    });
-  } else {
-    // In prod, wait for the bundled backend to serve the exported frontend
+      // Backend may not have finished starting yet
+      setTimeout(() => loadFromBackend(retries - 1), 300);
+      return;
+    }
+
     const backendUrl = `http://localhost:${backendPort}`;
-    const attemptLoad = (retries = 5) => {
-      mainWindow.loadURL(backendUrl).catch((err) => {
-        if (retries <= 0) {
-          console.error("Failed to load backend UI, giving up:", err);
-          return;
-        }
-        setTimeout(() => attemptLoad(retries - 1), 500);
-      });
-    };
-    attemptLoad();
-  }
+    mainWindow.loadURL(backendUrl).catch((err) => {
+      if (retries <= 0) {
+        console.error("Failed to load backend UI, giving up:", err);
+        return;
+      }
+      setTimeout(() => loadFromBackend(retries - 1), 500);
+    });
+  };
+
+  loadFromBackend();
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);

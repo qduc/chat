@@ -1,4 +1,21 @@
-import Database from 'better-sqlite3';
+import { createRequire } from 'module';
+const require = createRequire(import.meta.url);
+
+let Database;
+
+export function setDatabaseConstructor(ctor) {
+  Database = ctor;
+}
+
+function getDatabaseConstructor() {
+  if (Database) return Database;
+  try {
+    Database = require('better-sqlite3');
+    return Database;
+  } catch (err) {
+    throw new Error(`Failed to load better-sqlite3: ${err.message}. If running in Electron, ensure setDatabaseConstructor is called.`);
+  }
+}
 import fs from 'fs';
 import path from 'path';
 import { config } from '../env.js';
@@ -68,7 +85,8 @@ function createFreshSnapshot() {
     try { fs.unlinkSync(snapPath); } catch {}
   }
   ensureDir(snapPath);
-  const snapshotDb = new Database(snapPath);
+  const DatabaseCtor = getDatabaseConstructor();
+  const snapshotDb = new DatabaseCtor(snapPath);
   configurePragmas(snapshotDb);
   applyMigrations(snapshotDb);
   runSeeders(snapshotDb);
@@ -88,7 +106,8 @@ function openEphemeralFromSnapshot() {
   const uniqueName = `test-db-${process.pid}-${Date.now()}-${++ephemeralCounter}.sqlite`;
   const testPath = path.join(dir, uniqueName);
   fs.copyFileSync(getSnapshotPath(), testPath);
-  const database = new Database(testPath);
+  const DatabaseCtor = getDatabaseConstructor();
+  const database = new DatabaseCtor(testPath);
   configurePragmas(database);
   currentDbPath = testPath;
   currentDbIsEphemeral = true;
@@ -130,14 +149,16 @@ export function getDb() {
         }
         currentDbPath = filePath;
         currentDbIsEphemeral = false; // user-provided path; don't auto-delete
-        db = new Database(filePath);
+        const DatabaseCtor = getDatabaseConstructor();
+        db = new DatabaseCtor(filePath);
         configurePragmas(db);
       }
     } else {
       // Normal path (development/production)
       const filePath = url.replace(/^file:/, '');
       ensureDir(filePath);
-      db = new Database(filePath);
+      const DatabaseCtor = getDatabaseConstructor();
+      db = new DatabaseCtor(filePath);
       configurePragmas(db);
       applyMigrations(db);
       runSeeders(db);

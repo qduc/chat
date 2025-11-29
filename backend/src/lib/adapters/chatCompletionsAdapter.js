@@ -15,6 +15,7 @@ const OPENAI_ALLOWED_REQUEST_KEYS = new Set([
   'parallel_tool_calls',
   'presence_penalty',
   'prediction',
+  'reasoning',
   'reasoning_effort',
   'response_format',
   'seed',
@@ -176,10 +177,20 @@ function omitReservedKeys(payload) {
 }
 
 export class ChatCompletionsAdapter extends BaseAdapter {
+  /**
+   * @param {object} options
+   * @param {function} [options.supportsReasoningControls] - Function to check if model supports reasoning
+   * @param {function} [options.getDefaultModel] - Function to get default model
+   * @param {'nested'|'flat'|'none'} [options.reasoningFormat='nested'] - Format for reasoning controls:
+   *   - 'nested': Use `reasoning: { effort: value }` (OpenAI o1/o3 style)
+   *   - 'flat': Use `reasoning_effort: value` as top-level field
+   *   - 'none': Don't include reasoning fields (for providers that don't support it)
+   */
   constructor(options = {}) {
     super(options);
     this.supportsReasoningControls = options.supportsReasoningControls || ((_model) => false);
     this.getDefaultModel = options.getDefaultModel || (() => undefined);
+    this.reasoningFormat = options.reasoningFormat || 'nested';
   }
 
   async translateRequest(internalRequest = {}, context = {}) {
@@ -217,14 +228,25 @@ export class ChatCompletionsAdapter extends BaseAdapter {
       if (key === 'messages' || key === 'model' || key === 'tools' || key === 'tool_choice' || key === 'stream')
         continue;
       if (key === 'reasoning_effort') continue; // handled separately below
+      if (key === 'reasoning') continue; // handled separately below
       if (OPENAI_ALLOWED_REQUEST_KEYS.has(key)) {
         normalized[key] = value;
       }
     }
 
-    // Handle reasoning_effort -> reasoning object conversion
-    if (payload.reasoning_effort !== undefined) {
-      normalized.reasoning = { effort: payload.reasoning_effort };
+    // Handle reasoning_effort based on configured format
+    // Accept either reasoning_effort (flat) or reasoning.effort (nested) from input
+    const reasoningEffort = payload.reasoning_effort ?? payload.reasoning?.effort;
+    if (reasoningEffort !== undefined) {
+      const format = context.reasoningFormat || this.reasoningFormat;
+      if (format === 'nested') {
+        // OpenAI o1/o3 style: reasoning: { effort: value }
+        normalized.reasoning = { effort: reasoningEffort };
+      } else if (format === 'flat') {
+        // Some providers expect top-level reasoning_effort
+        normalized.reasoning_effort = reasoningEffort;
+      }
+      // format === 'none': Don't include reasoning fields
     }
 
     return normalized;

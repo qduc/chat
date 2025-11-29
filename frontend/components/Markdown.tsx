@@ -6,7 +6,7 @@ import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { useTheme } from '../contexts/ThemeContext';
-import { ClipboardCheck, Clipboard } from 'lucide-react';
+import { ClipboardCheck, Clipboard, ChevronDown, ChevronUp, WrapText } from 'lucide-react';
 
 interface MarkdownProps {
   text: string;
@@ -285,8 +285,9 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
         remarkPlugins={[remarkGfm, remarkMath]}
         rehypePlugins={rehypePlugins}
         components={{
-          a: ({ href, children }) => (
+          a: ({ href, children, ...props }) => (
             <a
+              {...props}
               href={href}
               target="_blank"
               rel="noopener noreferrer"
@@ -300,6 +301,8 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
             const preRef = React.useRef<HTMLPreElement | null>(null);
             const codeRef = React.useRef<HTMLDivElement | null>(null);
             const [copied, setCopied] = React.useState(false);
+            const [isCollapsed, setIsCollapsed] = React.useState(false);
+            const [isWrapped, setIsWrapped] = React.useState(false);
 
             const onCopy = async () => {
               try {
@@ -335,6 +338,13 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
             const codeClassName = childEl?.props?.className || '';
             const languageMatch = codeClassName.match(/language-(\w+)/);
             const language = languageMatch ? languageMatch[1] : null;
+            const wrappedChild = React.isValidElement(childEl)
+              ? React.cloneElement(childEl as React.ReactElement<any>, {
+                  className: `${codeClassName} ${
+                    isWrapped ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'
+                  }`.trim(),
+                })
+              : childEl;
 
             return (
               <pre
@@ -346,27 +356,71 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
                   {language && (
                     <span className="text-xs text-slate-500 dark:text-slate-500">{language}</span>
                   )}
-                  <button
-                    type="button"
-                    aria-label={copied ? 'Copied' : 'Copy code'}
-                    onClick={onCopy}
-                    className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-slate-500 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100/50 dark:hover:bg-neutral-800/50 transition-colors ml-auto"
-                  >
-                    {copied ? (
-                      <ClipboardCheck className="h-3.5 w-3.5" />
-                    ) : (
-                      <Clipboard className="h-3.5 w-3.5" />
-                    )}
-                    <span className="sr-only">{copied ? 'Copied' : 'Copy'}</span>
-                  </button>
+                  <div className="flex items-center gap-1 ml-auto">
+                    <button
+                      type="button"
+                      aria-label={isWrapped ? 'Disable word wrap' : 'Enable word wrap'}
+                      aria-pressed={isWrapped}
+                      onClick={() => setIsWrapped((prev) => !prev)}
+                      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs transition-colors ${
+                        isWrapped
+                          ? 'text-slate-700 dark:text-slate-200 bg-slate-200/70 dark:bg-neutral-800/70'
+                          : 'text-slate-500 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100/50 dark:hover:bg-neutral-800/50'
+                      }`}
+                    >
+                      <WrapText className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={copied ? 'Copied' : 'Copy code'}
+                      onClick={onCopy}
+                      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-slate-500 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100/50 dark:hover:bg-neutral-800/50 transition-colors"
+                    >
+                      {copied ? (
+                        <ClipboardCheck className="h-3.5 w-3.5" />
+                      ) : (
+                        <Clipboard className="h-3.5 w-3.5" />
+                      )}
+                      <span className="sr-only">{copied ? 'Copied' : 'Copy'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={isCollapsed ? 'Expand code block' : 'Collapse code block'}
+                      aria-expanded={!isCollapsed}
+                      onClick={() => setIsCollapsed((prev) => !prev)}
+                      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-slate-500 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100/50 dark:hover:bg-neutral-800/50 transition-colors"
+                    >
+                      {isCollapsed ? (
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      ) : (
+                        <ChevronUp className="h-3.5 w-3.5" />
+                      )}
+                      <span className="sr-only">
+                        {isCollapsed ? 'Expand code block' : 'Collapse code block'}
+                      </span>
+                    </button>
+                  </div>
                 </div>
 
                 {/* padded, scrollable code area */}
                 <div
                   ref={codeRef}
-                  className="p-3 overflow-auto text-sm font-mono text-slate-700 dark:text-slate-300 leading-snug"
+                  className={`p-3 overflow-auto text-sm font-mono text-slate-700 dark:text-slate-300 leading-snug transition-all duration-200 ease-in-out ${
+                    isCollapsed ? 'pointer-events-none select-none' : ''
+                  } ${isWrapped ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'}`}
+                  style={
+                    isCollapsed
+                      ? {
+                          maxHeight: 0,
+                          paddingTop: 0,
+                          paddingBottom: 0,
+                          opacity: 0,
+                        }
+                      : undefined
+                  }
+                  aria-hidden={isCollapsed}
                 >
-                  {children}
+                  {wrappedChild}
                 </div>
               </pre>
             );
