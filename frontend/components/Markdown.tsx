@@ -6,7 +6,7 @@ import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { useTheme } from '../contexts/ThemeContext';
-import { ClipboardCheck, Clipboard, ChevronDown, ChevronUp } from 'lucide-react';
+import { ClipboardCheck, Clipboard, ChevronDown, ChevronUp, WrapText } from 'lucide-react';
 
 interface MarkdownProps {
   text: string;
@@ -368,7 +368,20 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
                           : 'text-slate-500 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100/50 dark:hover:bg-neutral-800/50'
                       }`}
                     >
-                      Wrap
+                      <WrapText className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={copied ? 'Copied' : 'Copy code'}
+                      onClick={onCopy}
+                      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-slate-500 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100/50 dark:hover:bg-neutral-800/50 transition-colors"
+                    >
+                      {copied ? (
+                        <ClipboardCheck className="h-3.5 w-3.5" />
+                      ) : (
+                        <Clipboard className="h-3.5 w-3.5" />
+                      )}
+                      <span className="sr-only">{copied ? 'Copied' : 'Copy'}</span>
                     </button>
                     <button
                       type="button"
@@ -385,19 +398,6 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
                       <span className="sr-only">
                         {isCollapsed ? 'Expand code block' : 'Collapse code block'}
                       </span>
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={copied ? 'Copied' : 'Copy code'}
-                      onClick={onCopy}
-                      className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-slate-500 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100/50 dark:hover:bg-neutral-800/50 transition-colors"
-                    >
-                      {copied ? (
-                        <ClipboardCheck className="h-3.5 w-3.5" />
-                      ) : (
-                        <Clipboard className="h-3.5 w-3.5" />
-                      )}
-                      <span className="sr-only">{copied ? 'Copied' : 'Copy'}</span>
                     </button>
                   </div>
                 </div>
