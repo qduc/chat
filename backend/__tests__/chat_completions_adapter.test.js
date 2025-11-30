@@ -169,6 +169,40 @@ describe('ChatCompletionsAdapter', () => {
 
       expect(result.reasoning).toEqual({ effort: 'high' });
     });
+
+    test('preserves reasoning_details on assistant tool call messages', async () => {
+      const adapter = createAdapter();
+      const reasoningDetails = [
+        {
+          type: 'reasoning.encrypted',
+          id: 'tool_call_1',
+          data: 'encrypted-payload',
+          format: 'google-gemini-v1',
+          index: 0,
+        },
+      ];
+
+      const result = await adapter.translateRequest({
+        messages: [
+          { role: 'user', content: 'hi' },
+          {
+            role: 'assistant',
+            content: null,
+            tool_calls: [
+              {
+                type: 'function',
+                function: { name: 'web_fetch', arguments: '{}' },
+                id: 'tool_call_1',
+              },
+            ],
+            reasoning_details: reasoningDetails,
+          },
+        ],
+        tools: [{ type: 'function', function: { name: 'web_fetch' } }],
+      });
+
+      expect(result.messages[1].reasoning_details).toEqual(reasoningDetails);
+    });
   });
 
   describe('translateResponse', () => {

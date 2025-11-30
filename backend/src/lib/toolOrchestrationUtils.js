@@ -59,6 +59,12 @@ function normalizeStoredMessage(message) {
     normalized.tool_outputs = message.tool_outputs;
   }
 
+  // Preserve reasoning_details for OpenRouter reasoning token continuity
+  // See: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens#preserving-reasoning-blocks
+  if (Array.isArray(message.reasoning_details) && message.reasoning_details.length > 0) {
+    normalized.reasoning_details = message.reasoning_details;
+  }
+
   if (message.tool_call_id) {
     normalized.tool_call_id = message.tool_call_id;
   }

@@ -134,6 +134,17 @@ async function normalizeMessage(message) {
     }
   }
 
+  if (Array.isArray(message.reasoning_details) && message.reasoning_details.length > 0) {
+    const cloneDetail = (detail) => {
+      if (!detail || typeof detail !== 'object') return null;
+      return { ...detail };
+    };
+    const normalizedReasoning = message.reasoning_details.map(cloneDetail).filter(Boolean);
+    if (normalizedReasoning.length > 0) {
+      normalized.reasoning_details = normalizedReasoning;
+    }
+  }
+
   if (message.function_call && typeof message.function_call === 'object') {
     const fn = message.function_call;
     const normalizedFn = {};
