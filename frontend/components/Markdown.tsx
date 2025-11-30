@@ -489,9 +489,7 @@ const MarkdownComponents: any = {
       );
     }
 
-    return (
-      <code className={`${className} bg-slate-50 dark:bg-neutral-900/50`}>{children}</code>
-    );
+    return <code className={`${className} bg-slate-50 dark:bg-neutral-900/50`}>{children}</code>;
   },
   hr: () => <hr className="my-4 border-slate-200 dark:border-neutral-800" />,
   p: ({ children }: any) => (
@@ -503,14 +501,10 @@ const MarkdownComponents: any = {
     </h1>
   ),
   h2: ({ children }: any) => (
-    <h2 className="md-h2 text-xl font-semibold leading-snug mt-5 mb-3 first:mt-0">
-      {children}
-    </h2>
+    <h2 className="md-h2 text-xl font-semibold leading-snug mt-5 mb-3 first:mt-0">{children}</h2>
   ),
   h3: ({ children }: any) => (
-    <h3 className="md-h3 text-lg font-medium leading-normal mt-4 mb-2 first:mt-0">
-      {children}
-    </h3>
+    <h3 className="md-h3 text-lg font-medium leading-normal mt-4 mb-2 first:mt-0">{children}</h3>
   ),
   ul: ({ children }: any) => <ul className="list-disc ml-6 space-y-2 mb-4">{children}</ul>,
   ol: ({ children }: any) => <ol className="list-decimal ml-6 space-y-2 mb-4">{children}</ol>,
@@ -540,7 +534,13 @@ const MarkdownComponents: any = {
 };
 
 const MemoizedMarkdownBlock = React.memo(
-  ({ content, isStreaming }: { content: string; isStreaming: boolean }) => {
+  function MemoizedMarkdownBlock({
+    content,
+    isStreaming,
+  }: {
+    content: string;
+    isStreaming: boolean;
+  }) {
     // Defer syntax highlighting until streaming completes for this block
     const [shouldHighlight, setShouldHighlight] = useState(!isStreaming);
 
@@ -695,6 +695,6 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
     </div>
   );
 };
-
+MemoizedMarkdownBlock.displayName = 'MemoizedMarkdownBlock';
 
 export default Markdown;
