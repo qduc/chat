@@ -223,11 +223,17 @@ export async function handleToolsStreaming({
           // Handle tool_calls
           if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
             // Add tool calls to conversation for next iteration
-            conversationHistory.push({
+            // Include reasoning_details for OpenRouter reasoning token continuity
+            // See: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens#preserving-reasoning-blocks
+            const assistantMessage = {
               role: 'assistant',
               content: sanitizeContent(message.content),
               tool_calls: message.tool_calls,
-            });
+            };
+            if (Array.isArray(message.reasoning_details) && message.reasoning_details.length > 0) {
+              assistantMessage.reasoning_details = message.reasoning_details;
+            }
+            conversationHistory.push(assistantMessage);
 
             // Execute each tool call and add results to conversation
             for (const toolCall of message.tool_calls) {
@@ -301,6 +307,7 @@ export async function handleToolsStreaming({
       let gotAnyNonToolDelta = false;
       let responseId = null; // Capture response_id for persistence
       let accumulatedContent = ''; // Accumulate assistant content for conversation history
+      let accumulatedReasoningDetails = []; // Accumulate reasoning_details for tool call continuity
 
       await new Promise((resolve, reject) => {
         // Add timeout to prevent hanging
@@ -331,12 +338,34 @@ export async function handleToolsStreaming({
                 const message = choice?.message;
 
                 // Capture reasoning_details from delta or message
+                // Accumulate for tool call continuity per OpenRouter best practices
+                // See: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens#preserving-reasoning-blocks
                 if (Array.isArray(delta.reasoning_details) && delta.reasoning_details.length > 0) {
+                  // Merge reasoning_details by index, appending new entries
+                  for (const rd of delta.reasoning_details) {
+                    const existingIdx = accumulatedReasoningDetails.findIndex(
+                      (existing) => existing.index === rd.index && existing.type === rd.type
+                    );
+                    if (existingIdx === -1) {
+                      accumulatedReasoningDetails.push(rd);
+                    } else if (rd.type === 'reasoning.text' && rd.text) {
+                      // Concatenate text for reasoning.text entries with same index
+                      accumulatedReasoningDetails[existingIdx] = {
+                        ...accumulatedReasoningDetails[existingIdx],
+                        text: (accumulatedReasoningDetails[existingIdx].text || '') + rd.text,
+                      };
+                    } else {
+                      // For encrypted or other types, replace with latest
+                      accumulatedReasoningDetails[existingIdx] = rd;
+                    }
+                  }
                   if (persistence && typeof persistence.setReasoningDetails === 'function') {
                     persistence.setReasoningDetails(delta.reasoning_details);
                   }
                 }
                 if (message?.reasoning_details && Array.isArray(message.reasoning_details)) {
+                  // For non-streaming message format, replace accumulated with full array
+                  accumulatedReasoningDetails = message.reasoning_details;
                   if (persistence && typeof persistence.setReasoningDetails === 'function') {
                     persistence.setReasoningDetails(message.reasoning_details);
                   }
@@ -449,11 +478,17 @@ export async function handleToolsStreaming({
         );
 
         // Add assistant message with tool calls for the next iteration
-        conversationHistory.push({
+        // Include reasoning_details for OpenRouter reasoning token continuity
+        // See: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens#preserving-reasoning-blocks
+        const assistantMessage = {
           role: 'assistant',
           content: accumulatedContent,
           tool_calls: normalizedToolCalls,
-        });
+        };
+        if (accumulatedReasoningDetails.length > 0) {
+          assistantMessage.reasoning_details = accumulatedReasoningDetails;
+        }
+        conversationHistory.push(assistantMessage);
 
         // Buffer tool calls for persistence
         if (persistence && persistence.persist && typeof persistence.addToolCalls === 'function') {

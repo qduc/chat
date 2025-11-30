@@ -133,17 +133,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
         (t.description || '').toLowerCase().includes(toolFilter.toLowerCase())
     )
     .sort((a, b) => {
+      // Only reorder if disabled/enabled state differs
       const aDisabled = isToolDisabled(a.name);
       const bDisabled = isToolDisabled(b.name);
       if (aDisabled && !bDisabled) return 1;
       if (!aDisabled && bDisabled) return -1;
-      // both same disabled status
-      if (!aDisabled) {
-        const aSelected = localSelected.includes(a.name);
-        const bSelected = localSelected.includes(b.name);
-        if (aSelected && !bSelected) return -1;
-        if (!aSelected && bSelected) return 1;
-      }
+      // Keep stable order otherwise (don't reorder by selected state)
       return 0;
     });
 
