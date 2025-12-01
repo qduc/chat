@@ -8,6 +8,8 @@
 
 ChatForge is a full-stack AI chat application featuring a Next.js 15 frontend and Node.js backend. It acts as an OpenAI-compatible API proxy with enhanced capabilities including conversation persistence, server-side tool orchestration, and multi-provider support.
 
+<img width="1412" height="1270" alt="image" src="https://github.com/user-attachments/assets/1770acd9-9a75-4767-bdea-3257f22abf44" />
+
 ## Features
 
 - **🤖 Server-Side Tool Orchestration** - Unified tool calling with iterative workflows, thinking support, and intelligent error handling
