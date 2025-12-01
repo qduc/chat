@@ -37,15 +37,55 @@ ChatForge is a full-stack AI chat application featuring a Next.js 15 frontend an
 
 Pull pre-built images from Docker Hub - no cloning required:
 
+**With Docker Compose:**
+
+Download it from this repository
+
 ```bash
-# Download the compose file
-curl -O https://raw.githubusercontent.com/qduc/chat/main/docker-compose.hub.yml
+curl -O https://raw.githubusercontent.com/qduc/chat/main/docker-compose.yml
+```
 
-# (Optional) Provide infrastructure secrets
-echo "JWT_SECRET=change-me" > .env
+or create it manually
 
+```yml
+services:
+  app:
+    image: qduc/chat:latest
+    environment:
+      - IMAGE_STORAGE_PATH=/data/images
+      - FILE_STORAGE_PATH=/data/files
+      - DB_URL=file:/data/prod.db
+    volumes:
+      - chatforge_data:/data
+      - chatforge_logs:/app/logs
+    ports:
+      - "${PORT:-3000}:3000"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(res => { if (res.ok) process.exit(0); process.exit(1); }).catch(() => process.exit(1));"]
+      interval: 30s
+      timeout: 10s
+      start_period: 30s
+      retries: 3
+
+volumes:
+  chatforge_data:
+    driver: local
+  chatforge_logs:
+    driver: local
+```
+
+Then run:
+
+```bash
 # Start the stack
-docker compose -f docker-compose.hub.yml up -d
+docker compose up -d
+```
+
+**Or with Docker run (one-liner):**
+
+```bash
+docker run -d --name chatforge -p 3000:3000 -v chatforge_data:/data -v chatforge_logs:/app/logs -e DB_URL=file:/data/prod.db qduc/chat:latest
 ```
 
 Visit http://localhost:3000, register your first user, then open **Settings → Providers & Tools** to enter your API key and base URL.
