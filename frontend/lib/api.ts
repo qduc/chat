@@ -1225,7 +1225,11 @@ export const files = {
       }
 
       // Check MIME type if available - only warn if it's clearly not text
-      if (file.type && !file.type.startsWith('text/') && !actualConfig.allowedMimeTypes.includes(file.type)) {
+      if (
+        file.type &&
+        !file.type.startsWith('text/') &&
+        !actualConfig.allowedMimeTypes.includes(file.type)
+      ) {
         warnings.push(`${file.name}: MIME type '${file.type}' may not be text-based`);
       }
     }
