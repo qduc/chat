@@ -487,7 +487,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                     <input
                       ref={fileInputRef}
                       type="file"
-                      accept=".js,.jsx,.ts,.tsx,.py,.rb,.java,.cpp,.go,.html,.css,.scss,.json,.xml,.yaml,.yml,.md,.txt,.csv,.log,.sh,.bash,.sql,.graphql"
                       multiple
                       className="hidden"
                       onChange={handleFileInputChange}

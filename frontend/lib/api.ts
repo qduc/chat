@@ -1218,18 +1218,15 @@ export const files = {
       }
 
       const ext = file.name.split('.').pop()?.toLowerCase();
-      if (!ext || !actualConfig.allowedExtensions.includes(ext)) {
+      if (ext && !actualConfig.allowedExtensions.includes(ext)) {
         warnings.push(
-          `${file.name}: Extension '.${ext}' may not be supported. Allowed: ${actualConfig.allowedExtensions.slice(0, 10).join(', ')}...`
+          `${file.name}: Extension '.${ext}' is not in the common list, but will be attempted`
         );
       }
 
-      // Check MIME type if available
-      if (
-        file.type &&
-        !actualConfig.allowedMimeTypes.some((mime) => file.type.startsWith(mime.split('/')[0]))
-      ) {
-        warnings.push(`${file.name}: MIME type '${file.type}' may not be supported`);
+      // Check MIME type if available - only warn if it's clearly not text
+      if (file.type && !file.type.startsWith('text/') && !actualConfig.allowedMimeTypes.includes(file.type)) {
+        warnings.push(`${file.name}: MIME type '${file.type}' may not be text-based`);
       }
     }
 

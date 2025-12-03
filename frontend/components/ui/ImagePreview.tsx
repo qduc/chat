@@ -280,10 +280,10 @@ export function ImageUploadZone({
           >
             <div className="text-center p-6 rounded-lg bg-white/90 dark:bg-neutral-900/90 border border-slate-200 dark:border-neutral-700 shadow-lg">
               <div className="text-lg font-medium text-slate-900 dark:text-slate-100">
-                Drop images here
+                Drop files here
               </div>
               <div className="text-sm text-slate-600 dark:text-slate-300 mt-1">
-                They will be uploaded and attached to your message
+                Images and text files will be uploaded and attached to your message
               </div>
             </div>
           </div>,
