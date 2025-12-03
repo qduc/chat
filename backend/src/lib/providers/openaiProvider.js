@@ -4,6 +4,7 @@ import { BaseProvider, ProviderModelsError } from './baseProvider.js';
 import { ChatCompletionsAdapter } from '../adapters/chatCompletionsAdapter.js';
 import { ResponsesAPIAdapter } from '../adapters/responsesApiAdapter.js';
 import { logger } from '../../logger.js';
+import { retryWithBackoff } from '../retryUtils.js';
 
 const FALLBACK_MODEL = 'gpt-4.1-mini';
 
@@ -148,11 +149,19 @@ export class OpenAIProvider extends BaseProvider {
       logger.error('Failed to log upstream request:', err?.message || err);
     }
 
-    const response = await client(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(translatedRequest),
-    });
+    // Wrap fetch call with retry logic for 429 and 5xx errors
+    const response = await retryWithBackoff(
+      () => client(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(translatedRequest),
+      }),
+      {
+        maxRetries: 3,
+        initialDelayMs: 1000,
+        maxDelayMs: 60000,
+      }
+    );
 
     // Log the upstream response for debugging
     try {
@@ -239,11 +248,19 @@ export class OpenAIProvider extends BaseProvider {
       headers.Authorization = `Bearer ${this.apiKey}`;
     }
 
-    const response = await client(url, {
-      method: 'GET',
-      headers,
-      timeout: timeoutMs,
-    });
+    // Wrap fetch call with retry logic for 429 and 5xx errors
+    const response = await retryWithBackoff(
+      () => client(url, {
+        method: 'GET',
+        headers,
+        timeout: timeoutMs,
+      }),
+      {
+        maxRetries: 3,
+        initialDelayMs: 1000,
+        maxDelayMs: 60000,
+      }
+    );
 
     if (!response.ok) {
       const errorBody = typeof response.text === 'function' ? await response.text().catch(() => '') : '';

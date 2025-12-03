@@ -39,8 +39,8 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "electron": "^33.2.1",
-    "electron-builder": "^25.1.8"
+    "electron": "^39.2.4",
+    "electron-builder": "^26.0.12"
   },
   "build": {
     "appId": "com.chatforge.app",
@@ -52,22 +52,16 @@
     "files": [
       "main.js",
       "preload.js",
-      "backend/**/*",
-      "frontend/out/**/*"
-    ],
-    "extraResources": [
       {
-        "from": "backend/src/db/migrations",
-        "to": "backend/src/db/migrations"
+        "from": "../backend",
+        "to": "backend",
+        "filter": ["!node_modules", "!**/*.test.js", "!coverage", "!__tests__"]
+      },
+      {
+        "from": "../frontend/out",
+        "to": "frontend/out"
       }
     ],
-    "mac": {
-      "category": "public.app-category.productivity",
-      "target": [
-        "dmg",
-        "zip"
-      ]
-    },
     "win": {
       "target": [
         "nsis",
@@ -77,8 +71,7 @@
     "linux": {
       "target": [
         "AppImage",
-        "deb",
-        "tar.gz"
+        "deb"
       ],
       "category": "Utility"
     },

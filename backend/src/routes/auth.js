@@ -276,4 +276,81 @@ router.post('/logout', (req, res) => {
   });
 });
 
+/**
+ * POST /v1/auth/electron
+ * Auto-login for Electron app (creates default user if needed)
+ * Only accessible when IS_ELECTRON environment variable is set
+ */
+router.post('/electron', async (req, res) => {
+  try {
+    // Security check: only allow in Electron environment
+    if (process.env.IS_ELECTRON !== 'true') {
+      return res.status(403).json({
+        error: 'forbidden',
+        message: 'This endpoint is only available in Electron environment'
+      });
+    }
+
+    const electronEmail = 'electron@local.app';
+    const electronDisplayName = 'Electron User';
+
+    // Check if electron user already exists
+    let user = getUserByEmail(electronEmail);
+
+    // Create user if doesn't exist (first launch)
+    if (!user) {
+      logger.info('[auth] Creating default Electron user');
+
+      // Generate a random password (never exposed to user)
+      const { randomUUID } = await import('crypto');
+      const randomPassword = randomUUID();
+      const passwordHash = await bcrypt.hash(randomPassword, 12);
+
+      user = createUser({
+        email: electronEmail,
+        passwordHash,
+        displayName: electronDisplayName
+      });
+    }
+
+    // Update last login
+    updateLastLogin(user.id);
+
+    // Generate tokens
+    const accessToken = generateAccessToken(user);
+    const refreshToken = generateRefreshToken(user);
+
+    // Link session to user if session exists
+    if (req.sessionId) {
+      const sessionMeta = req.sessionMeta || {
+        userAgent: req.get('User-Agent') || null,
+        ipHash: req.ip ? createHash('sha256').update(req.ip).digest('hex').substring(0, 16) : null,
+      };
+      linkSessionToUser(req.sessionId, user.id, sessionMeta);
+    }
+
+    res.json({
+      user: {
+        id: user.id,
+        email: user.email,
+        displayName: user.display_name,
+        emailVerified: user.email_verified,
+        createdAt: user.created_at,
+        lastLoginAt: new Date().toISOString()
+      },
+      tokens: {
+        accessToken,
+        refreshToken
+      }
+    });
+
+  } catch (error) {
+    logger.error('[auth] Electron login error:', error);
+    res.status(500).json({
+      error: 'electron_login_failed',
+      message: 'Failed to authenticate Electron user'
+    });
+  }
+});
+
 export default router;
