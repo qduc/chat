@@ -368,13 +368,31 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     onUseToolsChange?.(next.length > 0);
   };
 
+  // Combined file handler for drag and drop (both images and text files)
+  const handleDroppedFiles = async (droppedFiles: File[]) => {
+    // Separate images from text files
+    const imageFiles = droppedFiles.filter((file) => file.type.startsWith('image/'));
+    const textFiles = droppedFiles.filter((file) => !file.type.startsWith('image/'));
+
+    // Handle images
+    if (imageFiles.length > 0 && onImagesChange) {
+      void handleImageFiles(imageFiles);
+    }
+
+    // Handle text files
+    if (textFiles.length > 0 && onFilesChange) {
+      void handleFileFiles(textFiles);
+    }
+  };
+
   // ===== RENDER =====
   return (
     <ImageUploadZone
-      onFiles={handleImageFiles}
+      onFiles={handleDroppedFiles}
       disabled={pending.streaming}
       fullPage={true}
       clickToUpload={false} // Avoid overlay input intercepting hover events (tooltips)
+      fileFilter={() => true} // Accept all files, we'll sort them in handleDroppedFiles
     >
       <form
         className=""
