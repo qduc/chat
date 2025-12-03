@@ -62,12 +62,6 @@
         "to": "frontend/out"
       }
     ],
-    "mac": {
-      "category": "public.app-category.productivity",
-      "target": [
-        "dmg"
-      ]
-    },
     "win": {
       "target": [
         "nsis",
