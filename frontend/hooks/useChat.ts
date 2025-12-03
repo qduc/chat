@@ -65,7 +65,7 @@ export type Status = 'idle' | 'streaming';
 export type QualityLevel = 'unset' | 'minimal' | 'low' | 'medium' | 'high';
 
 // Add constant for default system prompt ID
-const DEFAULT_SYSTEM_PROMPT_ID = 'built:default';
+const DEFAULT_SYSTEM_PROMPT_ID = null; // No system prompt by default
 
 // Helper function to convert ConversationMeta to Conversation
 function convertConversationMeta(meta: ConversationMeta): Conversation {
@@ -1329,13 +1329,21 @@ export function useChat() {
       return;
     }
 
-    const defaultPrompt = systemPrompts.built_ins.find((p) => p.id === DEFAULT_SYSTEM_PROMPT_ID);
-    if (defaultPrompt) {
-      // Apply to local chat state and refs so UI and sendMessage use it
-      setSystemPrompt(defaultPrompt.body);
-      systemPromptRef.current = defaultPrompt.body;
-      setActiveSystemPromptId(defaultPrompt.id);
-      activeSystemPromptIdRef.current = defaultPrompt.id;
+    // If DEFAULT_SYSTEM_PROMPT_ID is null, clear the system prompt
+    if (DEFAULT_SYSTEM_PROMPT_ID === null) {
+      setSystemPrompt('');
+      systemPromptRef.current = '';
+      setActiveSystemPromptId(null);
+      activeSystemPromptIdRef.current = null;
+    } else {
+      const defaultPrompt = systemPrompts.built_ins.find((p) => p.id === DEFAULT_SYSTEM_PROMPT_ID);
+      if (defaultPrompt) {
+        // Apply to local chat state and refs so UI and sendMessage use it
+        setSystemPrompt(defaultPrompt.body);
+        systemPromptRef.current = defaultPrompt.body;
+        setActiveSystemPromptId(defaultPrompt.id);
+        activeSystemPromptIdRef.current = defaultPrompt.id;
+      }
     }
 
     // Mark as assigned even if default not present to avoid re-checks

@@ -14,6 +14,7 @@ import {
   streamDone,
 } from './toolOrchestrationUtils.js';
 import { logger } from '../logger.js';
+import { getUserMaxToolIterations } from '../db/users.js';
 
 /**
  * Configuration class for orchestration behavior
@@ -32,13 +33,15 @@ class OrchestrationConfig {
     this.fallbackToolSpecs = options.fallbackToolSpecs;
   }
 
-  static fromRequest(body, config, fallbackToolSpecs) {
+  static fromRequest(body, config, fallbackToolSpecs, userId = null) {
     const uiStreamingEnabled = body.stream !== false;
     const providerStreamingEnabled = body.provider_stream !== undefined
       ? body.provider_stream !== false
       : uiStreamingEnabled;
+    // Get user's max iterations setting (default 10)
+    const maxIterations = userId ? getUserMaxToolIterations(userId) : 10;
     return new OrchestrationConfig({
-      maxIterations: 10,
+      maxIterations,
       streamingEnabled: uiStreamingEnabled,
       providerStreamingEnabled,
       model: body.model || config.defaultModel,
@@ -595,7 +598,7 @@ export async function handleToolsJson({
     previousResponseId,
     messageSummaries: summarizeMessagesForLog(messages)
   });
-  const orchestrationConfig = OrchestrationConfig.fromRequest(body, config, fallbackToolSpecs);
+  const orchestrationConfig = OrchestrationConfig.fromRequest(body, config, fallbackToolSpecs, persistence?.userId ?? null);
   const responseHandler = ResponseHandlerFactory.create(orchestrationConfig, res);
 
   try {

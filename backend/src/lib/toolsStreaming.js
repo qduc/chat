@@ -24,13 +24,12 @@ import {
   streamDeltaEvent,
   streamDone,
 } from './toolOrchestrationUtils.js';
+import { getUserMaxToolIterations } from '../db/users.js';
 
 /**
  * Iterative tool orchestration with thinking and dynamic tool execution
  * Supports AI reasoning between tool calls within a single conversation turn
  */
-
-const MAX_ITERATIONS = 10; // Prevent infinite loops
 
 /**
  * Handle iterative tool orchestration with thinking support
@@ -61,6 +60,9 @@ export async function handleToolsStreaming({
       userId,
       provider: providerInstance,
     });
+
+    // Get user's max tool iterations setting (default 10)
+    const MAX_ITERATIONS = userId ? getUserMaxToolIterations(userId) : 10;
 
     let iteration = 0;
     let isComplete = false;

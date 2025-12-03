@@ -165,6 +165,7 @@ interface ImageUploadZoneProps {
   children?: React.ReactNode;
   fullPage?: boolean;
   clickToUpload?: boolean;
+  fileFilter?: (file: File) => boolean;
 }
 
 export function ImageUploadZone({
@@ -176,6 +177,7 @@ export function ImageUploadZone({
   children,
   fullPage = false,
   clickToUpload = true,
+  fileFilter,
 }: ImageUploadZoneProps) {
   const [dragOver, setDragOver] = React.useState(false);
   const dragCounterRef = React.useRef(0);
@@ -186,7 +188,11 @@ export function ImageUploadZone({
 
     if (disabled) return;
 
-    const files = Array.from(e.dataTransfer.files).filter((file) => file.type.startsWith('image/'));
+    // Use custom fileFilter if provided, otherwise default to image files
+    const defaultFilter = (file: File) => file.type.startsWith('image/');
+    const filterFn = fileFilter || defaultFilter;
+
+    const files = Array.from(e.dataTransfer.files).filter(filterFn);
 
     if (files.length > 0) {
       onFiles(files.slice(0, maxFiles));
@@ -280,10 +286,10 @@ export function ImageUploadZone({
           >
             <div className="text-center p-6 rounded-lg bg-white/90 dark:bg-neutral-900/90 border border-slate-200 dark:border-neutral-700 shadow-lg">
               <div className="text-lg font-medium text-slate-900 dark:text-slate-100">
-                Drop images here
+                Drop files here
               </div>
               <div className="text-sm text-slate-600 dark:text-slate-300 mt-1">
-                They will be uploaded and attached to your message
+                Images and text files will be uploaded and attached to your message
               </div>
             </div>
           </div>,

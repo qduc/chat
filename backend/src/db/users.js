@@ -81,12 +81,50 @@ export function getUserById(id) {
   const db = getDb();
   const user = db.prepare(`
     SELECT id, email, display_name, created_at, updated_at,
-           email_verified, last_login_at, deleted_at
+           email_verified, last_login_at, deleted_at, max_tool_iterations
     FROM users
     WHERE id = ? AND deleted_at IS NULL
   `).get(id);
 
   return user || null;
+}
+
+/**
+ * Get user's max_tool_iterations setting
+ * @param {string} userId - User ID
+ * @returns {number} Max tool iterations (default 10)
+ */
+export function getUserMaxToolIterations(userId) {
+  const db = getDb();
+  const result = db.prepare(`
+    SELECT max_tool_iterations
+    FROM users
+    WHERE id = ? AND deleted_at IS NULL
+  `).get(userId);
+
+  return result?.max_tool_iterations ?? 10;
+}
+
+/**
+ * Update user's max_tool_iterations setting
+ * @param {string} userId - User ID
+ * @param {number} maxIterations - Max tool iterations (1-50)
+ * @returns {boolean} True if updated successfully
+ */
+export function updateUserMaxToolIterations(userId, maxIterations) {
+  const db = getDb();
+  const now = new Date().toISOString();
+
+  // Validate range (1-50)
+  const validated = Math.max(1, Math.min(50, Math.floor(maxIterations)));
+
+  const result = db.prepare(`
+    UPDATE users
+    SET max_tool_iterations = ?, updated_at = ?
+    WHERE id = ? AND deleted_at IS NULL
+  `).run(validated, now, userId);
+
+  return result.changes > 0;
 }
 
 /**

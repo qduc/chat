@@ -99,15 +99,29 @@ const upload = multer({
     const ext = path.extname(file.originalname).toLowerCase().slice(1);
     const mimeType = file.mimetype.toLowerCase();
 
-    // Allow files without extension if they match allowed MIME types
-    const hasValidExtension = FILE_CONFIG.allowedExtensions.includes(ext);
-    const hasValidMimeType = FILE_CONFIG.allowedMimeTypes.includes(mimeType) ||
-                              mimeType.startsWith('text/');
+    // Very permissive validation:
+    // 1. Accept any text/* MIME type
+    // 2. Accept any file in the known extension list
+    // 3. Accept files with no extension if MIME type suggests text
+    // 4. Accept application/json, application/xml, application/x-yaml
+    // 5. Accept unknown extensions with text-like MIME types
 
-    if (hasValidExtension || hasValidMimeType) {
+    const hasKnownExtension = ext && FILE_CONFIG.allowedExtensions.includes(ext);
+    const hasTextMimeType = mimeType.startsWith('text/');
+    const hasTextLikeMimeType = [
+      'application/json',
+      'application/xml',
+      'application/x-yaml',
+      'application/javascript',
+      'application/x-javascript',
+    ].includes(mimeType);
+
+    // Accept if any of these conditions are true
+    if (hasKnownExtension || hasTextMimeType || hasTextLikeMimeType) {
       cb(null, true);
     } else {
-      cb(new Error(`Invalid file type. Allowed extensions: ${FILE_CONFIG.allowedExtensions.join(', ')}`), false);
+      // For unknown file types, provide a helpful error message
+      cb(new Error(`File type not supported. Expected text-based file, got MIME type: ${mimeType}`), false);
     }
   }
 });
@@ -241,6 +255,7 @@ router.post('/v1/files/upload', authenticateToken, upload.array('files', FILE_CO
     logger.error({
       msg: 'files:upload_handler_error',
       error: error.message,
+      stack: error.stack,
       userId: req.user?.id
     });
 
@@ -258,9 +273,17 @@ router.post('/v1/files/upload', authenticateToken, upload.array('files', FILE_CO
       });
     }
 
+    // Check if it's a fileFilter error (invalid file type)
+    if (error.message && error.message.includes('File type not supported')) {
+      return res.status(400).json({
+        error: 'invalid_file_type',
+        message: error.message
+      });
+    }
+
     res.status(500).json({
       error: 'upload_failed',
-      message: 'File upload failed'
+      message: error.message || 'File upload failed'
     });
   }
 });

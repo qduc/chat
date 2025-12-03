@@ -14,6 +14,7 @@ import {
   EyeOff,
   ExternalLink,
   Check,
+  Sliders,
 } from 'lucide-react';
 import Modal from './ui/Modal';
 import Toggle from './ui/Toggle';
@@ -80,6 +81,11 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
   const [searxBaseUrl, setSearxBaseUrl] = React.useState('');
   const [searxBaseUrlSaving, setSearxBaseUrlSaving] = React.useState(false);
   const [searxBaseUrlError, setSearxBaseUrlError] = React.useState<string | null>(null);
+  // Max tool iterations state
+  const [maxToolIterations, setMaxToolIterations] = React.useState<number>(10);
+  const [maxToolIterationsSaving, setMaxToolIterationsSaving] = React.useState(false);
+  const [maxToolIterationsError, setMaxToolIterationsError] = React.useState<string | null>(null);
+  const [initialMaxToolIterations, setInitialMaxToolIterations] = React.useState<number>(10);
   // Per-engine reveal/hide state for API keys
   const [searchReveal, setSearchReveal] = React.useState<Record<SearchEngine, boolean>>({
     tavily: false,
@@ -187,6 +193,10 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
           setSearxBaseUrl(loadedBaseUrl);
           setInitialSearxBaseUrl(loadedBaseUrl);
           setSearxBaseUrlError(null);
+          const loadedMaxIterations = keys.max_tool_iterations ?? 10;
+          setMaxToolIterations(loadedMaxIterations);
+          setInitialMaxToolIterations(loadedMaxIterations);
+          setMaxToolIterationsError(null);
         } catch (err: any) {
           setSearchErrors({
             tavily: err?.message || 'Failed to load Tavily API key',
@@ -194,6 +204,7 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
             searxng: err?.message || 'Failed to load SearXNG API key',
           });
           setSearxBaseUrlError(err?.message || 'Failed to load SearXNG base URL');
+          setMaxToolIterationsError(err?.message || 'Failed to load max tool iterations');
         }
       })();
     }
@@ -475,7 +486,19 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                   Search Engines
                 </div>
               </button>
-              {/* Future tabs can be added here */}
+              <button
+                onClick={() => setActiveTab('advanced')}
+                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                  activeTab === 'advanced'
+                    ? 'bg-white dark:bg-neutral-800 text-slate-900 dark:text-slate-100 shadow-sm'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-white/60 dark:hover:bg-neutral-800/60'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Sliders className="w-4 h-4" />
+                  Advanced
+                </div>
+              </button>
             </nav>
           </div>
 
@@ -1363,6 +1386,126 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                   </strong>{' '}
                   All API keys are encrypted and stored securely on the server. They are only
                   accessible by your account and never shared or logged.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {activeTab === 'advanced' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                    Advanced Settings
+                  </h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Configure advanced behavior and limits
+                  </p>
+                </div>
+              </div>
+
+              {/* Success Alert */}
+              {success && (
+                <div className="rounded-lg bg-green-50 dark:bg-green-900/20 p-3 border border-green-200/70 dark:border-green-800/70">
+                  <div className="text-sm text-green-700 dark:text-green-400">{success}</div>
+                </div>
+              )}
+
+              {/* Max Tool Iterations Card */}
+              <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-5 shadow-sm space-y-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <label className="block text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      Maximum Tool Call Iterations
+                    </label>
+                    {maxToolIterations === initialMaxToolIterations && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium">
+                        <Check className="w-3 h-3" />
+                        Saved
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Maximum number of consecutive tool calling turns before stopping (1-50)
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <input
+                    type="number"
+                    min="1"
+                    max="50"
+                    className="w-full px-3 py-2.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                    value={maxToolIterations}
+                    onChange={(e) => {
+                      const value = parseInt(e.target.value, 10);
+                      if (!isNaN(value)) {
+                        setMaxToolIterations(Math.max(1, Math.min(50, value)));
+                      }
+                      setMaxToolIterationsError(null);
+                    }}
+                  />
+
+                  {maxToolIterationsError && (
+                    <p className="text-xs text-red-600 dark:text-red-400 flex items-start gap-1.5">
+                      <XCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                      <span>{maxToolIterationsError}</span>
+                    </p>
+                  )}
+
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Default is 10. This prevents infinite loops when the AI continuously requests
+                    tool calls. Increase for complex tasks requiring many tool iterations, decrease
+                    to save on API costs.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setMaxToolIterationsSaving(true);
+                      setMaxToolIterationsError(null);
+                      setSuccess(null);
+                      try {
+                        await httpClient.put('/v1/user-settings', {
+                          max_tool_iterations: maxToolIterations,
+                        });
+                        setInitialMaxToolIterations(maxToolIterations);
+                        setSuccess('Maximum tool iterations saved successfully!');
+                      } catch (err: any) {
+                        setMaxToolIterationsError(
+                          err?.message || 'Failed to save maximum tool iterations'
+                        );
+                      } finally {
+                        setMaxToolIterationsSaving(false);
+                      }
+                    }}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-neutral-700 text-white disabled:cursor-not-allowed transition-colors shadow-sm"
+                    disabled={
+                      maxToolIterationsSaving || maxToolIterations === initialMaxToolIterations
+                    }
+                  >
+                    {maxToolIterationsSaving ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4" />
+                        {maxToolIterations === initialMaxToolIterations ? 'Saved' : 'Save Setting'}
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-slate-50/60 dark:bg-neutral-800/30 rounded-lg p-4 border border-slate-200/30 dark:border-neutral-700/30">
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                  <strong className="font-semibold text-slate-700 dark:text-slate-300">
+                    Note:
+                  </strong>{' '}
+                  These settings affect how the AI handles tool execution. Changes take effect
+                  immediately for new conversations.
                 </p>
               </div>
             </div>
