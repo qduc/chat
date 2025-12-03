@@ -57,19 +57,6 @@ run_electron() {
   npm run build
   popd > /dev/null
 
-  # Copy backend to electron directory for packaging
-  log_info "Copying backend to electron directory..."
-  mkdir -p "$ROOT/electron/backend"
-  # Copy only source files, excluding node_modules, tests, and development artifacts
-  rsync -a --exclude='node_modules' --exclude='__tests__' --exclude='coverage' \
-    --exclude='*.test.js' --exclude='.env*' --exclude='logs' \
-    "$ROOT/backend/" "$ROOT/electron/backend/"
-
-  # Copy frontend build output to electron directory for packaging
-  log_info "Copying frontend build to electron directory..."
-  mkdir -p "$ROOT/electron/frontend"
-  cp -r "$ROOT/frontend/out" "$ROOT/electron/frontend/out"
-
   # Install electron dependencies
   log_info "Installing electron dependencies..."
   pushd "$ROOT/electron" > /dev/null
