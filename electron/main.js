@@ -18,6 +18,7 @@ process.env.DATA_DIR = app.getPath('userData');
 process.env.DB_URL = `file:${path.join(app.getPath('userData'), 'chat.sqlite')}`;
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'electron-secret-key'; // Should be secure in real app
 process.env.PERSIST_TRANSCRIPTS = 'true';
+process.env.IS_ELECTRON = 'true';
 
 // Backend path
 // In dev: ../backend/src/index.js

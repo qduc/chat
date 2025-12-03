@@ -191,6 +191,26 @@ export const auth = {
     }
   },
 
+  async electronLogin(): Promise<LoginResponse> {
+    try {
+      const response = await httpClient.post<LoginResponse>(
+        '/v1/auth/electron',
+        {},
+        { skipAuth: true }
+      );
+
+      // Store tokens
+      setToken(response.data.tokens.accessToken);
+      setRefreshToken(response.data.tokens.refreshToken);
+
+      return response.data;
+    } catch (error) {
+      throw error instanceof HttpError
+        ? new Error(error.data?.message || 'Electron login failed')
+        : error;
+    }
+  },
+
   async logout(): Promise<void> {
     const token = getToken();
     const refreshTokenValue = getRefreshToken();

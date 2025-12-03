@@ -12,6 +12,7 @@ import {
   onTokensCleared,
   type User,
 } from '../lib';
+import { isElectron } from '../lib/electron';
 
 interface AuthContextType {
   user: User | null;
@@ -44,6 +45,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const initializeAuth = useCallback(async () => {
     try {
+      // Auto-login for Electron
+      if (isElectron()) {
+        try {
+          const response = await auth.electronLogin();
+          setUser(response.user);
+          return;
+        } catch (error) {
+          console.error('Electron auto-login failed, falling back to normal auth:', error);
+          // Fall through to normal auth flow
+        }
+      }
+
       const token = getToken();
       if (!token) {
         setUser(null);

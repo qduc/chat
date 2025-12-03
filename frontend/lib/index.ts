@@ -65,6 +65,9 @@ export {
 // Model capabilities
 export { supportsReasoningControls } from './modelCapabilities';
 
+// Electron utilities
+export { isElectron, getElectronAPI } from './electron';
+
 // Utility function for API base resolution (backward compatibility)
 export function resolveApiBase(): string {
   return typeof window !== 'undefined'
