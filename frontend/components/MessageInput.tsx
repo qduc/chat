@@ -356,8 +356,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     let next: string[];
 
     if (enabled) {
-      // Add both search tools if not already present
-      next = [...new Set([...localSelected, ...searchTools])];
+      // Only add search tools that are not disabled due to missing API keys
+      const enabledSearchTools = searchTools.filter((tool) => !isToolDisabled(tool));
+      next = [...new Set([...localSelected, ...enabledSearchTools])];
     } else {
       // Remove both search tools
       next = localSelected.filter((t) => !searchTools.includes(t));
