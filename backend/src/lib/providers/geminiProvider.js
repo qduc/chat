@@ -3,6 +3,7 @@ import { GeminiAdapter } from '../adapters/geminiAdapter.js';
 import { logger } from '../../logger.js';
 import { logUpstreamRequest, logUpstreamResponse, teeStreamWithPreview } from '../logging/upstreamLogger.js';
 import { Readable } from 'node:stream';
+import { retryWithBackoff } from '../retryUtils.js';
 
 function wrapStreamingResponse(response) {
   if (!response || !response.body) return response;
@@ -101,11 +102,19 @@ export class GeminiProvider extends BaseProvider {
       logger.error('Failed to log upstream request:', err);
     }
 
-    const response = await client(url, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(payload),
-    });
+    // Wrap fetch call with retry logic for 429 and 5xx errors
+    const response = await retryWithBackoff(
+      () => client(url, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(payload),
+      }),
+      {
+        maxRetries: 3,
+        initialDelayMs: 1000,
+        maxDelayMs: 60000,
+      }
+    );
 
     // Log upstream response
     try {
