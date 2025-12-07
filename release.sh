@@ -59,6 +59,12 @@ if ! npm --prefix frontend run build; then
     error "Frontend build failed. Please fix the issues and try again."
 fi
 
+# Run tests
+info "Running unit tests"
+if ! npm test; then
+    error "Unit tests failed. Please fix the error and try again."
+fi
+
 if [ "$DRY_RUN" = true ]; then
     success "Dry run: Frontend build successful. Stopping here."
     exit 0
