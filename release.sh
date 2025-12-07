@@ -70,9 +70,9 @@ NEXT_DEVELOP_NUM=$((DEVELOP_NUM + 1))
 NEXT_DEVELOP_BRANCH="develop_${NEXT_DEVELOP_NUM}"
 
 # Check for uncommitted changes
-if ! git diff-index --quiet HEAD --; then
-    error "You have uncommitted changes. Please commit or stash them first."
-fi
+#if ! git diff-index --quiet HEAD --; then
+#    error "You have uncommitted changes. Please commit or stash them first."
+#fi
 
 # Check for unpushed commits on current branch
 UNPUSHED=$(git log origin/${CURRENT_BRANCH}..HEAD --oneline 2>/dev/null || echo "")
@@ -174,15 +174,25 @@ git push origin main
 git push origin "${NEW_TAG}"
 success "Pushed main and ${NEW_TAG} to origin"
 
-# Create and checkout next develop branch
-info "Creating new develop branch: ${NEXT_DEVELOP_BRANCH}..."
-git checkout -b "${NEXT_DEVELOP_BRANCH}"
-success "Created and checked out ${NEXT_DEVELOP_BRANCH}"
+NEW_DEVELOP_BRANCH_CREATED=false
+echo ""
+read -p "Do you want to create the next develop branch (${NEXT_DEVELOP_BRANCH})? (y/n) " -n 1 -r CREATE_DEVELOP_BRANCH
+echo ""
+if [[ $CREATE_DEVELOP_BRANCH =~ ^[Yy]$ ]]; then
+    # Create and checkout next develop branch
+    info "Creating new develop branch: ${NEXT_DEVELOP_BRANCH}..."
+    git checkout -b "${NEXT_DEVELOP_BRANCH}"
+    success "Created and checked out ${NEXT_DEVELOP_BRANCH}"
 
-# Push new develop branch
-info "Pushing ${NEXT_DEVELOP_BRANCH} to origin..."
-git push -u origin "${NEXT_DEVELOP_BRANCH}"
-success "Pushed ${NEXT_DEVELOP_BRANCH} to origin"
+    # Push new develop branch
+    info "Pushing ${NEXT_DEVELOP_BRANCH} to origin..."
+    git push -u origin "${NEXT_DEVELOP_BRANCH}"
+    success "Pushed ${NEXT_DEVELOP_BRANCH} to origin"
+    NEW_DEVELOP_BRANCH_CREATED=true
+else
+    info "Skipping creation of new develop branch."
+fi
+
 
 # Summary
 echo ""
@@ -191,8 +201,14 @@ echo ""
 echo "Summary:"
 echo "  ✓ Released: ${NEW_TAG}"
 echo "  ✓ Main branch updated and pushed"
-echo "  ✓ Current branch: ${NEXT_DEVELOP_BRANCH}"
-echo "  ✓ Old develop branch: ${CURRENT_BRANCH} (still exists)"
-echo ""
-info "You can now start working on ${NEXT_DEVELOP_BRANCH}"
+if [ "$NEW_DEVELOP_BRANCH_CREATED" = true ]; then
+    echo "  ✓ Current branch: ${NEXT_DEVELOP_BRANCH}"
+    echo "  ✓ Old develop branch: ${CURRENT_BRANCH} (still exists)"
+    echo ""
+    info "You can now start working on ${NEXT_DEVELOP_BRANCH}"
+else
+    echo "  ⚠ No new develop branch was created. Current branch remains ${CURRENT_BRANCH}."
+    echo ""
+    info "Please remember to switch to a new develop branch manually when starting new development."
+fi
 info "Don't forget to update CHANGELOG.md if you maintain one!"
