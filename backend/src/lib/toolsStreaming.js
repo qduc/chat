@@ -350,11 +350,16 @@ export async function handleToolsStreaming({
                     );
                     if (existingIdx === -1) {
                       accumulatedReasoningDetails.push(rd);
-                    } else if (rd.type === 'reasoning.text' && rd.text) {
+                    } else if (rd.type === 'reasoning.text') {
                       // Concatenate text for reasoning.text entries with same index
+                      // And merge other fields (like signature)
+                      const existing = accumulatedReasoningDetails[existingIdx];
+                      const joinedText = (existing.text || '') + (rd.text || '');
+
                       accumulatedReasoningDetails[existingIdx] = {
-                        ...accumulatedReasoningDetails[existingIdx],
-                        text: (accumulatedReasoningDetails[existingIdx].text || '') + rd.text,
+                        ...existing,
+                        ...rd,
+                        text: joinedText,
                       };
                     } else {
                       // For encrypted or other types, replace with latest
