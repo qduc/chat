@@ -57,6 +57,12 @@ export const config = {
     modelFetchTimeoutMs: Number(process.env.PROVIDER_MODEL_FETCH_TIMEOUT_MS) || 3000, // 3 second default for model fetching
     streamTimeoutMs: Number(process.env.PROVIDER_STREAM_TIMEOUT_MS) || 300000, // 300 second default for streaming operations
   },
+  // Parallel tool execution configuration (feature-flagged)
+  parallelTools: {
+    enabled: bool(process.env.ENABLE_PARALLEL_TOOL_CALLS, true),
+    concurrency: Number(process.env.PARALLEL_TOOL_CONCURRENCY) || 3,
+    maxConcurrency: Number(process.env.PARALLEL_TOOL_MAX_CONCURRENCY) || 5,
+  },
   defaultModel: DEFAULT_MODEL,
   titleModel: DEFAULT_TITLE_MODEL,
   port: Number(process.env.PORT) || 3001,

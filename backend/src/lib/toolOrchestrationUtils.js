@@ -715,6 +715,78 @@ export async function executeToolCall(call, userId = null) {
   }
 }
 
+/**
+ * Execute multiple tool calls in parallel with bounded concurrency.
+ * Returns results in the original tool call order. Calls onToolComplete as each tool finishes.
+ */
+export async function executeToolCallsParallel(toolCalls, userId = null, options = {}) {
+  const { concurrency = 3, onToolComplete = null } = options || {};
+  if (!Array.isArray(toolCalls) || toolCalls.length === 0) return [];
+
+  // Single call: short-circuit to avoid overhead
+  if (toolCalls.length === 1) {
+    const single = await executeToolCall(toolCalls[0], userId);
+    return [{ ...single, tool_call_id: toolCalls[0].id, index: 0, duration_ms: 0, status: 'success' }];
+  }
+
+  // Dynamic import of p-limit to keep startup footprint small
+  let pLimit;
+  try {
+    pLimit = (await import('p-limit')).default;
+  } catch (err) {
+    // If p-limit is not available, fall back to Promise.allSettled (unbounded)
+    pLimit = null;
+  }
+
+  const limit = pLimit ? pLimit(Math.max(1, concurrency)) : null;
+
+  const indexed = toolCalls.map((call, i) => ({ call, index: i }));
+
+  const start = Date.now();
+
+  const tasks = indexed.map(({ call, index }) => {
+    const runner = async () => {
+      const t0 = Date.now();
+      try {
+        const result = await executeToolCall(call, userId);
+        const duration = Date.now() - t0;
+        const out = { ...result, tool_call_id: call.id, index, duration_ms: duration, status: 'success' };
+        try {
+          if (typeof onToolComplete === 'function') onToolComplete(out, index);
+        } catch (e) {
+          // Swallow callback errors
+        }
+        return out;
+      } catch (err) {
+        const duration = Date.now() - t0;
+        const out = {
+          name: call.function?.name,
+          output: `Error executing tool '${call.function?.name}': ${err?.message || String(err)}`,
+          tool_call_id: call.id,
+          index,
+          duration_ms: duration,
+          status: 'error',
+        };
+        try {
+          if (typeof onToolComplete === 'function') onToolComplete(out, index);
+        } catch (e) {}
+        return out;
+      }
+    };
+    return limit ? limit(runner) : runner();
+  });
+
+  const settled = await Promise.all(tasks);
+
+  // Ensure results are in original order
+  settled.sort((a, b) => (a.index || 0) - (b.index || 0));
+
+  const total = Date.now() - start;
+  logger.info({ msg: 'parallel_tool_execution_complete', tool_count: toolCalls.length, concurrency, total_duration_ms: total });
+
+  return settled;
+}
+
 export function appendToPersistence(persistence, content) {
   if (!persistence || !persistence.persist) return;
   if (typeof content !== 'string' || content.length === 0) return;

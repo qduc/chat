@@ -502,71 +502,138 @@ export async function handleToolsStreaming({
           persistence.addToolCalls(normalizedToolCalls);
         }
 
-        // Execute each tool call and stream tool_output events
-        for (const toolCall of normalizedToolCalls) {
-          try {
-            const { name, output } = await executeToolCall(toolCall, userId);
-            // Emit tool_output meta as a chat chunk for clients that expect tool events
-            const toolOutputMeta = createChatCompletionChunk(
-              bodyIn.id || 'chatcmpl-' + Date.now(),
-              body.model || config.defaultModel,
-              { tool_output: { tool_call_id: toolCall.id, name, output } }
-            );
-            writeAndFlush(res, `data: ${JSON.stringify(toolOutputMeta)}\n\n`);
-            // Also call streamDeltaEvent for successful tool outputs (for test compatibility)
-            streamDeltaEvent({
-              res,
-              model: body.model || config.defaultModel,
-              event: { tool_output: { tool_call_id: toolCall.id, name, output } },
-              prefix: 'iter',
-            });
+        // Execute tool calls. Support optional parallel execution (opt-in) while
+        // preserving conversationHistory insertion order and streaming tool_output
+        // events as each tool completes when parallel mode is enabled.
+        const parallelEnabled =
+          (bodyIn && bodyIn.enable_parallel_tool_calls === true) ||
+          Boolean(config.parallelTools && config.parallelTools.enabled);
 
-            const toolContent = typeof output === 'string' ? output : JSON.stringify(output);
+        const parallelConcurrency = Math.min(
+          Number(bodyIn?.parallel_tool_concurrency ?? config.parallelTools?.concurrency ?? 3),
+          Number(config.parallelTools?.maxConcurrency ?? 5)
+        );
 
-            // Buffer tool output for persistence (don't append to message content!)
+        if (parallelEnabled && normalizedToolCalls.length > 1) {
+          // Run tools in parallel with bounded concurrency. Stream each tool_output
+          // as it completes, but append tool results to conversationHistory in
+          // the original tool call order to preserve LLM context.
+          const { executeToolCallsParallel } = await import('./toolOrchestrationUtils.js');
+          const results = await executeToolCallsParallel(normalizedToolCalls, userId, {
+            concurrency: parallelConcurrency,
+            onToolComplete: (result) => {
+              // Stream tool_output meta as each tool completes
+              const toolOutputMeta = createChatCompletionChunk(
+                bodyIn.id || 'chatcmpl-' + Date.now(),
+                body.model || config.defaultModel,
+                {
+                  tool_output: {
+                    tool_call_id: result.tool_call_id,
+                    name: result.name,
+                    output: result.output,
+                    index: result.index,
+                    parallel: true,
+                    completed_at: Date.now(),
+                  },
+                }
+              );
+              writeAndFlush(res, `data: ${JSON.stringify(toolOutputMeta)}\n\n`);
+              streamDeltaEvent({
+                res,
+                model: body.model || config.defaultModel,
+                event: { tool_output: { tool_call_id: result.tool_call_id, name: result.name, output: result.output, index: result.index } },
+                prefix: 'iter',
+              });
+            },
+          });
+
+          // Persist and append to conversationHistory in original order
+          for (const result of results) {
+            const toolContent = typeof result.output === 'string' ? result.output : JSON.stringify(result.output);
+
             if (persistence && persistence.persist && typeof persistence.addToolOutputs === 'function') {
               persistence.addToolOutputs([
                 {
-                  tool_call_id: toolCall.id,
+                  tool_call_id: result.tool_call_id,
                   output: toolContent,
-                  status: 'success',
+                  status: result.status === 'error' ? 'error' : 'success',
                 },
               ]);
             }
 
             conversationHistory.push({
               role: 'tool',
-              tool_call_id: toolCall.id,
+              tool_call_id: result.tool_call_id,
               content: sanitizeContent(toolContent),
             });
-          } catch (error) {
-            const errorMessage = `Tool ${toolCall.function?.name} failed: ${error.message}`;
-            // Stream error tool output to client
-            streamDeltaEvent({
-              res,
-              model: body.model || config.defaultModel,
-              event: {
-                tool_output: { tool_call_id: toolCall.id, name: toolCall.function?.name, output: errorMessage },
-              },
-              prefix: 'iter',
-            });
+          }
+        } else {
+          // Sequential fallback (original behavior)
+          for (const toolCall of normalizedToolCalls) {
+            try {
+              const { name, output } = await executeToolCall(toolCall, userId);
+              // Emit tool_output meta as a chat chunk for clients that expect tool events
+              const toolOutputMeta = createChatCompletionChunk(
+                bodyIn.id || 'chatcmpl-' + Date.now(),
+                body.model || config.defaultModel,
+                { tool_output: { tool_call_id: toolCall.id, name, output } }
+              );
+              writeAndFlush(res, `data: ${JSON.stringify(toolOutputMeta)}\n\n`);
+              // Also call streamDeltaEvent for successful tool outputs (for test compatibility)
+              streamDeltaEvent({
+                res,
+                model: body.model || config.defaultModel,
+                event: { tool_output: { tool_call_id: toolCall.id, name, output } },
+                prefix: 'iter',
+              });
 
-            // Buffer error tool output for persistence (don't append to message content!)
-            if (persistence && persistence.persist && typeof persistence.addToolOutputs === 'function') {
-              persistence.addToolOutputs([
-                {
-                  tool_call_id: toolCall.id,
-                  output: errorMessage,
-                  status: 'error',
+              const toolContent = typeof output === 'string' ? output : JSON.stringify(output);
+
+              // Buffer tool output for persistence (don't append to message content!)
+              if (persistence && persistence.persist && typeof persistence.addToolOutputs === 'function') {
+                persistence.addToolOutputs([
+                  {
+                    tool_call_id: toolCall.id,
+                    output: toolContent,
+                    status: 'success',
+                  },
+                ]);
+              }
+
+              conversationHistory.push({
+                role: 'tool',
+                tool_call_id: toolCall.id,
+                content: sanitizeContent(toolContent),
+              });
+            } catch (error) {
+              const errorMessage = `Tool ${toolCall.function?.name} failed: ${error.message}`;
+              // Stream error tool output to client
+              streamDeltaEvent({
+                res,
+                model: body.model || config.defaultModel,
+                event: {
+                  tool_output: { tool_call_id: toolCall.id, name: toolCall.function?.name, output: errorMessage },
                 },
-              ]);
-            }
+                prefix: 'iter',
+              });
 
-            conversationHistory.push({
-              role: 'tool',
-              tool_call_id: toolCall.id,
-              content: sanitizeContent(errorMessage),
-            });
+              // Buffer error tool output for persistence (don't append to message content!)
+              if (persistence && persistence.persist && typeof persistence.addToolOutputs === 'function') {
+                persistence.addToolOutputs([
+                  {
+                    tool_call_id: toolCall.id,
+                    output: errorMessage,
+                    status: 'error',
+                  },
+                ]);
+              }
+
+              conversationHistory.push({
+                role: 'tool',
+                tool_call_id: toolCall.id,
+                content: sanitizeContent(errorMessage),
+              });
+            }
           }
         }
         // Continue to next iteration; the model will use the tool results
