@@ -213,8 +213,7 @@ if [ "$NEW_DEVELOP_BRANCH_CREATED" = true ]; then
     echo ""
     info "You can now start working on ${NEXT_DEVELOP_BRANCH}"
 else
+    git checkout -
     echo "  ⚠ No new develop branch was created. Current branch remains ${CURRENT_BRANCH}."
-    echo ""
-    info "Please remember to switch to a new develop branch manually when starting new development."
 fi
 info "Don't forget to update CHANGELOG.md if you maintain one!"

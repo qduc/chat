@@ -248,3 +248,23 @@ Provider and tool credentials are now stored per user. Open **Settings → Searc
 - **SearXNG Base URL** (for the `web_search_searxng` tool)
 
 No additional environment variables are required for these tools anymore.
+
+### Parallel tool execution (opt-in)
+
+The backend supports an opt-in parallel execution mode for tool calls. This can reduce latency when the model requests multiple independent tools.
+
+Environment variables:
+
+- `ENABLE_PARALLEL_TOOL_CALLS` (boolean, default: false) — enable the server-level feature flag
+- `PARALLEL_TOOL_CONCURRENCY` (number, default: 3) — default max concurrent tool executions
+
+Request-level overrides (per-call):
+
+- `enable_parallel_tool_calls` (boolean) — opt a single request into parallel tool execution
+- `parallel_tool_concurrency` (number) — override concurrency for a specific request (bounded by server max)
+
+Notes:
+
+- Parallel execution is opt-in and disabled by default for backward compatibility.
+- Streaming behavior: when enabled in streaming flows the server will stream `tool_output` events as each tool completes; the conversation history and persistence will preserve the original tool-call order so the LLM's next iteration sees results in the expected sequence.
+- Use conservatively for tools that make heavy external requests — tune concurrency with `PARALLEL_TOOL_CONCURRENCY`.

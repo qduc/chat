@@ -375,48 +375,70 @@ async function callLLM({ messages, config, bodyParams, providerId, providerHttp,
 /**
  * Execute all tool calls using response handler
  */
-async function executeAllTools(toolCalls, responseHandler, persistence) {
+async function executeAllTools(toolCalls, responseHandler, persistence, options = {}) {
+  const { parallelEnabled = false, concurrency = 3, userId = null } = options || {};
   const toolResults = [];
   const toolOutputs = [];
 
-  for (const toolCall of toolCalls) {
-    try {
-      // executeToolCall signature accepts optional userId, but tests expect
-      // it to be invoked with the call object only in this flow. Keep single-arg
-      // invocation to preserve test contracts.
-      const { name, output } = await executeToolCall(toolCall);
+  if (parallelEnabled && Array.isArray(toolCalls) && toolCalls.length > 1) {
+    // Execute in parallel with bounded concurrency
+    const { executeToolCallsParallel } = await import('./toolOrchestrationUtils.js');
+    const results = await executeToolCallsParallel(toolCalls, userId, { concurrency });
 
-      const toolOutput = {
-        tool_call_id: toolCall.id,
-        name,
-        output
-      };
-
-      toolOutputs.push(toolOutput);
-      toolResults.push({
-        role: 'tool',
-        tool_call_id: toolCall.id,
-        content: typeof output === 'string' ? output : JSON.stringify(output),
+    for (const res of results) {
+      const isError = res.status === 'error';
+      const outputValue = res.output;
+      toolOutputs.push({
+        tool_call_id: res.tool_call_id,
+        name: res.name,
+        output: outputValue,
+        status: isError ? 'error' : 'success',
       });
 
-    } catch (error) {
-      const errorMessage = `Tool ${toolCall.function?.name} failed: ${error.message}`;
-      const toolOutput = {
-        tool_call_id: toolCall.id,
-        name: toolCall.function?.name,
-        output: errorMessage
-      };
-
-      toolOutputs.push(toolOutput);
       toolResults.push({
         role: 'tool',
-        tool_call_id: toolCall.id,
-        content: errorMessage,
+        tool_call_id: res.tool_call_id,
+        content: typeof outputValue === 'string' ? outputValue : JSON.stringify(outputValue),
       });
+    }
+  } else {
+    // Sequential execution (original behavior)
+    for (const toolCall of toolCalls) {
+      try {
+        const { name, output } = await executeToolCall(toolCall);
+
+        const toolOutput = {
+          tool_call_id: toolCall.id,
+          name,
+          output
+        };
+
+        toolOutputs.push(toolOutput);
+        toolResults.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: typeof output === 'string' ? output : JSON.stringify(output),
+        });
+
+      } catch (error) {
+        const errorMessage = `Tool ${toolCall.function?.name} failed: ${error.message}`;
+        const toolOutput = {
+          tool_call_id: toolCall.id,
+          name: toolCall.function?.name,
+          output: errorMessage
+        };
+
+        toolOutputs.push(toolOutput);
+        toolResults.push({
+          role: 'tool',
+          tool_call_id: toolCall.id,
+          content: errorMessage,
+        });
+      }
     }
   }
 
-  // Send all tool outputs through response handler
+  // Send all tool outputs through response handler (preserve original order)
   logger.debug('[toolsJson] Sending tool outputs to response handler', {
     count: toolOutputs.length,
     outputs: toolOutputs.map(({ tool_call_id, name, output }) => ({
@@ -697,8 +719,21 @@ export async function handleToolsJson({
         persistence.addToolCalls(toolCallsWithOffset);
       }
 
-      // Execute all tools
-      const toolResults = await executeAllTools(toolCalls, responseHandler, persistence);
+      // Execute all tools (support optional parallel execution)
+      const parallelEnabled =
+        (bodyIn && bodyIn.enable_parallel_tool_calls === true) ||
+        Boolean(config.parallelTools && config.parallelTools.enabled);
+
+      const parallelConcurrency = Math.min(
+        Number(bodyIn?.parallel_tool_concurrency ?? config.parallelTools?.concurrency ?? 3),
+        Number(config.parallelTools?.maxConcurrency ?? 5)
+      );
+
+      const toolResults = await executeAllTools(toolCalls, responseHandler, persistence, {
+        parallelEnabled,
+        concurrency: parallelConcurrency,
+        userId: persistence?.userId ?? null,
+      });
       if (toolResults.length > 0) {
         logger.debug('[toolsJson] Tool results produced', {
           conversationId: persistence?.conversationId || null,
