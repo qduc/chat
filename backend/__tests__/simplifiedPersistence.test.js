@@ -154,4 +154,49 @@ describe('Checkpoint persistence', () => {
     expect(saved.content).toBe('fallback content');
     expect(saved.finish_reason).toBe('stop');
   });
+
+  test('persists tool calls and tool outputs when finalized', async () => {
+    const persistence = await initPersistence();
+    const db = getDb();
+
+    // Add tool calls
+    const toolCalls = [
+      {
+        id: 'call_1',
+        type: 'function',
+        function: { name: 'get_weather', arguments: '{"location": "Tokyo"}' }
+      }
+    ];
+    persistence.addToolCalls(toolCalls);
+
+    // Add tool outputs
+    const toolOutputs = [
+      {
+        tool_call_id: 'call_1',
+        output: '{"temp": 25}',
+        status: 'success'
+      }
+    ];
+    persistence.addToolOutputs(toolOutputs);
+
+    persistence.appendContent('Adding tools...');
+    persistence.recordAssistantFinal({ finishReason: 'tool_calls' });
+
+    // Verify tool calls persisted
+    const savedToolCall = db.prepare('SELECT * FROM tool_calls WHERE message_id = ?').get(persistence.currentMessageId);
+    expect(savedToolCall).toBeDefined();
+    expect(savedToolCall.id).toBe('call_1');
+    expect(JSON.parse(savedToolCall.arguments)).toEqual({ location: 'Tokyo' });
+
+    // Verify tool output message persisted
+    // Tool output is saved as a separate message with role='tool'
+    const toolMessage = db.prepare("SELECT * FROM messages WHERE conversation_id = ? AND role = 'tool'").get(persistence.conversationId);
+    expect(toolMessage).toBeDefined();
+    expect(toolMessage.content).toBe('{"temp": 25}');
+
+    // Verify tool output link persisted
+    const savedToolOutput = db.prepare('SELECT * FROM tool_outputs WHERE message_id = ?').get(toolMessage.id);
+    expect(savedToolOutput).toBeDefined();
+    expect(savedToolOutput.tool_call_id).toBe('call_1');
+  });
 });

@@ -634,6 +634,8 @@ export class SimplifiedPersistence {
         }
       }
 
+    // Automatically persist any buffered tool calls and outputs now that we have a messageId
+    this.persistToolCallsAndOutputs();
   }
 
   /**
