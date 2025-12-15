@@ -531,6 +531,8 @@ export function updateMessageContent({
   status,
   reasoningDetails,
   reasoningTokens,
+  finishReason,
+  responseId,
 }) {
   if (!userId) {
     throw new Error('userId is required');
@@ -573,6 +575,16 @@ export function updateMessageContent({
   if (normalizedTokens !== undefined) {
     updates.push('reasoning_tokens = @reasoningTokens');
     params.reasoningTokens = normalizedTokens;
+  }
+
+  if (finishReason !== undefined) {
+    updates.push('finish_reason = @finishReason');
+    params.finishReason = finishReason;
+  }
+
+  if (responseId !== undefined) {
+    updates.push('response_id = @responseId');
+    params.responseId = responseId;
   }
 
   const updateSql = `UPDATE messages SET ${updates.join(', ')} WHERE id = @messageId`;

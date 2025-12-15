@@ -17,6 +17,7 @@ export class MockUpstream {
     this.lastChatRequestBody = null;
     this.lastChatRequestHeaders = null;
     this.lastResponsesRequestBody = null;
+    this.streamDelayMs = 0;
     this.setupRoutes();
   }
 
@@ -33,25 +34,34 @@ export class MockUpstream {
 
       if (req.body.stream) {
         res.setHeader('Content-Type', 'text/event-stream');
-        res.write('data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n');
-        res.write('data: {"choices":[{"delta":{"content":" world"}}]}\n\n');
-        res.write('data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n');
-        res.write('data: [DONE]\n\n');
-        res.end();
-      } else {
-        res.json({
-          id: 'chat_123',
-          object: 'chat.completion',
-          created: Math.floor(Date.now() / 1000),
-          model: 'gpt-3.5-turbo',
-          choices: [{
-            index: 0,
-            message: { role: 'assistant', content: 'Hello world' },
-            finish_reason: 'stop'
-          }],
-          usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 }
-        });
+        const chunks = [
+          'data: {"choices":[{"delta":{"content":"Hello"}}]}\n\n',
+          'data: {"choices":[{"delta":{"content":" world"}}]}\n\n',
+          'data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n',
+          'data: [DONE]\n\n'
+        ];
+        const delay = this.streamDelayMs || 0;
+        let offset = 0;
+        for (const chunk of chunks) {
+          setTimeout(() => res.write(chunk), offset);
+          offset += delay;
+        }
+        setTimeout(() => res.end(), offset);
+        return;
       }
+
+      res.json({
+        id: 'chat_123',
+        object: 'chat.completion',
+        created: Math.floor(Date.now() / 1000),
+        model: 'gpt-3.5-turbo',
+        choices: [{
+          index: 0,
+          message: { role: 'assistant', content: 'Hello world' },
+          finish_reason: 'stop'
+        }],
+        usage: { prompt_tokens: 1, completion_tokens: 2, total_tokens: 3 }
+      });
     });
 
     // Mock Responses API endpoint
@@ -119,6 +129,11 @@ export class MockUpstream {
 
   setError(shouldError) {
     this.shouldError = shouldError;
+  }
+
+  setStreamDelayMs(ms) {
+    const numeric = Number(ms);
+    this.streamDelayMs = Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
   }
 
   getUrl() {
@@ -220,6 +235,7 @@ export function createChatProxyTestContext() {
 
   beforeEach(() => {
     upstream.setError(false);
+    upstream.setStreamDelayMs(0);
     upstream.lastChatRequestBody = null;
     upstream.lastChatRequestHeaders = null;
     upstream.lastResponsesRequestBody = null;
