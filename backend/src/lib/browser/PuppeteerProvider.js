@@ -38,24 +38,62 @@ class PuppeteerProvider {
   async _initBrowser() {
     // Determine executable path
     // In Docker (Alpine), we set PUPPETEER_EXECUTABLE_PATH.
-    // Use it if available, otherwise try @sparticuz/chromium or default.
-    let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    // However, if it's missing (e.g. env var lost), we manually check for Alpine to avoid
+    // falling back to @sparticuz/chromium which provides a Glibc binary that crashes on Alpine (Musl).
 
-    if (!executablePath) {
+    let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+    let isAlpine = false;
+
+    try {
+      const fs = await import('fs');
+      if (fs.existsSync('/etc/alpine-release')) {
+        isAlpine = true;
+      }
+    } catch (e) {
+      // Ignore
+    }
+
+    if (!executablePath && isAlpine) {
+      executablePath = '/usr/bin/chromium-browser';
+    }
+
+    let args = chromium.args;
+    if (executablePath) {
+      // If we are using a system binary (Alpine), use standard args instead of Lambda-optimized ones
+      // to avoid potential conflicts or missing libraries.
+      args = [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--headless=new', // Modern headless mode
+        '--hide-scrollbars',
+        '--mute-audio',
+        '--disable-notifications',
+        '--disable-extensions',
+      ];
+      console.log(`[PuppeteerProvider] Launching system Chromium at ${executablePath}`);
+    } else {
+      // Fallback to sparticuz (Lambda or local without system chrome)
       try {
         executablePath = await chromium.executablePath();
+        console.log(`[PuppeteerProvider] Launching bundled Chromium at ${executablePath}`);
       } catch (error) {
-        // Fallback or ignore if running locally without the lambda layer
         console.debug('Could not get chromium executable path from @sparticuz/chromium', error);
       }
     }
 
+    if (!executablePath) {
+        throw new Error('Chromium executable path not found. Please set PUPPETEER_EXECUTABLE_PATH or ensure a supported environment.');
+    }
+
     const browser = await puppeteer.launch({
-      args: chromium.args,
+      args: args,
       defaultViewport: chromium.defaultViewport,
-      executablePath: executablePath || '/usr/bin/chromium-browser',
-      headless: chromium.headless,
+      executablePath: executablePath,
+      headless: executablePath ? 'new' : chromium.headless,
       ignoreHTTPSErrors: true,
+      dumpio: true, // Log stdout/stderr from browser process to help debug launch issues
     });
 
     return browser;
