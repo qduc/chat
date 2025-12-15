@@ -2,6 +2,7 @@ import { createTool } from './baseTool.js';
 import TurndownService from 'turndown';
 import { Readability } from '@mozilla/readability';
 import { JSDOM } from 'jsdom';
+import { browserService } from '../browser/BrowserService.js';
 
 const TOOL_NAME = 'web_fetch';
 
@@ -170,136 +171,177 @@ function handleContinuation(token, maxChars) {
   };
 }
 
-async function handler({ url, maxChars, targetHeading, headingRange, continuation_token }) {
-  // Handle continuation token (fetch next chunk from cache)
-  if (continuation_token) {
-    return handleContinuation(continuation_token, maxChars);
+// Helper: detect if a small binary buffer looks like text
+function isProbablyText(buffer) {
+  if (!buffer || buffer.length === 0) return false;
+
+  // Quick null-byte check (very likely binary)
+  const sampleLen = Math.min(buffer.length, 1024);
+  for (let i = 0; i < sampleLen; i++) {
+    if (buffer[i] === 0) return false;
   }
 
+  // Decode and examine printable vs control chars
+  const sample = new TextDecoder('utf-8', { fatal: false }).decode(buffer.slice(0, sampleLen));
+  let nonPrintable = 0;
+  let total = 0;
+  for (let i = 0; i < sample.length; i++) {
+    const code = sample.charCodeAt(i);
+    // allow common whitespace: tab, line feed, carriage return
+    if (code === 9 || code === 10 || code === 13) {
+      total++;
+      continue;
+    }
+    if (code < 32) {
+      nonPrintable++;
+    }
+    total++;
+  }
+  if (total === 0) return false;
+  // If less than 10% of the sample are non-printable control chars,
+  // treat it as text.
+  return (nonPrintable / total) < 0.10;
+}
+
+async function basicFetch(url) {
+  // Fetch the web page
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (compatible; ChatForge/1.0; +https://chatforge.app)',
+    },
+    redirect: 'follow',
+    // 10 second timeout
+    signal: AbortSignal.timeout(10000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`HTTP error! status: ${response.status}`);
+  }
+
+  const contentType = response.headers.get('content-type') || '';
+
+  // If the Content-Type clearly indicates text-like content, accept it.
+  // Otherwise we'll peek at the first chunk of the body and apply a
+  // lightweight binary-vs-text heuristic to decide if the response is
+  // text-parsable. This allows fetching resources that may not set
+  // Content-Type correctly but are still text (e.g., some servers).
+  const contentTypeLooksLikeText = /^(?:text\/)|(?:application\/(?:xml|xhtml\+xml|json))|html|xml|json/i.test(contentType);
+
+  // Stream response body with size limit to prevent memory blowup
+  const reader = response.body && typeof response.body.getReader === 'function'
+    ? response.body.getReader()
+    : null;
+
+  if (!reader) {
+    throw new Error('Response body is not readable');
+  }
+
+  const decoder = new TextDecoder();
+  let html = '';
+  let bytesDownloaded = 0;
+
   try {
-    // Fetch the web page
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (compatible; ChatForge/1.0; +https://chatforge.app)',
-      },
-      redirect: 'follow',
-      // 10 second timeout
-      signal: AbortSignal.timeout(10000),
-    });
-
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+    // Read the first chunk to allow content sniffing when needed
+    const first = await reader.read();
+    if (first.done) {
+      reader.releaseLock();
+      throw new Error('Empty response body');
     }
 
-    const contentType = response.headers.get('content-type') || '';
+    const firstChunk = first.value;
+    bytesDownloaded += firstChunk.length;
 
-    // If the Content-Type clearly indicates text-like content, accept it.
-    // Otherwise we'll peek at the first chunk of the body and apply a
-    // lightweight binary-vs-text heuristic to decide if the response is
-    // text-parsable. This allows fetching resources that may not set
-    // Content-Type correctly but are still text (e.g., some servers).
-    const contentTypeLooksLikeText = /^(?:text\/)|(?:application\/(?:xml|xhtml\+xml|json))|html|xml|json/i.test(contentType);
-
-    // Stream response body with size limit to prevent memory blowup
-    const reader = response.body && typeof response.body.getReader === 'function'
-      ? response.body.getReader()
-      : null;
-
-    if (!reader) {
-      throw new Error('Response body is not readable');
+    if (bytesDownloaded > MAX_BODY_SIZE) {
+      reader.cancel();
+      throw new Error(`Response body exceeds maximum size limit of ${MAX_BODY_SIZE / (1024 * 1024)} MB`);
     }
 
-    const decoder = new TextDecoder();
-    let html = '';
-    let bytesDownloaded = 0;
-
-    // Helper: detect if a small binary buffer looks like text
-    function isProbablyText(buffer) {
-      if (!buffer || buffer.length === 0) return false;
-
-      // Quick null-byte check (very likely binary)
-      const sampleLen = Math.min(buffer.length, 1024);
-      for (let i = 0; i < sampleLen; i++) {
-        if (buffer[i] === 0) return false;
+    if (!contentTypeLooksLikeText) {
+      // If the header doesn't clearly say text, use the heuristic on the
+      // first chunk to avoid reading binary blobs.
+      if (!isProbablyText(firstChunk)) {
+        reader.cancel();
+        throw new Error(`URL does not return text-parsable content. Content-Type: ${contentType}`);
       }
-
-      // Decode and examine printable vs control chars
-      const sample = new TextDecoder('utf-8', { fatal: false }).decode(buffer.slice(0, sampleLen));
-      let nonPrintable = 0;
-      let total = 0;
-      for (let i = 0; i < sample.length; i++) {
-        const code = sample.charCodeAt(i);
-        // allow common whitespace: tab, line feed, carriage return
-        if (code === 9 || code === 10 || code === 13) {
-          total++;
-          continue;
-        }
-        if (code < 32) {
-          nonPrintable++;
-        }
-        total++;
-      }
-      if (total === 0) return false;
-      // If less than 10% of the sample are non-printable control chars,
-      // treat it as text.
-      return (nonPrintable / total) < 0.10;
     }
 
-    try {
-      // Read the first chunk to allow content sniffing when needed
-      const first = await reader.read();
-      if (first.done) {
-        reader.releaseLock();
-        throw new Error('Empty response body');
-      }
+    // Append first chunk and continue streaming the rest
+    html += decoder.decode(firstChunk, { stream: true });
 
-      const firstChunk = first.value;
-      bytesDownloaded += firstChunk.length;
+    while (true) {
+      const { done, value } = await reader.read();
+
+      if (done) break;
+
+      bytesDownloaded += value.length;
 
       if (bytesDownloaded > MAX_BODY_SIZE) {
         reader.cancel();
         throw new Error(`Response body exceeds maximum size limit of ${MAX_BODY_SIZE / (1024 * 1024)} MB`);
       }
 
-      if (!contentTypeLooksLikeText) {
-        // If the header doesn't clearly say text, use the heuristic on the
-        // first chunk to avoid reading binary blobs.
-        if (!isProbablyText(firstChunk)) {
-          reader.cancel();
-          throw new Error(`URL does not return text-parsable content. Content-Type: ${contentType}`);
-        }
-      }
-
-      // Append first chunk and continue streaming the rest
-      html += decoder.decode(firstChunk, { stream: true });
-
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (done) break;
-
-        bytesDownloaded += value.length;
-
-        if (bytesDownloaded > MAX_BODY_SIZE) {
-          reader.cancel();
-          throw new Error(`Response body exceeds maximum size limit of ${MAX_BODY_SIZE / (1024 * 1024)} MB`);
-        }
-
-        html += decoder.decode(value, { stream: true });
-      }
-
-      // Flush any remaining bytes in the decoder
-      html += decoder.decode();
-    } finally {
-      try {
-        reader.releaseLock();
-      } catch {
-        // ignore
-      }
+      html += decoder.decode(value, { stream: true });
     }
 
+    // Flush any remaining bytes in the decoder
+    html += decoder.decode();
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // ignore
+    }
+  }
+  return html;
+}
+
+async function handler({ url, maxChars, targetHeading, headingRange, continuation_token }) {
+  // Handle continuation token (fetch next chunk from cache)
+  if (continuation_token) {
+    return handleContinuation(continuation_token, maxChars);
+  }
+
+  let html = '';
+  let errorMessages = [];
+
+  // 1. Try simple fetch + JSDOM first (fastest)
+  try {
+    html = await basicFetch(url);
+  } catch (error) {
+    errorMessages.push(`Basic fetch failed: ${error.message}`);
+  }
+
+  // 2. Check for failure triggers (SPA detection)
+  // - No content (fetch failed)
+  // - Very short content (<300 chars usually means stub)
+  // - Specific "Enable JS" messages
+  // - noscript tag containing JavaScript requirement messages (not just any noscript tag)
+  const noscriptNeedsJs = /<noscript[^>]*>.*?(?:enable|require|need).*?javascript/is.test(html);
+  const isFailure = !html
+    || html.length < 300
+    || html.includes("You need to enable JavaScript")
+    || noscriptNeedsJs;
+
+  // 3. Fallback to Browser Engine if needed
+  if (isFailure) {
+    try {
+      // console.log(`Triggering browser fallback for ${url}`);
+      html = await browserService.fetchPageContent(url);
+    } catch (browserError) {
+      console.error('[webFetch] Browser fallback failed:', browserError);
+      errorMessages.push(`Browser fallback failed: ${browserError.message}`);
+
+      // If we have some content from basic fetch, usage it despite being "low quality" is better than crashing
+      // But if we have NO content, throw exception.
+      if (!html) {
+        throw new Error(`Failed to fetch URL. Errors: ${errorMessages.join('; ')}`);
+      }
+    }
+  }
 
 
+
+  try {
     const dom = new JSDOM(html, { url });
     const document = dom.window.document;
 
