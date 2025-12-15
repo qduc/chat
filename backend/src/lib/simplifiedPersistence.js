@@ -12,6 +12,7 @@ import {
 import {
   insertToolMessage,
   getNextSeq,
+  updateMessageContent,
 } from '../db/messages.js';
 import { logger } from '../logger.js';
 
@@ -46,6 +47,14 @@ export class SimplifiedPersistence {
     this.userMessageId = null; // Persisted user message ID from latest sync
     this.assistantMessageId = null; // Persisted assistant message ID for the current turn
     this._latestSyncMappings = [];
+    // Checkpoint state
+    this.lastCheckpoint = 0; // timestamp
+    this.lastCheckpointLength = 0; // content length at last checkpoint
+    this.checkpointConfig = {
+      intervalMs: config?.persistence?.checkpoint?.intervalMs ?? 3000,
+      minCharacters: config?.persistence?.checkpoint?.minCharacters ?? 500,
+      enabled: config?.persistence?.checkpoint?.enabled ?? true,
+    };
   }
 
   /**
@@ -223,6 +232,14 @@ export class SimplifiedPersistence {
     this.reasoningTextBuffer = '';
     this.reasoningTokens = null;
     this.assistantMessageId = null;
+    // Create a draft row immediately so we can checkpoint during streaming
+    try {
+      this.createDraftMessage();
+    } catch (err) {
+      // Non-fatal: if draft creation fails we fall back to final-only writes
+      logger.warn('[SimplifiedPersistence] Failed to create draft message:', err?.message || err);
+      this.currentMessageId = null;
+    }
   }
 
   /**
@@ -490,11 +507,21 @@ export class SimplifiedPersistence {
       if (text) {
         this.assistantBuffer += text;
       }
+      try {
+        if (this.shouldCheckpoint()) this.performCheckpoint();
+      } catch (err) {
+        logger.warn('[SimplifiedPersistence] Checkpoint failed (non-fatal):', err?.message || err);
+      }
       return;
     }
 
     if (typeof delta === 'string') {
       this.assistantBuffer += delta;
+      try {
+        if (this.shouldCheckpoint()) this.performCheckpoint();
+      } catch (err) {
+        logger.warn('[SimplifiedPersistence] Checkpoint failed (non-fatal):', err?.message || err);
+      }
       return;
     }
 
@@ -507,6 +534,14 @@ export class SimplifiedPersistence {
         this.assistantBuffer += delta.content;
       }
     }
+    // After updating in-memory buffer, consider checkpointing to DB
+    try {
+      if (this.shouldCheckpoint()) {
+        this.performCheckpoint();
+      }
+    } catch (err) {
+      logger.warn('[SimplifiedPersistence] Checkpoint failed (non-fatal):', err?.message || err);
+    }
   }
 
   /**
@@ -517,45 +552,90 @@ export class SimplifiedPersistence {
    */
   recordAssistantFinal({ finishReason = 'stop', responseId = null } = {}) {
     if (!this.persist || !this.conversationId || this.assistantSeq === null) return;
-    if (this.finalized || this.errored) return;
+      if (this.currentMessageId) {
+        // Update existing draft to final
+        updateMessageContent({
+          messageId: this.currentMessageId,
+          conversationId: this.conversationId,
+          userId: this.userId,
+          content: this.assistantContentJson ?? this.assistantBuffer,
+          status: 'final',
+          finishReason,
+          responseId: responseId || this.responseId,
+          reasoningDetails: this._finalizeReasoningDetails(),
+          reasoningTokens: this.reasoningTokens,
+        });
 
-    try {
-      const result = this.conversationManager.recordAssistantMessage({
-        conversationId: this.conversationId,
-        content: this.assistantContentJson ?? this.assistantBuffer,
-        seq: this.assistantSeq,
-        finishReason,
-        responseId: responseId || this.responseId, // Use provided or stored responseId
-        reasoningDetails: this._finalizeReasoningDetails(),
-        reasoningTokens: this.reasoningTokens,
-      });
-
-      // Store message ID for tool call persistence
-      if (result && result.id) {
-        this.currentMessageId = result.id;
-        this.assistantMessageId = String(result.id);
-        logger.debug('[SimplifiedPersistence] Assistant message recorded', {
+        this.assistantMessageId = String(this.currentMessageId);
+        logger.debug('[SimplifiedPersistence] Updated draft to final', {
           conversationId: this.conversationId,
           messageId: this.currentMessageId,
-          seq: this.assistantSeq
+          seq: this.assistantSeq,
+          finishReason,
         });
+      } else {
+        // No messageId cached — try to locate an existing assistant message for this seq
+        const db = getDb();
+        const found = db.prepare("SELECT id FROM messages WHERE conversation_id=@conversationId AND seq=@seq AND role = 'assistant'").get({ conversationId: this.conversationId, seq: this.assistantSeq });
+        if (found && found.id) {
+          // Update the found row directly (bypass user join checks)
+          try {
+            const now = new Date().toISOString();
+            db.prepare(`UPDATE messages SET status=@status, content=@content, content_json=@contentJson, finish_reason=@finishReason, response_id=@responseId, reasoning_details=@reasoningDetails, reasoning_tokens=@reasoningTokens, updated_at=@now WHERE id=@id`).run({
+              id: found.id,
+              status: 'final',
+              content: this.assistantContentJson ? this._extractTextFromMixedContent(this.assistantContentJson) : (this.assistantBuffer || ''),
+              contentJson: this.assistantContentJson ? JSON.stringify(this.assistantContentJson) : null,
+              finishReason,
+              responseId: responseId || this.responseId,
+              reasoningDetails: this._finalizeReasoningDetails() ? JSON.stringify(this._finalizeReasoningDetails()) : null,
+              reasoningTokens: this.reasoningTokens ?? null,
+              now,
+            });
+            this.currentMessageId = found.id;
+            this.assistantMessageId = String(found.id);
+            logger.debug('[SimplifiedPersistence] Updated found draft (by seq) to final', { conversationId: this.conversationId, messageId: found.id });
+          } catch (err) {
+            logger.warn('[SimplifiedPersistence] Failed to update found draft; falling back to insert:', err?.message || err);
+            const result = this.conversationManager.recordAssistantMessage({
+              conversationId: this.conversationId,
+              content: this.assistantContentJson ?? this.assistantBuffer,
+              seq: this.assistantSeq,
+              finishReason,
+              responseId: responseId || this.responseId,
+              reasoningDetails: this._finalizeReasoningDetails(),
+              reasoningTokens: this.reasoningTokens,
+            });
+            if (result && result.id) {
+              this.currentMessageId = result.id;
+              this.assistantMessageId = String(result.id);
+            }
+          }
+        } else {
+          // No existing row found — insert as final
+          const result = this.conversationManager.recordAssistantMessage({
+            conversationId: this.conversationId,
+            content: this.assistantContentJson ?? this.assistantBuffer,
+            seq: this.assistantSeq,
+            finishReason,
+            responseId: responseId || this.responseId,
+            reasoningDetails: this._finalizeReasoningDetails(),
+            reasoningTokens: this.reasoningTokens,
+          });
+          if (result && result.id) {
+            this.currentMessageId = result.id;
+            this.assistantMessageId = String(result.id);
+            logger.debug('[SimplifiedPersistence] Assistant message recorded', {
+              conversationId: this.conversationId,
+              messageId: this.currentMessageId,
+              seq: this.assistantSeq
+            });
+          }
+        }
       }
 
-      // Persist any buffered tool calls and outputs
-      this.persistToolCallsAndOutputs();
-
-      // Prepare for future iterations
-      this.assistantSeq = this.conversationManager.getNextSequence(this.conversationId);
-      this.assistantBuffer = '';
-      this.assistantContentJson = null;
-      this.reasoningDetails = null;
-      this.reasoningTextBuffer = '';
-      this.reasoningTokens = null;
-      this.finalized = true;
-    } catch (error) {
-      logger.error('[SimplifiedPersistence] Failed to record final assistant message:', error);
-      throw error;
-    }
+    // Automatically persist any buffered tool calls and outputs now that we have a messageId
+    this.persistToolCallsAndOutputs();
   }
 
   /**
@@ -683,11 +763,123 @@ export class SimplifiedPersistence {
     if (this.finalized || this.errored) return;
 
     try {
-      this.conversationManager.markAssistantError(this.conversationId, this.assistantSeq);
+      // Prefer to update the existing assistant message row (by cached id or lookup) to preserve partial content
+      let targetId = this.currentMessageId;
+      const db = getDb();
+      logger.debug('[SimplifiedPersistence] markError invoked', { conversationId: this.conversationId, seq: this.assistantSeq, cachedId: this.currentMessageId });
+      if (!targetId) {
+        const found = db.prepare("SELECT id FROM messages WHERE conversation_id=@conversationId AND seq=@seq AND role = 'assistant'").get({ conversationId: this.conversationId, seq: this.assistantSeq });
+        logger.debug('[SimplifiedPersistence] markError lookup result', { foundId: found?.id });
+        if (found && found.id) targetId = found.id;
+      }
+
+      if (targetId) {
+        try {
+          const now = new Date().toISOString();
+          db.prepare(`UPDATE messages SET status=@status, content=@content, content_json=@contentJson, finish_reason=@finishReason, response_id=@responseId, reasoning_details=@reasoningDetails, reasoning_tokens=@reasoningTokens, updated_at=@now WHERE id=@messageId`).run({
+            messageId: targetId,
+            status: 'error',
+            content: this.assistantContentJson ? this._extractTextFromMixedContent(this.assistantContentJson) : (this.assistantBuffer || ''),
+            contentJson: this.assistantContentJson ? JSON.stringify(this.assistantContentJson) : null,
+            finishReason: 'error',
+            responseId: this.responseId || null,
+            reasoningDetails: this._finalizeReasoningDetails() ? JSON.stringify(this._finalizeReasoningDetails()) : null,
+            reasoningTokens: this.reasoningTokens ?? null,
+            now,
+          });
+        } catch (err) {
+          logger.warn('[SimplifiedPersistence] markError update failed, falling back to seq-based error:', err?.message || err);
+          this.conversationManager.markAssistantError(this.conversationId, this.assistantSeq);
+        }
+      } else {
+        this.conversationManager.markAssistantError(this.conversationId, this.assistantSeq);
+      }
       this.errored = true;
     } catch (error) {
       logger.error('[SimplifiedPersistence] Failed to mark error:', error);
       // Don't re-throw as this is cleanup
+    }
+  }
+
+  /**
+   * Create a draft message row for the current assistant seq
+   * Non-throwing: failures will be logged and currentMessageId left null
+   */
+  createDraftMessage() {
+    if (!this.persist || !this.conversationId || this.assistantSeq === null) return null;
+    try {
+      const db = getDb();
+      const now = new Date().toISOString();
+      const info = db.prepare(
+        `INSERT INTO messages (conversation_id, role, status, content, seq, created_at, updated_at)
+         VALUES (@conversationId, 'assistant', 'draft', '', @seq, @now, @now)`
+      ).run({ conversationId: this.conversationId, seq: this.assistantSeq, now });
+
+      this.currentMessageId = info.lastInsertRowid;
+      this.lastCheckpoint = Date.now();
+      this.lastCheckpointLength = 0;
+
+      logger.debug('[SimplifiedPersistence] Created draft message', {
+        conversationId: this.conversationId,
+        messageId: this.currentMessageId,
+        seq: this.assistantSeq,
+      });
+      return { id: this.currentMessageId, seq: this.assistantSeq };
+    } catch (error) {
+      logger.error('[SimplifiedPersistence] Failed to create draft message:', error);
+      this.currentMessageId = null;
+      return null;
+    }
+  }
+
+  /**
+   * Decide whether a checkpoint is necessary based on hybrid triggers
+   * @returns {boolean}
+   */
+  shouldCheckpoint() {
+    if (!this.checkpointConfig?.enabled) return false;
+    if (!this.persist || !this.currentMessageId) return false;
+    if (this.finalized || this.errored) return false;
+
+    const now = Date.now();
+    const timeSince = now - (this.lastCheckpoint || 0);
+    const growth = this.assistantBuffer.length - (this.lastCheckpointLength || 0);
+
+    const timeThresholdMet = timeSince >= (this.checkpointConfig.intervalMs || 0);
+    const sizeThresholdMet = growth >= (this.checkpointConfig.minCharacters || 0);
+
+    return timeThresholdMet || sizeThresholdMet;
+  }
+
+  /**
+   * Perform a checkpoint: update the draft message with current content
+   */
+  performCheckpoint() {
+    if (!this.persist || !this.currentMessageId) return;
+    if (this.finalized || this.errored) return;
+    try {
+      updateMessageContent({
+        messageId: this.currentMessageId,
+        conversationId: this.conversationId,
+        userId: this.userId,
+        content: this.assistantContentJson ?? this.assistantBuffer,
+        status: 'draft',
+        reasoningDetails: this._finalizeReasoningDetails(),
+        reasoningTokens: this.reasoningTokens,
+      });
+
+      this.lastCheckpoint = Date.now();
+      this.lastCheckpointLength = this.assistantBuffer.length;
+
+      logger.debug('[SimplifiedPersistence] Saved partial content', {
+        conversationId: this.conversationId,
+        messageId: this.currentMessageId,
+        length: this.assistantBuffer.length,
+        seq: this.assistantSeq,
+      });
+    } catch (error) {
+      logger.error('[SimplifiedPersistence] Failed to save checkpoint:', error);
+      // Don't throw - streaming must continue
     }
   }
 

@@ -36,7 +36,7 @@ export default [
     },
   },
   {
-    files: ['__tests__/**/*.js', 'test_utils/**/*.js'],
+    files: ['__tests__/**/*.js', 'test_utils/**/*.js', 'integration/**/*.js'],
     languageOptions: {
       globals: {
         ...globals.jest,

@@ -45,6 +45,9 @@ RETENTION_DAYS=30                          # Days to retain conversations
 MAX_CONVERSATIONS_PER_SESSION=100          # Conversation limit per session
 MAX_MESSAGES_PER_CONVERSATION=1000         # Message limit per conversation
 BATCH_FLUSH_INTERVAL=250                   # Batch flush interval (ms)
+CHECKPOINT_ENABLED=true                    # Enable incremental checkpointing (draft messages + checkpoints)
+CHECKPOINT_INTERVAL_MS=3000                # Milliseconds between time-based checkpoints
+CHECKPOINT_MIN_CHARACTERS=500              # Content length growth required to checkpoint
 ```
 
 ### Optional - Storage

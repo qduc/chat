@@ -74,6 +74,17 @@ function setupStreamEventHandlers({
       // Ignore errors
     }
   });
+  // Also handle response socket close to catch client aborts in all environments
+  res.on('close', () => {
+    if (res.writableEnded) return;
+    try {
+      if (persistence && persistence.persist) {
+        persistence.markError();
+      }
+    } catch {
+      // Ignore errors
+    }
+  });
 }
 
 /**

@@ -26,6 +26,14 @@ const bool = (v, def = false) => {
   return s === '1' || s === 'true' || s === 'yes' || s === 'on';
 };
 
+const parsePositiveNumber = (value, def) => {
+  const asNumber = Number(value);
+  if (Number.isFinite(asNumber) && asNumber > 0) {
+    return asNumber;
+  }
+  return def;
+};
+
 const DEFAULT_MODEL = 'gpt-4.1-mini';
 const DEFAULT_TITLE_MODEL = 'gpt-4.1-mini';
 const OPENAI_BASE_URL = 'https://api.openai.com/v1';
@@ -78,6 +86,11 @@ export const config = {
     maxMessagesPerConversation: Number(process.env.MAX_MESSAGES_PER_CONVERSATION) || 1000,
     historyBatchFlushMs: Number(process.env.HISTORY_BATCH_FLUSH_MS) || 250,
     retentionDays: Number(process.env.RETENTION_DAYS) || 30,
+    checkpoint: {
+      enabled: bool(process.env.CHECKPOINT_ENABLED, true),
+      intervalMs: parsePositiveNumber(process.env.CHECKPOINT_INTERVAL_MS, 3000),
+      minCharacters: parsePositiveNumber(process.env.CHECKPOINT_MIN_CHARACTERS, 500),
+    },
   },
   auth: {
     jwtSecret: process.env.JWT_SECRET || 'development-secret-key-change-in-production',
