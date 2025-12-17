@@ -161,12 +161,19 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
       const id = body.id ? String(body.id) : uuidv4();
       const userId = req.user.id; // Guaranteed by authenticateToken middleware
 
+      // If Gemini or Anthropic, ensure base_url is null (use default)
+      let baseUrl = body.base_url ?? null;
+      const normalizedType = normalizeProviderType(provider_type);
+      if (normalizedType === 'gemini' || normalizedType === 'anthropic') {
+        baseUrl = null;
+      }
+
       const created = createProvider({
         id,
         name,
         provider_type,
         api_key: body.api_key ?? null,
-        base_url: body.base_url ?? null,
+        base_url: baseUrl,
         enabled: body.enabled !== undefined ? !!body.enabled : true,
         is_default: !!body.is_default,
         extra_headers: typeof body.extra_headers === 'object' && body.extra_headers !== null ? body.extra_headers : {},
@@ -187,13 +194,23 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
       const body = req.body || {};
       const userId = req.user.id; // Guaranteed by authenticateToken middleware
 
+      // If switching to Gemini or Anthropic, force base_url to null to use defaults
+      // This prevents stale base_url from OpenAI configuration persisting
+      let baseUrl = body.base_url;
+      if (body.provider_type) {
+        const type = normalizeProviderType(body.provider_type);
+        if (type === 'gemini' || type === 'anthropic') {
+          baseUrl = null;
+        }
+      }
+
       const updated = updateProvider(
         req.params.id,
         {
           name: body.name,
           provider_type: body.provider_type,
           api_key: body.api_key,
-          base_url: body.base_url,
+          base_url: baseUrl,
           enabled: body.enabled,
           is_default: body.is_default,
           extra_headers: body.extra_headers,
