@@ -275,6 +275,23 @@ describe('AnthropicProvider', () => {
       );
     });
 
+    test('merges defaultHeaders from config and settings', async () => {
+      const customProvider = new AnthropicProvider({
+        config: { providerConfig: { headers: { 'X-Config': '1' } } },
+        settings: { headers: { 'X-Settings': '2' } },
+        providerId: 'test',
+        http: mockFetch
+      });
+
+      mockFetch.mockResolvedValue({ ok: true, status: 200, json: () => Promise.resolve({}) });
+
+      await customProvider.makeHttpRequest({ model: 'claude' });
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options.headers['X-Config']).toBe('1');
+      expect(options.headers['X-Settings']).toBe('2');
+    });
+
     test('handles API error response', async () => {
       mockFetch.mockResolvedValue({
         ok: false,
@@ -288,6 +305,27 @@ describe('AnthropicProvider', () => {
       // The error handling usually happens in translateResponse or by the caller
       const response = await provider.makeHttpRequest({});
       expect(response.status).toBe(400);
+    });
+
+    test('detects streaming response by content-type', async () => {
+      const stream = new ReadableStream({
+        start(controller) {
+          controller.close();
+        }
+      });
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Map([['content-type', 'text/event-stream']]),
+        body: stream,
+      });
+
+      const response = await provider.makeHttpRequest({ stream: true });
+
+      expect(response.body).toBeDefined();
+      // Accessing body should trigger the proxy logic
+      const body = response.body;
+      expect(typeof body.on).toBe('function'); // Should be a Node Readable
     });
 
     test('throws on network error', async () => {
@@ -325,7 +363,7 @@ describe('AnthropicProvider', () => {
 
       expect(models).toHaveLength(2);
       expect(models[0].id).toBe('claude-3-opus-20240229');
-      
+
       expect(mockFetch).toHaveBeenCalledWith(
         'https://api.anthropic.com/v1/models',
         expect.objectContaining({ method: 'GET' })
@@ -361,14 +399,57 @@ describe('AnthropicProvider', () => {
         translateRequest: jest.fn(),
         translateResponse: jest.fn(),
       };
-      
-      // Inject the mock adapter (since getAdapter creates one, we can spy on createAdapter or just replace the property if accessible, 
+
+      // Inject the mock adapter (since getAdapter creates one, we can spy on createAdapter or just replace the property if accessible,
       // but BaseProvider caches it in this.adapter)
       provider.adapter = mockAdapter;
 
       const result = provider.translateStreamChunk('chunk');
       expect(result).toBe('translated-chunk');
       expect(mockAdapter.translateStreamChunk).toHaveBeenCalledWith('chunk', expect.anything());
+    });
+  });
+
+  describe('Feature Flags and Defaults', () => {
+    test('supportsPromptCaching returns true', () => {
+      expect(provider.supportsPromptCaching()).toBe(true);
+    });
+
+    test('supportsReasoningControls returns false', () => {
+      expect(provider.supportsReasoningControls()).toBe(false);
+    });
+
+    test('getDefaultModel returns fallback when not configured', () => {
+      const emptyProvider = new AnthropicProvider({ config: {}, providerId: 'test' });
+      expect(emptyProvider.getDefaultModel()).toBe('claude-3-5-sonnet-20241022');
+    });
+  });
+
+  describe('Configuration and Base URL Logic', () => {
+    test('isConfigured returns true if x-api-key is in defaultHeaders', () => {
+      const headerProvider = new AnthropicProvider({
+        config: { providerConfig: { headers: { 'x-api-key': 'header-key' } } },
+        providerId: 'test'
+      });
+      expect(headerProvider.isConfigured()).toBe(true);
+    });
+
+    test('baseUrl selection prefers config override over default', () => {
+      const overrideProvider = new AnthropicProvider({
+        config: { anthropicBaseUrl: 'https://my-proxy.com' },
+        providerId: 'test'
+      });
+      expect(overrideProvider.baseUrl).toBe('https://my-proxy.com');
+    });
+
+    test('baseUrl selection ignores OpenAI-like DB base URL', () => {
+      const mismatchedProvider = new AnthropicProvider({
+        config: {},
+        settings: { baseUrl: 'https://api.openai.com/v1' },
+        providerId: 'test'
+      });
+      // Should ignore openai URL and use default
+      expect(mismatchedProvider.baseUrl).toBe('https://api.anthropic.com');
     });
   });
 

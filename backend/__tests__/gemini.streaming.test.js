@@ -182,4 +182,50 @@ describe('Gemini Provider Streaming Translation', () => {
     expect(part.functionCall).toBeDefined();
     expect(part.thoughtSignature).toBe('restored_sig');
   });
+
+  it('should parse SSE string chunks', () => {
+    const provider = new GeminiProvider({ config: {}, providerId: 'test' });
+    const sseString = 'data: {"candidates": [{"content": {"parts": [{"text": "hello"}]}}]}';
+
+    const translated = provider.translateStreamChunk(sseString);
+    expect(translated.choices[0].delta.content).toBe('hello');
+  });
+
+  it('should generate stable tool call IDs using responseId', () => {
+    const provider = new GeminiProvider({ config: {}, providerId: 'test' });
+    const chunk = {
+      responseId: 'resp_123',
+      candidates: [{
+        content: {
+          parts: [{ functionCall: { name: 'test', args: {} } }]
+        }
+      }]
+    };
+
+    const translated = provider.translateStreamChunk(chunk);
+    expect(translated.choices[0].delta.tool_calls[0].id).toBe('call_resp_123_0');
+  });
+
+  it('should suppress empty STOP chunks to preserve tool_calls state', () => {
+    const provider = new GeminiProvider({ config: {}, providerId: 'test' });
+    const emptyStopChunk = {
+      candidates: [{
+        finishReason: 'STOP',
+        content: { parts: [] }
+      }]
+    };
+
+    const translated = provider.translateStreamChunk(emptyStopChunk);
+    expect(translated).toBeNull();
+  });
+
+  it('should handle [DONE] signal', () => {
+    const provider = new GeminiProvider({ config: {}, providerId: 'test' });
+    expect(provider.translateStreamChunk('data: [DONE]')).toBeNull();
+  });
+
+  it('should return null for invalid JSON string chunks', () => {
+    const provider = new GeminiProvider({ config: {}, providerId: 'test' });
+    expect(provider.translateStreamChunk('data: { invalid json }')).toBeNull();
+  });
 });

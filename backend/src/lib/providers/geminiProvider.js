@@ -180,7 +180,7 @@ export class GeminiProvider extends BaseProvider {
       return raw;
     }
     if (raw.endsWith('/v1')) {
-      return `${raw.slice(0, -3)}v1beta`;
+      return `${raw.slice(0, -3)}/v1beta`;
     }
     return `${raw}/v1beta`;
   }
