@@ -44,6 +44,7 @@ export function useStreamingScroll(
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
   const prevContentLength = useRef(0);
+  const lastScrolledMessageId = useRef<string | null>(null);
   const [dynamicBottomPadding, setDynamicBottomPadding] = useState('8rem');
 
   /**
@@ -119,24 +120,36 @@ export function useStreamingScroll(
   // Auto-scroll user message to top when streaming starts
   useEffect(() => {
     // If we just started streaming, scroll user message to top for better UX
-    if (pending.streaming && messages.length >= 2) {
-      const lastMessage = messages[messages.length - 1];
-      const secondLastMessage = messages[messages.length - 2];
+    if (pending.streaming) {
+      if (messages.length >= 2) {
+        const lastMessage = messages[messages.length - 1];
+        const secondLastMessage = messages[messages.length - 2];
 
-      // If the pattern is user message followed by assistant message
-      if (secondLastMessage?.role === 'user' && lastMessage?.role === 'assistant') {
-        const currentLength = lastMessage.content ? lastMessage.content.length : 0;
-        // Scroll if content is empty (initial) or just started appearing
-        if (currentLength === 0 || (currentLength > 0 && prevContentLength.current === 0)) {
-          // Small delay to ensure DOM is updated
-          setTimeout(() => scrollUserMessageToTop(60), 50);
+        // If the pattern is user message followed by assistant message
+        if (secondLastMessage?.role === 'user' && lastMessage?.role === 'assistant') {
+          const currentLength = lastMessage.content ? lastMessage.content.length : 0;
+
+          const isNewMessage = lastMessage.id !== lastScrolledMessageId.current;
+          if (isNewMessage) {
+            lastScrolledMessageId.current = lastMessage.id;
+          }
+
+          // Scroll if:
+          // 1. It's a brand new message (initial scroll)
+          // 2. OR text just started appearing (transition from 0 to >0)
+          // This avoids repeated scrolling when tool calls are appended while content is still empty
+          if (isNewMessage || (currentLength > 0 && prevContentLength.current === 0)) {
+            // Small delay to ensure DOM is updated
+            setTimeout(() => scrollUserMessageToTop(60), 50);
+          }
+          prevContentLength.current = currentLength;
         }
-        prevContentLength.current = currentLength;
-        return;
       }
+    } else {
+      // Reset when not streaming
+      prevContentLength.current = 0;
+      lastScrolledMessageId.current = null;
     }
-    // Reset when not streaming
-    prevContentLength.current = 0;
   }, [messages.length, pending.streaming, pending.abort, messages, scrollUserMessageToTop]);
 
   return {

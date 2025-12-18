@@ -5,6 +5,7 @@ import { ChatCompletionsAdapter } from '../adapters/chatCompletionsAdapter.js';
 import { ResponsesAPIAdapter } from '../adapters/responsesApiAdapter.js';
 import { logger } from '../../logger.js';
 import { retryWithBackoff } from '../retryUtils.js';
+import { config } from '../../env.js';
 
 const FALLBACK_MODEL = 'gpt-4.1-mini';
 
@@ -156,11 +157,7 @@ export class OpenAIProvider extends BaseProvider {
         headers,
         body: JSON.stringify(translatedRequest),
       }),
-      {
-        maxRetries: 3,
-        initialDelayMs: 1000,
-        maxDelayMs: 60000,
-      }
+      config.providerConfig.retry
     );
 
     // Log the upstream response for debugging
@@ -255,11 +252,7 @@ export class OpenAIProvider extends BaseProvider {
         headers,
         timeout: timeoutMs,
       }),
-      {
-        maxRetries: 3,
-        initialDelayMs: 1000,
-        maxDelayMs: 60000,
-      }
+      config.providerConfig.retry
     );
 
     if (!response.ok) {

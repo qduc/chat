@@ -5,7 +5,7 @@ export function getAllUserSettings(userId) {
   // Only return supported keys for now
   const rows = db
     .prepare(
-      `SELECT name, value FROM user_settings WHERE user_id = ? AND name IN ('tavily_api_key', 'exa_api_key', 'searxng_api_key', 'searxng_base_url')`
+      `SELECT name, value FROM user_settings WHERE user_id = ? AND name IN ('tavily_api_key', 'exa_api_key', 'searxng_api_key', 'searxng_base_url', 'chore_model')`
     )
     .all(userId);
   const result = {
@@ -13,6 +13,7 @@ export function getAllUserSettings(userId) {
     exa_api_key: null,
     searxng_api_key: null,
     searxng_base_url: null,
+    chore_model: null,
   };
   for (const row of rows) {
     if (row.name in result) {

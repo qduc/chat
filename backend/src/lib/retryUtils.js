@@ -109,7 +109,7 @@ export async function retryWithBackoff(fn, userConfig = {}) {
 
         // Check if we should retry using custom shouldRetry function
         if (attempt < config.maxRetries && config.shouldRetry(error, attempt)) {
-          const delay = calculateDelay(attempt, config);
+          const delay = error.retryAfterMs || calculateDelay(attempt, config);
           logger.warn({
             msg: '[retry] Retryable error encountered',
             status: result.status,
@@ -150,7 +150,7 @@ export async function retryWithBackoff(fn, userConfig = {}) {
 
       // Check if we should retry
       if (attempt < config.maxRetries && config.shouldRetry(error, attempt)) {
-        const delay = calculateDelay(attempt, config);
+        const delay = error.retryAfterMs || calculateDelay(attempt, config);
         logger.warn({
           msg: '[retry] Retryable error encountered',
           error: error.message,

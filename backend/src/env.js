@@ -42,6 +42,7 @@ const ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
 const providerHeaders = undefined;
 
 export const config = {
+  isTest,
   // Storage paths
   // Defaults use relative './data' for local development; Docker overrides to '/data' via env vars
   storage: {
@@ -64,6 +65,11 @@ export const config = {
     timeoutMs: Number(process.env.PROVIDER_TIMEOUT_MS) || 10000, // 10 second default for provider operations
     modelFetchTimeoutMs: Number(process.env.PROVIDER_MODEL_FETCH_TIMEOUT_MS) || 3000, // 3 second default for model fetching
     streamTimeoutMs: Number(process.env.PROVIDER_STREAM_TIMEOUT_MS) || 300000, // 300 second default for streaming operations
+    retry: {
+      maxRetries: Number(process.env.RETRY_MAX_ATTEMPTS) || 3,
+      initialDelayMs: isTest ? 10 : (Number(process.env.RETRY_INITIAL_DELAY_MS) || 1000),
+      maxDelayMs: isTest ? 50 : (Number(process.env.RETRY_MAX_DELAY_MS) || 60000),
+    },
   },
   // Parallel tool execution configuration (feature-flagged)
   parallelTools: {

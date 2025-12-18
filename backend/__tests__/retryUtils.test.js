@@ -262,6 +262,36 @@ describe('retryUtils', () => {
       expect(result).toEqual({ ok: true, status: 200 });
       expect(mockFn).toHaveBeenCalledTimes(2);
     });
+
+    test('should respect retryAfterMs on error object', async () => {
+      const error = new Error('Rate limited');
+      error.status = 429;
+      error.retryAfterMs = 5000;
+
+      const mockFn = jest
+        .fn()
+        .mockRejectedValueOnce(error)
+        .mockResolvedValueOnce({ ok: true, status: 200 });
+
+      const spySleep = jest.spyOn(global, 'setTimeout');
+
+      const promise = retryWithBackoff(mockFn, { maxRetries: 2, initialDelayMs: 100 });
+      
+      // Advance timers by less than 5000ms and check status
+      jest.advanceTimersByTime(4000);
+      // At this point, the promise should still be pending if it's waiting for 5000ms
+      
+      await jest.runAllTimersAsync();
+      const result = await promise;
+
+      expect(result).toEqual({ ok: true, status: 200 });
+      expect(mockFn).toHaveBeenCalledTimes(2);
+      
+      // Check that the delay was approximately 5000ms
+      // We can check the arguments to setTimeout
+      // The first call to setTimeout (retry wait) should have 5000
+      expect(spySleep).toHaveBeenCalledWith(expect.any(Function), 5000);
+    });
   });
 
   describe('withRetry', () => {
