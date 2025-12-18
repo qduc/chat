@@ -14,6 +14,7 @@ import {
   getNextSeq,
   updateMessageContent,
 } from '../db/messages.js';
+import { getAllUserSettings } from '../db/getAllUserSettings.js';
 import { logger } from '../logger.js';
 
 /**
@@ -199,7 +200,12 @@ export class SimplifiedPersistence {
           // Store conversationId and userId in closure to avoid stale references
           const convId = this.conversationId;
           const uId = userId;
-          this.titleService.generateTitle(lastUser.content, this.providerId, chatModel)
+
+          // Fetch user settings to check for chore_model preference
+          const userSettings = getAllUserSettings(uId);
+          const titleModel = userSettings.chore_model || chatModel;
+
+          this.titleService.generateTitle(lastUser.content, this.providerId, titleModel)
             .then(generated => {
               if (generated) {
                 this.conversationManager.updateTitle(convId, uId, generated);

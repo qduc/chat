@@ -602,6 +602,8 @@ export function ChatV2() {
               open={isSettingsOpen}
               onClose={() => setIsSettingsOpen(false)}
               onProvidersChanged={chat.loadProvidersAndModels}
+              modelGroups={chat.modelGroups}
+              modelOptions={chat.modelOptions}
             />
             <AuthModal
               open={showAuthModal}

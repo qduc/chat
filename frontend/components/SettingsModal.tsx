@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import Modal from './ui/Modal';
 import Toggle from './ui/Toggle';
+import ModelSelector from './ui/ModelSelector';
 import { httpClient } from '../lib';
 import { HttpError } from '../lib';
 import { resolveApiBase } from '../lib';
@@ -26,9 +27,11 @@ interface SettingsModalProps {
   open: boolean;
   onClose: () => void;
   onProvidersChanged?: () => void;
+  modelGroups: any[] | null;
+  modelOptions: any[];
 }
 
-export default function SettingsModal({ open, onClose, onProvidersChanged }: SettingsModalProps) {
+export default function SettingsModal({ open, onClose, onProvidersChanged, modelGroups, modelOptions }: SettingsModalProps) {
   // --- Providers management state ---
   type ProviderRow = {
     id: string;
@@ -86,6 +89,11 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
   const [maxToolIterationsSaving, setMaxToolIterationsSaving] = React.useState(false);
   const [maxToolIterationsError, setMaxToolIterationsError] = React.useState<string | null>(null);
   const [initialMaxToolIterations, setInitialMaxToolIterations] = React.useState<number>(10);
+  // Chore model state
+  const [choreModel, setChoreModel] = React.useState<string>('');
+  const [initialChoreModel, setInitialChoreModel] = React.useState<string>('');
+  const [choreModelSaving, setChoreModelSaving] = React.useState(false);
+  const [choreModelError, setChoreModelError] = React.useState<string | null>(null);
   // Per-engine reveal/hide state for API keys
   const [searchReveal, setSearchReveal] = React.useState<Record<SearchEngine, boolean>>({
     tavily: false,
@@ -197,6 +205,10 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
           setMaxToolIterations(loadedMaxIterations);
           setInitialMaxToolIterations(loadedMaxIterations);
           setMaxToolIterationsError(null);
+          const loadedChoreModel = keys.chore_model || '';
+          setChoreModel(loadedChoreModel);
+          setInitialChoreModel(loadedChoreModel);
+          setChoreModelError(null);
         } catch (err: any) {
           setSearchErrors({
             tavily: err?.message || 'Failed to load Tavily API key',
@@ -205,6 +217,7 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
           });
           setSearxBaseUrlError(err?.message || 'Failed to load SearXNG base URL');
           setMaxToolIterationsError(err?.message || 'Failed to load max tool iterations');
+          setChoreModelError(err?.message || 'Failed to load chore model');
         }
       })();
     }
@@ -1493,6 +1506,85 @@ export default function SettingsModal({ open, onClose, onProvidersChanged }: Set
                       <>
                         <Save className="w-4 h-4" />
                         {maxToolIterations === initialMaxToolIterations ? 'Saved' : 'Save Setting'}
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Chore Model Card */}
+              <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-5 shadow-sm space-y-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <label className="block text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      Chore Model
+                    </label>
+                    {choreModel === initialChoreModel && initialChoreModel !== '' && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium">
+                        <Check className="w-3 h-3" />
+                        Saved
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Select a model for mundane tasks like generating conversation titles
+                  </p>
+                </div>
+
+                <div className="space-y-3">
+                  <ModelSelector
+                    value={choreModel}
+                    onChange={(value) => {
+                      setChoreModel(value);
+                      setChoreModelError(null);
+                    }}
+                    groups={modelGroups}
+                    fallbackOptions={modelOptions}
+                    ariaLabel="Select chore model"
+                  />
+
+                  {choreModelError && (
+                    <p className="text-xs text-red-600 dark:text-red-400 flex items-start gap-1.5">
+                      <XCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+                      <span>{choreModelError}</span>
+                    </p>
+                  )}
+
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Use a smaller, faster model for tasks like generating conversation titles to save
+                    on API costs. Leave empty to use the main conversation model.
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setChoreModelSaving(true);
+                      setChoreModelError(null);
+                      setSuccess(null);
+                      try {
+                        await httpClient.put('/v1/user-settings', {
+                          chore_model: choreModel,
+                        });
+                        setInitialChoreModel(choreModel);
+                        setSuccess('Chore model saved successfully!');
+                      } catch (err: any) {
+                        setChoreModelError(err?.message || 'Failed to save chore model');
+                      } finally {
+                        setChoreModelSaving(false);
+                      }
+                    }}
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-neutral-700 text-white disabled:cursor-not-allowed transition-colors shadow-sm"
+                    disabled={choreModelSaving || choreModel === initialChoreModel}
+                  >
+                    {choreModelSaving ? (
+                      <>
+                        <RefreshCw className="w-4 h-4 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4" />
+                        {choreModel === initialChoreModel ? 'Saved' : 'Save Setting'}
                       </>
                     )}
                   </button>

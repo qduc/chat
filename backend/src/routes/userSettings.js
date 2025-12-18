@@ -14,7 +14,7 @@ export function createUserSettingsRouter() {
     try {
       const userId = req.user.id;
       const body = req.body || {};
-      const supportedKeys = ['tavily_api_key', 'exa_api_key', 'searxng_api_key', 'searxng_base_url'];
+      const supportedKeys = ['tavily_api_key', 'exa_api_key', 'searxng_api_key', 'searxng_base_url', 'chore_model'];
       const updated = {};
       for (const key of supportedKeys) {
         if (Object.hasOwn(body, key)) {
