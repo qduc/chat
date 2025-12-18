@@ -4,6 +4,7 @@ import { BaseProvider, ProviderModelsError } from './baseProvider.js';
 import { MessagesAdapter } from '../adapters/messagesAdapter.js';
 import { logger } from '../../logger.js';
 import { retryWithBackoff } from '../retryUtils.js';
+import { config } from '../../env.js';
 
 const FALLBACK_MODEL = 'claude-3-5-sonnet-20241022';
 export const ANTHROPIC_API_VERSION = '2023-06-01';
@@ -131,11 +132,7 @@ export class AnthropicProvider extends BaseProvider {
         headers,
         body: JSON.stringify(translatedRequest),
       }),
-      {
-        maxRetries: 3,
-        initialDelayMs: 1000,
-        maxDelayMs: 60000,
-      }
+      config.providerConfig.retry
     );
 
     // Log the upstream response for debugging

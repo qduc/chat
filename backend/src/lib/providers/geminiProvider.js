@@ -4,6 +4,7 @@ import { logger } from '../../logger.js';
 import { logUpstreamRequest, logUpstreamResponse, teeStreamWithPreview } from '../logging/upstreamLogger.js';
 import { Readable } from 'node:stream';
 import { retryWithBackoff } from '../retryUtils.js';
+import { config } from '../../env.js';
 
 function wrapStreamingResponse(response) {
   if (!response || !response.body) return response;
@@ -24,6 +25,28 @@ function wrapStreamingResponse(response) {
       return Reflect.get(target, prop, receiver);
     },
   });
+}
+
+function extractRetryDelay(errorBody) {
+  try {
+    const parsed = JSON.parse(errorBody);
+    const details = parsed?.error?.details || [];
+
+    for (const detail of details) {
+      if (detail['@type']?.includes('RetryInfo') && detail.retryDelay) {
+        const delayStr = detail.retryDelay; // e.g. "59.606162563s"
+        if (typeof delayStr === 'string' && delayStr.endsWith('s')) {
+          const seconds = parseFloat(delayStr.slice(0, -1));
+          if (!isNaN(seconds)) {
+            return Math.ceil(seconds * 1000);
+          }
+        }
+      }
+    }
+  } catch {
+    // Ignore parsing errors
+  }
+  return null;
 }
 
 export class GeminiProvider extends BaseProvider {
@@ -104,16 +127,37 @@ export class GeminiProvider extends BaseProvider {
 
     // Wrap fetch call with retry logic for 429 and 5xx errors
     const response = await retryWithBackoff(
-      () => client(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-      }),
-      {
-        maxRetries: 3,
-        initialDelayMs: 1000,
-        maxDelayMs: 60000,
-      }
+      async () => {
+        const res = await client(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(payload),
+        });
+
+        if (res.status === 429) {
+          const bodyText = await res.text().catch(() => '');
+          const retryDelay = extractRetryDelay(bodyText);
+
+          if (retryDelay) {
+            const error = new Error(`Gemini API rate limit exceeded: ${bodyText}`);
+            error.status = 429;
+            error.retryAfterMs = retryDelay;
+            throw error;
+          }
+
+          // If we consumed the body but didn't find specific retry info, we need to reconstruct the response
+          // so the outer retry logic can see the status code or the caller can see the error
+          // Since we can't easily un-read the stream, we throw an error that retryWithBackoff will catch
+          // and since it has status 429, it will be retried with default backoff
+          const error = new Error(`Gemini API rate limit exceeded`);
+          error.status = 429;
+          // Attach body if needed for logging, though we simplified here
+          throw error;
+        }
+
+        return res;
+      },
+      config.providerConfig.retry
     );
 
     // Log upstream response
