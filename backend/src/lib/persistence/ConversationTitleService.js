@@ -62,8 +62,15 @@ export class ConversationTitleService {
   async _requestTitleFromAPI(text, providerId, model = null) {
     const promptUser = text.length > 500 ? text.slice(0, 500) + '…' : text;
 
+    // Ensure we don't send provider-qualified model IDs (e.g. "provider::model")
+    // upstream providers expect the raw model identifier in the `model` field.
+    let modelToUse = model || this.config.titleModel || this.config.defaultModel || 'gpt-4.1-mini';
+    if (typeof modelToUse === 'string' && modelToUse.includes('::')) {
+      modelToUse = modelToUse.split('::')[1];
+    }
+
     const requestBody = {
-      model: model || this.config.titleModel || this.config.defaultModel || 'gpt-4.1-mini',
+      model: modelToUse,
       temperature: 0.2,
       max_tokens: 20,
       messages: [
