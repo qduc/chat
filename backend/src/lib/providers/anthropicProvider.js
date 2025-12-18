@@ -261,31 +261,15 @@ export class AnthropicProvider extends BaseProvider {
 
   getToolsetSpec(toolRegistry) {
     if (!toolRegistry) return [];
+    // Return tools in OpenAI format - the adapter will convert to Anthropic format
     if (Array.isArray(toolRegistry)) {
-      // Convert OpenAI tool specs to Anthropic format
-      return toolRegistry.map((tool) => {
-        if (typeof tool === 'string') {
-          return {
-            name: tool,
-            description: '',
-            input_schema: { type: 'object', properties: {} },
-          };
-        }
-        const fn = tool.function || tool;
-        return {
-          name: fn.name,
-          description: fn.description || '',
-          input_schema: fn.parameters || fn.input_schema || { type: 'object', properties: {} },
-        };
-      });
+      return toolRegistry;
     }
     if (typeof toolRegistry.generateOpenAIToolSpecs === 'function') {
-      const openAISpecs = toolRegistry.generateOpenAIToolSpecs();
-      return this.getToolsetSpec(openAISpecs);
+      return toolRegistry.generateOpenAIToolSpecs();
     }
     if (typeof toolRegistry.generateToolSpecs === 'function') {
-      const specs = toolRegistry.generateToolSpecs();
-      return this.getToolsetSpec(specs);
+      return toolRegistry.generateToolSpecs();
     }
     return [];
   }

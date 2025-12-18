@@ -140,7 +140,13 @@ async function normalizeMessageForAnthropic(message) {
 
   // Preserve cache_control for prompt caching
   if (message.cache_control && typeof message.cache_control === 'object') {
-    normalized.cache_control = message.cache_control;
+    const hasContent = Array.isArray(normalized.content)
+      ? normalized.content.length > 0
+      : Boolean(normalized.content);
+
+    if (hasContent) {
+      normalized.cache_control = message.cache_control;
+    }
   }
 
   return normalized;
@@ -201,9 +207,9 @@ function normalizeToolsForAnthropic(tools) {
 function omitReservedKeys(payload) {
   if (!payload || typeof payload !== 'object') return {};
   const result = {};
-  for (const [key, value] of Object.entries(payload)) {
+  for (const key in payload) {
     if (RESERVED_INTERNAL_KEYS.has(key)) continue;
-    result[key] = value;
+    result[key] = payload[key];
   }
   return result;
 }

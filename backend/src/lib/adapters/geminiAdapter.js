@@ -55,7 +55,7 @@ export class GeminiAdapter extends BaseAdapter {
       const role = message.role === 'assistant' ? 'model' : 'user';
       const parts = [];
 
-      if (message.content) {
+      if (message.content && message.role !== 'tool') {
         if (typeof message.content === 'string') {
           parts.push({ text: message.content });
         } else if (Array.isArray(message.content)) {

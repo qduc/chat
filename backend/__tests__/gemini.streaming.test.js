@@ -1,3 +1,4 @@
+
 import { GeminiProvider } from '../src/lib/providers/geminiProvider.js';
 
 describe('Gemini Provider Streaming Translation', () => {
@@ -117,5 +118,114 @@ describe('Gemini Provider Streaming Translation', () => {
     expect(provider.translateStreamChunk(null)).toBeNull();
     expect(provider.translateStreamChunk({})).toBeNull();
     expect(provider.translateStreamChunk({ candidates: [] })).toBeNull();
+  });
+
+  // NEW TESTS START HERE
+
+  it('should suppress empty STOP chunk after tool calls', () => {
+    const provider = new GeminiProvider({ config: {}, providerId: 'test' });
+
+    const stopChunk = {
+        candidates: [{
+            content: { parts: [{ text: "" }], role: "model" },
+            finishReason: "STOP",
+            index: 0
+        }]
+    };
+
+    const translated = provider.translateStreamChunk(stopChunk);
+    // Should return null to suppress the STOP overwrite
+    expect(translated).toBeNull();
+  });
+
+  it('should extract thoughtSignature from tool calls', () => {
+    const provider = new GeminiProvider({ config: {}, providerId: 'test' });
+    const chunkWithSignature = {
+        candidates: [{
+            content: {
+                parts: [{
+                    functionCall: { name: "search", args: {} },
+                    thoughtSignature: "sig_123"
+                }],
+                role: "model"
+            },
+            index: 0
+        }]
+    };
+
+    const translated = provider.translateStreamChunk(chunkWithSignature);
+    const toolCall = translated.choices[0].delta.tool_calls[0];
+
+    expect(toolCall.gemini_thought_signature).toBe("sig_123");
+  });
+
+  it('should inject thoughtSignature back into translateRequest', async () => {
+    const provider = new GeminiProvider({ config: {}, providerId: 'test' });
+
+    const request = {
+        model: 'gemini-1.5-pro',
+        messages: [
+            {
+                role: 'assistant',
+                tool_calls: [{
+                    id: 'call_1',
+                    function: { name: 'search', arguments: '{}' },
+                    gemini_thought_signature: 'restored_sig'
+                }]
+            }
+        ]
+    };
+
+    const translated = await provider.translateRequest(request);
+    const part = translated.contents[0].parts[0];
+
+    expect(part.functionCall).toBeDefined();
+    expect(part.thoughtSignature).toBe('restored_sig');
+  });
+
+  it('should parse SSE string chunks', () => {
+    const provider = new GeminiProvider({ config: {}, providerId: 'test' });
+    const sseString = 'data: {"candidates": [{"content": {"parts": [{"text": "hello"}]}}]}';
+
+    const translated = provider.translateStreamChunk(sseString);
+    expect(translated.choices[0].delta.content).toBe('hello');
+  });
+
+  it('should generate stable tool call IDs using responseId', () => {
+    const provider = new GeminiProvider({ config: {}, providerId: 'test' });
+    const chunk = {
+      responseId: 'resp_123',
+      candidates: [{
+        content: {
+          parts: [{ functionCall: { name: 'test', args: {} } }]
+        }
+      }]
+    };
+
+    const translated = provider.translateStreamChunk(chunk);
+    expect(translated.choices[0].delta.tool_calls[0].id).toBe('call_resp_123_0');
+  });
+
+  it('should suppress empty STOP chunks to preserve tool_calls state', () => {
+    const provider = new GeminiProvider({ config: {}, providerId: 'test' });
+    const emptyStopChunk = {
+      candidates: [{
+        finishReason: 'STOP',
+        content: { parts: [] }
+      }]
+    };
+
+    const translated = provider.translateStreamChunk(emptyStopChunk);
+    expect(translated).toBeNull();
+  });
+
+  it('should handle [DONE] signal', () => {
+    const provider = new GeminiProvider({ config: {}, providerId: 'test' });
+    expect(provider.translateStreamChunk('data: [DONE]')).toBeNull();
+  });
+
+  it('should return null for invalid JSON string chunks', () => {
+    const provider = new GeminiProvider({ config: {}, providerId: 'test' });
+    expect(provider.translateStreamChunk('data: { invalid json }')).toBeNull();
   });
 });
