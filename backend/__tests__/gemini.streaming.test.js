@@ -108,6 +108,7 @@ describe('Gemini Provider Streaming Translation', () => {
     expect(translated.choices[0].delta.tool_calls[0].function.arguments).toBe(
       JSON.stringify({ query: 'test query' })
     );
+    expect(translated.choices[0].finish_reason).toBe('tool_calls');
   });
 
   it('should return null for invalid chunks', () => {

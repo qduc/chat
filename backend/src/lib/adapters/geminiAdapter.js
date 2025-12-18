@@ -1,5 +1,6 @@
 import { BaseAdapter } from './baseAdapter.js';
 import { convertContentPartImage } from '../localImageEncoder.js';
+import { logger } from '../../logger.js';
 
 /**
  * Adapter for Google Gemini API (Generative Language API)
@@ -84,12 +85,20 @@ export class GeminiAdapter extends BaseAdapter {
       // Handle tool calls (assistant -> model)
       if (message.tool_calls && message.tool_calls.length > 0) {
         for (const toolCall of message.tool_calls) {
-          parts.push({
+          const functionCallPart = {
             functionCall: {
               name: toolCall.function.name,
               args: JSON.parse(toolCall.function.arguments || '{}'),
             },
-          });
+          };
+
+          // Pass through thoughtSignature if preserved in tool call metadata
+          // This is required for Gemini 2.0+ models to validate the tool call chain
+          if (toolCall.gemini_thought_signature) {
+             functionCallPart.thoughtSignature = toolCall.gemini_thought_signature;
+          }
+
+          parts.push(functionCallPart);
         }
       }
 
@@ -107,6 +116,8 @@ export class GeminiAdapter extends BaseAdapter {
         // We will try to pass it if we can, or use a placeholder if the API allows.
         // Wait, Gemini requires 'name' in functionResponse.
         // We might need to look back at previous messages to find the name matching the tool_call_id.
+        // We also need to map the thought (if any) or validation might fail?
+        // Actually, ensuring the *previous* model message has the signature is the key.
 
         const toolCallId = message.tool_call_id;
         const matchingToolCall = conversationMessages
@@ -262,7 +273,10 @@ export class GeminiAdapter extends BaseAdapter {
     }
 
     const candidate = data.candidates?.[0];
-    if (!candidate) return null;
+    if (!candidate) {
+        logger.debug('[GeminiAdapter] No candidate in chunk', { data });
+        return null;
+    }
 
     const delta = { role: 'assistant' };
     const parts = candidate.content?.parts || [];
@@ -276,28 +290,62 @@ export class GeminiAdapter extends BaseAdapter {
     // Tool call delta (Gemini usually sends full tool call in one go, but we map it to delta)
     const functionCalls = parts.filter(p => 'functionCall' in p);
     if (functionCalls.length > 0) {
-      delta.tool_calls = functionCalls.map((part, index) => ({
-        index,
-        id: `call_${Math.random().toString(36).substr(2, 9)}`,
-        type: 'function',
-        function: {
-          name: part.functionCall.name,
-          arguments: JSON.stringify(part.functionCall.args),
-        },
-      }));
+      logger.debug('[GeminiAdapter] Found function calls', { count: functionCalls.length });
+      delta.tool_calls = functionCalls.map((part, index) => {
+        // Use a stable ID based on responseId if available to support potential multi-chunk tool calls
+        // Sanitizing to ensure it's a valid ID string
+        const stableId = data.responseId
+          ? `call_${data.responseId}_${index}`.replace(/[^a-zA-Z0-9_]/g, '')
+          : `call_${Math.random().toString(36).substr(2, 9)}`;
+
+        return {
+          index,
+          id: stableId,
+          type: 'function',
+          function: {
+            name: part.functionCall.name,
+            arguments: JSON.stringify(part.functionCall.args),
+          },
+          // Preserve Gemini thoughtSignature if present for future turns
+          gemini_thought_signature: part.thoughtSignature || part.functionCall.thoughtSignature
+        };
+      });
     }
 
-    return {
-      id: `chatcmpl-${Date.now()}`,
+    let finishReason = this.mapFinishReason(candidate.finishReason);
+    if (functionCalls.length > 0) {
+      finishReason = 'tool_calls';
+    }
+
+    logger.debug('[GeminiAdapter] finishReason resolution', {
+        original: candidate.finishReason,
+        mapped: finishReason,
+        hasContent: !!delta.content,
+        hasTools: delta.tool_calls?.length > 0
+    });
+
+    // Fix for Gemini sending a STOP chunk after a tool call chunk.
+    // If we receive an empty STOP chunk, it often follows a tool call chunk derived from Gemini's behavior.
+    // Suppressing this ensures the client preserves the 'tool_calls' finish_reason from the previous chunk.
+    if (finishReason === 'stop' && !delta.content && (!delta.tool_calls || delta.tool_calls.length === 0)) {
+      logger.debug('[GeminiAdapter] Suppressing empty STOP chunk to preserve tool_calls state');
+      return null;
+    }
+
+    const result = {
+      id: data.responseId ? `chatcmpl-${data.responseId}` : `chatcmpl-${Date.now()}`,
       object: 'chat.completion.chunk',
       created: Date.now(),
       model: 'gemini',
       choices: [{
         index: 0,
         delta,
-        finish_reason: this.mapFinishReason(candidate.finishReason),
+        finish_reason: finishReason,
       }],
     };
+
+    logger.debug('[GeminiAdapter] Translating chunk result', { result: JSON.stringify(result) });
+    return result;
   }
 
   mapFinishReason(reason) {

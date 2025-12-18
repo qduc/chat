@@ -323,10 +323,39 @@ export async function handleToolsStreaming({
 
         upstream.body.on('data', (chunk) => {
           try {
+            // Debug the raw chunk from upstream in toolsStreaming
+            const logId = Math.random().toString(36).substring(7);
+            logger.debug(`[toolsStreaming] Upstream chunk ${logId}`, {
+                 length: chunk.length,
+                 isString: typeof chunk === 'string',
+                 preview: typeof chunk === 'string' ? chunk.substring(0, 100) : '[Buffer]'
+            });
+
             leftoverIter = parseSSEStream(
               chunk,
               leftoverIter,
-              (obj) => {
+              (rawObj) => {
+                // Apply translation if the provider requires it (e.g. Gemini)
+                // This converts Gemini structure (candidates, etc.) to OpenAI structure (choices, delta, etc.)
+                let obj = rawObj;
+                if (providerInstance?.needsStreamingTranslation?.()) {
+                    try {
+                        const translated = providerInstance.translateStreamChunk(rawObj);
+                        if (translated === '[DONE]') return; // Skip [DONE]
+                        if (!translated) return; // Skip empty/invalid translations
+                        obj = translated;
+                    } catch (e) {
+                         logger.warn('[toolsStreaming] Translation failed', e);
+                         return;
+                    }
+                }
+
+                logger.debug('[toolsStreaming] Processed stream object', {
+                    id: obj?.id,
+                    hasChoices: !!obj?.choices?.length,
+                    finishReason: obj?.choices?.[0]?.finish_reason
+                });
+
                 // Capture response_id from any chunk
                 if (obj?.id && !responseId) {
                   responseId = obj.id;
@@ -391,6 +420,7 @@ export async function handleToolsStreaming({
 
                 // Accumulate tool_calls, but do not stream their partial deltas
                 if (Array.isArray(delta.tool_calls) && delta.tool_calls.length > 0) {
+                  logger.debug('[toolsStreaming] Found tool_calls in delta', { count: delta.tool_calls.length });
                   for (const tcDelta of delta.tool_calls) {
                     const idx = tcDelta.index ?? 0;
                     const isNewToolCall = !toolCallMap.has(idx);
@@ -409,6 +439,12 @@ export async function handleToolsStreaming({
                     if (tcDelta.id && !existing.id) existing.id = tcDelta.id;
                     if (tcDelta.function?.name) existing.function.name = tcDelta.function.name;
                     if (tcDelta.function?.arguments) existing.function.arguments += tcDelta.function.arguments;
+
+                    // Capture special thought signature if present
+                    if (tcDelta.gemini_thought_signature) {
+                      existing.gemini_thought_signature = tcDelta.gemini_thought_signature;
+                    }
+
                     toolCallMap.set(idx, existing);
                   }
                 } else {
@@ -429,14 +465,17 @@ export async function handleToolsStreaming({
                 appendToPersistence(persistence, delta.content);
               },
               () => {
+                logger.debug('[toolsStreaming] Stream parser completed for chunk');
                 cleanup();
                 resolve();
               },
-              () => {
+              (err) => {
+                logger.warn('[toolsStreaming] SSE parse error', err);
                 /* ignore JSON parse errors for this stream */
               }
             );
           } catch (e) {
+            logger.error('[toolsStreaming] Stream processing error', e);
             cleanup();
             reject(e);
           }
