@@ -31,7 +31,13 @@ interface SettingsModalProps {
   modelOptions: any[];
 }
 
-export default function SettingsModal({ open, onClose, onProvidersChanged, modelGroups, modelOptions }: SettingsModalProps) {
+export default function SettingsModal({
+  open,
+  onClose,
+  onProvidersChanged,
+  modelGroups,
+  modelOptions,
+}: SettingsModalProps) {
   // --- Providers management state ---
   type ProviderRow = {
     id: string;
@@ -85,10 +91,10 @@ export default function SettingsModal({ open, onClose, onProvidersChanged, model
   const [searxBaseUrlSaving, setSearxBaseUrlSaving] = React.useState(false);
   const [searxBaseUrlError, setSearxBaseUrlError] = React.useState<string | null>(null);
   // Max tool iterations state
-  const [maxToolIterations, setMaxToolIterations] = React.useState<number>(10);
+  const [maxToolIterations, setMaxToolIterations] = React.useState<string>('10');
   const [maxToolIterationsSaving, setMaxToolIterationsSaving] = React.useState(false);
   const [maxToolIterationsError, setMaxToolIterationsError] = React.useState<string | null>(null);
-  const [initialMaxToolIterations, setInitialMaxToolIterations] = React.useState<number>(10);
+  const [initialMaxToolIterations, setInitialMaxToolIterations] = React.useState<string>('10');
   // Chore model state
   const [choreModel, setChoreModel] = React.useState<string>('');
   const [initialChoreModel, setInitialChoreModel] = React.useState<string>('');
@@ -202,8 +208,8 @@ export default function SettingsModal({ open, onClose, onProvidersChanged, model
           setInitialSearxBaseUrl(loadedBaseUrl);
           setSearxBaseUrlError(null);
           const loadedMaxIterations = keys.max_tool_iterations ?? 10;
-          setMaxToolIterations(loadedMaxIterations);
-          setInitialMaxToolIterations(loadedMaxIterations);
+          setMaxToolIterations(String(loadedMaxIterations));
+          setInitialMaxToolIterations(String(loadedMaxIterations));
           setMaxToolIterationsError(null);
           const loadedChoreModel = keys.chore_model || '';
           setChoreModel(loadedChoreModel);
@@ -1445,16 +1451,11 @@ export default function SettingsModal({ open, onClose, onProvidersChanged, model
 
                 <div className="space-y-3">
                   <input
-                    type="number"
-                    min="1"
-                    max="50"
+                    type="text"
                     className="w-full px-3 py-2.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
                     value={maxToolIterations}
                     onChange={(e) => {
-                      const value = parseInt(e.target.value, 10);
-                      if (!isNaN(value)) {
-                        setMaxToolIterations(Math.max(1, Math.min(50, value)));
-                      }
+                      setMaxToolIterations(e.target.value);
                       setMaxToolIterationsError(null);
                     }}
                   />
@@ -1479,10 +1480,19 @@ export default function SettingsModal({ open, onClose, onProvidersChanged, model
                       setMaxToolIterationsError(null);
                       setSuccess(null);
                       try {
+                        const trimmed = (maxToolIterations || '').toString().trim();
+                        if (!/^[0-9]+$/.test(trimmed)) {
+                          throw new Error('Please enter a valid integer between 1 and 50');
+                        }
+                        const parsed = parseInt(trimmed, 10);
+                        if (parsed < 1 || parsed > 50) {
+                          throw new Error('Please enter a number between 1 and 50');
+                        }
                         await httpClient.put('/v1/user-settings', {
-                          max_tool_iterations: maxToolIterations,
+                          max_tool_iterations: parsed,
                         });
-                        setInitialMaxToolIterations(maxToolIterations);
+                        setInitialMaxToolIterations(String(parsed));
+                        setMaxToolIterations(String(parsed));
                         setSuccess('Maximum tool iterations saved successfully!');
                       } catch (err: any) {
                         setMaxToolIterationsError(
@@ -1551,8 +1561,8 @@ export default function SettingsModal({ open, onClose, onProvidersChanged, model
                   )}
 
                   <p className="text-xs text-slate-500 dark:text-slate-400">
-                    Use a smaller, faster model for tasks like generating conversation titles to save
-                    on API costs. Leave empty to use the main conversation model.
+                    Use a smaller, faster model for tasks like generating conversation titles to on
+                    API costs. Leave empty to use the main conversation model.
                   </p>
 
                   <button
