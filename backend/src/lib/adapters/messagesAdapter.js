@@ -140,7 +140,13 @@ async function normalizeMessageForAnthropic(message) {
 
   // Preserve cache_control for prompt caching
   if (message.cache_control && typeof message.cache_control === 'object') {
-    normalized.cache_control = message.cache_control;
+    const hasContent = Array.isArray(normalized.content)
+      ? normalized.content.length > 0
+      : Boolean(normalized.content);
+
+    if (hasContent) {
+      normalized.cache_control = message.cache_control;
+    }
   }
 
   return normalized;
