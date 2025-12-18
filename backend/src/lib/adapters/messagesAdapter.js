@@ -207,9 +207,9 @@ function normalizeToolsForAnthropic(tools) {
 function omitReservedKeys(payload) {
   if (!payload || typeof payload !== 'object') return {};
   const result = {};
-  for (const [key, value] of Object.entries(payload)) {
+  for (const key in payload) {
     if (RESERVED_INTERNAL_KEYS.has(key)) continue;
-    result[key] = value;
+    result[key] = payload[key];
   }
   return result;
 }
