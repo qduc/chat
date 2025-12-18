@@ -212,7 +212,19 @@ export async function handleRegularStreaming({
           chunk,
           translationLeftover,
           (obj) => {
+            logger.debug('[StreamingHandler] Raw chunk received from upstream', {
+                id: obj?.id,
+                hasCandidates: !!obj?.candidates,
+                finishReason: obj?.candidates?.[0]?.finishReason
+            });
+
             const translated = provider.translateStreamChunk(obj);
+
+            logger.debug('[StreamingHandler] Translation result', {
+                 translatedResult: translated === '[DONE]' ? 'DONE' : (translated ? 'CHUNK' : 'NULL'),
+                 translatedId: typeof translated === 'object' ? translated?.id : undefined
+            });
+
             if (translated === '[DONE]') {
               writeAndFlush(res, 'data: [DONE]\n\n');
             } else if (translated) {
