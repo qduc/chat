@@ -236,6 +236,142 @@ describe('AnthropicProvider', () => {
     });
   });
 
+  describe('makeHttpRequest', () => {
+    let mockFetch;
+
+    beforeEach(() => {
+      mockFetch = jest.fn();
+      provider = new AnthropicProvider({
+        config: mockConfig,
+        providerId: 'test-provider',
+        http: mockFetch,
+      });
+    });
+
+    test('handles successful response', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Map(),
+        clone: () => ({ text: () => Promise.resolve('{"id":"msg_123"}') }),
+        json: () => Promise.resolve({ id: 'msg_123' }),
+      });
+
+      const response = await provider.makeHttpRequest({
+        model: 'claude-3-5-sonnet-20241022',
+        messages: [],
+      });
+
+      expect(response.status).toBe(200);
+      expect(mockFetch).toHaveBeenCalledWith(
+        expect.stringContaining('https://api.anthropic.com/v1/messages'),
+        expect.objectContaining({
+          method: 'POST',
+          headers: expect.objectContaining({
+            'x-api-key': 'test-api-key',
+            'anthropic-version': '2023-06-01',
+          }),
+        })
+      );
+    });
+
+    test('handles API error response', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 400,
+        headers: new Map(),
+        text: () => Promise.resolve('{"type":"error","error":{"type":"invalid_request_error","message":"Bad request"}}'),
+        clone: () => ({ text: () => Promise.resolve('{"type":"error"}') }),
+      });
+
+      // The provider itself doesn't throw on makeHttpRequest (unless network error), it returns the response
+      // The error handling usually happens in translateResponse or by the caller
+      const response = await provider.makeHttpRequest({});
+      expect(response.status).toBe(400);
+    });
+
+    test('throws on network error', async () => {
+      mockFetch.mockRejectedValue(new Error('Network error'));
+
+      await expect(provider.makeHttpRequest({})).rejects.toThrow('Network error');
+    });
+  });
+
+  describe('listModels', () => {
+    let mockFetch;
+
+    beforeEach(() => {
+      mockFetch = jest.fn();
+      provider = new AnthropicProvider({
+        config: mockConfig,
+        providerId: 'test-provider',
+        http: mockFetch,
+      });
+    });
+
+    test('fetches and returns models', async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({
+          data: [
+            { id: 'claude-3-opus-20240229', display_name: 'Claude 3 Opus' },
+            { id: 'claude-3-sonnet-20240229', display_name: 'Claude 3 Sonnet' },
+          ],
+        }),
+      });
+
+      const models = await provider.listModels();
+
+      expect(models).toHaveLength(2);
+      expect(models[0].id).toBe('claude-3-opus-20240229');
+      
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://api.anthropic.com/v1/models',
+        expect.objectContaining({ method: 'GET' })
+      );
+    });
+
+    test('throws ProviderModelsError on failure', async () => {
+      mockFetch.mockResolvedValue({
+        ok: false,
+        status: 401,
+        text: () => Promise.resolve('Unauthorized'),
+      });
+
+      await expect(provider.listModels()).rejects.toThrow('Failed to fetch models');
+    });
+  });
+
+  describe('Streaming Integration', () => {
+    test('needsStreamingTranslation returns true', () => {
+      expect(provider.needsStreamingTranslation()).toBe(true);
+    });
+
+    test('translateStreamChunk delegates to adapter', () => {
+      // Create a provider
+      provider = new AnthropicProvider({
+        config: mockConfig,
+        providerId: 'test-provider',
+      });
+
+      // Mock the adapter's translateStreamChunk
+      const mockAdapter = {
+        translateStreamChunk: jest.fn().mockReturnValue('translated-chunk'),
+        translateRequest: jest.fn(),
+        translateResponse: jest.fn(),
+      };
+      
+      // Inject the mock adapter (since getAdapter creates one, we can spy on createAdapter or just replace the property if accessible, 
+      // but BaseProvider caches it in this.adapter)
+      provider.adapter = mockAdapter;
+
+      const result = provider.translateStreamChunk('chunk');
+      expect(result).toBe('translated-chunk');
+      expect(mockAdapter.translateStreamChunk).toHaveBeenCalledWith('chunk', expect.anything());
+    });
+  });
+
   describe('Regression test for tool format bug', () => {
     test('CRITICAL: getToolsetSpec must never return Anthropic-formatted tools', () => {
       // This is the bug we're preventing: getToolsetSpec was converting to Anthropic format
