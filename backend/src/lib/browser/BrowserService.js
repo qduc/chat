@@ -13,9 +13,9 @@ class BrowserService {
       const { electronProvider } = await import('./ElectronProvider.js');
       return electronProvider.fetchPageContent(url);
     } else {
-      // Use Puppeteer (headless Chrome)
-      const { puppeteerProvider } = await import('./PuppeteerProvider.js');
-      return puppeteerProvider.fetchPageContent(url);
+      // Use Playwright (headless Chrome)
+      const { playwrightProvider } = await import('./PlaywrightProvider.js');
+      return playwrightProvider.fetchPageContent(url);
     }
   }
 }

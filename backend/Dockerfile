@@ -4,7 +4,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN chown -R node:node /app
 USER node
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN npm ci
 
 ARG NODE_IMAGE
@@ -13,7 +13,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN chown -R node:node /app
 USER node
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN npm ci --omit=dev
 
 ARG NODE_IMAGE
@@ -29,8 +29,8 @@ RUN apk add --no-cache su-exec sqlite-libs \
     ca-certificates \
     ttf-freefont
 
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV PLAYWRIGHT_EXECUTABLE_PATH=/usr/bin/chromium-browser
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node . .
 RUN chmod +x entrypoint.sh
@@ -57,8 +57,8 @@ RUN apk add --no-cache su-exec \
     ca-certificates \
     ttf-freefont
 
-ENV PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
-ENV PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+ENV PLAYWRIGHT_EXECUTABLE_PATH=/usr/bin/chromium-browser
 RUN chmod +x entrypoint.sh
 RUN mkdir -p logs && chown -R node:node logs
 USER node
