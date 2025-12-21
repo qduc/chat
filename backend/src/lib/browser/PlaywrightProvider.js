@@ -57,17 +57,6 @@ class PlaywrightProvider {
       executablePath = '/usr/bin/chromium-browser';
     }
 
-    let args = [
-      '--no-sandbox',
-      '--disable-setuid-sandbox',
-      '--disable-dev-shm-usage',
-      '--disable-gpu',
-      '--hide-scrollbars',
-      '--mute-audio',
-      '--disable-notifications',
-      '--disable-extensions',
-    ];
-
     if (executablePath) {
       console.log(`[PlaywrightProvider] Launching system Chromium at ${executablePath}`);
     } else {
@@ -75,7 +64,6 @@ class PlaywrightProvider {
     }
 
     const browser = await chromium.launch({
-      args: args,
       executablePath: executablePath || undefined,
       headless: true,
     });
@@ -102,7 +90,6 @@ class PlaywrightProvider {
       // Use a fresh context for each request to avoid cookie/cache leaks
       const context = await browser.newContext({
         userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        viewport: { width: 1280, height: 720 },
         ignoreHTTPSErrors: true,
       });
 

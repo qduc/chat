@@ -42,7 +42,7 @@ function validate(args) {
     throw new Error('web_fetch requires an arguments object');
   }
 
-  const { url, max_chars, continuation_token, heading_range } = args;
+  const { url, max_chars, continuation_token, heading_range, use_browser } = args;
 
   // If continuation_token is provided, we're fetching next chunk
   if (continuation_token) {
@@ -126,7 +126,16 @@ function validate(args) {
     throw new Error('Cannot use both "heading" and "heading_range" parameters');
   }
 
-  return { url, maxChars, targetHeading, headingRange };
+  // Validate use_browser if provided
+  let useBrowser = false;
+  if (use_browser !== undefined) {
+    if (typeof use_browser !== 'boolean') {
+      throw new Error('use_browser must be a boolean');
+    }
+    useBrowser = use_browser;
+  }
+
+  return { url, maxChars, targetHeading, headingRange, useBrowser };
 }
 
 function generateCacheKey(url, filterType, filterValue) {
@@ -295,7 +304,7 @@ async function basicFetch(url) {
   return html;
 }
 
-async function handler({ url, maxChars, targetHeading, headingRange, continuation_token }) {
+async function handler({ url, maxChars, targetHeading, headingRange, continuation_token, useBrowser }) {
   // Handle continuation token (fetch next chunk from cache)
   if (continuation_token) {
     return handleContinuation(continuation_token, maxChars);
@@ -304,37 +313,46 @@ async function handler({ url, maxChars, targetHeading, headingRange, continuatio
   let html = '';
   let errorMessages = [];
 
-  // 1. Try simple fetch + JSDOM first (fastest)
-  try {
-    html = await basicFetch(url);
-  } catch (error) {
-    errorMessages.push(`Basic fetch failed: ${error.message}`);
-  }
-
-  // 2. Check for failure triggers (SPA detection)
-  // - No content (fetch failed)
-  // - Very short content (<300 chars usually means stub)
-  // - Specific "Enable JS" messages
-  // - noscript tag containing JavaScript requirement messages (not just any noscript tag)
-  const noscriptNeedsJs = /<noscript[^>]*>.*?(?:enable|require|need).*?javascript/is.test(html);
-  const isFailure = !html
-    || html.length < 300
-    || html.includes("You need to enable JavaScript")
-    || noscriptNeedsJs;
-
-  // 3. Fallback to Browser Engine if needed
-  if (isFailure) {
+  if (useBrowser) {
     try {
-      // console.log(`Triggering browser fallback for ${url}`);
       html = await browserService.fetchPageContent(url);
     } catch (browserError) {
-      console.error('[webFetch] Browser fallback failed:', browserError);
-      errorMessages.push(`Browser fallback failed: ${browserError.message}`);
+      console.error('[webFetch] Forced browser fetch failed:', browserError);
+      throw new Error(`Forced browser fetch failed: ${browserError.message}`);
+    }
+  } else {
+    // 1. Try simple fetch + JSDOM first (fastest)
+    try {
+      html = await basicFetch(url);
+    } catch (error) {
+      errorMessages.push(`Basic fetch failed: ${error.message}`);
+    }
 
-      // If we have some content from basic fetch, usage it despite being "low quality" is better than crashing
-      // But if we have NO content, throw exception.
-      if (!html) {
-        throw new Error(`Failed to fetch URL. Errors: ${errorMessages.join('; ')}`);
+    // 2. Check for failure triggers (SPA detection)
+    // - No content (fetch failed)
+    // - Very short content (<300 chars usually means stub)
+    // - Specific "Enable JS" messages
+    // - noscript tag containing JavaScript requirement messages (not just any noscript tag)
+    const noscriptNeedsJs = /<noscript[^>]*>.*?(?:enable|require|need).*?javascript/is.test(html);
+    const isFailure = !html
+      || html.length < 300
+      || html.includes("You need to enable JavaScript")
+      || noscriptNeedsJs;
+
+    // 3. Fallback to Browser Engine if needed
+    if (isFailure) {
+      try {
+        // console.log(`Triggering browser fallback for ${url}`);
+        html = await browserService.fetchPageContent(url);
+      } catch (browserError) {
+        console.error('[webFetch] Browser fallback failed:', browserError);
+        errorMessages.push(`Browser fallback failed: ${browserError.message}`);
+
+        // If we have some content from basic fetch, usage it despite being "low quality" is better than crashing
+        // But if we have NO content, throw exception.
+        if (!html) {
+          throw new Error(`Failed to fetch URL. Errors: ${errorMessages.join('; ')}`);
+        }
       }
     }
   }
@@ -740,7 +758,7 @@ export const webFetchTool = createTool({
     function: {
       name: TOOL_NAME,
       description:
-        'Fetch a web page and convert its HTML content to Markdown format. Returns the page title and content as markdown. Automatically detects headings (h1-h3) and includes a table of contents.\n\nNavigation strategies:\n1. For structured content with headings: Use heading or heading_range to get specific sections\n2. For unstructured content: Use continuation_token to fetch subsequent chunks\n\nThe tool automatically chooses the best strategy based on content structure.',
+        'Fetch a web page and convert its HTML content to Markdown format. Returns the page title and content as markdown. Automatically detects headings (h1-h3) and includes a table of contents.\n\nNavigation strategies:\n1. For structured content with headings: Use heading or heading_range to get specific sections\n2. For unstructured content: Use continuation_token to fetch subsequent chunks\n3. For JavaScript-heavy or SPA sites: Use use_browser: true to ensure content is fully rendered before extraction\n\nThe tool automatically chooses the best strategy based on content structure.',
       parameters: {
         type: 'object',
         properties: {
@@ -774,6 +792,10 @@ export const webFetchTool = createTool({
           continuation_token: {
             type: 'string',
             description: 'Optional: Token from previous response to fetch the next chunk of content. Use this for pages without headings that were truncated. Omit url when using this.',
+          },
+          use_browser: {
+            type: 'boolean',
+            description: 'Optional: Force the use of a real browser to fetch the page. Use this when the initial fetch fails, returns empty content, or when the page is a Single Page Application (SPA) that requires JavaScript to render correctly (e.g., React, Vue, Angular sites, or sites with complex anti-bot measures).',
           },
         },
         required: [],

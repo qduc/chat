@@ -1,36 +1,39 @@
-ARG NODE_IMAGE=node:20.18.0-alpine3.20
+ARG NODE_IMAGE=node:20.18.0-bookworm-slim
 FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
 COPY package*.json ./
 RUN chown -R node:node /app
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN mkdir -p $PLAYWRIGHT_BROWSERS_PATH && chown node:node $PLAYWRIGHT_BROWSERS_PATH
 USER node
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN npm ci
+RUN npx playwright install chromium
 
 ARG NODE_IMAGE
 FROM ${NODE_IMAGE} AS prod-deps
 WORKDIR /app
 COPY package*.json ./
 RUN chown -R node:node /app
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN mkdir -p $PLAYWRIGHT_BROWSERS_PATH && chown node:node $PLAYWRIGHT_BROWSERS_PATH
 USER node
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 RUN npm ci --omit=dev
+RUN npx playwright install chromium
 
 ARG NODE_IMAGE
 FROM ${NODE_IMAGE} AS dev
 WORKDIR /app
 ENV NODE_ENV=development
 COPY --chown=node:node package*.json ./
-RUN apk add --no-cache su-exec sqlite-libs \
-    chromium \
-    nss \
-    freetype \
-    harfbuzz \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gosu \
+    libsqlite3-0 \
     ca-certificates \
-    ttf-freefont
+    && rm -rf /var/lib/apt/lists/*
 
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-ENV PLAYWRIGHT_EXECUTABLE_PATH=/usr/bin/chromium-browser
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+COPY --from=deps --chown=node:node $PLAYWRIGHT_BROWSERS_PATH $PLAYWRIGHT_BROWSERS_PATH
+RUN npx playwright install-deps chromium
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node . .
 RUN chmod +x entrypoint.sh
@@ -49,16 +52,15 @@ ENV PORT=3001
 ENV INSTALL_ON_START=0
 COPY --from=prod-deps --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node . .
-RUN apk add --no-cache su-exec \
-    chromium \
-    nss \
-    freetype \
-    harfbuzz \
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gosu \
+    libsqlite3-0 \
     ca-certificates \
-    ttf-freefont
+    && rm -rf /var/lib/apt/lists/*
 
-ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-ENV PLAYWRIGHT_EXECUTABLE_PATH=/usr/bin/chromium-browser
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+COPY --from=prod-deps --chown=node:node $PLAYWRIGHT_BROWSERS_PATH $PLAYWRIGHT_BROWSERS_PATH
+RUN npx playwright install-deps chromium
 RUN chmod +x entrypoint.sh
 RUN mkdir -p logs && chown -R node:node logs
 USER node
