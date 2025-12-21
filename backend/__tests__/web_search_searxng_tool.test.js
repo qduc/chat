@@ -95,7 +95,7 @@ describe('web_search_searxng tool', () => {
   test('validate rejects empty string for categories', () => {
     assert.throws(
       () => webSearchSearxngTool.validate({ query: 'test', categories: '   ' }),
-      /categories must be a non-empty string/
+      /category must be a non-empty string/
     );
   });
 

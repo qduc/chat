@@ -1,47 +1,56 @@
 import { webFetchTool } from '../src/lib/tools/webFetch.js';
 
 describe('web_fetch enhanced features', () => {
-  describe('heading_range parameter', () => {
-    it('should validate heading_range structure', () => {
+  describe('heading parameter as array', () => {
+    it('should validate heading as an array of strings', () => {
       expect(
         webFetchTool.validate({
           url: 'https://example.com',
-          heading_range: { start: 1, end: 3 }
+          heading: ['Introduction', 'Usage']
         })
       ).toEqual({
         url: 'https://example.com',
         maxChars: 10000,
-        targetHeading: null,
-        headingRange: { start: 1, end: 3 }
+        targetHeadings: ['Introduction', 'Usage'],
+        useBrowser: false
       });
     });
 
-    it('should reject invalid heading_range', () => {
-      expect(() =>
+    it('should validate heading as an array of numbers', () => {
+      expect(
         webFetchTool.validate({
           url: 'https://example.com',
-          heading_range: { start: 0, end: 3 }
+          heading: [1, 3]
         })
-      ).toThrow('heading_range must have start >= 1');
+      ).toEqual({
+        url: 'https://example.com',
+        maxChars: 10000,
+        targetHeadings: [1, 3],
+        useBrowser: false
+      });
     });
 
-    it('should reject heading_range with end < start', () => {
-      expect(() =>
+    it('should validate heading as a single string (backward compatibility)', () => {
+      expect(
         webFetchTool.validate({
           url: 'https://example.com',
-          heading_range: { start: 5, end: 3 }
+          heading: 'Introduction'
         })
-      ).toThrow('heading_range must have start >= 1 and end >= start');
+      ).toEqual({
+        url: 'https://example.com',
+        maxChars: 10000,
+        targetHeadings: ['Introduction'],
+        useBrowser: false
+      });
     });
 
-    it('should reject both heading and heading_range', () => {
+    it('should reject invalid heading types', () => {
       expect(() =>
         webFetchTool.validate({
           url: 'https://example.com',
-          heading: 'Introduction',
-          heading_range: { start: 1, end: 3 }
+          heading: { name: 'Intro' }
         })
-      ).toThrow('Cannot use both "heading" and "heading_range" parameters');
+      ).toThrow('heading must be a string, number, or an array of strings/numbers');
     });
   });
 
