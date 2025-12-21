@@ -373,16 +373,17 @@ async function handler({ url, maxChars, targetHeading, headingRange, continuatio
       const reader = new Readability(document.cloneNode(true));
       const article = reader.parse();
 
-      if (article && article.textContent && article.textContent.length > MIN_READABILITY_LENGTH) {
+      if (article && article.length > MIN_READABILITY_LENGTH) {
         extractedContent = {
           html: article.content,
           title: article.title,
           excerpt: article.excerpt,
           byline: article.byline,
-          length: article.length,        // Word count estimate
-          siteName: article.siteName,    // Site metadata
-          lang: article.lang,            // Language detection
-          publishedTime: article.publishedTime,
+          contentLength: article.length, // Character count of plain text
+          siteName: article.siteName,
+          lang: article.lang,
+          dir: article.dir,
+          publishedTime: extractPublishedTime(document),
         };
         method = 'readability';
       }
@@ -425,6 +426,7 @@ async function handler({ url, maxChars, targetHeading, headingRange, continuatio
       extractedContent = {
         html: cleanedHtml,
         title: extractTitle(html),
+        publishedTime: extractPublishedTime(document),
       };
       method = 'basic-clean';
     }
@@ -509,6 +511,10 @@ async function handler({ url, maxChars, targetHeading, headingRange, continuatio
       length: finalMarkdown.length,
       excerpt: extractedContent.excerpt,
       byline: extractedContent.byline,
+      siteName: extractedContent.siteName,
+      lang: extractedContent.lang,
+      dir: extractedContent.dir,
+      publishedTime: extractedContent.publishedTime,
       extractionMethod: method, // For debugging
       truncated: truncationResult.hasMore,
       ...(truncationResult.hasMore && { originalLength: truncationResult.originalLength }),
@@ -687,6 +693,40 @@ function cleanHtml(html) {
 function extractTitle(html) {
   const titleMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
   return titleMatch ? titleMatch[1].trim() : 'Untitled';
+}
+
+function extractPublishedTime(document) {
+  const selectors = [
+    'meta[property="article:published_time"]',
+    'meta[property="og:published_time"]',
+    'meta[name="pubdate"]',
+    'meta[name="publish-date"]',
+    'meta[name="dc.date"]',
+    'meta[name="date"]',
+    'time[datetime]',
+  ];
+
+  for (const selector of selectors) {
+    const el = document.querySelector(selector);
+    if (!el) continue;
+
+    const value = el.getAttribute('content') || el.getAttribute('datetime');
+    if (value) return value;
+  }
+
+  // Try JSON-LD as a last resort (common for blogs)
+  try {
+    const jsonLdScripts = document.querySelectorAll('script[type="application/ld+json"]');
+    for (const script of jsonLdScripts) {
+      const data = JSON.parse(script.textContent);
+      const date = data.datePublished || data.dateCreated || (Array.isArray(data['@graph']) ? data['@graph'].find(n => n.datePublished)?.datePublished : null);
+      if (date) return date;
+    }
+  } catch {
+    // Ignore JSON-LD errors
+  }
+
+  return null;
 }
 
 function truncateMarkdown(markdown, maxChars, offset = 0) {

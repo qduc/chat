@@ -11,12 +11,13 @@ function validate(args) {
 
   const validated = { query: args.query.trim() };
 
-  // Optional parameters with validation
-  if (args.categories !== undefined) {
-    if (typeof args.categories !== 'string' || args.categories.trim().length === 0) {
-      throw new Error('categories must be a non-empty string');
+  // Simplified category parameter (mapped from the older 'categories')
+  const category = args.category || args.categories;
+  if (category !== undefined) {
+    if (typeof category !== 'string' || category.trim().length === 0) {
+      throw new Error('category must be a non-empty string');
     }
-    validated.categories = args.categories.trim();
+    validated.categories = category.trim();
   }
 
   if (args.engines !== undefined) {
@@ -288,7 +289,7 @@ async function handler(
 export const webSearchSearxngTool = createTool({
   name: TOOL_NAME,
   description:
-    'Privacy-focused metasearch engine aggregating results from multiple sources. Best for privacy-conscious searches, accessing diverse search engines, and avoiding tracking. Self-hosted and highly configurable.',
+    'Search the web using SearXNG. Aggregates results from multiple engines. Returns snippets and URLs.',
   validate,
   handler,
   openAI: {
@@ -296,51 +297,29 @@ export const webSearchSearxngTool = createTool({
     function: {
       name: TOOL_NAME,
       description:
-        'Privacy‑focused metasearch (SearXNG) that pulls results from multiple engines (Google, Bing, DuckDuckGo, Wikipedia, etc.) without tracking. It aggregates headlines/snippets (not full content)—pair with the web fetch tool for full pages',
+        'Search the web for latest news, info, and sites. Returns snippets (not full content). Pair with web_fetch to read full pages.',
       parameters: {
         type: 'object',
         properties: {
           query: {
             type: 'string',
-            description: 'The search query to execute',
+            description: 'The search query or question.',
           },
-          categories: {
+          category: {
             type: 'string',
-            description:
-              'Comma-separated list of search categories (e.g., "general", "images", "videos", "news", "music", "files", "it", "science", "map"). Default is "general".',
-          },
-          engines: {
-            type: 'string',
-            description:
-              'Comma-separated list of specific search engines to use (e.g., "google,duckduckgo,wikipedia"). Restricts search to only these engines.',
-          },
-          language: {
-            type: 'string',
-            description: 'Language code for search results (e.g., "en", "fr", "de", "es"). Default is "all".',
-          },
-          pageno: {
-            type: 'integer',
-            description:
-              'Page number for pagination (default: 1). Each page typically returns 10-20 results depending on engines.',
-            minimum: 1,
+            enum: ['general', 'news', 'science', 'it'],
+            description: 'Search category (default: "general"). Use "news" for recent events.',
           },
           time_range: {
             type: 'string',
             enum: ['day', 'week', 'month', 'year'],
-            description: 'Filter results by time range. Useful for finding recent content.',
-          },
-          safesearch: {
-            type: 'integer',
-            description: 'Safe search level: 0 (none), 1 (moderate), 2 (strict). Default is 0.',
-            minimum: 0,
-            maximum: 2,
+            description: 'Filter by recency (e.g. "day" for latest news).',
           },
           max_results: {
             type: 'integer',
-            description:
-              'Maximum number of search results to display (default: 10, max: 50). Note: SearXNG may return fewer results depending on available engines.',
+            description: 'Number of results to return (1-20, default: 10).',
             minimum: 1,
-            maximum: 50,
+            maximum: 20,
           },
         },
         required: ['query'],
