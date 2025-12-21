@@ -42,7 +42,7 @@ function validate(args) {
     throw new Error('web_fetch requires an arguments object');
   }
 
-  const { url, max_chars, continuation_token, heading_range, use_browser } = args;
+  const { url, max_chars, continuation_token, use_browser } = args;
 
   // If continuation_token is provided, we're fetching next chunk
   if (continuation_token) {
@@ -89,41 +89,27 @@ function validate(args) {
     maxChars = max_chars;
   }
 
-  // Validate heading if provided
+  // Validate headings if provided
+  let targetHeadings = null;
   const { heading } = args;
-  let targetHeading = null;
   if (heading !== undefined && heading !== null) {
-    if (typeof heading === 'string') {
-      if (heading.trim().length === 0) {
-        // Treat empty/whitespace heading as not entered
-        targetHeading = null;
-      } else {
-        targetHeading = heading.trim();
-      }
+    if (Array.isArray(heading)) {
+      targetHeadings = heading
+        .map(h => {
+          if (typeof h === 'string') return h.trim();
+          if (typeof h === 'number') return h;
+          return null;
+        })
+        .filter(h => h !== null && (typeof h !== 'string' || h.length > 0));
+      if (targetHeadings.length === 0) targetHeadings = null;
+    } else if (typeof heading === 'string') {
+      const trimmed = heading.trim();
+      targetHeadings = trimmed.length > 0 ? [trimmed] : null;
+    } else if (typeof heading === 'number') {
+      targetHeadings = [heading];
     } else {
-      throw new Error('heading must be a string');
+      throw new Error('heading must be a string, number, or an array of strings/numbers');
     }
-  }
-
-  // Validate heading_range if provided
-  let headingRange = null;
-  if (heading_range !== undefined) {
-    if (typeof heading_range !== 'object' || heading_range === null) {
-      throw new Error('heading_range must be an object with start and end properties');
-    }
-    const { start, end } = heading_range;
-    if (typeof start !== 'number' || typeof end !== 'number') {
-      throw new Error('heading_range.start and heading_range.end must be numbers');
-    }
-    if (start < 1 || end < start) {
-      throw new Error('heading_range must have start >= 1 and end >= start');
-    }
-    headingRange = { start, end };
-  }
-
-  // Can't use both heading and heading_range
-  if (targetHeading && headingRange) {
-    throw new Error('Cannot use both "heading" and "heading_range" parameters');
   }
 
   // Validate use_browser if provided
@@ -135,7 +121,7 @@ function validate(args) {
     useBrowser = use_browser;
   }
 
-  return { url, maxChars, targetHeading, headingRange, useBrowser };
+  return { url, maxChars, targetHeadings, useBrowser };
 }
 
 function generateCacheKey(url, filterType, filterValue) {
@@ -304,7 +290,7 @@ async function basicFetch(url) {
   return html;
 }
 
-async function handler({ url, maxChars, targetHeading, headingRange, continuation_token, useBrowser }) {
+async function handler({ url, maxChars, targetHeadings, continuation_token, useBrowser }) {
   // Handle continuation token (fetch next chunk from cache)
   if (continuation_token) {
     return handleContinuation(continuation_token, maxChars);
@@ -440,26 +426,15 @@ async function handler({ url, maxChars, targetHeading, headingRange, continuatio
     let filterResult = { html: extractedContent.html, filtered: false };
     let filterMetadata = {};
 
-    if (headingRange) {
-      // Filter by heading range (e.g., headings 2-4)
-      filterResult = filterContentByHeadingRange(extractedContent.html, allHeadings, headingRange);
+    if (targetHeadings && targetHeadings.length > 0) {
+      // Filter by heading names or indices
+      filterResult = filterContentByHeadings(extractedContent.html, allHeadings, targetHeadings);
 
       if (filterResult.error) {
         filterMetadata.headingError = filterResult.error;
       } else if (filterResult.filtered) {
         extractedContent.html = filterResult.html;
-        filterMetadata.filteredByHeadingRange = headingRange;
-        filterMetadata.matchedHeadings = filterResult.matchedHeadings;
-      }
-    } else if (targetHeading) {
-      // Filter by single heading name
-      filterResult = filterContentByHeading(extractedContent.html, allHeadings, targetHeading);
-
-      if (filterResult.error) {
-        filterMetadata.headingError = filterResult.error;
-      } else if (filterResult.filtered) {
-        extractedContent.html = filterResult.html;
-        filterMetadata.filteredByHeading = filterResult.matchedHeading;
+        filterMetadata.filteredByHeadings = filterResult.matchedHeadings;
       }
     }
 
@@ -473,7 +448,7 @@ async function handler({ url, maxChars, targetHeading, headingRange, continuatio
     let markdown = turndownService.turndown(extractedContent.html);
 
     // STRATEGY 2: If page has no headings, use continuation token approach
-    const usesContinuation = allHeadings.length === 0 && !targetHeading && !headingRange;
+    const usesContinuation = allHeadings.length === 0 && !targetHeadings;
 
     // Apply character limit
     const truncationResult = truncateMarkdown(markdown, maxChars, 0);
@@ -499,7 +474,7 @@ async function handler({ url, maxChars, targetHeading, headingRange, continuatio
 
     // Prepend TOC to markdown if available (TOC is from FULL content, even if markdown is truncated)
     let finalMarkdown = markdown;
-    if (fullToc && !filterMetadata.filteredByHeading && !filterMetadata.filteredByHeadingRange) {
+    if (fullToc && !filterMetadata.filteredByHeadings) {
       // Only include TOC if we're showing full content (not filtered to a specific heading)
       finalMarkdown = `## Table of Contents\n\n${fullToc}\n\n---\n\n${markdown}`;
     }
@@ -570,95 +545,57 @@ function buildTOC(headings) {
   return toc.join('\n');
 }
 
-function filterContentByHeading(htmlContent, headings, targetHeading) {
-  if (!targetHeading || !headings || headings.length === 0) {
+function filterContentByHeadings(htmlContent, headings, targets) {
+  if (!targets || targets.length === 0 || !headings || headings.length === 0) {
     return { html: htmlContent, filtered: false };
   }
 
-  // Find the target heading (case-insensitive partial match)
-  const targetLower = targetHeading.toLowerCase();
-  const matchIndex = headings.findIndex(h =>
-    h.text.toLowerCase().includes(targetLower) ||
-    targetLower.includes(h.text.toLowerCase())
-  );
+  let combinedHtml = '';
+  const matchedHeadings = [];
 
-  if (matchIndex === -1) {
-    return {
-      html: htmlContent,
-      filtered: false,
-      error: `Heading "${targetHeading}" not found. Available headings: ${headings.map(h => h.text).join(', ')}`
-    };
-  }
-
-  const targetHeadingObj = headings[matchIndex];
-  const startPos = targetHeadingObj.position;
-
-  // Find the end position (next heading of same or higher level, or end of content)
-  let endPos = htmlContent.length;
-  for (let i = matchIndex + 1; i < headings.length; i++) {
-    if (headings[i].level <= targetHeadingObj.level) {
-      endPos = headings[i].position;
-      break;
+  for (const target of targets) {
+    let matchIndex = -1;
+    if (typeof target === 'number') {
+      // 1-based index
+      if (target >= 1 && target <= headings.length) {
+        matchIndex = target - 1;
+      }
+    } else if (typeof target === 'string') {
+      const targetLower = target.toLowerCase();
+      matchIndex = headings.findIndex(h =>
+        h.text.toLowerCase().includes(targetLower) ||
+        targetLower.includes(h.text.toLowerCase())
+      );
     }
-  }
 
-  const filteredHtml = htmlContent.substring(startPos, endPos);
+    if (matchIndex !== -1) {
+      const targetHeadingObj = headings[matchIndex];
+      const startPos = targetHeadingObj.position;
 
-  return {
-    html: filteredHtml,
-    filtered: true,
-    matchedHeading: targetHeadingObj.text
-  };
-}
-
-function filterContentByHeadingRange(htmlContent, headings, range) {
-  if (!range || !headings || headings.length === 0) {
-    return { html: htmlContent, filtered: false };
-  }
-
-  const { start, end } = range;
-
-  // Validate range against available headings (1-indexed)
-  if (start > headings.length) {
-    return {
-      html: htmlContent,
-      filtered: false,
-      error: `Start index ${start} exceeds available headings (${headings.length} total). Available headings: ${headings.map((h, i) => `${i + 1}. ${h.text}`).join(', ')}`
-    };
-  }
-
-  const actualEnd = Math.min(end, headings.length);
-  const startIndex = start - 1; // Convert to 0-indexed
-  const endIndex = actualEnd - 1;
-
-  const startHeading = headings[startIndex];
-  const startPos = startHeading.position;
-
-  // Find end position (start of next heading after the range, or end of content)
-  let endPos = htmlContent.length;
-  if (endIndex + 1 < headings.length) {
-    // Check if next heading is at same or higher level as any in our range
-    const nextHeading = headings[endIndex + 1];
-    const minLevelInRange = Math.min(...headings.slice(startIndex, endIndex + 1).map(h => h.level));
-
-    if (nextHeading.level <= minLevelInRange) {
-      endPos = nextHeading.position;
-    } else {
-      // Include subheadings, find next heading at same or higher level
-      for (let i = endIndex + 2; i < headings.length; i++) {
-        if (headings[i].level <= minLevelInRange) {
+      // Find the end position (next heading of same or higher level, or end of content)
+      let endPos = htmlContent.length;
+      for (let i = matchIndex + 1; i < headings.length; i++) {
+        if (headings[i].level <= targetHeadingObj.level) {
           endPos = headings[i].position;
           break;
         }
       }
+
+      combinedHtml += htmlContent.substring(startPos, endPos) + '\n\n';
+      matchedHeadings.push(targetHeadingObj.text);
     }
   }
 
-  const filteredHtml = htmlContent.substring(startPos, endPos);
-  const matchedHeadings = headings.slice(startIndex, endIndex + 1).map(h => h.text);
+  if (matchedHeadings.length === 0) {
+    return {
+      html: htmlContent,
+      filtered: false,
+      error: `None of the requested headings found. Available headings: ${headings.map((h, i) => `${i + 1}. ${h.text}`).join(', ')}`
+    };
+  }
 
   return {
-    html: filteredHtml,
+    html: combinedHtml.trim(),
     filtered: true,
     matchedHeadings
   };
@@ -811,23 +748,14 @@ export const webFetchTool = createTool({
             description: `Maximum number of characters to return per chunk (default: ${DEFAULT_MAX_CHARS}). Content will be intelligently truncated at paragraph/sentence boundaries.`,
           },
           heading: {
-            type: 'string',
-            description: 'Optional: Retrieve content under a specific heading (h1-h3). Performs case-insensitive partial matching. Returns error with available headings if not found.',
-          },
-          heading_range: {
-            type: 'object',
-            description: 'Optional: Retrieve content from a range of headings by index (1-based). Example: {start: 2, end: 4} gets content from 2nd to 4th heading. Includes all subheadings within range.',
-            properties: {
-              start: {
-                type: 'number',
-                description: 'Starting heading index (1-based, inclusive)'
-              },
-              end: {
-                type: 'number',
-                description: 'Ending heading index (1-based, inclusive)'
-              }
+            type: 'array',
+            items: {
+              anyOf: [
+                { type: 'string' },
+                { type: 'number' }
+              ]
             },
-            required: ['start', 'end']
+            description: 'Optional: Array of headings (h1-h3) to retrieve content from. Can be heading names (strings, partial match) or indices (numbers, 1st heading is 1). Content includes subheadings until a same or higher-level heading is reached.',
           },
           continuation_token: {
             type: 'string',
