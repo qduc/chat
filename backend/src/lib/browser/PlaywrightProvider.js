@@ -95,7 +95,10 @@ class PlaywrightProvider {
 
       const page = await context.newPage();
       try {
-        await page.goto(url, { waitUntil: 'networkidle', timeout: 30000 });
+        await page.goto(url, { waitUntil: 'load', timeout: 60000 });
+        if (url.includes('reddit.com')) {
+          await page.waitForTimeout(2000); // Give Reddit some time to render comments
+        }
         const content = await page.content();
         return content;
       } catch (error) {

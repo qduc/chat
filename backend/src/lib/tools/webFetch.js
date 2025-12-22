@@ -353,28 +353,55 @@ async function handler({ url, maxChars, targetHeadings, continuation_token, useB
     let extractedContent = null;
     let method = 'unknown';
 
-    // Strategy 1: Try Readability first (reliable, well-tested)
-    // Threshold relaxed to 200 chars to get more content for potential RAG filtering
-    try {
-      const reader = new Readability(document.cloneNode(true));
-      const article = reader.parse();
+    // Strategy 0: Reddit specialized extraction (capture post + comments)
+    if (url.includes('reddit.com')) {
+      const post = document.querySelector('shreddit-post');
+      const commentTree = document.querySelector('shreddit-comment-tree') || document.querySelector('#comment-tree');
 
-      if (article && article.length > MIN_READABILITY_LENGTH) {
+      if (post) {
+        let combinedHtml = post.outerHTML;
+        if (commentTree) {
+          combinedHtml += '<hr><h2>Comments</h2>' + commentTree.outerHTML;
+        } else {
+          const comments = document.querySelectorAll('shreddit-comment');
+          if (comments.length > 0) {
+            combinedHtml += '<hr><h2>Comments</h2>';
+            comments.forEach((c) => (combinedHtml += c.outerHTML));
+          }
+        }
+
         extractedContent = {
-          html: article.content,
-          title: article.title,
-          excerpt: article.excerpt,
-          byline: article.byline,
-          contentLength: article.length, // Character count of plain text
-          siteName: article.siteName,
-          lang: article.lang,
-          dir: article.dir,
+          html: combinedHtml,
+          title: extractTitle(html),
           publishedTime: extractPublishedTime(document),
         };
-        method = 'readability';
+        method = 'reddit-custom';
       }
-    } catch {
-      // Readability failed, continue to next strategy
+    }
+
+    // Strategy 1: Try Readability first (reliable, well-tested)
+    if (!extractedContent) {
+      try {
+        const reader = new Readability(document.cloneNode(true));
+        const article = reader.parse();
+
+        if (article && article.length > MIN_READABILITY_LENGTH) {
+          extractedContent = {
+            html: article.content,
+            title: article.title,
+            excerpt: article.excerpt,
+            byline: article.byline,
+            contentLength: article.length, // Character count of plain text
+            siteName: article.siteName,
+            lang: article.lang,
+            dir: article.dir,
+            publishedTime: extractPublishedTime(document),
+          };
+          method = 'readability';
+        }
+      } catch {
+        // Readability failed, continue to next strategy
+      }
     }
 
     // Strategy 2: Try finding main content elements
@@ -391,6 +418,8 @@ async function handler({ url, maxChars, targetHeadings, continuation_token, useB
         '.documentation',
         '.docs-content',
         '.mdx-content',
+        'shreddit-post', // Reddit specific
+        '.comment-tree', // Reddit specific
       ];
 
       for (const selector of mainSelectors) {
