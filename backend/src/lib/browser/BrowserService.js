@@ -5,17 +5,18 @@ class BrowserService {
    * - Electron: Uses native BrowserWindow
    * - Server/Docker: Uses Puppeteer/Chromium
    * @param {string} url
+   * @param {Object} [options]
    * @returns {Promise<string>} HTML content
    */
-  async fetchPageContent(url) {
+  async fetchPageContent(url, options = {}) {
     if (process.env.IS_ELECTRON) {
       // Use Electron's native browser capabilities (singleton)
       const { electronProvider } = await import('./ElectronProvider.js');
-      return electronProvider.fetchPageContent(url);
+      return electronProvider.fetchPageContent(url, options);
     } else {
       // Use Playwright (headless Chrome)
       const { playwrightProvider } = await import('./PlaywrightProvider.js');
-      return playwrightProvider.fetchPageContent(url);
+      return playwrightProvider.fetchPageContent(url, options);
     }
   }
 }

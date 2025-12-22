@@ -301,7 +301,11 @@ async function handler({ url, maxChars, targetHeadings, continuation_token, useB
 
   if (useBrowser) {
     try {
-      html = await browserService.fetchPageContent(url);
+      const options = {};
+      if (url.includes('stackoverflow.com')) {
+        options.waitSelector = '#question-header';
+      }
+      html = await browserService.fetchPageContent(url, options);
     } catch (browserError) {
       console.error('[webFetch] Forced browser fetch failed:', browserError);
       throw new Error(`Forced browser fetch failed: ${browserError.message}`);
@@ -323,13 +327,19 @@ async function handler({ url, maxChars, targetHeadings, continuation_token, useB
     const isFailure = !html
       || html.length < 300
       || html.includes("You need to enable JavaScript")
+      || /<title>(?:Just a moment\.\.\.|Attention Required! \| Cloudflare)<\/title>/i.test(html)
+      || html.includes("Checking your browser before accessing")
       || noscriptNeedsJs;
 
     // 3. Fallback to Browser Engine if needed
     if (isFailure) {
       try {
         // console.log(`Triggering browser fallback for ${url}`);
-        html = await browserService.fetchPageContent(url);
+        const options = {};
+        if (url.includes('stackoverflow.com')) {
+          options.waitSelector = '#question-header';
+        }
+        html = await browserService.fetchPageContent(url, options);
       } catch (browserError) {
         console.error('[webFetch] Browser fallback failed:', browserError);
         errorMessages.push(`Browser fallback failed: ${browserError.message}`);
@@ -353,28 +363,97 @@ async function handler({ url, maxChars, targetHeadings, continuation_token, useB
     let extractedContent = null;
     let method = 'unknown';
 
-    // Strategy 1: Try Readability first (reliable, well-tested)
-    // Threshold relaxed to 200 chars to get more content for potential RAG filtering
-    try {
-      const reader = new Readability(document.cloneNode(true));
-      const article = reader.parse();
+    // Strategy 0: Reddit specialized extraction (capture post + comments)
+    if (url.includes('reddit.com')) {
+      const post = document.querySelector('shreddit-post');
+      const commentTree = document.querySelector('shreddit-comment-tree') || document.querySelector('#comment-tree');
 
-      if (article && article.length > MIN_READABILITY_LENGTH) {
+      if (post) {
+        let combinedHtml = post.outerHTML;
+        if (commentTree) {
+          combinedHtml += '<hr><h2>Comments</h2>' + commentTree.outerHTML;
+        } else {
+          const comments = document.querySelectorAll('shreddit-comment');
+          if (comments.length > 0) {
+            combinedHtml += '<hr><h2>Comments</h2>';
+            comments.forEach((c) => (combinedHtml += c.outerHTML));
+          }
+        }
+
         extractedContent = {
-          html: article.content,
-          title: article.title,
-          excerpt: article.excerpt,
-          byline: article.byline,
-          contentLength: article.length, // Character count of plain text
-          siteName: article.siteName,
-          lang: article.lang,
-          dir: article.dir,
+          html: combinedHtml,
+          title: extractTitle(html),
           publishedTime: extractPublishedTime(document),
         };
-        method = 'readability';
+        method = 'reddit-custom';
       }
-    } catch {
-      // Readability failed, continue to next strategy
+    }
+
+    // Strategy 0.1: StackOverflow specialized extraction (capture question + answers with metadata)
+    if (!extractedContent && url.includes('stackoverflow.com')) {
+      const questionEl = document.querySelector('.question') || document.querySelector('#question');
+
+      if (questionEl) {
+        const qBody = questionEl.querySelector('.js-post-body');
+        const qVotes = questionEl.querySelector('.js-vote-count')?.textContent?.trim() || '0';
+
+        let combinedHtml = `<h1>Question (Votes: ${qVotes})</h1>`;
+        if (qBody) {
+          combinedHtml += qBody.innerHTML;
+        } else {
+          combinedHtml += questionEl.innerHTML;
+        }
+
+        const answers = document.querySelectorAll('#answers .answer');
+        if (answers.length > 0) {
+          combinedHtml += `\n<hr>\n<h2>${answers.length} Answers</h2>`;
+          answers.forEach((answer, index) => {
+            const body = answer.querySelector('.js-post-body');
+            const isAccepted = answer.classList.contains('accepted-answer');
+            const voteCount = answer.querySelector('.js-vote-count')?.textContent?.trim() || '0';
+
+            if (body) {
+              const status = isAccepted ? ' ✅ (Accepted)' : '';
+              combinedHtml += `\n<div>
+                <h3>Answer ${index + 1}${status} (Votes: ${voteCount})</h3>
+                ${body.innerHTML}
+              </div>\n<hr>`;
+            }
+          });
+        }
+
+        extractedContent = {
+          html: combinedHtml,
+          title: extractTitle(html),
+          publishedTime: extractPublishedTime(document),
+        };
+        method = 'stackoverflow-custom';
+      }
+    }
+
+    // Strategy 1: Try Readability first (reliable, well-tested)
+    if (!extractedContent) {
+      try {
+        const reader = new Readability(document.cloneNode(true));
+        const article = reader.parse();
+
+        if (article && article.length > MIN_READABILITY_LENGTH) {
+          extractedContent = {
+            html: article.content,
+            title: article.title,
+            excerpt: article.excerpt,
+            byline: article.byline,
+            contentLength: article.length, // Character count of plain text
+            siteName: article.siteName,
+            lang: article.lang,
+            dir: article.dir,
+            publishedTime: extractPublishedTime(document),
+          };
+          method = 'readability';
+        }
+      } catch {
+        // Readability failed, continue to next strategy
+      }
     }
 
     // Strategy 2: Try finding main content elements
@@ -391,6 +470,8 @@ async function handler({ url, maxChars, targetHeadings, continuation_token, useB
         '.documentation',
         '.docs-content',
         '.mdx-content',
+        'shreddit-post', // Reddit specific
+        '.comment-tree', // Reddit specific
       ];
 
       for (const selector of mainSelectors) {

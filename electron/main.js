@@ -12,10 +12,15 @@ const __dirname = path.dirname(__filename);
 const IS_DEV = !app.isPackaged;
 
 // Set environment variables for the backend
+const userData = app.getPath('userData');
 process.env.SKIP_AUTO_START = "true";
 process.env.NODE_ENV = IS_DEV ? 'development' : 'production';
-process.env.DATA_DIR = app.getPath('userData');
-process.env.DB_URL = `file:${path.join(app.getPath('userData'), 'chat.sqlite')}`;
+process.env.DATA_DIR = userData;
+process.env.DB_URL = `file:${path.join(userData, 'chat.sqlite')}`;
+process.env.LOGS_DIR = path.join(userData, 'logs');
+process.env.UPSTREAM_LOG_DIR = path.join(userData, 'logs');
+process.env.IMAGE_STORAGE_PATH = path.join(userData, 'data', 'images');
+process.env.FILE_STORAGE_PATH = path.join(userData, 'data', 'files');
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'electron-secret-key'; // Should be secure in real app
 process.env.PERSIST_TRANSCRIPTS = 'true';
 process.env.IS_ELECTRON = 'true';

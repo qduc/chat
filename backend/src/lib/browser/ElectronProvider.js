@@ -21,7 +21,8 @@ export class ElectronProvider {
     });
   }
 
-  async fetchPageContent(url) {
+  async fetchPageContent(url, options = {}) {
+    const { waitSelector, timeout = 30000 } = options;
     let BrowserWindow;
     try {
       const electron = await import('electron');
@@ -44,7 +45,27 @@ export class ElectronProvider {
     });
 
     try {
-      await this._loadWithTimeout(win, url);
+      await this._loadWithTimeout(win, url, timeout);
+
+      if (waitSelector) {
+        // Simple polling for selector in Electron
+        await win.webContents.executeJavaScript(`
+          new Promise((resolve) => {
+            const start = Date.now();
+            const check = () => {
+              if (document.querySelector('${waitSelector}')) {
+                resolve(true);
+              } else if (Date.now() - start > 10000) {
+                resolve(false);
+              } else {
+                setTimeout(check, 100);
+              }
+            };
+            check();
+          })
+        `);
+      }
+
       const content = await win.webContents.executeJavaScript('document.documentElement.outerHTML');
       return content;
     } catch (error) {
