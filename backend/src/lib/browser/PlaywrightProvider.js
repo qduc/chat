@@ -84,7 +84,8 @@ class PlaywrightProvider {
     }
   }
 
-  async fetchPageContent(url) {
+  async fetchPageContent(url, options = {}) {
+    const { waitSelector, timeout = 60000 } = options;
     return this.limit(async () => {
       const browser = await this.getBrowser();
       // Use a fresh context for each request to avoid cookie/cache leaks
@@ -95,10 +96,18 @@ class PlaywrightProvider {
 
       const page = await context.newPage();
       try {
-        await page.goto(url, { waitUntil: 'load', timeout: 60000 });
-        if (url.includes('reddit.com')) {
+        await page.goto(url, { waitUntil: 'load', timeout });
+
+        if (waitSelector) {
+          try {
+            await page.waitForSelector(waitSelector, { timeout: 10000 });
+          } catch (e) {
+            console.warn(`[PlaywrightProvider] Timeout waiting for selector: ${waitSelector}`);
+          }
+        } else if (url.includes('reddit.com')) {
           await page.waitForTimeout(2000); // Give Reddit some time to render comments
         }
+
         const content = await page.content();
         return content;
       } catch (error) {

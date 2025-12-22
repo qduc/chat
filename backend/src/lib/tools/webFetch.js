@@ -301,7 +301,11 @@ async function handler({ url, maxChars, targetHeadings, continuation_token, useB
 
   if (useBrowser) {
     try {
-      html = await browserService.fetchPageContent(url);
+      const options = {};
+      if (url.includes('stackoverflow.com')) {
+        options.waitSelector = '#question-header';
+      }
+      html = await browserService.fetchPageContent(url, options);
     } catch (browserError) {
       console.error('[webFetch] Forced browser fetch failed:', browserError);
       throw new Error(`Forced browser fetch failed: ${browserError.message}`);
@@ -323,13 +327,19 @@ async function handler({ url, maxChars, targetHeadings, continuation_token, useB
     const isFailure = !html
       || html.length < 300
       || html.includes("You need to enable JavaScript")
+      || /<title>(?:Just a moment\.\.\.|Attention Required! \| Cloudflare)<\/title>/i.test(html)
+      || html.includes("Checking your browser before accessing")
       || noscriptNeedsJs;
 
     // 3. Fallback to Browser Engine if needed
     if (isFailure) {
       try {
         // console.log(`Triggering browser fallback for ${url}`);
-        html = await browserService.fetchPageContent(url);
+        const options = {};
+        if (url.includes('stackoverflow.com')) {
+          options.waitSelector = '#question-header';
+        }
+        html = await browserService.fetchPageContent(url, options);
       } catch (browserError) {
         console.error('[webFetch] Browser fallback failed:', browserError);
         errorMessages.push(`Browser fallback failed: ${browserError.message}`);
@@ -376,6 +386,48 @@ async function handler({ url, maxChars, targetHeadings, continuation_token, useB
           publishedTime: extractPublishedTime(document),
         };
         method = 'reddit-custom';
+      }
+    }
+
+    // Strategy 0.1: StackOverflow specialized extraction (capture question + answers with metadata)
+    if (!extractedContent && url.includes('stackoverflow.com')) {
+      const questionEl = document.querySelector('.question') || document.querySelector('#question');
+
+      if (questionEl) {
+        const qBody = questionEl.querySelector('.js-post-body');
+        const qVotes = questionEl.querySelector('.js-vote-count')?.textContent?.trim() || '0';
+
+        let combinedHtml = `<h1>Question (Votes: ${qVotes})</h1>`;
+        if (qBody) {
+          combinedHtml += qBody.innerHTML;
+        } else {
+          combinedHtml += questionEl.innerHTML;
+        }
+
+        const answers = document.querySelectorAll('#answers .answer');
+        if (answers.length > 0) {
+          combinedHtml += `\n<hr>\n<h2>${answers.length} Answers</h2>`;
+          answers.forEach((answer, index) => {
+            const body = answer.querySelector('.js-post-body');
+            const isAccepted = answer.classList.contains('accepted-answer');
+            const voteCount = answer.querySelector('.js-vote-count')?.textContent?.trim() || '0';
+
+            if (body) {
+              const status = isAccepted ? ' ✅ (Accepted)' : '';
+              combinedHtml += `\n<div>
+                <h3>Answer ${index + 1}${status} (Votes: ${voteCount})</h3>
+                ${body.innerHTML}
+              </div>\n<hr>`;
+            }
+          });
+        }
+
+        extractedContent = {
+          html: combinedHtml,
+          title: extractTitle(html),
+          publishedTime: extractPublishedTime(document),
+        };
+        method = 'stackoverflow-custom';
       }
     }
 
