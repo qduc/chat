@@ -22,6 +22,25 @@ describe('web_search_exa tool', () => {
     assert.throws(() => webSearchExaTool.validate({}), /requires a "query"/);
   });
 
+  test('validate extracts site:domain from query', () => {
+    const validated = webSearchExaTool.validate({
+      query: 'latest news site:example.com',
+      include_domains: ['cnn.com']
+    });
+
+    assert.equal(validated.query, 'latest news');
+    assert.deepEqual(validated.include_domains, ['example.com', 'cnn.com']);
+  });
+
+  test('validate handles query with only site:domain', () => {
+    const validated = webSearchExaTool.validate({
+      query: 'site:example.com'
+    });
+
+    assert.equal(validated.query, 'example.com');
+    assert.deepEqual(validated.include_domains, ['example.com']);
+  });
+
   test('handler throws when Exa API key is missing', async () => {
     const args = webSearchExaTool.validate({ query: 'test' });
     await assert.rejects(() => webSearchExaTool.handler(args), /Exa API key is not configured/);

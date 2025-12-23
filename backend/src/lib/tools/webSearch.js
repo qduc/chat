@@ -9,7 +9,27 @@ function validate(args) {
     throw new Error('web_search requires a "query" argument of type string');
   }
 
-  const validated = { query: args.query.trim() };
+  let query = args.query.trim();
+  const include_domains = [];
+
+  // Extract site:domain from query if present
+  const siteMatch = query.match(/site:([^\s]+)/i);
+  if (siteMatch) {
+    const domain = siteMatch[1].trim();
+    const newQuery = query.replace(/site:[^\s]+/i, '').replace(/\s+/g, ' ').trim();
+
+    if (newQuery) {
+      query = newQuery;
+    } else {
+      query = domain;
+    }
+
+    if (domain && !include_domains.includes(domain)) {
+      include_domains.push(domain);
+    }
+  }
+
+  const validated = { query };
 
   // Optional parameters with validation
   if (args.search_depth !== undefined) {
@@ -74,14 +94,23 @@ function validate(args) {
     if (!Array.isArray(args.include_domains)) {
       throw new Error('include_domains must be an array of domain strings');
     }
-    validated.include_domains = args.include_domains;
+    args.include_domains.forEach((d) => {
+      const trimmed = d.trim();
+      if (trimmed && !include_domains.includes(trimmed)) {
+        include_domains.push(trimmed);
+      }
+    });
+  }
+
+  if (include_domains.length > 0) {
+    validated.include_domains = include_domains;
   }
 
   if (args.exclude_domains !== undefined) {
     if (!Array.isArray(args.exclude_domains)) {
       throw new Error('exclude_domains must be an array of domain strings');
     }
-    validated.exclude_domains = args.exclude_domains;
+    validated.exclude_domains = args.exclude_domains.map((d) => d.trim());
   }
 
   if (args.time_range !== undefined) {

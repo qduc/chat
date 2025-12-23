@@ -10,7 +10,27 @@ function validate(args) {
     throw new Error('web_search_exa requires a "query" argument of type string');
   }
 
-  const validated = { query: args.query.trim() };
+  let query = args.query.trim();
+  const include_domains = [];
+
+  // Extract site:domain from query if present
+  const siteMatch = query.match(/site:([^\s]+)/i);
+  if (siteMatch) {
+    const domain = siteMatch[1].trim();
+    const newQuery = query.replace(/site:[^\s]+/i, '').replace(/\s+/g, ' ').trim();
+
+    if (newQuery) {
+      query = newQuery;
+    } else {
+      query = domain;
+    }
+
+    if (domain && !include_domains.includes(domain)) {
+      include_domains.push(domain);
+    }
+  }
+
+  const validated = { query };
 
   if (args.type !== undefined) {
     const type = String(args.type).toLowerCase();
@@ -32,7 +52,16 @@ function validate(args) {
     if (!Array.isArray(args.include_domains) || !args.include_domains.every((domain) => typeof domain === 'string' && domain.trim().length > 0)) {
       throw new Error('include_domains must be an array of non-empty strings');
     }
-    validated.include_domains = args.include_domains.map((domain) => domain.trim());
+    args.include_domains.forEach((d) => {
+      const trimmed = d.trim();
+      if (trimmed && !include_domains.includes(trimmed)) {
+        include_domains.push(trimmed);
+      }
+    });
+  }
+
+  if (include_domains.length > 0) {
+    validated.include_domains = include_domains;
   }
 
   if (args.exclude_domains !== undefined) {
