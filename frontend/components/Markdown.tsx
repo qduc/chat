@@ -492,9 +492,7 @@ const MarkdownComponents: any = {
     return <code className={`${className} bg-slate-50 dark:bg-neutral-900/50`}>{children}</code>;
   },
   hr: () => <hr className="my-4 border-slate-200 dark:border-neutral-800" />,
-  p: ({ children }: any) => (
-    <p className="md-p whitespace-pre-wrap leading-relaxed mt-4 first:mt-0">{children}</p>
-  ),
+  p: ({ children }: any) => <p className="md-p leading-relaxed mt-4 first:mt-0">{children}</p>,
   h1: ({ children }: any) => (
     <h1 className="md-h1 text-2xl font-bold leading-tight mt-6 mb-4 pb-2 border-b border-slate-200 dark:border-neutral-800 first:mt-0">
       {children}

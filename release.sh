@@ -47,22 +47,48 @@ if [[ ! $CURRENT_BRANCH =~ ^develop_[0-9]+$ ]]; then
     error "Must be on a develop_X branch (e.g., develop_5). Current branch: ${CURRENT_BRANCH}"
 fi
 
-# Run lint check
-info "Running lint checks..."
-if ! npm --prefix backend run lint || ! npm --prefix frontend run lint; then
-    error "Lint checks failed. Please fix the issues and try again."
+# Check if checks have already passed for this commit
+IS_CLEAN=false
+if git diff-index --quiet HEAD --; then
+    IS_CLEAN=true
 fi
 
-# Make sure frontend build succeeds
-info "Building frontend..."
-if ! npm --prefix frontend run build; then
-    error "Frontend build failed. Please fix the issues and try again."
+CURRENT_COMMIT=$(git rev-parse HEAD)
+SKIP_CHECKS=false
+LAST_PASS_FILE=".git/last_test_passed_commit"
+
+if [ "$IS_CLEAN" = true ] && [ -f "$LAST_PASS_FILE" ]; then
+    LAST_COMMIT=$(cat "$LAST_PASS_FILE")
+    if [ "$CURRENT_COMMIT" = "$LAST_COMMIT" ]; then
+        SKIP_CHECKS=true
+    fi
 fi
 
-# Run tests
-info "Running unit tests"
-if ! npm test; then
-    error "Unit tests failed. Please fix the error and try again."
+if [ "$SKIP_CHECKS" = true ]; then
+    success "Checks already passed for commit ${CURRENT_COMMIT:0:7}. Skipping lint, build, and tests."
+else
+    # Run lint check
+    info "Running lint checks..."
+    if ! npm --prefix backend run lint || ! npm --prefix frontend run lint; then
+        error "Lint checks failed. Please fix the issues and try again."
+    fi
+
+    # Make sure frontend build succeeds
+    info "Building frontend..."
+    if ! npm --prefix frontend run build; then
+        error "Frontend build failed. Please fix the issues and try again."
+    fi
+
+    # Run tests
+    info "Running unit tests"
+    if ! npm test; then
+        error "Unit tests failed. Please fix the error and try again."
+    fi
+
+    # Record successful checks if working tree is clean
+    if [ "$IS_CLEAN" = true ]; then
+        echo "$CURRENT_COMMIT" > "$LAST_PASS_FILE"
+    fi
 fi
 
 if [ "$DRY_RUN" = true ]; then
