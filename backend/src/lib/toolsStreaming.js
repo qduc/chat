@@ -399,6 +399,11 @@ export async function handleToolsStreaming({
                     persistence.setReasoningDetails(delta.reasoning_details);
                   }
                 }
+
+                const reasoningText = delta.reasoning_content ?? delta.reasoning;
+                if (reasoningText && persistence && typeof persistence.appendReasoningText === 'function') {
+                  persistence.appendReasoningText(reasoningText);
+                }
                 if (message?.reasoning_details && Array.isArray(message.reasoning_details)) {
                   // For non-streaming message format, replace accumulated with full array
                   accumulatedReasoningDetails = message.reasoning_details;
@@ -434,6 +439,12 @@ export async function handleToolsStreaming({
                     // Capture textOffset when tool call first appears
                     if (isNewToolCall && persistence && typeof persistence.getContentLength === 'function') {
                       existing.textOffset = persistence.getContentLength();
+                      if (typeof persistence.addMessageEvent === 'function') {
+                        persistence.addMessageEvent('tool_call', {
+                          tool_call_id: tcDelta.id ?? null,
+                          tool_call_index: idx,
+                        });
+                      }
                     }
 
                     if (tcDelta.id && !existing.id) existing.id = tcDelta.id;

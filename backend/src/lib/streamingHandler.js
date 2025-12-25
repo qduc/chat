@@ -132,6 +132,12 @@ function processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason
         // Capture textOffset when tool call first appears
         if (isNewToolCall && persistence) {
           existing.textOffset = persistence.getContentLength();
+          if (typeof persistence.addMessageEvent === 'function') {
+            persistence.addMessageEvent('tool_call', {
+              tool_call_id: tcDelta.id ?? null,
+              tool_call_index: idx,
+            });
+          }
         }
 
         if (tcDelta.id) existing.id = tcDelta.id;

@@ -9,6 +9,7 @@ import {
   insertToolCalls,
   insertToolOutputs,
 } from '../db/toolCalls.js';
+import { insertMessageEvents } from '../db/messageEvents.js';
 import {
   insertToolMessage,
   getNextSeq,
@@ -47,6 +48,9 @@ export class SimplifiedPersistence {
     this.reasoningTokens = null; // Reasoning token usage metadata
     this.userMessageId = null; // Persisted user message ID from latest sync
     this.assistantMessageId = null; // Persisted assistant message ID for the current turn
+    this.messageEventsEnabled = this.persistenceConfig?.isMessageEventsEnabled?.() ?? true;
+    this.messageEvents = []; // Ordered assistant events for rendering
+    this.nextEventSeq = 0;
     this._latestSyncMappings = [];
     // Checkpoint state
     this.lastCheckpoint = 0; // timestamp
@@ -238,6 +242,9 @@ export class SimplifiedPersistence {
     this.reasoningTextBuffer = '';
     this.reasoningTokens = null;
     this.assistantMessageId = null;
+    this.messageEventsEnabled = this.persistenceConfig?.isMessageEventsEnabled?.() ?? true;
+    this.messageEvents = [];
+    this.nextEventSeq = 0;
     // Create a draft row immediately so we can checkpoint during streaming
     try {
       this.createDraftMessage();
@@ -405,6 +412,7 @@ export class SimplifiedPersistence {
   appendReasoningText(delta) {
     if (!this.persist || !delta) return;
     this.reasoningTextBuffer += delta;
+    this.addMessageEvent('reasoning', { text: String(delta) });
   }
 
   setReasoningDetails(details) {
@@ -512,6 +520,7 @@ export class SimplifiedPersistence {
       const text = this._extractTextFromMixedContent(cloned);
       if (text) {
         this.assistantBuffer += text;
+        this.addMessageEvent('content', { text });
       }
       try {
         if (this.shouldCheckpoint()) this.performCheckpoint();
@@ -523,6 +532,7 @@ export class SimplifiedPersistence {
 
     if (typeof delta === 'string') {
       this.assistantBuffer += delta;
+      this.addMessageEvent('content', { text: delta });
       try {
         if (this.shouldCheckpoint()) this.performCheckpoint();
       } catch (err) {
@@ -534,10 +544,13 @@ export class SimplifiedPersistence {
     if (typeof delta === 'object') {
       if (typeof delta.text === 'string') {
         this.assistantBuffer += delta.text;
+        this.addMessageEvent('content', { text: delta.text });
       } else if (typeof delta.value === 'string') {
         this.assistantBuffer += delta.value;
+        this.addMessageEvent('content', { text: delta.value });
       } else if (typeof delta.content === 'string') {
         this.assistantBuffer += delta.content;
+        this.addMessageEvent('content', { text: delta.content });
       }
     }
     // After updating in-memory buffer, consider checkpointing to DB
@@ -640,8 +653,23 @@ export class SimplifiedPersistence {
         }
       }
 
+    if (this.messageEventsEnabled) {
+      const finalizedReasoning = this._finalizeReasoningDetails();
+      const hasReasoningEvent = this.messageEvents.some((event) => event?.type === 'reasoning');
+      if (!hasReasoningEvent && Array.isArray(finalizedReasoning)) {
+        const reasoningText = finalizedReasoning
+          .map((detail) => (typeof detail?.text === 'string' ? detail.text.trim() : ''))
+          .filter(Boolean)
+          .join('\n\n');
+        if (reasoningText) {
+          this.messageEvents.unshift({ seq: -1, type: 'reasoning', payload: { text: reasoningText } });
+        }
+      }
+    }
+
     // Automatically persist any buffered tool calls and outputs now that we have a messageId
     this.persistToolCallsAndOutputs();
+    this.persistMessageEvents();
   }
 
   /**
@@ -657,6 +685,29 @@ export class SimplifiedPersistence {
       count: toolCalls.length
     });
     this.toolCalls.push(...toolCalls);
+  }
+
+  addMessageEvent(type, payload) {
+    if (!this.persist || !type || !this.messageEventsEnabled) return;
+    const normalizedPayload = payload ?? null;
+    const last = this.messageEvents[this.messageEvents.length - 1];
+    const isMergeable =
+      last &&
+      last.type === type &&
+      (type === 'content' || type === 'reasoning') &&
+      last.payload &&
+      normalizedPayload &&
+      typeof last.payload.text === 'string' &&
+      typeof normalizedPayload.text === 'string';
+
+    if (isMergeable) {
+      last.payload.text += normalizedPayload.text;
+      return;
+    }
+
+    const seq = this.nextEventSeq;
+    this.nextEventSeq += 1;
+    this.messageEvents.push({ seq, type, payload: normalizedPayload });
   }
 
   /**
@@ -748,6 +799,31 @@ export class SimplifiedPersistence {
       // Clear buffers after persistence attempt
       this.toolCalls = [];
       this.toolOutputs = [];
+    }
+  }
+
+  persistMessageEvents() {
+    if (!this.persist || !this.conversationId || !this.currentMessageId || !this.messageEventsEnabled) {
+      this.messageEvents = [];
+      return;
+    }
+
+    if (this.messageEvents.length === 0) return;
+
+    try {
+      const orderedEvents = this.messageEvents.map((event, index) => ({
+        ...event,
+        seq: index,
+      }));
+      insertMessageEvents({
+        messageId: this.currentMessageId,
+        conversationId: this.conversationId,
+        events: orderedEvents,
+      });
+    } catch (error) {
+      logger.error('[SimplifiedPersistence] Failed to persist message events:', error);
+    } finally {
+      this.messageEvents = [];
     }
   }
 

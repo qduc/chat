@@ -103,6 +103,7 @@ export type {
   FileProcessingState,
   FileUploadProgress,
   ChatMessage,
+  MessageEvent,
   ChatEvent,
   ChatResponse,
   ConversationMeta,

@@ -35,6 +35,15 @@ export class PersistenceConfig {
   }
 
   /**
+   * Check if message event storage is enabled
+   * @returns {boolean} True if message event storage is enabled
+   */
+  isMessageEventsEnabled() {
+    if (this.config?.persistence?.messageEventsEnabled === undefined) return true;
+    return Boolean(this.config.persistence.messageEventsEnabled);
+  }
+
+  /**
    * Get default model
    * @returns {string|null} Default model name
    */
