@@ -159,6 +159,13 @@ body {
   font-family: system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+html {
+  overflow-x: hidden;
+  max-width: 100vw;
 }
 
 /* Performance optimizations for scrolling */
@@ -223,6 +230,34 @@ main {
 }*/
 
 /* Enhanced markdown styles */
+.md-content {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.md-content :where(p, li, a, code, pre, blockquote, td, th) {
+  max-width: 100%;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.md-content a {
+  word-break: break-all;
+}
+
+.md-content pre,
+.md-content code,
+.md-content table {
+  max-width: 100%;
+}
+
+.md-content pre {
+  overflow-x: auto;
+}
+
 .md-code {
   font-family: 'SF Mono', Monaco, 'Inconsolata', 'Roboto Mono', 'Source Code Pro', monospace;
   line-height: 1.5;

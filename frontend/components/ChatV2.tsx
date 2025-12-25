@@ -462,7 +462,7 @@ export function ChatV2() {
   }, []);
 
   return (
-    <div className="flex h-dvh max-h-dvh bg-white dark:bg-neutral-950 relative">
+    <div className="flex h-dvh max-h-dvh bg-white dark:bg-neutral-950 relative overflow-x-hidden">
       {/* Mobile Backdrop */}
       {(!chat.sidebarCollapsed || !chat.rightSidebarCollapsed) && (
         <div
@@ -521,8 +521,8 @@ export function ChatV2() {
           showLeftSidebarButton={chat.historyEnabled}
           showRightSidebarButton={true}
         />
-        <div className="flex flex-1 min-h-0">
-          <div className="flex flex-col flex-1 relative">
+        <div className="flex flex-1 min-h-0 min-w-0">
+          <div className="flex flex-col flex-1 relative min-w-0">
             <MessageList
               messages={chat.messages}
               pending={chat.pending}

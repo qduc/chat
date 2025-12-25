@@ -481,9 +481,7 @@ const MarkdownComponents: any = {
     // Show un-highlighted code during streaming
     if (!shouldHighlight && className?.startsWith('language-')) {
       return (
-        <code
-          className={`${className} bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-slate-300 px-1 rounded`}
-        >
+        <code className={`${className} bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-slate-300 px-1 rounded`}>
           {children}
         </code>
       );
@@ -682,7 +680,7 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
   // based on the .dark class applied to the document root
 
   return (
-    <div className={`${className || ''} ${isDark ? 'dark' : ''}`}>
+    <div className={`md-content ${className || ''} ${isDark ? 'dark' : ''}`}>
       {blocks.map((block, index) => (
         <MemoizedMarkdownBlock
           key={index}
