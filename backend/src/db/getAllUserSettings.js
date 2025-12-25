@@ -1,4 +1,5 @@
 import { getDb } from './client.js';
+import { decryptForUser } from './encryption.js';
 
 export function getAllUserSettings(userId) {
   const db = getDb();
@@ -17,7 +18,11 @@ export function getAllUserSettings(userId) {
   };
   for (const row of rows) {
     if (row.name in result) {
-      result[row.name] = row.value;
+      if (row.name === 'tavily_api_key' || row.name === 'exa_api_key' || row.name === 'searxng_api_key') {
+        result[row.name] = decryptForUser(userId, row.value);
+      } else {
+        result[row.name] = row.value;
+      }
     }
   }
   return result;

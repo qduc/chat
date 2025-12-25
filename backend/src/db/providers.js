@@ -1,5 +1,6 @@
 import { getDb } from './client.js';
 import { logger } from '../logger.js';
+import { decryptForUser, encryptForUser } from './encryption.js';
 
 function safeJsonParse(value, fallback) {
   try {
@@ -25,6 +26,7 @@ export function listProviders(userId) {
   const rows = db.prepare(query).all({ userId });
   return rows.map((r) => ({
     ...r,
+    api_key: decryptForUser(userId, r.api_key),
     extra_headers: safeJsonParse(r.extra_headers, {}),
     metadata: safeJsonParse(r.metadata, {}),
   }));
@@ -67,6 +69,7 @@ export function getProviderByIdWithApiKey(id, userId) {
   if (!row) return null;
   return {
     ...row,
+    api_key: decryptForUser(userId, row.api_key),
     extra_headers: safeJsonParse(row.extra_headers, {}),
     metadata: safeJsonParse(row.metadata, {}),
   };
@@ -87,6 +90,8 @@ export function createProvider({
   const db = getDb();
   const now = new Date().toISOString();
   const pid = id || name || provider_type;
+
+  const encryptedApiKey = user_id ? encryptForUser(user_id, api_key) : api_key;
   db.prepare(
     `INSERT INTO providers (id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, user_id, created_at, updated_at)
      VALUES (@id, @name, @provider_type, @api_key, @base_url, @enabled, @is_default, @extra_headers, @metadata, @user_id, @now, @now)`
@@ -94,7 +99,7 @@ export function createProvider({
     id: pid,
     name,
     provider_type,
-    api_key,
+    api_key: encryptedApiKey,
     base_url,
     enabled: enabled ? 1 : 0,
     is_default: is_default ? 1 : 0,
@@ -120,11 +125,14 @@ export function updateProvider(id, { name, provider_type, api_key, base_url, ena
 
   if (!current) return null; // Provider not found or no permission
 
+  const apiKeyToStore =
+    api_key !== undefined ? encryptForUser(userId, api_key) : current.api_key;
+
   const values = {
     id,
     name: name ?? current.name,
     provider_type: provider_type ?? current.provider_type,
-    api_key: api_key !== undefined ? api_key : current.api_key,
+    api_key: apiKeyToStore,
     base_url: base_url !== undefined ? base_url : current.base_url,
     enabled: enabled === undefined ? current.enabled : (enabled ? 1 : 0),
     is_default: is_default === undefined ? current.is_default : (is_default ? 1 : 0),

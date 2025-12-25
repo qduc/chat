@@ -99,6 +99,11 @@ export const config = {
     },
     messageEventsEnabled: bool(process.env.MESSAGE_EVENTS_ENABLED, true),
   },
+  encryption: {
+    masterKey: process.env.ENCRYPTION_MASTER_KEY || null,
+    enabled: !!process.env.ENCRYPTION_MASTER_KEY,
+    encryptMessages: bool(process.env.ENCRYPT_MESSAGE_CONTENT, false),
+  },
   auth: {
     jwtSecret: process.env.JWT_SECRET || 'development-secret-key-change-in-production',
     jwtExpiresIn: process.env.JWT_EXPIRES_IN || '1h',

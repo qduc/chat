@@ -1,6 +1,15 @@
 import { getDb } from './client.js';
 import { logger } from '../logger.js';
 import { getMessageEventsByMessageIds } from './messageEvents.js';
+import { config } from '../env.js';
+import { decryptForUser, encryptForUser } from './encryption.js';
+
+function getConversationUserId(db, conversationId) {
+  const row = db
+    .prepare(`SELECT user_id FROM conversations WHERE id=@conversationId AND deleted_at IS NULL`)
+    .get({ conversationId });
+  return row?.user_id || null;
+}
 
 function extractTextFromMixedContent(content) {
   if (!Array.isArray(content)) return '';
@@ -124,6 +133,14 @@ export function insertUserMessage({ conversationId, content, seq, clientMessageI
     textContent = content || '';
   }
 
+  if (config.encryption?.encryptMessages) {
+    const userId = getConversationUserId(db, conversationId);
+    if (userId) {
+      textContent = encryptForUser(userId, textContent);
+      if (jsonContent != null) jsonContent = encryptForUser(userId, jsonContent);
+    }
+  }
+
   const info = db
     .prepare(
       `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, client_message_id, created_at, updated_at)
@@ -171,6 +188,25 @@ export function finalizeAssistantMessage({
   db.prepare(
     `UPDATE messages SET status=@status, finish_reason=@finishReason, response_id=@responseId, updated_at=@now WHERE id=@messageId`
   ).run({ messageId, finishReason, status, responseId, now });
+
+  // If enabled, encrypt assistant content at rest once the message stops streaming.
+  // We keep plaintext during streaming so appendAssistantContent can do efficient concatenation.
+  if (config.encryption?.encryptMessages && (status === 'final' || status === 'error')) {
+    const row = db
+      .prepare(`SELECT conversation_id, content, content_json FROM messages WHERE id=@messageId`)
+      .get({ messageId });
+
+    if (row) {
+      const userId = getConversationUserId(db, row.conversation_id);
+      if (userId) {
+        const encryptedContent = encryptForUser(userId, row.content ?? '');
+        const encryptedJson = row.content_json != null ? encryptForUser(userId, row.content_json) : row.content_json;
+        db.prepare(
+          `UPDATE messages SET content=@content, content_json=@contentJson, updated_at=@now WHERE id=@messageId`
+        ).run({ messageId, content: encryptedContent, contentJson: encryptedJson, now });
+      }
+    }
+  }
 }
 
 export function markAssistantError({ messageId }) {
@@ -198,6 +234,16 @@ export function insertAssistantFinal({
   const { json: reasoningJson } = serializeReasoningDetails(reasoningDetails);
   const normalizedTokens = normalizeReasoningTokens(reasoningTokens);
 
+  let contentToStore = textContent || '';
+  let contentJsonToStore = jsonContent;
+  if (config.encryption?.encryptMessages) {
+    const userId = getConversationUserId(db, conversationId);
+    if (userId) {
+      contentToStore = encryptForUser(userId, contentToStore);
+      if (contentJsonToStore != null) contentJsonToStore = encryptForUser(userId, contentJsonToStore);
+    }
+  }
+
   const info = db
     .prepare(
       `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, finish_reason, response_id, reasoning_details, reasoning_tokens, client_message_id, created_at, updated_at)
@@ -205,8 +251,8 @@ export function insertAssistantFinal({
     )
     .run({
       conversationId,
-      content: textContent || '',
-      contentJson: jsonContent,
+      content: contentToStore,
+      contentJson: contentJsonToStore,
       seq,
       finishReason,
       responseId,
@@ -221,6 +267,15 @@ export function insertAssistantFinal({
 export function insertToolMessage({ conversationId, content, seq, status = 'success', clientMessageId = null }) {
   const db = getDb();
   const now = new Date().toISOString();
+
+  let contentToStore = typeof content === 'string' ? content : JSON.stringify(content ?? '');
+  if (config.encryption?.encryptMessages) {
+    const userId = getConversationUserId(db, conversationId);
+    if (userId) {
+      contentToStore = encryptForUser(userId, contentToStore);
+    }
+  }
+
   const info = db
     .prepare(
       `INSERT INTO messages (conversation_id, role, status, content, seq, client_message_id, created_at, updated_at)
@@ -229,7 +284,7 @@ export function insertToolMessage({ conversationId, content, seq, status = 'succ
     .run({
       conversationId,
       status,
-      content: typeof content === 'string' ? content : JSON.stringify(content ?? ''),
+      content: contentToStore,
       seq,
       clientMessageId,
       now
@@ -272,6 +327,20 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
      ORDER BY seq ASC LIMIT @limit`
     )
     .all({ conversationId, afterSeq, limit: sanitizedLimit });
+
+  const conversationUserId = getConversationUserId(db, conversationId);
+  if (conversationUserId) {
+    for (const message of messages) {
+      if (message.content != null) {
+        const decrypted = decryptForUser(conversationUserId, message.content);
+        if (decrypted !== null) message.content = decrypted;
+      }
+      if (message.content_json != null) {
+        const decryptedJson = decryptForUser(conversationUserId, message.content_json);
+        if (decryptedJson !== null) message.content_json = decryptedJson;
+      }
+    }
+  }
 
   // Build mapping of integer id to client_message_id before transformation
   const integerIdToClientId = new Map();
@@ -415,6 +484,18 @@ export function getLastMessage({ conversationId }) {
     .get({ conversationId });
 
   if (!message) return null;
+
+  const conversationUserId = getConversationUserId(db, conversationId);
+  if (conversationUserId) {
+    if (message.content != null) {
+      const decrypted = decryptForUser(conversationUserId, message.content);
+      if (decrypted !== null) message.content = decrypted;
+    }
+    if (message.content_json != null) {
+      const decryptedJson = decryptForUser(conversationUserId, message.content_json);
+      if (decryptedJson !== null) message.content_json = decryptedJson;
+    }
+  }
 
   // Store integer ID for database lookups
   const integerMessageId = message.id;
@@ -564,11 +645,18 @@ export function updateMessageContent({
   const { json: reasoningJson } = serializeReasoningDetails(reasoningDetails);
   const normalizedTokens = normalizeReasoningTokens(reasoningTokens);
 
+  let contentToStore = textContent;
+  let contentJsonToStore = jsonContent;
+  if (config.encryption?.encryptMessages) {
+    contentToStore = encryptForUser(userId, contentToStore);
+    if (contentJsonToStore != null) contentJsonToStore = encryptForUser(userId, contentJsonToStore);
+  }
+
   const updates = ['content = @content', 'content_json = @contentJson', 'updated_at = @now'];
   const params = {
     messageId,
-    content: textContent,
-    contentJson: jsonContent,
+    content: contentToStore,
+    contentJson: contentJsonToStore,
     now,
   };
 
