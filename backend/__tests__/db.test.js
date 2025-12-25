@@ -10,6 +10,7 @@ import {
   retentionSweep,
   resetDbCache,
 } from '../src/db/index.js';
+import { insertMessageEvents } from '../src/db/messageEvents.js';
 import { createUser } from '../src/db/users.js';
 import { config } from '../src/env.js';
 import { safeTestSetup } from '../test_support/databaseSafety.js';
@@ -128,6 +129,32 @@ describe('DB helpers', () => {
 
       const partial = getMessagesPage({ conversationId: 'conv', afterSeq: 2, limit: 5 });
       assert.equal(partial.next_after_seq, null);
+    });
+
+    test('includes message_events when present', () => {
+      createConversation({ id: 'conv', sessionId, userId: testUser.id });
+      const db = getDb();
+      const info = db.prepare(
+        `INSERT INTO messages (conversation_id, role, status, content, seq)
+         VALUES (@cid, 'assistant', 'final', @content, @seq)`
+      ).run({ cid: 'conv', content: 'Hello world', seq: 1 });
+
+      insertMessageEvents({
+        messageId: info.lastInsertRowid,
+        conversationId: 'conv',
+        events: [
+          { seq: 0, type: 'content', payload: { text: 'Hello ' } },
+          { seq: 1, type: 'content', payload: { text: 'world' } },
+        ],
+      });
+
+      const page = getMessagesPage({ conversationId: 'conv', afterSeq: 0, limit: 5 });
+      assert.equal(page.messages.length, 1);
+      const [message] = page.messages;
+      assert.ok(Array.isArray(message.message_events));
+      assert.equal(message.message_events.length, 2);
+      assert.equal(message.message_events[0].payload.text, 'Hello ');
+      assert.equal(message.message_events[1].payload.text, 'world');
     });
   });
 

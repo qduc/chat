@@ -1,5 +1,6 @@
 import { getDb } from './client.js';
 import { logger } from '../logger.js';
+import { getMessageEventsByMessageIds } from './messageEvents.js';
 
 function extractTextFromMixedContent(content) {
   if (!Array.isArray(content)) return '';
@@ -306,6 +307,7 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
   if (messages.length > 0) {
     const messageIds = messages.map(m => m.id);
     const placeholders = messageIds.map(() => '?').join(',');
+    const messageEventsByMessage = getMessageEventsByMessageIds(messageIds);
 
     // Get all tool calls for these messages
     const toolCalls = db
@@ -362,6 +364,9 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
 
     // Attach tool calls and outputs to messages (still using integer IDs)
     for (const message of messages) {
+      if (messageEventsByMessage[message.id]) {
+        message.message_events = messageEventsByMessage[message.id];
+      }
       if (toolCallsByMessage[message.id]) {
         message.tool_calls = toolCallsByMessage[message.id];
       }
@@ -454,6 +459,11 @@ export function getLastMessage({ conversationId }) {
        ORDER BY executed_at ASC`
     )
     .all({ messageId: integerMessageId });
+
+  const messageEventsByMessage = getMessageEventsByMessageIds([integerMessageId]);
+  if (messageEventsByMessage[integerMessageId]) {
+    message.message_events = messageEventsByMessage[integerMessageId];
+  }
 
   // Transform tool calls to OpenAI format
   if (toolCalls.length > 0) {

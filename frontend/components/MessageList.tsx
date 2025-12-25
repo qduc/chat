@@ -71,10 +71,7 @@ function buildAssistantSegments(message: ChatMessage): AssistantSegment[] {
   const content = extractTextFromContent(message.content);
   const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
   const toolOutputs = Array.isArray(message.tool_outputs) ? message.tool_outputs : [];
-
-  if (toolCalls.length === 0) {
-    return content ? [{ kind: 'text', text: content }] : [];
-  }
+  const messageEvents = Array.isArray(message.message_events) ? message.message_events : [];
 
   // Helper to resolve outputs for a tool call
   const resolveOutputs = (call: any): ToolOutput[] => {
@@ -93,6 +90,53 @@ function buildAssistantSegments(message: ChatMessage): AssistantSegment[] {
       Number.isFinite(call.textOffset) &&
       call.textOffset > 0
   );
+
+  if (messageEvents.length > 0) {
+    const sortedEvents = [...messageEvents].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+    const segments: AssistantSegment[] = [];
+
+    for (const event of sortedEvents) {
+      if (event.type === 'content') {
+        const text = typeof event.payload?.text === 'string' ? event.payload.text : '';
+        if (text) {
+          segments.push({ kind: 'text', text });
+        }
+        continue;
+      }
+
+      if (event.type === 'reasoning') {
+        const text = typeof event.payload?.text === 'string' ? event.payload.text : '';
+        if (text) {
+          segments.push({ kind: 'text', text: `<thinking>${text}</thinking>` });
+        }
+        continue;
+      }
+
+      if (event.type === 'tool_call') {
+        const toolCallId = event.payload?.tool_call_id;
+        const toolCallIndex = event.payload?.tool_call_index;
+        const toolCall =
+          (toolCallId
+            ? toolCalls.find((call: any) => call?.id === toolCallId)
+            : undefined) ||
+          (typeof toolCallIndex === 'number'
+            ? toolCalls.find((call: any) => (call?.index ?? 0) === toolCallIndex)
+            : undefined);
+
+        if (toolCall) {
+          segments.push({ kind: 'tool_call', toolCall, outputs: resolveOutputs(toolCall) });
+        }
+      }
+    }
+
+    if (segments.length > 0) {
+      return segments;
+    }
+  }
+
+  if (toolCalls.length === 0) {
+    return content ? [{ kind: 'text', text: content }] : [];
+  }
 
   // For loaded conversations (no valid textOffset), show tools first, then content
   if (!hasValidTextOffset) {

@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSystemPrompts } from './useSystemPrompts';
-import type { MessageContent, TextContent } from '../lib';
+import type { MessageContent, TextContent, MessageEvent } from '../lib';
 import { conversations as conversationsApi, chat, auth } from '../lib/api';
 import { httpClient } from '../lib/http';
 import { APIError, StreamingNotSupportedError } from '../lib/streaming';
@@ -26,6 +26,7 @@ export interface Message {
   content: MessageContent;
   timestamp?: number;
   tool_calls?: any[];
+  message_events?: MessageEvent[];
   tool_call_id?: string;
   tool_outputs?: Array<{
     tool_call_id?: string;
@@ -382,9 +383,10 @@ export function useChat() {
                 .filter(Boolean)
                 .join('\n\n')
             : '';
+        const hasMessageEvents = Array.isArray(msg.message_events) && msg.message_events.length > 0;
 
         const content =
-          msg.role === 'assistant' && reasoningText
+          msg.role === 'assistant' && reasoningText && !hasMessageEvents
             ? prependReasoningToContent(baseContent, reasoningText)
             : baseContent;
 
@@ -394,6 +396,7 @@ export function useChat() {
           content,
           timestamp: new Date(msg.created_at).getTime(),
           tool_calls: msg.tool_calls,
+          message_events: msg.message_events,
           tool_outputs: msg.tool_outputs,
           reasoning_details: msg.reasoning_details ?? undefined,
           reasoning_tokens: msg.reasoning_tokens ?? undefined,

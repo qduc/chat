@@ -440,9 +440,36 @@ async function handleRequest(context, req, res) {
           if (message.content !== undefined) {
             const safeContent = sanitizeContent(message.content);
             persistence.setAssistantContent(safeContent);
+            if (typeof persistence.addMessageEvent === 'function') {
+              const contentText = Array.isArray(safeContent)
+                ? safeContent
+                  .map((part) => {
+                    if (typeof part === 'string') return part;
+                    if (part && typeof part === 'object') {
+                      if (typeof part.text === 'string') return part.text;
+                      if (typeof part.value === 'string') return part.value;
+                      if (typeof part.content === 'string') return part.content;
+                    }
+                    return '';
+                  })
+                  .join('')
+                : (typeof safeContent === 'string' ? safeContent : '');
+              if (contentText) {
+                persistence.addMessageEvent('content', { text: contentText });
+              }
+            }
           }
           if (Array.isArray(message.reasoning_details)) {
             persistence.setReasoningDetails(message.reasoning_details);
+            if (typeof persistence.addMessageEvent === 'function') {
+              const reasoningText = message.reasoning_details
+                .map((detail) => (typeof detail?.text === 'string' ? detail.text.trim() : ''))
+                .filter(Boolean)
+                .join('\n\n');
+              if (reasoningText) {
+                persistence.addMessageEvent('reasoning', { text: reasoningText });
+              }
+            }
           }
           if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
             const safeContent = sanitizeContent(message.content);
@@ -454,6 +481,14 @@ async function handleRequest(context, req, res) {
               textOffset: contentLength
             }));
             persistence.addToolCalls(toolCallsWithOffset);
+            if (typeof persistence.addMessageEvent === 'function') {
+              for (const tc of toolCallsWithOffset) {
+                persistence.addMessageEvent('tool_call', {
+                  tool_call_id: tc.id ?? null,
+                  tool_call_index: tc.index ?? null,
+                });
+              }
+            }
           }
 
           const finishReason = upstreamJson.choices?.[0]?.finish_reason || null;

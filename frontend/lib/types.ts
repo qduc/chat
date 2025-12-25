@@ -203,6 +203,7 @@ export interface ChatMessage {
   // Local image attachments (used during composition, converted to content format for API)
   images?: ImageAttachment[];
   tool_calls?: any[];
+  message_events?: MessageEvent[];
   tool_call_id?: string;
   tool_outputs?: Array<{
     tool_call_id?: string;
@@ -220,6 +221,16 @@ export interface ChatMessage {
   };
   reasoning_details?: any[];
   reasoning_tokens?: number | null;
+}
+
+export interface MessageEvent {
+  seq: number;
+  type: 'content' | 'reasoning' | 'tool_call';
+  payload: {
+    text?: string;
+    tool_call_id?: string | null;
+    tool_call_index?: number | null;
+  } | null;
 }
 
 export interface ChatEvent {
@@ -306,6 +317,7 @@ export interface ConversationWithMessages {
       };
       textOffset?: number;
     }>;
+    message_events?: MessageEvent[];
     tool_outputs?: Array<{
       tool_call_id: string;
       output: unknown;

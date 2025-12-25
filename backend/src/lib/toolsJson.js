@@ -717,6 +717,14 @@ export async function handleToolsJson({
           textOffset: contentLength
         }));
         persistence.addToolCalls(toolCallsWithOffset);
+        if (typeof persistence.addMessageEvent === 'function') {
+          for (const tc of toolCallsWithOffset) {
+            persistence.addMessageEvent('tool_call', {
+              tool_call_id: tc.id ?? null,
+              tool_call_index: tc.index ?? null,
+            });
+          }
+        }
       }
 
       // Execute all tools (support optional parallel execution)

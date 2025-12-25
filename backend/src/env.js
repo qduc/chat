@@ -97,6 +97,7 @@ export const config = {
       intervalMs: parsePositiveNumber(process.env.CHECKPOINT_INTERVAL_MS, 3000),
       minCharacters: parsePositiveNumber(process.env.CHECKPOINT_MIN_CHARACTERS, 500),
     },
+    messageEventsEnabled: bool(process.env.MESSAGE_EVENTS_ENABLED, true),
   },
   auth: {
     jwtSecret: process.env.JWT_SECRET || 'development-secret-key-change-in-production',
