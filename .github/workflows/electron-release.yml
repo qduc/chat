@@ -1,9 +1,12 @@
 name: Electron Release
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Tag to build and publish'
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       tag:
@@ -16,10 +19,12 @@ permissions:
 
 jobs:
   ci:
+    if: github.event_name != 'workflow_call'
     uses: ./.github/workflows/ci.yml
 
   build:
     needs: ci
+    if: always() && (needs.ci.result == 'success' || needs.ci.result == 'skipped')
     strategy:
       matrix:
         include:
