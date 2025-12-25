@@ -682,7 +682,7 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
   // based on the .dark class applied to the document root
 
   return (
-    <div className={`${className || ''} ${isDark ? 'dark' : ''}`}>
+    <div className={`md-content ${className || ''} ${isDark ? 'dark' : ''}`}>
       {blocks.map((block, index) => (
         <MemoizedMarkdownBlock
           key={index}

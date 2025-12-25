@@ -257,6 +257,7 @@ const Message = React.memo<MessageProps>(
         )}
         <div
           className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? 'max-w-full sm:max-w-[85%] md:max-w-[70%] lg:max-w-[50%] order-first' : 'w-full'}`}
+          style={{ minWidth: 0 }}
         >
           {isEditing ? (
             <ImageUploadZone
@@ -491,7 +492,7 @@ const Message = React.memo<MessageProps>(
                       return (
                         <div
                           key={`tool-${segmentIndex}`}
-                          className="block max-w-[95%] rounded-lg bg-gradient-to-br from-blue-50/80 to-indigo-50/60 dark:from-blue-950/30 dark:to-indigo-950/20 border border-blue-200/60 dark:border-blue-800/40 shadow-sm hover:shadow-md transition-shadow duration-200"
+                          className="block max-w-[95%] min-w-0 rounded-lg bg-gradient-to-br from-blue-50/80 to-indigo-50/60 dark:from-blue-950/30 dark:to-indigo-950/20 border border-blue-200/60 dark:border-blue-800/40 shadow-sm hover:shadow-md transition-shadow duration-200"
                         >
                           <div
                             className={`flex items-center gap-3 px-4 py-3 ${hasDetails ? 'cursor-pointer' : ''}`}
@@ -555,7 +556,7 @@ const Message = React.memo<MessageProps>(
                                   <div className="text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">
                                     Input
                                   </div>
-                                  <div className="rounded-md bg-slate-50 dark:bg-neutral-900/60 border border-slate-200/50 dark:border-neutral-700/40 p-2.5">
+                                  <div className="rounded-md bg-slate-50 dark:bg-neutral-900/60 border border-slate-200/50 dark:border-neutral-700/40 p-2.5 overflow-x-auto">
                                     <pre className="text-[11px] font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
                                       {argsParseFailed
                                         ? argsRaw
@@ -586,7 +587,7 @@ const Message = React.memo<MessageProps>(
                                       return (
                                         <div
                                           key={outIdx}
-                                          className="rounded-md bg-slate-50 dark:bg-neutral-900/60 border border-slate-200/50 dark:border-neutral-700/40 p-2.5 max-h-64 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-neutral-600"
+                                          className="rounded-md bg-slate-50 dark:bg-neutral-900/60 border border-slate-200/50 dark:border-neutral-700/40 p-2.5 max-h-64 overflow-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-neutral-600"
                                         >
                                           <pre className="text-[11px] font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
                                             {formatted}
@@ -966,11 +967,11 @@ export function MessageList({
   return (
     <main
       ref={containerRef}
-      className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-neutral-700 scrollbar-track-transparent relative"
+      className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-neutral-700 scrollbar-track-transparent relative"
       style={{ willChange: 'scroll-position' }}
     >
       <div
-        className="mx-auto max-w-3xl px-4 sm:px-4 md:px-6 py-6 space-y-6"
+        className="w-full mx-auto max-w-3xl px-4 sm:px-4 md:px-6 py-6 space-y-6"
         style={{ paddingBottom: dynamicBottomPadding }}
       >
         {messages.length === 0 && <WelcomeMessage onSuggestionClick={onSuggestionClick} />}

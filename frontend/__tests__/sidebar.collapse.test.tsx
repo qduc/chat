@@ -131,8 +131,8 @@ function renderWithProviders(ui: React.ReactElement) {
 }
 
 async function waitForLeftSidebar() {
-  const conversationButton = await screen.findByRole('button', { name: 'Test Conversation' });
-  const sidebar = conversationButton.closest('aside');
+  // Find the aside element which represents the sidebar using its aria-label
+  const sidebar = await screen.findByRole('complementary', { name: 'Conversation history' });
   if (!sidebar) {
     throw new Error('Unable to locate left sidebar element');
   }
@@ -231,7 +231,7 @@ describe('Sidebar Collapse Functionality', () => {
 
     const leftSidebar = await waitForLeftSidebar();
     expect(
-      within(leftSidebar).getByRole('button', { name: 'Test Conversation' })
+      await within(leftSidebar).findByRole('button', { name: 'Test Conversation' })
     ).toBeInTheDocument();
     expect(within(leftSidebar).getByTitle('Collapse sidebar')).toBeInTheDocument();
   });
@@ -284,9 +284,10 @@ describe('Sidebar Collapse Functionality', () => {
 
     renderWithProviders(<Chat />);
 
+    const leftSidebar = await waitForLeftSidebar();
     await waitFor(() => {
-      expect(screen.getByLabelText('Start new chat')).toBeInTheDocument();
-      expect(screen.getAllByTitle('Expand sidebar').length).toBeGreaterThanOrEqual(1);
+      expect(within(leftSidebar).getByLabelText('Start new chat')).toBeInTheDocument();
+      expect(within(leftSidebar).getAllByTitle('Expand sidebar').length).toBeGreaterThanOrEqual(1);
     });
   });
 
@@ -321,8 +322,8 @@ describe('Sidebar Collapse Functionality', () => {
 
     await waitFor(() => {
       // Should show minimal buttons specific to collapsed state
-      expect(screen.getByLabelText('Start new chat')).toBeInTheDocument();
-      expect(screen.getByLabelText('Refresh conversation list')).toBeInTheDocument();
+      expect(within(leftSidebar).getByLabelText('Start new chat')).toBeInTheDocument();
+      expect(within(leftSidebar).getByLabelText('Refresh conversation list')).toBeInTheDocument();
     });
   });
 
@@ -336,7 +337,7 @@ describe('Sidebar Collapse Functionality', () => {
 
     await waitFor(() => {
       // Should show conversation count (1 conversation from our mock)
-      expect(screen.getByTitle('1 conversation')).toBeInTheDocument();
+      expect(within(leftSidebar).getByTitle('1 conversation')).toBeInTheDocument();
     });
   });
 });
