@@ -690,6 +690,9 @@ export class SimplifiedPersistence {
   addMessageEvent(type, payload) {
     if (!this.persist || !type || !this.messageEventsEnabled) return;
     const normalizedPayload = payload ?? null;
+    if (normalizedPayload && typeof normalizedPayload.text === 'string' && normalizedPayload.text.length === 0) {
+      return;
+    }
     const last = this.messageEvents[this.messageEvents.length - 1];
     const isMergeable =
       last &&
@@ -811,7 +814,27 @@ export class SimplifiedPersistence {
     if (this.messageEvents.length === 0) return;
 
     try {
-      const orderedEvents = this.messageEvents.map((event, index) => ({
+      const normalizedEvents = [];
+      for (const event of this.messageEvents) {
+        if (event?.payload && typeof event.payload.text === 'string' && event.payload.text.length === 0) {
+          continue;
+        }
+        const last = normalizedEvents[normalizedEvents.length - 1];
+        const canMerge =
+          last &&
+          last.type === event.type &&
+          (event.type === 'content' || event.type === 'reasoning') &&
+          last.payload &&
+          event.payload &&
+          typeof last.payload.text === 'string' &&
+          typeof event.payload.text === 'string';
+        if (canMerge) {
+          last.payload.text += event.payload.text;
+          continue;
+        }
+        normalizedEvents.push({ ...event, payload: event.payload ?? null });
+      }
+      const orderedEvents = normalizedEvents.map((event, index) => ({
         ...event,
         seq: index,
       }));
