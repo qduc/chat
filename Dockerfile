@@ -32,6 +32,11 @@ RUN --mount=type=cache,target=/root/.npm \
 # Verify better-sqlite3 was built correctly
 RUN node -e "require('better-sqlite3'); console.log('better-sqlite3 loaded successfully')"
 
+# Install Playwright browsers
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN mkdir -p $PLAYWRIGHT_BROWSERS_PATH && \
+    npx playwright install chromium
+
 # --- Final Stage ---
 FROM ${NODE_IMAGE} AS runner
 WORKDIR /app
@@ -40,10 +45,18 @@ WORKDIR /app
 RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     --mount=type=cache,target=/var/lib/apt,sharing=locked \
     rm -f /etc/apt/apt.conf.d/docker-clean && \
-    apt-get update && apt-get install -y gosu libsqlite3-0
+    apt-get update && apt-get install -y --no-install-recommends gosu libsqlite3-0 ca-certificates
 
 # Copy backend dependencies
 COPY --from=backend-builder --chown=node:node /app/backend/node_modules ./node_modules
+
+# Copy Playwright browsers
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+COPY --from=backend-builder --chown=node:node $PLAYWRIGHT_BROWSERS_PATH $PLAYWRIGHT_BROWSERS_PATH
+
+# Install Playwright system dependencies
+RUN npx playwright install-deps chromium && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy backend source
 COPY --chown=node:node backend/ .

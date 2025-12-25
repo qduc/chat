@@ -1,9 +1,12 @@
 name: Build and Publish Docker Image
 
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Tag to build and publish'
+        required: false
+        type: string
   workflow_dispatch:
     inputs:
       tag:
@@ -16,7 +19,15 @@ env:
   IMAGE_NAME: qduc/chat
 
 jobs:
+  ci:
+    if: github.event_name != 'workflow_call'
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
   build-and-push:
+    needs: ci
+    if: always() && (needs.ci.result == 'success' || needs.ci.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -41,7 +52,9 @@ jobs:
       - name: Extract version tag
         id: version
         run: |
-          if [ -n "${{ github.event.inputs.tag }}" ]; then
+          if [ -n "${{ inputs.tag }}" ]; then
+            VERSION="${{ inputs.tag }}"
+          elif [ -n "${{ github.event.inputs.tag }}" ]; then
             VERSION="${{ github.event.inputs.tag }}"
           else
             VERSION="${GITHUB_REF#refs/tags/}"
