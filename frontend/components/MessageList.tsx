@@ -116,9 +116,7 @@ function buildAssistantSegments(message: ChatMessage): AssistantSegment[] {
         const toolCallId = event.payload?.tool_call_id;
         const toolCallIndex = event.payload?.tool_call_index;
         const toolCall =
-          (toolCallId
-            ? toolCalls.find((call: any) => call?.id === toolCallId)
-            : undefined) ||
+          (toolCallId ? toolCalls.find((call: any) => call?.id === toolCallId) : undefined) ||
           (typeof toolCallIndex === 'number'
             ? toolCalls.find((call: any) => (call?.index ?? 0) === toolCallIndex)
             : undefined);
