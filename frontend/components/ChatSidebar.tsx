@@ -30,6 +30,7 @@ export function ChatSidebar({
 }: ChatSidebarProps) {
   return (
     <aside
+      aria-label="Conversation history"
       className={`
         ${collapsed ? 'w-16' : 'w-72 md:w-72'}
         h-full z-40 p-4 flex flex-col bg-slate-50 dark:bg-neutral-900
