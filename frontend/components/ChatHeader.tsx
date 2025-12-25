@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sun, Moon, Settings, RefreshCw, Loader2, Menu, PanelLeft, PanelRight } from 'lucide-react';
+import { Sun, Moon, Settings, RefreshCw, Loader2, PanelLeft, PanelRight, Plus } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import ModelSelector from './ui/ModelSelector';
 import { type Group as TabGroup } from './ui/TabbedSelect';
@@ -43,6 +43,7 @@ export function ChatHeader({
   onToggleRightSidebar,
   showLeftSidebarButton = false,
   showRightSidebarButton = false,
+  onNewChat,
 }: ChatHeaderProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
 
@@ -110,6 +111,19 @@ export function ChatHeader({
               type="button"
             >
               <PanelLeft className="w-4 h-4" />
+            </button>
+          )}
+
+          {/* New Chat Button - Mobile Only */}
+          {onNewChat && (
+            <button
+              onClick={onNewChat}
+              className="md:hidden w-8 h-8 rounded-md border border-slate-200/80 dark:border-neutral-700/80 bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-neutral-800 flex items-center justify-center text-slate-600 dark:text-slate-300 transition-colors flex-shrink-0"
+              title="New Chat"
+              aria-label="Start new chat"
+              type="button"
+            >
+              <Plus className="w-4 h-4" />
             </button>
           )}
 

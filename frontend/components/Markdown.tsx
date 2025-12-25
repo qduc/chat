@@ -481,7 +481,9 @@ const MarkdownComponents: any = {
     // Show un-highlighted code during streaming
     if (!shouldHighlight && className?.startsWith('language-')) {
       return (
-        <code className={`${className} bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-slate-300 px-1 rounded`}>
+        <code
+          className={`${className} bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-slate-300 px-1 rounded`}
+        >
           {children}
         </code>
       );
