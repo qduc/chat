@@ -101,7 +101,8 @@ export const config = {
   },
   encryption: {
     masterKey: process.env.ENCRYPTION_MASTER_KEY || null,
-    enabled: !!process.env.ENCRYPTION_MASTER_KEY,
+    // Encryption is disabled for Electron builds (local-first, data stays on user's machine)
+    enabled: process.env.IS_ELECTRON !== 'true' && !!process.env.ENCRYPTION_MASTER_KEY,
     encryptMessages: bool(process.env.ENCRYPT_MESSAGE_CONTENT, false),
   },
   auth: {

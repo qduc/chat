@@ -31,6 +31,10 @@ function tryParseUtf8Key(raw) {
 }
 
 export function isKekConfigured() {
+  // Encryption is disabled for Electron builds (local-first, data stays on user's machine)
+  if (process.env.IS_ELECTRON === 'true') {
+    return false;
+  }
   return !!process.env.ENCRYPTION_MASTER_KEY;
 }
 

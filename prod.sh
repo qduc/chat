@@ -170,6 +170,24 @@ migrate_command() {
     esac
 }
 
+# Pre-flight check: ensure ENCRYPTION_MASTER_KEY is set for production
+check_encryption_key() {
+    if [ -z "${ENCRYPTION_MASTER_KEY:-}" ]; then
+        echo -e "${RED}Error: ENCRYPTION_MASTER_KEY is not set${NC}" >&2
+        echo "" >&2
+        echo "Production mode requires ENCRYPTION_MASTER_KEY to be set." >&2
+        echo "This key is used to encrypt sensitive data at rest." >&2
+        echo "" >&2
+        echo "Generate a key with:" >&2
+        echo "  node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"" >&2
+        echo "" >&2
+        echo "Then set it before running prod.sh:" >&2
+        echo "  export ENCRYPTION_MASTER_KEY=<your-generated-key>" >&2
+        exit 1
+    fi
+    echo -e "${GREEN}✓${NC} ENCRYPTION_MASTER_KEY is configured"
+}
+
 if [ ! -f "$COMPOSE_FILE" ]; then
     echo -e "${RED}Error: compose file not found: $COMPOSE_FILE${NC}" >&2
     exit 1
@@ -180,6 +198,8 @@ shift || true
 
 case "$cmd" in
     up)
+        # Pre-flight checks
+        check_encryption_key
         # Default to detached mode in production unless -d is already specified
         if [[ ! " $* " =~ " -d " ]] && [[ ! " $* " =~ " --detach " ]]; then
             echo "Starting services in detached mode..."

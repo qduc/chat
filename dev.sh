@@ -4,6 +4,67 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COMPOSE_FILE="$ROOT/docker-compose.dev.yml"
 DC=(docker compose -f "$COMPOSE_FILE")
+ENV_FILE="$ROOT/backend/.env"
+ENV_EXAMPLE="$ROOT/backend/.env.example"
+
+# Function to generate a 32-byte hex encryption key
+generate_encryption_key() {
+    node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+}
+
+# Function to ensure .env file exists (copy from .env.example if missing)
+ensure_env_file() {
+    if [ ! -f "$ENV_FILE" ]; then
+        if [ -f "$ENV_EXAMPLE" ]; then
+            echo "Creating $ENV_FILE from $ENV_EXAMPLE..."
+            cp "$ENV_EXAMPLE" "$ENV_FILE"
+        else
+            echo "Warning: $ENV_EXAMPLE not found, creating empty $ENV_FILE"
+            touch "$ENV_FILE"
+        fi
+    fi
+}
+
+# Function to ensure ENCRYPTION_MASTER_KEY is set in .env
+ensure_encryption_key() {
+    # Check if key is already set (non-empty value after '=')
+    if grep -q '^ENCRYPTION_MASTER_KEY=[^[:space:]]' "$ENV_FILE" 2>/dev/null; then
+        local key
+        key=$(grep '^ENCRYPTION_MASTER_KEY=' "$ENV_FILE" | cut -d'=' -f2- | tr -d '[:space:]')
+        if [ -n "$key" ]; then
+            echo "ENCRYPTION_MASTER_KEY is already configured"
+            return 0
+        fi
+    fi
+
+    # Also check if it's set as empty (commented out or empty value)
+    if grep -qE '^ENCRYPTION_MASTER_KEY=' "$ENV_FILE" 2>/dev/null; then
+        local current_value
+        current_value=$(grep '^ENCRYPTION_MASTER_KEY=' "$ENV_FILE" | cut -d'=' -f2-)
+        if [ -n "$current_value" ]; then
+            echo "ENCRYPTION_MASTER_KEY is already configured"
+            return 0
+        fi
+    fi
+
+    # Generate and set the key
+    echo "ENCRYPTION_MASTER_KEY not found or empty. Generating..."
+    local new_key
+    new_key=$(generate_encryption_key)
+
+    # Remove any existing ENCRYPTION_MASTER_KEY line and append the new one
+    grep -v '^ENCRYPTION_MASTER_KEY=' "$ENV_FILE" > "$ENV_FILE.tmp" 2>/dev/null || cp "$ENV_FILE" "$ENV_FILE.tmp"
+    echo "ENCRYPTION_MASTER_KEY=$new_key" >> "$ENV_FILE.tmp"
+    mv "$ENV_FILE.tmp" "$ENV_FILE"
+
+    echo "Generated ENCRYPTION_MASTER_KEY and saved to $ENV_FILE"
+    echo "IMPORTANT: Save this key securely! It is required to decrypt sensitive data."
+    echo "  ENCRYPTION_MASTER_KEY=$new_key"
+}
+
+# Pre-flight checks
+ensure_env_file
+ensure_encryption_key
 
 usage(){
   cat <<EOF
