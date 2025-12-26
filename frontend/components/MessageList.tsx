@@ -540,20 +540,33 @@ const Message = React.memo<MessageProps>(
                       const isCompleted = outputs.length > 0;
 
                       return (
-                        <div key={`tool-${segmentIndex}`} className="my-2 rounded-md border border-slate-200 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a]/40 overflow-hidden">
+                        <div
+                          key={`tool-${segmentIndex}`}
+                          className="my-2 rounded-md border border-slate-200 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a]/40 overflow-hidden"
+                        >
                           <button
                             onClick={() => {
                               if (!hasDetails) return;
                               setCollapsedToolOutputs((s) => ({ ...s, [toggleKey]: !isCollapsed }));
                             }}
-                            className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors select-none ${!hasDetails ? 'cursor-default' : 'hover:bg-slate-50 dark:hover:bg-neutral-900/50 cursor-pointer'
-                              }`}
+                            className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors select-none ${
+                              !hasDetails
+                                ? 'cursor-default'
+                                : 'hover:bg-slate-50 dark:hover:bg-neutral-900/50 cursor-pointer'
+                            }`}
                           >
-                            <div className={`text-slate-400 dark:text-neutral-500 scale-90 ${!isCompleted ? 'animate-pulse' : ''}`}>
-                              {React.cloneElement(getToolIcon(toolName) as React.ReactElement<any>, {
-                                fill: isCompleted ? "currentColor" : "none",
-                                className: isCompleted ? "text-slate-500 dark:text-neutral-400" : "text-slate-400 dark:text-neutral-500"
-                              })}
+                            <div
+                              className={`text-slate-400 dark:text-neutral-500 scale-90 ${!isCompleted ? 'animate-pulse' : ''}`}
+                            >
+                              {React.cloneElement(
+                                getToolIcon(toolName) as React.ReactElement<any>,
+                                {
+                                  fill: isCompleted ? 'currentColor' : 'none',
+                                  className: isCompleted
+                                    ? 'text-slate-500 dark:text-neutral-400'
+                                    : 'text-slate-400 dark:text-neutral-500',
+                                }
+                              )}
                             </div>
                             <span className="text-xs font-medium text-slate-700 dark:text-neutral-300 font-mono">
                               {getToolDisplayName(toolName)}
@@ -589,9 +602,9 @@ const Message = React.memo<MessageProps>(
                                       {argsParseFailed
                                         ? argsRaw
                                         : JSON.stringify(parsedArgs, null, 2)}
-                                      </div>
                                     </div>
-                                  )}
+                                  </div>
+                                )}
 
                                 {outputs.length > 0 && (
                                   <div className="space-y-1.5">
@@ -628,7 +641,6 @@ const Message = React.memo<MessageProps>(
                           )}
                         </div>
                       );
-
                     })
                   )}
                 </div>

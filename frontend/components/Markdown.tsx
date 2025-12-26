@@ -437,41 +437,42 @@ const MarkdownComponents: any = {
   }) {
     const [isExpanded, setIsExpanded] = useState(!shouldHighlight);
 
-      const isStreaming = !shouldHighlight;
-      return (
-        <div className="my-3 rounded-md border border-slate-200 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a]/40 overflow-hidden">
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="w-full flex items-center gap-2.5 px-3 py-2 text-slate-500 dark:text-neutral-400 hover:bg-slate-50 dark:hover:bg-neutral-900/50 transition-colors select-none group/think-btn"
-          >
-            <Brain
-              size={13}
-              strokeWidth={1.5}
-              className={`shrink-0 transition-colors ${isStreaming
+    const isStreaming = !shouldHighlight;
+    return (
+      <div className="my-3 rounded-md border border-slate-200 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a]/40 overflow-hidden">
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="w-full flex items-center gap-2.5 px-3 py-2 text-slate-500 dark:text-neutral-400 hover:bg-slate-50 dark:hover:bg-neutral-900/50 transition-colors select-none group/think-btn"
+        >
+          <Brain
+            size={13}
+            strokeWidth={1.5}
+            className={`shrink-0 transition-colors ${
+              isStreaming
                 ? 'text-amber-500/80 dark:text-amber-400/80 animate-pulse'
                 : 'text-slate-400 dark:text-neutral-500 group-hover/think-btn:text-slate-600 dark:group-hover/think-btn:text-neutral-300'
-                }`}
+            }`}
+          />
+          <span className="text-xs font-medium text-slate-600 dark:text-neutral-300">
+            Thought Process
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <ChevronDown
+              size={13}
+              className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} text-slate-400 dark:text-neutral-500`}
             />
-            <span className="text-xs font-medium text-slate-600 dark:text-neutral-300">
-              Thought Process
-            </span>
-            <div className="ml-auto flex items-center gap-2">
-              <ChevronDown
-                size={13}
-                className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} text-slate-400 dark:text-neutral-500`}
-              />
-            </div>
-          </button>
+          </div>
+        </button>
 
-          {isExpanded && (
-            <div className="border-t border-slate-100 dark:border-neutral-800 bg-slate-50/30 dark:bg-[#0a0a0a]/20">
-              <div className="px-3 py-3 text-[13px] leading-relaxed text-slate-600 dark:text-neutral-400 font-mono whitespace-pre-wrap">
-                {children}
-              </div>
+        {isExpanded && (
+          <div className="border-t border-slate-100 dark:border-neutral-800 bg-slate-50/30 dark:bg-[#0a0a0a]/20">
+            <div className="px-3 py-3 text-[13px] leading-relaxed text-slate-600 dark:text-neutral-400 font-mono whitespace-pre-wrap">
+              {children}
             </div>
-          )}
-        </div>
-      );
+          </div>
+        )}
+      </div>
+    );
 
     // Show un-highlighted code during streaming
     if (!shouldHighlight && className?.startsWith('language-')) {
