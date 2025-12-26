@@ -452,13 +452,19 @@ const Message = React.memo<MessageProps>(
                       }
 
                       const getToolIcon = (name: string) => {
+                        const iconProps = {
+                          size: 14,
+                          strokeWidth: 1.5,
+                          className:
+                            'text-slate-400 dark:text-neutral-500 group-hover/tool-btn:text-slate-600 dark:group-hover/tool-btn:text-neutral-300 transition-colors duration-300',
+                        };
                         switch (name) {
                           case 'get_time':
-                            return <Clock className="w-4 h-4 text-black dark:text-white" />;
+                            return <Clock {...iconProps} />;
                           case 'web_search':
-                            return <Search className="w-4 h-4 text-black dark:text-white" />;
+                            return <Search {...iconProps} />;
                           default:
-                            return <Zap className="w-4 h-4 text-black dark:text-white" />;
+                            return <Zap {...iconProps} />;
                         }
                       };
 
@@ -531,119 +537,98 @@ const Message = React.memo<MessageProps>(
                         Object.keys(parsedArgs).length > 0 ||
                         (argsParseFailed && argsRaw.trim().length > 0);
 
+                      const isCompleted = outputs.length > 0;
+
                       return (
-                        <div
-                          key={`tool-${segmentIndex}`}
-                          className="block max-w-[95%] min-w-0 rounded-lg bg-gradient-to-br from-blue-50/80 to-indigo-50/60 dark:from-blue-950/30 dark:to-indigo-950/20 border border-blue-200/60 dark:border-blue-800/40 shadow-sm hover:shadow-md transition-shadow duration-200"
-                        >
-                          <div
-                            className={`flex items-center gap-3 px-4 py-3 ${hasDetails ? 'cursor-pointer' : ''}`}
+                        <div key={`tool-${segmentIndex}`} className="my-2 rounded-md border border-slate-200 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a]/40 overflow-hidden">
+                          <button
                             onClick={() => {
                               if (!hasDetails) return;
                               setCollapsedToolOutputs((s) => ({ ...s, [toggleKey]: !isCollapsed }));
                             }}
+                            className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors select-none ${!hasDetails ? 'cursor-default' : 'hover:bg-slate-50 dark:hover:bg-neutral-900/50 cursor-pointer'
+                              }`}
                           >
-                            <div className="w-7 h-7 flex items-center justify-center flex-shrink-0 rounded-md bg-blue-100/80 dark:bg-blue-900/40">
-                              {getToolIcon(toolName)}
+                            <div className={`text-slate-400 dark:text-neutral-500 scale-90 ${!isCompleted ? 'animate-pulse' : ''}`}>
+                              {React.cloneElement(getToolIcon(toolName) as React.ReactElement<any>, {
+                                fill: isCompleted ? "currentColor" : "none",
+                                className: isCompleted ? "text-slate-500 dark:text-neutral-400" : "text-slate-400 dark:text-neutral-500"
+                              })}
                             </div>
-                            <div className="flex flex-col min-w-0 flex-1 gap-1">
-                              <div className="flex items-center gap-2">
-                                <span className="font-semibold text-base text-blue-900 dark:text-blue-100">
-                                  {getToolDisplayName(toolName)}
-                                </span>
-                                {hasDetails && (
-                                  <button
-                                    type="button"
-                                    className="text-xs px-2 py-0.5 rounded bg-blue-100/70 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 hover:bg-blue-200/70 dark:hover:bg-blue-800/60 transition-colors flex items-center gap-1"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setCollapsedToolOutputs((s) => ({
-                                        ...s,
-                                        [toggleKey]: !isCollapsed,
-                                      }));
-                                    }}
-                                  >
-                                    {isCollapsed ? 'Details' : 'Hide'}
-                                    <ChevronDown
-                                      className={`w-3 h-3 transition-transform ${isCollapsed ? '' : 'rotate-180'}`}
-                                    />
-                                  </button>
-                                )}
-                              </div>
-                              {/* Show both input and output (one per line) when collapsed; otherwise show outputSummary or nothing. */}
-                              {isCollapsed ? (
-                                inputSummary || outputSummary ? (
-                                  <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                                    {inputSummary && <div className="truncate">{inputSummary}</div>}
-                                    {outputSummary && (
-                                      <div className="truncate mt-1 text-slate-700 dark:text-slate-300">
-                                        {outputSummary}
-                                      </div>
-                                    )}
-                                  </div>
-                                ) : null
-                              ) : outputSummary ? (
-                                <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
-                                  {outputSummary}
-                                </div>
-                              ) : null}
-                            </div>
-                          </div>
+                            <span className="text-xs font-medium text-slate-700 dark:text-neutral-300 font-mono">
+                              {getToolDisplayName(toolName)}
+                            </span>
 
-                          {hasDetails && !isCollapsed && (
-                            <div className="px-4 pb-3 pt-1 space-y-3 border-t border-blue-200/40 dark:border-blue-800/30 bg-white/40 dark:bg-blue-950/20 rounded-b-lg">
-                              {(Object.keys(parsedArgs).length > 0 ||
-                                (argsParseFailed && argsRaw.trim().length > 0)) && (
-                                <div className="space-y-1">
-                                  <div className="text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">
-                                    Input
-                                  </div>
-                                  <div className="rounded-md bg-slate-50 dark:bg-neutral-900/60 border border-slate-200/50 dark:border-neutral-700/40 p-2.5 overflow-x-auto">
-                                    <pre className="text-[11px] font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
+                            {/* Always show params summary when collapsed if available */}
+                            {isCollapsed && inputSummary && (
+                              <span className="ml-2 text-xs text-slate-400 dark:text-neutral-500 truncate max-w-[300px] opacity-80 font-mono">
+                                {inputSummary}
+                              </span>
+                            )}
+
+                            {hasDetails && (
+                              <div className="ml-auto flex items-center gap-2">
+                                <ChevronDown
+                                  size={13}
+                                  className={`transition-transform duration-200 ${!isCollapsed ? 'rotate-180' : ''} text-slate-400 dark:text-neutral-500`}
+                                />
+                              </div>
+                            )}
+                          </button>
+
+                          {!isCollapsed && hasDetails && (
+                            <div className="border-t border-slate-100 dark:border-neutral-800 bg-slate-50/50 dark:bg-[#0a0a0a]/20 px-3 py-3 text-[13px]">
+                              <div className="space-y-4">
+                                {(Object.keys(parsedArgs).length > 0 ||
+                                  (argsParseFailed && argsRaw.trim().length > 0)) && (
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-bold text-slate-400 dark:text-neutral-500 uppercase tracking-widest pl-0.5">
+                                      Parameters
+                                    </div>
+                                    <div className="font-mono text-slate-600 dark:text-neutral-400 whitespace-pre-wrap leading-relaxed">
                                       {argsParseFailed
                                         ? argsRaw
                                         : JSON.stringify(parsedArgs, null, 2)}
-                                    </pre>
-                                  </div>
-                                </div>
-                              )}
+                                      </div>
+                                    </div>
+                                  )}
 
-                              {outputs.length > 0 && (
-                                <div className="space-y-1">
-                                  <div className="text-xs font-medium text-slate-600 dark:text-slate-400 uppercase tracking-wide">
-                                    Output
-                                  </div>
-                                  <div className="space-y-2">
-                                    {outputs.map((out: any, outIdx: number) => {
-                                      const raw = out.output ?? out;
-                                      let formatted = '';
-                                      if (typeof raw === 'string') {
-                                        formatted = raw;
-                                      } else {
-                                        try {
-                                          formatted = JSON.stringify(raw, null, 2);
-                                        } catch {
-                                          formatted = String(raw);
+                                {outputs.length > 0 && (
+                                  <div className="space-y-1.5">
+                                    <div className="text-[10px] font-bold text-slate-400 dark:text-neutral-500 uppercase tracking-widest pl-0.5">
+                                      Result
+                                    </div>
+                                    <div className="space-y-3">
+                                      {outputs.map((out: any, outIdx: number) => {
+                                        const raw = out.output ?? out;
+                                        let formatted = '';
+                                        if (typeof raw === 'string') {
+                                          formatted = raw;
+                                        } else {
+                                          try {
+                                            formatted = JSON.stringify(raw, null, 2);
+                                          } catch {
+                                            formatted = String(raw);
+                                          }
                                         }
-                                      }
-                                      return (
-                                        <div
-                                          key={outIdx}
-                                          className="rounded-md bg-slate-50 dark:bg-neutral-900/60 border border-slate-200/50 dark:border-neutral-700/40 p-2.5 max-h-64 overflow-auto scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-neutral-600"
-                                        >
-                                          <pre className="text-[11px] font-mono text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
+                                        return (
+                                          <div
+                                            key={outIdx}
+                                            className="font-mono text-slate-600 dark:text-neutral-400 whitespace-pre-wrap leading-relaxed"
+                                          >
                                             {formatted}
-                                          </pre>
-                                        </div>
-                                      );
-                                    })}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
                                   </div>
-                                </div>
-                              )}
+                                )}
+                              </div>
                             </div>
                           )}
                         </div>
                       );
+
                     })
                   )}
                 </div>

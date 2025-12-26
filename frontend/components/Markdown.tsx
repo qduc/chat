@@ -435,53 +435,43 @@ const MarkdownComponents: any = {
     children?: React.ReactNode;
     shouldHighlight?: boolean;
   }) {
-    const [isExpanded, setIsExpanded] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(!shouldHighlight);
 
-    if (className?.includes('language-thinking')) {
       const isStreaming = !shouldHighlight;
       return (
-        <div className="my-6 block">
+        <div className="my-3 rounded-md border border-slate-200 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a]/40 overflow-hidden">
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="flex items-center gap-3 text-slate-400/80 dark:text-neutral-500/80 hover:text-slate-600 dark:hover:text-neutral-200 transition-all duration-300 group/think-btn select-none outline-none"
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-slate-500 dark:text-neutral-400 hover:bg-slate-50 dark:hover:bg-neutral-900/50 transition-colors select-none group/think-btn"
           >
-            <div className="relative">
-              <Brain
-                size={14}
-                strokeWidth={1.5}
-                className={`transition-all duration-500 ${isStreaming ? 'text-blue-500 scale-110' : 'scale-100 opacity-60 group-hover/think-btn:opacity-100'}`}
-              />
-              {isStreaming && (
-                <span className="absolute -inset-1 rounded-full border border-blue-500/20 animate-ping" />
-              )}
-            </div>
-            <span className="text-[10px] uppercase font-bold tracking-[0.2em] transition-all group-hover/think-btn:tracking-[0.25em]">
-              {isExpanded ? 'Neural Trace' : 'Thought Process'}
-            </span>
-            <ChevronDown
-              size={12}
-              className={`ml-1 transition-transform duration-500 ease-out ${isExpanded ? 'rotate-180 text-slate-500' : 'opacity-40'}`}
+            <Brain
+              size={13}
+              strokeWidth={1.5}
+              className={`shrink-0 transition-colors ${isStreaming
+                ? 'text-amber-500/80 dark:text-amber-400/80 animate-pulse'
+                : 'text-slate-400 dark:text-neutral-500 group-hover/think-btn:text-slate-600 dark:group-hover/think-btn:text-neutral-300'
+                }`}
             />
+            <span className="text-xs font-medium text-slate-600 dark:text-neutral-300">
+              Thought Process
+            </span>
+            <div className="ml-auto flex items-center gap-2">
+              <ChevronDown
+                size={13}
+                className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} text-slate-400 dark:text-neutral-500`}
+              />
+            </div>
           </button>
 
-          <div
-            className={`overflow-hidden transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] relative ${isExpanded
-                ? 'max-h-[10000px] opacity-100 mt-4'
-                : 'max-h-[4rem] opacity-80 mt-2 flex flex-col justify-end'
-              }`}
-          >
-            {!isExpanded && (
-              <div className="absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-white dark:from-[#0a0a0a] to-transparent z-10 pointer-events-none" />
-            )}
-            <div className={`pl-8 pb-1 ${!isExpanded ? 'line-clamp-none' : ''}`}>
-              <div className="text-[13px] leading-[1.8] text-slate-600 dark:text-neutral-300 font-normal font-mono italic whitespace-pre-wrap selection:bg-slate-100 dark:selection:bg-neutral-800">
+          {isExpanded && (
+            <div className="border-t border-slate-100 dark:border-neutral-800 bg-slate-50/30 dark:bg-[#0a0a0a]/20">
+              <div className="px-3 py-3 text-[13px] leading-relaxed text-slate-600 dark:text-neutral-400 font-mono whitespace-pre-wrap">
                 {children}
               </div>
             </div>
-          </div>
+          )}
         </div>
       );
-    }
 
     // Show un-highlighted code during streaming
     if (!shouldHighlight && className?.startsWith('language-')) {
