@@ -285,6 +285,29 @@ function splitMarkdownIntoBlocks(text: string): string[] {
   return blocks.filter((b) => b.length > 0);
 }
 
+/**
+ * Process table cell content to render <br> tags as actual line breaks
+ */
+function processTableCellContent(content: any): React.ReactNode {
+  if (typeof content === 'string') {
+    // Split by <br> and insert real <br /> elements
+    const parts = content.split('<br>');
+    return parts.map((part: string, index: number, arr: string[]) => (
+      <React.Fragment key={index}>
+        {part}
+        {index < arr.length - 1 && <br />}
+      </React.Fragment>
+    ));
+  }
+
+  if (Array.isArray(content)) {
+    return content.map((child) => processTableCellContent(child));
+  }
+
+  // Pass through React elements and other types
+  return content;
+}
+
 const MarkdownComponents: any = {
   a: ({ href, children, ...props }: any) => (
     <a
@@ -435,57 +458,73 @@ const MarkdownComponents: any = {
     children?: React.ReactNode;
     shouldHighlight?: boolean;
   }) {
-    const [isExpanded, setIsExpanded] = useState(!shouldHighlight);
+    const isThinkingBlock = className?.includes('language-thinking');
+    const isCodeBlock = className?.startsWith('language-');
 
-    const isStreaming = !shouldHighlight;
-    return (
-      <div className="my-3 rounded-xl border border-zinc-200/60 dark:border-zinc-800/60 bg-white dark:bg-zinc-900/40 overflow-hidden shadow-sm">
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className="w-full flex items-center gap-2.5 px-4 py-3 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors select-none group/think-btn"
-        >
-          <Brain
-            size={13}
-            strokeWidth={1.5}
-            className={`shrink-0 transition-colors ${
-              isStreaming
-                ? 'text-amber-500/80 dark:text-amber-400/80 animate-pulse'
-              : 'text-zinc-400 dark:text-zinc-500 group-hover/think-btn:text-zinc-600 dark:group-hover/think-btn:text-zinc-300'
-            }`}
-          />
-          <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
-            Thought Process
-          </span>
-          <div className="ml-auto flex items-center gap-2">
-            <ChevronDown
-              size={13}
-              className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} text-zinc-400 dark:text-zinc-500`}
-            />
-          </div>
-        </button>
+    // Handle thinking/reasoning blocks
+    if (isThinkingBlock) {
+      const [isExpanded, setIsExpanded] = useState(!shouldHighlight);
+      const isStreaming = !shouldHighlight;
 
-        {isExpanded && (
-          <div className="border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/30 dark:bg-[#0a0a0a]/20">
-            <div className="px-3 py-3 text-[13px] leading-relaxed text-zinc-600 dark:text-zinc-400 font-mono whitespace-pre-wrap">
-              {children}
-            </div>
-          </div>
-        )}
-      </div>
-    );
-
-    // Show un-highlighted code during streaming
-    if (!shouldHighlight && className?.startsWith('language-')) {
       return (
-        <code
-          className={`${className} bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-1 rounded`}
-        >
-          {children}
-        </code>
+        <div className="my-3 rounded-xl border border-zinc-200/60 dark:border-zinc-800/60 bg-white dark:bg-zinc-900/40 overflow-hidden shadow-sm">
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="w-full flex items-center gap-2.5 px-4 py-3 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors select-none group/think-btn"
+          >
+            <Brain
+              size={13}
+              strokeWidth={1.5}
+              className={`shrink-0 transition-colors ${
+                isStreaming
+                  ? 'text-amber-500/80 dark:text-amber-400/80 animate-pulse'
+                  : 'text-zinc-400 dark:text-zinc-500 group-hover/think-btn:text-zinc-600 dark:group-hover/think-btn:text-zinc-300'
+              }`}
+            />
+            <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
+              Thought Process
+            </span>
+            <div className="ml-auto flex items-center gap-2">
+              <ChevronDown
+                size={13}
+                className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} text-zinc-400 dark:text-zinc-500`}
+              />
+            </div>
+          </button>
+
+          {isExpanded && (
+            <div className="border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/30 dark:bg-[#0a0a0a]/20">
+              <div className="px-3 py-3 text-[13px] leading-relaxed text-zinc-600 dark:text-zinc-400 font-mono whitespace-pre-wrap">
+                {children}
+              </div>
+            </div>
+          )}
+        </div>
       );
     }
 
-    return <code className={`${className} bg-zinc-50 dark:bg-zinc-900/50`}>{children}</code>;
+    // Handle regular code blocks (triple backticks with language)
+    if (isCodeBlock) {
+      // Show un-highlighted code during streaming
+      if (!shouldHighlight) {
+        return (
+          <code
+            className={`${className} bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-1 rounded`}
+          >
+            {children}
+          </code>
+        );
+      }
+
+      return <code className={`${className}`}>{children}</code>;
+    }
+
+    // Handle inline code (single backticks)
+    return (
+      <code className={`${className || ''} bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-1.5 py-0.5 rounded text-sm font-mono`}>
+        {children}
+      </code>
+    );
   },
   hr: () => <hr className="my-4 border-zinc-200 dark:border-zinc-800" />,
   p: ({ children }: any) => <p className="md-p leading-relaxed mt-4 first:mt-0">{children}</p>,
@@ -517,12 +556,12 @@ const MarkdownComponents: any = {
   ),
   th: ({ children }: any) => (
     <th className="text-left px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 font-semibold bg-zinc-50 dark:bg-zinc-900 first:rounded-tl-lg last:rounded-tr-lg">
-      {children}
+      {processTableCellContent(children)}
     </th>
   ),
   td: ({ children }: any) => (
     <td className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-900 align-top last:border-b-0">
-      {children}
+      {processTableCellContent(children)}
     </td>
   ),
 };
