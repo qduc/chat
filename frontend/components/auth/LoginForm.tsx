@@ -46,7 +46,7 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
         <div>
           <label
             htmlFor="email"
-            className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1"
+            className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1"
           >
             Email
           </label>
@@ -58,7 +58,7 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
             value={formData.email}
             onChange={handleChange}
             disabled={loading}
-            className="w-full px-3 py-2 border border-slate-300 dark:border-neutral-600 rounded-md shadow-sm bg-white dark:bg-neutral-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded-md shadow-sm bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             placeholder="Enter your email"
           />
         </div>
@@ -66,7 +66,7 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
         <div>
           <label
             htmlFor="password"
-            className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1"
+            className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1"
           >
             Password
           </label>
@@ -78,7 +78,7 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
             value={formData.password}
             onChange={handleChange}
             disabled={loading}
-            className="w-full px-3 py-2 border border-slate-300 dark:border-neutral-600 rounded-md shadow-sm bg-white dark:bg-neutral-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded-md shadow-sm bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
             placeholder="Enter your password"
           />
         </div>
@@ -100,7 +100,7 @@ export function LoginForm({ onSuccess, onSwitchToRegister }: LoginFormProps) {
 
       {onSwitchToRegister && (
         <div className="text-center">
-          <p className="text-sm text-slate-600 dark:text-slate-400">
+          <p className="text-sm text-zinc-600 dark:text-zinc-400">
             Don&apos;t have an account?{' '}
             <button
               type="button"

@@ -61,7 +61,7 @@ export function ImagePreview({
               <button
                 type="button"
                 onClick={handleClosePreview}
-                className="absolute -top-3 -right-3 md:-top-4 md:-right-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-lg hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+                className="absolute -top-3 -right-3 md:-top-4 md:-right-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-zinc-700 shadow-lg hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
                 aria-label="Close image preview"
               >
                 <X className="h-4 w-4" />
@@ -101,7 +101,7 @@ function PreviewItem({ image, progress, onRemove, onPreview }: PreviewItemProps)
 
   return (
     <div
-      className="relative group rounded-lg overflow-hidden border border-slate-200 dark:border-neutral-700 bg-slate-50 dark:bg-neutral-800"
+      className="relative group rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800"
       style={{ width: '80px', height: '80px' }}
     >
       <button
@@ -284,11 +284,11 @@ export function ImageUploadZone({
             className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-auto"
             style={{ backgroundColor: 'rgba(2,6,23,0.35)' }}
           >
-            <div className="text-center p-6 rounded-lg bg-white/90 dark:bg-neutral-900/90 border border-slate-200 dark:border-neutral-700 shadow-lg">
-              <div className="text-lg font-medium text-slate-900 dark:text-slate-100">
+            <div className="text-center p-6 rounded-lg bg-white/90 dark:bg-zinc-900/90 border border-zinc-200 dark:border-zinc-700 shadow-lg">
+              <div className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
                 Drop files here
               </div>
-              <div className="text-sm text-slate-600 dark:text-slate-300 mt-1">
+              <div className="text-sm text-zinc-600 dark:text-zinc-300 mt-1">
                 Images and text files will be uploaded and attached to your message
               </div>
             </div>

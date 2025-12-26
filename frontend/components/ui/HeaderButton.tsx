@@ -20,7 +20,7 @@ export function HeaderButton({
       type={type}
       onClick={onClick}
       title={title}
-      className={`flex items-center gap-2 text-sm px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-300 transition-all duration-200 hover:shadow-sm ${className}`}
+      className={`flex items-center gap-2 text-sm px-4 py-2 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-all duration-200 hover:shadow-sm ${className}`}
     >
       {children}
     </button>

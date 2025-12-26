@@ -40,17 +40,17 @@ export function Modal({
         aria-hidden="true"
       />
       <div
-        className={`relative w-full ${maxWidthClassName} mx-2 sm:mx-4 max-h-[90vh] overflow-hidden rounded-xl bg-white dark:bg-neutral-900 border border-slate-200/70 dark:border-neutral-800 shadow-2xl`}
+        className={`relative w-full ${maxWidthClassName} mx-2 sm:mx-4 max-h-[90vh] overflow-hidden rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/70 dark:border-zinc-800 shadow-2xl`}
       >
-        <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200/70 dark:border-neutral-800">
-          <h2 className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200/70 dark:border-zinc-800">
+          <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">
             {title}
           </h2>
           <button
             type="button"
             onClick={onClose}
             aria-label="Close settings"
-            className="p-1 rounded-md hover:bg-slate-100 dark:hover:bg-neutral-800 text-slate-600 dark:text-slate-300"
+            className="p-1 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400"
           >
             <X className="w-4 h-4" />
           </button>

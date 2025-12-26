@@ -53,10 +53,10 @@ export function IconSelect({
 
   const { getReferenceProps, getFloatingProps } = useInteractions([click, dismiss, role]);
 
-  const buttonClass = `rounded-lg px-3 py-1.5 text-sm bg-transparent hover:bg-slate-100 dark:hover:bg-neutral-800 border-none text-slate-700 dark:text-slate-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-pointer flex items-center justify-between gap-2 min-w-0 ${className}`;
+  const buttonClass = `rounded-lg px-3 py-1.5 text-sm bg-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800 border-none text-zinc-700 dark:text-zinc-300 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 cursor-pointer flex items-center justify-between gap-2 min-w-0 ${className}`;
 
   return (
-    <div className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+    <div className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400">
       {icon ? <span className="w-5 h-5 flex items-center">{icon}</span> : null}
       <button
         ref={refs.setReference}
@@ -83,7 +83,7 @@ export function IconSelect({
               overflowY: 'auto',
               visibility: isPositioned ? 'visible' : 'hidden',
             }}
-            className={`py-1 bg-white dark:bg-neutral-900 rounded-lg shadow-lg backdrop-blur-lg z-[9999] ${isPositioned ? 'transition-opacity duration-150' : 'transition-none'}`}
+            className={`py-1 bg-white dark:bg-zinc-900 rounded-lg shadow-lg backdrop-blur-lg z-[9999] border border-zinc-200 dark:border-zinc-800 ${isPositioned ? 'transition-opacity duration-150' : 'transition-none'}`}
             {...getFloatingProps()}
           >
             {options.map((option) => (
@@ -92,10 +92,10 @@ export function IconSelect({
                 type="button"
                 role="option"
                 aria-selected={option.value === value}
-                className={`w-full block text-left px-3 py-2 text-sm cursor-pointer hover:bg-slate-100 dark:hover:bg-neutral-800 hover:text-slate-900 dark:hover:text-slate-100 transition-all duration-200 ${
+                className={`w-full block text-left px-3 py-2 text-sm cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100 transition-all duration-200 ${
                   option.value === value
-                    ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400'
-                    : 'text-slate-700 dark:text-slate-300'
+                  ? 'bg-zinc-100 dark:bg-zinc-800 font-medium text-zinc-900 dark:text-zinc-100'
+                  : 'text-zinc-700 dark:text-zinc-300'
                 }`}
                 style={{
                   border: 'none',

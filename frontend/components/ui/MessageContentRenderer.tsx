@@ -51,7 +51,7 @@ export function MessageContentRenderer({
 
         {/* If no content at all, show placeholder */}
         {!textContent && !hasImageContent && (
-          <span className="text-slate-500 dark:text-slate-400 italic">No content</span>
+          <span className="text-zinc-500 dark:text-zinc-400 italic">No content</span>
         )}
       </div>
 
@@ -132,21 +132,21 @@ function MessageImage({ image, className = '', onClick }: MessageImageProps) {
       type="button"
       onClick={handleClick}
       disabled={combinedError || !hasSource}
-      className={`relative block w-full rounded-lg overflow-hidden bg-slate-100 dark:bg-neutral-800 ${
+      className={`relative block w-full rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-800 ${
         combinedError || !hasSource ? 'cursor-not-allowed' : 'cursor-zoom-in'
-      } focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-900 ${className}`}
+        } focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-zinc-900 ${className}`}
       aria-label="View image"
     >
       {showSpinner && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-6 h-6 border-2 border-slate-300 dark:border-neutral-600 border-t-slate-600 dark:border-t-neutral-300 rounded-full animate-spin" />
+          <div className="w-6 h-6 border-2 border-zinc-300 dark:border-zinc-600 border-t-zinc-600 dark:border-t-zinc-300 rounded-full animate-spin" />
         </div>
       )}
 
       {combinedError && (
-        <div className="absolute inset-0 flex items-center justify-center text-slate-500 dark:text-slate-400">
+        <div className="absolute inset-0 flex items-center justify-center text-zinc-500 dark:text-zinc-400">
           <div className="text-center">
-            <div className="w-8 h-8 mx-auto mb-2 rounded-full bg-slate-200 dark:bg-neutral-700 flex items-center justify-center">
+            <div className="w-8 h-8 mx-auto mb-2 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center">
               <span className="text-sm">!</span>
             </div>
             <div className="text-xs">Failed to load image</div>
@@ -223,7 +223,7 @@ function ImagePreviewOverlay({ image, src, onClose }: ImagePreviewOverlayProps) 
         <button
           type="button"
           onClick={onClose}
-          className="absolute -top-3 -right-3 md:-top-4 md:-right-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-slate-700 shadow-lg hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          className="absolute -top-3 -right-3 md:-top-4 md:-right-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-zinc-700 shadow-lg hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
           aria-label="Close image preview"
         >
           <X className="h-4 w-4" />

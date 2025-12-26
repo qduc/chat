@@ -292,7 +292,7 @@ const MarkdownComponents: any = {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="md-link underline decoration-slate-300 hover:decoration-slate-400 text-slate-700 dark:text-slate-300"
+      className="md-link underline decoration-zinc-300 hover:decoration-zinc-400 text-zinc-700 dark:text-zinc-300 transition-colors"
     >
       {children}
     </a>
@@ -350,12 +350,12 @@ const MarkdownComponents: any = {
     return (
       <pre
         ref={preRef}
-        className={`md-pre relative my-3 overflow-hidden rounded border border-slate-200/50 dark:border-neutral-800/50 bg-slate-50/30 dark:bg-neutral-900/30`}
+        className={`md-pre relative my-3 overflow-hidden rounded-xl border border-zinc-200/60 dark:border-zinc-800/60 bg-zinc-50/50 dark:bg-zinc-900/30`}
       >
         {/* Header with language and copy button */}
-        <div className="flex items-center px-3 py-1.5 border-b border-slate-200/50 dark:border-neutral-800/50 bg-slate-50/50 dark:bg-neutral-900/30">
+        <div className="flex items-center px-3 py-2 border-b border-zinc-200/40 dark:border-zinc-800/40 bg-zinc-100/40 dark:bg-black/20">
           {language && (
-            <span className="text-xs text-slate-500 dark:text-slate-500">{language}</span>
+            <span className="text-xs text-zinc-500 dark:text-zinc-500">{language}</span>
           )}
           <div className="flex items-center gap-1 ml-auto">
             <button
@@ -363,10 +363,10 @@ const MarkdownComponents: any = {
               aria-label={isWrapped ? 'Disable word wrap' : 'Enable word wrap'}
               aria-pressed={isWrapped}
               onClick={() => setIsWrapped((prev) => !prev)}
-              className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs transition-colors ${
+              className={`inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs transition-colors ${
                 isWrapped
-                  ? 'text-slate-700 dark:text-slate-200 bg-slate-200/70 dark:bg-neutral-800/70'
-                  : 'text-slate-500 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100/50 dark:hover:bg-neutral-800/50'
+                ? 'text-zinc-700 dark:text-zinc-200 bg-zinc-200/70 dark:bg-zinc-800/70'
+                : 'text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'
               }`}
             >
               <WrapText className="h-3.5 w-3.5" />
@@ -375,7 +375,7 @@ const MarkdownComponents: any = {
               type="button"
               aria-label={copied ? 'Copied' : 'Copy code'}
               onClick={onCopy}
-              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-slate-500 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100/50 dark:hover:bg-neutral-800/50 transition-colors"
+              className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition-colors"
             >
               {copied ? (
                 <ClipboardCheck className="h-3.5 w-3.5" />
@@ -389,7 +389,7 @@ const MarkdownComponents: any = {
               aria-label={isCollapsed ? 'Expand code block' : 'Collapse code block'}
               aria-expanded={!isCollapsed}
               onClick={() => setIsCollapsed((prev) => !prev)}
-              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-slate-500 dark:text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100/50 dark:hover:bg-neutral-800/50 transition-colors"
+              className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition-colors"
             >
               {isCollapsed ? (
                 <ChevronDown className="h-3.5 w-3.5" />
@@ -406,7 +406,7 @@ const MarkdownComponents: any = {
         {/* padded, scrollable code area */}
         <div
           ref={codeRef}
-          className={`p-3 overflow-auto text-sm font-mono text-slate-700 dark:text-slate-300 leading-snug transition-all duration-200 ease-in-out ${
+          className={`px-4 py-3 overflow-auto text-sm font-mono text-zinc-700 dark:text-zinc-300 leading-snug transition-all duration-200 ease-in-out ${
             isCollapsed ? 'pointer-events-none select-none' : ''
           } ${isWrapped ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'}`}
           style={
@@ -439,10 +439,10 @@ const MarkdownComponents: any = {
 
     const isStreaming = !shouldHighlight;
     return (
-      <div className="my-3 rounded-md border border-slate-200 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a]/40 overflow-hidden">
+      <div className="my-3 rounded-xl border border-zinc-200/60 dark:border-zinc-800/60 bg-white dark:bg-zinc-900/40 overflow-hidden shadow-sm">
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="w-full flex items-center gap-2.5 px-3 py-2 text-slate-500 dark:text-neutral-400 hover:bg-slate-50 dark:hover:bg-neutral-900/50 transition-colors select-none group/think-btn"
+          className="w-full flex items-center gap-2.5 px-4 py-3 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors select-none group/think-btn"
         >
           <Brain
             size={13}
@@ -450,23 +450,23 @@ const MarkdownComponents: any = {
             className={`shrink-0 transition-colors ${
               isStreaming
                 ? 'text-amber-500/80 dark:text-amber-400/80 animate-pulse'
-                : 'text-slate-400 dark:text-neutral-500 group-hover/think-btn:text-slate-600 dark:group-hover/think-btn:text-neutral-300'
+              : 'text-zinc-400 dark:text-zinc-500 group-hover/think-btn:text-zinc-600 dark:group-hover/think-btn:text-zinc-300'
             }`}
           />
-          <span className="text-xs font-medium text-slate-600 dark:text-neutral-300">
+          <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
             Thought Process
           </span>
           <div className="ml-auto flex items-center gap-2">
             <ChevronDown
               size={13}
-              className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} text-slate-400 dark:text-neutral-500`}
+              className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} text-zinc-400 dark:text-zinc-500`}
             />
           </div>
         </button>
 
         {isExpanded && (
-          <div className="border-t border-slate-100 dark:border-neutral-800 bg-slate-50/30 dark:bg-[#0a0a0a]/20">
-            <div className="px-3 py-3 text-[13px] leading-relaxed text-slate-600 dark:text-neutral-400 font-mono whitespace-pre-wrap">
+          <div className="border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/30 dark:bg-[#0a0a0a]/20">
+            <div className="px-3 py-3 text-[13px] leading-relaxed text-zinc-600 dark:text-zinc-400 font-mono whitespace-pre-wrap">
               {children}
             </div>
           </div>
@@ -478,19 +478,19 @@ const MarkdownComponents: any = {
     if (!shouldHighlight && className?.startsWith('language-')) {
       return (
         <code
-          className={`${className} bg-slate-100 dark:bg-neutral-800 text-slate-700 dark:text-slate-300 px-1 rounded`}
+          className={`${className} bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-1 rounded`}
         >
           {children}
         </code>
       );
     }
 
-    return <code className={`${className} bg-slate-50 dark:bg-neutral-900/50`}>{children}</code>;
+    return <code className={`${className} bg-zinc-50 dark:bg-zinc-900/50`}>{children}</code>;
   },
-  hr: () => <hr className="my-4 border-slate-200 dark:border-neutral-800" />,
+  hr: () => <hr className="my-4 border-zinc-200 dark:border-zinc-800" />,
   p: ({ children }: any) => <p className="md-p leading-relaxed mt-4 first:mt-0">{children}</p>,
   h1: ({ children }: any) => (
-    <h1 className="md-h1 text-2xl font-bold leading-tight mt-6 mb-4 pb-2 border-b border-slate-200 dark:border-neutral-800 first:mt-0">
+    <h1 className="md-h1 text-2xl font-bold leading-tight mt-6 mb-4 pb-2 border-b border-zinc-200 dark:border-zinc-800 first:mt-0">
       {children}
     </h1>
   ),
@@ -504,24 +504,24 @@ const MarkdownComponents: any = {
   ol: ({ children }: any) => <ol className="list-decimal ml-6 space-y-2 mb-4">{children}</ol>,
   li: ({ children }: any) => <li className="leading-relaxed">{children}</li>,
   blockquote: ({ children }: any) => (
-    <blockquote className="border-l-2 border-slate-300 dark:border-neutral-700 pl-4 py-2 my-4 italic text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-neutral-900/50 rounded-r-lg leading-relaxed">
+    <blockquote className="border-l-2 border-zinc-300 dark:border-zinc-700 pl-4 py-2 my-4 italic text-zinc-700 dark:text-zinc-300 bg-zinc-50 dark:bg-zinc-900/50 rounded-r-lg leading-relaxed">
       {children}
     </blockquote>
   ),
   table: ({ children }: any) => (
-    <div className="overflow-x-auto my-4 rounded-lg border border-slate-200 dark:border-neutral-800">
-      <table className="min-w-full text-sm border-collapse bg-white dark:bg-neutral-950">
+    <div className="overflow-x-auto my-4 rounded-lg border border-zinc-200 dark:border-zinc-800">
+      <table className="min-w-full text-sm border-collapse bg-white dark:bg-zinc-950">
         {children}
       </table>
     </div>
   ),
   th: ({ children }: any) => (
-    <th className="text-left px-4 py-3 border-b border-slate-200 dark:border-neutral-800 font-semibold bg-slate-50 dark:bg-neutral-900 first:rounded-tl-lg last:rounded-tr-lg">
+    <th className="text-left px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 font-semibold bg-zinc-50 dark:bg-zinc-900 first:rounded-tl-lg last:rounded-tr-lg">
       {children}
     </th>
   ),
   td: ({ children }: any) => (
-    <td className="px-4 py-3 border-b border-slate-100 dark:border-neutral-900 align-top last:border-b-0">
+    <td className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-900 align-top last:border-b-0">
       {children}
     </td>
   ),

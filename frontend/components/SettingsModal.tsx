@@ -476,15 +476,15 @@ export default function SettingsModal({
           {/* Tab Navigation */}
           <div>
             <nav
-              className="flex items-center gap-2 bg-slate-50 dark:bg-neutral-900/40 rounded-lg p-1"
+              className="flex items-center gap-2 bg-zinc-100 dark:bg-zinc-800/50 rounded-xl p-1"
               aria-label="Settings tabs"
             >
               <button
                 onClick={() => setActiveTab('providers')}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === 'providers'
-                    ? 'bg-white dark:bg-neutral-800 text-slate-900 dark:text-slate-100 shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-white/60 dark:hover:bg-neutral-800/60'
+                  ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm'
+                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-white/60 dark:hover:bg-zinc-800/60'
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -494,10 +494,10 @@ export default function SettingsModal({
               </button>
               <button
                 onClick={() => setActiveTab('search')}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === 'search'
-                    ? 'bg-white dark:bg-neutral-800 text-slate-900 dark:text-slate-100 shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-white/60 dark:hover:bg-neutral-800/60'
+                  ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm'
+                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-white/60 dark:hover:bg-zinc-800/60'
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -507,10 +507,10 @@ export default function SettingsModal({
               </button>
               <button
                 onClick={() => setActiveTab('advanced')}
-                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors whitespace-nowrap ${
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === 'advanced'
-                    ? 'bg-white dark:bg-neutral-800 text-slate-900 dark:text-slate-100 shadow-sm'
-                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-white/60 dark:hover:bg-neutral-800/60'
+                  ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm'
+                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-white/60 dark:hover:bg-zinc-800/60'
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -527,16 +527,16 @@ export default function SettingsModal({
               {/* Header with refresh button */}
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                  <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
                     AI Providers
                   </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400">
                     Manage your AI provider configurations
                   </p>
                 </div>
                 <button
                   type="button"
-                  className="inline-flex items-center gap-2 px-2 py-1 text-sm rounded-md border border-slate-200/70 dark:border-neutral-800 bg-transparent hover:bg-slate-50 dark:hover:bg-neutral-800 text-slate-700 dark:text-slate-300 transition-colors"
+                  className="inline-flex items-center gap-2 px-2 py-1 text-sm rounded-lg border border-zinc-200/70 dark:border-zinc-800 bg-transparent hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors"
                   onClick={fetchProviders}
                   disabled={loadingProviders}
                   title="Refresh providers list"
@@ -564,31 +564,31 @@ export default function SettingsModal({
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 lg:gap-6 lg:max-h-[600px]">
                 {/* Provider List Section */}
                 <div className="lg:col-span-1 space-y-4 lg:overflow-y-auto lg:pr-2">
-                  <div className="bg-slate-50/60 dark:bg-neutral-800/30 rounded-lg p-3 border border-slate-200/30 dark:border-neutral-700/30">
+                  <div className="bg-zinc-50/60 dark:bg-zinc-900/30 rounded-xl p-3 border border-zinc-200/30 dark:border-zinc-800/30">
                     <div className="flex items-center justify-between mb-3">
                       <div>
-                        <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                        <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
                           Your Providers
                         </h4>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
                           Manage and toggle existing configurations
                         </p>
                       </div>
                     </div>
 
-                    <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 divide-y divide-slate-200/60 dark:divide-neutral-700 shadow-sm">
+                    <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200/70 dark:border-zinc-800 divide-y divide-zinc-200/60 dark:divide-zinc-800 shadow-sm">
                       {loadingProviders && (
-                        <div className="p-3 text-sm text-slate-500 text-center">
+                        <div className="p-3 text-sm text-zinc-500 text-center">
                           Loading providers...
                         </div>
                       )}
                       {!loadingProviders && providers.length === 0 && (
                         <div className="p-6 text-center">
-                          <Database className="mx-auto h-10 w-10 text-slate-400 mb-3" />
-                          <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
+                          <Database className="mx-auto h-10 w-10 text-zinc-400 mb-3" />
+                          <p className="text-sm font-medium text-zinc-600 dark:text-zinc-400">
                             No AI providers yet
                           </p>
-                          <p className="text-sm text-slate-500 dark:text-slate-500 mt-1">
+                          <p className="text-sm text-zinc-500 dark:text-zinc-500 mt-1">
                             Click &quot;Add New&quot; to configure your first AI provider
                           </p>
                         </div>
@@ -598,8 +598,8 @@ export default function SettingsModal({
                           key={p.id}
                           className={`w-full p-2.5 lg:p-3 transition-colors ${
                             selectedId === p.id
-                              ? 'bg-slate-50 dark:bg-neutral-800/60'
-                              : 'hover:bg-slate-50 dark:hover:bg-neutral-900/40'
+                            ? 'bg-zinc-50 dark:bg-zinc-800/60'
+                            : 'hover:bg-zinc-50 dark:hover:bg-zinc-900/40'
                           }`}
                         >
                           <div
@@ -616,21 +616,21 @@ export default function SettingsModal({
                                 handleQuickToggle(p.id, !p.enabled);
                               }
                             }}
-                            className="w-full text-left focus:outline-none focus:ring-2 focus:ring-slate-300 dark:focus:ring-neutral-700 focus:ring-offset-2 rounded-md"
+                            className="w-full text-left focus:outline-none focus:ring-2 focus:ring-zinc-300 dark:focus:ring-zinc-700 focus:ring-offset-2 rounded-lg"
                           >
                             <div className="flex items-center justify-between">
                               <div className="min-w-0 flex-1">
-                                <p className="text-sm font-medium text-slate-900 dark:text-slate-100 truncate capitalize">
+                                <p className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate capitalize">
                                   {p.name}
                                 </p>
-                                <p className="text-xs text-slate-500 dark:text-slate-400">
+                                <p className="text-xs text-zinc-500 dark:text-zinc-400">
                                   {p.provider_type}
                                 </p>
                               </div>
                               <div className="ml-3 flex items-center gap-2">
                                 {toggleLoading.has(p.id) ? (
                                   <div className="flex items-center justify-center w-9 h-5">
-                                    <RefreshCw className="w-4 h-4 animate-spin text-slate-500 dark:text-slate-400" />
+                                    <RefreshCw className="w-4 h-4 animate-spin text-zinc-500 dark:text-zinc-400" />
                                   </div>
                                 ) : (
                                   <Toggle
@@ -650,7 +650,7 @@ export default function SettingsModal({
                 </div>
 
                 {/* Provider Configuration Section */}
-                <div className="lg:col-span-2 bg-slate-50/60 dark:bg-neutral-800/30 rounded-lg p-3 lg:p-4 border border-slate-200/30 dark:border-neutral-700/30 lg:overflow-y-auto lg:pr-2">
+                <div className="lg:col-span-2 bg-zinc-50/60 dark:bg-zinc-900/30 rounded-xl p-3 lg:p-4 border border-zinc-200/30 dark:border-zinc-800/30 lg:overflow-y-auto lg:pr-2">
                   {form.id && (
                     <>
                       {/* Add New button moved above the form */}
@@ -658,7 +658,7 @@ export default function SettingsModal({
                         <button
                           type="button"
                           onClick={resetForm}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-slate-600 hover:bg-slate-700 text-white transition-colors font-medium"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-lg bg-zinc-700 hover:bg-zinc-800 text-white transition-colors font-medium"
                         >
                           <Plus className="w-4 h-4" />
                           Add New
@@ -667,13 +667,13 @@ export default function SettingsModal({
                     </>
                   )}
 
-                  <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-3 lg:p-4 shadow-sm">
+                  <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200/70 dark:border-zinc-800 p-3 lg:p-4 shadow-sm">
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 lg:mb-5 gap-2">
                       <div>
-                        <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                        <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
                           {form.id ? 'Edit Provider Configuration' : 'Add New Provider'}
                         </h4>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
                           {form.id
                             ? 'Update settings for this provider'
                             : 'Configure a new AI provider for your account'}
@@ -683,7 +683,7 @@ export default function SettingsModal({
                         <button
                           type="button"
                           onClick={confirmDelete}
-                          className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-md bg-red-600 hover:bg-red-700 text-white transition-colors"
+                          className="inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors"
                         >
                           <Trash2 className="w-4 h-4" />
                           Delete
@@ -695,20 +695,20 @@ export default function SettingsModal({
                       <div className="space-y-1.5">
                         <label
                           htmlFor="provider-name"
-                          className="block text-sm font-medium text-slate-700 dark:text-slate-300"
+                          className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
                         >
                           Provider Name *
                         </label>
                         <input
                           id="provider-name"
                           type="text"
-                          className="w-full px-3 py-2 lg:py-2.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                          className="w-full px-3 py-2 lg:py-2.5 border border-zinc-200/70 dark:border-zinc-800 rounded-lg bg-white/80 dark:bg-zinc-900/70 text-sm focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 focus:border-zinc-400 transition-colors"
                           value={form.name}
                           onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
                           placeholder="e.g., OpenAI, Anthropic, Custom Provider"
                           required
                         />
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
                           Choose a descriptive name to identify this provider
                         </p>
                       </div>
@@ -716,13 +716,13 @@ export default function SettingsModal({
                       <div className="space-y-1.5">
                         <label
                           htmlFor="provider-type"
-                          className="block text-sm font-medium text-slate-700 dark:text-slate-300"
+                          className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
                         >
                           Provider Type *
                         </label>
                         <select
                           id="provider-type"
-                          className="w-full px-3 py-2 lg:py-2.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                          className="w-full px-3 py-2 lg:py-2.5 border border-zinc-200/70 dark:border-zinc-800 rounded-lg bg-white/80 dark:bg-zinc-900/70 text-sm focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 focus:border-zinc-400 transition-colors"
                           value={form.provider_type}
                           onChange={(e) =>
                             setForm((f) => ({ ...f, provider_type: e.target.value }))
@@ -733,7 +733,7 @@ export default function SettingsModal({
                           <option value="anthropic">Anthropic</option>
                           <option value="gemini">Google Gemini</option>
                         </select>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
                           {form.provider_type === 'anthropic'
                             ? 'Native Anthropic Claude API support with Messages API'
                             : form.provider_type === 'gemini'
@@ -746,22 +746,22 @@ export default function SettingsModal({
                         <div className="space-y-1.5">
                           <label
                             htmlFor="base-url"
-                            className="block text-sm font-medium text-slate-700 dark:text-slate-300"
+                            className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
                           >
                             Base URL
-                            <span className="text-xs font-normal text-slate-500 dark:text-slate-400 ml-2">
+                            <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400 ml-2">
                               (Optional)
                             </span>
                           </label>
                           <input
                             id="base-url"
                             type="url"
-                            className="w-full px-3 py-2 lg:py-2.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                            className="w-full px-3 py-2 lg:py-2.5 border border-zinc-200/70 dark:border-zinc-800 rounded-lg bg-white/80 dark:bg-zinc-900/70 text-sm focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 focus:border-zinc-400 transition-colors"
                             value={form.base_url}
                             onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
                             placeholder="https://api.openai.com/v1 (auto-filled if empty)"
                           />
-                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                          <p className="text-xs text-zinc-500 dark:text-zinc-400">
                             Custom API endpoint. Leave empty for OpenAI&apos;s default endpoint.
                           </p>
                         </div>
@@ -770,14 +770,14 @@ export default function SettingsModal({
                       <div className="space-y-1.5 relative">
                         <label
                           htmlFor="api-key"
-                          className="block text-sm font-medium text-slate-700 dark:text-slate-300"
+                          className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
                         >
                           API Key {!form.id && <span className="text-red-500">*</span>}
                         </label>
                         <input
                           id="api-key"
                           type={showApiKey ? 'text' : 'password'}
-                          className="w-full px-3 py-2 lg:py-2.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors pr-10"
+                          className="w-full px-3 py-2 lg:py-2.5 border border-zinc-200/70 dark:border-zinc-800 rounded-lg bg-white/80 dark:bg-zinc-900/70 text-sm focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 focus:border-zinc-400 transition-colors pr-10"
                           value={form.api_key || ''}
                           onChange={(e) => setForm((f) => ({ ...f, api_key: e.target.value }))}
                           placeholder={
@@ -793,7 +793,7 @@ export default function SettingsModal({
                         <button
                           type="button"
                           onClick={() => setShowApiKey(!showApiKey)}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
                           aria-label={showApiKey ? 'Hide API key' : 'Show API key'}
                         >
                           {showApiKey ? (
@@ -802,7 +802,7 @@ export default function SettingsModal({
                             <Eye className="w-5 h-5" />
                           )}
                         </button>
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
                           {form.id
                             ? 'Leave blank to keep existing key. Keys are stored securely and encrypted.'
                             : 'Your API key will be encrypted and stored securely. Never shared or logged.'}
@@ -812,22 +812,22 @@ export default function SettingsModal({
                       <div className="space-y-1.5">
                         <label
                           htmlFor="model-filter"
-                          className="block text-sm font-medium text-slate-700 dark:text-slate-300"
+                          className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
                         >
                           Model Filter
-                          <span className="text-xs font-normal text-slate-500 dark:text-slate-400 ml-2">
+                          <span className="text-xs font-normal text-zinc-500 dark:text-zinc-400 ml-2">
                             (Optional)
                           </span>
                         </label>
                         <input
                           id="model-filter"
                           type="text"
-                          className="w-full px-3 py-2 lg:py-2.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                          className="w-full px-3 py-2 lg:py-2.5 border border-zinc-200/70 dark:border-zinc-800 rounded-lg bg-white/80 dark:bg-zinc-900/70 text-sm focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 focus:border-zinc-400 transition-colors"
                           value={form.model_filter || ''}
                           onChange={(e) => setForm((f) => ({ ...f, model_filter: e.target.value }))}
                           placeholder="gpt-4*; *sonnet*; gemini/*"
                         />
-                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
                           Filter models in selector using wildcards. Multiple patterns separated by
                           semicolon (e.g., gpt-4*; *sonnet*; gemini/*).
                         </p>
@@ -874,14 +874,14 @@ export default function SettingsModal({
                         </div>
                       )}
 
-                      <div className="pt-3 lg:pt-4 border-t border-slate-200/70 dark:border-neutral-800">
+                      <div className="pt-3 lg:pt-4 border-t border-zinc-200/70 dark:border-zinc-800">
                         <div className="flex flex-col sm:flex-row gap-2 lg:gap-3">
                           {/* Test Connection Button */}
                           <button
                             type="button"
                             onClick={testProviderConnection}
                             disabled={testing || !form.name || !form.provider_type}
-                            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3 lg:px-4 py-2 lg:py-2.5 text-sm font-medium rounded-lg border border-slate-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 hover:bg-slate-50 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3 lg:px-4 py-2 lg:py-2.5 text-sm font-medium rounded-lg border border-zinc-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
                           >
                             {testing ? (
                               <RefreshCw className="w-4 h-4 animate-spin" />
@@ -901,7 +901,7 @@ export default function SettingsModal({
                               !form.provider_type ||
                               (testResult ? !testResult.success : false)
                             }
-                            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3 lg:px-4 py-2 lg:py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
+                            className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3 lg:px-4 py-2 lg:py-2.5 text-sm font-medium rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 text-white disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-sm"
                           >
                             {saving ? (
                               <RefreshCw className="w-4 h-4 animate-spin" />
@@ -932,10 +932,10 @@ export default function SettingsModal({
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                  <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
                     Search Engines API Keys
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
                     Store API keys to enable third-party web search tools. Keys are encrypted and
                     scoped to your account.
                   </p>
@@ -952,13 +952,13 @@ export default function SettingsModal({
               {/* Two-column grid layout on larger screens */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-5">
                 {/* SearXNG Configuration Card */}
-                <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-5 shadow-sm space-y-5">
+                <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200/70 dark:border-zinc-800 p-5 shadow-sm space-y-5">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
-                      <h4 className="text-sm font-semibold text-slate-900 dark:text-slate-100">
+                      <h4 className="text-sm font-semibold text-zinc-900 dark:text-zinc-100">
                         SearXNG
                       </h4>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
                         Self-hosted metasearch engine
                       </p>
                     </div>
@@ -966,7 +966,7 @@ export default function SettingsModal({
                       href="https://github.com/searxng/searxng"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 transition-colors"
+                      className="text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200 transition-colors"
                       title="View SearXNG documentation"
                     >
                       <ExternalLink className="w-4 h-4" />
@@ -974,9 +974,9 @@ export default function SettingsModal({
                   </div>
 
                   {/* Base URL Section */}
-                  <div className="space-y-3 pb-5 border-b border-slate-200/70 dark:border-neutral-700">
+                  <div className="space-y-3 pb-5 border-b border-zinc-200/70 dark:border-zinc-800">
                     <div className="flex items-center gap-2">
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                      <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
                         Base URL
                       </label>
                       {initialSearxBaseUrl && searxBaseUrl === initialSearxBaseUrl && (
@@ -989,7 +989,7 @@ export default function SettingsModal({
 
                     <input
                       type="url"
-                      className="w-full px-3 py-2.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                      className="w-full px-3 py-2.5 border border-zinc-200/70 dark:border-zinc-800 rounded-lg bg-white/80 dark:bg-zinc-900/70 text-sm focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 focus:border-zinc-400 transition-colors"
                       value={searxBaseUrl}
                       onChange={(e) => {
                         setSearxBaseUrl(e.target.value);
@@ -1005,7 +1005,7 @@ export default function SettingsModal({
                       </p>
                     )}
 
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
                       Leave empty to use legacy configuration
                     </p>
 
@@ -1033,7 +1033,7 @@ export default function SettingsModal({
                           setSearxBaseUrlSaving(false);
                         }
                       }}
-                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-neutral-700 text-white disabled:cursor-not-allowed transition-colors shadow-sm"
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 text-white dark:text-zinc-900 disabled:cursor-not-allowed transition-colors shadow-sm"
                       disabled={searxBaseUrlSaving || searxBaseUrl === initialSearxBaseUrl}
                     >
                       {searxBaseUrlSaving ? (
@@ -1053,7 +1053,7 @@ export default function SettingsModal({
                   {/* API Key Section */}
                   <div className="space-y-3">
                     <div className="flex items-center gap-2">
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                      <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300">
                         API Key (Optional)
                       </label>
                       {initialSearchApiKeys.searxng &&
@@ -1068,7 +1068,7 @@ export default function SettingsModal({
                     <div className="relative">
                       <input
                         type={searchReveal.searxng ? 'text' : 'password'}
-                        className="w-full px-3 py-2.5 pr-10 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                        className="w-full px-3 py-2.5 pr-10 border border-zinc-200/70 dark:border-zinc-800 rounded-lg bg-white/80 dark:bg-zinc-900/70 text-sm focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 focus:border-zinc-400 transition-colors"
                         value={searchApiKeys.searxng || ''}
                         onChange={(e) => {
                           setSearchApiKeys((prev) => ({ ...prev, searxng: e.target.value }));
@@ -1079,7 +1079,7 @@ export default function SettingsModal({
                       <button
                         type="button"
                         aria-label={searchReveal.searxng ? 'Hide API key' : 'Show API key'}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
                         onClick={() =>
                           setSearchReveal((prev) => ({ ...prev, searxng: !prev.searxng }))
                         }
@@ -1099,7 +1099,7 @@ export default function SettingsModal({
                       </p>
                     )}
 
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
                       Encrypted and stored securely with your account
                     </p>
 
@@ -1134,7 +1134,7 @@ export default function SettingsModal({
                           setSearchSaving((prev) => ({ ...prev, searxng: false }));
                         }
                       }}
-                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-neutral-700 text-white disabled:cursor-not-allowed transition-colors shadow-sm"
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 text-white dark:text-zinc-900 disabled:cursor-not-allowed transition-colors shadow-sm"
                       disabled={
                         searchSaving.searxng ||
                         searchApiKeys.searxng === initialSearchApiKeys.searxng
@@ -1158,11 +1158,11 @@ export default function SettingsModal({
                 </div>
 
                 {/* Tavily API Key Card */}
-                <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-5 shadow-sm space-y-4">
+                <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200/70 dark:border-zinc-800 p-5 shadow-sm space-y-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <label className="block text-sm font-semibold text-slate-900 dark:text-slate-100">
+                        <label className="block text-sm font-semibold text-zinc-900 dark:text-zinc-100">
                           Tavily API Key
                         </label>
                         {initialSearchApiKeys.tavily &&
@@ -1173,7 +1173,7 @@ export default function SettingsModal({
                             </span>
                           )}
                       </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
                         Real-time web search API
                       </p>
                     </div>
@@ -1181,7 +1181,7 @@ export default function SettingsModal({
                       href="https://tavily.com"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 transition-colors"
+                      className="text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200 transition-colors"
                       title="Get Tavily API key"
                     >
                       <ExternalLink className="w-4 h-4" />
@@ -1192,7 +1192,7 @@ export default function SettingsModal({
                     <div className="relative">
                       <input
                         type={searchReveal.tavily ? 'text' : 'password'}
-                        className="w-full px-3 py-2.5 pr-10 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                        className="w-full px-3 py-2.5 pr-10 border border-zinc-200/70 dark:border-zinc-800 rounded-lg bg-white/80 dark:bg-zinc-900/70 text-sm focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 focus:border-zinc-400 transition-colors"
                         value={searchApiKeys.tavily || ''}
                         onChange={(e) => {
                           setSearchApiKeys((prev) => ({ ...prev, tavily: e.target.value }));
@@ -1203,7 +1203,7 @@ export default function SettingsModal({
                       <button
                         type="button"
                         aria-label={searchReveal.tavily ? 'Hide API key' : 'Show API key'}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
                         onClick={() =>
                           setSearchReveal((prev) => ({ ...prev, tavily: !prev.tavily }))
                         }
@@ -1258,7 +1258,7 @@ export default function SettingsModal({
                           setSearchSaving((prev) => ({ ...prev, tavily: false }));
                         }
                       }}
-                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-neutral-700 text-white disabled:cursor-not-allowed transition-colors shadow-sm"
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 text-white dark:text-zinc-900 disabled:cursor-not-allowed transition-colors shadow-sm"
                       disabled={
                         searchSaving.tavily || searchApiKeys.tavily === initialSearchApiKeys.tavily
                       }
@@ -1281,11 +1281,11 @@ export default function SettingsModal({
                 </div>
 
                 {/* Exa API Key Card */}
-                <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-5 shadow-sm space-y-4">
+                <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200/70 dark:border-zinc-800 p-5 shadow-sm space-y-4">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
-                        <label className="block text-sm font-semibold text-slate-900 dark:text-slate-100">
+                        <label className="block text-sm font-semibold text-zinc-900 dark:text-zinc-100">
                           Exa API Key
                         </label>
                         {initialSearchApiKeys.exa &&
@@ -1296,7 +1296,7 @@ export default function SettingsModal({
                             </span>
                           )}
                       </div>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                      <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
                         Neural search for the web
                       </p>
                     </div>
@@ -1304,7 +1304,7 @@ export default function SettingsModal({
                       href="https://exa.ai"
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-slate-500 hover:text-blue-600 dark:text-slate-400 dark:hover:text-blue-400 transition-colors"
+                      className="text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200 transition-colors"
                       title="Get Exa API key"
                     >
                       <ExternalLink className="w-4 h-4" />
@@ -1315,7 +1315,7 @@ export default function SettingsModal({
                     <div className="relative">
                       <input
                         type={searchReveal.exa ? 'text' : 'password'}
-                        className="w-full px-3 py-2.5 pr-10 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                        className="w-full px-3 py-2.5 pr-10 border border-zinc-200/70 dark:border-zinc-800 rounded-lg bg-white/80 dark:bg-zinc-900/70 text-sm focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 focus:border-zinc-400 transition-colors"
                         value={searchApiKeys.exa || ''}
                         onChange={(e) => {
                           setSearchApiKeys((prev) => ({ ...prev, exa: e.target.value }));
@@ -1326,7 +1326,7 @@ export default function SettingsModal({
                       <button
                         type="button"
                         aria-label={searchReveal.exa ? 'Hide API key' : 'Show API key'}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition-colors"
                         onClick={() => setSearchReveal((prev) => ({ ...prev, exa: !prev.exa }))}
                       >
                         {searchReveal.exa ? (
@@ -1344,7 +1344,7 @@ export default function SettingsModal({
                       </p>
                     )}
 
-                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400">
                       Encrypted and stored securely with your account
                     </p>
 
@@ -1379,7 +1379,7 @@ export default function SettingsModal({
                           setSearchSaving((prev) => ({ ...prev, exa: false }));
                         }
                       }}
-                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-neutral-700 text-white disabled:cursor-not-allowed transition-colors shadow-sm"
+                      className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 text-white dark:text-zinc-900 disabled:cursor-not-allowed transition-colors shadow-sm"
                       disabled={searchSaving.exa || searchApiKeys.exa === initialSearchApiKeys.exa}
                     >
                       {searchSaving.exa ? (
@@ -1398,9 +1398,9 @@ export default function SettingsModal({
                 </div>
               </div>
 
-              <div className="bg-slate-50/60 dark:bg-neutral-800/30 rounded-lg p-4 border border-slate-200/30 dark:border-neutral-700/30">
-                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                  <strong className="font-semibold text-slate-700 dark:text-slate-300">
+              <div className="bg-zinc-50/60 dark:bg-zinc-900/30 rounded-lg p-4 border border-zinc-200/30 dark:border-zinc-700/30">
+                <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
+                  <strong className="font-semibold text-zinc-700 dark:text-zinc-300">
                     Security:
                   </strong>{' '}
                   All API keys are encrypted and stored securely on the server. They are only
@@ -1414,10 +1414,10 @@ export default function SettingsModal({
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-sm font-medium text-slate-900 dark:text-slate-100">
+                  <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
                     Advanced Settings
                   </h3>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
                     Configure advanced behavior and limits
                   </p>
                 </div>
@@ -1431,10 +1431,10 @@ export default function SettingsModal({
               )}
 
               {/* Max Tool Iterations Card */}
-              <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-5 shadow-sm space-y-4">
+              <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200/70 dark:border-zinc-800 p-5 shadow-sm space-y-4">
                 <div>
                   <div className="flex items-center gap-2">
-                    <label className="block text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    <label className="block text-sm font-semibold text-zinc-900 dark:text-zinc-100">
                       Maximum Tool Call Iterations
                     </label>
                     {maxToolIterations === initialMaxToolIterations && (
@@ -1444,7 +1444,7 @@ export default function SettingsModal({
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
                     Maximum number of consecutive tool calling turns before stopping (1-50)
                   </p>
                 </div>
@@ -1452,7 +1452,7 @@ export default function SettingsModal({
                 <div className="space-y-3">
                   <input
                     type="text"
-                    className="w-full px-3 py-2.5 border border-slate-200/70 dark:border-neutral-800 rounded-lg bg-white/80 dark:bg-neutral-900/70 text-sm focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 focus:border-blue-500 transition-colors"
+                    className="w-full px-3 py-2.5 border border-zinc-200/70 dark:border-zinc-800 rounded-lg bg-white/80 dark:bg-zinc-900/70 text-sm focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 focus:border-zinc-400 transition-colors"
                     value={maxToolIterations}
                     onChange={(e) => {
                       setMaxToolIterations(e.target.value);
@@ -1467,7 +1467,7 @@ export default function SettingsModal({
                     </p>
                   )}
 
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
                     Default is 10. This prevents infinite loops when the AI continuously requests
                     tool calls. Increase for complex tasks requiring many tool iterations, decrease
                     to save on API costs.
@@ -1502,7 +1502,7 @@ export default function SettingsModal({
                         setMaxToolIterationsSaving(false);
                       }
                     }}
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-neutral-700 text-white disabled:cursor-not-allowed transition-colors shadow-sm"
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 text-white dark:text-zinc-900 disabled:cursor-not-allowed transition-colors shadow-sm"
                     disabled={
                       maxToolIterationsSaving || maxToolIterations === initialMaxToolIterations
                     }
@@ -1523,10 +1523,10 @@ export default function SettingsModal({
               </div>
 
               {/* Chore Model Card */}
-              <div className="bg-white dark:bg-neutral-900 rounded-lg border border-slate-200/70 dark:border-neutral-700 p-5 shadow-sm space-y-4">
+              <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200/70 dark:border-zinc-800 p-5 shadow-sm space-y-4">
                 <div>
                   <div className="flex items-center gap-2">
-                    <label className="block text-sm font-semibold text-slate-900 dark:text-slate-100">
+                    <label className="block text-sm font-semibold text-zinc-900 dark:text-zinc-100">
                       Chore Model
                     </label>
                     {choreModel === initialChoreModel && initialChoreModel !== '' && (
@@ -1536,7 +1536,7 @@ export default function SettingsModal({
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
                     Select a model for mundane tasks like generating conversation titles
                   </p>
                 </div>
@@ -1560,7 +1560,7 @@ export default function SettingsModal({
                     </p>
                   )}
 
-                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">
                     Use a smaller, faster model for tasks like generating conversation titles to on
                     API costs. Leave empty to use the main conversation model.
                   </p>
@@ -1583,7 +1583,7 @@ export default function SettingsModal({
                         setChoreModelSaving(false);
                       }
                     }}
-                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-slate-300 dark:disabled:bg-neutral-700 text-white disabled:cursor-not-allowed transition-colors shadow-sm"
+                    className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 text-white dark:text-zinc-900 disabled:cursor-not-allowed transition-colors shadow-sm"
                     disabled={choreModelSaving || choreModel === initialChoreModel}
                   >
                     {choreModelSaving ? (
