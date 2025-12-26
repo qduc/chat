@@ -222,3 +222,105 @@ function notifyTokensCleared(): void {
     }
   });
 }
+
+// ============================================================================
+// Draft Message Persistence
+// Preserves unsent messages across session expiry and re-authentication
+// ============================================================================
+
+const DRAFT_KEY_PREFIX = 'chatforge_draft';
+
+/**
+ * Generate a storage key for a draft message
+ * Format: chatforge_draft_{userId}_{conversationId}
+ */
+function getDraftKey(userId: string, conversationId: string | null): string {
+  const convId = conversationId || 'new';
+  return `${DRAFT_KEY_PREFIX}_${userId}_${convId}`;
+}
+
+/**
+ * Get a pending draft message for a specific user and conversation
+ * @param userId - The user's ID
+ * @param conversationId - The conversation ID (null for new chat)
+ * @returns The draft text or null if no draft exists
+ */
+export function getDraft(userId: string, conversationId: string | null): string | null {
+  if (typeof window === 'undefined') return null;
+  if (!userId) return null;
+
+  try {
+    const key = getDraftKey(userId, conversationId);
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Save a draft message for a specific user and conversation
+ * @param userId - The user's ID
+ * @param conversationId - The conversation ID (null for new chat)
+ * @param text - The draft text to save
+ */
+export function setDraft(userId: string, conversationId: string | null, text: string): void {
+  if (typeof window === 'undefined') return;
+  if (!userId) return;
+
+  try {
+    const key = getDraftKey(userId, conversationId);
+    if (text.trim()) {
+      localStorage.setItem(key, text);
+    } else {
+      // Don't save empty drafts
+      localStorage.removeItem(key);
+    }
+  } catch {
+    // Ignore storage errors (quota exceeded, private mode, etc.)
+  }
+}
+
+/**
+ * Clear a draft message for a specific user and conversation
+ * @param userId - The user's ID
+ * @param conversationId - The conversation ID (null for new chat)
+ */
+export function clearDraft(userId: string, conversationId: string | null): void {
+  if (typeof window === 'undefined') return;
+  if (!userId) return;
+
+  try {
+    const key = getDraftKey(userId, conversationId);
+    localStorage.removeItem(key);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+/**
+ * Clear all drafts for a specific user (across all conversations)
+ * Useful when logging out completely
+ * @param userId - The user's ID
+ */
+export function clearAllDrafts(userId: string): void {
+  if (typeof window === 'undefined') return;
+  if (!userId) return;
+
+  try {
+    const prefix = `${DRAFT_KEY_PREFIX}_${userId}_`;
+    const keysToRemove: string[] = [];
+
+    // Collect all matching keys
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix)) {
+        keysToRemove.push(key);
+      }
+    }
+
+    // Remove them
+    keysToRemove.forEach((key) => localStorage.removeItem(key));
+  } catch {
+    // Ignore storage errors
+  }
+}
