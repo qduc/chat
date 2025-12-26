@@ -6,7 +6,7 @@ import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { useTheme } from '../contexts/ThemeContext';
-import { ClipboardCheck, Clipboard, ChevronDown, ChevronUp, WrapText } from 'lucide-react';
+import { ClipboardCheck, Clipboard, ChevronDown, ChevronUp, WrapText, Brain } from 'lucide-react';
 
 interface MarkdownProps {
   text: string;
@@ -437,42 +437,47 @@ const MarkdownComponents: any = {
   }) {
     const [isExpanded, setIsExpanded] = useState(false);
 
-    const defaultCollapsedHeight = 72; // px
-
     if (className?.includes('language-thinking')) {
+      const isStreaming = !shouldHighlight;
       return (
-        <div className="my-4 border border-slate-200 dark:border-neutral-800 rounded-lg bg-slate-50 dark:bg-neutral-900/50">
-          <div
-            className="px-4 py-2 cursor-pointer font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-t-lg"
+        <div className="my-6 block">
+          <button
             onClick={() => setIsExpanded(!isExpanded)}
+            className="flex items-center gap-3 text-slate-400/80 dark:text-neutral-500/80 hover:text-slate-600 dark:hover:text-neutral-200 transition-all duration-300 group/think-btn select-none outline-none"
           >
-            💭 Thinking...
-          </div>
+            <div className="relative">
+              <Brain
+                size={14}
+                strokeWidth={1.5}
+                className={`transition-all duration-500 ${isStreaming ? 'text-blue-500 scale-110' : 'scale-100 opacity-60 group-hover/think-btn:opacity-100'}`}
+              />
+              {isStreaming && (
+                <span className="absolute -inset-1 rounded-full border border-blue-500/20 animate-ping" />
+              )}
+            </div>
+            <span className="text-[10px] uppercase font-bold tracking-[0.2em] transition-all group-hover/think-btn:tracking-[0.25em]">
+              {isExpanded ? 'Neural Trace' : 'Thought Process'}
+            </span>
+            <ChevronDown
+              size={12}
+              className={`ml-1 transition-transform duration-500 ease-out ${isExpanded ? 'rotate-180 text-slate-500' : 'opacity-40'}`}
+            />
+          </button>
 
-          {/* Outer area can have padding; inner height box must not. */}
-          <div className="border-t border-slate-200 dark:border-neutral-800">
-            <div
-              className={isExpanded ? 'px-4 py-3' : 'px-4'}
-              style={
-                isExpanded
-                  ? {}
-                  : {
-                      maxHeight: `${defaultCollapsedHeight}px`,
-                      overflow: 'hidden',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'flex-end',
-                    }
-              }
-            >
-              {/* Add vertical padding only when expanded to avoid shrinking visible height */}
-              <div className="whitespace-pre-wrap font-mono text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
+          <div
+            className={`overflow-hidden transition-all duration-700 ease-[cubic-bezier(0.16,1,0.3,1)] relative ${isExpanded
+                ? 'max-h-[10000px] opacity-100 mt-4'
+                : 'max-h-[4rem] opacity-80 mt-2 flex flex-col justify-end'
+              }`}
+          >
+            {!isExpanded && (
+              <div className="absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-white dark:from-[#0a0a0a] to-transparent z-10 pointer-events-none" />
+            )}
+            <div className={`pl-8 pb-1 ${!isExpanded ? 'line-clamp-none' : ''}`}>
+              <div className="text-[13px] leading-[1.8] text-slate-600 dark:text-neutral-300 font-normal font-mono italic whitespace-pre-wrap selection:bg-slate-100 dark:selection:bg-neutral-800">
                 {children}
               </div>
             </div>
-
-            {/* When collapsed, add bottom padding outside the height box for visual spacing */}
-            {!isExpanded && <div className="px-4 pb-3" />}
           </div>
         </div>
       );
