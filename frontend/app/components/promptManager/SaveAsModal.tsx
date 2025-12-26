@@ -127,7 +127,7 @@ export default function SaveAsModal({
       onKeyDown={handleKeyDown}
     >
       <div
-        className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full mx-4"
+        className="bg-white dark:bg-zinc-900 rounded-xl shadow-xl max-w-md w-full mx-4 border border-zinc-200 dark:border-zinc-800"
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -135,8 +135,8 @@ export default function SaveAsModal({
         tabIndex={-1}
       >
         {/* Header */}
-        <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-          <h3 id={titleId} className="text-lg font-medium text-gray-900 dark:text-gray-100">
+        <div className="p-4 border-b border-zinc-200 dark:border-zinc-800">
+          <h3 id={titleId} className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
             Save as New Prompt
           </h3>
         </div>
@@ -144,7 +144,7 @@ export default function SaveAsModal({
         {/* Content */}
         <form onSubmit={handleSubmit}>
           <div className="p-4">
-            <p id={descriptionId} className="text-sm text-gray-700 dark:text-gray-300 mb-4">
+            <p id={descriptionId} className="text-sm text-zinc-600 dark:text-zinc-400 mb-4">
               Create a new prompt with the current content.
             </p>
 
@@ -152,7 +152,7 @@ export default function SaveAsModal({
             <div className="mb-4">
               <label
                 htmlFor="prompt-name"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2"
+                className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2"
               >
                 Prompt Name
               </label>
@@ -162,11 +162,11 @@ export default function SaveAsModal({
                 type="text"
                 value={name}
                 onChange={handleNameChange}
-                className={`w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                className={`w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-400 ${
                   error
                     ? 'border-red-300 dark:border-red-600 bg-red-50 dark:bg-red-900/20'
-                    : 'border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700'
-                } text-gray-900 dark:text-gray-100`}
+                    : 'border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800'
+                } text-zinc-900 dark:text-zinc-100`}
                 placeholder="Enter prompt name"
                 maxLength={255}
                 disabled={saving}
@@ -193,28 +193,28 @@ export default function SaveAsModal({
 
             {/* Content preview */}
             <div className="mb-4">
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2">
                 Content Preview
               </label>
-              <div className="bg-gray-50 dark:bg-gray-900 rounded p-3 max-h-32 overflow-y-auto border border-gray-200 dark:border-gray-600">
-                <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
+              <div className="bg-zinc-50 dark:bg-zinc-900/50 rounded-lg p-3 max-h-32 overflow-y-auto border border-zinc-200 dark:border-zinc-800">
+                <div className="text-sm text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap">
                   {content.length > 200
                     ? `${content.substring(0, 200)}...`
                     : content || '(Empty content)'}
                 </div>
               </div>
-              <div className="mt-1 text-xs text-gray-500 dark:text-gray-400 text-right">
+              <div className="mt-1 text-xs text-zinc-500 dark:text-zinc-500 text-right">
                 {content.length} characters total
               </div>
             </div>
           </div>
 
           {/* Actions */}
-          <div className="p-4 border-t border-gray-200 dark:border-gray-700 flex justify-end space-x-3">
+          <div className="p-4 border-t border-zinc-200 dark:border-zinc-800 flex justify-end space-x-3">
             <button
               type="button"
               onClick={onCancel}
-              className="px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded border border-gray-300 dark:border-gray-600 disabled:opacity-50"
+              className="px-4 py-2 text-sm text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-lg border border-zinc-200 dark:border-zinc-700 disabled:opacity-50 transition-colors"
               disabled={saving}
             >
               Cancel
@@ -222,7 +222,7 @@ export default function SaveAsModal({
 
             <button
               type="submit"
-              className="px-4 py-2 text-sm bg-blue-500 text-white hover:bg-blue-600 rounded disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-4 py-2 text-sm bg-zinc-900 text-white hover:bg-zinc-800 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-zinc-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-zinc-400 transition-colors"
               disabled={!isValid || saving}
             >
               {saving ? 'Creating...' : 'Create Prompt'}

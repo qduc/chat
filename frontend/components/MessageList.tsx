@@ -298,7 +298,7 @@ const Message = React.memo<MessageProps>(
           </div>
         )}
         <div
-          className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? 'max-w-full sm:max-w-[85%] md:max-w-[70%] lg:max-w-[50%] order-first' : 'w-full'}`}
+          className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? 'max-w-full sm:max-w-[85%] md:max-w-[75%] lg:max-w-[60%] order-first' : 'w-full'}`}
           style={{ minWidth: 0 }}
         >
           {isEditing ? (
@@ -308,10 +308,10 @@ const Message = React.memo<MessageProps>(
               fullPage={false}
               clickToUpload={false}
             >
-              <div className="space-y-2 rounded-2xl bg-white/95 dark:bg-neutral-900/95 border border-slate-200 dark:border-neutral-700 shadow-sm p-4">
+              <div className="space-y-2 rounded-2xl bg-white/95 dark:bg-zinc-900/95 border border-zinc-200 dark:border-zinc-800 shadow-sm p-4">
                 {/* Image Previews */}
                 {editingImages.length > 0 && (
-                  <div className="pb-2 border-b border-slate-200 dark:border-neutral-700">
+                  <div className="pb-2 border-b border-zinc-200 dark:border-zinc-800">
                     <ImagePreview
                       images={editingImages}
                       uploadProgress={[]}
@@ -348,7 +348,7 @@ const Message = React.memo<MessageProps>(
                       onApplyLocalEdit(message.id);
                     }
                   }}
-                  className="w-full min-h-[100px] resize-vertical bg-transparent border-0 outline-none text-base leading-relaxed text-slate-800 dark:text-slate-200 placeholder-slate-500 dark:placeholder-slate-400"
+                  className="w-full min-h-[100px] resize-vertical bg-transparent border-0 outline-none text-base leading-relaxed text-zinc-800 dark:text-zinc-200 placeholder-zinc-500 dark:placeholder-zinc-400"
                   placeholder="Edit your message... (paste or drop images)"
                   style={{ overflow: 'hidden' }}
                 />
@@ -357,7 +357,7 @@ const Message = React.memo<MessageProps>(
                   <button
                     type="button"
                     onClick={onEditingImageUploadClick}
-                    className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-slate-700 dark:text-slate-300 transition-colors"
+                    className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors"
                   >
                     <span className="text-sm">📎</span>
                     {editingImages.length > 0
@@ -368,14 +368,14 @@ const Message = React.memo<MessageProps>(
                   <div className="flex gap-2">
                     <button
                       onClick={onCancelEdit}
-                      className="px-3 py-1.5 text-xs rounded-lg bg-slate-200 hover:bg-slate-300 dark:bg-neutral-700 dark:hover:bg-neutral-600 text-slate-700 dark:text-slate-300 transition-colors"
+                      className="px-3 py-1.5 text-xs rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors"
                     >
                       Cancel
                     </button>
                     <button
                       onClick={() => onApplyLocalEdit(message.id)}
                       disabled={!canSaveEdit}
-                      className="px-3 py-1.5 text-xs rounded-lg bg-slate-600 hover:bg-slate-700 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      className="px-3 py-1.5 text-xs rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                     >
                       Save
                     </button>
@@ -386,15 +386,15 @@ const Message = React.memo<MessageProps>(
           ) : (
             <>
               {isUser ? (
-                <div className="rounded-2xl px-4 py-3 text-base leading-relaxed bg-slate-100 text-black dark:bg-slate-700 dark:text-white">
+                <div className="rounded-2xl px-5 py-3.5 text-base leading-relaxed bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100">
                   <MessageContentRenderer content={message.content} isStreaming={false} />
                 </div>
               ) : (
                 <div className="space-y-3">
                   {assistantSegments.length === 0 ? (
-                    <div className="text-base leading-relaxed text-slate-800 dark:text-slate-200">
+                    <div className="text-base leading-relaxed text-zinc-800 dark:text-zinc-200">
                       {pending.streaming || pending.abort ? (
-                        <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400">
+                        <span className="inline-flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
                           <span
                             className="w-1.5 h-1.5 rounded-full bg-current animate-bounce"
                             style={{ animationDelay: '0ms' }}
@@ -409,7 +409,7 @@ const Message = React.memo<MessageProps>(
                           />
                         </span>
                       ) : (
-                        <span className="text-slate-500 dark:text-slate-400 italic">
+                        <span className="text-zinc-500 dark:text-zinc-400 italic">
                           No response content
                         </span>
                       )}
@@ -423,7 +423,7 @@ const Message = React.memo<MessageProps>(
                         return (
                           <div
                             key={`text-${segmentIndex}`}
-                            className="text-base leading-relaxed text-slate-800 dark:text-slate-200"
+                            className="text-base leading-relaxed text-zinc-900 dark:text-zinc-200"
                           >
                             <Markdown text={segment.text} isStreaming={isStreaming} />
                           </div>
@@ -456,7 +456,7 @@ const Message = React.memo<MessageProps>(
                           size: 14,
                           strokeWidth: 1.5,
                           className:
-                            'text-slate-400 dark:text-neutral-500 group-hover/tool-btn:text-slate-600 dark:group-hover/tool-btn:text-neutral-300 transition-colors duration-300',
+                            'text-zinc-400 dark:text-zinc-500 group-hover/tool-btn:text-zinc-600 dark:group-hover/tool-btn:text-zinc-300 transition-colors duration-300',
                         };
                         switch (name) {
                           case 'get_time':
@@ -542,39 +542,39 @@ const Message = React.memo<MessageProps>(
                       return (
                         <div
                           key={`tool-${segmentIndex}`}
-                          className="my-2 rounded-md border border-slate-200 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a]/40 overflow-hidden"
+                          className="my-3 rounded-xl border border-zinc-200/60 dark:border-zinc-800/60 bg-white dark:bg-zinc-900/30 overflow-hidden shadow-sm"
                         >
                           <button
                             onClick={() => {
                               if (!hasDetails) return;
                               setCollapsedToolOutputs((s) => ({ ...s, [toggleKey]: !isCollapsed }));
                             }}
-                            className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-colors select-none ${
+                            className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors select-none ${
                               !hasDetails
                                 ? 'cursor-default'
-                                : 'hover:bg-slate-50 dark:hover:bg-neutral-900/50 cursor-pointer'
+                                : 'hover:bg-zinc-50 dark:hover:bg-white/5 cursor-pointer'
                             }`}
                           >
                             <div
-                              className={`text-slate-400 dark:text-neutral-500 scale-90 ${!isCompleted ? 'animate-pulse' : ''}`}
+                              className={`text-zinc-400 dark:text-zinc-500 scale-90 ${!isCompleted ? 'animate-pulse' : ''}`}
                             >
                               {React.cloneElement(
                                 getToolIcon(toolName) as React.ReactElement<any>,
                                 {
                                   fill: isCompleted ? 'currentColor' : 'none',
                                   className: isCompleted
-                                    ? 'text-slate-500 dark:text-neutral-400'
-                                    : 'text-slate-400 dark:text-neutral-500',
+                                    ? 'text-zinc-500 dark:text-zinc-400'
+                                    : 'text-zinc-400 dark:text-zinc-500',
                                 }
                               )}
                             </div>
-                            <span className="text-xs font-medium text-slate-700 dark:text-neutral-300 font-mono">
+                            <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300 font-mono">
                               {getToolDisplayName(toolName)}
                             </span>
 
                             {/* Always show params summary when collapsed if available */}
                             {isCollapsed && inputSummary && (
-                              <span className="ml-2 text-xs text-slate-400 dark:text-neutral-500 truncate max-w-[300px] opacity-80 font-mono">
+                              <span className="ml-2 text-xs text-zinc-400 dark:text-zinc-500 truncate max-w-[300px] opacity-80 font-mono">
                                 {inputSummary}
                               </span>
                             )}
@@ -582,23 +582,23 @@ const Message = React.memo<MessageProps>(
                             {hasDetails && (
                               <div className="ml-auto flex items-center gap-2">
                                 <ChevronDown
-                                  size={13}
-                                  className={`transition-transform duration-200 ${!isCollapsed ? 'rotate-180' : ''} text-slate-400 dark:text-neutral-500`}
+                                  size={14}
+                                  className={`transition-transform duration-200 ${!isCollapsed ? 'rotate-180' : ''} text-zinc-400 dark:text-zinc-500`}
                                 />
                               </div>
                             )}
                           </button>
 
                           {!isCollapsed && hasDetails && (
-                            <div className="border-t border-slate-100 dark:border-neutral-800 bg-slate-50/50 dark:bg-[#0a0a0a]/20 px-3 py-3 text-[13px]">
+                            <div className="border-t border-zinc-100 dark:border-zinc-800/50 bg-zinc-50/50 dark:bg-black/20 px-4 py-3 text-[13px]">
                               <div className="space-y-4">
                                 {(Object.keys(parsedArgs).length > 0 ||
                                   (argsParseFailed && argsRaw.trim().length > 0)) && (
                                   <div className="space-y-1.5">
-                                    <div className="text-[10px] font-bold text-slate-400 dark:text-neutral-500 uppercase tracking-widest pl-0.5">
+                                    <div className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-600 uppercase tracking-wider pl-0.5 mb-1.5">
                                       Parameters
                                     </div>
-                                    <div className="font-mono text-slate-600 dark:text-neutral-400 whitespace-pre-wrap leading-relaxed">
+                                    <div className="font-mono text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed">
                                       {argsParseFailed
                                         ? argsRaw
                                         : JSON.stringify(parsedArgs, null, 2)}
@@ -608,7 +608,7 @@ const Message = React.memo<MessageProps>(
 
                                 {outputs.length > 0 && (
                                   <div className="space-y-1.5">
-                                    <div className="text-[10px] font-bold text-slate-400 dark:text-neutral-500 uppercase tracking-widest pl-0.5">
+                                    <div className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-600 uppercase tracking-wider pl-0.5 mb-1.5">
                                       Result
                                     </div>
                                     <div className="space-y-3">
@@ -627,7 +627,7 @@ const Message = React.memo<MessageProps>(
                                         return (
                                           <div
                                             key={outIdx}
-                                            className="font-mono text-slate-600 dark:text-neutral-400 whitespace-pre-wrap leading-relaxed"
+                                            className="font-mono text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed"
                                           >
                                             {formatted}
                                           </div>

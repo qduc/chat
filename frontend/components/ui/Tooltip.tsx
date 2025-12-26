@@ -58,7 +58,7 @@ export default function Tooltip({
   const { getReferenceProps, getFloatingProps } = useInteractions([hover, focus, role, dismiss]);
 
   const arrowPlacementClass = useMemo(() => {
-    const base = 'fill-slate-900 dark:fill-slate-700';
+    const base = 'fill-zinc-800 dark:fill-zinc-100';
     const side = resolvedPlacement.split('-')[0];
     if (side === 'bottom') return `${base} -top-1 rotate-180`;
     if (side === 'left') return `${base} -right-1 rotate-90`;
@@ -77,7 +77,7 @@ export default function Tooltip({
             ref={refs.setFloating}
             {...getFloatingProps()}
             style={floatingStyles}
-            className="pointer-events-none z-[9999] rounded-md bg-slate-900 px-2 py-1 text-xs text-white shadow-lg outline-none transition-opacity duration-100 dark:bg-slate-700 max-w-[12rem] sm:max-w-[16rem] md:max-w-[20rem] lg:max-w-[24rem]"
+            className="pointer-events-none z-[9999] rounded-lg bg-zinc-800 px-2 py-1 text-xs text-white shadow-lg outline-none transition-opacity duration-100 dark:bg-zinc-100 dark:text-zinc-900 max-w-[12rem] sm:max-w-[16rem] md:max-w-[20rem] lg:max-w-[24rem]"
           >
             {/* allow wrapping for long content and constrain width responsively */}
             <span className="pointer-events-none break-words whitespace-normal">{content}</span>

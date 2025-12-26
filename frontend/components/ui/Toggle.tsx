@@ -21,7 +21,7 @@ export function Toggle({
 }: ToggleProps) {
   return (
     <div
-      className={`flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 select-none ${className}`}
+      className={`flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400 select-none ${className}`}
     >
       {icon && <span className="w-4 h-4 flex items-center justify-center">{icon}</span>}
 
@@ -37,8 +37,8 @@ export function Toggle({
           transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2
           ${
             checked
-              ? 'bg-emerald-600 focus:ring-emerald-500'
-              : 'bg-slate-200 dark:bg-slate-700 focus:ring-slate-500'
+              ? 'bg-zinc-800 dark:bg-zinc-200 focus:ring-zinc-500'
+              : 'bg-zinc-200 dark:bg-zinc-700 focus:ring-zinc-400'
           }
           ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-sm'}
         `}
@@ -55,7 +55,7 @@ export function Toggle({
 
       {label && (
         <span
-          className={`text-sm ${disabled ? 'opacity-50 text-slate-400' : 'text-slate-700 dark:text-slate-300'}`}
+          className={`text-sm ${disabled ? 'opacity-50 text-zinc-400' : 'text-zinc-700 dark:text-zinc-300'}`}
         >
           {label}
         </span>

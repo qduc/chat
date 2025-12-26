@@ -375,7 +375,7 @@ export function RightSidebar({
           willChange: isResizing ? 'width' : undefined,
         }}
         className={`
-          z-30 flex flex-col bg-white dark:bg-neutral-950 relative h-full
+          z-30 flex flex-col bg-white dark:bg-zinc-950 border-l border-zinc-200/50 dark:border-zinc-800/50 relative h-full
           ${!collapsed ? 'w-72 sm:w-80 md:w-auto' : 'w-16 md:w-auto'}
         `}
       >
@@ -384,7 +384,7 @@ export function RightSidebar({
           <div className="flex flex-col items-center space-y-3 pt-2 p-4">
             {/* Expand button - Desktop only */}
             <button
-              className="hidden md:flex w-10 h-10 rounded-md hover:bg-slate-200/50 dark:hover:bg-neutral-800 transition-colors items-center justify-center text-slate-500 dark:text-slate-400 cursor-pointer"
+              className="hidden md:flex w-10 h-10 rounded-lg hover:bg-zinc-200/50 dark:hover:bg-zinc-800 transition-colors items-center justify-center text-zinc-500 dark:text-zinc-400 cursor-pointer"
               onClick={onToggleCollapse}
               title="Expand sidebar"
               aria-label="Expand sidebar"
@@ -397,12 +397,12 @@ export function RightSidebar({
           <div className="flex flex-col h-full">
             {/* Header */}
             <div className="p-4 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+              <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
                 System Prompts
               </h2>
               {/* Collapse button - Desktop only */}
               <button
-                className="hidden md:flex p-1.5 rounded-md hover:bg-slate-200/50 dark:hover:bg-neutral-800 text-slate-500 dark:text-slate-400 transition-colors items-center justify-center"
+                className="hidden md:flex p-1.5 rounded-lg hover:bg-zinc-200/50 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors items-center justify-center"
                 onClick={onToggleCollapse}
                 title="Collapse sidebar"
               >
@@ -448,7 +448,7 @@ export function RightSidebar({
                         type="button"
                         onClick={handleClearSelection}
                         title="Clear selection"
-                        className="p-1 rounded hover:bg-gray-200 dark:hover:bg-neutral-700/40 text-gray-500 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                        className="p-1 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800/80 text-zinc-500 dark:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-400"
                         aria-label="Clear prompt selection"
                       >
                         <X className="w-4 h-4" />
@@ -460,17 +460,17 @@ export function RightSidebar({
                   <div className="flex-1 flex flex-col min-h-0 px-4">
                     <label
                       htmlFor="prompt-content"
-                      className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2"
+                      className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2 flex items-center gap-2"
                     >
                       <span>Content</span>
                       <button
                         type="button"
                         onClick={handleClearContent}
                         title="Revert changes"
-                        className="ml-1 p-1 rounded hover:bg-gray-200 dark:hover:bg-neutral-700/40 text-gray-500 dark:text-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
+                        className="ml-1 p-1 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800/80 text-zinc-500 dark:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-400"
                         aria-label="Revert changes"
                       >
-                        <RotateCcw className="w-4 h-4" />
+                        <RotateCcw className="w-3.5 h-3.5" />
                       </button>
                     </label>
                     <textarea
@@ -486,7 +486,7 @@ export function RightSidebar({
                           }
                         }
                       }}
-                      className="flex-1 p-4 rounded-xl resize-none focus:outline-none bg-slate-50 dark:bg-neutral-900 text-gray-900 dark:text-gray-100 placeholder-slate-400 dark:placeholder-neutral-500 scrollbar-thin scrollbar-thumb-slate-200 dark:scrollbar-thumb-neutral-800 scrollbar-track-transparent"
+                      className="flex-1 p-4 rounded-xl resize-none focus:outline-none bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/50 dark:border-zinc-800/50 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-600 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700 scrollbar-track-transparent"
                       placeholder={
                         effectiveSelectedPromptId
                           ? isBuiltIn
@@ -514,7 +514,7 @@ export function RightSidebar({
                       <button
                         onClick={handleShowSaveAs}
                         disabled={!currentContent.trim()}
-                        className="px-3 py-2 rounded-md text-sm font-medium text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="px-3 py-2 rounded-lg text-sm font-medium text-zinc-700 dark:text-zinc-200 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         Save As
                       </button>
@@ -523,7 +523,7 @@ export function RightSidebar({
                         <button
                           onClick={handleSavePrompt}
                           disabled={!hasChanges}
-                          className="px-3 py-2 rounded-md text-sm font-medium text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-neutral-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-3 py-2 rounded-lg text-sm font-medium text-zinc-700 dark:text-zinc-200 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Save
                         </button>
@@ -532,7 +532,7 @@ export function RightSidebar({
                       {effectiveSelectedPromptId && !isBuiltIn && (
                         <button
                           onClick={handleDeletePrompt}
-                          className="px-3 py-2 rounded-md text-sm font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="px-3 py-2 rounded-lg text-sm font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           Delete
                         </button>
@@ -544,7 +544,7 @@ export function RightSidebar({
             </div>
 
             {/* Footer info */}
-            <div className="px-4 pb-2 text-xs text-slate-400 dark:text-slate-500">
+            <div className="px-4 pb-2 text-xs text-zinc-400 dark:text-zinc-500">
               {effectiveSelectedPromptId ? (
                 <span>Active prompt will be used for new messages</span>
               ) : (

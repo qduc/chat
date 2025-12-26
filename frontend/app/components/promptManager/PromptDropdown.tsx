@@ -167,16 +167,18 @@ export default function PromptDropdown({
       <button
         ref={buttonRef}
         type="button"
-        className="w-full flex items-center justify-between px-3 py-2 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+        className="w-full flex items-center justify-between px-3 py-2 text-sm bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors focus:outline-none focus:ring-2 focus:ring-zinc-400 focus:border-zinc-400"
         onClick={handleToggle}
         onKeyDown={handleKeyDown}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         aria-label="Select system prompt"
       >
-        <span className="truncate text-left flex-1">{getDisplayText()}</span>
+        <span className="truncate text-left flex-1 text-zinc-800 dark:text-zinc-200 font-medium">
+          {getDisplayText()}
+        </span>
         <ChevronDownIcon
-          className={`w-4 h-4 text-gray-400 ml-2 transition-transform ${
+          className={`w-4 h-4 text-zinc-500 ml-2 transition-transform ${
             isOpen ? 'rotate-180' : ''
           }`}
         />
@@ -185,7 +187,7 @@ export default function PromptDropdown({
       {/* Dropdown menu */}
       {isOpen && (
         <div
-          className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md shadow-lg max-h-64 overflow-y-auto"
+          className="absolute z-50 w-full mt-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-lg max-h-64 overflow-y-auto"
           role="listbox"
           aria-label="System prompt options"
         >
@@ -199,9 +201,9 @@ export default function PromptDropdown({
               <div
                 key={item.id || 'none'}
                 className={`
-                  px-3 py-2 text-sm cursor-pointer flex items-center justify-between
-                  ${isFocused ? 'bg-blue-100 dark:bg-blue-900/30' : 'hover:bg-gray-100 dark:hover:bg-gray-700'}
-                  ${isSelected ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300' : 'text-gray-900 dark:text-gray-100'}
+                  px-3 py-2 text-sm cursor-pointer flex items-center justify-between transition-colors
+                  ${isFocused ? 'bg-zinc-100 dark:bg-zinc-800' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}
+                  ${isSelected ? 'bg-zinc-50 dark:bg-zinc-800/50 text-zinc-900 dark:text-zinc-100 font-medium' : 'text-zinc-700 dark:text-zinc-300'}
                 `}
                 onClick={() => handleSelect(item.id || null)}
                 role="option"
@@ -214,14 +216,14 @@ export default function PromptDropdown({
                     {hasChanges && <span className="text-orange-500 ml-1">*</span>}
                   </span>
                   {item.isBuiltIn && (
-                    <span className="ml-2 px-1.5 py-0.5 text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300 rounded flex-shrink-0">
+                    <span className="ml-2 px-1.5 py-0.5 text-xs bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300 rounded flex-shrink-0">
                       Built-in
                     </span>
                   )}
                 </div>
                 {isSelected && (
                   <svg
-                    className="w-4 h-4 text-blue-600 dark:text-blue-400 ml-2 flex-shrink-0"
+                    className="w-4 h-4 text-zinc-600 dark:text-zinc-400 ml-2 flex-shrink-0"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"

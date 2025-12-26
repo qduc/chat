@@ -462,7 +462,7 @@ export function ChatV2() {
   }, []);
 
   return (
-    <div className="flex h-dvh max-h-dvh bg-white dark:bg-neutral-950 relative overflow-x-hidden">
+    <div className="flex h-dvh max-h-dvh bg-white dark:bg-zinc-950 relative overflow-x-hidden">
       {/* Mobile Backdrop */}
       {(!chat.sidebarCollapsed || !chat.rightSidebarCollapsed) && (
         <div
@@ -551,7 +551,7 @@ export function ChatV2() {
               {scrollButtons.showTop && (
                 <button
                   onClick={scrollToTop}
-                  className="pointer-events-auto p-1.5 rounded-full bg-white dark:bg-neutral-900 text-slate-600 dark:text-slate-200 border border-slate-200/70 dark:border-neutral-700/70 hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors aspect-square"
+                  className="pointer-events-auto p-1.5 rounded-full bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-200 border border-zinc-200/70 dark:border-zinc-700/70 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors aspect-square"
                   aria-label="Scroll to top"
                   title="Scroll to top"
                 >
@@ -561,7 +561,7 @@ export function ChatV2() {
               {scrollButtons.showBottom && (
                 <button
                   onClick={() => scrollToBottom()}
-                  className="pointer-events-auto p-1.5 rounded-full bg-white dark:bg-neutral-900 text-slate-600 dark:text-slate-200 border border-slate-200/70 dark:border-neutral-700/70 hover:bg-slate-50 dark:hover:bg-neutral-800 transition-colors aspect-square"
+                  className="pointer-events-auto p-1.5 rounded-full bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-200 border border-zinc-200/70 dark:border-zinc-700/70 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors aspect-square"
                   aria-label="Scroll to bottom"
                   title="Scroll to bottom"
                 >
@@ -617,7 +617,7 @@ export function ChatV2() {
               role="separator"
               aria-orientation="vertical"
               aria-label="Resize right sidebar"
-              className={`hidden md:block flex-shrink-0 self-stretch w-1 cursor-col-resize select-none transition-colors duration-150 ${isResizingRightSidebar ? 'bg-slate-400/60 dark:bg-neutral-600/60' : 'bg-transparent hover:bg-slate-400/40 dark:hover:bg-neutral-600/40'}`}
+              className={`hidden md:block flex-shrink-0 self-stretch w-1 cursor-col-resize select-none transition-colors duration-150 ${isResizingRightSidebar ? 'bg-zinc-400/60 dark:bg-zinc-600/60' : 'bg-transparent hover:bg-zinc-400/40 dark:hover:bg-zinc-600/40'}`}
               onPointerDown={handleResizeStart}
               onDoubleClick={handleResizeDoubleClick}
             />

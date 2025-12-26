@@ -98,14 +98,14 @@ export function ChatHeader({
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white dark:bg-neutral-950 border-b border-slate-200/50 dark:border-neutral-800/50">
+    <header className="sticky top-0 z-40 bg-white dark:bg-zinc-950 border-b border-zinc-200/50 dark:border-zinc-800/50 backdrop-blur-sm bg-white/80 dark:bg-zinc-950/80">
       <div className="px-2 sm:px-4 md:px-6 py-2 sm:py-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1 sm:gap-2 flex-1 min-w-0">
           {/* Left Sidebar Toggle - Mobile Only */}
           {showLeftSidebarButton && onToggleLeftSidebar && (
             <button
               onClick={onToggleLeftSidebar}
-              className="md:hidden w-8 h-8 rounded-md border border-slate-200/80 dark:border-neutral-700/80 bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-neutral-800 flex items-center justify-center text-slate-600 dark:text-slate-300 transition-colors flex-shrink-0"
+              className="md:hidden w-8 h-8 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-400 transition-colors flex-shrink-0"
               title="Toggle conversation history"
               aria-label="Toggle conversation history"
               type="button"
@@ -118,7 +118,7 @@ export function ChatHeader({
           {onNewChat && (
             <button
               onClick={onNewChat}
-              className="md:hidden w-8 h-8 rounded-md border border-slate-200/80 dark:border-neutral-700/80 bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-neutral-800 flex items-center justify-center text-slate-600 dark:text-slate-300 transition-colors flex-shrink-0"
+              className="md:hidden w-8 h-8 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-400 transition-colors flex-shrink-0"
               title="New Chat"
               aria-label="Start new chat"
               type="button"
@@ -140,7 +140,7 @@ export function ChatHeader({
             <button
               onClick={onRefreshModels}
               disabled={isLoadingModels}
-              className="hidden sm:flex w-8 h-8 rounded-md border border-slate-200/80 dark:border-neutral-700/80 bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-neutral-800 items-center justify-center text-slate-600 dark:text-slate-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+              className="hidden sm:flex w-8 h-8 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 items-center justify-center text-zinc-500 dark:text-zinc-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
               title="Refresh model list"
               aria-label="Refresh model list"
               type="button"
@@ -157,24 +157,20 @@ export function ChatHeader({
         <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
           <button
             onClick={onOpenSettings}
-            className="w-8 h-8 rounded-md border border-slate-200/80 dark:border-neutral-700/80 bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-neutral-800 flex items-center justify-center text-slate-700 dark:text-slate-200 transition-colors"
+            className="w-8 h-8 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center justify-center text-zinc-500 dark:text-zinc-400 transition-colors"
             title="Open settings"
             aria-label="Open settings"
             type="button"
           >
-            <Settings className="w-3 h-3 sm:w-4 sm:h-4" />
+            <Settings className="w-4 h-4" />
           </button>
           <button
             onClick={toggleTheme}
-            className="w-8 h-8 rounded-md border border-slate-200/80 dark:border-neutral-700/80 bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-neutral-800 flex items-center justify-center text-slate-700 dark:text-slate-200 transition-colors"
+            className="w-8 h-8 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center justify-center text-zinc-500 dark:text-zinc-400 transition-colors"
             title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} theme`}
             type="button"
           >
-            {resolvedTheme === 'dark' ? (
-              <Sun className="w-3 h-3 sm:w-4 sm:h-4" />
-            ) : (
-              <Moon className="w-3 h-3 sm:w-4 sm:h-4" />
-            )}
+            {resolvedTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
           <div className="hidden sm:block">
             <AuthButton onShowLogin={onShowLogin} onShowRegister={onShowRegister} />
@@ -184,7 +180,7 @@ export function ChatHeader({
           {showRightSidebarButton && onToggleRightSidebar && (
             <button
               onClick={onToggleRightSidebar}
-              className="md:hidden w-8 h-8 rounded-md border border-slate-200/80 dark:border-neutral-700/80 bg-white dark:bg-neutral-900 hover:bg-slate-50 dark:hover:bg-neutral-800 flex items-center justify-center text-slate-600 dark:text-slate-300 transition-colors"
+              className="md:hidden w-8 h-8 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center justify-center text-zinc-500 dark:text-zinc-400 transition-colors"
               title="Toggle system prompts"
               aria-label="Toggle system prompts"
               type="button"
