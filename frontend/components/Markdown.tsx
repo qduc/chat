@@ -6,7 +6,7 @@ import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { useTheme } from '../contexts/ThemeContext';
-import { ClipboardCheck, Clipboard, ChevronDown, ChevronUp, WrapText } from 'lucide-react';
+import { ClipboardCheck, Clipboard, ChevronDown, ChevronUp, WrapText, Brain } from 'lucide-react';
 
 interface MarkdownProps {
   text: string;
@@ -435,48 +435,44 @@ const MarkdownComponents: any = {
     children?: React.ReactNode;
     shouldHighlight?: boolean;
   }) {
-    const [isExpanded, setIsExpanded] = useState(false);
+    const [isExpanded, setIsExpanded] = useState(!shouldHighlight);
 
-    const defaultCollapsedHeight = 72; // px
-
-    if (className?.includes('language-thinking')) {
-      return (
-        <div className="my-4 border border-slate-200 dark:border-neutral-800 rounded-lg bg-slate-50 dark:bg-neutral-900/50">
-          <div
-            className="px-4 py-2 cursor-pointer font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-neutral-800 rounded-t-lg"
-            onClick={() => setIsExpanded(!isExpanded)}
-          >
-            💭 Thinking...
+    const isStreaming = !shouldHighlight;
+    return (
+      <div className="my-3 rounded-md border border-slate-200 dark:border-neutral-800 bg-white dark:bg-[#0a0a0a]/40 overflow-hidden">
+        <button
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="w-full flex items-center gap-2.5 px-3 py-2 text-slate-500 dark:text-neutral-400 hover:bg-slate-50 dark:hover:bg-neutral-900/50 transition-colors select-none group/think-btn"
+        >
+          <Brain
+            size={13}
+            strokeWidth={1.5}
+            className={`shrink-0 transition-colors ${
+              isStreaming
+                ? 'text-amber-500/80 dark:text-amber-400/80 animate-pulse'
+                : 'text-slate-400 dark:text-neutral-500 group-hover/think-btn:text-slate-600 dark:group-hover/think-btn:text-neutral-300'
+            }`}
+          />
+          <span className="text-xs font-medium text-slate-600 dark:text-neutral-300">
+            Thought Process
+          </span>
+          <div className="ml-auto flex items-center gap-2">
+            <ChevronDown
+              size={13}
+              className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} text-slate-400 dark:text-neutral-500`}
+            />
           </div>
+        </button>
 
-          {/* Outer area can have padding; inner height box must not. */}
-          <div className="border-t border-slate-200 dark:border-neutral-800">
-            <div
-              className={isExpanded ? 'px-4 py-3' : 'px-4'}
-              style={
-                isExpanded
-                  ? {}
-                  : {
-                      maxHeight: `${defaultCollapsedHeight}px`,
-                      overflow: 'hidden',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      justifyContent: 'flex-end',
-                    }
-              }
-            >
-              {/* Add vertical padding only when expanded to avoid shrinking visible height */}
-              <div className="whitespace-pre-wrap font-mono text-sm text-slate-600 dark:text-slate-400 leading-relaxed">
-                {children}
-              </div>
+        {isExpanded && (
+          <div className="border-t border-slate-100 dark:border-neutral-800 bg-slate-50/30 dark:bg-[#0a0a0a]/20">
+            <div className="px-3 py-3 text-[13px] leading-relaxed text-slate-600 dark:text-neutral-400 font-mono whitespace-pre-wrap">
+              {children}
             </div>
-
-            {/* When collapsed, add bottom padding outside the height box for visual spacing */}
-            {!isExpanded && <div className="px-4 pb-3" />}
           </div>
-        </div>
-      );
-    }
+        )}
+      </div>
+    );
 
     // Show un-highlighted code during streaming
     if (!shouldHighlight && className?.startsWith('language-')) {

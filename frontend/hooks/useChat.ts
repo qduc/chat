@@ -5,7 +5,7 @@ import { conversations as conversationsApi, chat, auth } from '../lib/api';
 import { httpClient } from '../lib/http';
 import { APIError, StreamingNotSupportedError } from '../lib/streaming';
 import type { ConversationMeta, Provider, ChatOptionsExtended } from '../lib/types';
-import { supportsReasoningControls } from '../lib';
+import { supportsReasoningControls, getDraft, setDraft, clearDraft } from '../lib';
 
 // Types
 export interface PendingState {
@@ -347,6 +347,9 @@ export function useChat() {
     lastUpdated: number;
   } | null>(null);
 
+  // Track whether draft has been restored to avoid restoring multiple times
+  const draftRestoredRef = useRef(false);
+
   // Actions - Sidebar
   const toggleSidebar = useCallback(() => {
     setSidebarCollapsed((prev) => {
@@ -367,140 +370,152 @@ export function useChat() {
   }, []);
 
   // Actions - Conversations
-  const selectConversation = useCallback(async (id: string) => {
-    try {
-      setLoadingConversations(true);
-      // Request a larger message page by default so the UI can show history
-      const data = await conversationsApi.get(id, { limit: 200 });
+  const selectConversation = useCallback(
+    async (id: string) => {
+      try {
+        setLoadingConversations(true);
 
-      // Convert backend messages to frontend format
-      const rawMessages: Message[] = data.messages.map((msg) => {
-        const baseContent = (msg.content ?? '') as MessageContent;
-        const reasoningText =
-          msg.role === 'assistant' && Array.isArray(msg.reasoning_details)
-            ? msg.reasoning_details
-                .map((detail: any) => (typeof detail?.text === 'string' ? detail.text.trim() : ''))
-                .filter(Boolean)
-                .join('\n\n')
-            : '';
-        const hasMessageEvents = Array.isArray(msg.message_events) && msg.message_events.length > 0;
-
-        const content =
-          msg.role === 'assistant' && reasoningText && !hasMessageEvents
-            ? prependReasoningToContent(baseContent, reasoningText)
-            : baseContent;
-
-        return {
-          id: String(msg.id),
-          role: msg.role,
-          content,
-          timestamp: new Date(msg.created_at).getTime(),
-          tool_calls: msg.tool_calls,
-          message_events: msg.message_events,
-          tool_outputs: msg.tool_outputs,
-          reasoning_details: msg.reasoning_details ?? undefined,
-          reasoning_tokens: msg.reasoning_tokens ?? undefined,
-        };
-      });
-
-      // Merge tool outputs from tool messages into their corresponding assistant messages
-      const convertedMessages = mergeToolOutputsToAssistantMessages(rawMessages);
-
-      setMessages(convertedMessages);
-      setConversationId(id);
-      setCurrentConversationTitle(data.title || null);
-
-      // Apply conversation settings without persisting to localStorage
-      // (persist only user manual selections)
-      const providerFromPayload = (data as any).provider ?? (data as any).provider_id;
-      const normalizeProvider = (value: unknown): string | null => {
-        if (typeof value !== 'string') return null;
-        const trimmed = value.trim();
-        return trimmed.length ? trimmed : null;
-      };
-
-      const resolveProviderFromModel = (rawModel: string | null): string | null => {
-        if (!rawModel) return null;
-        const direct = modelToProviderRef.current[rawModel];
-        if (direct) return direct;
-        const entries = Object.entries(modelToProviderRef.current);
-        const match = entries.find(([key]) => key.endsWith(`::${rawModel}`));
-        return match ? match[1] : null;
-      };
-
-      const rawModel = typeof data.model === 'string' ? data.model.trim() : null;
-      const providerFromData = normalizeProvider(providerFromPayload);
-
-      let resolvedProvider: string | null = providerFromData;
-      let finalModelValue: string | null = rawModel;
-
-      if (rawModel) {
-        if (rawModel.includes('::')) {
-          const [maybeProvider, maybeModel] = rawModel.split('::', 2);
-          const trimmedModel = maybeModel?.trim() || '';
-          if (!resolvedProvider && maybeProvider?.trim()) {
-            resolvedProvider = maybeProvider.trim();
-          }
-          finalModelValue =
-            resolvedProvider && trimmedModel ? `${resolvedProvider}::${trimmedModel}` : rawModel;
-        } else {
-          if (!resolvedProvider) {
-            resolvedProvider = resolveProviderFromModel(rawModel);
-          }
-          finalModelValue = resolvedProvider ? `${resolvedProvider}::${rawModel}` : rawModel;
+        // Clear draft for the previous conversation when switching
+        if (user?.id && conversationId && conversationId !== id) {
+          clearDraft(user.id, conversationId);
         }
-      }
 
-      if (finalModelValue) {
-        setModelState(finalModelValue);
-        modelRef.current = finalModelValue;
-      }
+        // Request a larger message page by default so the UI can show history
+        const data = await conversationsApi.get(id, { limit: 200 });
 
-      setProviderId(resolvedProvider);
-      providerIdRef.current = resolvedProvider;
+        // Convert backend messages to frontend format
+        const rawMessages: Message[] = data.messages.map((msg) => {
+          const baseContent = (msg.content ?? '') as MessageContent;
+          const reasoningText =
+            msg.role === 'assistant' && Array.isArray(msg.reasoning_details)
+              ? msg.reasoning_details
+                  .map((detail: any) =>
+                    typeof detail?.text === 'string' ? detail.text.trim() : ''
+                  )
+                  .filter(Boolean)
+                  .join('\n\n')
+              : '';
+          const hasMessageEvents =
+            Array.isArray(msg.message_events) && msg.message_events.length > 0;
 
-      // Apply tools settings
-      const toolsFromData = (data as any).active_tools || [];
-      if (toolsFromData && Array.isArray(toolsFromData)) {
-        setEnabledTools(toolsFromData);
-        enabledToolsRef.current = toolsFromData;
-      }
+          const content =
+            msg.role === 'assistant' && reasoningText && !hasMessageEvents
+              ? prependReasoningToContent(baseContent, reasoningText)
+              : baseContent;
 
-      // Apply streaming and tools enabled flags
-      if (typeof data.streaming_enabled === 'boolean') {
-        setShouldStream(data.streaming_enabled);
-        shouldStreamRef.current = data.streaming_enabled;
-        providerStreamRef.current = data.streaming_enabled;
-      }
-      if (typeof data.tools_enabled === 'boolean') {
-        setUseTools(data.tools_enabled);
-        useToolsRef.current = data.tools_enabled;
-      }
+          return {
+            id: String(msg.id),
+            role: msg.role,
+            content,
+            timestamp: new Date(msg.created_at).getTime(),
+            tool_calls: msg.tool_calls,
+            message_events: msg.message_events,
+            tool_outputs: msg.tool_outputs,
+            reasoning_details: msg.reasoning_details ?? undefined,
+            reasoning_tokens: msg.reasoning_tokens ?? undefined,
+          };
+        });
 
-      // Apply quality level
-      if (data.quality_level) {
-        setQualityLevel(data.quality_level as QualityLevel);
-        qualityLevelRef.current = data.quality_level as QualityLevel;
-      }
+        // Merge tool outputs from tool messages into their corresponding assistant messages
+        const convertedMessages = mergeToolOutputsToAssistantMessages(rawMessages);
 
-      // Apply system prompt
-      const promptFromData = (data as any).system_prompt ?? null;
-      if (promptFromData !== undefined) {
-        setSystemPrompt(promptFromData);
-        systemPromptRef.current = promptFromData;
-      }
+        setMessages(convertedMessages);
+        setConversationId(id);
+        setCurrentConversationTitle(data.title || null);
 
-      // Apply active system prompt ID (always set, even if null)
-      if ('active_system_prompt_id' in data) {
-        setActiveSystemPromptId(data.active_system_prompt_id);
-        activeSystemPromptIdRef.current = data.active_system_prompt_id;
+        // Apply conversation settings without persisting to localStorage
+        // (persist only user manual selections)
+        const providerFromPayload = (data as any).provider ?? (data as any).provider_id;
+        const normalizeProvider = (value: unknown): string | null => {
+          if (typeof value !== 'string') return null;
+          const trimmed = value.trim();
+          return trimmed.length ? trimmed : null;
+        };
+
+        const resolveProviderFromModel = (rawModel: string | null): string | null => {
+          if (!rawModel) return null;
+          const direct = modelToProviderRef.current[rawModel];
+          if (direct) return direct;
+          const entries = Object.entries(modelToProviderRef.current);
+          const match = entries.find(([key]) => key.endsWith(`::${rawModel}`));
+          return match ? match[1] : null;
+        };
+
+        const rawModel = typeof data.model === 'string' ? data.model.trim() : null;
+        const providerFromData = normalizeProvider(providerFromPayload);
+
+        let resolvedProvider: string | null = providerFromData;
+        let finalModelValue: string | null = rawModel;
+
+        if (rawModel) {
+          if (rawModel.includes('::')) {
+            const [maybeProvider, maybeModel] = rawModel.split('::', 2);
+            const trimmedModel = maybeModel?.trim() || '';
+            if (!resolvedProvider && maybeProvider?.trim()) {
+              resolvedProvider = maybeProvider.trim();
+            }
+            finalModelValue =
+              resolvedProvider && trimmedModel ? `${resolvedProvider}::${trimmedModel}` : rawModel;
+          } else {
+            if (!resolvedProvider) {
+              resolvedProvider = resolveProviderFromModel(rawModel);
+            }
+            finalModelValue = resolvedProvider ? `${resolvedProvider}::${rawModel}` : rawModel;
+          }
+        }
+
+        if (finalModelValue) {
+          setModelState(finalModelValue);
+          modelRef.current = finalModelValue;
+        }
+
+        setProviderId(resolvedProvider);
+        providerIdRef.current = resolvedProvider;
+
+        // Apply tools settings
+        const toolsFromData = (data as any).active_tools || [];
+        if (toolsFromData && Array.isArray(toolsFromData)) {
+          setEnabledTools(toolsFromData);
+          enabledToolsRef.current = toolsFromData;
+        }
+
+        // Apply streaming and tools enabled flags
+        if (typeof data.streaming_enabled === 'boolean') {
+          setShouldStream(data.streaming_enabled);
+          shouldStreamRef.current = data.streaming_enabled;
+          providerStreamRef.current = data.streaming_enabled;
+        }
+        if (typeof data.tools_enabled === 'boolean') {
+          setUseTools(data.tools_enabled);
+          useToolsRef.current = data.tools_enabled;
+        }
+
+        // Apply quality level
+        if (data.quality_level) {
+          setQualityLevel(data.quality_level as QualityLevel);
+          qualityLevelRef.current = data.quality_level as QualityLevel;
+        }
+
+        // Apply system prompt
+        const promptFromData = (data as any).system_prompt ?? null;
+        if (promptFromData !== undefined) {
+          setSystemPrompt(promptFromData);
+          systemPromptRef.current = promptFromData;
+        }
+
+        // Apply active system prompt ID (always set, even if null)
+        if ('active_system_prompt_id' in data) {
+          setActiveSystemPromptId(data.active_system_prompt_id);
+          activeSystemPromptIdRef.current = data.active_system_prompt_id;
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load conversation');
+      } finally {
+        setLoadingConversations(false);
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load conversation');
-    } finally {
-      setLoadingConversations(false);
-    }
-  }, []);
+    },
+    [user?.id, conversationId]
+  );
 
   const deleteConversation = useCallback(
     async (id: string) => {
@@ -556,6 +571,12 @@ export function useChat() {
     setImages([]);
     setFiles([]);
     setCurrentConversationTitle(null);
+
+    // Clear draft for the previous conversation when starting a new chat
+    if (user?.id && conversationId) {
+      clearDraft(user.id, conversationId);
+    }
+
     // When starting a new chat (no active conversation) prefer the saved model
     try {
       if (typeof window !== 'undefined') {
@@ -583,7 +604,7 @@ export function useChat() {
     } catch {
       // conservative fallback: don't change user selection on errors
     }
-  }, [modelCapabilities]);
+  }, [modelCapabilities, user?.id, conversationId]);
 
   // On mount, when there is no active conversation, load the saved selected model
   useEffect(() => {
@@ -1018,6 +1039,15 @@ export function useChat() {
           tokenStats: tokenStatsRef.current ?? undefined,
         }));
 
+        // Clear the draft after successful send
+        if (user?.id) {
+          // Clear draft for both old and new conversation IDs
+          clearDraft(user.id, conversationId);
+          if (response.conversation?.id) {
+            clearDraft(user.id, response.conversation.id);
+          }
+        }
+
         const effectiveConversationId = response.conversation?.id ?? conversationId;
         if (effectiveConversationId) {
           conversationsApi.invalidateDetailCache(effectiveConversationId);
@@ -1357,6 +1387,41 @@ export function useChat() {
   useEffect(() => {
     loadProvidersAndModels();
   }, [loadProvidersAndModels]);
+
+  // Restore draft message when user and conversation are available
+  // This preserves drafts across session expiry and re-authentication
+  useEffect(() => {
+    // Only restore if we have a user, conversation is loaded, and haven't restored yet
+    if (!user?.id || draftRestoredRef.current) {
+      return;
+    }
+
+    // Small delay to ensure state is settled
+    const timer = setTimeout(() => {
+      const savedDraft = getDraft(user.id, conversationId);
+      if (savedDraft && savedDraft.trim()) {
+        console.log('[useChat] Restoring draft for conversation:', conversationId ?? 'new');
+        setInput(savedDraft);
+      }
+      draftRestoredRef.current = true;
+    }, 100);
+
+    return () => clearTimeout(timer);
+  }, [user?.id, conversationId]);
+
+  // Debounced save of draft to localStorage
+  // Saves 1 second after user stops typing to avoid excessive localStorage writes
+  useEffect(() => {
+    if (!user?.id || !input.trim()) {
+      return;
+    }
+
+    const timer = setTimeout(() => {
+      setDraft(user.id, conversationId, input);
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [input, user?.id, conversationId]);
 
   return {
     // State
