@@ -5,6 +5,7 @@ APP_USER="${APP_USER:-node}"
 APP_GROUP="${APP_GROUP:-node}"
 INSTALL_ON_START="${INSTALL_ON_START:-1}"
 JWT_SECRET_FILE="/data/.jwt_secret"
+ENCRYPTION_MASTER_KEY_FILE="/data/.encryption_key"
 
 # Auto-generate JWT_SECRET if not provided
 if [ -z "$JWT_SECRET" ]; then
@@ -19,6 +20,22 @@ if [ -z "$JWT_SECRET" ]; then
     export JWT_SECRET
     echo "Generated new JWT_SECRET (will be persisted after directory setup)"
     export JWT_SECRET_NEEDS_SAVE=1
+  fi
+fi
+
+# Auto-generate ENCRYPTION_MASTER_KEY if not provided
+if [ -z "$ENCRYPTION_MASTER_KEY" ]; then
+  if [ -f "$ENCRYPTION_MASTER_KEY_FILE" ]; then
+    # Load existing key from persistent storage
+    ENCRYPTION_MASTER_KEY=$(cat "$ENCRYPTION_MASTER_KEY_FILE")
+    export ENCRYPTION_MASTER_KEY
+    echo "Loaded ENCRYPTION_MASTER_KEY from persistent storage"
+  else
+    # Generate a new 256-bit (32-byte) key as hex string
+    ENCRYPTION_MASTER_KEY=$(node -e "console.log(require('crypto').randomBytes(32).toString('hex'))")
+    export ENCRYPTION_MASTER_KEY
+    echo "Generated new ENCRYPTION_MASTER_KEY (will be persisted after directory setup)"
+    export ENCRYPTION_MASTER_KEY_NEEDS_SAVE=1
   fi
 fi
 
@@ -56,12 +73,19 @@ if [ "$INSTALL_ON_START" = "1" ] && [ -f package.json ]; then
   npm install
 fi
 
-# Save auto-generated JWT_SECRET to persistent storage
+# Save auto-generated secrets to persistent storage
 if [ "$JWT_SECRET_NEEDS_SAVE" = "1" ] && [ -d "/data" ]; then
   echo "$JWT_SECRET" > "$JWT_SECRET_FILE"
   chmod 600 "$JWT_SECRET_FILE"
   echo "Saved JWT_SECRET to persistent storage"
   unset JWT_SECRET_NEEDS_SAVE
+fi
+
+if [ "$ENCRYPTION_MASTER_KEY_NEEDS_SAVE" = "1" ] && [ -d "/data" ]; then
+  echo "$ENCRYPTION_MASTER_KEY" > "$ENCRYPTION_MASTER_KEY_FILE"
+  chmod 600 "$ENCRYPTION_MASTER_KEY_FILE"
+  echo "Saved ENCRYPTION_MASTER_KEY to persistent storage"
+  unset ENCRYPTION_MASTER_KEY_NEEDS_SAVE
 fi
 
 exec "$@"
