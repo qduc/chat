@@ -377,9 +377,7 @@ const MarkdownComponents: any = {
       >
         {/* Header with language and copy button */}
         <div className="flex items-center px-3 py-2 border-b border-zinc-200/40 dark:border-zinc-800/40 bg-zinc-100/40 dark:bg-black/20">
-          {language && (
-            <span className="text-xs text-zinc-500 dark:text-zinc-500">{language}</span>
-          )}
+          {language && <span className="text-xs text-zinc-500 dark:text-zinc-500">{language}</span>}
           <div className="flex items-center gap-1 ml-auto">
             <button
               type="button"
@@ -388,8 +386,8 @@ const MarkdownComponents: any = {
               onClick={() => setIsWrapped((prev) => !prev)}
               className={`inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs transition-colors ${
                 isWrapped
-                ? 'text-zinc-700 dark:text-zinc-200 bg-zinc-200/70 dark:bg-zinc-800/70'
-                : 'text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'
+                  ? 'text-zinc-700 dark:text-zinc-200 bg-zinc-200/70 dark:bg-zinc-800/70'
+                  : 'text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'
               }`}
             >
               <WrapText className="h-3.5 w-3.5" />
@@ -461,9 +459,11 @@ const MarkdownComponents: any = {
     const isThinkingBlock = className?.includes('language-thinking');
     const isCodeBlock = className?.startsWith('language-');
 
+    // State for thinking blocks - must be called unconditionally
+    const [isExpanded, setIsExpanded] = useState(!shouldHighlight);
+
     // Handle thinking/reasoning blocks
     if (isThinkingBlock) {
-      const [isExpanded, setIsExpanded] = useState(!shouldHighlight);
       const isStreaming = !shouldHighlight;
 
       return (
@@ -521,7 +521,9 @@ const MarkdownComponents: any = {
 
     // Handle inline code (single backticks)
     return (
-      <code className={`${className || ''} bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-1.5 py-0.5 rounded text-sm font-mono`}>
+      <code
+        className={`${className || ''} bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-1.5 py-0.5 rounded text-sm font-mono`}
+      >
         {children}
       </code>
     );

@@ -107,13 +107,13 @@ export function ChatSidebar({
           <div className="flex items-center justify-between mb-6 px-1">
             <div className="flex items-center gap-2">
               <img src="/logo.png" alt="Logo" className="w-8 h-8 rounded-xl" />
-                <span className="font-bold text-lg text-zinc-800 dark:text-zinc-100 tracking-tight">
+              <span className="font-bold text-lg text-zinc-800 dark:text-zinc-100 tracking-tight">
                 Chat
               </span>
             </div>
             <div className="flex items-center gap-1">
               <button
-                  className="p-1.5 rounded-lg hover:bg-zinc-200/50 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
+                className="p-1.5 rounded-lg hover:bg-zinc-200/50 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
                 onClick={onRefresh}
                 disabled={loadingConversations}
                 title="Refresh history"
@@ -123,7 +123,7 @@ export function ChatSidebar({
                 />
               </button>
               <button
-                  className="p-1.5 rounded-lg hover:bg-zinc-200/50 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
+                className="p-1.5 rounded-lg hover:bg-zinc-200/50 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
                 onClick={onNewChat}
                 title="New Chat"
               >
@@ -131,7 +131,7 @@ export function ChatSidebar({
               </button>
               {/* Collapse button - Desktop only */}
               <button
-                  className="hidden md:flex p-1.5 rounded-lg hover:bg-zinc-200/50 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors items-center justify-center"
+                className="hidden md:flex p-1.5 rounded-lg hover:bg-zinc-200/50 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors items-center justify-center"
                 onClick={onToggleCollapse}
                 title="Collapse sidebar"
               >
@@ -139,7 +139,7 @@ export function ChatSidebar({
               </button>
             </div>
           </div>
-            <div className="flex-1 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700 scrollbar-track-transparent">
+          <div className="flex-1 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700 scrollbar-track-transparent">
             {conversations.map((c) => (
               <div
                 key={c.id}
@@ -158,8 +158,8 @@ export function ChatSidebar({
                   className={`w-2 h-2 rounded-full transition-colors duration-200
                       ${
                         conversationId === c.id
-                    ? 'bg-zinc-500 dark:bg-zinc-400'
-                    : 'bg-zinc-300 dark:bg-zinc-700'
+                          ? 'bg-zinc-500 dark:bg-zinc-400'
+                          : 'bg-zinc-300 dark:bg-zinc-700'
                       }`}
                 ></div>
                 <div
@@ -181,10 +181,10 @@ export function ChatSidebar({
               </div>
             ))}
           </div>
-            <div className="mt-4 pt-4 border-t border-zinc-200/60 dark:border-zinc-800/60">
+          <div className="mt-4 pt-4 border-t border-zinc-200/60 dark:border-zinc-800/60">
             {nextCursor && (
               <button
-                  className="w-full text-sm px-4 py-2 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 transition-colors duration-150 disabled:opacity-50"
+                className="w-full text-sm px-4 py-2 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 transition-colors duration-150 disabled:opacity-50"
                 onClick={onLoadMore}
                 disabled={loadingConversations}
               >

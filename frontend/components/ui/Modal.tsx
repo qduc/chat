@@ -43,9 +43,7 @@ export function Modal({
         className={`relative w-full ${maxWidthClassName} mx-2 sm:mx-4 max-h-[90vh] overflow-hidden rounded-xl bg-white dark:bg-zinc-900 border border-zinc-200/70 dark:border-zinc-800 shadow-2xl`}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200/70 dark:border-zinc-800">
-          <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">
-            {title}
-          </h2>
+          <h2 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">{title}</h2>
           <button
             type="button"
             onClick={onClose}

@@ -386,15 +386,15 @@ const Message = React.memo<MessageProps>(
           ) : (
             <>
               {isUser ? (
-                  <div className="rounded-2xl px-5 py-3.5 text-base leading-relaxed bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100">
+                <div className="rounded-2xl px-5 py-3.5 text-base leading-relaxed bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100">
                   <MessageContentRenderer content={message.content} isStreaming={false} />
                 </div>
               ) : (
                 <div className="space-y-3">
                   {assistantSegments.length === 0 ? (
-                        <div className="text-base leading-relaxed text-zinc-800 dark:text-zinc-200">
+                    <div className="text-base leading-relaxed text-zinc-800 dark:text-zinc-200">
                       {pending.streaming || pending.abort ? (
-                            <span className="inline-flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
+                        <span className="inline-flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
                           <span
                             className="w-1.5 h-1.5 rounded-full bg-current animate-bounce"
                             style={{ animationDelay: '0ms' }}
@@ -409,7 +409,7 @@ const Message = React.memo<MessageProps>(
                           />
                         </span>
                       ) : (
-                              <span className="text-zinc-500 dark:text-zinc-400 italic">
+                        <span className="text-zinc-500 dark:text-zinc-400 italic">
                           No response content
                         </span>
                       )}
@@ -552,7 +552,7 @@ const Message = React.memo<MessageProps>(
                             className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors select-none ${
                               !hasDetails
                                 ? 'cursor-default'
-                              : 'hover:bg-zinc-50 dark:hover:bg-white/5 cursor-pointer'
+                                : 'hover:bg-zinc-50 dark:hover:bg-white/5 cursor-pointer'
                             }`}
                           >
                             <div

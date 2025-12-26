@@ -37,8 +37,8 @@ export function Toggle({
           transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2
           ${
             checked
-          ? 'bg-zinc-800 dark:bg-zinc-200 focus:ring-zinc-500'
-          : 'bg-zinc-200 dark:bg-zinc-700 focus:ring-zinc-400'
+              ? 'bg-zinc-800 dark:bg-zinc-200 focus:ring-zinc-500'
+              : 'bg-zinc-200 dark:bg-zinc-700 focus:ring-zinc-400'
           }
           ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-sm'}
         `}

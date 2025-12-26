@@ -483,8 +483,8 @@ export default function SettingsModal({
                 onClick={() => setActiveTab('providers')}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === 'providers'
-                  ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm'
-                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-white/60 dark:hover:bg-zinc-800/60'
+                    ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-white/60 dark:hover:bg-zinc-800/60'
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -496,8 +496,8 @@ export default function SettingsModal({
                 onClick={() => setActiveTab('search')}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === 'search'
-                  ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm'
-                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-white/60 dark:hover:bg-zinc-800/60'
+                    ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-white/60 dark:hover:bg-zinc-800/60'
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -509,8 +509,8 @@ export default function SettingsModal({
                 onClick={() => setActiveTab('advanced')}
                 className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
                   activeTab === 'advanced'
-                  ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm'
-                  : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-white/60 dark:hover:bg-zinc-800/60'
+                    ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm'
+                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-white/60 dark:hover:bg-zinc-800/60'
                 }`}
               >
                 <div className="flex items-center gap-2">
@@ -598,8 +598,8 @@ export default function SettingsModal({
                           key={p.id}
                           className={`w-full p-2.5 lg:p-3 transition-colors ${
                             selectedId === p.id
-                            ? 'bg-zinc-50 dark:bg-zinc-800/60'
-                            : 'hover:bg-zinc-50 dark:hover:bg-zinc-900/40'
+                              ? 'bg-zinc-50 dark:bg-zinc-800/60'
+                              : 'hover:bg-zinc-50 dark:hover:bg-zinc-900/40'
                           }`}
                         >
                           <div

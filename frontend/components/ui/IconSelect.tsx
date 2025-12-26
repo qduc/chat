@@ -94,8 +94,8 @@ export function IconSelect({
                 aria-selected={option.value === value}
                 className={`w-full block text-left px-3 py-2 text-sm cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 hover:text-zinc-900 dark:hover:text-zinc-100 transition-all duration-200 ${
                   option.value === value
-                  ? 'bg-zinc-100 dark:bg-zinc-800 font-medium text-zinc-900 dark:text-zinc-100'
-                  : 'text-zinc-700 dark:text-zinc-300'
+                    ? 'bg-zinc-100 dark:bg-zinc-800 font-medium text-zinc-900 dark:text-zinc-100'
+                    : 'text-zinc-700 dark:text-zinc-300'
                 }`}
                 style={{
                   border: 'none',

@@ -166,7 +166,7 @@ export default function SaveAsModal({
                   error
                     ? 'border-red-300 dark:border-red-600 bg-red-50 dark:bg-red-900/20'
                     : 'border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800'
-                  } text-zinc-900 dark:text-zinc-100`}
+                } text-zinc-900 dark:text-zinc-100`}
                 placeholder="Enter prompt name"
                 maxLength={255}
                 disabled={saving}

@@ -69,17 +69,17 @@ function PreviewItem({ file, progress, onRemove }: PreviewItemProps) {
               ? 'bg-red-100 dark:bg-red-900/20'
               : isCodeFile
                 ? 'bg-blue-100 dark:bg-blue-900/20'
-              : 'bg-zinc-100 dark:bg-zinc-700'
+                : 'bg-zinc-100 dark:bg-zinc-700'
           }`}
         >
           {hasError ? (
             <AlertCircle className="w-5 h-5 text-red-500" />
           ) : isUploading ? (
-              <Loader2 className="w-5 h-5 text-zinc-500 animate-spin" />
+            <Loader2 className="w-5 h-5 text-zinc-500 animate-spin" />
           ) : isCodeFile ? (
             <FileCode className={`w-5 h-5 text-blue-600 dark:text-blue-400`} />
           ) : (
-                  <FileText className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
+            <FileText className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
           )}
         </div>
 

@@ -47,11 +47,11 @@ const ModelItem = React.memo(
       aria-selected={isHighlighted}
       className={`w-full flex items-center transition-colors ${
         isHighlighted
-        ? 'bg-zinc-100 dark:bg-zinc-800'
+          ? 'bg-zinc-100 dark:bg-zinc-800'
           : isSelected
-          ? 'bg-zinc-50 dark:bg-zinc-800/50'
+            ? 'bg-zinc-50 dark:bg-zinc-800/50'
             : ''
-        } hover:bg-zinc-100 dark:hover:bg-zinc-800`}
+      } hover:bg-zinc-100 dark:hover:bg-zinc-800`}
     >
       <button
         onClick={(e) => {
@@ -64,13 +64,15 @@ const ModelItem = React.memo(
         {isFavorite ? (
           <Star className="w-3.5 h-3.5 text-yellow-500 fill-yellow-500" />
         ) : (
-            <StarOff className="w-3.5 h-3.5 text-zinc-400" />
+          <StarOff className="w-3.5 h-3.5 text-zinc-400" />
         )}
       </button>
       <button
         onClick={() => onSelect(model.value)}
         className={`flex-1 min-w-0 px-3 py-2 text-left transition-colors ${
-          isSelected ? 'text-zinc-900 dark:text-zinc-100 font-medium' : 'text-zinc-700 dark:text-zinc-300'
+          isSelected
+            ? 'text-zinc-900 dark:text-zinc-100 font-medium'
+            : 'text-zinc-700 dark:text-zinc-300'
         }`}
       >
         <div className="text-sm font-medium truncate leading-tight">{model.label}</div>
@@ -443,7 +445,7 @@ export default function ModelSelector({
               {/* Provider Tabs */}
               {providerTabs.length > 1 && (
                 <div
-                    className="flex flex-nowrap overflow-x-auto border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50"
+                  className="flex flex-nowrap overflow-x-auto border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50"
                   onWheel={(e) => {
                     e.preventDefault();
                     e.currentTarget.scrollLeft += e.deltaY;
@@ -461,8 +463,8 @@ export default function ModelSelector({
                       }}
                       className={`flex-1 px-3 py-2 text-xs font-medium text-center border-b-2 transition-colors ${
                         selectedTab === tab.id
-                        ? 'border-zinc-800 dark:border-zinc-200 text-zinc-900 dark:text-zinc-100 bg-white dark:bg-zinc-900'
-                        : 'border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                          ? 'border-zinc-800 dark:border-zinc-200 text-zinc-900 dark:text-zinc-100 bg-white dark:bg-zinc-900'
+                          : 'border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'
                       }`}
                     >
                       <div className="truncate">{tab.label}</div>
@@ -473,9 +475,9 @@ export default function ModelSelector({
               )}
 
               {/* Search Header */}
-                <div className="p-2 border-b border-zinc-200 dark:border-zinc-800">
+              <div className="p-2 border-b border-zinc-200 dark:border-zinc-800">
                 <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-zinc-400" />
                   <input
                     ref={searchInputRef}
                     type="text"
@@ -483,7 +485,7 @@ export default function ModelSelector({
                     onChange={(e) => setSearchQuery(e.target.value)}
                     onKeyDown={handleKeyDown}
                     placeholder="Search models..."
-                      className="w-full pl-10 pr-3 py-1.5 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 text-sm"
+                    className="w-full pl-10 pr-3 py-1.5 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 text-sm"
                   />
                 </div>
               </div>
@@ -496,7 +498,7 @@ export default function ModelSelector({
               >
                 {organizedModels.favorites.length > 0 && (
                   <div>
-                      <div className="px-3 py-1.5 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide bg-zinc-50 dark:bg-zinc-900/50">
+                    <div className="px-3 py-1.5 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide bg-zinc-50 dark:bg-zinc-900/50">
                       Favorites
                     </div>
                     {organizedModels.favorites.map((model, idx) => (
@@ -516,7 +518,7 @@ export default function ModelSelector({
 
                 {organizedModels.recent.length > 0 && (
                   <div>
-                      <div className="px-3 py-1.5 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide bg-zinc-50 dark:bg-zinc-900/50">
+                    <div className="px-3 py-1.5 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide bg-zinc-50 dark:bg-zinc-900/50">
                       Recent
                     </div>
                     {organizedModels.recent.map((model, rIdx) => {
@@ -541,7 +543,7 @@ export default function ModelSelector({
                   <div>
                     {(organizedModels.favorites.length > 0 ||
                       organizedModels.recent.length > 0) && (
-                        <div className="px-3 py-1.5 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide bg-zinc-50 dark:bg-zinc-900/50">
+                      <div className="px-3 py-1.5 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide bg-zinc-50 dark:bg-zinc-900/50">
                         All Models
                       </div>
                     )}
@@ -571,12 +573,12 @@ export default function ModelSelector({
                 )}
 
                 {allModels.length === 0 ? (
-                    <div className="px-3 py-6 text-center text-zinc-500 dark:text-zinc-400">
+                  <div className="px-3 py-6 text-center text-zinc-500 dark:text-zinc-400">
                     No models available. Please add a provider in settings.
                   </div>
                 ) : (
                   filteredModels.length === 0 && (
-                        <div className="px-3 py-6 text-center text-zinc-500 dark:text-zinc-400">
+                    <div className="px-3 py-6 text-center text-zinc-500 dark:text-zinc-400">
                       No models found matching &quot;{searchQuery}&quot;
                     </div>
                   )
