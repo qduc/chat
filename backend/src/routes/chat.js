@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { proxyOpenAIRequest } from '../lib/openaiProxy.js';
 import { generateOpenAIToolSpecs, getAvailableTools } from '../lib/tools.js';
 import { logger } from '../logger.js';
+import { abortStream } from '../lib/streamAbortRegistry.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { getUserSetting } from '../db/userSettings.js';
 
@@ -11,6 +12,16 @@ export const chatRouter = Router();
 chatRouter.use(authenticateToken);
 
 chatRouter.post('/v1/chat/completions', proxyOpenAIRequest);
+
+chatRouter.post('/v1/chat/completions/stop', (req, res) => {
+  const requestId = req.body?.request_id || req.header('x-client-request-id');
+  if (!requestId) {
+    return res.status(400).json({ error: 'missing_request_id' });
+  }
+
+  const stopped = abortStream(requestId, req.user?.id);
+  return res.json({ stopped });
+});
 
 // Tool specifications endpoint
 chatRouter.get('/v1/tools', (req, res) => {

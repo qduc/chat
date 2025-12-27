@@ -4,6 +4,7 @@ import { setupStreamingHeaders, createOpenAIRequest, teeStreamWithPreview } from
 import { logUpstreamResponse } from './logging/upstreamLogger.js';
 import { createProvider } from './providers/index.js';
 import { addPromptCaching } from './promptCaching.js';
+import { createAbortError } from './abortUtils.js';
 import {
   buildConversationMessagesOptimized,
   executeToolCall,
@@ -288,7 +289,7 @@ class JsonResponseHandler extends ResponseHandler {
 /**
  * Make a request to the AI model
  */
-async function callLLM({ messages, config, bodyParams, providerId, providerHttp, provider, previousResponseId = null, userId = null, conversationId = null }) {
+async function callLLM({ messages, config, bodyParams, providerId, providerHttp, provider, previousResponseId = null, userId = null, conversationId = null, abortSignal = null }) {
   const providerStreamFlag = bodyParams?.provider_stream ?? bodyParams?.providerStream;
   const upstreamStreamEnabled = (providerStreamFlag !== undefined
     ? providerStreamFlag
@@ -316,7 +317,7 @@ async function callLLM({ messages, config, bodyParams, providerId, providerHttp,
     hasTools: Boolean(bodyParams.tools)
   });
 
-  let response = await createOpenAIRequest(config, requestBody, { providerId, http: providerHttp });
+  let response = await createOpenAIRequest(config, requestBody, { providerId, http: providerHttp, signal: abortSignal });
 
   // If request with previous_response_id failed due to invalid ID format, retry with full history
   if (!response.ok && requestBody.previous_response_id) {
@@ -360,7 +361,7 @@ async function callLLM({ messages, config, bodyParams, providerId, providerHttp,
         hasTools: Boolean(bodyParams.tools)
       });
 
-      response = await createOpenAIRequest(config, retryBodyWithCaching, { providerId, http: providerHttp });
+      response = await createOpenAIRequest(config, retryBodyWithCaching, { providerId, http: providerHttp, signal: abortSignal });
     }
   }
 
@@ -598,8 +599,11 @@ export async function handleToolsJson({
   persistence,
   providerHttp,
   provider,
+  abortContext,
   _userId = null,
 }) {
+  const abortSignal = abortContext?.signal || null;
+  const cancelState = abortContext?.cancelState || null;
   const providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
   const providerInstance = provider || await createProvider(config, { providerId });
   const fallbackToolSpecs = providerInstance.getToolsetSpec({
@@ -632,6 +636,7 @@ export async function handleToolsJson({
     req.on('close', () => {
       if (res.writableEnded) return;
       try {
+        if (cancelState?.cancelled) return;
         if (persistence && persistence.persist) {
           persistence.markError();
         }
@@ -645,6 +650,9 @@ export async function handleToolsJson({
 
     // Main orchestration loop - continues until LLM stops requesting tools
     while (iteration < orchestrationConfig.maxIterations) {
+      if (abortSignal?.aborted) {
+        throw createAbortError();
+      }
       // Always get response non-streaming first to check for tool calls
       const response = await callLLM({
         messages,
@@ -654,8 +662,9 @@ export async function handleToolsJson({
         providerHttp,
         provider: providerInstance,
         previousResponseId: currentPreviousResponseId,
-         userId: persistence?.userId ?? null,
+        userId: persistence?.userId ?? null,
         conversationId: persistence?.conversationId,
+        abortSignal,
       });
       const message = response?.choices?.[0]?.message;
       const toolCalls = message?.tool_calls || [];
@@ -776,8 +785,9 @@ export async function handleToolsJson({
       providerId,
       providerHttp,
       provider: providerInstance,
-        userId: persistence?.userId ?? null,
+      userId: persistence?.userId ?? null,
       conversationId: persistence?.conversationId,
+      abortSignal,
     });
 
     // Handle max iterations reached
@@ -800,7 +810,15 @@ export async function handleToolsJson({
     }
 
   } catch (error) {
-  logger.error({ msg: '[unified orchestration] error', err: error });
+    if (cancelState?.cancelled || abortSignal?.aborted) {
+      if (persistence && persistence.persist) {
+        recordFinalToPersistence(persistence, 'cancelled', persistence?.responseId ?? null);
+      }
+      if (!res.writableEnded) res.end();
+      return;
+    }
+
+    logger.error({ msg: '[unified orchestration] error', err: error });
 
     if (orchestrationConfig.streamingEnabled) {
       return responseHandler.sendError(error, persistence);

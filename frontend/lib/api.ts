@@ -312,14 +312,24 @@ interface OpenAIStreamChunk {
 export const chat = {
   async sendMessage(options: ChatOptions | ChatOptionsExtended): Promise<ChatResponse> {
     await waitForAuthReady();
-    const { apiBase = resolveApiBase(), stream = true, signal, onEvent, onToken } = options;
+    const {
+      apiBase = resolveApiBase(),
+      stream = true,
+      signal,
+      onEvent,
+      onToken,
+      requestId,
+    } = options;
 
     // Build request body - always request SSE from backend for real-time updates
     const bodyObj = buildRequestBody(options, stream);
 
     try {
       // Always use SSE for real-time tool updates, even when streaming is disabled
-      const requestHeaders = { Accept: 'text/event-stream' };
+      const requestHeaders = {
+        Accept: 'text/event-stream',
+        ...(requestId ? { 'x-client-request-id': requestId } : {}),
+      };
 
       const httpResponse = await httpClient.post(`${apiBase}/v1/chat/completions`, bodyObj, {
         signal,
@@ -344,6 +354,9 @@ export const chat = {
             fallbackHeaders.Authorization = `Bearer ${token}`;
           }
         }
+        if (requestId) {
+          fallbackHeaders['x-client-request-id'] = requestId;
+        }
 
         responseData = await fetch(`${apiBase}/v1/chat/completions`, {
           method: 'POST',
@@ -362,6 +375,15 @@ export const chat = {
       }
       throw error;
     }
+  },
+  async stopMessage(options: { requestId: string; apiBase?: string }): Promise<{ stopped: boolean }> {
+    await waitForAuthReady();
+    const { requestId, apiBase = resolveApiBase() } = options;
+    if (!requestId) return { stopped: false };
+    const response = await httpClient.post(`${apiBase}/v1/chat/completions/stop`, {
+      request_id: requestId,
+    });
+    return response.data;
   },
 };
 

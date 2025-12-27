@@ -68,6 +68,7 @@ export async function createOpenAIRequest(config, requestBody, options = {}) {
   const provider = await createProvider(config, options);
   const context = {
     providerId: options.providerId || provider.providerId,
+    ...(options.signal ? { signal: options.signal } : {}),
     ...(options.context || {}),
   };
   const upstream = await provider.sendRawRequest(requestBody, context);

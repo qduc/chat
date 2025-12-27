@@ -16,6 +16,7 @@ jest.mock('../lib/api', () => ({
   },
   chat: {
     sendMessage: jest.fn(),
+    stopMessage: jest.fn(),
   },
   providers: {
     getToolSpecs: jest.fn(),

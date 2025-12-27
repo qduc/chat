@@ -124,7 +124,7 @@ export class OpenAIProvider extends BaseProvider {
     return Boolean(this.apiKey || this.defaultHeaders.Authorization);
   }
 
-  async makeHttpRequest(translatedRequest) {
+  async makeHttpRequest(translatedRequest, context = {}) {
     const client = this.httpClient;
     if (!client) {
       throw new Error('No HTTP client available for OpenAI provider');
@@ -156,6 +156,7 @@ export class OpenAIProvider extends BaseProvider {
         method: 'POST',
         headers,
         body: JSON.stringify(translatedRequest),
+        ...(context.signal ? { signal: context.signal } : {}),
       }),
       config.providerConfig.retry
     );

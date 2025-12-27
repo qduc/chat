@@ -9,6 +9,8 @@ import { SimplifiedPersistence } from './simplifiedPersistence.js';
 import { addConversationMetadata, getConversationMetadata } from './responseUtils.js';
 import { logger } from '../logger.js';
 import { addPromptCaching } from './promptCaching.js';
+import { registerStreamAbort, unregisterStreamAbort } from './streamAbortRegistry.js';
+import { isAbortError } from './abortUtils.js';
 
 // --- Helpers: sanitize, validate, selection, and error shaping ---
 
@@ -54,6 +56,7 @@ async function sanitizeIncomingBody(bodyIn, helpers = {}) {
   delete body.qualityLevel;
   delete body.system_prompt;
   delete body.providerStream;
+  delete body.client_request_id;
 
   if (providerStreamInput !== undefined) {
     body.provider_stream = providerStreamInput;
@@ -166,6 +169,7 @@ async function buildRequestContext(req) {
   const conversationId = bodyIn.conversation_id || req.header('x-conversation-id');
   const userId = req.user.id; // Guaranteed by authenticateToken middleware
   const sessionId = req.sessionId || null;
+  const clientRequestId = req.header('x-client-request-id') || bodyIn.client_request_id || null;
 
   const body = await sanitizeIncomingBody(bodyIn, {
     toolSpecs,
@@ -190,7 +194,8 @@ async function buildRequestContext(req) {
     userId,
     flags,
     toolSpecs,
-    sessionId
+    sessionId,
+    clientRequestId,
   };
 }
 
@@ -330,14 +335,14 @@ function handleProxyError(error, req, res, persistence) {
 // --- Handler Execution ---
 
 async function handleRequest(context, req, res) {
-  const { body, bodyIn, flags, provider, providerId, persistence, userId } = context;
+  const { body, bodyIn, flags, provider, providerId, persistence, userId, abortContext } = context;
 
   if (flags.hasTools) {
     // Tool orchestration path
     if (flags.streamToFrontend) {
-      return handleToolsStreaming({ body, bodyIn, config, res, req, persistence, provider, userId });
+      return handleToolsStreaming({ body, bodyIn, config, res, req, persistence, provider, userId, abortContext });
     } else {
-      return handleToolsJson({ body, bodyIn, config, res, req, persistence, provider, userId });
+      return handleToolsJson({ body, bodyIn, config, res, req, persistence, provider, userId, abortContext });
     }
   }
 
@@ -373,7 +378,22 @@ async function handleRequest(context, req, res) {
     hasTools: false
   });
 
-  let upstream = await createOpenAIRequest(config, requestBody, { providerId });
+  let upstream;
+  try {
+    upstream = await createOpenAIRequest(config, requestBody, { providerId, signal: abortContext?.signal });
+  } catch (error) {
+    if (abortContext?.requestId) {
+      unregisterStreamAbort(abortContext.requestId);
+    }
+    if (abortContext?.cancelState?.cancelled || isAbortError(error)) {
+      if (persistence && persistence.persist) {
+        persistence.recordAssistantFinal({ finishReason: 'cancelled' });
+      }
+      if (!res.writableEnded) res.end();
+      return;
+    }
+    throw error;
+  }
 
   // If request with previous_response_id failed due to invalid ID format, retry with full history
   if (!upstream.ok && requestBody.previous_response_id) {
@@ -414,7 +434,14 @@ async function handleRequest(context, req, res) {
         hasTools: false
       });
 
-      upstream = await createOpenAIRequest(config, retryBodyWithCaching, { providerId });
+      try {
+        upstream = await createOpenAIRequest(config, retryBodyWithCaching, { providerId, signal: abortContext?.signal });
+      } catch (error) {
+        if (abortContext?.requestId) {
+          unregisterStreamAbort(abortContext.requestId);
+        }
+        throw error;
+      }
     }
   }
 
@@ -589,7 +616,20 @@ async function handleRequest(context, req, res) {
 
     // Normal streaming response
     setupStreamingHeaders(res);
-    return handleRegularStreaming({ config, upstream, res, req, persistence, provider });
+    return handleRegularStreaming({
+      config,
+      upstream,
+      res,
+      req,
+      persistence,
+      provider,
+      abortContext,
+      onComplete: () => {
+        if (abortContext?.requestId) {
+          unregisterStreamAbort(abortContext.requestId);
+        }
+      },
+    });
   } else {
     // JSON response (for backward compatibility and when explicitly requested)
     try {
@@ -626,7 +666,23 @@ async function executeRequestHandler(context, req, res) {
   }
 
   // Add persistence to context for the unified handler
-  const contextWithPersistence = { ...context, persistence };
+  let abortContext = null;
+  if (context.clientRequestId && context.flags.streamToFrontend) {
+    const controller = new AbortController();
+    const cancelState = { cancelled: false };
+    registerStreamAbort(context.clientRequestId, {
+      controller,
+      cancelState,
+      userId,
+    });
+    abortContext = {
+      requestId: context.clientRequestId,
+      signal: controller.signal,
+      cancelState,
+    };
+  }
+
+  const contextWithPersistence = { ...context, persistence, abortContext };
 
   try {
     const result = await handleRequest(contextWithPersistence, req, res);
@@ -649,6 +705,9 @@ async function executeRequestHandler(context, req, res) {
 
     return result;
   } finally {
+    if (abortContext?.requestId && context.flags.hasTools) {
+      unregisterStreamAbort(abortContext.requestId);
+    }
     if (persistence) {
       persistence.cleanup();
     }

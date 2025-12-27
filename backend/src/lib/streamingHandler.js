@@ -22,14 +22,20 @@ function setupStreamEventHandlers({
   persistence,
   lastFinishReason,
   toolCallMap,
+  abortContext,
+  onComplete,
 }) {
   // One-shot guard to prevent double finalize/error on error+end sequences
   let completed = false;
 
-  upstream.body.on('end', () => {
+  let abortHandler = null;
+  const finalize = (overrideFinishReason = null) => {
     if (completed) return;
     completed = true;
     try {
+      if (abortHandler && abortContext?.signal) {
+        abortContext.signal.removeEventListener('abort', abortHandler);
+      }
       if (persistence && persistence.persist) {
         // Add accumulated tool calls to persistence before finalizing
         if (toolCallMap && toolCallMap.size > 0) {
@@ -41,18 +47,30 @@ function setupStreamEventHandlers({
           persistence.addToolCalls(toolCalls);
         }
 
-        const finishReason = (typeof lastFinishReason === 'object' && lastFinishReason !== null ? lastFinishReason.value : lastFinishReason) || 'stop';
+        const finishReason = overrideFinishReason
+          || (typeof lastFinishReason === 'object' && lastFinishReason !== null ? lastFinishReason.value : lastFinishReason)
+          || 'stop';
         persistence.recordAssistantFinal({ finishReason });
       }
     } catch (e) {
       logger.error('[persist] finalize error', e);
+    } finally {
+      onComplete?.();
     }
-    return res.end();
-  });
+    if (!res.writableEnded) {
+      return res.end();
+    }
+    return undefined;
+  };
+
+  upstream.body.on('end', () => finalize());
 
   upstream.body.on('error', (err) => {
     logger.error('Upstream stream error', err);
     if (completed) return res.end();
+    if (abortContext?.cancelState?.cancelled) {
+      return finalize('cancelled');
+    }
     completed = true;
     try {
       if (persistence && persistence.persist) {
@@ -60,6 +78,8 @@ function setupStreamEventHandlers({
       }
     } catch {
       // Ignore errors
+    } finally {
+      onComplete?.();
     }
     return res.end();
   });
@@ -67,6 +87,9 @@ function setupStreamEventHandlers({
   req.on('close', () => {
     if (res.writableEnded) return;
     try {
+      if (abortContext?.cancelState?.cancelled) {
+        return;
+      }
       if (persistence && persistence.persist) {
         persistence.markError();
       }
@@ -78,6 +101,9 @@ function setupStreamEventHandlers({
   res.on('close', () => {
     if (res.writableEnded) return;
     try {
+      if (abortContext?.cancelState?.cancelled) {
+        return;
+      }
       if (persistence && persistence.persist) {
         persistence.markError();
       }
@@ -85,6 +111,24 @@ function setupStreamEventHandlers({
       // Ignore errors
     }
   });
+
+  if (abortContext?.signal) {
+    abortHandler = () => {
+      if (abortContext?.cancelState?.cancelled) {
+        try {
+          upstream.body?.destroy?.();
+        } catch {
+          // Ignore destroy errors
+        }
+        finalize('cancelled');
+      }
+    };
+    if (abortContext.signal.aborted) {
+      abortHandler();
+    } else {
+      abortContext.signal.addEventListener('abort', abortHandler, { once: true });
+    }
+  }
 }
 
 /**
@@ -192,6 +236,8 @@ export async function handleRegularStreaming({
   req,
   persistence,
   provider,
+  abortContext,
+  onComplete,
 }) {
   let leftover = '';
   let translationLeftover = '';
@@ -278,5 +324,7 @@ export async function handleRegularStreaming({
     persistence,
     lastFinishReason,
     toolCallMap,
+    abortContext,
+    onComplete,
   });
 }

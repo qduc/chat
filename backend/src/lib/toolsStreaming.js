@@ -15,6 +15,7 @@ import { setupStreamingHeaders } from './streamingHandler.js';
 import { config as envConfig } from '../env.js';
 import { logger } from '../logger.js';
 import { addPromptCaching } from './promptCaching.js';
+import { createAbortError } from './abortUtils.js';
 import {
   buildConversationMessagesOptimized,
   executeToolCall,
@@ -43,7 +44,10 @@ export async function handleToolsStreaming({
   persistence,
   provider,
   userId = null,
+  abortContext,
 }) {
+  const abortSignal = abortContext?.signal || null;
+  const cancelState = abortContext?.cancelState || null;
   const config = runtimeConfigInput || envConfig;
   const providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
   const providerInstance = provider || await createProvider(config, { providerId });
@@ -69,6 +73,9 @@ export async function handleToolsStreaming({
     let currentPreviousResponseId = previousResponseId; // Track response_id across iterations
 
     while (!isComplete && iteration < MAX_ITERATIONS) {
+      if (abortSignal?.aborted) {
+        throw createAbortError();
+      }
       iteration++;
 
       // Stream the model response for this iteration, buffering only tool calls
@@ -103,7 +110,7 @@ export async function handleToolsStreaming({
         hasTools: Boolean(toolsToSend),
       });
 
-      let upstream = await createOpenAIRequest(config, requestBody, { providerId });
+      let upstream = await createOpenAIRequest(config, requestBody, { providerId, signal: abortSignal });
 
       // If request with previous_response_id failed due to invalid ID format, retry with full history
       if (!upstream.ok && requestBody.previous_response_id) {
@@ -154,7 +161,7 @@ export async function handleToolsStreaming({
             hasTools: Boolean(toolsToSend),
           });
 
-          upstream = await createOpenAIRequest(config, retryBodyWithCaching, { providerId });
+          upstream = await createOpenAIRequest(config, retryBodyWithCaching, { providerId, signal: abortSignal });
           currentPreviousResponseId = null; // Reset for subsequent iterations
         }
       }
@@ -319,7 +326,21 @@ export async function handleToolsStreaming({
 
         const cleanup = () => {
           clearTimeout(timeout);
+          if (abortSignal) {
+            abortSignal.removeEventListener('abort', handleAbort);
+          }
         };
+        const handleAbort = () => {
+          cleanup();
+          reject(createAbortError());
+        };
+
+        if (abortSignal) {
+          if (abortSignal.aborted) {
+            return handleAbort();
+          }
+          abortSignal.addEventListener('abort', handleAbort, { once: true });
+        }
 
         upstream.body.on('data', (chunk) => {
           try {
@@ -719,6 +740,18 @@ export async function handleToolsStreaming({
 
     res.end();
   } catch (error) {
+    if (cancelState?.cancelled || abortSignal?.aborted) {
+      if (persistence && persistence.persist) {
+        recordFinalToPersistence(persistence, 'cancelled');
+      }
+      if (!res.writableEnded) {
+        emitConversationMetadata(res, persistence);
+        streamDone(res);
+        res.end();
+      }
+      return;
+    }
+
     logger.error({ msg: '[iterative orchestration] error', err: error });
 
     // Stream error to client
