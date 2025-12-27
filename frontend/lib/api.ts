@@ -376,7 +376,10 @@ export const chat = {
       throw error;
     }
   },
-  async stopMessage(options: { requestId: string; apiBase?: string }): Promise<{ stopped: boolean }> {
+  async stopMessage(options: {
+    requestId: string;
+    apiBase?: string;
+  }): Promise<{ stopped: boolean }> {
     await waitForAuthReady();
     const { requestId, apiBase = resolveApiBase() } = options;
     if (!requestId) return { stopped: false };
