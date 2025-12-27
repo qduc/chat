@@ -321,8 +321,12 @@ describe('System prompt injection', () => {
     assert.equal(res.status, 200);
     const lastRequest = upstream.lastChatRequestBody;
     assert.ok(lastRequest, 'Should capture upstream request payload');
-    assert.equal(lastRequest.messages[0].role, 'user');
-    assert.equal(lastRequest.messages[0].content, 'Hello there');
+    // Even without an explicit system prompt, a minimal system message with date should be injected
+    assert.equal(lastRequest.messages[0].role, 'system');
+    const currentDate = new Date().toISOString().split('T')[0];
+    assert.ok(lastRequest.messages[0].content.includes(`Today's date: ${currentDate}`), 'System message should contain current date');
+    assert.equal(lastRequest.messages[1].role, 'user');
+    assert.equal(lastRequest.messages[1].content, 'Hello there');
   });
 
   test('uses system_prompt field for effective prompt content', async () => {
