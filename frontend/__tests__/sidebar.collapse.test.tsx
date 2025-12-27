@@ -41,6 +41,7 @@ jest.mock('../lib/api', () => {
   } as unknown as jest.Mocked<ConversationsApi>;
   const mockChat = {
     sendMessage: jest.fn(),
+    stopMessage: jest.fn(),
   } as unknown as jest.Mocked<ChatApi>;
   const mockTools = {
     getToolSpecs: jest.fn(),

@@ -331,6 +331,7 @@ export function useChat() {
 
   // Abort Controller
   const abortControllerRef = useRef<AbortController | null>(null);
+  const currentRequestIdRef = useRef<string | null>(null);
 
   // Token streaming stats
   const [pending, setPending] = useState<PendingState>({
@@ -641,6 +642,7 @@ export function useChat() {
 
         // Initialize token stats using ref to avoid re-renders
         const messageId = generateClientId();
+        currentRequestIdRef.current = messageId;
         tokenStatsRef.current = {
           count: 0,
           startTime: Date.now(),
@@ -754,6 +756,7 @@ export function useChat() {
           providerId: providerIdRef.current || '',
           stream: shouldStreamRef.current,
           providerStream: providerStreamRef.current,
+          requestId: messageId,
           signal: abortControllerRef.current.signal,
           conversationId: conversationId || undefined,
           streamingEnabled: shouldStreamRef.current,
@@ -1108,12 +1111,19 @@ export function useChat() {
           streaming: false,
           error: displayError,
         }));
+      } finally {
+        currentRequestIdRef.current = null;
+        abortControllerRef.current = null;
       }
     },
     [input, images, files, conversationId, modelCapabilities]
   );
 
   const stopStreaming = useCallback(() => {
+    const requestId = currentRequestIdRef.current;
+    if (requestId) {
+      void chat.stopMessage({ requestId });
+    }
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;

@@ -92,7 +92,7 @@ export class GeminiProvider extends BaseProvider {
     return Boolean(this.apiKey);
   }
 
-  async makeHttpRequest(translatedRequest) {
+  async makeHttpRequest(translatedRequest, context = {}) {
     const client = this.httpClient;
     if (!client) {
       throw new Error('No HTTP client available for Gemini provider');
@@ -132,6 +132,7 @@ export class GeminiProvider extends BaseProvider {
           method: 'POST',
           headers,
           body: JSON.stringify(payload),
+          ...(context.signal ? { signal: context.signal } : {}),
         });
 
         if (res.status === 429) {

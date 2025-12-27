@@ -250,8 +250,9 @@ describe('Tool Calls Persistence Integration', () => {
       userId: TEST_USER_ID,
     });
 
-    // Expected structure:
+    // Expected structure (now includes system message with date):
     // [
+    //   { role: 'system', content: '<system_instructions>\nToday\'s date: ...' },
     //   { role: 'user', content: 'What is the time?' },
     //   { role: 'assistant', content: 'Let me check the time.', tool_calls: [...] },
     //   { role: 'tool', tool_call_id: 'call_abc123', content: '...' },
@@ -259,34 +260,38 @@ describe('Tool Calls Persistence Integration', () => {
     //   { role: 'user', content: 'Thanks, what about tomorrow?' }
     // ]
 
-    expect(messages).toHaveLength(5);
+    expect(messages).toHaveLength(6);
+
+    // Verify system message with date is injected
+    expect(messages[0].role).toBe('system');
+    expect(messages[0].content).toContain("Today's date:");
 
     // Verify user message
-    expect(messages[0].role).toBe('user');
-    expect(messages[0].content).toBe('What is the time?');
+    expect(messages[1].role).toBe('user');
+    expect(messages[1].content).toBe('What is the time?');
 
     // Verify assistant message with tool_calls
-    expect(messages[1].role).toBe('assistant');
-    expect(messages[1].content).toBe('Let me check the time.');
-    expect(messages[1].tool_calls).toBeDefined();
-    expect(messages[1].tool_calls).toHaveLength(1);
-    expect(messages[1].tool_calls[0].id).toBe('call_abc123');
-    expect(messages[1].tool_calls[0].function.name).toBe('get_time');
-    expect(messages[1].tool_calls[0].function.arguments).toBe('{"timezone":"UTC"}');
+    expect(messages[2].role).toBe('assistant');
+    expect(messages[2].content).toBe('Let me check the time.');
+    expect(messages[2].tool_calls).toBeDefined();
+    expect(messages[2].tool_calls).toHaveLength(1);
+    expect(messages[2].tool_calls[0].id).toBe('call_abc123');
+    expect(messages[2].tool_calls[0].function.name).toBe('get_time');
+    expect(messages[2].tool_calls[0].function.arguments).toBe('{"timezone":"UTC"}');
 
     // Verify tool message (THIS IS THE FIX!)
-    expect(messages[2].role).toBe('tool');
-    expect(messages[2].tool_call_id).toBe('call_abc123');
-    expect(messages[2].content).toBe('{"iso":"2025-10-05T12:00:00.000Z"}');
+    expect(messages[3].role).toBe('tool');
+    expect(messages[3].tool_call_id).toBe('call_abc123');
+    expect(messages[3].content).toBe('{"iso":"2025-10-05T12:00:00.000Z"}');
 
     // Verify assistant final response appears after tool output
-    expect(messages[3].role).toBe('assistant');
-    expect(messages[3].tool_calls).toBeUndefined();
-    expect(messages[3].content).toBe('The current time is 12:00:00 UTC.');
+    expect(messages[4].role).toBe('assistant');
+    expect(messages[4].tool_calls).toBeUndefined();
+    expect(messages[4].content).toBe('The current time is 12:00:00 UTC.');
 
     // Verify follow-up user message
-    expect(messages[4].role).toBe('user');
-    expect(messages[4].content).toBe('Thanks, what about tomorrow?');
+    expect(messages[5].role).toBe('user');
+    expect(messages[5].content).toBe('Thanks, what about tomorrow?');
   });
 
   test('buildConversationMessagesOptimized loads persisted tool history when Responses API unsupported', async () => {
@@ -377,25 +382,31 @@ describe('Tool Calls Persistence Integration', () => {
 
     expect(previousResponseId).toBeNull();
 
-    expect(messages).toHaveLength(5);
-    expect(messages[0].role).toBe('user');
-    expect(messages[0].content).toBe('What date is today?');
+    // Now includes system message with date
+    expect(messages).toHaveLength(6);
 
-    expect(messages[1].role).toBe('assistant');
-    expect(Array.isArray(messages[1].tool_calls)).toBe(true);
-    expect(messages[1].tool_calls).toHaveLength(1);
-    expect(messages[1].tool_calls[0].id).toBe('call_calendar');
-    expect(messages[1].content).toBe('<thinking>Evaluating requested date context.</thinking><thinking>Checking calendar data.</thinking>');
+    // Verify system message with date is injected
+    expect(messages[0].role).toBe('system');
+    expect(messages[0].content).toContain("Today's date:");
 
-    expect(messages[2].role).toBe('tool');
-    expect(messages[2].tool_call_id).toBe('call_calendar');
-    expect(messages[2].content).toBe('2025-10-05');
+    expect(messages[1].role).toBe('user');
+    expect(messages[1].content).toBe('What date is today?');
 
-    expect(messages[3].role).toBe('assistant');
-    expect(messages[3].tool_calls).toBeUndefined();
-    expect(messages[3].content).toBe('The current UTC date is October 5, 2025.');
+    expect(messages[2].role).toBe('assistant');
+    expect(Array.isArray(messages[2].tool_calls)).toBe(true);
+    expect(messages[2].tool_calls).toHaveLength(1);
+    expect(messages[2].tool_calls[0].id).toBe('call_calendar');
+    expect(messages[2].content).toBe('<thinking>Evaluating requested date context.</thinking><thinking>Checking calendar data.</thinking>');
 
-    expect(messages[4].role).toBe('user');
-    expect(messages[4].content).toBe('Is it Christmas?');
+    expect(messages[3].role).toBe('tool');
+    expect(messages[3].tool_call_id).toBe('call_calendar');
+    expect(messages[3].content).toBe('2025-10-05');
+
+    expect(messages[4].role).toBe('assistant');
+    expect(messages[4].tool_calls).toBeUndefined();
+    expect(messages[4].content).toBe('The current UTC date is October 5, 2025.');
+
+    expect(messages[5].role).toBe('user');
+    expect(messages[5].content).toBe('Is it Christmas?');
   });
 });

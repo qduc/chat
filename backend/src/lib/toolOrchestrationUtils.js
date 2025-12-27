@@ -363,7 +363,10 @@ export function extractSystemPrompt({ body, bodyIn, persistence }) {
     return wrapPromptWithDate(trimmed);
   }
 
-  return '';
+  // Even when no user-provided system prompt exists, inject a minimal system
+  // instructions block with the current date so the model always knows the date.
+  const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+  return `<system_instructions>\nToday's date: ${currentDate}\n</system_instructions>`;
 }
 
 /**
@@ -427,7 +430,18 @@ export async function extractSystemPromptAsync({ body, bodyIn, persistence, user
     return wrapPromptWithStructure(trimmed, { enabledTools, model });
   }
 
-  return '';
+  // Even when no user-provided system prompt exists, inject a minimal system
+  // instructions block with the current date and shared modules so the model
+  // always knows the current date.
+  const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+  const sharedModules = await loadSharedModules({ enabledTools, model });
+
+  let systemInstructions = `Today's date: ${currentDate}`;
+  if (sharedModules) {
+    systemInstructions += `\n\n${sharedModules}`;
+  }
+
+  return `<system_instructions>\n${systemInstructions}\n</system_instructions>`;
 }
 
 export function buildConversationMessages({ body, bodyIn, persistence }) {

@@ -374,6 +374,7 @@ export interface ChatOptions {
   providerId: string;
   stream?: boolean;
   signal?: AbortSignal;
+  requestId?: string;
   onToken?: (token: string) => void;
   onEvent?: (event: ChatEvent) => void;
   apiBase?: string;

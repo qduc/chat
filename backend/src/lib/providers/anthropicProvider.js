@@ -99,7 +99,7 @@ export class AnthropicProvider extends BaseProvider {
     return Boolean(this.apiKey || this.defaultHeaders['x-api-key']);
   }
 
-  async makeHttpRequest(translatedRequest) {
+  async makeHttpRequest(translatedRequest, context = {}) {
     const client = this.httpClient;
     if (!client) {
       throw new Error('No HTTP client available for Anthropic provider');
@@ -131,6 +131,7 @@ export class AnthropicProvider extends BaseProvider {
         method: 'POST',
         headers,
         body: JSON.stringify(translatedRequest),
+        ...(context.signal ? { signal: context.signal } : {}),
       }),
       config.providerConfig.retry
     );
