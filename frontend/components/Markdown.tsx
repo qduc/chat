@@ -503,20 +503,9 @@ const MarkdownComponents: any = {
       );
     }
 
-    // Handle regular code blocks (triple backticks with language)
-    if (isCodeBlock) {
-      // Show un-highlighted code during streaming
-      if (!shouldHighlight) {
-        return (
-          <code
-            className={`${className} bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-1 rounded`}
-          >
-            {children}
-          </code>
-        );
-      }
-
-      return <code className={`${className}`}>{children}</code>;
+    // Handle regular code blocks (triple backticks)
+    if (isCodeBlock || (typeof children === 'string' && children.includes('\n'))) {
+      return <code className={className}>{children}</code>;
     }
 
     // Handle inline code (single backticks)
