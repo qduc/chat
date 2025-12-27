@@ -10,6 +10,7 @@ import {
   RefreshCw,
   AlertCircle,
   ChevronDown,
+  GitFork,
 } from 'lucide-react';
 import Markdown from './Markdown';
 import { MessageContentRenderer } from './ui/MessageContentRenderer';
@@ -44,6 +45,7 @@ interface MessageListProps {
   onScrollStateChange?: (state: { showTop: boolean; showBottom: boolean }) => void;
   containerRef?: React.RefObject<HTMLDivElement>;
   onSuggestionClick?: (text: string) => void;
+  onFork?: (messageId: string) => void;
 }
 
 // Helper function to split messages with tool calls into separate messages
@@ -250,6 +252,7 @@ interface MessageProps {
   onEditingImageUploadClick: () => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   toolbarRef?: React.RefObject<HTMLDivElement | null>;
+  onFork?: (messageId: string) => void;
 }
 
 const Message = React.memo<MessageProps>(
@@ -279,6 +282,36 @@ const Message = React.memo<MessageProps>(
     onEditingImageUploadClick,
     fileInputRef,
     toolbarRef,
+    onFork,
+  }: {
+    message: ChatMessage;
+    isStreaming: boolean;
+    conversationId: string | null;
+    editingMessageId: string | null;
+    editingContent: string;
+    onCopy: (text: string) => void;
+    onEditMessage: (messageId: string, content: string) => void;
+    onCancelEdit: () => void;
+    onApplyLocalEdit: (messageId: string, content?: MessageContent) => void;
+    onEditingContentChange: (content: string) => void;
+    onRetryMessage?: (messageId: string) => void;
+    editingTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
+    lastUserMessageRef: React.RefObject<HTMLDivElement | null> | null;
+    toolbarRef?: React.RefObject<HTMLDivElement | null>;
+    resizeEditingTextarea: () => void;
+    collapsedToolOutputs: Record<string, boolean>;
+    setCollapsedToolOutputs: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
+    copiedMessageId: string | null;
+    handleCopy: (messageId: string, text: string) => void;
+    pending: PendingState;
+    streamingStats: { tokensPerSecond: number } | null;
+    editingImages: ImageAttachment[];
+    onEditingImagesChange: (files: File[]) => void;
+    onRemoveEditingImage: (id: string) => void;
+    onEditingPaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
+    onEditingImageUploadClick: () => void;
+    fileInputRef: React.RefObject<HTMLInputElement | null>;
+    onFork?: (messageId: string) => void;
   }) {
     const isUser = message.role === 'user';
     const isEditing = editingMessageId === message.id;
@@ -704,6 +737,18 @@ const Message = React.memo<MessageProps>(
                       </div>
                     )}
 
+                    {onFork && (
+                      <button
+                        type="button"
+                        onClick={() => onFork(message.id)}
+                        title="Fork"
+                        className="p-2 rounded-md bg-white/60 dark:bg-neutral-800/50 hover:bg-white/90 dark:hover:bg-neutral-700/80 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+                      >
+                        <GitFork className="w-3 h-3" aria-hidden="true" />
+                        <span className="sr-only">Fork</span>
+                      </button>
+                    )}
+
                     {isUser
                       ? message.content && (
                           <button
@@ -773,6 +818,7 @@ export function MessageList({
   onScrollStateChange,
   containerRef: externalContainerRef,
   onSuggestionClick,
+  onFork,
 }: MessageListProps) {
   // Debug logging
   const internalContainerRef = useRef<HTMLDivElement | null>(null);
@@ -1055,6 +1101,7 @@ export function MessageList({
               onEditingPaste={handleEditingPaste}
               onEditingImageUploadClick={handleEditingImageUploadClick}
               fileInputRef={fileInputRef}
+              onFork={onFork}
             />
           );
         })}

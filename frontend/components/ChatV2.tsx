@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { ArrowUp, ArrowDown } from 'lucide-react';
+import { ArrowUp, ArrowDown, Bot } from 'lucide-react';
 import { useChat } from '../hooks/useChat';
 import { ChatSidebar } from './ChatSidebar';
 import { ChatHeader } from './ChatHeader';
@@ -327,6 +327,53 @@ export function ChatV2() {
     [chat]
   );
 
+  const handleFork = useCallback(
+    (messageId: string) => {
+      const idx = chat.messages.findIndex((m) => m.id === messageId);
+      if (idx === -1) return;
+
+      const newMessages = chat.messages.slice(0, idx + 1);
+
+      // Capture current settings to preserve them
+      const currentModel = chat.model;
+      const currentProviderId = chat.providerId;
+      const currentUseTools = chat.useTools;
+      const currentEnabledTools = chat.enabledTools;
+      const currentShouldStream = chat.shouldStream;
+      const currentQualityLevel = chat.qualityLevel;
+      const currentSystemPrompt = chat.systemPrompt;
+      const currentActiveSystemPromptId = chat.activeSystemPromptId;
+
+      chat.newChat();
+      chat.setMessages(newMessages);
+
+      // Restore settings
+      if (currentModel) chat.setModel(currentModel);
+      if (currentProviderId) chat.setProviderId(currentProviderId);
+      chat.setUseTools(currentUseTools);
+      chat.setEnabledTools(currentEnabledTools);
+      chat.setShouldStream(currentShouldStream);
+      chat.setQualityLevel(currentQualityLevel);
+      chat.setActiveSystemPromptId(currentActiveSystemPromptId);
+      if (currentSystemPrompt !== null) {
+        chat.setInlineSystemPromptOverride(currentSystemPrompt);
+      }
+    },
+    [chat]
+  );
+
+  const handleGenerate = useCallback(() => {
+    if (chat.messages.length > 0) {
+      chat.regenerate(chat.messages);
+    }
+  }, [chat]);
+
+  const showGenerateButton =
+    chat.messages.length > 0 &&
+    chat.messages[chat.messages.length - 1].role === 'user' &&
+    chat.status !== 'streaming' &&
+    !chat.pending.streaming;
+
   // Load conversations and hydrate from URL on first load
   useEffect(() => {
     if (initCheckedRef.current) return;
@@ -496,6 +543,7 @@ export function ChatV2() {
             onRefresh={chat.refreshConversations}
             onNewChat={handleNewChat}
             onToggleCollapse={chat.toggleSidebar}
+            unsavedPlaceholder={!chat.conversationId && chat.messages.length > 0}
           />
         </div>
       )}
@@ -539,6 +587,7 @@ export function ChatV2() {
               onScrollStateChange={setScrollButtons}
               containerRef={messageListRef}
               onSuggestionClick={handleSuggestionClick}
+              onFork={handleFork}
             />
 
             {/* Scroll Buttons - centered but visually minimal */}
@@ -575,28 +624,40 @@ export function ChatV2() {
               ref={messageInputContainerRef}
               className="absolute bottom-2 sm:bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-3xl px-2 sm:px-4 md:px-6 z-30"
             >
-              <MessageInput
-                ref={messageInputRef}
-                input={chat.input}
-                pending={chat.pending}
-                onInputChange={chat.setInput}
-                onSend={handleSend}
-                onStop={chat.stopStreaming}
-                useTools={chat.useTools}
-                shouldStream={chat.shouldStream}
-                onUseToolsChange={chat.setUseTools}
-                enabledTools={chat.enabledTools}
-                onEnabledToolsChange={chat.setEnabledTools}
-                onShouldStreamChange={chat.setShouldStream}
-                model={chat.model}
-                qualityLevel={chat.qualityLevel}
-                onQualityLevelChange={chat.setQualityLevel}
-                modelCapabilities={chat.modelCapabilities}
-                images={chat.images}
-                onImagesChange={chat.setImages}
-                files={chat.files}
-                onFilesChange={chat.setFiles}
-              />
+              {showGenerateButton ? (
+                <div className="flex justify-center pb-4">
+                  <button
+                    onClick={handleGenerate}
+                    className="flex items-center gap-2 px-6 py-3 rounded-full bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-medium shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all active:scale-95"
+                  >
+                    <Bot className="w-5 h-5" />
+                    Generate Response
+                  </button>
+                </div>
+              ) : (
+                <MessageInput
+                  ref={messageInputRef}
+                  input={chat.input}
+                  pending={chat.pending}
+                  onInputChange={chat.setInput}
+                  onSend={handleSend}
+                  onStop={chat.stopStreaming}
+                  useTools={chat.useTools}
+                  shouldStream={chat.shouldStream}
+                  onUseToolsChange={chat.setUseTools}
+                  enabledTools={chat.enabledTools}
+                  onEnabledToolsChange={chat.setEnabledTools}
+                  onShouldStreamChange={chat.setShouldStream}
+                  model={chat.model}
+                  qualityLevel={chat.qualityLevel}
+                  onQualityLevelChange={chat.setQualityLevel}
+                  modelCapabilities={chat.modelCapabilities}
+                  images={chat.images}
+                  onImagesChange={chat.setImages}
+                  files={chat.files}
+                  onFilesChange={chat.setFiles}
+                />
+              )}
             </div>
             <SettingsModal
               open={isSettingsOpen}

@@ -13,6 +13,7 @@ interface ChatSidebarProps {
   onRefresh: () => void;
   onNewChat: () => void;
   onToggleCollapse: () => void;
+  unsavedPlaceholder?: boolean;
 }
 
 export function ChatSidebar({
@@ -27,6 +28,7 @@ export function ChatSidebar({
   onRefresh,
   onNewChat,
   onToggleCollapse,
+  unsavedPlaceholder,
 }: ChatSidebarProps) {
   return (
     <aside
@@ -140,6 +142,21 @@ export function ChatSidebar({
             </div>
           </div>
           <div className="flex-1 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700 scrollbar-track-transparent">
+            {unsavedPlaceholder && (
+              <div
+                className="group flex items-center gap-2 text-sm p-3 rounded-lg bg-white dark:bg-zinc-800/80 shadow-sm border border-dashed border-zinc-300 dark:border-zinc-700 mb-1 cursor-default opacity-80"
+                tabIndex={0}
+                role="button"
+                aria-label="Unsaved fork"
+              >
+                <div className="w-2 h-2 rounded-full bg-zinc-400 dark:bg-zinc-500 animate-pulse"></div>
+                <div className="flex-1 text-left">
+                  <div className="text-zinc-700 dark:text-zinc-300 font-medium italic">
+                    Unsaved fork
+                  </div>
+                </div>
+              </div>
+            )}
             {conversations.map((c) => (
               <div
                 key={c.id}
@@ -157,7 +174,7 @@ export function ChatSidebar({
                 <div
                   className={`w-2 h-2 rounded-full transition-colors duration-200
                       ${
-                        conversationId === c.id
+                        conversationId === c.id && !unsavedPlaceholder
                           ? 'bg-zinc-500 dark:bg-zinc-400'
                           : 'bg-zinc-300 dark:bg-zinc-700'
                       }`}
