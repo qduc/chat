@@ -6,7 +6,16 @@ import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
 import { useTheme } from '../contexts/ThemeContext';
-import { ClipboardCheck, Clipboard, ChevronDown, ChevronUp, WrapText, Brain } from 'lucide-react';
+import {
+  ClipboardCheck,
+  Clipboard,
+  ChevronDown,
+  ChevronUp,
+  WrapText,
+  Brain,
+  Eye,
+} from 'lucide-react';
+import { Modal } from './ui/Modal';
 
 interface MarkdownProps {
   text: string;
@@ -308,6 +317,18 @@ function processTableCellContent(content: any): React.ReactNode {
   return content;
 }
 
+/**
+ * Recursively extract text content from React children
+ */
+function getTextFromChildren(children: any): string {
+  if (!children) return '';
+  if (typeof children === 'string') return children;
+  if (typeof children === 'number') return children.toString();
+  if (Array.isArray(children)) return children.map(getTextFromChildren).join('');
+  if (React.isValidElement(children)) return getTextFromChildren((children.props as any).children);
+  return '';
+}
+
 const MarkdownComponents: any = {
   a: ({ href, children, ...props }: any) => (
     <a
@@ -327,6 +348,19 @@ const MarkdownComponents: any = {
     const [copied, setCopied] = React.useState(false);
     const [isCollapsed, setIsCollapsed] = React.useState(false);
     const [isWrapped, setIsWrapped] = React.useState(false);
+    const [showHtmlPreview, setShowHtmlPreview] = React.useState(false);
+
+    // Helper function to check if code is a full HTML page
+    const isFullHtmlPage = (code: string): boolean => {
+      if (!code) return false;
+      const trimmed = code.trim().toLowerCase();
+      // Check for DOCTYPE, html tag, or both head and body tags
+      return (
+        /^<!doctype\s+html/i.test(trimmed) ||
+        (trimmed.includes('<html') && trimmed.includes('</html>')) ||
+        (trimmed.includes('<head') && trimmed.includes('<body'))
+      );
+    };
 
     const onCopy = async () => {
       try {
@@ -353,7 +387,7 @@ const MarkdownComponents: any = {
     };
 
     // If this pre wraps a "thinking" code block, render the child directly to avoid double boxing
-    const childEl = children as any;
+    const childEl = Array.isArray(children) ? children[0] : children;
     if (childEl?.props?.className?.includes('language-thinking')) {
       return childEl;
     }
@@ -362,6 +396,10 @@ const MarkdownComponents: any = {
     const codeClassName = childEl?.props?.className || '';
     const languageMatch = codeClassName.match(/language-(\w+)/);
     const language = languageMatch ? languageMatch[1] : null;
+
+    // Get code content for HTML detection
+    const codeContent = getTextFromChildren(childEl?.props?.children);
+    const isHtml = (language === 'html' || language === 'xml' || !language) && isFullHtmlPage(codeContent);
     const wrappedChild = React.isValidElement(childEl)
       ? React.cloneElement(childEl as React.ReactElement<any>, {
           className: `${codeClassName} ${
@@ -371,80 +409,112 @@ const MarkdownComponents: any = {
       : childEl;
 
     return (
-      <pre
-        ref={preRef}
-        className={`md-pre relative my-3 overflow-hidden rounded-xl border border-zinc-200/60 dark:border-zinc-800/60 bg-zinc-50/50 dark:bg-zinc-900/30`}
-      >
-        {/* Header with language and copy button */}
-        <div className="flex items-center px-3 py-2 border-b border-zinc-200/40 dark:border-zinc-800/40 bg-zinc-100/40 dark:bg-black/20">
-          {language && <span className="text-xs text-zinc-500 dark:text-zinc-500">{language}</span>}
-          <div className="flex items-center gap-1 ml-auto">
-            <button
-              type="button"
-              aria-label={isWrapped ? 'Disable word wrap' : 'Enable word wrap'}
-              aria-pressed={isWrapped}
-              onClick={() => setIsWrapped((prev) => !prev)}
-              className={`inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs transition-colors ${
-                isWrapped
-                  ? 'text-zinc-700 dark:text-zinc-200 bg-zinc-200/70 dark:bg-zinc-800/70'
-                  : 'text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'
-              }`}
-            >
-              <WrapText className="h-3.5 w-3.5" />
-            </button>
-            <button
-              type="button"
-              aria-label={copied ? 'Copied' : 'Copy code'}
-              onClick={onCopy}
-              className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition-colors"
-            >
-              {copied ? (
-                <ClipboardCheck className="h-3.5 w-3.5" />
-              ) : (
-                <Clipboard className="h-3.5 w-3.5" />
-              )}
-              <span className="sr-only">{copied ? 'Copied' : 'Copy'}</span>
-            </button>
-            <button
-              type="button"
-              aria-label={isCollapsed ? 'Expand code block' : 'Collapse code block'}
-              aria-expanded={!isCollapsed}
-              onClick={() => setIsCollapsed((prev) => !prev)}
-              className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition-colors"
-            >
-              {isCollapsed ? (
-                <ChevronDown className="h-3.5 w-3.5" />
-              ) : (
-                <ChevronUp className="h-3.5 w-3.5" />
-              )}
-              <span className="sr-only">
-                {isCollapsed ? 'Expand code block' : 'Collapse code block'}
-              </span>
-            </button>
-          </div>
-        </div>
-
-        {/* padded, scrollable code area */}
-        <div
-          ref={codeRef}
-          className={`px-4 py-3 overflow-auto text-sm font-mono text-zinc-700 dark:text-zinc-300 leading-snug transition-all duration-200 ease-in-out ${
-            isCollapsed ? 'pointer-events-none select-none' : ''
-          } ${isWrapped ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'}`}
-          style={
-            isCollapsed
-              ? {
-                  maxHeight: 0,
-                  paddingTop: 0,
-                  paddingBottom: 0,
-                  opacity: 0,
-                }
-              : undefined
-          }
-          aria-hidden={isCollapsed}
+      <>
+        <pre
+          ref={preRef}
+          className={`md-pre relative my-3 overflow-hidden rounded-xl border border-zinc-200/60 dark:border-zinc-800/60 bg-zinc-50/50 dark:bg-zinc-900/30`}
         >
-          {wrappedChild}
-        </div>
-      </pre>
+          {/* Header with language and copy button */}
+          <div className="flex items-center px-3 py-2 border-b border-zinc-200/40 dark:border-zinc-800/40 bg-zinc-100/40 dark:bg-black/20">
+            {language && (
+              <span className="text-xs text-zinc-500 dark:text-zinc-500">{language}</span>
+            )}
+            <div className="flex items-center gap-1 ml-auto">
+              <button
+                type="button"
+                aria-label={isWrapped ? 'Disable word wrap' : 'Enable word wrap'}
+                aria-pressed={isWrapped}
+                onClick={() => setIsWrapped((prev) => !prev)}
+                className={`inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs transition-colors ${
+                  isWrapped
+                    ? 'text-zinc-700 dark:text-zinc-200 bg-zinc-200/70 dark:bg-zinc-800/70'
+                    : 'text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'
+                }`}
+              >
+                <WrapText className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                aria-label={copied ? 'Copied' : 'Copy code'}
+                onClick={onCopy}
+                className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition-colors"
+              >
+                {copied ? (
+                  <ClipboardCheck className="h-3.5 w-3.5" />
+                ) : (
+                  <Clipboard className="h-3.5 w-3.5" />
+                )}
+                <span className="sr-only">{copied ? 'Copied' : 'Copy'}</span>
+              </button>
+              {isHtml && (
+                <button
+                  type="button"
+                  aria-label="Preview HTML"
+                  onClick={() => setShowHtmlPreview(true)}
+                  className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition-colors"
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                  <span className="sr-only">Preview HTML</span>
+                </button>
+              )}
+              <button
+                type="button"
+                aria-label={isCollapsed ? 'Expand code block' : 'Collapse code block'}
+                aria-expanded={!isCollapsed}
+                onClick={() => setIsCollapsed((prev) => !prev)}
+                className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition-colors"
+              >
+                {isCollapsed ? (
+                  <ChevronDown className="h-3.5 w-3.5" />
+                ) : (
+                  <ChevronUp className="h-3.5 w-3.5" />
+                )}
+                <span className="sr-only">
+                  {isCollapsed ? 'Expand code block' : 'Collapse code block'}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* padded, scrollable code area */}
+          <div
+            ref={codeRef}
+            className={`px-4 py-3 overflow-auto text-sm font-mono text-zinc-700 dark:text-zinc-300 leading-snug transition-all duration-200 ease-in-out ${
+              isCollapsed ? 'pointer-events-none select-none' : ''
+            } ${isWrapped ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'}`}
+            style={
+              isCollapsed
+                ? {
+                    maxHeight: 0,
+                    paddingTop: 0,
+                    paddingBottom: 0,
+                    opacity: 0,
+                  }
+                : undefined
+            }
+            aria-hidden={isCollapsed}
+          >
+            {wrappedChild}
+          </div>
+        </pre>
+
+        {/* HTML Preview Modal */}
+        {isHtml && (
+          <Modal
+            open={showHtmlPreview}
+            onClose={() => setShowHtmlPreview(false)}
+            title="HTML Preview"
+            maxWidthClassName="max-w-[95vw]"
+          >
+            <iframe
+              srcDoc={codeContent}
+              title="HTML Preview"
+              className="w-full h-[80vh] border border-zinc-200 dark:border-zinc-700 rounded-lg bg-white"
+              sandbox="allow-scripts allow-same-origin"
+            />
+          </Modal>
+        )}
+      </>
     );
   },
   code: function CodeRenderer({
