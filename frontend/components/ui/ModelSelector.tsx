@@ -410,7 +410,30 @@ export default function ModelSelector({
     organizedModels.other.length,
   ]);
 
-  const currentModel = allModels.find((model) => model.value === value);
+  const currentModel = useMemo(
+    () => allModels.find((m) => m.value === value) || allModels.find((m) => m.value.endsWith(`::${value}`)),
+    [allModels, value]
+  );
+
+  // Set active tab to current model's provider when opening
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // Find model by exact value or by suffix if value doesn't include provider prefix
+    const foundModel =
+      allModels.find((m) => m.value === value) ||
+      allModels.find((m) => m.value.endsWith(`::${value}`));
+
+    if (foundModel) {
+      if (foundModel.providerId && foundModel.providerId !== 'all') {
+        const hasTab = providerTabs.some((tab) => tab.id === foundModel.providerId);
+        if (hasTab) {
+          setSelectedTab(foundModel.providerId);
+        }
+      }
+    }
+  }, [isOpen, value, allModels, providerTabs]);
+
   const displayText = currentModel?.label || value || 'Select model';
 
   return (
