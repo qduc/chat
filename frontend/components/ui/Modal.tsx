@@ -1,5 +1,6 @@
 'use client';
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 
 interface ModalProps {
@@ -17,6 +18,12 @@ export function Modal({
   children,
   maxWidthClassName = 'max-w-lg',
 }: ModalProps) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -26,9 +33,9 @@ export function Modal({
     return () => document.removeEventListener('keydown', onKey);
   }, [open, onClose]);
 
-  if (!open) return null;
+  if (!open || !mounted) return null;
 
-  return (
+  return createPortal(
     <div
       aria-modal
       role="dialog"
@@ -55,7 +62,8 @@ export function Modal({
         </div>
         <div className="p-3 sm:p-4 overflow-y-auto max-h-[calc(90vh-4rem)]">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
