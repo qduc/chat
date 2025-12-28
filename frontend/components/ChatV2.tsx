@@ -36,6 +36,8 @@ export function ChatV2() {
   const frameRef = useRef<number | null>(null);
   const messageListRef = useRef<HTMLDivElement>(null!);
   const [scrollButtons, setScrollButtons] = useState({ showTop: false, showBottom: false });
+  const [showScrollButtons, setShowScrollButtons] = useState(false);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isLoadingConversationRef = useRef(false);
   const messageInputRef = useRef<MessageInputRef>(null);
   const messageInputContainerRef = useRef<HTMLDivElement>(null);
@@ -80,6 +82,36 @@ export function ChatV2() {
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Handle scroll button visibility with auto-hide
+  useEffect(() => {
+    const container = messageListRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      // Show buttons on scroll activity
+      setShowScrollButtons(true);
+
+      // Clear existing timeout
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+
+      // Hide buttons after 2 seconds of no scrolling
+      scrollTimeoutRef.current = setTimeout(() => {
+        setShowScrollButtons(false);
+      }, 2000);
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
   }, []);
 
   // Simple event handlers
@@ -600,7 +632,9 @@ export function ChatV2() {
               {scrollButtons.showTop && (
                 <button
                   onClick={scrollToTop}
-                  className="pointer-events-auto p-1.5 rounded-full bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-200 border border-zinc-200/70 dark:border-zinc-700/70 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors aspect-square"
+                  className={`p-1.5 rounded-full bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-200 border border-zinc-200/70 dark:border-zinc-700/70 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all duration-200 aspect-square ${
+                    showScrollButtons ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'
+                  }`}
                   aria-label="Scroll to top"
                   title="Scroll to top"
                 >
@@ -610,7 +644,9 @@ export function ChatV2() {
               {scrollButtons.showBottom && (
                 <button
                   onClick={() => scrollToBottom()}
-                  className="pointer-events-auto p-1.5 rounded-full bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-200 border border-zinc-200/70 dark:border-zinc-700/70 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors aspect-square"
+                  className={`p-1.5 rounded-full bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-200 border border-zinc-200/70 dark:border-zinc-700/70 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all duration-200 aspect-square ${
+                    showScrollButtons ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'
+                  }`}
                   aria-label="Scroll to bottom"
                   title="Scroll to bottom"
                 >
