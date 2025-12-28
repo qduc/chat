@@ -317,6 +317,18 @@ function processTableCellContent(content: any): React.ReactNode {
   return content;
 }
 
+/**
+ * Recursively extract text content from React children
+ */
+function getTextFromChildren(children: any): string {
+  if (!children) return '';
+  if (typeof children === 'string') return children;
+  if (typeof children === 'number') return children.toString();
+  if (Array.isArray(children)) return children.map(getTextFromChildren).join('');
+  if (React.isValidElement(children)) return getTextFromChildren((children.props as any).children);
+  return '';
+}
+
 const MarkdownComponents: any = {
   a: ({ href, children, ...props }: any) => (
     <a
@@ -344,7 +356,7 @@ const MarkdownComponents: any = {
       const trimmed = code.trim().toLowerCase();
       // Check for DOCTYPE, html tag, or both head and body tags
       return (
-        trimmed.includes('<!doctype html>') ||
+        /^<!doctype\s+html/i.test(trimmed) ||
         (trimmed.includes('<html') && trimmed.includes('</html>')) ||
         (trimmed.includes('<head') && trimmed.includes('<body'))
       );
@@ -375,7 +387,7 @@ const MarkdownComponents: any = {
     };
 
     // If this pre wraps a "thinking" code block, render the child directly to avoid double boxing
-    const childEl = children as any;
+    const childEl = Array.isArray(children) ? children[0] : children;
     if (childEl?.props?.className?.includes('language-thinking')) {
       return childEl;
     }
@@ -386,8 +398,8 @@ const MarkdownComponents: any = {
     const language = languageMatch ? languageMatch[1] : null;
 
     // Get code content for HTML detection
-    const codeContent = typeof childEl?.props?.children === 'string' ? childEl.props.children : '';
-    const isHtml = language === 'html' && isFullHtmlPage(codeContent);
+    const codeContent = getTextFromChildren(childEl?.props?.children);
+    const isHtml = (language === 'html' || language === 'xml' || !language) && isFullHtmlPage(codeContent);
     const wrappedChild = React.isValidElement(childEl)
       ? React.cloneElement(childEl as React.ReactElement<any>, {
           className: `${codeClassName} ${
@@ -492,12 +504,12 @@ const MarkdownComponents: any = {
             open={showHtmlPreview}
             onClose={() => setShowHtmlPreview(false)}
             title="HTML Preview"
-            maxWidthClassName="max-w-6xl"
+            maxWidthClassName="max-w-[95vw]"
           >
             <iframe
               srcDoc={codeContent}
               title="HTML Preview"
-              className="w-full h-[70vh] border border-zinc-200 dark:border-zinc-700 rounded-lg bg-white"
+              className="w-full h-[80vh] border border-zinc-200 dark:border-zinc-700 rounded-lg bg-white"
               sandbox="allow-scripts allow-same-origin"
             />
           </Modal>
