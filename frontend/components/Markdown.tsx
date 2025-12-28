@@ -399,7 +399,8 @@ const MarkdownComponents: any = {
 
     // Get code content for HTML detection
     const codeContent = getTextFromChildren(childEl?.props?.children);
-    const isHtml = (language === 'html' || language === 'xml' || !language) && isFullHtmlPage(codeContent);
+    const isHtml =
+      (language === 'html' || language === 'xml' || !language) && isFullHtmlPage(codeContent);
     const wrappedChild = React.isValidElement(childEl)
       ? React.cloneElement(childEl as React.ReactElement<any>, {
           className: `${codeClassName} ${
