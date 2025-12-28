@@ -23,13 +23,22 @@ export class ConversationTitleService {
       const text = ConversationTitleService.extractTextFromContent(content).trim();
       if (!text) return null;
 
+      // Extract provider and model from model string if qualified (provider::model)
+      let modelToUse = model || this.config.titleModel || this.config.defaultModel || 'gpt-4.1-mini';
+      let providerToUse = providerId;
+      if (typeof modelToUse === 'string' && modelToUse.includes('::')) {
+        const parts = modelToUse.split('::');
+        providerToUse = parts[0];
+        modelToUse = parts[1];
+      }
+
       // Check if provider is configured for API requests
-      const configured = await providerIsConfigured(this.config);
+      const configured = await providerIsConfigured(this.config, { providerId: providerToUse });
       if (!configured) {
         return this.generateFallbackTitle(text);
       }
 
-      const title = await this._requestTitleFromAPI(text, providerId, model);
+      const title = await this._requestTitleFromAPI(text, providerToUse, modelToUse);
       return title || this.generateFallbackTitle(text);
     } catch (error) {
       // Log error but don't throw - title generation is non-critical
@@ -62,11 +71,13 @@ export class ConversationTitleService {
   async _requestTitleFromAPI(text, providerId, model = null) {
     const promptUser = text.length > 500 ? text.slice(0, 500) + '…' : text;
 
-    // Ensure we don't send provider-qualified model IDs (e.g. "provider::model")
-    // upstream providers expect the raw model identifier in the `model` field.
     let modelToUse = model || this.config.titleModel || this.config.defaultModel || 'gpt-4.1-mini';
+    let providerToUse = providerId;
+
     if (typeof modelToUse === 'string' && modelToUse.includes('::')) {
-      modelToUse = modelToUse.split('::')[1];
+      const parts = modelToUse.split('::');
+      providerToUse = parts[0];
+      modelToUse = parts[1];
     }
 
     const requestBody = {
@@ -85,7 +96,7 @@ export class ConversationTitleService {
       ],
     };
 
-    const resp = await createOpenAIRequest(this.config, requestBody, { providerId });
+    const resp = await createOpenAIRequest(this.config, requestBody, { providerId: providerToUse });
 
     if (!resp.ok) {
       return null;
