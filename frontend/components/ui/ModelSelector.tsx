@@ -69,6 +69,8 @@ const ModelItem = React.memo(
       </button>
       <button
         onClick={() => onSelect(model.value)}
+        title={model.label}
+        aria-label={model.label}
         className={`flex-1 min-w-0 px-3 py-2 text-left transition-colors ${
           isSelected
             ? 'text-zinc-900 dark:text-zinc-100 font-medium'
