@@ -398,13 +398,21 @@ function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: bo
     ? messages.filter((message): message is ChatOptions['messages'][number] => !!message)
     : [];
 
-  const latestUserMessage = [...normalizedMessages]
-    .reverse()
-    .find((message) => message.role === 'user');
+  let outgoingMessages: any[] = [];
 
-  const messageToSend = latestUserMessage ?? normalizedMessages[normalizedMessages.length - 1];
+  if (!extendedOptions.conversationId) {
+    // New conversation (or retry in new conversation context): send full history to ensure persistence
+    outgoingMessages = normalizedMessages.map((m) => ({ ...m, uuid: m.id }));
+  } else {
+    // Existing conversation: send only the latest user message as optimization
+    // (backend loads history from DB)
+    const latestUserMessage = [...normalizedMessages]
+      .reverse()
+      .find((message) => message.role === 'user');
 
-  const outgoingMessages = messageToSend ? [{ ...messageToSend, uuid: messageToSend.id }] : [];
+    const messageToSend = latestUserMessage ?? normalizedMessages[normalizedMessages.length - 1];
+    outgoingMessages = messageToSend ? [{ ...messageToSend, uuid: messageToSend.id }] : [];
+  }
 
   // Frontend always uses SSE (stream: true) to receive real-time updates
   // providerStream controls upstream behavior based on user's streaming toggle

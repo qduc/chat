@@ -50,8 +50,46 @@ describe('chat API', () => {
         { role: 'assistant' as Role, content: 'assistant reply' },
         { role: 'user' as Role, content: 'latest message' },
       ],
+      conversationId: 'test-c-id',
       stream: false,
       providerId: 'test-provider',
+    });
+
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
+  test('sends full history for new conversations (no conversationId)', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch').mockImplementation((_url, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+      expect(body.messages).toHaveLength(3);
+      expect(body.messages[0]).toMatchObject({ role: 'user', content: 'first message' });
+      expect(body.messages[2]).toMatchObject({ role: 'user', content: 'latest message' });
+
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: 'ok',
+                },
+              },
+            ],
+          }),
+          { status: 200 }
+        )
+      );
+    });
+
+    await chat.sendMessage({
+      messages: [
+        { role: 'user' as Role, content: 'first message' },
+        { role: 'assistant' as Role, content: 'assistant reply' },
+        { role: 'user' as Role, content: 'latest message' },
+      ],
+      stream: false,
+      providerId: 'test-provider',
+      // No conversationId provided
     });
 
     expect(fetchMock).toHaveBeenCalled();

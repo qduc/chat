@@ -69,6 +69,8 @@ const ModelItem = React.memo(
       </button>
       <button
         onClick={() => onSelect(model.value)}
+        title={model.label}
+        aria-label={model.label}
         className={`flex-1 min-w-0 px-3 py-2 text-left transition-colors ${
           isSelected
             ? 'text-zinc-900 dark:text-zinc-100 font-medium'
@@ -408,7 +410,32 @@ export default function ModelSelector({
     organizedModels.other.length,
   ]);
 
-  const currentModel = allModels.find((model) => model.value === value);
+  const currentModel = useMemo(
+    () =>
+      allModels.find((m) => m.value === value) ||
+      allModels.find((m) => m.value.endsWith(`::${value}`)),
+    [allModels, value]
+  );
+
+  // Set active tab to current model's provider when opening
+  useEffect(() => {
+    if (!isOpen) return;
+
+    // Find model by exact value or by suffix if value doesn't include provider prefix
+    const foundModel =
+      allModels.find((m) => m.value === value) ||
+      allModels.find((m) => m.value.endsWith(`::${value}`));
+
+    if (foundModel) {
+      if (foundModel.providerId && foundModel.providerId !== 'all') {
+        const hasTab = providerTabs.some((tab) => tab.id === foundModel.providerId);
+        if (hasTab) {
+          setSelectedTab(foundModel.providerId);
+        }
+      }
+    }
+  }, [isOpen, value, allModels, providerTabs]);
+
   const displayText = currentModel?.label || value || 'Select model';
 
   return (

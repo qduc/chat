@@ -246,6 +246,11 @@ export function useChat() {
 
   // Message & Conversation State
   const [messages, setMessages] = useState<Message[]>([]);
+  const messagesRef = useRef<Message[]>([]);
+
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationTitle, setCurrentConversationTitle] = useState<string | null>(null);
@@ -750,8 +755,44 @@ export function useChat() {
         const reasoning =
           qualityLevelRef.current !== 'unset' ? { effort: qualityLevelRef.current } : undefined;
 
+        const currentMessages = messagesRef.current;
+
+        // Prepare the new message object
+        const newMessageObj = {
+          id: userMessage.id,
+          role: 'user' as const,
+          content: messageContent,
+        };
+
+        let messagesPayload;
+        if (conversationId) {
+          // Optimization for existing conversations
+          messagesPayload = [newMessageObj];
+        } else {
+          // Full history for new conversations
+          const history = currentMessages.map((m) => ({
+            id: m.id,
+            role: m.role,
+            content: m.content,
+            tool_calls: m.tool_calls,
+            tool_outputs: m.tool_outputs,
+          }));
+
+          // Check if the message is already in history (e.g. retry/regenerate)
+          const exists = history.some((m) => m.id === newMessageObj.id);
+          if (exists) {
+            // Update existing message in place (in case content changed)
+            messagesPayload = history.map((m) =>
+              m.id === newMessageObj.id ? { ...m, ...newMessageObj } : m
+            );
+          } else {
+            // Append new message
+            messagesPayload = [...history, newMessageObj];
+          }
+        }
+
         const response = await chat.sendMessage({
-          messages: [{ id: userMessage.id, role: 'user', content: messageContent }],
+          messages: messagesPayload,
           model: actualModelId,
           providerId: providerIdRef.current || '',
           stream: shouldStreamRef.current,
