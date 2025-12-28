@@ -7,6 +7,11 @@ on:
         description: 'Tag to build and publish'
         required: false
         type: string
+      skip_ci:
+        description: 'Skip CI'
+        required: false
+        type: boolean
+        default: false
   workflow_dispatch:
     inputs:
       tag:
@@ -20,7 +25,7 @@ env:
 
 jobs:
   ci:
-    if: github.event_name != 'workflow_call'
+    if: github.event_name != 'workflow_call' && inputs.skip_ci != true
     uses: ./.github/workflows/ci.yml
     permissions:
       contents: read
