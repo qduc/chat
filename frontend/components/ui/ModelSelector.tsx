@@ -411,7 +411,9 @@ export default function ModelSelector({
   ]);
 
   const currentModel = useMemo(
-    () => allModels.find((m) => m.value === value) || allModels.find((m) => m.value.endsWith(`::${value}`)),
+    () =>
+      allModels.find((m) => m.value === value) ||
+      allModels.find((m) => m.value.endsWith(`::${value}`)),
     [allModels, value]
   );
 
