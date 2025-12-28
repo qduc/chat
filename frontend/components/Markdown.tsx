@@ -730,6 +730,21 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
   const processedText = useMemo(() => {
     let textToProcess = escapeCurrencyDollarSigns(normalizeLatexDelimiters(throttledText));
 
+    // Convert single newlines to hard breaks for better text formatting
+    // Split by code blocks and inline code to avoid affecting them
+    const parts = textToProcess.split(/(```[\s\S]*?```|`[^`]*`)/g);
+    textToProcess = parts
+      .map((part) => {
+        if (part.startsWith('```') || (part.startsWith('`') && part.endsWith('`'))) {
+          // This is a code block or inline code, leave as-is
+          return part;
+        } else {
+          // This is regular text, convert single newlines to hard breaks
+          return part.replace(/\n/g, '  \n');
+        }
+      })
+      .join('');
+
     // Check for incomplete thinking blocks (both <thinking> and <think> variants)
     // Count opening and closing tags to ensure they match
     const openingThinkingTags = (textToProcess.match(/<thinking>/g) || []).length;
