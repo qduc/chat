@@ -609,6 +609,8 @@ export function ChatV2() {
               messages={chat.messages}
               pending={chat.pending}
               conversationId={chat.conversationId}
+              compareModels={chat.compareModels}
+              primaryModelLabel={chat.model}
               editingMessageId={chat.editingMessageId}
               editingContent={chat.editingContent}
               onCopy={handleCopy}

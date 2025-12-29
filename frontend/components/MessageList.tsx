@@ -33,6 +33,8 @@ interface MessageListProps {
   messages: ChatMessage[];
   pending: PendingState;
   conversationId: string | null;
+  compareModels: string[];
+  primaryModelLabel: string | null;
   editingMessageId: string | null;
   editingContent: string;
   onCopy: (text: string) => void;
@@ -53,6 +55,39 @@ function splitMessagesWithToolCalls(messages: ChatMessage[]): ChatMessage[] {
   // Keep original message shape and avoid splitting tool calls into separate messages.
   // We render tool calls and any tool outputs inside the same assistant bubble below.
   return messages;
+}
+
+// Deep comparison for comparisonResults objects to detect changes from linked conversations
+function deepEqualComparisonResults(
+  a: Record<string, { content: any; usage?: any; status: string; error?: string }> | undefined,
+  b: Record<string, { content: any; usage?: any; status: string; error?: string }> | undefined
+): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined) return false;
+
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+
+  if (keysA.length !== keysB.length) return false;
+
+  for (const key of keysA) {
+    if (!keysB.includes(key)) return false;
+
+    const objA = a[key];
+    const objB = b[key];
+
+    // Compare content - stringify for deep comparison
+    if (JSON.stringify(objA.content) !== JSON.stringify(objB.content)) return false;
+
+    // Compare usage
+    if (JSON.stringify(objA.usage) !== JSON.stringify(objB.usage)) return false;
+
+    // Compare status and error
+    if (objA.status !== objB.status) return false;
+    if (objA.error !== objB.error) return false;
+  }
+
+  return true;
 }
 
 type ToolOutput = NonNullable<ChatMessage['tool_outputs']>[number];
@@ -227,6 +262,8 @@ interface MessageProps {
   message: ChatMessage;
   isStreaming: boolean;
   conversationId: string | null;
+  compareModels: string[];
+  primaryModelLabel: string | null;
   editingMessageId: string | null;
   editingContent: string;
   onCopy: (text: string) => void;
@@ -253,12 +290,16 @@ interface MessageProps {
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   toolbarRef?: React.RefObject<HTMLDivElement | null>;
   onFork?: (messageId: string) => void;
+  activeComparisonTab: string;
+  onComparisonTabChange: (modelId: string) => void;
 }
 
 const Message = React.memo<MessageProps>(
   function Message({
     message,
     isStreaming,
+    compareModels,
+    primaryModelLabel,
     editingMessageId,
     editingContent,
     onEditMessage,
@@ -283,10 +324,14 @@ const Message = React.memo<MessageProps>(
     fileInputRef,
     toolbarRef,
     onFork,
+    activeComparisonTab,
+    onComparisonTabChange,
   }: {
     message: ChatMessage;
     isStreaming: boolean;
     conversationId: string | null;
+    compareModels: string[];
+    primaryModelLabel: string | null;
     editingMessageId: string | null;
     editingContent: string;
     onCopy: (text: string) => void;
@@ -312,21 +357,33 @@ const Message = React.memo<MessageProps>(
     onEditingImageUploadClick: () => void;
     fileInputRef: React.RefObject<HTMLInputElement | null>;
     onFork?: (messageId: string) => void;
+    activeComparisonTab: string;
+    onComparisonTabChange: (modelId: string) => void;
   }) {
     const isUser = message.role === 'user';
     const isEditing = editingMessageId === message.id;
 
     // Comparison Logic
-    const [activeComparisonTab, setActiveComparisonTab] = useState<string>('primary');
-    const hasComparison =
-      message.comparisonResults && Object.keys(message.comparisonResults).length > 0;
+    const baseComparisonModels = Object.keys(message.comparisonResults || {});
+    const showStreamingTabs = isStreaming && compareModels.length > 0;
+    const comparisonModels = showStreamingTabs
+      ? Array.from(new Set([...baseComparisonModels, ...compareModels]))
+      : baseComparisonModels;
+    const hasComparison = comparisonModels.length > 0;
+
+    const resolvedComparisonTab =
+      hasComparison && activeComparisonTab !== 'primary'
+        ? comparisonModels.includes(activeComparisonTab)
+          ? activeComparisonTab
+          : 'primary'
+        : 'primary';
 
     // Determine content based on active tab
     let displayMessage = message;
     let isComparisonStreaming = false;
 
-    if (hasComparison && activeComparisonTab !== 'primary') {
-      const result = message.comparisonResults?.[activeComparisonTab];
+    if (hasComparison && resolvedComparisonTab !== 'primary') {
+      const result = message.comparisonResults?.[resolvedComparisonTab];
       if (result) {
         // Construct a temporary message object for rendering
         displayMessage = {
@@ -334,9 +391,20 @@ const Message = React.memo<MessageProps>(
           content: result.content,
           tool_calls: undefined, // Secondary models don't support tool calls yet
           tool_outputs: undefined,
+          message_events: undefined,
           usage: result.usage,
         };
         isComparisonStreaming = result.status === 'streaming';
+      } else {
+        displayMessage = {
+          ...message,
+          content: '',
+          tool_calls: undefined,
+          tool_outputs: undefined,
+          message_events: undefined,
+          usage: undefined,
+        };
+        isComparisonStreaming = pending.streaming;
       }
     }
 
@@ -362,21 +430,29 @@ const Message = React.memo<MessageProps>(
           {hasComparison && !isUser && (
             <div className="flex items-center gap-2 mb-2 overflow-x-auto pb-1 no-scrollbar">
               <button
-                onClick={() => setActiveComparisonTab('primary')}
+                onClick={() => {
+                  onComparisonTabChange('primary');
+                }}
                 className={`px-3 py-1 text-xs rounded-full border transition-colors whitespace-nowrap ${
-                  activeComparisonTab === 'primary'
+                  resolvedComparisonTab === 'primary'
                     ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
                     : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
                 }`}
               >
-                Primary
+                {primaryModelLabel
+                  ? primaryModelLabel.includes('::')
+                    ? primaryModelLabel.split('::')[1]
+                    : primaryModelLabel
+                  : 'Primary'}
               </button>
-              {Object.keys(message.comparisonResults || {}).map((modelId) => (
+              {comparisonModels.map((modelId) => (
                 <button
                   key={modelId}
-                  onClick={() => setActiveComparisonTab(modelId)}
+                  onClick={() => {
+                    onComparisonTabChange(modelId);
+                  }}
                   className={`px-3 py-1 text-xs rounded-full border transition-colors whitespace-nowrap ${
-                    activeComparisonTab === modelId
+                    resolvedComparisonTab === modelId
                       ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
                       : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
                   }`}
@@ -479,7 +555,7 @@ const Message = React.memo<MessageProps>(
                 <div className="space-y-3">
                   {assistantSegments.length === 0 ? (
                     <div className="text-base leading-relaxed text-zinc-800 dark:text-zinc-200">
-                      {(isStreaming && activeComparisonTab === 'primary') ||
+                      {(isStreaming && resolvedComparisonTab === 'primary') ||
                       isComparisonStreaming ||
                       pending.abort ? (
                         <span className="inline-flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
@@ -516,7 +592,7 @@ const Message = React.memo<MessageProps>(
                             <Markdown
                               text={segment.text}
                               isStreaming={
-                                (isStreaming && activeComparisonTab === 'primary') ||
+                                (isStreaming && resolvedComparisonTab === 'primary') ||
                                 isComparisonStreaming
                               }
                             />
@@ -750,7 +826,7 @@ const Message = React.memo<MessageProps>(
                     <div className="flex items-center gap-2">
                       {streamingStats &&
                         streamingStats.tokensPerSecond > 0 &&
-                        activeComparisonTab === 'primary' && (
+                        resolvedComparisonTab === 'primary' && (
                           <div className="px-2 py-1 rounded-md bg-white/60 dark:bg-neutral-800/50 text-slate-600 dark:text-slate-400 text-xs font-mono">
                             {streamingStats.tokensPerSecond.toFixed(1)} tok/s
                           </div>
@@ -853,9 +929,11 @@ const Message = React.memo<MessageProps>(
       prev.message.content === next.message.content &&
       prev.message.tool_calls === next.message.tool_calls &&
       prev.message.tool_outputs === next.message.tool_outputs &&
-      prev.message.comparisonResults === next.message.comparisonResults &&
+      // Deep compare comparisonResults to detect changes from linked conversations
+      deepEqualComparisonResults(prev.message.comparisonResults, next.message.comparisonResults) &&
       prev.message.usage === next.message.usage &&
       prev.isStreaming === next.isStreaming &&
+      prev.compareModels === next.compareModels &&
       prev.editingMessageId === next.editingMessageId &&
       prev.editingContent === next.editingContent &&
       prev.pending.streaming === next.pending.streaming &&
@@ -863,7 +941,8 @@ const Message = React.memo<MessageProps>(
       prev.copiedMessageId === next.copiedMessageId &&
       prev.streamingStats?.tokensPerSecond === next.streamingStats?.tokensPerSecond &&
       prev.editingImages === next.editingImages &&
-      prev.toolbarRef === next.toolbarRef
+      prev.toolbarRef === next.toolbarRef &&
+      prev.activeComparisonTab === next.activeComparisonTab
     );
   }
 );
@@ -872,6 +951,8 @@ export function MessageList({
   messages,
   pending,
   conversationId,
+  compareModels,
+  primaryModelLabel,
   editingMessageId,
   editingContent,
   onCopy,
@@ -891,6 +972,7 @@ export function MessageList({
   const editingTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [collapsedToolOutputs, setCollapsedToolOutputs] = useState<Record<string, boolean>>({});
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [activeComparisonTab, setActiveComparisonTab] = useState<string>('primary');
   const { dynamicBottomPadding, lastUserMessageRef, toolbarRef, bottomRef } = useStreamingScroll(
     messages,
     pending,
@@ -928,6 +1010,10 @@ export function MessageList({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingMessageId]);
+
+  useEffect(() => {
+    setActiveComparisonTab('primary');
+  }, [conversationId]);
 
   // Handle image upload during editing
   const handleEditingImageFiles = useCallback(async (files: File[]) => {
@@ -1142,6 +1228,8 @@ export function MessageList({
               message={m}
               isStreaming={isStreaming}
               conversationId={conversationId}
+              compareModels={compareModels}
+              primaryModelLabel={primaryModelLabel}
               editingMessageId={editingMessageId}
               editingContent={editingContent}
               onCopy={onCopy}
@@ -1167,6 +1255,8 @@ export function MessageList({
               onEditingImageUploadClick={handleEditingImageUploadClick}
               fileInputRef={fileInputRef}
               onFork={onFork}
+              activeComparisonTab={activeComparisonTab}
+              onComparisonTabChange={setActiveComparisonTab}
             />
           );
         })}

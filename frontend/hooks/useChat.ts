@@ -534,18 +534,99 @@ export function useChat() {
           const linkedResult = await conversationsApi.getLinked(id);
           if (linkedResult.conversations && linkedResult.conversations.length > 0) {
             const linkedMap: Record<string, string> = {};
+
+            // Fetch messages from each linked conversation and populate comparisonResults
             for (const linked of linkedResult.conversations) {
               if (linked.model) {
-                linkedMap[linked.model] = linked.id;
+                const rawLinkedModel = String(linked.model).trim();
+                if (!rawLinkedModel) continue;
+                const linkedProviderId =
+                  typeof linked.provider_id === 'string' ? linked.provider_id.trim() : '';
+                const normalizedLinkedModel = rawLinkedModel.includes('::')
+                  ? rawLinkedModel
+                  : linkedProviderId
+                    ? `${linkedProviderId}::${rawLinkedModel}`
+                    : resolveProviderFromModel(rawLinkedModel)
+                      ? `${resolveProviderFromModel(rawLinkedModel)}::${rawLinkedModel}`
+                      : rawLinkedModel;
+
+                linkedMap[normalizedLinkedModel] = linked.id;
+
+                // Fetch the linked conversation's messages
+                try {
+                  const linkedData = await conversationsApi.get(linked.id);
+                  if (linkedData.messages && linkedData.messages.length > 0) {
+                    // Merge linked conversation messages into comparisonResults
+                    setMessages((prevMessages) => {
+                      // Build a map of user message indices to assistant message indices
+                      // for the linked conversation
+                      const linkedUserIndices: number[] = [];
+                      const linkedAssistantIndices: number[] = [];
+
+                      for (let i = 0; i < linkedData.messages.length; i++) {
+                        const msg = linkedData.messages[i];
+                        if (msg.role === 'user') {
+                          linkedUserIndices.push(i);
+                        } else if (msg.role === 'assistant') {
+                          linkedAssistantIndices.push(i);
+                        }
+                      }
+
+                      // Build comparison results for each message
+                      const updatedMessages = prevMessages.map((msg, idx) => {
+                        if (msg.role !== 'assistant') return msg;
+
+                        // Find the corresponding assistant message in the linked conversation
+                        // by matching the position (index among assistant messages)
+                        const assistantIndex =
+                          prevMessages.slice(0, idx + 1).filter((m) => m.role === 'assistant')
+                            .length - 1;
+
+                        if (assistantIndex >= 0 && assistantIndex < linkedAssistantIndices.length) {
+                          const linkedIdx = linkedAssistantIndices[assistantIndex];
+                          const linkedMsg = linkedData.messages[linkedIdx];
+                          if (linkedMsg) {
+                            return {
+                              ...msg,
+                              comparisonResults: {
+                                ...msg.comparisonResults,
+                                [normalizedLinkedModel]: {
+                                  content: linkedMsg.content ?? '',
+                                  usage: (linkedMsg as any).usage,
+                                  status: 'complete' as const,
+                                },
+                              },
+                            };
+                          }
+                        }
+                        return msg;
+                      });
+
+                      return updatedMessages;
+                    });
+                  }
+                } catch (err) {
+                  console.warn(
+                    `[useChat] Failed to load messages from linked conversation ${linked.id}:`,
+                    err
+                  );
+                  // Continue with other linked conversations
+                }
               }
             }
             setLinkedConversations(linkedMap);
+            const primaryModelValue = finalModelValue || modelRef.current;
+            setCompareModels(
+              Object.keys(linkedMap).filter((modelId) => modelId && modelId !== primaryModelValue)
+            );
           } else {
             setLinkedConversations({});
+            setCompareModels([]);
           }
         } catch {
           // Non-fatal: if loading linked conversations fails, just clear state
           setLinkedConversations({});
+          setCompareModels([]);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load conversation');
@@ -809,6 +890,13 @@ export function useChat() {
             qualityLevelRef.current !== 'unset' ? { effort: qualityLevelRef.current } : undefined;
 
           const currentMessages = messagesRef.current;
+          const isEmptyAssistantPlaceholder = (msg: Message) =>
+            msg.role === 'assistant' &&
+            (msg.content === '' || (Array.isArray(msg.content) && msg.content.length === 0)) &&
+            (!Array.isArray(msg.tool_calls) || msg.tool_calls.length === 0) &&
+            (!Array.isArray(msg.tool_outputs) || msg.tool_outputs.length === 0);
+          const isCurrentAssistant = (msg: Message) =>
+            msg.role === 'assistant' && msg.id === messageId;
 
           // Prepare the new message object
           const newMessageObj = {
@@ -824,7 +912,12 @@ export function useChat() {
           } else {
             // Full history for new conversations or secondary comparison requests
             // (Secondary requests use undefined conversationId, so they need full history)
-            const history = currentMessages.map((m) => ({
+            const historySource = isPrimary
+              ? currentMessages
+              : currentMessages.filter(
+                  (m) => !isEmptyAssistantPlaceholder(m) && !isCurrentAssistant(m)
+                );
+            const history = historySource.map((m) => ({
               id: m.id,
               role: m.role,
               content: m.content,
@@ -1281,9 +1374,6 @@ export function useChat() {
                   }));
                   return;
                 }
-                console.log(
-                  '[AUTO-RETRY] Streaming not supported, retrying with streaming disabled'
-                );
                 providerStreamRef.current = false;
                 setMessages((prev) => prev.slice(0, -1));
                 setTimeout(() => {
@@ -1609,7 +1699,6 @@ export function useChat() {
         setUser({ id: profile.id });
       } catch {
         // User not authenticated, that's ok
-        console.log('[useChat] User not authenticated');
       }
     };
     loadUser();
@@ -1660,6 +1749,40 @@ export function useChat() {
     loadProvidersAndModels();
   }, [loadProvidersAndModels]);
 
+  // Normalize comparison models once model options are available so UI selections resolve.
+  useEffect(() => {
+    if (compareModels.length === 0 || modelOptions.length === 0) return;
+
+    const optionValues = new Set(modelOptions.map((option) => option.value));
+    let didChange = false;
+    const normalized: string[] = [];
+
+    for (const modelId of compareModels) {
+      let nextModel = modelId;
+
+      if (!optionValues.has(nextModel) && !nextModel.includes('::')) {
+        const providerId =
+          modelToProviderRef.current[nextModel] || modelToProvider[nextModel] || '';
+        const qualified = providerId ? `${providerId}::${nextModel}` : '';
+        if (qualified && optionValues.has(qualified)) {
+          nextModel = qualified;
+          didChange = true;
+        }
+      }
+
+      if (!normalized.includes(nextModel)) {
+        if (nextModel !== modelId) didChange = true;
+        normalized.push(nextModel);
+      } else if (nextModel === modelId) {
+        didChange = true;
+      }
+    }
+
+    if (didChange) {
+      setCompareModels(normalized);
+    }
+  }, [compareModels, modelOptions, modelToProvider]);
+
   // Restore draft message when user and conversation are available
   // This preserves drafts across session expiry and re-authentication
   useEffect(() => {
@@ -1672,7 +1795,6 @@ export function useChat() {
     const timer = setTimeout(() => {
       const savedDraft = getDraft(user.id, conversationId);
       if (savedDraft && savedDraft.trim()) {
-        console.log('[useChat] Restoring draft for conversation:', conversationId ?? 'new');
         setInput(savedDraft);
       }
       draftRestoredRef.current = true;

@@ -337,6 +337,24 @@ function handleProxyError(error, req, res, persistence) {
 async function handleRequest(context, req, res) {
   const { body, bodyIn, flags, provider, providerId, persistence, userId, abortContext } = context;
 
+  if (bodyIn?.parent_conversation_id && Array.isArray(bodyIn.messages)) {
+    const summarized = bodyIn.messages.map((msg) => ({
+      role: msg?.role,
+      id: msg?.id,
+      contentLen:
+        typeof msg?.content === 'string'
+          ? msg.content.length
+          : Array.isArray(msg?.content)
+            ? msg.content.length
+            : 0,
+    }));
+    logger.debug('[openaiProxy] comparison request message history', {
+      parentConversationId: bodyIn.parent_conversation_id,
+      count: summarized.length,
+      summary: summarized,
+    });
+  }
+
   if (flags.hasTools) {
     // Tool orchestration path
     if (flags.streamToFrontend) {
