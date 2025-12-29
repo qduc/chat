@@ -12,6 +12,7 @@ export interface Tab {
   id: string;
   label: string;
   count?: number;
+  hasSelected?: boolean;
 }
 
 export interface Section<T> {
@@ -248,7 +249,12 @@ export default function ModelSelectBase<T extends SelectOption>({
                           : 'border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800'
                       }`}
                     >
-                      <div className="truncate">{tab.label}</div>
+                      <div className="flex items-center justify-center gap-1.5 truncate">
+                        {tab.label}
+                        {tab.hasSelected && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500 dark:bg-blue-400 flex-shrink-0" />
+                        )}
+                      </div>
                       {showTabCounts && typeof tab.count === 'number' && (
                         <div className="text-xs opacity-75">({tab.count})</div>
                       )}

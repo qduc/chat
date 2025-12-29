@@ -122,22 +122,36 @@ export default function CompareSelector({
     return result;
   }, [groups, fallbackOptions]);
 
-  // Get available provider tabs
+  // Get available provider tabs with hasSelected indicator
   const providerTabs = useMemo<Tab[]>(() => {
-    const tabs: Tab[] = [{ id: 'all', label: 'All', count: allModels.length }];
+    const selectedSet = new Set(selectedModels);
+
+    // Check if any model in a provider group is selected
+    const hasSelectedInProvider = (providerId: string): boolean => {
+      return allModels.some(
+        (model) => model.providerId === providerId && selectedSet.has(model.value)
+      );
+    };
+
+    const hasAnySelected = selectedModels.length > 0;
+
+    const tabs: Tab[] = [
+      { id: 'all', label: 'All', count: allModels.length, hasSelected: hasAnySelected },
+    ];
     if (groups && groups.length > 1) {
       groups.forEach((group) => {
         tabs.push({
           id: group.id,
           label: group.label,
           count: group.options.length,
+          hasSelected: hasSelectedInProvider(group.id),
         });
       });
     }
     return tabs;
-  }, [groups, allModels.length]);
+  }, [groups, allModels, selectedModels]);
 
-  // Filter models based on search query and selected tab
+  // Filter models based on search query and selected tab, with selected models pinned to top
   const filteredModels = useMemo(() => {
     let models = allModels;
 
@@ -155,8 +169,23 @@ export default function CompareSelector({
       );
     }
 
+    // Sort: primary model first, then selected models, then unselected
+    const selectedSet = new Set(selectedModels);
+    models = [...models].sort((a, b) => {
+      const aIsPrimary = a.value === primaryModel;
+      const bIsPrimary = b.value === primaryModel;
+      const aIsSelected = selectedSet.has(a.value);
+      const bIsSelected = selectedSet.has(b.value);
+
+      if (aIsPrimary && !bIsPrimary) return -1;
+      if (!aIsPrimary && bIsPrimary) return 1;
+      if (aIsSelected && !bIsSelected) return -1;
+      if (!aIsSelected && bIsSelected) return 1;
+      return 0;
+    });
+
     return models;
-  }, [allModels, searchQuery, selectedTab]);
+  }, [allModels, searchQuery, selectedTab, selectedModels, primaryModel]);
 
   const handleToggle = useCallback(
     (modelValue: string) => {

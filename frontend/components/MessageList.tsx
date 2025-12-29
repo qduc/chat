@@ -360,8 +360,8 @@ const Message = React.memo<MessageProps>(
     fileInputRef: React.RefObject<HTMLInputElement | null>;
     onFork?: (messageId: string) => void;
     selectedComparisonModels: string[];
-      onToggleComparisonModel: (modelId: string, event?: React.MouseEvent) => void;
-      onSelectAllComparisonModels: (models: string[]) => void;
+    onToggleComparisonModel: (modelId: string, event?: React.MouseEvent) => void;
+    onSelectAllComparisonModels: (models: string[]) => void;
   }) {
     const isUser = message.role === 'user';
     const isEditing = editingMessageId === message.id;
@@ -764,10 +764,11 @@ const Message = React.memo<MessageProps>(
               {/* All button */}
               <button
                 onClick={() => onSelectAllComparisonModels(allModels)}
-                className={`px-2.5 py-1 text-xs rounded-full border transition-colors whitespace-nowrap ${activeModels.length === allModels.length
+                className={`px-2.5 py-1 text-xs rounded-full border transition-colors whitespace-nowrap ${
+                  activeModels.length === allModels.length
                     ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
                     : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
-                  }`}
+                }`}
               >
                 All
               </button>
@@ -932,7 +933,7 @@ const Message = React.memo<MessageProps>(
                     </button>
                   </div>
                 </div>
-                )}
+              )}
             </>
           )}
         </div>
