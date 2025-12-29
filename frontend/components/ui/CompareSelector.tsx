@@ -177,6 +177,11 @@ export default function CompareSelector({
     }
   }, [isOpen]);
 
+  // When filtered models change, reset highlighted index
+  useEffect(() => {
+    setHighlightedIndex(null);
+  }, [searchQuery, selectedTab, filteredModels.length]);
+
   const activeCount = selectedModels.length;
 
   const sections = useMemo<Section<ModelOption>[]>(
@@ -226,16 +231,23 @@ export default function CompareSelector({
         ) : null
       }
       footer={
-        <div className="p-2 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 flex justify-between items-center">
-          <span className="text-xs text-zinc-500">{selectedModels.length} selected</span>
-          {selectedModels.length > 0 && (
-            <button
-              onClick={() => onChange([])}
-              className="text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
-            >
-              Clear all
-            </button>
+        <div className="flex flex-col">
+          {filteredModels.length > visibleCount && (
+            <div className="px-3 py-2 text-center text-xs text-zinc-500 border-t border-zinc-200 dark:border-zinc-800">
+              Showing {visibleCount} of {filteredModels.length} models. Scroll for more...
+            </div>
           )}
+          <div className="p-2 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 flex justify-between items-center">
+            <span className="text-xs text-zinc-500">{selectedModels.length} selected</span>
+            {selectedModels.length > 0 && (
+              <button
+                onClick={() => onChange([])}
+                className="text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+              >
+                Clear all
+              </button>
+            )}
+          </div>
         </div>
       }
       highlightedIndex={highlightedIndex}
@@ -243,6 +255,11 @@ export default function CompareSelector({
       onEnter={(model) => handleToggle(model.value)}
       enableKeyboardNavigation
       getItemId={(index) => `compare-item-${index}`}
+      onScrollNearEnd={() => {
+        if (visibleCount < filteredModels.length + 100) {
+          setVisibleCount((prev) => Math.min(prev + 50, filteredModels.length + 100));
+        }
+      }}
       trigger={
         <button
           onClick={() => setIsOpen(!isOpen)}
