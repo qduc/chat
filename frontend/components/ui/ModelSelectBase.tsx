@@ -280,7 +280,7 @@ export default function ModelSelectBase<T extends SelectOption>({
                 </div>
               </div>
 
-                {extraHeader}
+              {extraHeader}
 
               <div
                 ref={listRef}

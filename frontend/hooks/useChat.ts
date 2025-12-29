@@ -1475,9 +1475,7 @@ export function useChat() {
       if (baseMessages.length === 0) return;
 
       const comparisonModelsOverride = Array.from(
-        new Set(
-          baseMessages.flatMap((message) => Object.keys(message.comparisonResults || {}))
-        )
+        new Set(baseMessages.flatMap((message) => Object.keys(message.comparisonResults || {})))
       );
 
       const lastUserMessage = baseMessages
@@ -1661,8 +1659,7 @@ export function useChat() {
           onEvent: (event) => {
             if (event.type === 'text') {
               updateTargetMessageState((current) => {
-                const currentContent =
-                  typeof current.content === 'string' ? current.content : '';
+                const currentContent = typeof current.content === 'string' ? current.content : '';
                 return { content: currentContent + event.value };
               });
             } else if (event.type === 'tool_call') {
