@@ -389,9 +389,9 @@ const Message = React.memo<MessageProps>(
         displayMessage = {
           ...message,
           content: result.content,
-          tool_calls: undefined, // Secondary models don't support tool calls yet
-          tool_outputs: undefined,
-          message_events: undefined,
+          tool_calls: result.tool_calls,
+          tool_outputs: result.tool_outputs,
+          message_events: result.message_events,
           usage: result.usage,
         };
         isComparisonStreaming = result.status === 'streaming';

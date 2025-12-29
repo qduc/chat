@@ -49,6 +49,14 @@ export interface Message {
       usage?: any;
       status: 'streaming' | 'complete' | 'error';
       error?: string;
+      tool_calls?: any[];
+      tool_outputs?: Array<{
+        tool_call_id?: string;
+        name?: string;
+        output: any;
+        status?: string;
+      }>;
+      message_events?: MessageEvent[];
     }
   >;
 }
@@ -594,6 +602,9 @@ export function useChat() {
                                   content: linkedMsg.content ?? '',
                                   usage: (linkedMsg as any).usage,
                                   status: 'complete' as const,
+                                  tool_calls: linkedMsg.tool_calls,
+                                  tool_outputs: linkedMsg.tool_outputs,
+                                  message_events: linkedMsg.message_events,
                                 },
                               },
                             };
@@ -865,6 +876,83 @@ export function useChat() {
         const primaryModel = modelRef.current;
         const activeComparisonModels = compareModels.filter((m) => m !== primaryModel);
 
+        // Helper to update message state - works for both primary and secondary models
+        const updateMessageState = (
+          isPrimary: boolean,
+          targetModel: string,
+          updater: (
+            current: Message | { content: MessageContent; tool_calls?: any[]; tool_outputs?: any[] }
+          ) =>
+            | Partial<Message>
+            | Partial<{ content: MessageContent; tool_calls?: any[]; tool_outputs?: any[] }>
+        ) => {
+          setMessages((prev) => {
+            const lastIdx = prev.length - 1;
+            if (lastIdx < 0) return prev;
+            const lastMsg = prev[lastIdx];
+            if (!lastMsg || lastMsg.role !== 'assistant') return prev;
+
+            if (isPrimary) {
+              const updates = updater(lastMsg);
+              return [...prev.slice(0, lastIdx), { ...lastMsg, ...updates }];
+            } else {
+              const existingRes = lastMsg.comparisonResults?.[targetModel];
+              if (!existingRes) return prev;
+              const updates = updater(existingRes);
+              return [
+                ...prev.slice(0, lastIdx),
+                {
+                  ...lastMsg,
+                  comparisonResults: {
+                    ...lastMsg.comparisonResults,
+                    [targetModel]: { ...existingRes, ...updates },
+                  },
+                },
+              ];
+            }
+          });
+        };
+
+        // Helper to merge tool call deltas
+        const mergeToolCallDelta = (existingToolCalls: any[], tcDelta: any, textOffset: number) => {
+          const existingIdx = tcDelta.id
+            ? existingToolCalls.findIndex((tc: any) => tc.id === tcDelta.id)
+            : existingToolCalls.findIndex((tc: any) => (tc.index ?? 0) === (tcDelta.index ?? 0));
+
+          if (existingIdx >= 0) {
+            const updatedToolCalls = [...existingToolCalls];
+            const existing = { ...updatedToolCalls[existingIdx] };
+            if (tcDelta.id) existing.id = tcDelta.id;
+            if (tcDelta.type) existing.type = tcDelta.type;
+            if (tcDelta.index !== undefined) existing.index = tcDelta.index;
+            if (tcDelta.function?.name) {
+              existing.function = { ...existing.function, name: tcDelta.function.name };
+            }
+            if (tcDelta.function?.arguments) {
+              existing.function = {
+                ...existing.function,
+                arguments: (existing.function?.arguments || '') + tcDelta.function.arguments,
+              };
+            }
+            updatedToolCalls[existingIdx] = existing;
+            return updatedToolCalls;
+          } else {
+            return [
+              ...existingToolCalls,
+              {
+                id: tcDelta.id,
+                type: tcDelta.type || 'function',
+                index: tcDelta.index ?? existingToolCalls.length,
+                textOffset,
+                function: {
+                  name: tcDelta.function?.name || '',
+                  arguments: tcDelta.function?.arguments || '',
+                },
+              },
+            ];
+          }
+        };
+
         const executeRequest = async (
           targetModel: string,
           isPrimary: boolean,
@@ -982,255 +1070,96 @@ export function useChat() {
               activeSystemPromptId: activeSystemPromptIdRef.current || undefined,
               modelCapabilities: modelCapabilities,
               onToken: (token: string) => {
-                if (isPrimary) {
-                  // Update token count using ref to avoid re-renders on every token
-                  if (tokenStatsRef.current && tokenStatsRef.current.messageId === messageId) {
-                    const isFirstToken = tokenStatsRef.current.count === 0;
+                // Update token stats for primary model only
+                if (
+                  isPrimary &&
+                  tokenStatsRef.current &&
+                  tokenStatsRef.current.messageId === messageId
+                ) {
+                  const isFirstToken = tokenStatsRef.current.count === 0;
+                  tokenStatsRef.current.count += 1;
+                  if (isFirstToken) {
+                    tokenStatsRef.current.startTime = Date.now();
+                  }
+                  tokenStatsRef.current.lastUpdated = Date.now();
+                }
+
+                updateMessageState(isPrimary, targetModel, (current) => {
+                  const currentContent = typeof current.content === 'string' ? current.content : '';
+                  return { content: currentContent + token };
+                });
+              },
+              onEvent: (event) => {
+                if (event.type === 'text') {
+                  // Update token stats for primary model only
+                  if (
+                    isPrimary &&
+                    tokenStatsRef.current &&
+                    tokenStatsRef.current.messageId === messageId
+                  ) {
+                    const isFirstContent = tokenStatsRef.current.count === 0;
                     tokenStatsRef.current.count += 1;
-                    if (isFirstToken) {
+                    if (isFirstContent) {
                       tokenStatsRef.current.startTime = Date.now();
                     }
                     tokenStatsRef.current.lastUpdated = Date.now();
                   }
 
-                  setMessages((prev) => {
-                    const lastIdx = prev.length - 1;
-                    if (lastIdx < 0) return prev;
-                    const lastMsg = prev[lastIdx];
-                    if (!lastMsg || lastMsg.role !== 'assistant') return prev;
-                    const newContent =
-                      typeof lastMsg.content === 'string' ? lastMsg.content + token : token;
-                    return [...prev.slice(0, lastIdx), { ...lastMsg, content: newContent }];
-                  });
-                } else {
-                  // Update secondary model comparison content
-                  setMessages((prev) => {
-                    const lastIdx = prev.length - 1;
-                    if (lastIdx < 0) return prev;
-                    const lastMsg = prev[lastIdx];
-                    const existingRes = lastMsg.comparisonResults?.[targetModel];
-                    if (!existingRes) return prev;
-
+                  updateMessageState(isPrimary, targetModel, (current) => {
                     const currentContent =
-                      typeof existingRes.content === 'string' ? existingRes.content : '';
-                    const newContent = currentContent + token;
-
-                    return [
-                      ...prev.slice(0, lastIdx),
-                      {
-                        ...lastMsg,
-                        comparisonResults: {
-                          ...lastMsg.comparisonResults,
-                          [targetModel]: { ...existingRes, content: newContent },
-                        },
-                      },
-                    ];
+                      typeof current.content === 'string' ? current.content : '';
+                    return { content: currentContent + event.value };
                   });
-                }
-              },
-              onEvent: (event) => {
-                if (event.type === 'text') {
-                  if (isPrimary) {
-                    if (tokenStatsRef.current && tokenStatsRef.current.messageId === messageId) {
-                      const isFirstContent = tokenStatsRef.current.count === 0;
-                      tokenStatsRef.current.count += 1;
-                      if (isFirstContent) {
-                        tokenStatsRef.current.startTime = Date.now();
-                      }
-                      tokenStatsRef.current.lastUpdated = Date.now();
-                    }
-                    setMessages((prev) => {
-                      const lastIdx = prev.length - 1;
-                      if (lastIdx < 0) return prev;
-                      const lastMsg = prev[lastIdx];
-                      if (!lastMsg || lastMsg.role !== 'assistant') return prev;
-                      const currentContent =
-                        typeof lastMsg.content === 'string' ? lastMsg.content : '';
-                      const newContent = currentContent + event.value;
-                      return [...prev.slice(0, lastIdx), { ...lastMsg, content: newContent }];
-                    });
-                  } else {
-                    setMessages((prev) => {
-                      const lastIdx = prev.length - 1;
-                      if (lastIdx < 0) return prev;
-                      const lastMsg = prev[lastIdx];
-                      const existingRes = lastMsg.comparisonResults?.[targetModel];
-                      if (!existingRes) return prev;
-                      const currentContent =
-                        typeof existingRes.content === 'string' ? existingRes.content : '';
-                      const newContent = currentContent + event.value;
-                      return [
-                        ...prev.slice(0, lastIdx),
-                        {
-                          ...lastMsg,
-                          comparisonResults: {
-                            ...lastMsg.comparisonResults,
-                            [targetModel]: { ...existingRes, content: newContent },
-                          },
-                        },
-                      ];
-                    });
-                  }
-                } else if (event.type === 'tool_call' && isPrimary) {
-                  // Only primary model supports tools for now in comparison mode
-                  setMessages((prev) => {
-                    const lastIdx = prev.length - 1;
-                    if (lastIdx < 0) return prev;
-
-                    const lastMsg = prev[lastIdx];
-                    if (!lastMsg || lastMsg.role !== 'assistant') return prev;
-
-                    // Calculate current text length to set as textOffset
+                } else if (event.type === 'tool_call') {
+                  updateMessageState(isPrimary, targetModel, (current) => {
                     const currentTextLength =
-                      typeof lastMsg.content === 'string' ? lastMsg.content.length : 0;
-
-                    // Accumulate tool calls by id (unique identifier) to avoid duplicates during streaming
-                    const tcDelta = event.value;
-                    const existingToolCalls = lastMsg.tool_calls || [];
-
-                    // Use id as the primary identifier (OpenAI spec), fallback to index for older formats
-                    const existingIdx = tcDelta.id
-                      ? existingToolCalls.findIndex((tc) => tc.id === tcDelta.id)
-                      : existingToolCalls.findIndex(
-                          (tc) => (tc.index ?? 0) === (tcDelta.index ?? 0)
-                        );
-
-                    let updatedToolCalls;
-                    if (existingIdx >= 0) {
-                      // Update existing tool call (merge chunks during streaming)
-                      updatedToolCalls = [...existingToolCalls];
-                      const existing = { ...updatedToolCalls[existingIdx] };
-                      if (tcDelta.id) existing.id = tcDelta.id;
-                      if (tcDelta.type) existing.type = tcDelta.type;
-                      if (tcDelta.index !== undefined) existing.index = tcDelta.index;
-                      if (tcDelta.function?.name) {
-                        existing.function = { ...existing.function, name: tcDelta.function.name };
-                      }
-                      if (tcDelta.function?.arguments) {
-                        existing.function = {
-                          ...existing.function,
-                          arguments:
-                            (existing.function?.arguments || '') + tcDelta.function.arguments,
-                        };
-                      }
-                      updatedToolCalls[existingIdx] = existing;
-                    } else {
-                      // New tool call - capture textOffset from current content length
-                      updatedToolCalls = [
-                        ...existingToolCalls,
-                        {
-                          id: tcDelta.id,
-                          type: tcDelta.type || 'function',
-                          index: tcDelta.index ?? existingToolCalls.length,
-                          textOffset: currentTextLength, // Store the position where tool call occurred
-                          function: {
-                            name: tcDelta.function?.name || '',
-                            arguments: tcDelta.function?.arguments || '',
-                          },
-                        },
-                      ];
-                    }
-
-                    // Create new array with updated last message (immutable update)
-                    return [
-                      ...prev.slice(0, lastIdx),
-                      { ...lastMsg, tool_calls: updatedToolCalls },
-                    ];
+                      typeof current.content === 'string' ? current.content.length : 0;
+                    const existingToolCalls = current.tool_calls || [];
+                    const updatedToolCalls = mergeToolCallDelta(
+                      existingToolCalls,
+                      event.value,
+                      currentTextLength
+                    );
+                    return { tool_calls: updatedToolCalls };
                   });
-                } else if (event.type === 'tool_output' && isPrimary) {
-                  setMessages((prev) => {
-                    const lastIdx = prev.length - 1;
-                    if (lastIdx < 0) return prev;
-
-                    const lastMsg = prev[lastIdx];
-                    if (!lastMsg || lastMsg.role !== 'assistant') return prev;
-
-                    // Avoid duplicate tool outputs by checking tool_call_id or name
+                } else if (event.type === 'tool_output') {
+                  updateMessageState(isPrimary, targetModel, (current) => {
                     const outputValue = event.value;
                     const toolCallId = outputValue.tool_call_id;
                     const outputName = outputValue.name;
+                    const existingToolOutputs = current.tool_outputs || [];
 
-                    const existingToolOutputs = lastMsg.tool_outputs || [];
                     // Check if this tool output already exists
-                    const existingIdx = existingToolOutputs.findIndex((out) => {
-                      if (toolCallId && out.tool_call_id) {
-                        return out.tool_call_id === toolCallId;
-                      }
-                      if (outputName && out.name) {
-                        return out.name === outputName;
-                      }
+                    const existingIdx = existingToolOutputs.findIndex((out: any) => {
+                      if (toolCallId && out.tool_call_id) return out.tool_call_id === toolCallId;
+                      if (outputName && out.name) return out.name === outputName;
                       return false;
                     });
 
                     if (existingIdx === -1) {
-                      // Create new array with updated last message (immutable update)
-                      return [
-                        ...prev.slice(0, lastIdx),
-                        { ...lastMsg, tool_outputs: [...existingToolOutputs, outputValue] },
-                      ];
-                    } else {
-                      // If it already exists, ignore the duplicate
-                      return prev;
+                      return { tool_outputs: [...existingToolOutputs, outputValue] };
                     }
+                    return {}; // No update if duplicate
                   });
                 } else if (event.type === 'usage') {
-                  if (isPrimary) {
-                    setMessages((prev) => {
-                      const lastIdx = prev.length - 1;
-                      if (lastIdx < 0) return prev;
-
-                      const lastMsg = prev[lastIdx];
-                      if (!lastMsg || lastMsg.role !== 'assistant') return prev;
-
-                      // Only update if usage data has actually changed
-                      const existingUsage = lastMsg.usage;
+                  updateMessageState(isPrimary, targetModel, (current) => {
+                    // For primary, check if usage actually changed
+                    if (isPrimary) {
+                      const existingUsage = (current as Message).usage;
                       const newUsage = event.value;
-
                       if (existingUsage) {
-                        const providerSame = existingUsage.provider === newUsage.provider;
-                        const modelSame = existingUsage.model === newUsage.model;
-                        const promptTokensSame =
-                          existingUsage.prompt_tokens === newUsage.prompt_tokens;
-                        const completionTokensSame =
-                          existingUsage.completion_tokens === newUsage.completion_tokens;
-                        const totalTokensSame =
-                          existingUsage.total_tokens === newUsage.total_tokens;
-                        const reasoningTokensSame =
+                        const unchanged =
+                          existingUsage.provider === newUsage.provider &&
+                          existingUsage.model === newUsage.model &&
+                          existingUsage.prompt_tokens === newUsage.prompt_tokens &&
+                          existingUsage.completion_tokens === newUsage.completion_tokens &&
+                          existingUsage.total_tokens === newUsage.total_tokens &&
                           existingUsage.reasoning_tokens === newUsage.reasoning_tokens;
-
-                        if (
-                          providerSame &&
-                          modelSame &&
-                          promptTokensSame &&
-                          completionTokensSame &&
-                          totalTokensSame &&
-                          reasoningTokensSame
-                        ) {
-                          return prev;
-                        }
+                        if (unchanged) return {};
                       }
-                      return [...prev.slice(0, lastIdx), { ...lastMsg, usage: event.value }];
-                    });
-                  } else {
-                    setMessages((prev) => {
-                      const lastIdx = prev.length - 1;
-                      if (lastIdx < 0) return prev;
-                      const lastMsg = prev[lastIdx];
-                      const existingRes = lastMsg.comparisonResults?.[targetModel];
-                      if (!existingRes) return prev;
-
-                      return [
-                        ...prev.slice(0, lastIdx),
-                        {
-                          ...lastMsg,
-                          comparisonResults: {
-                            ...lastMsg.comparisonResults,
-                            [targetModel]: { ...existingRes, usage: event.value },
-                          },
-                        },
-                      ];
-                    });
-                  }
+                    }
+                    return { usage: event.value };
+                  });
                 }
               },
             } as ChatOptionsExtended);
@@ -1360,20 +1289,11 @@ export function useChat() {
 
             return response;
           } catch (err) {
-            // Error handling
-            if (isPrimary) {
-              // Handle streaming not supported error by retrying with streaming disabled
-              if (err instanceof StreamingNotSupportedError) {
-                if (opts?.retried) {
-                  setError('Streaming not supported by provider');
-                  setStatus('idle');
-                  setPending((prev) => ({
-                    ...prev,
-                    streaming: false,
-                    error: 'Streaming not supported by provider',
-                  }));
-                  return;
-                }
+            // Error handling - use same error formatting for both primary and secondary
+            let errorMessage: string;
+            if (err instanceof StreamingNotSupportedError) {
+              // For primary, try to retry without streaming
+              if (isPrimary && !opts?.retried) {
                 providerStreamRef.current = false;
                 setMessages((prev) => prev.slice(0, -1));
                 setTimeout(() => {
@@ -1381,34 +1301,31 @@ export function useChat() {
                 }, 0);
                 return;
               }
+              errorMessage = 'Streaming not supported by provider';
+            } else if (err instanceof APIError) {
+              errorMessage = formatUpstreamError(err);
+            } else if (err instanceof Error && err.name === 'AbortError') {
+              errorMessage = 'Message cancelled';
+            } else if (err instanceof Error) {
+              errorMessage = err.message;
+            } else {
+              errorMessage = isPrimary ? 'Failed to send message' : 'Failed to generate';
+            }
 
-              let displayError: string;
-              if (err instanceof APIError) {
-                displayError = formatUpstreamError(err);
-              } else if (err instanceof Error && err.name === 'AbortError') {
-                displayError = 'Message cancelled';
-              } else if (err instanceof Error) {
-                displayError = err.message;
-              } else {
-                displayError = 'Failed to send message';
-              }
-
-              setError(displayError);
+            if (isPrimary) {
+              setError(errorMessage);
               setStatus('idle');
               setPending((prev) => ({
                 ...prev,
                 streaming: false,
-                error: displayError,
+                error: errorMessage,
               }));
             } else {
-              // Secondary error
-              const errorMessage = err instanceof Error ? err.message : 'Failed to generate';
               setMessages((prev) => {
                 const lastIdx = prev.length - 1;
                 if (lastIdx < 0) return prev;
                 const lastMsg = prev[lastIdx];
                 const existingRes = lastMsg.comparisonResults?.[targetModel];
-                // If it wasn't initialized yet, ignore or init with error
                 if (!existingRes) return prev;
 
                 return [
@@ -1430,26 +1347,79 @@ export function useChat() {
           }
         };
 
-        // Execute primary request
-        const primaryPromise = executeRequest(primaryModel, true, {
-          conversationId: conversationId || undefined,
-        });
+        // For comparison mode with new conversations, create the conversation upfront
+        // so all requests can start in parallel instead of waiting for primary to complete
+        let effectiveConversationId = conversationId;
 
-        // Execute secondary requests in parallel (independent)
-        // They will be linked to the primary conversation once it's created
-        // We need to wait for the primary response to get the conversation ID first
-        primaryPromise.then((primaryResponse) => {
-          const parentId = primaryResponse?.conversation?.id || conversationId || undefined;
-          activeComparisonModels.forEach((modelId) => {
-            // Secondary requests use parentConversationId to link to the primary conversation
-            void executeRequest(modelId, false, {
-              parentConversationId: parentId,
+        if (!conversationId && activeComparisonModels.length > 0) {
+          try {
+            const actualModelId = primaryModel.includes('::')
+              ? primaryModel.split('::')[1]
+              : primaryModel;
+            const newConversation = await conversationsApi.create({
+              model: actualModelId,
+              provider_id: providerIdRef.current || undefined,
+              streamingEnabled: shouldStreamRef.current,
+              toolsEnabled: useToolsRef.current,
+              qualityLevel:
+                qualityLevelRef.current !== 'unset' ? qualityLevelRef.current : undefined,
+            });
+            effectiveConversationId = newConversation.id;
+            setConversationId(newConversation.id);
+
+            // Add to conversations list immediately
+            const newConversationEntry: Conversation = {
+              id: newConversation.id,
+              title: newConversation.title || 'Untitled conversation',
+              created_at: newConversation.created_at || new Date().toISOString(),
+              updatedAt: newConversation.created_at || new Date().toISOString(),
+            };
+            setConversations((prev) => {
+              const exists = prev.some((c) => c.id === newConversationEntry.id);
+              if (exists) return prev;
+              return [newConversationEntry, ...prev];
+            });
+          } catch (err) {
+            console.warn(
+              '[useChat] Failed to create conversation upfront, falling back to sequential:',
+              err
+            );
+            // Fall through to original sequential behavior
+          }
+        }
+
+        // Execute requests - parallel if we have conversation ID, sequential otherwise
+        if (effectiveConversationId && activeComparisonModels.length > 0) {
+          // All requests can run in parallel since we have the conversation ID
+          const primaryPromise = executeRequest(primaryModel, true, {
+            conversationId: effectiveConversationId,
+          });
+
+          const secondaryPromises = activeComparisonModels.map((modelId) =>
+            executeRequest(modelId, false, {
+              parentConversationId: effectiveConversationId,
+            })
+          );
+
+          await Promise.all([primaryPromise, ...secondaryPromises]);
+        } else {
+          // Original sequential behavior for non-comparison mode or fallback
+          const primaryPromise = executeRequest(primaryModel, true, {
+            conversationId: conversationId || undefined,
+          });
+
+          // For comparison mode without upfront conversation, wait for primary
+          primaryPromise.then((primaryResponse) => {
+            const parentId = primaryResponse?.conversation?.id || conversationId || undefined;
+            activeComparisonModels.forEach((modelId) => {
+              void executeRequest(modelId, false, {
+                parentConversationId: parentId,
+              });
             });
           });
-        });
 
-        await primaryPromise;
-        // Secondary promises execute after primary completes and update state independently
+          await primaryPromise;
+        }
 
         setStatus('idle');
         setPending((prev) => ({
