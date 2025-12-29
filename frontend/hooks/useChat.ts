@@ -312,6 +312,8 @@ export function useChat() {
 
   // Comparison State
   const [compareModels, setCompareModels] = useState<string[]>([]);
+  // Linked comparison conversations (model -> conversationId)
+  const [linkedConversations, setLinkedConversations] = useState<Record<string, string>>({});
 
   // Tool & Quality State
   const [useTools, setUseTools] = useState(true);
@@ -526,6 +528,25 @@ export function useChat() {
           setActiveSystemPromptId(data.active_system_prompt_id);
           activeSystemPromptIdRef.current = data.active_system_prompt_id;
         }
+
+        // Load linked comparison conversations (if any)
+        try {
+          const linkedResult = await conversationsApi.getLinked(id);
+          if (linkedResult.conversations && linkedResult.conversations.length > 0) {
+            const linkedMap: Record<string, string> = {};
+            for (const linked of linkedResult.conversations) {
+              if (linked.model) {
+                linkedMap[linked.model] = linked.id;
+              }
+            }
+            setLinkedConversations(linkedMap);
+          } else {
+            setLinkedConversations({});
+          }
+        } catch {
+          // Non-fatal: if loading linked conversations fails, just clear state
+          setLinkedConversations({});
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load conversation');
       } finally {
@@ -543,6 +564,7 @@ export function useChat() {
         if (conversationId === id) {
           setConversationId(null);
           setMessages([]);
+          setLinkedConversations({});
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to delete conversation');
@@ -589,6 +611,7 @@ export function useChat() {
     setImages([]);
     setFiles([]);
     setCurrentConversationTitle(null);
+    setLinkedConversations({});
 
     // Clear draft for the previous conversation when starting a new chat
     if (user?.id && conversationId) {
@@ -764,8 +787,10 @@ export function useChat() {
         const executeRequest = async (
           targetModel: string,
           isPrimary: boolean,
-          targetConversationId?: string
+          options?: { conversationId?: string; parentConversationId?: string }
         ) => {
+          const targetConversationId = options?.conversationId;
+          const parentConversationId = options?.parentConversationId;
           // Extract actual model ID from provider-qualified format (provider::model)
           const actualModelId = targetModel.includes('::')
             ? targetModel.split('::')[1]
@@ -854,6 +879,7 @@ export function useChat() {
               requestId: isPrimary ? messageId : `${messageId}-${targetModel}`,
               signal: abortControllerRef.current?.signal,
               conversationId: targetConversationId || undefined,
+              parentConversationId: parentConversationId || undefined,
               streamingEnabled: shouldStreamRef.current,
               toolsEnabled: useToolsRef.current,
               tools: enabledToolsRef.current,
@@ -1229,6 +1255,14 @@ export function useChat() {
                   },
                 ];
               });
+
+              // Track the linked conversation ID
+              if (response.conversation?.id) {
+                setLinkedConversations((prev) => ({
+                  ...prev,
+                  [targetModel]: response.conversation!.id,
+                }));
+              }
             }
 
             return response;
@@ -1307,17 +1341,25 @@ export function useChat() {
         };
 
         // Execute primary request
-        const primaryPromise = executeRequest(primaryModel, true, conversationId || undefined);
+        const primaryPromise = executeRequest(primaryModel, true, {
+          conversationId: conversationId || undefined,
+        });
 
         // Execute secondary requests in parallel (independent)
-        activeComparisonModels.forEach((modelId) => {
-          // Secondary requests use undefined conversationId to be independent/stateless-ish
-          void executeRequest(modelId, false, undefined);
+        // They will be linked to the primary conversation once it's created
+        // We need to wait for the primary response to get the conversation ID first
+        primaryPromise.then((primaryResponse) => {
+          const parentId = primaryResponse?.conversation?.id || conversationId || undefined;
+          activeComparisonModels.forEach((modelId) => {
+            // Secondary requests use parentConversationId to link to the primary conversation
+            void executeRequest(modelId, false, {
+              parentConversationId: parentId,
+            });
+          });
         });
 
         await primaryPromise;
-        // We don't await secondary promises to allow primary flow to complete naturally
-        // Secondary promises update state independently
+        // Secondary promises execute after primary completes and update state independently
 
         setStatus('idle');
         setPending((prev) => ({
@@ -1688,6 +1730,7 @@ export function useChat() {
     activeSystemPromptId,
     systemPrompt,
     compareModels,
+    linkedConversations,
 
     // Actions
     setMessages,

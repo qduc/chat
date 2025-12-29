@@ -157,10 +157,13 @@ export class SimplifiedPersistence {
     // Create new conversation if needed
     if (isNewConversation) {
       const settings = await this.persistenceConfig.extractRequestSettingsAsync(bodyIn, userId);
+      // Support linked comparison conversations via parent_conversation_id
+      const parentConversationId = bodyIn.parent_conversation_id || null;
       conversationId = this.conversationManager.createNewConversation({
         sessionId,
         userId,
         providerId: this.providerId,
+        parentConversationId,
         ...settings
       });
       convo = this.conversationManager.getConversation(conversationId, userId);

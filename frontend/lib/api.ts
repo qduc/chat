@@ -428,6 +428,9 @@ function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: bo
     provider_id: providerId,
     ...(responseId && { previous_response_id: responseId }),
     ...(extendedOptions.conversationId && { conversation_id: extendedOptions.conversationId }),
+    ...((extendedOptions as any).parentConversationId && {
+      parent_conversation_id: (extendedOptions as any).parentConversationId,
+    }),
     ...(extendedOptions.streamingEnabled !== undefined && {
       streamingEnabled: extendedOptions.streamingEnabled,
     }),
@@ -1081,6 +1084,23 @@ export const conversations = {
     try {
       const response = await httpClient.post<{ migrated: number; message: string }>(
         '/v1/conversations/migrate'
+      );
+      return response.data;
+    } catch (error) {
+      throw error instanceof HttpError ? new Error(error.message) : error;
+    }
+  },
+
+  /**
+   * Get linked comparison conversations for a parent conversation
+   * @param parentId - The parent conversation ID
+   * @returns Array of linked conversation metadata
+   */
+  async getLinked(parentId: string): Promise<{ conversations: ConversationMeta[] }> {
+    await waitForAuthReady();
+    try {
+      const response = await httpClient.get<{ conversations: ConversationMeta[] }>(
+        `/v1/conversations/${parentId}/linked`
       );
       return response.data;
     } catch (error) {
