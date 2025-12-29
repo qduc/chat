@@ -28,6 +28,7 @@ COPY --chown=node:node package*.json ./
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gosu \
     libsqlite3-0 \
+    sqlite3 \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
