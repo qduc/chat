@@ -211,9 +211,10 @@ export class SimplifiedPersistence {
       const latestUserMapping = [...this._latestSyncMappings].reverse().find(mapping => mapping.role === 'user');
       this.userMessageId = latestUserMapping?.persistedId != null ? String(latestUserMapping.persistedId) : null;
 
-      // Generate title only if this is the first message in a new conversation
-      // Fire-and-forget to avoid blocking the response
-      if (isNewConversation) {
+      // Generate title when the conversation is new or still lacks a title.
+      // Fire-and-forget to avoid blocking the response.
+      const needsTitle = isNewConversation || !this.conversationMeta?.title;
+      if (needsTitle) {
         const lastUser = ConversationTitleService.findLastUserMessage(messages);
         if (lastUser) {
           // Extract the model being used for the chat to use the same model for title generation
