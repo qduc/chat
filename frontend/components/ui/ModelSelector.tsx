@@ -13,6 +13,8 @@ interface ModelSelectorProps {
   className?: string;
   ariaLabel?: string;
   onAfterChange?: () => void;
+  disabled?: boolean;
+  disabledReason?: string;
 }
 
 const FAVORITES_KEY = 'chatforge-favorite-models';
@@ -94,6 +96,8 @@ export default function ModelSelector({
   className = '',
   ariaLabel = 'Select model',
   onAfterChange,
+  disabled = false,
+  disabledReason = 'Primary model is locked after comparison starts.',
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -219,6 +223,7 @@ export default function ModelSelector({
 
   const toggleFavorite = useCallback(
     (modelValue: string) => {
+      if (disabled) return;
       const newFavorites = new Set(favorites);
       if (newFavorites.has(modelValue)) {
         newFavorites.delete(modelValue);
@@ -233,11 +238,12 @@ export default function ModelSelector({
         console.warn('Failed to save favorites:', error);
       }
     },
-    [favorites]
+    [disabled, favorites]
   );
 
   const handleModelSelect = useCallback(
     (modelValue: string) => {
+      if (disabled) return;
       onChange(modelValue);
       setIsOpen(false);
       setSearchQuery('');
@@ -263,7 +269,7 @@ export default function ModelSelector({
         }, 0);
       }
     },
-    [onChange, favorites, recentModels, onAfterChange]
+    [disabled, onChange, favorites, recentModels, onAfterChange]
   );
 
   useEffect(() => {
@@ -271,6 +277,12 @@ export default function ModelSelector({
       setVisibleCount(50);
     }
   }, [isOpen]);
+
+  useEffect(() => {
+    if (disabled && isOpen) {
+      setIsOpen(false);
+    }
+  }, [disabled, isOpen]);
 
   // When filtered models change, reset highlighted index
   useEffect(() => {
@@ -429,6 +441,7 @@ export default function ModelSelector({
       trigger={
         <button
           onClick={() => {
+            if (disabled) return;
             const start = performance.now();
             setIsOpen(!isOpen);
             requestAnimationFrame(() => {
@@ -438,10 +451,17 @@ export default function ModelSelector({
               }
             });
           }}
-          className="flex items-center gap-2 px-3 py-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors min-w-0 w-full sm:min-w-48 sm:w-56"
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors min-w-0 w-full sm:min-w-48 sm:w-56 ${
+            disabled
+              ? 'bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-400 dark:text-zinc-600 cursor-not-allowed'
+              : 'bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
+          }`}
           aria-label={ariaLabel}
           aria-expanded={isOpen}
           aria-haspopup="listbox"
+          aria-disabled={disabled}
+          disabled={disabled}
+          title={disabled ? disabledReason : undefined}
         >
           <span className="text-sm truncate flex-1 text-left">{displayText}</span>
           <ChevronDown

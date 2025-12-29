@@ -13,6 +13,8 @@ interface CompareSelectorProps {
   fallbackOptions: ModelOption[];
   className?: string;
   ariaLabel?: string;
+  disabled?: boolean;
+  disabledReason?: string;
 }
 
 // Memoized Item component
@@ -94,6 +96,8 @@ export default function CompareSelector({
   fallbackOptions,
   className = '',
   ariaLabel = 'Select models to compare',
+  disabled = false,
+  disabledReason = 'Model comparison is locked after the first message.',
 }: CompareSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -189,6 +193,7 @@ export default function CompareSelector({
 
   const handleToggle = useCallback(
     (modelValue: string) => {
+      if (disabled) return;
       if (modelValue === primaryModel) return;
 
       const newSelection = selectedModels.includes(modelValue)
@@ -197,8 +202,14 @@ export default function CompareSelector({
 
       onChange(newSelection);
     },
-    [primaryModel, selectedModels, onChange]
+    [disabled, primaryModel, selectedModels, onChange]
   );
+
+  useEffect(() => {
+    if (disabled && isOpen) {
+      setIsOpen(false);
+    }
+  }, [disabled, isOpen]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -241,6 +252,21 @@ export default function CompareSelector({
       searchQuery={searchQuery}
       onSearchChange={setSearchQuery}
       sections={sections}
+      extraHeader={
+        <div className="px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/30 flex justify-between items-center">
+          <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+            {selectedModels.length} models selected
+          </span>
+          {selectedModels.length > 0 && (
+            <button
+              onClick={() => onChange([])}
+              className="text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+      }
       renderItem={(model, index, isHighlighted) => (
         <CompareModelItem
           key={`compare-${model.providerId}-${model.value}`}
@@ -260,24 +286,11 @@ export default function CompareSelector({
         ) : null
       }
       footer={
-        <div className="flex flex-col">
-          {filteredModels.length > visibleCount && (
-            <div className="px-3 py-2 text-center text-xs text-zinc-500 border-t border-zinc-200 dark:border-zinc-800">
-              Showing {visibleCount} of {filteredModels.length} models. Scroll for more...
-            </div>
-          )}
-          <div className="p-2 border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 flex justify-between items-center">
-            <span className="text-xs text-zinc-500">{selectedModels.length} selected</span>
-            {selectedModels.length > 0 && (
-              <button
-                onClick={() => onChange([])}
-                className="text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
-              >
-                Clear all
-              </button>
-            )}
+        filteredModels.length > visibleCount ? (
+          <div className="px-3 py-2 text-center text-xs text-zinc-500">
+            Showing {visibleCount} of {filteredModels.length} models. Scroll for more...
           </div>
-        </div>
+        ) : null
       }
       highlightedIndex={highlightedIndex}
       setHighlightedIndex={setHighlightedIndex}
@@ -291,14 +304,21 @@ export default function CompareSelector({
       }}
       trigger={
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={() => {
+            if (disabled) return;
+            setIsOpen(!isOpen);
+          }}
           className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors border ${
-            activeCount > 0 || isOpen
+            disabled
+              ? 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-400 dark:text-zinc-600 cursor-not-allowed'
+              : activeCount > 0 || isOpen
               ? 'bg-zinc-100 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100'
               : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800'
           }`}
           aria-label={ariaLabel}
-          title="Compare with other models"
+          aria-disabled={disabled}
+          disabled={disabled}
+          title={disabled ? disabledReason : 'Compare with other models'}
         >
           <GitFork className="w-4 h-4" />
           {activeCount > 0 && <span className="text-xs font-medium">{activeCount}</span>}

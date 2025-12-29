@@ -27,6 +27,10 @@ interface ChatHeaderProps {
   showRightSidebarButton?: boolean;
   selectedComparisonModels?: string[];
   onComparisonModelsChange?: (models: string[]) => void;
+  comparisonLocked?: boolean;
+  comparisonLockReason?: string;
+  modelSelectionLocked?: boolean;
+  modelSelectionLockReason?: string;
 }
 
 export function ChatHeader({
@@ -49,6 +53,10 @@ export function ChatHeader({
   onNewChat,
   selectedComparisonModels = [],
   onComparisonModelsChange,
+  comparisonLocked = false,
+  comparisonLockReason = 'Model comparison is locked after the first message.',
+  modelSelectionLocked = false,
+  modelSelectionLockReason = 'Primary model is locked after comparison starts.',
 }: ChatHeaderProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
 
@@ -140,6 +148,8 @@ export function ChatHeader({
             className="text-sm sm:text-base md:text-lg"
             ariaLabel="Model"
             onAfterChange={onFocusMessageInput}
+            disabled={modelSelectionLocked}
+            disabledReason={modelSelectionLockReason}
           />
           {onComparisonModelsChange && (
             <CompareSelector
@@ -149,6 +159,8 @@ export function ChatHeader({
               groups={effectiveGroups}
               fallbackOptions={effectiveFallback}
               className="hidden sm:block"
+              disabled={comparisonLocked}
+              disabledReason={comparisonLockReason}
             />
           )}
           {onRefreshModels && (

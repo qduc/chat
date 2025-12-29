@@ -44,6 +44,7 @@ interface MessageListProps {
   onApplyLocalEdit: (messageId: string, content: MessageContent) => void;
   onEditingContentChange: (content: string) => void;
   onRetryMessage: (messageId: string) => void;
+  onRetryComparisonModel?: (messageId: string, modelId: string) => void;
   onScrollStateChange?: (state: { showTop: boolean; showBottom: boolean }) => void;
   containerRef?: React.RefObject<HTMLDivElement>;
   onSuggestionClick?: (text: string) => void;
@@ -272,6 +273,7 @@ interface MessageProps {
   onApplyLocalEdit: (messageId: string) => void;
   onEditingContentChange: (content: string) => void;
   onRetryMessage?: (messageId: string) => void;
+  onRetryComparisonModel?: (messageId: string, modelId: string) => void;
   editingTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
   lastUserMessageRef: React.RefObject<HTMLDivElement | null> | null;
   resizeEditingTextarea: () => void;
@@ -308,6 +310,7 @@ const Message = React.memo<MessageProps>(
     onApplyLocalEdit,
     onEditingContentChange,
     onRetryMessage,
+    onRetryComparisonModel,
     editingTextareaRef,
     lastUserMessageRef,
     resizeEditingTextarea,
@@ -342,6 +345,7 @@ const Message = React.memo<MessageProps>(
     onApplyLocalEdit: (messageId: string, content?: MessageContent) => void;
     onEditingContentChange: (content: string) => void;
     onRetryMessage?: (messageId: string) => void;
+    onRetryComparisonModel?: (messageId: string, modelId: string) => void;
     editingTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
     lastUserMessageRef: React.RefObject<HTMLDivElement | null> | null;
     toolbarRef?: React.RefObject<HTMLDivElement | null>;
@@ -713,6 +717,20 @@ const Message = React.memo<MessageProps>(
                     )}
                   </div>
                 )}
+                {!pending.streaming &&
+                  hasComparison &&
+                  !isUser &&
+                  onRetryComparisonModel && (
+                  <button
+                    type="button"
+                    onClick={() => onRetryComparisonModel(message.id, modelId)}
+                    title="Retry this model"
+                    className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span className="sr-only">Retry this model</span>
+                  </button>
+                )}
                 {onFork && (
                   <button
                     type="button"
@@ -724,7 +742,7 @@ const Message = React.memo<MessageProps>(
                     <span className="sr-only">Fork</span>
                   </button>
                 )}
-                {!pending.streaming && (
+                {!pending.streaming && !hasComparison && (
                   <button
                     type="button"
                     onClick={() => onRetryMessage && onRetryMessage(message.id)}
@@ -913,6 +931,19 @@ const Message = React.memo<MessageProps>(
                 modelDisplayData.map((data) => renderModelResponse(data))
               )}
 
+              {!isUser && hasComparison && onRetryMessage && !pending.streaming && (
+                <div className="mt-2 flex justify-end">
+                  <button
+                    onClick={() => onRetryMessage(message.id)}
+                    className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
+                    title="Retry all models"
+                    type="button"
+                  >
+                    Retry all models
+                  </button>
+                </div>
+              )}
+
               {/* User message toolbar */}
               {isUser && !isEditing && message.content && (
                 <div
@@ -978,6 +1009,7 @@ export function MessageList({
   onApplyLocalEdit,
   onEditingContentChange,
   onRetryMessage,
+  onRetryComparisonModel,
   onScrollStateChange,
   containerRef: externalContainerRef,
   onSuggestionClick,
@@ -1284,6 +1316,7 @@ export function MessageList({
               onApplyLocalEdit={handleApplyLocalEdit}
               onEditingContentChange={onEditingContentChange}
               onRetryMessage={handleRetryMessage}
+              onRetryComparisonModel={onRetryComparisonModel}
               editingTextareaRef={editingTextareaRef}
               lastUserMessageRef={isRecentUserMessage ? lastUserMessageRef : null}
               toolbarRef={isRecentUserMessage ? toolbarRef : undefined}

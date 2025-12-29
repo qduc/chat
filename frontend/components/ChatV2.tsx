@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ArrowUp, ArrowDown, Bot } from 'lucide-react';
@@ -44,6 +44,78 @@ export function ChatV2() {
   const [messageInputHeight, setMessageInputHeight] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
   const hasCheckedMobileRef = useRef(false);
+
+  const modelAvailability = useMemo(() => {
+    if (chat.isLoadingModels || chat.modelOptions.length === 0) {
+      return { locked: false, missing: [] as string[] };
+    }
+
+    const optionValues = new Set(chat.modelOptions.map((option) => option.value));
+    const resolveModel = (modelId: string) => {
+      if (!modelId) return null;
+      if (optionValues.has(modelId)) return modelId;
+
+      if (!modelId.includes('::')) {
+        const providerId = chat.modelToProvider[modelId] || '';
+        if (providerId) {
+          const qualified = `${providerId}::${modelId}`;
+          if (optionValues.has(qualified)) return qualified;
+        }
+
+        const suffixMatch = chat.modelOptions.find((option) =>
+          option.value.endsWith(`::${modelId}`)
+        );
+        if (suffixMatch) return suffixMatch.value;
+      }
+
+      return null;
+    };
+
+    const candidates = [chat.model, ...chat.compareModels].filter(Boolean);
+    const missing: string[] = [];
+    const seen = new Set<string>();
+
+    for (const modelId of candidates) {
+      if (seen.has(modelId)) continue;
+      seen.add(modelId);
+      if (!resolveModel(modelId)) {
+        missing.push(modelId);
+      }
+    }
+
+    const hasConversation = chat.messages.length > 0 || !!chat.conversationId;
+    const hasComparison = chat.compareModels.length > 0;
+    return {
+      locked: hasConversation && hasComparison && missing.length > 0,
+      missing,
+    };
+  }, [
+    chat.isLoadingModels,
+    chat.modelOptions,
+    chat.modelToProvider,
+    chat.model,
+    chat.compareModels,
+    chat.messages.length,
+    chat.conversationId,
+  ]);
+
+  const unavailableModelLabels = useMemo(
+    () =>
+      modelAvailability.missing.map((modelId) =>
+        modelId.includes('::') ? modelId.split('::')[1] : modelId
+      ),
+    [modelAvailability.missing]
+  );
+  const modelLockReason = modelAvailability.locked
+    ? `Unavailable model${unavailableModelLabels.length === 1 ? '' : 's'}: ${unavailableModelLabels.join(
+        ', '
+      )}. Refresh models to resume.`
+    : undefined;
+  const modelSelectionLocked =
+    modelAvailability.locked || (chat.messages.length > 0 && chat.compareModels.length > 0);
+  const modelSelectionLockReason = modelAvailability.locked
+    ? modelLockReason
+    : 'Primary model is locked for comparison chats after the first message. Start a new chat to change.';
 
   // Detect mobile screen size and auto-collapse sidebars on mount
   useEffect(() => {
@@ -335,6 +407,14 @@ export function ChatV2() {
     [chat]
   );
 
+  const handleRetryComparisonModel = useCallback(
+    async (messageId: string, modelId: string) => {
+      if (chat.status === 'streaming') return;
+      await chat.retryComparisonModel(messageId, modelId);
+    },
+    [chat]
+  );
+
   const handleApplyLocalEdit = useCallback(
     async (messageId: string, updatedContent: MessageContent) => {
       if (chat.status === 'streaming') {
@@ -602,6 +682,10 @@ export function ChatV2() {
           showRightSidebarButton={true}
           selectedComparisonModels={chat.compareModels}
           onComparisonModelsChange={chat.setCompareModels}
+          comparisonLocked={chat.messages.length > 0}
+          comparisonLockReason="Model comparison is locked after the first message. Start a new chat to change."
+          modelSelectionLocked={modelSelectionLocked}
+          modelSelectionLockReason={modelSelectionLockReason}
         />
         <div className="flex flex-1 min-h-0 min-w-0">
           <div className="flex flex-col flex-1 relative min-w-0">
@@ -620,6 +704,7 @@ export function ChatV2() {
               onApplyLocalEdit={handleApplyLocalEdit}
               onEditingContentChange={chat.updateEditContent}
               onRetryMessage={handleRetryMessage}
+              onRetryComparisonModel={handleRetryComparisonModel}
               onScrollStateChange={setScrollButtons}
               containerRef={messageListRef}
               onSuggestionClick={handleSuggestionClick}
@@ -700,6 +785,8 @@ export function ChatV2() {
                   onImagesChange={chat.setImages}
                   files={chat.files}
                   onFilesChange={chat.setFiles}
+                  disabled={modelAvailability.locked}
+                  disabledReason={modelLockReason}
                 />
               )}
             </div>

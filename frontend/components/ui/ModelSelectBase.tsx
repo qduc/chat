@@ -48,13 +48,14 @@ interface ModelSelectBaseProps<T extends SelectOption> {
   footer?: React.ReactNode;
 
   highlightedIndex: number | null;
-  setHighlightedIndex: (index: number | null) => void;
+  setHighlightedIndex: (index: number | null | ((prev: number | null) => number | null)) => void;
   onEnter?: (item: T) => void;
   enableKeyboardNavigation?: boolean;
   getItemId?: (index: number) => string;
 
   onScrollNearEnd?: () => void;
   scrollThreshold?: number;
+  extraHeader?: React.ReactNode;
 }
 
 export default function ModelSelectBase<T extends SelectOption>({
@@ -85,6 +86,7 @@ export default function ModelSelectBase<T extends SelectOption>({
   getItemId,
   onScrollNearEnd,
   scrollThreshold = 0.8,
+  extraHeader,
 }: ModelSelectBaseProps<T>) {
   const [shouldRenderDropdown, setShouldRenderDropdown] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -277,6 +279,8 @@ export default function ModelSelectBase<T extends SelectOption>({
                   />
                 </div>
               </div>
+
+                {extraHeader}
 
               <div
                 ref={listRef}
