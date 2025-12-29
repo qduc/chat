@@ -9,6 +9,22 @@
     "test:frontend:watch": "npm --prefix frontend run test:watch",
     "lint": "npm run lint:backend && npm run lint:frontend",
     "lint:backend": "npm --prefix backend run lint",
-    "lint:frontend": "npm --prefix frontend run lint"
+    "lint:frontend": "npm --prefix frontend run lint",
+    "lint:fix": "npm run lint:fix:backend && npm run lint:fix:frontend",
+    "lint:fix:backend": "npm --prefix backend run lint:fix",
+    "lint:fix:frontend": "npm --prefix frontend run lint:fix",
+    "prepare": "husky"
+  },
+  "lint-staged": {
+    "frontend/**/*.{js,jsx,ts,tsx}": [
+      "npm --prefix frontend run lint:fix"
+    ],
+    "backend/**/*.js": [
+      "npm --prefix backend run lint:fix"
+    ]
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^16.2.7"
   }
 }
