@@ -586,4 +586,70 @@ describe('useChat hook', () => {
     expect(result.current.modelToProvider['provider1::model-1']).toBe('provider1');
     expect(result.current.modelToProvider['provider2::model-2']).toBe('provider2');
   });
+
+  test('normalizes comparison models using provider mapping', async () => {
+    const { result } = renderUseChat();
+
+    await waitFor(() => expect(result.current.modelOptions.length).toBeGreaterThan(0));
+
+    act(() => {
+      result.current.setCompareModels(['gpt-4o', 'openai::gpt-4o']);
+    });
+
+    await waitFor(() => {
+      expect(result.current.compareModels).toEqual(['openai::gpt-4o']);
+    });
+  });
+
+  test('sendMessage executes comparison models and stores their results', async () => {
+    const now = new Date().toISOString();
+    mockConversations.create.mockResolvedValue({
+      id: 'conv-primary',
+      title: 'Primary',
+      created_at: now,
+    });
+
+    mockChat.sendMessage.mockImplementation(async (options: ChatOptionsExtended) => {
+      options.onToken?.('X');
+      const convId = options.conversationId || `conv-${options.model}`;
+      return {
+        content: `reply-${options.model}`,
+        conversation: {
+          id: convId,
+          title: `title-${options.model}`,
+          created_at: now,
+        },
+      };
+    });
+
+    const { result } = renderUseChat();
+
+    await waitFor(() => expect(result.current.providerId).toBe('openai'));
+
+    act(() => {
+      result.current.setModel('openai::gpt-4o');
+      result.current.setCompareModels(['openai::gpt-4o-mini']);
+      result.current.setInput('Compare models');
+    });
+
+    await act(async () => {
+      await result.current.sendMessage();
+    });
+
+    expect(mockConversations.create).toHaveBeenCalled();
+    expect(mockChat.sendMessage).toHaveBeenCalledTimes(2);
+    expect(mockChat.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'gpt-4o' })
+    );
+    expect(mockChat.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({ model: 'gpt-4o-mini' })
+    );
+
+    const assistantMessage = result.current.messages[1];
+    expect(assistantMessage.comparisonResults?.['openai::gpt-4o-mini']).toMatchObject({
+      content: 'reply-gpt-4o-mini',
+      status: 'complete',
+    });
+    expect(result.current.linkedConversations['openai::gpt-4o-mini']).toBe('conv-gpt-4o-mini');
+  });
 });
