@@ -623,7 +623,10 @@ const Message = React.memo<MessageProps>(
       const { modelId, displayMessage: dm, isModelStreaming, assistantSegments: segments } = data;
 
       return (
-        <div key={modelId} className={`space-y-3 ${isMultiColumn ? 'flex-1 min-w-0' : ''}`}>
+        <div
+          key={modelId}
+          className={`space-y-3 max-w-3xl ${isMultiColumn ? 'flex-1 min-w-0' : ''}`}
+        >
           {isMultiColumn && (
             <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400 pb-1 border-b border-zinc-100 dark:border-zinc-800">
               {getModelDisplayName(modelId)}
@@ -1014,6 +1017,7 @@ export function MessageList({
   const [collapsedToolOutputs, setCollapsedToolOutputs] = useState<Record<string, boolean>>({});
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [selectedComparisonModels, setSelectedComparisonModels] = useState<string[]>(['primary']);
+  const hasMultiColumnLayout = selectedComparisonModels.length > 1;
   const { dynamicBottomPadding, lastUserMessageRef, toolbarRef, bottomRef } = useStreamingScroll(
     messages,
     pending,
@@ -1262,7 +1266,7 @@ export function MessageList({
       style={{ willChange: 'scroll-position' }}
     >
       <div
-        className="w-full mx-auto max-w-3xl px-4 sm:px-4 md:px-6 py-6 space-y-6"
+        className={`w-full mx-auto px-4 sm:px-4 md:px-6 py-6 space-y-6 ${hasMultiColumnLayout ? 'max-w-6xl' : 'max-w-3xl'}`}
         style={{ paddingBottom: dynamicBottomPadding }}
       >
         {messages.length === 0 && <WelcomeMessage onSuggestionClick={onSuggestionClick} />}
