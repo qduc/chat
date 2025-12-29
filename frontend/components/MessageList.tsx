@@ -291,7 +291,8 @@ interface MessageProps {
   toolbarRef?: React.RefObject<HTMLDivElement | null>;
   onFork?: (messageId: string) => void;
   selectedComparisonModels: string[];
-  onToggleComparisonModel: (modelId: string) => void;
+  onToggleComparisonModel: (modelId: string, event?: React.MouseEvent) => void;
+  onSelectAllComparisonModels: (models: string[]) => void;
 }
 
 const Message = React.memo<MessageProps>(
@@ -326,6 +327,7 @@ const Message = React.memo<MessageProps>(
     onFork,
     selectedComparisonModels,
     onToggleComparisonModel,
+    onSelectAllComparisonModels,
   }: {
     message: ChatMessage;
     isStreaming: boolean;
@@ -358,7 +360,8 @@ const Message = React.memo<MessageProps>(
     fileInputRef: React.RefObject<HTMLInputElement | null>;
     onFork?: (messageId: string) => void;
     selectedComparisonModels: string[];
-    onToggleComparisonModel: (modelId: string) => void;
+      onToggleComparisonModel: (modelId: string, event?: React.MouseEvent) => void;
+      onSelectAllComparisonModels: (models: string[]) => void;
   }) {
     const isUser = message.role === 'user';
     const isEditing = editingMessageId === message.id;
@@ -735,7 +738,6 @@ const Message = React.memo<MessageProps>(
               </div>
             </div>
           )}
-
         </div>
       );
     };
@@ -759,6 +761,16 @@ const Message = React.memo<MessageProps>(
         >
           {hasComparison && !isUser && (
             <div className="flex items-center gap-2 mb-2 overflow-x-auto pb-1 no-scrollbar">
+              {/* All button */}
+              <button
+                onClick={() => onSelectAllComparisonModels(allModels)}
+                className={`px-2.5 py-1 text-xs rounded-full border transition-colors whitespace-nowrap ${activeModels.length === allModels.length
+                    ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
+                    : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
+                  }`}
+              >
+                All
+              </button>
               {allModels.map((modelId) => {
                 const isSelected = activeModels.includes(modelId);
                 const displayName =
@@ -775,7 +787,7 @@ const Message = React.memo<MessageProps>(
                 return (
                   <button
                     key={modelId}
-                    onClick={() => onToggleComparisonModel(modelId)}
+                    onClick={(e) => onToggleComparisonModel(modelId, e)}
                     className={`px-3 py-1 text-xs rounded-full border transition-colors whitespace-nowrap flex items-center gap-1.5 ${
                       isSelected
                         ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
@@ -795,6 +807,10 @@ const Message = React.memo<MessageProps>(
                   </button>
                 );
               })}
+              {/* Hint text */}
+              <span className="ml-auto text-[10px] text-zinc-400 dark:text-zinc-600 whitespace-nowrap">
+                {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+click for single model
+              </span>
             </div>
           )}
 
@@ -916,8 +932,7 @@ const Message = React.memo<MessageProps>(
                     </button>
                   </div>
                 </div>
-              )}
-
+                )}
             </>
           )}
         </div>
@@ -1018,7 +1033,16 @@ export function MessageList({
   }, [conversationId]);
 
   // Toggle handler for comparison model selection (checkbox behavior)
-  const handleToggleComparisonModel = useCallback((modelId: string) => {
+  // Supports Ctrl/Cmd+click for solo mode (show only that model)
+  const handleToggleComparisonModel = useCallback((modelId: string, event?: React.MouseEvent) => {
+    const isSoloClick = event?.metaKey || event?.ctrlKey;
+
+    if (isSoloClick) {
+      // Solo mode: show only this model
+      setSelectedComparisonModels([modelId]);
+      return;
+    }
+
     setSelectedComparisonModels((prev) => {
       if (prev.includes(modelId)) {
         // Don't allow deselecting the last model
@@ -1029,6 +1053,11 @@ export function MessageList({
       }
       return [...prev, modelId];
     });
+  }, []);
+
+  // Handler to select all comparison models
+  const handleSelectAllComparisonModels = useCallback((models: string[]) => {
+    setSelectedComparisonModels(models);
   }, []);
 
   // Handle image upload during editing
@@ -1273,6 +1302,7 @@ export function MessageList({
               onFork={onFork}
               selectedComparisonModels={selectedComparisonModels}
               onToggleComparisonModel={handleToggleComparisonModel}
+              onSelectAllComparisonModels={handleSelectAllComparisonModels}
             />
           );
         })}
