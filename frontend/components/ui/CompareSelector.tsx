@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { ChevronDown, Check, GitFork } from 'lucide-react';
 import { type Group as TabGroup } from './TabbedSelect';
 import ModelSelectBase, { type Section, type SelectOption, type Tab } from './ModelSelectBase';
+import Tooltip from './Tooltip';
 
 type ModelOption = SelectOption;
 
@@ -234,6 +235,30 @@ export default function CompareSelector({
     [filteredModels, visibleCount]
   );
 
+  const triggerButton = (
+    <button
+      onClick={() => {
+        if (disabled) return;
+        setIsOpen(!isOpen);
+      }}
+      className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors border ${
+        disabled
+          ? 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-400 dark:text-zinc-600 cursor-not-allowed'
+          : activeCount > 0 || isOpen
+          ? 'bg-zinc-100 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100'
+          : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800'
+      }`}
+      aria-label={ariaLabel}
+      aria-disabled={disabled}
+      disabled={disabled}
+      title={!disabled ? 'Compare with other models' : undefined}
+    >
+      <GitFork className="w-4 h-4" />
+      {activeCount > 0 && <span className="text-xs font-medium">{activeCount}</span>}
+      <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+    </button>
+  );
+
   return (
     <ModelSelectBase<ModelOption>
       isOpen={isOpen}
@@ -303,27 +328,7 @@ export default function CompareSelector({
         }
       }}
       trigger={
-        <button
-          onClick={() => {
-            if (disabled) return;
-            setIsOpen(!isOpen);
-          }}
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors border ${
-            disabled
-              ? 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-400 dark:text-zinc-600 cursor-not-allowed'
-              : activeCount > 0 || isOpen
-              ? 'bg-zinc-100 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100'
-              : 'bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800'
-          }`}
-          aria-label={ariaLabel}
-          aria-disabled={disabled}
-          disabled={disabled}
-          title={disabled ? disabledReason : 'Compare with other models'}
-        >
-          <GitFork className="w-4 h-4" />
-          {activeCount > 0 && <span className="text-xs font-medium">{activeCount}</span>}
-          <ChevronDown className={`w-3 h-3 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-        </button>
+        disabled ? <Tooltip content={disabledReason}>{triggerButton}</Tooltip> : triggerButton
       }
     />
   );

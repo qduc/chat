@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Star, StarOff, ChevronDown } from 'lucide-react';
 import { type Group as TabGroup } from './TabbedSelect';
 import ModelSelectBase, { type Section, type SelectOption, type Tab } from './ModelSelectBase';
+import Tooltip from './Tooltip';
 
 type ModelOption = SelectOption;
 
@@ -395,6 +396,37 @@ export default function ModelSelector({
       </div>
     ) : null;
 
+  const triggerButton = (
+    <button
+      onClick={() => {
+        if (disabled) return;
+        const start = performance.now();
+        setIsOpen(!isOpen);
+        requestAnimationFrame(() => {
+          const end = performance.now();
+          if (end - start > 100) {
+            console.log(`[ModelSelector] Dropdown toggle took ${(end - start).toFixed(2)}ms`);
+          }
+        });
+      }}
+      className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors min-w-0 w-full sm:min-w-48 sm:w-56 ${
+        disabled
+          ? 'bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-400 dark:text-zinc-600 cursor-not-allowed'
+          : 'bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
+      }`}
+      aria-label={ariaLabel}
+      aria-expanded={isOpen}
+      aria-haspopup="listbox"
+      aria-disabled={disabled}
+      disabled={disabled}
+    >
+      <span className="text-sm truncate flex-1 text-left">{displayText}</span>
+      <ChevronDown
+        className={`w-4 h-4 text-zinc-500 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+      />
+    </button>
+  );
+
   return (
     <ModelSelectBase<ModelOption>
       isOpen={isOpen}
@@ -439,35 +471,7 @@ export default function ModelSelector({
         }
       }}
       trigger={
-        <button
-          onClick={() => {
-            if (disabled) return;
-            const start = performance.now();
-            setIsOpen(!isOpen);
-            requestAnimationFrame(() => {
-              const end = performance.now();
-              if (end - start > 100) {
-                console.log(`[ModelSelector] Dropdown toggle took ${(end - start).toFixed(2)}ms`);
-              }
-            });
-          }}
-          className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors min-w-0 w-full sm:min-w-48 sm:w-56 ${
-            disabled
-              ? 'bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-400 dark:text-zinc-600 cursor-not-allowed'
-              : 'bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
-          }`}
-          aria-label={ariaLabel}
-          aria-expanded={isOpen}
-          aria-haspopup="listbox"
-          aria-disabled={disabled}
-          disabled={disabled}
-          title={disabled ? disabledReason : undefined}
-        >
-          <span className="text-sm truncate flex-1 text-left">{displayText}</span>
-          <ChevronDown
-            className={`w-4 h-4 text-zinc-500 transition-transform ${isOpen ? 'rotate-180' : ''}`}
-          />
-        </button>
+        disabled ? <Tooltip content={disabledReason}>{triggerButton}</Tooltip> : triggerButton
       }
     />
   );
