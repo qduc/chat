@@ -221,6 +221,15 @@ export interface ChatMessage {
   };
   reasoning_details?: any[];
   reasoning_tokens?: number | null;
+  comparisonResults?: Record<
+    string,
+    {
+      content: MessageContent;
+      usage?: any;
+      status: 'streaming' | 'complete' | 'error';
+      error?: string;
+    }
+  >;
 }
 
 export interface MessageEvent {

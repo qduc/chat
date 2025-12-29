@@ -2,6 +2,7 @@ import React from 'react';
 import { Sun, Moon, Settings, RefreshCw, Loader2, PanelLeft, PanelRight, Plus } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import ModelSelector from './ui/ModelSelector';
+import CompareSelector from './ui/CompareSelector';
 import { type Group as TabGroup } from './ui/TabbedSelect';
 import { AuthButton } from './auth/AuthButton';
 
@@ -24,6 +25,8 @@ interface ChatHeaderProps {
   onToggleRightSidebar?: () => void;
   showLeftSidebarButton?: boolean;
   showRightSidebarButton?: boolean;
+  selectedComparisonModels?: string[];
+  onComparisonModelsChange?: (models: string[]) => void;
 }
 
 export function ChatHeader({
@@ -44,6 +47,8 @@ export function ChatHeader({
   showLeftSidebarButton = false,
   showRightSidebarButton = false,
   onNewChat,
+  selectedComparisonModels = [],
+  onComparisonModelsChange,
 }: ChatHeaderProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
 
@@ -136,6 +141,16 @@ export function ChatHeader({
             ariaLabel="Model"
             onAfterChange={onFocusMessageInput}
           />
+          {onComparisonModelsChange && (
+            <CompareSelector
+              primaryModel={model}
+              selectedModels={selectedComparisonModels}
+              onChange={onComparisonModelsChange}
+              groups={effectiveGroups}
+              fallbackOptions={effectiveFallback}
+              className="hidden sm:block"
+            />
+          )}
           {onRefreshModels && (
             <button
               onClick={onRefreshModels}

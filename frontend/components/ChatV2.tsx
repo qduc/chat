@@ -600,6 +600,8 @@ export function ChatV2() {
           onToggleRightSidebar={chat.toggleRightSidebar}
           showLeftSidebarButton={chat.historyEnabled}
           showRightSidebarButton={true}
+          selectedComparisonModels={chat.compareModels}
+          onComparisonModelsChange={chat.setCompareModels}
         />
         <div className="flex flex-1 min-h-0 min-w-0">
           <div className="flex flex-col flex-1 relative min-w-0">
@@ -633,7 +635,9 @@ export function ChatV2() {
                 <button
                   onClick={scrollToTop}
                   className={`p-1.5 rounded-full bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-200 border border-zinc-200/70 dark:border-zinc-700/70 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all duration-200 aspect-square ${
-                    showScrollButtons ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'
+                    showScrollButtons
+                      ? 'opacity-100 scale-100 pointer-events-auto'
+                      : 'opacity-0 scale-95 pointer-events-none'
                   }`}
                   aria-label="Scroll to top"
                   title="Scroll to top"
@@ -645,7 +649,9 @@ export function ChatV2() {
                 <button
                   onClick={() => scrollToBottom()}
                   className={`p-1.5 rounded-full bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-200 border border-zinc-200/70 dark:border-zinc-700/70 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all duration-200 aspect-square ${
-                    showScrollButtons ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-95 pointer-events-none'
+                    showScrollButtons
+                      ? 'opacity-100 scale-100 pointer-events-auto'
+                      : 'opacity-0 scale-95 pointer-events-none'
                   }`}
                   aria-label="Scroll to bottom"
                   title="Scroll to bottom"

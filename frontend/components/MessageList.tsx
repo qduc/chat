@@ -315,7 +315,32 @@ const Message = React.memo<MessageProps>(
   }) {
     const isUser = message.role === 'user';
     const isEditing = editingMessageId === message.id;
-    const assistantSegments = !isUser ? buildAssistantSegments(message) : [];
+
+    // Comparison Logic
+    const [activeComparisonTab, setActiveComparisonTab] = useState<string>('primary');
+    const hasComparison =
+      message.comparisonResults && Object.keys(message.comparisonResults).length > 0;
+
+    // Determine content based on active tab
+    let displayMessage = message;
+    let isComparisonStreaming = false;
+
+    if (hasComparison && activeComparisonTab !== 'primary') {
+      const result = message.comparisonResults?.[activeComparisonTab];
+      if (result) {
+        // Construct a temporary message object for rendering
+        displayMessage = {
+          ...message,
+          content: result.content,
+          tool_calls: undefined, // Secondary models don't support tool calls yet
+          tool_outputs: undefined,
+          usage: result.usage,
+        };
+        isComparisonStreaming = result.status === 'streaming';
+      }
+    }
+
+    const assistantSegments = !isUser ? buildAssistantSegments(displayMessage) : [];
 
     // For editing, check if we have either text or images
     const canSaveEdit = editingContent.trim().length > 0 || editingImages.length > 0;
@@ -334,6 +359,34 @@ const Message = React.memo<MessageProps>(
           className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? 'max-w-full sm:max-w-[85%] md:max-w-[75%] lg:max-w-[60%] order-first' : 'w-full'}`}
           style={{ minWidth: 0 }}
         >
+          {hasComparison && !isUser && (
+            <div className="flex items-center gap-2 mb-2 overflow-x-auto pb-1 no-scrollbar">
+              <button
+                onClick={() => setActiveComparisonTab('primary')}
+                className={`px-3 py-1 text-xs rounded-full border transition-colors whitespace-nowrap ${
+                  activeComparisonTab === 'primary'
+                    ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
+                    : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
+                }`}
+              >
+                Primary
+              </button>
+              {Object.keys(message.comparisonResults || {}).map((modelId) => (
+                <button
+                  key={modelId}
+                  onClick={() => setActiveComparisonTab(modelId)}
+                  className={`px-3 py-1 text-xs rounded-full border transition-colors whitespace-nowrap ${
+                    activeComparisonTab === modelId
+                      ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
+                      : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
+                  }`}
+                >
+                  {modelId.includes('::') ? modelId.split('::')[1] : modelId}
+                </button>
+              ))}
+            </div>
+          )}
+
           {isEditing ? (
             <ImageUploadZone
               onFiles={onEditingImagesChange}
@@ -426,7 +479,9 @@ const Message = React.memo<MessageProps>(
                 <div className="space-y-3">
                   {assistantSegments.length === 0 ? (
                     <div className="text-base leading-relaxed text-zinc-800 dark:text-zinc-200">
-                      {pending.streaming || pending.abort ? (
+                      {(isStreaming && activeComparisonTab === 'primary') ||
+                      isComparisonStreaming ||
+                      pending.abort ? (
                         <span className="inline-flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
                           <span
                             className="w-1.5 h-1.5 rounded-full bg-current animate-bounce"
@@ -458,7 +513,13 @@ const Message = React.memo<MessageProps>(
                             key={`text-${segmentIndex}`}
                             className="text-base leading-relaxed text-zinc-900 dark:text-zinc-200"
                           >
-                            <Markdown text={segment.text} isStreaming={isStreaming} />
+                            <Markdown
+                              text={segment.text}
+                              isStreaming={
+                                (isStreaming && activeComparisonTab === 'primary') ||
+                                isComparisonStreaming
+                              }
+                            />
                           </div>
                         );
                       }
@@ -679,7 +740,7 @@ const Message = React.memo<MessageProps>(
                 </div>
               )}
 
-              {!isEditing && (message.content || !isUser) && (
+              {!isEditing && (displayMessage.content || !isUser) && (
                 <div
                   className={`mt-1 flex items-center ${isUser ? 'justify-end' : 'justify-between'} opacity-70 group-hover:opacity-100 transition-opacity text-xs`}
                   ref={isUser && toolbarRef ? toolbarRef : undefined}
@@ -687,26 +748,29 @@ const Message = React.memo<MessageProps>(
                   {/* Show stats for assistant messages */}
                   {!isUser && (
                     <div className="flex items-center gap-2">
-                      {streamingStats && streamingStats.tokensPerSecond > 0 && (
-                        <div className="px-2 py-1 rounded-md bg-white/60 dark:bg-neutral-800/50 text-slate-600 dark:text-slate-400 text-xs font-mono">
-                          {streamingStats.tokensPerSecond.toFixed(1)} tok/s
-                        </div>
-                      )}
-                      {message.usage && (
+                      {streamingStats &&
+                        streamingStats.tokensPerSecond > 0 &&
+                        activeComparisonTab === 'primary' && (
+                          <div className="px-2 py-1 rounded-md bg-white/60 dark:bg-neutral-800/50 text-slate-600 dark:text-slate-400 text-xs font-mono">
+                            {streamingStats.tokensPerSecond.toFixed(1)} tok/s
+                          </div>
+                        )}
+                      {displayMessage.usage && (
                         <div className="px-2 py-1 rounded-md bg-white/60 dark:bg-neutral-800/50 text-slate-600 dark:text-slate-400 text-xs font-mono flex items-center gap-2">
-                          {message.usage.provider && (
-                            <span className="font-medium">{message.usage.provider}</span>
+                          {displayMessage.usage.provider && (
+                            <span className="font-medium">{displayMessage.usage.provider}</span>
                           )}
-                          {(message.usage.prompt_tokens !== undefined ||
-                            message.usage.completion_tokens !== undefined) && (
+                          {(displayMessage.usage.prompt_tokens !== undefined ||
+                            displayMessage.usage.completion_tokens !== undefined) && (
                             <span className="text-slate-500 dark:text-slate-500">•</span>
                           )}
-                          {message.usage.prompt_tokens !== undefined &&
-                            message.usage.completion_tokens !== undefined && (
+                          {displayMessage.usage.prompt_tokens !== undefined &&
+                            displayMessage.usage.completion_tokens !== undefined && (
                               <span>
-                                {message.usage.prompt_tokens + message.usage.completion_tokens}{' '}
-                                tokens ({message.usage.prompt_tokens}↑ +{' '}
-                                {message.usage.completion_tokens}↓)
+                                {displayMessage.usage.prompt_tokens +
+                                  displayMessage.usage.completion_tokens}{' '}
+                                tokens ({displayMessage.usage.prompt_tokens}↑ +{' '}
+                                {displayMessage.usage.completion_tokens}↓)
                               </span>
                             )}
                         </div>
@@ -715,12 +779,12 @@ const Message = React.memo<MessageProps>(
                   )}
 
                   <div className="flex items-center gap-2">
-                    {message.content && (
+                    {displayMessage.content && (
                       <div className="relative">
                         <button
                           type="button"
                           onClick={() =>
-                            handleCopy(message.id, extractTextFromContent(message.content))
+                            handleCopy(message.id, extractTextFromContent(displayMessage.content))
                           }
                           title="Copy"
                           className="p-2 rounded-md bg-white/60 dark:bg-neutral-800/50 hover:bg-white/90 dark:hover:bg-neutral-700/80 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
@@ -789,6 +853,7 @@ const Message = React.memo<MessageProps>(
       prev.message.content === next.message.content &&
       prev.message.tool_calls === next.message.tool_calls &&
       prev.message.tool_outputs === next.message.tool_outputs &&
+      prev.message.comparisonResults === next.message.comparisonResults &&
       prev.message.usage === next.message.usage &&
       prev.isStreaming === next.isStreaming &&
       prev.editingMessageId === next.editingMessageId &&
