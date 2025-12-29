@@ -187,6 +187,7 @@ describe('useChat hook', () => {
   });
 
   test('sendMessage streams tokens, tool events, and finalizes assistant message', async () => {
+    // chat.sendMessage receives unqualified model IDs (without provider prefix)
     mockChat.sendMessage.mockImplementation(async (options: ChatOptionsExtended) => {
       options.onToken?.('Hello');
       options.onEvent?.({
