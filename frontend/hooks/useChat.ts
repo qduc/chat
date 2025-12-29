@@ -1468,7 +1468,7 @@ export function useChat() {
         abortControllerRef.current = null;
       }
     },
-    [input, images, files, conversationId, modelCapabilities, compareModels]
+    [input, images, files, conversationId, modelCapabilities, compareModels, user?.id]
   );
 
   const stopStreaming = useCallback(() => {

@@ -158,7 +158,7 @@ export function teeStreamWithPreview(response, options = {}) {
     try {
       out.write(chunk);
       capture.write(chunk);
-    } catch (e) {
+    } catch (_e) {
       // best-effort capture; ignore
     }
   });
@@ -167,7 +167,7 @@ export function teeStreamWithPreview(response, options = {}) {
     try {
       out.end();
       capture.end();
-    } catch (e) {
+    } catch (_e) {
       // ignore
     }
   });
@@ -176,7 +176,7 @@ export function teeStreamWithPreview(response, options = {}) {
     try {
       out.destroy(err);
       capture.destroy(err);
-    } catch (e) {
+    } catch (_e) {
       // ignore
     }
   });

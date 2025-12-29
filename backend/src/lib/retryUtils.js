@@ -20,7 +20,7 @@ const DEFAULT_RETRY_CONFIG = {
   maxDelayMs: 60000,
   backoffMultiplier: 2,
   jitterFactor: 0.1,
-  shouldRetry: (error, attempt) => {
+  shouldRetry: (error, _attempt) => {
     // Only retry on 429 (rate limit) and 5xx server errors
     if (error?.status === 429) return true;
     if (error?.status >= 500 && error?.status < 600) return true;
@@ -99,7 +99,7 @@ export async function retryWithBackoff(fn, userConfig = {}) {
         try {
           const clonedResponse = result.clone();
           errorBody = await clonedResponse.text();
-        } catch (e) {
+        } catch (_e) {
           errorBody = 'Could not read error body';
         }
 

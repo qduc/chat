@@ -3,7 +3,7 @@ import { Star, StarOff, ChevronDown } from 'lucide-react';
 import { type Group as TabGroup } from './TabbedSelect';
 import ModelSelectBase, { type Section, type SelectOption, type Tab } from './ModelSelectBase';
 
-interface ModelOption extends SelectOption {}
+type ModelOption = SelectOption;
 
 interface ModelSelectorProps {
   value: string;

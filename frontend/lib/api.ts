@@ -451,7 +451,7 @@ function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: bo
   const supportsReasoning = supportsReasoningControls(model, modelCapabilities);
 
   // Only add reasoning parameters if the model supports reasoning
-  if (true) {
+  if (supportsReasoning) {
     if (extendedOptions.reasoning) {
       if (extendedOptions.reasoning.effort) {
         bodyObj.reasoning_effort = extendedOptions.reasoning.effort;

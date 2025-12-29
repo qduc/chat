@@ -220,7 +220,7 @@ class AuthenticatedHttpClient {
       // Retry the original request with new token
       const retryOptions = { ...options, skipRetry: true }; // Prevent infinite retry loop
       return await this.makeRequest<T>(url, retryOptions);
-    } catch (refreshError) {
+    } catch {
       // Refresh failed - clear tokens and auth state
       console.log('[http] Token refresh failed, clearing tokens and logging out');
       clearTokens();
