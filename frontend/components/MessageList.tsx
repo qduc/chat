@@ -27,6 +27,7 @@ import {
   type ImageContent,
 } from '../lib';
 import { useStreamingScroll } from '../hooks/useStreamingScroll';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { WelcomeMessage } from './WelcomeMessage';
 
 interface MessageListProps {
@@ -50,6 +51,9 @@ interface MessageListProps {
   onSuggestionClick?: (text: string) => void;
   onFork?: (messageId: string) => void;
 }
+
+// Maximum number of model columns to display side-by-side
+const MAX_COMPARISON_COLUMNS = 3;
 
 // Helper function to split messages with tool calls into separate messages
 function splitMessagesWithToolCalls(messages: ChatMessage[]): ChatMessage[] {
@@ -295,6 +299,7 @@ interface MessageProps {
   selectedComparisonModels: string[];
   onToggleComparisonModel: (modelId: string, event?: React.MouseEvent) => void;
   onSelectAllComparisonModels: (models: string[]) => void;
+  isMobile: boolean;
 }
 
 const Message = React.memo<MessageProps>(
@@ -331,6 +336,7 @@ const Message = React.memo<MessageProps>(
     selectedComparisonModels,
     onToggleComparisonModel,
     onSelectAllComparisonModels,
+    isMobile,
   }: {
     message: ChatMessage;
     isStreaming: boolean;
@@ -366,6 +372,7 @@ const Message = React.memo<MessageProps>(
     selectedComparisonModels: string[];
     onToggleComparisonModel: (modelId: string, event?: React.MouseEvent) => void;
     onSelectAllComparisonModels: (models: string[]) => void;
+    isMobile: boolean;
   }) {
     const isUser = message.role === 'user';
     const isEditing = editingMessageId === message.id;
@@ -717,10 +724,7 @@ const Message = React.memo<MessageProps>(
                     )}
                   </div>
                 )}
-                {!pending.streaming &&
-                  hasComparison &&
-                  !isUser &&
-                  onRetryComparisonModel && (
+                {!pending.streaming && hasComparison && !isUser && onRetryComparisonModel && (
                   <button
                     type="button"
                     onClick={() => onRetryComparisonModel(message.id, modelId)}
@@ -779,19 +783,25 @@ const Message = React.memo<MessageProps>(
         >
           {hasComparison && !isUser && (
             <div className="flex items-center gap-2 mb-2 overflow-x-auto pb-1 no-scrollbar">
-              {/* All button */}
-              <button
-                onClick={() => onSelectAllComparisonModels(allModels)}
-                className={`px-2.5 py-1 text-xs rounded-full border transition-colors whitespace-nowrap ${
-                  activeModels.length === allModels.length
-                    ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
-                    : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
-                }`}
-              >
-                All
-              </button>
+              {/* All button - hidden on mobile (single model only) */}
+              {!isMobile && (
+                <button
+                  onClick={() => onSelectAllComparisonModels(allModels)}
+                  className={`px-2.5 py-1 text-xs rounded-full border transition-colors whitespace-nowrap ${
+                    activeModels.length === Math.min(allModels.length, MAX_COMPARISON_COLUMNS)
+                      ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
+                      : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
+                  }`}
+                >
+                  All
+                </button>
+              )}
               {allModels.map((modelId) => {
                 const isSelected = activeModels.includes(modelId);
+                // On mobile: no disabled state (radio behavior)
+                // On desktop: disable if max columns reached
+                const isDisabled =
+                  !isMobile && !isSelected && activeModels.length >= MAX_COMPARISON_COLUMNS;
                 const displayName =
                   modelId === 'primary'
                     ? primaryModelLabel
@@ -807,27 +817,34 @@ const Message = React.memo<MessageProps>(
                   <button
                     key={modelId}
                     onClick={(e) => onToggleComparisonModel(modelId, e)}
+                    disabled={isDisabled}
+                    title={isDisabled ? `Maximum ${MAX_COMPARISON_COLUMNS} models` : undefined}
                     className={`px-3 py-1 text-xs rounded-full border transition-colors whitespace-nowrap flex items-center gap-1.5 ${
                       isSelected
                         ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
-                        : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
+                        : isDisabled
+                          ? 'bg-zinc-50 dark:bg-zinc-900/50 text-zinc-400 dark:text-zinc-600 border-zinc-200 dark:border-zinc-800 cursor-not-allowed opacity-50'
+                          : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
                     }`}
                   >
-                    <span
-                      className={`w-3 h-3 rounded border flex items-center justify-center text-[10px] ${
-                        isSelected
-                          ? 'bg-white dark:bg-zinc-900 border-white dark:border-zinc-900 text-zinc-800 dark:text-zinc-200'
-                          : 'border-zinc-400 dark:border-zinc-500'
-                      }`}
-                    >
-                      {isSelected && '✓'}
-                    </span>
+                    {/* Checkbox indicator - only on desktop */}
+                    {!isMobile && (
+                      <span
+                        className={`w-3 h-3 rounded border flex items-center justify-center text-[10px] ${
+                          isSelected
+                            ? 'bg-white dark:bg-zinc-900 border-white dark:border-zinc-900 text-zinc-800 dark:text-zinc-200'
+                            : 'border-zinc-400 dark:border-zinc-500'
+                        }`}
+                      >
+                        {isSelected && '✓'}
+                      </span>
+                    )}
                     {displayName}
                   </button>
                 );
               })}
-              {/* Hint text */}
-              <span className="ml-auto text-[10px] text-zinc-400 dark:text-zinc-600 whitespace-nowrap">
+              {/* Hint text - hidden on mobile */}
+              <span className="hidden md:inline ml-auto text-[10px] text-zinc-400 dark:text-zinc-600 whitespace-nowrap">
                 {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+click for single model
               </span>
             </div>
@@ -922,8 +939,8 @@ const Message = React.memo<MessageProps>(
                   <MessageContentRenderer content={message.content} isStreaming={false} />
                 </div>
               ) : isMultiColumn ? (
-                /* Multi-column side-by-side view */
-                <div className="flex gap-4">
+                /* Multi-column side-by-side view - stacks on mobile */
+                <div className="flex flex-col md:flex-row gap-4">
                   {modelDisplayData.map((data) => renderModelResponse(data))}
                 </div>
               ) : (
@@ -990,7 +1007,8 @@ const Message = React.memo<MessageProps>(
       prev.streamingStats?.tokensPerSecond === next.streamingStats?.tokensPerSecond &&
       prev.editingImages === next.editingImages &&
       prev.toolbarRef === next.toolbarRef &&
-      prev.selectedComparisonModels === next.selectedComparisonModels
+      prev.selectedComparisonModels === next.selectedComparisonModels &&
+      prev.isMobile === next.isMobile
     );
   }
 );
@@ -1022,7 +1040,14 @@ export function MessageList({
   const [collapsedToolOutputs, setCollapsedToolOutputs] = useState<Record<string, boolean>>({});
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [selectedComparisonModels, setSelectedComparisonModels] = useState<string[]>(['primary']);
-  const hasMultiColumnLayout = selectedComparisonModels.length > 1;
+  // Track which conversation we've initialized model selection for
+  const initializedComparisonRef = useRef<string | null>(null);
+  const isMobile = useIsMobile();
+  // On mobile, only show one model at a time
+  const effectiveSelectedModels = isMobile
+    ? [selectedComparisonModels[0] || 'primary']
+    : selectedComparisonModels;
+  const hasMultiColumnLayout = effectiveSelectedModels.length > 1;
   const { dynamicBottomPadding, lastUserMessageRef, toolbarRef, bottomRef } = useStreamingScroll(
     messages,
     pending,
@@ -1061,36 +1086,95 @@ export function MessageList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingMessageId]);
 
+  // Track previous conversation to detect changes
+  const prevConversationIdRef = useRef<string | null>(null);
+
   useEffect(() => {
-    setSelectedComparisonModels(['primary']);
+    // When conversation changes, reset to primary and clear initialization
+    if (prevConversationIdRef.current !== conversationId) {
+      prevConversationIdRef.current = conversationId;
+      initializedComparisonRef.current = null;
+      setSelectedComparisonModels(['primary']);
+    }
   }, [conversationId]);
 
-  // Toggle handler for comparison model selection (checkbox behavior)
-  // Supports Ctrl/Cmd+click for solo mode (show only that model)
-  const handleToggleComparisonModel = useCallback((modelId: string, event?: React.MouseEvent) => {
-    const isSoloClick = event?.metaKey || event?.ctrlKey;
-
-    if (isSoloClick) {
-      // Solo mode: show only this model
-      setSelectedComparisonModels([modelId]);
+  useEffect(() => {
+    // Skip if already initialized for this conversation
+    if (initializedComparisonRef.current === conversationId) {
       return;
     }
 
-    setSelectedComparisonModels((prev) => {
-      if (prev.includes(modelId)) {
-        // Don't allow deselecting the last model
-        if (prev.length === 1) {
+    // Skip if no messages yet (wait for them to load)
+    if (messages.length === 0) {
+      return;
+    }
+
+    // Gather all comparison models from messages
+    const allComparisonModels = new Set<string>();
+    messages.forEach((m) => {
+      if (m.comparisonResults) {
+        Object.keys(m.comparisonResults).forEach((modelId) => {
+          allComparisonModels.add(modelId);
+        });
+      }
+    });
+
+    if (allComparisonModels.size === 0) {
+      // Wait for comparison results to load before locking in default selection.
+      return;
+    }
+
+    // Mark as initialized for this conversation once comparison models exist.
+    initializedComparisonRef.current = conversationId;
+
+    // This is a comparison conversation - select up to MAX_COMPARISON_COLUMNS models
+    const modelsToSelect = ['primary', ...Array.from(allComparisonModels)].slice(
+      0,
+      MAX_COMPARISON_COLUMNS
+    );
+    setSelectedComparisonModels(modelsToSelect);
+  }, [conversationId, messages]);
+
+  // Toggle handler for comparison model selection
+  // On mobile: radio behavior (one model at a time)
+  // On desktop: checkbox behavior with Ctrl/Cmd+click for solo mode
+  const handleToggleComparisonModel = useCallback(
+    (modelId: string, event?: React.MouseEvent) => {
+      // On mobile, always use radio behavior
+      if (isMobile) {
+        setSelectedComparisonModels([modelId]);
+        return;
+      }
+
+      const isSoloClick = event?.metaKey || event?.ctrlKey;
+
+      if (isSoloClick) {
+        // Solo mode: show only this model
+        setSelectedComparisonModels([modelId]);
+        return;
+      }
+
+      setSelectedComparisonModels((prev) => {
+        if (prev.includes(modelId)) {
+          // Don't allow deselecting the last model
+          if (prev.length === 1) {
+            return prev;
+          }
+          return prev.filter((m) => m !== modelId);
+        }
+        // Don't allow selecting more than MAX_COMPARISON_COLUMNS
+        if (prev.length >= MAX_COMPARISON_COLUMNS) {
           return prev;
         }
-        return prev.filter((m) => m !== modelId);
-      }
-      return [...prev, modelId];
-    });
-  }, []);
+        return [...prev, modelId];
+      });
+    },
+    [isMobile]
+  );
 
-  // Handler to select all comparison models
+  // Handler to select all comparison models (up to MAX_COMPARISON_COLUMNS)
   const handleSelectAllComparisonModels = useCallback((models: string[]) => {
-    setSelectedComparisonModels(models);
+    setSelectedComparisonModels(models.slice(0, MAX_COMPARISON_COLUMNS));
   }, []);
 
   // Handle image upload during editing
@@ -1334,9 +1418,10 @@ export function MessageList({
               onEditingImageUploadClick={handleEditingImageUploadClick}
               fileInputRef={fileInputRef}
               onFork={onFork}
-              selectedComparisonModels={selectedComparisonModels}
+              selectedComparisonModels={effectiveSelectedModels}
               onToggleComparisonModel={handleToggleComparisonModel}
               onSelectAllComparisonModels={handleSelectAllComparisonModels}
+              isMobile={isMobile}
             />
           );
         })}
