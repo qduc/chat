@@ -671,47 +671,41 @@ const Message = React.memo<MessageProps>(
           )}
 
           {/* Stats row for this model */}
-          {!isMultiColumn && !isEditing && (dm.content || !isUser) && (
-            <div className="mt-1 flex items-center justify-between opacity-70 group-hover:opacity-100 transition-opacity text-xs">
-              <div className="flex items-center gap-2">
-                {streamingStats && streamingStats.tokensPerSecond > 0 && modelId === 'primary' && (
-                  <div className="px-2 py-1 rounded-md bg-white/60 dark:bg-neutral-800/50 text-slate-600 dark:text-slate-400 text-xs font-mono">
-                    {streamingStats.tokensPerSecond.toFixed(1)} tok/s
-                  </div>
-                )}
+          {!isEditing && (dm.content || !isUser) && (
+            <div className="mt-2 flex items-center justify-between opacity-70 group-hover:opacity-100 transition-opacity text-xs border-t border-zinc-100 dark:border-zinc-800/50 pt-2">
+              <div className="flex items-center gap-2 overflow-hidden mr-2">
+                {streamingStats &&
+                  streamingStats.tokensPerSecond > 0 &&
+                  modelId === 'primary' &&
+                  !isMultiColumn && (
+                    <div className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 text-[10px] font-mono whitespace-nowrap">
+                      {streamingStats.tokensPerSecond.toFixed(1)} t/s
+                    </div>
+                  )}
                 {dm.usage && (
-                  <div className="px-2 py-1 rounded-md bg-white/60 dark:bg-neutral-800/50 text-slate-600 dark:text-slate-400 text-xs font-mono flex items-center gap-2">
-                    {dm.usage.provider && <span className="font-medium">{dm.usage.provider}</span>}
-                    {(dm.usage.prompt_tokens !== undefined ||
-                      dm.usage.completion_tokens !== undefined) && (
-                      <span className="text-slate-500 dark:text-slate-500">•</span>
-                    )}
-                    {dm.usage.prompt_tokens !== undefined &&
-                      dm.usage.completion_tokens !== undefined && (
-                        <span>
-                          {dm.usage.prompt_tokens + dm.usage.completion_tokens} tokens (
-                          {dm.usage.prompt_tokens}↑ + {dm.usage.completion_tokens}↓)
-                        </span>
-                      )}
+                  <div className="px-1.5 py-0.5 rounded bg-zinc-50 dark:bg-zinc-800/50 text-slate-500 dark:text-slate-500 text-[10px] font-mono whitespace-nowrap">
+                    {dm.usage.prompt_tokens + dm.usage.completion_tokens} tokens
                   </div>
                 )}
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5 flex-shrink-0">
                 {dm.content && (
                   <div className="relative">
                     <button
                       type="button"
-                      onClick={() => handleCopy(message.id, extractTextFromContent(dm.content))}
+                      onClick={() =>
+                        handleCopy(`${message.id}-${modelId}`, extractTextFromContent(dm.content))
+                      }
                       title="Copy"
-                      className="p-2 rounded-md bg-white/60 dark:bg-neutral-800/50 hover:bg-white/90 dark:hover:bg-neutral-700/80 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+                      className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
                     >
-                      <Copy className="w-3 h-3" aria-hidden="true" />
+                      <Copy className="w-3.5 h-3.5" aria-hidden="true" />
                       <span className="sr-only">Copy</span>
                     </button>
-                    {copiedMessageId === message.id && (
-                      <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10 animate-fade-in">
+                    {copiedMessageId === `${message.id}-${modelId}` && (
+                      <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-white text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap z-10 animate-fade-in shadow-lg">
                         Copied
-                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-2 border-r-2 border-t-2 border-transparent border-t-slate-800 dark:border-t-slate-700"></div>
+                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[3px] border-r-[3px] border-t-[4px] border-transparent border-t-slate-800 dark:border-t-slate-700"></div>
                       </div>
                     )}
                   </div>
@@ -721,9 +715,9 @@ const Message = React.memo<MessageProps>(
                     type="button"
                     onClick={() => onFork(message.id)}
                     title="Fork"
-                    className="p-2 rounded-md bg-white/60 dark:bg-neutral-800/50 hover:bg-white/90 dark:hover:bg-neutral-700/80 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+                    className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
                   >
-                    <GitFork className="w-3 h-3" aria-hidden="true" />
+                    <GitFork className="w-3.5 h-3.5" aria-hidden="true" />
                     <span className="sr-only">Fork</span>
                   </button>
                 )}
@@ -732,9 +726,9 @@ const Message = React.memo<MessageProps>(
                     type="button"
                     onClick={() => onRetryMessage && onRetryMessage(message.id)}
                     title="Regenerate"
-                    className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+                    className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
                   >
-                    <RefreshCw className="w-3 h-3" aria-hidden="true" />
+                    <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
                     <span className="sr-only">Regenerate</span>
                   </button>
                 )}
@@ -742,14 +736,6 @@ const Message = React.memo<MessageProps>(
             </div>
           )}
 
-          {/* Compact stats for multi-column mode */}
-          {isMultiColumn &&
-            dm.usage?.prompt_tokens !== undefined &&
-            dm.usage?.completion_tokens !== undefined && (
-              <div className="mt-2 text-xs text-zinc-400 dark:text-zinc-500 font-mono">
-                {dm.usage.prompt_tokens + dm.usage.completion_tokens} tokens
-              </div>
-            )}
         </div>
       );
     };
@@ -932,35 +918,6 @@ const Message = React.memo<MessageProps>(
                 </div>
               )}
 
-              {/* Shared toolbar for multi-column assistant messages */}
-              {isMultiColumn && !isEditing && (
-                <div className="mt-2 flex items-center justify-end opacity-70 group-hover:opacity-100 transition-opacity text-xs">
-                  <div className="flex items-center gap-2">
-                    {onFork && (
-                      <button
-                        type="button"
-                        onClick={() => onFork(message.id)}
-                        title="Fork"
-                        className="p-2 rounded-md bg-white/60 dark:bg-neutral-800/50 hover:bg-white/90 dark:hover:bg-neutral-700/80 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
-                      >
-                        <GitFork className="w-3 h-3" aria-hidden="true" />
-                        <span className="sr-only">Fork</span>
-                      </button>
-                    )}
-                    {!pending.streaming && (
-                      <button
-                        type="button"
-                        onClick={() => onRetryMessage && onRetryMessage(message.id)}
-                        title="Regenerate"
-                        className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
-                      >
-                        <RefreshCw className="w-3 h-3" aria-hidden="true" />
-                        <span className="sr-only">Regenerate</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              )}
             </>
           )}
         </div>
