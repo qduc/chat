@@ -690,6 +690,7 @@ export class ConversationManager {
       tokensIn: params.tokensIn,
       tokensOut: params.tokensOut,
       totalTokens: params.totalTokens,
+      provider: params.provider,
     });
   }
 

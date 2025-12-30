@@ -447,6 +447,7 @@ const Message = React.memo<MessageProps>(
           tool_outputs: result.tool_outputs,
           message_events: result.message_events,
           usage: result.usage,
+          provider: (result as any).provider,
         };
         return {
           modelId,
@@ -737,6 +738,11 @@ const Message = React.memo<MessageProps>(
                     </div>
                   );
                 })()}
+                {dm.provider && (
+                  <div className="px-1.5 py-0.5 rounded bg-zinc-50 dark:bg-zinc-800/50 text-slate-500 dark:text-slate-500 text-[10px] font-mono whitespace-nowrap">
+                    {dm.provider}
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 {dm.content && (

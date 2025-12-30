@@ -200,6 +200,8 @@ export function insertAssistantFinal({
   tokensIn = undefined,
   tokensOut = undefined,
   totalTokens = undefined,
+
+  provider = undefined,
   clientMessageId = null,
 }) {
   const db = getDb();
@@ -214,8 +216,9 @@ export function insertAssistantFinal({
 
   const info = db
     .prepare(
-      `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, tokens_in, tokens_out, total_tokens, finish_reason, response_id, reasoning_details, reasoning_tokens, client_message_id, created_at, updated_at)
-     VALUES (@conversationId, 'assistant', 'final', @content, @contentJson, @seq, @tokensIn, @tokensOut, @totalTokens, @finishReason, @responseId, @reasoningDetails, @reasoningTokens, @clientMessageId, @now, @now)`
+      `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, tokens_in, tokens_out, total_tokens, finish_reason, response_id, reasoning_details, reasoning_tokens, provider, client_message_id, created_at, updated_at)
+     VALUES (@conversationId, 'assistant', 'final', @content, @contentJson, @seq, @tokensIn, @tokensOut, @totalTokens, @finishReason, @responseId, @reasoningDetails, @reasoningTokens, @provider, @clientMessageId, @now, @now)`
+
     )
     .run({
       conversationId,
@@ -229,6 +232,7 @@ export function insertAssistantFinal({
       responseId,
       reasoningDetails: reasoningJson === undefined ? null : reasoningJson,
       reasoningTokens: normalizedTokens ?? null,
+      provider: provider || null,
       clientMessageId,
       now,
     });
@@ -284,7 +288,7 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
   const sanitizedLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
   const messages = db
     .prepare(
-      `SELECT id, seq, role, status, content, content_json, tokens_in, tokens_out, total_tokens, reasoning_details, reasoning_tokens, client_message_id, response_id, created_at
+      `SELECT id, seq, role, status, content, content_json, tokens_in, tokens_out, total_tokens, reasoning_details, reasoning_tokens, provider, client_message_id, response_id, created_at
      FROM messages WHERE conversation_id=@conversationId AND seq > @afterSeq
      ORDER BY seq ASC LIMIT @limit`
     )
@@ -450,7 +454,7 @@ export function getLastMessage({ conversationId }) {
   const db = getDb();
   const message = db
     .prepare(
-      `SELECT id, seq, role, status, content, content_json, tokens_in, tokens_out, total_tokens, reasoning_details, reasoning_tokens, client_message_id, created_at
+      `SELECT id, seq, role, status, content, content_json, tokens_in, tokens_out, total_tokens, reasoning_details, reasoning_tokens, provider, client_message_id, created_at
      FROM messages WHERE conversation_id=@conversationId
      ORDER BY seq DESC LIMIT 1`
     )
@@ -613,6 +617,7 @@ export function updateMessageContent({
   totalTokens,
   finishReason,
   responseId,
+  provider,
 }) {
   if (!userId) {
     throw new Error('userId is required');
@@ -683,6 +688,11 @@ export function updateMessageContent({
   if (responseId !== undefined) {
     updates.push('response_id = @responseId');
     params.responseId = responseId;
+  }
+
+  if (provider !== undefined) {
+    updates.push('provider = @provider');
+    params.provider = provider;
   }
 
   const updateSql = `UPDATE messages SET ${updates.join(', ')} WHERE id = @messageId`;
