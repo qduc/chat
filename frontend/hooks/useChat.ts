@@ -207,6 +207,85 @@ function mergeToolCallDelta(existingToolCalls: any[], tcDelta: any, textOffset: 
   ];
 }
 
+function isEmptyAssistantPayload(
+  content: MessageContent,
+  toolCalls?: any[],
+  toolOutputs?: any[]
+): boolean {
+  const hasContent =
+    typeof content === 'string'
+      ? content.trim().length > 0
+      : Array.isArray(content)
+        ? content.length > 0
+        : content != null;
+  const hasToolCalls = Array.isArray(toolCalls) && toolCalls.length > 0;
+  const hasToolOutputs = Array.isArray(toolOutputs) && toolOutputs.length > 0;
+  return !hasContent && !hasToolCalls && !hasToolOutputs;
+}
+
+function buildHistoryForModel(
+  sourceMessages: Message[],
+  targetModel: string,
+  isPrimary: boolean
+): Array<{
+  id: string;
+  role: Message['role'];
+  content: MessageContent;
+  tool_calls?: any[];
+  tool_outputs?: any[];
+}> {
+  if (isPrimary) {
+    return sourceMessages.map((msg) => ({
+      id: msg.id,
+      role: msg.role,
+      content: msg.content,
+      tool_calls: msg.tool_calls,
+      tool_outputs: msg.tool_outputs,
+    }));
+  }
+
+  const history: Array<{
+    id: string;
+    role: Message['role'];
+    content: MessageContent;
+    tool_calls?: any[];
+    tool_outputs?: any[];
+  }> = [];
+
+  for (const msg of sourceMessages) {
+    if (msg.role === 'assistant') {
+      const comparison = msg.comparisonResults?.[targetModel];
+      if (!comparison) continue;
+      const content = comparison.content ?? '';
+      if (isEmptyAssistantPayload(content, comparison.tool_calls, comparison.tool_outputs)) {
+        continue;
+      }
+      history.push({
+        id: msg.id,
+        role: msg.role,
+        content,
+        tool_calls: comparison.tool_calls,
+        tool_outputs: comparison.tool_outputs,
+      });
+      continue;
+    }
+
+    if (msg.role === 'tool') {
+      continue;
+    }
+
+    history.push({
+      id: msg.id,
+      role: msg.role,
+      content: msg.content,
+      tool_calls: msg.tool_calls,
+      tool_outputs: msg.tool_outputs,
+    });
+  }
+
+  return history;
+}
+
 function prependReasoningToContent(content: MessageContent, reasoningText: string): MessageContent {
   const normalizedReasoning = reasoningText.trim();
   if (!normalizedReasoning) {
@@ -1015,13 +1094,7 @@ export function useChat() {
               : currentMessages.filter(
                   (m) => !isEmptyAssistantPlaceholder(m) && !isCurrentAssistant(m)
                 );
-            const history = historySource.map((m) => ({
-              id: m.id,
-              role: m.role,
-              content: m.content,
-              tool_calls: m.tool_calls,
-              tool_outputs: m.tool_outputs,
-            }));
+            const history = buildHistoryForModel(historySource, targetModel, isPrimary);
 
             // Check if the message is already in history (e.g. retry/regenerate)
             const exists = history.some((m) => m.id === newMessageObj.id);
@@ -1519,15 +1592,11 @@ export function useChat() {
         (!Array.isArray(msg.tool_calls) || msg.tool_calls.length === 0) &&
         (!Array.isArray(msg.tool_outputs) || msg.tool_outputs.length === 0);
 
-      const history = historySource
-        .filter((msg) => !isEmptyAssistantPlaceholder(msg))
-        .map((msg) => ({
-          id: msg.id,
-          role: msg.role,
-          content: msg.content,
-          tool_calls: msg.tool_calls,
-          tool_outputs: msg.tool_outputs,
-        }));
+      const history = buildHistoryForModel(
+        historySource.filter((msg) => !isEmptyAssistantPlaceholder(msg)),
+        modelKey,
+        isPrimary
+      );
       if (history.length === 0) return;
 
       const isPrimary = modelId === 'primary';
