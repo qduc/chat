@@ -1,4 +1,5 @@
 import { BaseAdapter } from './baseAdapter.js';
+import { normalizeUsage } from '../utils/usage.js';
 import { convertContentPartImage } from '../localImageEncoder.js';
 import { logger } from '../../logger.js';
 
@@ -248,11 +249,7 @@ export class GeminiAdapter extends BaseAdapter {
         message,
         finish_reason: this.mapFinishReason(candidate.finishReason),
       }],
-      usage: data.usageMetadata ? {
-        prompt_tokens: data.usageMetadata.promptTokenCount,
-        completion_tokens: data.usageMetadata.candidatesTokenCount,
-        total_tokens: data.usageMetadata.totalTokenCount,
-      } : undefined,
+      usage: normalizeUsage(data.usageMetadata),
     };
   }
 
@@ -343,6 +340,11 @@ export class GeminiAdapter extends BaseAdapter {
         finish_reason: finishReason,
       }],
     };
+
+    const usage = normalizeUsage(data.usageMetadata);
+    if (usage) {
+      result.usage = usage;
+    }
 
     logger.debug('[GeminiAdapter] Translating chunk result', { result: JSON.stringify(result) });
     return result;

@@ -17,6 +17,7 @@ import {
 } from '../db/messages.js';
 import { getAllUserSettings } from '../db/getAllUserSettings.js';
 import { logger } from '../logger.js';
+import { normalizeUsage } from './utils/usage.js';
 
 /**
  * Simplified persistence manager that implements final-only writes
@@ -46,6 +47,9 @@ export class SimplifiedPersistence {
     this.reasoningDetails = null; // Structured reasoning blocks captured from providers
     this.reasoningTextBuffer = ''; // Accumulate reasoning text during streaming when structured data absent
     this.reasoningTokens = null; // Reasoning token usage metadata
+    this.tokensIn = null; // Prompt/input token usage metadata
+    this.tokensOut = null; // Completion/output token usage metadata
+    this.totalTokens = null; // Total token usage metadata
     this.userMessageId = null; // Persisted user message ID from latest sync
     this.assistantMessageId = null; // Persisted assistant message ID for the current turn
     this.messageEventsEnabled = this.persistenceConfig?.isMessageEventsEnabled?.() ?? true;
@@ -261,6 +265,9 @@ export class SimplifiedPersistence {
     this.reasoningDetails = null;
     this.reasoningTextBuffer = '';
     this.reasoningTokens = null;
+    this.tokensIn = null;
+    this.tokensOut = null;
+    this.totalTokens = null;
     this.assistantMessageId = null;
     this.messageEventsEnabled = this.persistenceConfig?.isMessageEventsEnabled?.() ?? true;
     this.messageEvents = [];
@@ -495,6 +502,32 @@ export class SimplifiedPersistence {
     this.reasoningTokens = Math.max(0, Math.trunc(asNumber));
   }
 
+  setUsage(usage) {
+    if (!this.persist || usage === undefined) return;
+    if (usage === null) {
+      this.tokensIn = null;
+      this.tokensOut = null;
+      this.totalTokens = null;
+      return;
+    }
+
+    const normalized = normalizeUsage(usage);
+    if (!normalized) return;
+
+    if (normalized.prompt_tokens != null) {
+      this.tokensIn = Math.max(0, Math.trunc(Number(normalized.prompt_tokens)));
+    }
+    if (normalized.completion_tokens != null) {
+      this.tokensOut = Math.max(0, Math.trunc(Number(normalized.completion_tokens)));
+    }
+    if (normalized.total_tokens != null) {
+      this.totalTokens = Math.max(0, Math.trunc(Number(normalized.total_tokens)));
+    }
+    if (normalized.reasoning_tokens != null) {
+      this.setReasoningTokens(normalized.reasoning_tokens);
+    }
+  }
+
   _finalizeReasoningDetails() {
     if (Array.isArray(this.reasoningDetails)) {
       return this._clone(this.reasoningDetails);
@@ -603,6 +636,9 @@ export class SimplifiedPersistence {
           responseId: responseId || this.responseId,
           reasoningDetails: this._finalizeReasoningDetails(),
           reasoningTokens: this.reasoningTokens,
+          tokensIn: this.tokensIn,
+          tokensOut: this.tokensOut,
+          totalTokens: this.totalTokens,
         });
 
         this.assistantMessageId = String(this.currentMessageId);
@@ -620,7 +656,7 @@ export class SimplifiedPersistence {
           // Update the found row directly (bypass user join checks)
           try {
             const now = new Date().toISOString();
-            db.prepare(`UPDATE messages SET status=@status, content=@content, content_json=@contentJson, finish_reason=@finishReason, response_id=@responseId, reasoning_details=@reasoningDetails, reasoning_tokens=@reasoningTokens, updated_at=@now WHERE id=@id`).run({
+            db.prepare(`UPDATE messages SET status=@status, content=@content, content_json=@contentJson, finish_reason=@finishReason, response_id=@responseId, reasoning_details=@reasoningDetails, reasoning_tokens=@reasoningTokens, tokens_in=@tokensIn, tokens_out=@tokensOut, total_tokens=@totalTokens, updated_at=@now WHERE id=@id`).run({
               id: found.id,
               status: 'final',
               content: this.assistantContentJson ? this._extractTextFromMixedContent(this.assistantContentJson) : (this.assistantBuffer || ''),
@@ -629,6 +665,9 @@ export class SimplifiedPersistence {
               responseId: responseId || this.responseId,
               reasoningDetails: this._finalizeReasoningDetails() ? JSON.stringify(this._finalizeReasoningDetails()) : null,
               reasoningTokens: this.reasoningTokens ?? null,
+              tokensIn: this.tokensIn ?? null,
+              tokensOut: this.tokensOut ?? null,
+              totalTokens: this.totalTokens ?? null,
               now,
             });
             this.currentMessageId = found.id;
@@ -644,6 +683,9 @@ export class SimplifiedPersistence {
               responseId: responseId || this.responseId,
               reasoningDetails: this._finalizeReasoningDetails(),
               reasoningTokens: this.reasoningTokens,
+              tokensIn: this.tokensIn,
+              tokensOut: this.tokensOut,
+              totalTokens: this.totalTokens,
             });
             if (result && result.id) {
               this.currentMessageId = result.id;
@@ -660,6 +702,9 @@ export class SimplifiedPersistence {
             responseId: responseId || this.responseId,
             reasoningDetails: this._finalizeReasoningDetails(),
             reasoningTokens: this.reasoningTokens,
+            tokensIn: this.tokensIn,
+            tokensOut: this.tokensOut,
+            totalTokens: this.totalTokens,
           });
           if (result && result.id) {
             this.currentMessageId = result.id;
@@ -901,7 +946,7 @@ export class SimplifiedPersistence {
       if (targetId) {
         try {
           const now = new Date().toISOString();
-          db.prepare(`UPDATE messages SET status=@status, content=@content, content_json=@contentJson, finish_reason=@finishReason, response_id=@responseId, reasoning_details=@reasoningDetails, reasoning_tokens=@reasoningTokens, updated_at=@now WHERE id=@messageId`).run({
+          db.prepare(`UPDATE messages SET status=@status, content=@content, content_json=@contentJson, finish_reason=@finishReason, response_id=@responseId, reasoning_details=@reasoningDetails, reasoning_tokens=@reasoningTokens, tokens_in=@tokensIn, tokens_out=@tokensOut, total_tokens=@totalTokens, updated_at=@now WHERE id=@messageId`).run({
             messageId: targetId,
             status: 'error',
             content: this.assistantContentJson ? this._extractTextFromMixedContent(this.assistantContentJson) : (this.assistantBuffer || ''),
@@ -910,6 +955,9 @@ export class SimplifiedPersistence {
             responseId: this.responseId || null,
             reasoningDetails: this._finalizeReasoningDetails() ? JSON.stringify(this._finalizeReasoningDetails()) : null,
             reasoningTokens: this.reasoningTokens ?? null,
+            tokensIn: this.tokensIn ?? null,
+            tokensOut: this.tokensOut ?? null,
+            totalTokens: this.totalTokens ?? null,
             now,
           });
         } catch (err) {
@@ -991,6 +1039,9 @@ export class SimplifiedPersistence {
         status: 'draft',
         reasoningDetails: this._finalizeReasoningDetails(),
         reasoningTokens: this.reasoningTokens,
+        tokensIn: this.tokensIn,
+        tokensOut: this.tokensOut,
+        totalTokens: this.totalTokens,
       });
 
       this.lastCheckpoint = Date.now();

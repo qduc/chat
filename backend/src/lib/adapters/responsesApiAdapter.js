@@ -2,6 +2,7 @@ import { PassThrough } from 'node:stream';
 import { maybeConvertLocalImageUrl } from '../localImageEncoder.js';
 import { BaseAdapter } from './baseAdapter.js';
 import { createChatCompletionChunk } from '../streamUtils.js';
+import { normalizeUsage } from '../utils/usage.js';
 
 const RESPONSES_ENDPOINT = '/v1/responses';
 
@@ -667,27 +668,6 @@ function extractReasoningText(source) {
   return text;
 }
 
-function mapUsage(usage) {
-  if (!usage || typeof usage !== 'object') return undefined;
-
-  const promptTokens = usage.prompt_tokens ?? usage.input_tokens ?? usage.input_token_count ?? usage.prompt_token_count;
-  const completionTokens =
-    usage.completion_tokens ?? usage.output_tokens ?? usage.output_token_count ?? usage.completion_token_count;
-  const totalTokens =
-    usage.total_tokens ??
-    usage.total_token_count ??
-    (promptTokens != null && completionTokens != null ? promptTokens + completionTokens : undefined);
-  const reasoningTokens = usage.reasoning_tokens ?? usage.reasoning_token_count;
-
-  const mapped = {};
-  if (promptTokens != null) mapped.prompt_tokens = promptTokens;
-  if (completionTokens != null) mapped.completion_tokens = completionTokens;
-  if (totalTokens != null) mapped.total_tokens = totalTokens;
-  if (reasoningTokens != null) mapped.reasoning_tokens = reasoningTokens;
-
-  return Object.keys(mapped).length > 0 ? mapped : undefined;
-}
-
 function inferFinishReason(response, toolCalls) {
   const status = response?.status || response?.response?.status;
 
@@ -750,7 +730,7 @@ function toChatCompletionResponse(response) {
     ],
   };
 
-  const usage = mapUsage(response?.usage || base?.usage);
+  const usage = normalizeUsage(response?.usage || base?.usage);
   if (usage) {
     completion.usage = usage;
   }
@@ -1028,7 +1008,7 @@ function transformStreamingResponse(response, context = {}) {
             state.id = payload.response?.id || state.id;
             state.model = payload.response?.model || state.model;
             state.finishReason = inferFinishReason(payload.response, []);
-            const usage = mapUsage(payload.response?.usage);
+            const usage = normalizeUsage(payload.response?.usage);
             if (usage) state.usage = usage;
             if (payload.response?.reasoning) {
               handleReasoningDelta(payload.response.reasoning);

@@ -186,6 +186,44 @@ describe('useChat hook', () => {
     expect(result.current.qualityLevel).toBe('high');
   });
 
+  test('selectConversation maps persisted usage into messages', async () => {
+    mockConversations.get.mockResolvedValue({
+      id: 'conv-usage',
+      title: 'Usage Conversation',
+      model: 'gpt-4o',
+      created_at: '2024-01-01T00:00:00Z',
+      messages: [
+        {
+          id: 200,
+          seq: 1,
+          role: 'assistant',
+          content: 'Done.',
+          created_at: '2024-01-01T00:01:00Z',
+          status: 'completed',
+          usage: {
+            prompt_tokens: 10,
+            completion_tokens: 15,
+            total_tokens: 25,
+          },
+        },
+      ],
+      next_after_seq: null,
+    });
+
+    const { result } = renderUseChat();
+
+    await act(async () => {
+      await result.current.selectConversation('conv-usage');
+    });
+
+    expect(result.current.messages).toHaveLength(1);
+    expect(result.current.messages[0].usage).toEqual({
+      prompt_tokens: 10,
+      completion_tokens: 15,
+      total_tokens: 25,
+    });
+  });
+
   test('sendMessage streams tokens, tool events, and finalizes assistant message', async () => {
     // chat.sendMessage receives unqualified model IDs (without provider prefix)
     mockChat.sendMessage.mockImplementation(async (options: ChatOptionsExtended) => {

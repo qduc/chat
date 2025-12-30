@@ -4,6 +4,7 @@ import { handleToolsJson } from './toolsJson.js';
 import { handleToolsStreaming } from './toolsStreaming.js';
 import { handleRegularStreaming } from './streamingHandler.js';
 import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
+import { extractUsage } from './utils/usage.js';
 import { createProvider } from './providers/index.js';
 import { SimplifiedPersistence } from './simplifiedPersistence.js';
 import { addConversationMetadata, getConversationMetadata } from './responseUtils.js';
@@ -478,6 +479,10 @@ async function handleRequest(context, req, res) {
       // Upstream returned JSON instead of stream - convert it to streaming format
       try {
         const upstreamJson = await upstream.json();
+        const normalizedUsage = extractUsage(upstreamJson);
+        if (normalizedUsage) {
+          persistence?.setUsage?.(normalizedUsage);
+        }
 
         // Persist the response
         if (persistence.persist && upstreamJson.choices?.[0]?.message) {
