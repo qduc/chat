@@ -337,6 +337,7 @@ const Message = React.memo<MessageProps>(
     onToggleComparisonModel,
     onSelectAllComparisonModels,
     isMobile,
+    showComparisonTabs,
   }: {
     message: ChatMessage;
     isStreaming: boolean;
@@ -373,6 +374,7 @@ const Message = React.memo<MessageProps>(
     onToggleComparisonModel: (modelId: string, event?: React.MouseEvent) => void;
     onSelectAllComparisonModels: (models: string[]) => void;
     isMobile: boolean;
+    showComparisonTabs: boolean;
   }) {
     const isUser = message.role === 'user';
     const isEditing = editingMessageId === message.id;
@@ -781,7 +783,7 @@ const Message = React.memo<MessageProps>(
           className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? 'max-w-full sm:max-w-[85%] md:max-w-[75%] lg:max-w-[60%] order-first' : 'w-full'}`}
           style={{ minWidth: 0 }}
         >
-          {hasComparison && !isUser && (
+          {hasComparison && !isUser && showComparisonTabs && (
             <div className="flex items-center gap-2 mb-2 overflow-x-auto pb-1 no-scrollbar">
               {/* All button - hidden on mobile (single model only) */}
               {!isMobile && (
@@ -1008,7 +1010,8 @@ const Message = React.memo<MessageProps>(
       prev.editingImages === next.editingImages &&
       prev.toolbarRef === next.toolbarRef &&
       prev.selectedComparisonModels === next.selectedComparisonModels &&
-      prev.isMobile === next.isMobile
+      prev.isMobile === next.isMobile &&
+      prev.showComparisonTabs === next.showComparisonTabs
     );
   }
 );
@@ -1341,6 +1344,10 @@ export function MessageList({
 
   // Split messages with tool calls into separate messages
   const processedMessages = useMemo(() => splitMessagesWithToolCalls(messages), [messages]);
+  const firstAssistantMessageId = useMemo(() => {
+    const firstAssistant = processedMessages.find((message) => message.role === 'assistant');
+    return firstAssistant?.id ?? null;
+  }, [processedMessages]);
 
   // Track scroll position to show/hide scroll buttons
   useEffect(() => {
@@ -1422,6 +1429,7 @@ export function MessageList({
               onToggleComparisonModel={handleToggleComparisonModel}
               onSelectAllComparisonModels={handleSelectAllComparisonModels}
               isMobile={isMobile}
+              showComparisonTabs={m.id === firstAssistantMessageId}
             />
           );
         })}
