@@ -15,12 +15,13 @@ export function createConversation({
   reasoningEffort = null,
   verbosity = null,
   metadata = {},
+  parentConversationId = null,
 }) {
   const db = getDb();
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO conversations (id, session_id, user_id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at, updated_at)
-     VALUES (@id, @session_id, @user_id, @title, @provider_id, @model, @metadata, @streaming_enabled, @tools_enabled, @quality_level, @reasoning_effort, @verbosity, @now, @now)`
+    `INSERT INTO conversations (id, session_id, user_id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, parent_conversation_id, created_at, updated_at)
+     VALUES (@id, @session_id, @user_id, @title, @provider_id, @model, @metadata, @streaming_enabled, @tools_enabled, @quality_level, @reasoning_effort, @verbosity, @parent_conversation_id, @now, @now)`
   ).run({
     id,
     session_id: sessionId,
@@ -34,6 +35,7 @@ export function createConversation({
     quality_level: qualityLevel,
     reasoning_effort: reasoningEffort,
     verbosity,
+    parent_conversation_id: parentConversationId || null,
     now,
   });
 }
@@ -44,7 +46,7 @@ export function getConversationById({ id, userId }) {
   }
 
   const db = getDb();
-  const query = `SELECT id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at FROM conversations
+  const query = `SELECT id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, parent_conversation_id, created_at FROM conversations
            WHERE id=@id AND user_id=@user_id AND deleted_at IS NULL`;
   const result = db.prepare(query).get({ id, user_id: userId });
 
@@ -190,8 +192,9 @@ export function listConversations({ userId, cursor, limit }) {
   const safeLimit = clampLimit(limit, { fallback: 20, min: 1, max: 100 });
   const { cursorCreatedAt, cursorId } = parseCreatedAtCursor(cursor);
 
+  // Exclude linked/comparison conversations (those with parent_conversation_id)
   let sql = `SELECT id, title, provider_id, model, created_at FROM conversations
-         WHERE user_id=@userId AND deleted_at IS NULL`;
+         WHERE user_id=@userId AND deleted_at IS NULL AND parent_conversation_id IS NULL`;
   const params = { userId, cursorCreatedAt, cursorId, limit: safeLimit + 1 };
 
   sql = appendCreatedAtCursor(sql, { cursorCreatedAt, cursorId });
@@ -204,6 +207,25 @@ export function listConversations({ userId, cursor, limit }) {
   return { items, next_cursor };
 }
 
+/**
+ * Get linked/comparison conversations for a parent conversation
+ * @param {string} parentId - Parent conversation ID
+ * @param {string} userId - User ID
+ * @returns {Array} Array of linked conversation metadata
+ */
+export function getLinkedConversations({ parentId, userId }) {
+  if (!userId) {
+    throw new Error('userId is required');
+  }
+
+  const db = getDb();
+  const query = `SELECT id, title, provider_id, model, created_at, updated_at FROM conversations
+         WHERE parent_conversation_id=@parentId AND user_id=@userId AND deleted_at IS NULL
+         ORDER BY datetime(created_at) ASC`;
+
+  return db.prepare(query).all({ parentId, userId });
+}
+
 export function softDeleteConversation({ id, userId }) {
   if (!userId) {
     throw new Error('userId is required');
@@ -211,6 +233,14 @@ export function softDeleteConversation({ id, userId }) {
 
   const db = getDb();
   const now = new Date().toISOString();
+
+  // Also soft-delete any linked comparison conversations
+  db.prepare(
+    `UPDATE conversations SET deleted_at=@now, updated_at=@now
+     WHERE parent_conversation_id=@id AND user_id=@userId AND deleted_at IS NULL`
+  ).run({ id, userId, now });
+
+  // Delete the parent conversation
   const query = `UPDATE conversations SET deleted_at=@now, updated_at=@now WHERE id=@id AND user_id=@userId AND deleted_at IS NULL`;
   const info = db.prepare(query).run({ id, userId, now });
   return info.changes > 0;

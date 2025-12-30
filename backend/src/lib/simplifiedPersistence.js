@@ -157,10 +157,13 @@ export class SimplifiedPersistence {
     // Create new conversation if needed
     if (isNewConversation) {
       const settings = await this.persistenceConfig.extractRequestSettingsAsync(bodyIn, userId);
+      // Support linked comparison conversations via parent_conversation_id
+      const parentConversationId = bodyIn.parent_conversation_id || null;
       conversationId = this.conversationManager.createNewConversation({
         sessionId,
         userId,
         providerId: this.providerId,
+        parentConversationId,
         ...settings
       });
       convo = this.conversationManager.getConversation(conversationId, userId);
@@ -176,7 +179,23 @@ export class SimplifiedPersistence {
    * @private
    */
   async _processMessageHistory(sessionId, userId, bodyIn, isNewConversation) {
-    const messages = this.persistenceConfig.filterNonSystemMessages(bodyIn.messages || []);
+    let messages = this.persistenceConfig.filterNonSystemMessages(bodyIn.messages || []);
+    const emptyAssistantMessages = messages.filter(
+      (msg) =>
+        msg?.role === 'assistant' &&
+        (msg.content === '' || (Array.isArray(msg.content) && msg.content.length === 0)) &&
+        (!Array.isArray(msg.tool_calls) || msg.tool_calls.length === 0) &&
+        (!Array.isArray(msg.tool_outputs) || msg.tool_outputs.length === 0)
+    );
+    if (emptyAssistantMessages.length > 0) {
+      logger.debug('[SimplifiedPersistence] Dropping empty assistant messages from client history', {
+        conversationId: this.conversationId,
+        parentConversationId: bodyIn?.parent_conversation_id ?? null,
+        count: emptyAssistantMessages.length,
+        ids: emptyAssistantMessages.map((msg) => msg?.id).filter(Boolean),
+      });
+      messages = messages.filter((msg) => !emptyAssistantMessages.includes(msg));
+    }
     const maxSeq = messages
       .map(msg => msg.seq)
       .filter(seq => typeof seq === 'number' && seq > 0)
@@ -192,9 +211,10 @@ export class SimplifiedPersistence {
       const latestUserMapping = [...this._latestSyncMappings].reverse().find(mapping => mapping.role === 'user');
       this.userMessageId = latestUserMapping?.persistedId != null ? String(latestUserMapping.persistedId) : null;
 
-      // Generate title only if this is the first message in a new conversation
-      // Fire-and-forget to avoid blocking the response
-      if (isNewConversation) {
+      // Generate title when the conversation is new or still lacks a title.
+      // Fire-and-forget to avoid blocking the response.
+      const needsTitle = isNewConversation || !this.conversationMeta?.title;
+      if (needsTitle) {
         const lastUser = ConversationTitleService.findLastUserMessage(messages);
         if (lastUser) {
           // Extract the model being used for the chat to use the same model for title generation

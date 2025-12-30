@@ -42,6 +42,23 @@ export interface Message {
     total_tokens?: number;
     reasoning_tokens?: number;
   };
+  comparisonResults?: Record<
+    string,
+    {
+      content: MessageContent;
+      usage?: any;
+      status: 'streaming' | 'complete' | 'error';
+      error?: string;
+      tool_calls?: any[];
+      tool_outputs?: Array<{
+        tool_call_id?: string;
+        name?: string;
+        output: any;
+        status?: string;
+      }>;
+      message_events?: MessageEvent[];
+    }
+  >;
 }
 
 export interface Conversation {
@@ -149,6 +166,124 @@ function mergeToolOutputsToAssistantMessages(messages: Message[]): Message[] {
   }
 
   return result;
+}
+
+function mergeToolCallDelta(existingToolCalls: any[], tcDelta: any, textOffset: number) {
+  const existingIdx = tcDelta.id
+    ? existingToolCalls.findIndex((tc: any) => tc.id === tcDelta.id)
+    : existingToolCalls.findIndex((tc: any) => (tc.index ?? 0) === (tcDelta.index ?? 0));
+
+  if (existingIdx >= 0) {
+    const updatedToolCalls = [...existingToolCalls];
+    const existing = { ...updatedToolCalls[existingIdx] };
+    if (tcDelta.id) existing.id = tcDelta.id;
+    if (tcDelta.type) existing.type = tcDelta.type;
+    if (tcDelta.index !== undefined) existing.index = tcDelta.index;
+    if (tcDelta.function?.name) {
+      existing.function = { ...existing.function, name: tcDelta.function.name };
+    }
+    if (tcDelta.function?.arguments) {
+      existing.function = {
+        ...existing.function,
+        arguments: (existing.function?.arguments || '') + tcDelta.function.arguments,
+      };
+    }
+    updatedToolCalls[existingIdx] = existing;
+    return updatedToolCalls;
+  }
+
+  return [
+    ...existingToolCalls,
+    {
+      id: tcDelta.id,
+      type: tcDelta.type || 'function',
+      index: tcDelta.index ?? existingToolCalls.length,
+      textOffset,
+      function: {
+        name: tcDelta.function?.name || '',
+        arguments: tcDelta.function?.arguments || '',
+      },
+    },
+  ];
+}
+
+function isEmptyAssistantPayload(
+  content: MessageContent,
+  toolCalls?: any[],
+  toolOutputs?: any[]
+): boolean {
+  const hasContent =
+    typeof content === 'string'
+      ? content.trim().length > 0
+      : Array.isArray(content)
+        ? content.length > 0
+        : content != null;
+  const hasToolCalls = Array.isArray(toolCalls) && toolCalls.length > 0;
+  const hasToolOutputs = Array.isArray(toolOutputs) && toolOutputs.length > 0;
+  return !hasContent && !hasToolCalls && !hasToolOutputs;
+}
+
+function buildHistoryForModel(
+  sourceMessages: Message[],
+  targetModel: string,
+  isPrimary: boolean
+): Array<{
+  id: string;
+  role: Message['role'];
+  content: MessageContent;
+  tool_calls?: any[];
+  tool_outputs?: any[];
+}> {
+  if (isPrimary) {
+    return sourceMessages.map((msg) => ({
+      id: msg.id,
+      role: msg.role,
+      content: msg.content,
+      tool_calls: msg.tool_calls,
+      tool_outputs: msg.tool_outputs,
+    }));
+  }
+
+  const history: Array<{
+    id: string;
+    role: Message['role'];
+    content: MessageContent;
+    tool_calls?: any[];
+    tool_outputs?: any[];
+  }> = [];
+
+  for (const msg of sourceMessages) {
+    if (msg.role === 'assistant') {
+      const comparison = msg.comparisonResults?.[targetModel];
+      if (!comparison) continue;
+      const content = comparison.content ?? '';
+      if (isEmptyAssistantPayload(content, comparison.tool_calls, comparison.tool_outputs)) {
+        continue;
+      }
+      history.push({
+        id: msg.id,
+        role: msg.role,
+        content,
+        tool_calls: comparison.tool_calls,
+        tool_outputs: comparison.tool_outputs,
+      });
+      continue;
+    }
+
+    if (msg.role === 'tool') {
+      continue;
+    }
+
+    history.push({
+      id: msg.id,
+      role: msg.role,
+      content: msg.content,
+      tool_calls: msg.tool_calls,
+      tool_outputs: msg.tool_outputs,
+    });
+  }
+
+  return history;
 }
 
 function prependReasoningToContent(content: MessageContent, reasoningText: string): MessageContent {
@@ -300,6 +435,12 @@ export function useChat() {
   const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
   const [modelToProvider, setModelToProvider] = useState<Record<string, string>>({});
   const [modelCapabilities, setModelCapabilities] = useState<any>(null);
+
+  // Comparison State
+  const [compareModels, setCompareModels] = useState<string[]>([]);
+  // Linked comparison conversations (model -> conversationId)
+  const [linkedConversations, setLinkedConversations] = useState<Record<string, string>>({});
+  const linkedConversationsRef = useRef<Record<string, string>>({});
 
   // Tool & Quality State
   const [useTools, setUseTools] = useState(true);
@@ -514,6 +655,109 @@ export function useChat() {
           setActiveSystemPromptId(data.active_system_prompt_id);
           activeSystemPromptIdRef.current = data.active_system_prompt_id;
         }
+
+        // Load linked comparison conversations (if any)
+        try {
+          const linkedResult = await conversationsApi.getLinked(id);
+          if (linkedResult.conversations && linkedResult.conversations.length > 0) {
+            const linkedMap: Record<string, string> = {};
+
+            // Fetch messages from each linked conversation and populate comparisonResults
+            for (const linked of linkedResult.conversations) {
+              if (linked.model) {
+                const rawLinkedModel = String(linked.model).trim();
+                if (!rawLinkedModel) continue;
+                const linkedProviderId =
+                  typeof linked.provider_id === 'string' ? linked.provider_id.trim() : '';
+                const normalizedLinkedModel = rawLinkedModel.includes('::')
+                  ? rawLinkedModel
+                  : linkedProviderId
+                    ? `${linkedProviderId}::${rawLinkedModel}`
+                    : resolveProviderFromModel(rawLinkedModel)
+                      ? `${resolveProviderFromModel(rawLinkedModel)}::${rawLinkedModel}`
+                      : rawLinkedModel;
+
+                linkedMap[normalizedLinkedModel] = linked.id;
+
+                // Fetch the linked conversation's messages
+                try {
+                  const linkedData = await conversationsApi.get(linked.id);
+                  if (linkedData.messages && linkedData.messages.length > 0) {
+                    // Merge linked conversation messages into comparisonResults
+                    setMessages((prevMessages) => {
+                      // Build a map of user message indices to assistant message indices
+                      // for the linked conversation
+                      const linkedUserIndices: number[] = [];
+                      const linkedAssistantIndices: number[] = [];
+
+                      for (let i = 0; i < linkedData.messages.length; i++) {
+                        const msg = linkedData.messages[i];
+                        if (msg.role === 'user') {
+                          linkedUserIndices.push(i);
+                        } else if (msg.role === 'assistant') {
+                          linkedAssistantIndices.push(i);
+                        }
+                      }
+
+                      // Build comparison results for each message
+                      const updatedMessages = prevMessages.map((msg, idx) => {
+                        if (msg.role !== 'assistant') return msg;
+
+                        // Find the corresponding assistant message in the linked conversation
+                        // by matching the position (index among assistant messages)
+                        const assistantIndex =
+                          prevMessages.slice(0, idx + 1).filter((m) => m.role === 'assistant')
+                            .length - 1;
+
+                        if (assistantIndex >= 0 && assistantIndex < linkedAssistantIndices.length) {
+                          const linkedIdx = linkedAssistantIndices[assistantIndex];
+                          const linkedMsg = linkedData.messages[linkedIdx];
+                          if (linkedMsg) {
+                            return {
+                              ...msg,
+                              comparisonResults: {
+                                ...msg.comparisonResults,
+                                [normalizedLinkedModel]: {
+                                  content: linkedMsg.content ?? '',
+                                  usage: (linkedMsg as any).usage,
+                                  status: 'complete' as const,
+                                  tool_calls: linkedMsg.tool_calls,
+                                  tool_outputs: linkedMsg.tool_outputs,
+                                  message_events: linkedMsg.message_events,
+                                },
+                              },
+                            };
+                          }
+                        }
+                        return msg;
+                      });
+
+                      return updatedMessages;
+                    });
+                  }
+                } catch (err) {
+                  console.warn(
+                    `[useChat] Failed to load messages from linked conversation ${linked.id}:`,
+                    err
+                  );
+                  // Continue with other linked conversations
+                }
+              }
+            }
+            setLinkedConversations(linkedMap);
+            const primaryModelValue = finalModelValue || modelRef.current;
+            setCompareModels(
+              Object.keys(linkedMap).filter((modelId) => modelId && modelId !== primaryModelValue)
+            );
+          } else {
+            setLinkedConversations({});
+            setCompareModels([]);
+          }
+        } catch {
+          // Non-fatal: if loading linked conversations fails, just clear state
+          setLinkedConversations({});
+          setCompareModels([]);
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load conversation');
       } finally {
@@ -531,6 +775,7 @@ export function useChat() {
         if (conversationId === id) {
           setConversationId(null);
           setMessages([]);
+          setLinkedConversations({});
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to delete conversation');
@@ -577,6 +822,7 @@ export function useChat() {
     setImages([]);
     setFiles([]);
     setCurrentConversationTitle(null);
+    setLinkedConversations({});
 
     // Clear draft for the previous conversation when starting a new chat
     if (user?.id && conversationId) {
@@ -629,11 +875,20 @@ export function useChat() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    linkedConversationsRef.current = linkedConversations;
+  }, [linkedConversations]);
+
   // Actions - Messages
   const sendMessage = useCallback(
     async (
       content?: string,
-      opts?: { clientMessageId?: string; skipLocalUserMessage?: boolean; retried?: boolean }
+      opts?: {
+        clientMessageId?: string;
+        skipLocalUserMessage?: boolean;
+        retried?: boolean;
+        comparisonModelsOverride?: string[];
+      }
     ) => {
       const messageText = content || input;
       if (!messageText.trim() && images.length === 0) return;
@@ -746,334 +1001,511 @@ export function useChat() {
 
         // Send message with streaming
         // Use refs to get the latest values and avoid stale closures
-        // Extract actual model ID from provider-qualified format (provider::model)
-        const actualModelId = modelRef.current.includes('::')
-          ? modelRef.current.split('::')[1]
-          : modelRef.current;
+        const primaryModel = modelRef.current;
+        const comparisonModelsSource = opts?.comparisonModelsOverride ?? compareModels;
+        const activeComparisonModels = comparisonModelsSource.filter((m) => m !== primaryModel);
 
-        // Map qualityLevel to reasoning effort if the model supports reasoning
-        const reasoning =
-          qualityLevelRef.current !== 'unset' ? { effort: qualityLevelRef.current } : undefined;
+        // Helper to update message state - works for both primary and secondary models
+        const updateMessageState = (
+          isPrimary: boolean,
+          targetModel: string,
+          updater: (
+            current: Message | { content: MessageContent; tool_calls?: any[]; tool_outputs?: any[] }
+          ) =>
+            | Partial<Message>
+            | Partial<{ content: MessageContent; tool_calls?: any[]; tool_outputs?: any[] }>
+        ) => {
+          setMessages((prev) => {
+            const lastIdx = prev.length - 1;
+            if (lastIdx < 0) return prev;
+            const lastMsg = prev[lastIdx];
+            if (!lastMsg || lastMsg.role !== 'assistant') return prev;
 
-        const currentMessages = messagesRef.current;
-
-        // Prepare the new message object
-        const newMessageObj = {
-          id: userMessage.id,
-          role: 'user' as const,
-          content: messageContent,
+            if (isPrimary) {
+              const updates = updater(lastMsg);
+              return [...prev.slice(0, lastIdx), { ...lastMsg, ...updates }];
+            } else {
+              const existingRes = lastMsg.comparisonResults?.[targetModel];
+              if (!existingRes) return prev;
+              const updates = updater(existingRes);
+              return [
+                ...prev.slice(0, lastIdx),
+                {
+                  ...lastMsg,
+                  comparisonResults: {
+                    ...lastMsg.comparisonResults,
+                    [targetModel]: { ...existingRes, ...updates },
+                  },
+                },
+              ];
+            }
+          });
         };
 
-        let messagesPayload;
-        if (conversationId) {
-          // Optimization for existing conversations
-          messagesPayload = [newMessageObj];
-        } else {
-          // Full history for new conversations
-          const history = currentMessages.map((m) => ({
-            id: m.id,
-            role: m.role,
-            content: m.content,
-            tool_calls: m.tool_calls,
-            tool_outputs: m.tool_outputs,
-          }));
+        const executeRequest = async (
+          targetModel: string,
+          isPrimary: boolean,
+          options?: { conversationId?: string; parentConversationId?: string }
+        ) => {
+          const targetConversationId = options?.conversationId;
+          const parentConversationId = options?.parentConversationId;
+          // Extract actual model ID from provider-qualified format (provider::model)
+          const actualModelId = targetModel.includes('::')
+            ? targetModel.split('::')[1]
+            : targetModel;
 
-          // Check if the message is already in history (e.g. retry/regenerate)
-          const exists = history.some((m) => m.id === newMessageObj.id);
-          if (exists) {
-            // Update existing message in place (in case content changed)
-            messagesPayload = history.map((m) =>
-              m.id === newMessageObj.id ? { ...m, ...newMessageObj } : m
-            );
-          } else {
-            // Append new message
-            messagesPayload = [...history, newMessageObj];
+          // Determine provider for this model
+          let targetProviderId = providerIdRef.current || '';
+          if (targetModel.includes('::')) {
+            targetProviderId = targetModel.split('::')[0];
+          } else if (modelToProviderRef.current[targetModel]) {
+            targetProviderId = modelToProviderRef.current[targetModel];
           }
-        }
 
-        const response = await chat.sendMessage({
-          messages: messagesPayload,
-          model: actualModelId,
-          providerId: providerIdRef.current || '',
-          stream: shouldStreamRef.current,
-          providerStream: providerStreamRef.current,
-          requestId: messageId,
-          signal: abortControllerRef.current.signal,
-          conversationId: conversationId || undefined,
-          streamingEnabled: shouldStreamRef.current,
-          toolsEnabled: useToolsRef.current,
-          tools: enabledToolsRef.current,
-          qualityLevel: qualityLevelRef.current,
-          reasoning: reasoning,
-          systemPrompt: systemPromptRef.current || undefined,
-          activeSystemPromptId: activeSystemPromptIdRef.current || undefined,
-          modelCapabilities: modelCapabilities,
-          onToken: (token: string) => {
-            // Update token count using ref to avoid re-renders on every token
-            if (tokenStatsRef.current && tokenStatsRef.current.messageId === messageId) {
-              // If this is the first token (count is 0), update startTime to now
-              const isFirstToken = tokenStatsRef.current.count === 0;
-              tokenStatsRef.current.count += 1;
-              if (isFirstToken) {
-                tokenStatsRef.current.startTime = Date.now();
-              }
-              tokenStatsRef.current.lastUpdated = Date.now();
+          // Map qualityLevel to reasoning effort if the model supports reasoning
+          const reasoning =
+            qualityLevelRef.current !== 'unset' ? { effort: qualityLevelRef.current } : undefined;
+
+          const currentMessages = messagesRef.current;
+          const isEmptyAssistantPlaceholder = (msg: Message) =>
+            msg.role === 'assistant' &&
+            (msg.content === '' || (Array.isArray(msg.content) && msg.content.length === 0)) &&
+            (!Array.isArray(msg.tool_calls) || msg.tool_calls.length === 0) &&
+            (!Array.isArray(msg.tool_outputs) || msg.tool_outputs.length === 0);
+          const isCurrentAssistant = (msg: Message) =>
+            msg.role === 'assistant' && msg.id === messageId;
+
+          // Prepare the new message object
+          const newMessageObj = {
+            id: userMessage.id,
+            role: 'user' as const,
+            content: messageContent,
+          };
+
+          let messagesPayload;
+          if (targetConversationId) {
+            // Optimization for existing conversations
+            messagesPayload = [newMessageObj];
+          } else {
+            // Full history for new conversations or secondary comparison requests
+            // (Secondary requests use undefined conversationId, so they need full history)
+            const historySource = isPrimary
+              ? currentMessages
+              : currentMessages.filter(
+                  (m) => !isEmptyAssistantPlaceholder(m) && !isCurrentAssistant(m)
+                );
+            const history = buildHistoryForModel(historySource, targetModel, isPrimary);
+
+            // Check if the message is already in history (e.g. retry/regenerate)
+            const exists = history.some((m) => m.id === newMessageObj.id);
+            if (exists) {
+              // Update existing message in place (in case content changed)
+              messagesPayload = history.map((m) =>
+                m.id === newMessageObj.id ? { ...m, ...newMessageObj } : m
+              );
+            } else {
+              // Append new message
+              messagesPayload = [...history, newMessageObj];
             }
+          }
 
+          // Initialize comparison result for this model if it's secondary
+          if (!isPrimary) {
             setMessages((prev) => {
               const lastIdx = prev.length - 1;
               if (lastIdx < 0) return prev;
-
               const lastMsg = prev[lastIdx];
               if (!lastMsg || lastMsg.role !== 'assistant') return prev;
 
-              const newContent =
-                typeof lastMsg.content === 'string' ? lastMsg.content + token : token;
-
-              return [...prev.slice(0, lastIdx), { ...lastMsg, content: newContent }];
-            });
-          },
-          onEvent: (event) => {
-            if (event.type === 'text') {
-              // Update token count using ref to avoid re-renders on every event
-              if (tokenStatsRef.current && tokenStatsRef.current.messageId === messageId) {
-                // If this is the first content (count is 0), update startTime to now
-                const isFirstContent = tokenStatsRef.current.count === 0;
-                tokenStatsRef.current.count += 1;
-                if (isFirstContent) {
-                  tokenStatsRef.current.startTime = Date.now();
-                }
-                tokenStatsRef.current.lastUpdated = Date.now();
-              }
-
-              // Handle text events from tool_events (non-streaming responses)
-              setMessages((prev) => {
-                const lastIdx = prev.length - 1;
-                if (lastIdx < 0) return prev;
-
-                const lastMsg = prev[lastIdx];
-                if (!lastMsg || lastMsg.role !== 'assistant') return prev;
-
-                // Append text to existing content
-                const currentContent = typeof lastMsg.content === 'string' ? lastMsg.content : '';
-                const newContent = currentContent + event.value;
-
-                return [...prev.slice(0, lastIdx), { ...lastMsg, content: newContent }];
-              });
-            } else if (event.type === 'tool_call') {
-              setMessages((prev) => {
-                const lastIdx = prev.length - 1;
-                if (lastIdx < 0) return prev;
-
-                const lastMsg = prev[lastIdx];
-                if (!lastMsg || lastMsg.role !== 'assistant') return prev;
-
-                // Calculate current text length to set as textOffset
-                const currentTextLength =
-                  typeof lastMsg.content === 'string' ? lastMsg.content.length : 0;
-
-                // Accumulate tool calls by id (unique identifier) to avoid duplicates during streaming
-                const tcDelta = event.value;
-                const existingToolCalls = lastMsg.tool_calls || [];
-
-                // Use id as the primary identifier (OpenAI spec), fallback to index for older formats
-                const existingIdx = tcDelta.id
-                  ? existingToolCalls.findIndex((tc) => tc.id === tcDelta.id)
-                  : existingToolCalls.findIndex((tc) => (tc.index ?? 0) === (tcDelta.index ?? 0));
-
-                let updatedToolCalls;
-                if (existingIdx >= 0) {
-                  // Update existing tool call (merge chunks during streaming)
-                  updatedToolCalls = [...existingToolCalls];
-                  const existing = { ...updatedToolCalls[existingIdx] };
-                  if (tcDelta.id) existing.id = tcDelta.id;
-                  if (tcDelta.type) existing.type = tcDelta.type;
-                  if (tcDelta.index !== undefined) existing.index = tcDelta.index;
-                  if (tcDelta.function?.name) {
-                    existing.function = { ...existing.function, name: tcDelta.function.name };
-                  }
-                  if (tcDelta.function?.arguments) {
-                    existing.function = {
-                      ...existing.function,
-                      arguments: (existing.function?.arguments || '') + tcDelta.function.arguments,
-                    };
-                  }
-                  updatedToolCalls[existingIdx] = existing;
-                } else {
-                  // New tool call - capture textOffset from current content length
-                  updatedToolCalls = [
-                    ...existingToolCalls,
-                    {
-                      id: tcDelta.id,
-                      type: tcDelta.type || 'function',
-                      index: tcDelta.index ?? existingToolCalls.length,
-                      textOffset: currentTextLength, // Store the position where tool call occurred
-                      function: {
-                        name: tcDelta.function?.name || '',
-                        arguments: tcDelta.function?.arguments || '',
-                      },
+              return [
+                ...prev.slice(0, lastIdx),
+                {
+                  ...lastMsg,
+                  comparisonResults: {
+                    ...(lastMsg.comparisonResults || {}),
+                    [targetModel]: {
+                      content: '',
+                      status: 'streaming',
                     },
-                  ];
+                  },
+                },
+              ];
+            });
+          }
+
+          try {
+            const response = await chat.sendMessage({
+              messages: messagesPayload,
+              model: actualModelId,
+              providerId: targetProviderId,
+              stream: shouldStreamRef.current,
+              providerStream: providerStreamRef.current,
+              requestId: isPrimary ? messageId : `${messageId}-${targetModel}`,
+              signal: abortControllerRef.current?.signal,
+              conversationId: targetConversationId || undefined,
+              parentConversationId: parentConversationId || undefined,
+              streamingEnabled: shouldStreamRef.current,
+              toolsEnabled: useToolsRef.current,
+              tools: enabledToolsRef.current,
+              qualityLevel: qualityLevelRef.current,
+              reasoning: reasoning,
+              systemPrompt: systemPromptRef.current || undefined,
+              activeSystemPromptId: activeSystemPromptIdRef.current || undefined,
+              modelCapabilities: modelCapabilities,
+              onToken: (token: string) => {
+                // Update token stats for primary model only
+                if (
+                  isPrimary &&
+                  tokenStatsRef.current &&
+                  tokenStatsRef.current.messageId === messageId
+                ) {
+                  const isFirstToken = tokenStatsRef.current.count === 0;
+                  tokenStatsRef.current.count += 1;
+                  if (isFirstToken) {
+                    tokenStatsRef.current.startTime = Date.now();
+                  }
+                  tokenStatsRef.current.lastUpdated = Date.now();
                 }
 
-                // Create new array with updated last message (immutable update)
-                return [...prev.slice(0, lastIdx), { ...lastMsg, tool_calls: updatedToolCalls }];
-              });
-            } else if (event.type === 'tool_output') {
-              setMessages((prev) => {
-                const lastIdx = prev.length - 1;
-                if (lastIdx < 0) return prev;
-
-                const lastMsg = prev[lastIdx];
-                if (!lastMsg || lastMsg.role !== 'assistant') return prev;
-
-                // Avoid duplicate tool outputs by checking tool_call_id or name
-                const outputValue = event.value;
-                const toolCallId = outputValue.tool_call_id;
-                const outputName = outputValue.name;
-
-                const existingToolOutputs = lastMsg.tool_outputs || [];
-                // Check if this tool output already exists
-                const existingIdx = existingToolOutputs.findIndex((out) => {
-                  if (toolCallId && out.tool_call_id) {
-                    return out.tool_call_id === toolCallId;
-                  }
-                  if (outputName && out.name) {
-                    return out.name === outputName;
-                  }
-                  return false;
+                updateMessageState(isPrimary, targetModel, (current) => {
+                  const currentContent = typeof current.content === 'string' ? current.content : '';
+                  return { content: currentContent + token };
                 });
+              },
+              onEvent: (event) => {
+                if (event.type === 'text') {
+                  // Update token stats for primary model only
+                  if (
+                    isPrimary &&
+                    tokenStatsRef.current &&
+                    tokenStatsRef.current.messageId === messageId
+                  ) {
+                    const isFirstContent = tokenStatsRef.current.count === 0;
+                    tokenStatsRef.current.count += 1;
+                    if (isFirstContent) {
+                      tokenStatsRef.current.startTime = Date.now();
+                    }
+                    tokenStatsRef.current.lastUpdated = Date.now();
+                  }
 
-                if (existingIdx === -1) {
-                  // Create new array with updated last message (immutable update)
-                  return [
-                    ...prev.slice(0, lastIdx),
-                    { ...lastMsg, tool_outputs: [...existingToolOutputs, outputValue] },
-                  ];
-                } else {
-                  // If it already exists, ignore the duplicate
-                  return prev;
+                  updateMessageState(isPrimary, targetModel, (current) => {
+                    const currentContent =
+                      typeof current.content === 'string' ? current.content : '';
+                    return { content: currentContent + event.value };
+                  });
+                } else if (event.type === 'tool_call') {
+                  updateMessageState(isPrimary, targetModel, (current) => {
+                    const currentTextLength =
+                      typeof current.content === 'string' ? current.content.length : 0;
+                    const existingToolCalls = current.tool_calls || [];
+                    const updatedToolCalls = mergeToolCallDelta(
+                      existingToolCalls,
+                      event.value,
+                      currentTextLength
+                    );
+                    return { tool_calls: updatedToolCalls };
+                  });
+                } else if (event.type === 'tool_output') {
+                  updateMessageState(isPrimary, targetModel, (current) => {
+                    const outputValue = event.value;
+                    const toolCallId = outputValue.tool_call_id;
+                    const outputName = outputValue.name;
+                    const existingToolOutputs = current.tool_outputs || [];
+
+                    // Check if this tool output already exists
+                    const existingIdx = existingToolOutputs.findIndex((out: any) => {
+                      if (toolCallId && out.tool_call_id) return out.tool_call_id === toolCallId;
+                      if (outputName && out.name) return out.name === outputName;
+                      return false;
+                    });
+
+                    if (existingIdx === -1) {
+                      return { tool_outputs: [...existingToolOutputs, outputValue] };
+                    }
+                    return {}; // No update if duplicate
+                  });
+                } else if (event.type === 'usage') {
+                  updateMessageState(isPrimary, targetModel, (current) => {
+                    // For primary, check if usage actually changed
+                    if (isPrimary) {
+                      const existingUsage = (current as Message).usage;
+                      const newUsage = event.value;
+                      if (existingUsage) {
+                        const unchanged =
+                          existingUsage.provider === newUsage.provider &&
+                          existingUsage.model === newUsage.model &&
+                          existingUsage.prompt_tokens === newUsage.prompt_tokens &&
+                          existingUsage.completion_tokens === newUsage.completion_tokens &&
+                          existingUsage.total_tokens === newUsage.total_tokens &&
+                          existingUsage.reasoning_tokens === newUsage.reasoning_tokens;
+                        if (unchanged) return {};
+                      }
+                    }
+                    return { usage: event.value };
+                  });
                 }
-              });
-            } else if (event.type === 'usage') {
+              },
+            } as ChatOptionsExtended);
+
+            // Completion handling
+            if (isPrimary) {
               setMessages((prev) => {
                 const lastIdx = prev.length - 1;
                 if (lastIdx < 0) return prev;
-
                 const lastMsg = prev[lastIdx];
                 if (!lastMsg || lastMsg.role !== 'assistant') return prev;
 
-                // Only update if usage data has actually changed
-                // Compare the usage object properties to avoid infinite loops
-                const existingUsage = lastMsg.usage;
-                const newUsage = event.value;
+                const responseContent = response.content as MessageContent;
+                const hasResponseContent =
+                  typeof responseContent === 'string'
+                    ? responseContent.length > 0
+                    : Array.isArray(responseContent)
+                      ? responseContent.length > 0
+                      : responseContent != null;
 
-                // Check if usage data is the same (deep equality check)
-                if (existingUsage) {
-                  const providerSame = existingUsage.provider === newUsage.provider;
-                  const modelSame = existingUsage.model === newUsage.model;
-                  const promptTokensSame = existingUsage.prompt_tokens === newUsage.prompt_tokens;
-                  const completionTokensSame =
-                    existingUsage.completion_tokens === newUsage.completion_tokens;
-                  const totalTokensSame = existingUsage.total_tokens === newUsage.total_tokens;
-                  const reasoningTokensSame =
-                    existingUsage.reasoning_tokens === newUsage.reasoning_tokens;
+                const finalContent = hasResponseContent ? responseContent : lastMsg.content;
+                return [...prev.slice(0, lastIdx), { ...lastMsg, content: finalContent }];
+              });
+
+              // Update conversation metadata if returned
+              if (response.conversation) {
+                const isNewConversation = conversationId !== response.conversation.id;
+                setConversationId(response.conversation.id);
+                setCurrentConversationTitle(response.conversation.title || null);
+
+                if (isNewConversation) {
+                  const newConversation: Conversation = {
+                    id: response.conversation.id,
+                    title: response.conversation.title || 'Untitled conversation',
+                    created_at: response.conversation.created_at,
+                    updatedAt: response.conversation.created_at,
+                  };
+
+                  setConversations((prev) => {
+                    const exists = prev.some((c) => c.id === newConversation.id);
+                    if (exists) return prev;
+                    return [newConversation, ...prev];
+                  });
 
                   if (
-                    providerSame &&
-                    modelSame &&
-                    promptTokensSame &&
-                    completionTokensSame &&
-                    totalTokensSame &&
-                    reasoningTokensSame
+                    !response.conversation.title ||
+                    response.conversation.title === 'Untitled conversation'
                   ) {
-                    return prev; // No change, return existing state
+                    setTimeout(async () => {
+                      try {
+                        const updated = await conversationsApi.get(response.conversation!.id, {
+                          limit: 1,
+                        });
+                        if (updated.title && updated.title !== response.conversation!.title) {
+                          setCurrentConversationTitle(updated.title);
+                          setConversations((prev) =>
+                            prev.map((c) =>
+                              c.id === response.conversation!.id
+                                ? { ...c, title: updated.title ?? c.title }
+                                : c
+                            )
+                          );
+                        }
+                      } catch (err) {
+                        console.warn('Failed to fetch updated conversation title:', err);
+                      }
+                    }, 2000);
                   }
                 }
+              }
 
-                return [...prev.slice(0, lastIdx), { ...lastMsg, usage: event.value }];
+              // Clear the draft after successful send
+              if (user?.id) {
+                clearDraft(user.id, conversationId);
+                if (response.conversation?.id) {
+                  clearDraft(user.id, response.conversation.id);
+                }
+              }
+
+              const effectiveConversationId = response.conversation?.id ?? conversationId;
+              if (effectiveConversationId) {
+                conversationsApi.invalidateDetailCache(effectiveConversationId);
+              }
+              conversationsApi.clearListCache();
+            } else {
+              // Secondary completion
+              setMessages((prev) => {
+                const lastIdx = prev.length - 1;
+                if (lastIdx < 0) return prev;
+                const lastMsg = prev[lastIdx];
+                const existingRes = lastMsg.comparisonResults?.[targetModel];
+                if (!existingRes) return prev;
+
+                const responseContent = response.content as MessageContent;
+                const hasResponseContent =
+                  typeof responseContent === 'string'
+                    ? responseContent.length > 0
+                    : Array.isArray(responseContent)
+                      ? responseContent.length > 0
+                      : responseContent != null;
+                const finalContent = hasResponseContent ? responseContent : existingRes.content;
+
+                return [
+                  ...prev.slice(0, lastIdx),
+                  {
+                    ...lastMsg,
+                    comparisonResults: {
+                      ...lastMsg.comparisonResults,
+                      [targetModel]: {
+                        ...existingRes,
+                        content: finalContent,
+                        status: 'complete',
+                      },
+                    },
+                  },
+                ];
+              });
+
+              // Track the linked conversation ID
+              if (response.conversation?.id) {
+                setLinkedConversations((prev) => ({
+                  ...prev,
+                  [targetModel]: response.conversation!.id,
+                }));
+              }
+            }
+
+            return response;
+          } catch (err) {
+            // Error handling - use same error formatting for both primary and secondary
+            let errorMessage: string;
+            if (err instanceof StreamingNotSupportedError) {
+              // For primary, try to retry without streaming
+              if (isPrimary && !opts?.retried) {
+                providerStreamRef.current = false;
+                setMessages((prev) => prev.slice(0, -1));
+                setTimeout(() => {
+                  void sendMessage(content, { ...opts, skipLocalUserMessage: true, retried: true });
+                }, 0);
+                return;
+              }
+              errorMessage = 'Streaming not supported by provider';
+            } else if (err instanceof APIError) {
+              errorMessage = formatUpstreamError(err);
+            } else if (err instanceof Error && err.name === 'AbortError') {
+              errorMessage = 'Message cancelled';
+            } else if (err instanceof Error) {
+              errorMessage = err.message;
+            } else {
+              errorMessage = isPrimary ? 'Failed to send message' : 'Failed to generate';
+            }
+
+            if (isPrimary) {
+              setError(errorMessage);
+              setStatus('idle');
+              setPending((prev) => ({
+                ...prev,
+                streaming: false,
+                error: errorMessage,
+              }));
+            } else {
+              setMessages((prev) => {
+                const lastIdx = prev.length - 1;
+                if (lastIdx < 0) return prev;
+                const lastMsg = prev[lastIdx];
+                const existingRes = lastMsg.comparisonResults?.[targetModel];
+                if (!existingRes) return prev;
+
+                return [
+                  ...prev.slice(0, lastIdx),
+                  {
+                    ...lastMsg,
+                    comparisonResults: {
+                      ...lastMsg.comparisonResults,
+                      [targetModel]: {
+                        ...existingRes,
+                        status: 'error',
+                        error: errorMessage,
+                      },
+                    },
+                  },
+                ];
               });
             }
-          },
-        } as ChatOptionsExtended);
-
-        // Update assistant message with final content
-        // If content was built from tool_events, use that; otherwise use response.content
-        setMessages((prev) => {
-          const lastIdx = prev.length - 1;
-          if (lastIdx < 0) return prev;
-
-          const lastMsg = prev[lastIdx];
-          if (!lastMsg || lastMsg.role !== 'assistant') return prev;
-
-          const responseContent = response.content as MessageContent;
-          const hasResponseContent =
-            typeof responseContent === 'string'
-              ? responseContent.length > 0
-              : Array.isArray(responseContent)
-                ? responseContent.length > 0
-                : responseContent != null;
-
-          const finalContent = hasResponseContent ? responseContent : lastMsg.content;
-
-          return [...prev.slice(0, lastIdx), { ...lastMsg, content: finalContent }];
-        });
-
-        // Update conversation metadata if returned
-        if (response.conversation) {
-          const isNewConversation = conversationId !== response.conversation.id;
-          setConversationId(response.conversation.id);
-          setCurrentConversationTitle(response.conversation.title || null);
-
-          // If this is a new conversation, add it to the sidebar list and select it
-          if (isNewConversation) {
-            const newConversation: Conversation = {
-              id: response.conversation.id,
-              title: response.conversation.title || 'Untitled conversation',
-              created_at: response.conversation.created_at,
-              updatedAt: response.conversation.created_at,
-            };
-
-            // Add to the top of the list and ensure it's selected
-            setConversations((prev) => {
-              // Check if it already exists (shouldn't happen, but be safe)
-              const exists = prev.some((c) => c.id === newConversation.id);
-              if (exists) {
-                return prev;
-              }
-              return [newConversation, ...prev];
-            });
-
-            // Poll for title update after a delay (title generation is async on backend)
-            // Only poll if we got a generic/empty title initially
-            if (
-              !response.conversation.title ||
-              response.conversation.title === 'Untitled conversation'
-            ) {
-              setTimeout(async () => {
-                try {
-                  const updated = await conversationsApi.get(response.conversation!.id, {
-                    limit: 1,
-                  });
-                  if (updated.title && updated.title !== response.conversation!.title) {
-                    // Update current conversation title if we're still on this conversation
-                    setCurrentConversationTitle(updated.title);
-                    // Update in sidebar list
-                    setConversations((prev) =>
-                      prev.map((c) =>
-                        c.id === response.conversation!.id
-                          ? { ...c, title: updated.title ?? c.title }
-                          : c
-                      )
-                    );
-                  }
-                } catch (err) {
-                  // Silent failure - title update is non-critical
-                  console.warn('Failed to fetch updated conversation title:', err);
-                }
-              }, 2000); // Poll after 2 seconds to allow title generation to complete
-            }
           }
+        };
+
+        // For comparison mode with new conversations, create the conversation upfront
+        // so all requests can start in parallel instead of waiting for primary to complete
+        let effectiveConversationId = conversationId;
+
+        if (!conversationId && activeComparisonModels.length > 0) {
+          try {
+            const actualModelId = primaryModel.includes('::')
+              ? primaryModel.split('::')[1]
+              : primaryModel;
+            const newConversation = await conversationsApi.create({
+              model: actualModelId,
+              provider_id: providerIdRef.current || undefined,
+              streamingEnabled: shouldStreamRef.current,
+              toolsEnabled: useToolsRef.current,
+              qualityLevel:
+                qualityLevelRef.current !== 'unset' ? qualityLevelRef.current : undefined,
+            });
+            effectiveConversationId = newConversation.id;
+            setConversationId(newConversation.id);
+
+            // Add to conversations list immediately
+            const newConversationEntry: Conversation = {
+              id: newConversation.id,
+              title: newConversation.title || 'Untitled conversation',
+              created_at: newConversation.created_at || new Date().toISOString(),
+              updatedAt: newConversation.created_at || new Date().toISOString(),
+            };
+            setConversations((prev) => {
+              const exists = prev.some((c) => c.id === newConversationEntry.id);
+              if (exists) return prev;
+              return [newConversationEntry, ...prev];
+            });
+          } catch (err) {
+            console.warn(
+              '[useChat] Failed to create conversation upfront, falling back to sequential:',
+              err
+            );
+            // Fall through to original sequential behavior
+          }
+        }
+
+        // Execute requests - parallel if we have conversation ID, sequential otherwise
+        if (effectiveConversationId && activeComparisonModels.length > 0) {
+          // All requests can run in parallel since we have the conversation ID
+          const primaryPromise = executeRequest(primaryModel, true, {
+            conversationId: effectiveConversationId,
+          });
+
+          const secondaryPromises = activeComparisonModels.map((modelId) => {
+            const linkedConversationId = linkedConversationsRef.current[modelId];
+            return executeRequest(modelId, false, {
+              conversationId: linkedConversationId || undefined,
+              parentConversationId: linkedConversationId ? undefined : effectiveConversationId,
+            });
+          });
+
+          await Promise.all([primaryPromise, ...secondaryPromises]);
+        } else {
+          // Original sequential behavior for non-comparison mode or fallback
+          const primaryPromise = executeRequest(primaryModel, true, {
+            conversationId: conversationId || undefined,
+          });
+
+          // For comparison mode without upfront conversation, wait for primary
+          primaryPromise.then((primaryResponse) => {
+            const parentId = primaryResponse?.conversation?.id || conversationId || undefined;
+            activeComparisonModels.forEach((modelId) => {
+              const linkedConversationId = linkedConversationsRef.current[modelId];
+              void executeRequest(modelId, false, {
+                conversationId: linkedConversationId || undefined,
+                parentConversationId: linkedConversationId ? undefined : parentId,
+              });
+            });
+          });
+
+          await primaryPromise;
         }
 
         setStatus('idle');
@@ -1082,82 +1514,18 @@ export function useChat() {
           streaming: false,
           tokenStats: tokenStatsRef.current ?? undefined,
         }));
-
-        // Clear the draft after successful send
-        if (user?.id) {
-          // Clear draft for both old and new conversation IDs
-          clearDraft(user.id, conversationId);
-          if (response.conversation?.id) {
-            clearDraft(user.id, response.conversation.id);
-          }
-        }
-
-        const effectiveConversationId = response.conversation?.id ?? conversationId;
-        if (effectiveConversationId) {
-          conversationsApi.invalidateDetailCache(effectiveConversationId);
-        }
-        conversationsApi.clearListCache();
       } catch (err) {
-        // Handle streaming not supported error by retrying with streaming disabled
-        if (err instanceof StreamingNotSupportedError) {
-          // Only retry once to avoid infinite retry loops which can cause max update
-          // depth exceeded when the backend doesn't support streaming at all.
-          if (opts?.retried) {
-            // Already retried once; surface a useful error and stop.
-            setError('Streaming not supported by provider');
-            setStatus('idle');
-            setPending((prev) => ({
-              ...prev,
-              streaming: false,
-              error: 'Streaming not supported by provider',
-            }));
-            return;
-          }
-
-          console.log('[AUTO-RETRY] Streaming not supported, retrying with streaming disabled');
-
-          // Disable streaming
-          providerStreamRef.current = false;
-
-          // Remove the failed assistant message
-          setMessages((prev) => prev.slice(0, -1));
-
-          // Retry by calling sendMessage again (it will use the updated shouldStreamRef)
-          // Use setTimeout to break out of the current call stack
-          // Pass skipLocalUserMessage: true to avoid duplicating the user message
-          // and mark retried=true so we don't loop indefinitely.
-          setTimeout(() => {
-            void sendMessage(content, { ...opts, skipLocalUserMessage: true, retried: true });
-          }, 0);
-
-          return;
-        }
-
-        let displayError: string;
-
-        if (err instanceof APIError) {
-          displayError = formatUpstreamError(err);
-        } else if (err instanceof Error && err.name === 'AbortError') {
-          displayError = 'Message cancelled';
-        } else if (err instanceof Error) {
-          displayError = err.message;
-        } else {
-          displayError = 'Failed to send message';
-        }
-
-        setError(displayError);
+        // Fallback global error catcher if primary execution fails synchronously before try block
+        // (should unlikely reach here due to inner try/catch)
+        setError(err instanceof Error ? err.message : 'Unknown error');
         setStatus('idle');
-        setPending((prev) => ({
-          ...prev,
-          streaming: false,
-          error: displayError,
-        }));
+        setPending((prev) => ({ ...prev, streaming: false }));
       } finally {
         currentRequestIdRef.current = null;
         abortControllerRef.current = null;
       }
     },
-    [input, images, files, conversationId, modelCapabilities]
+    [input, images, files, conversationId, modelCapabilities, compareModels, user?.id]
   );
 
   const stopStreaming = useCallback(() => {
@@ -1179,6 +1547,10 @@ export function useChat() {
 
       if (baseMessages.length === 0) return;
 
+      const comparisonModelsOverride = Array.from(
+        new Set(baseMessages.flatMap((message) => Object.keys(message.comparisonResults || {})))
+      );
+
       const lastUserMessage = baseMessages
         .slice()
         .reverse()
@@ -1189,11 +1561,311 @@ export function useChat() {
         // appending a duplicate local user message (baseMessages already contain it).
         await sendMessage(
           typeof lastUserMessage.content === 'string' ? lastUserMessage.content : '',
-          { clientMessageId: lastUserMessage.id, skipLocalUserMessage: true }
+          {
+            clientMessageId: lastUserMessage.id,
+            skipLocalUserMessage: true,
+            comparisonModelsOverride:
+              comparisonModelsOverride.length > 0 ? comparisonModelsOverride : undefined,
+          }
         );
       }
     },
     [sendMessage]
+  );
+
+  const retryComparisonModel = useCallback(
+    async (messageId: string, modelId: string) => {
+      if (status === 'streaming') return;
+
+      const currentMessages = messagesRef.current;
+      const assistantIdx = currentMessages.findIndex(
+        (msg) => msg.id === messageId && msg.role === 'assistant'
+      );
+      if (assistantIdx === -1) return;
+
+      const historySource = currentMessages.slice(0, assistantIdx);
+      if (historySource.length === 0) return;
+
+      const isEmptyAssistantPlaceholder = (msg: Message) =>
+        msg.role === 'assistant' &&
+        (msg.content === '' || (Array.isArray(msg.content) && msg.content.length === 0)) &&
+        (!Array.isArray(msg.tool_calls) || msg.tool_calls.length === 0) &&
+        (!Array.isArray(msg.tool_outputs) || msg.tool_outputs.length === 0);
+
+      const history = buildHistoryForModel(
+        historySource.filter((msg) => !isEmptyAssistantPlaceholder(msg)),
+        modelKey,
+        isPrimary
+      );
+      if (history.length === 0) return;
+
+      const isPrimary = modelId === 'primary';
+      const modelKey = isPrimary ? modelRef.current : modelId;
+      if (!modelKey) return;
+
+      const actualModelId = modelKey.includes('::') ? modelKey.split('::')[1] : modelKey;
+      let targetProviderId = providerIdRef.current || '';
+      if (modelKey.includes('::')) {
+        targetProviderId = modelKey.split('::')[0];
+      } else if (modelToProviderRef.current[modelKey]) {
+        targetProviderId = modelToProviderRef.current[modelKey];
+      }
+
+      const targetConversationId = isPrimary
+        ? conversationId || undefined
+        : linkedConversationsRef.current[modelKey] || undefined;
+      const parentConversationId =
+        !isPrimary && !targetConversationId ? conversationId || undefined : undefined;
+
+      setStatus('streaming');
+      setError(null);
+
+      abortControllerRef.current = new AbortController();
+      const requestId = `retry-${messageId}-${modelKey}-${Date.now()}`;
+      currentRequestIdRef.current = requestId;
+      setPending({
+        streaming: true,
+        error: undefined,
+        abort: abortControllerRef.current,
+      });
+
+      if (isPrimary) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === messageId
+              ? {
+                  ...msg,
+                  content: '',
+                  tool_calls: undefined,
+                  tool_outputs: undefined,
+                  message_events: undefined,
+                  usage: undefined,
+                }
+              : msg
+          )
+        );
+      } else {
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id !== messageId) return msg;
+            const existing = msg.comparisonResults?.[modelKey];
+            return {
+              ...msg,
+              comparisonResults: {
+                ...(msg.comparisonResults || {}),
+                [modelKey]: {
+                  ...(existing || {}),
+                  content: '',
+                  status: 'streaming' as const,
+                  error: undefined,
+                  tool_calls: undefined,
+                  tool_outputs: undefined,
+                  message_events: undefined,
+                  usage: undefined,
+                },
+              },
+            };
+          })
+        );
+      }
+
+      const updateTargetMessageState = (
+        updater: (
+          current: Message | { content: MessageContent; tool_calls?: any[]; tool_outputs?: any[] }
+        ) =>
+          | Partial<Message>
+          | Partial<{ content: MessageContent; tool_calls?: any[]; tool_outputs?: any[] }>
+      ) => {
+        setMessages((prev) =>
+          prev.map((msg) => {
+            if (msg.id !== messageId) return msg;
+            if (isPrimary) {
+              const updates = updater(msg);
+              return { ...msg, ...updates };
+            }
+            const existing = msg.comparisonResults?.[modelKey];
+            if (!existing) return msg;
+            const updates = updater(existing);
+            return {
+              ...msg,
+              comparisonResults: {
+                ...(msg.comparisonResults || {}),
+                [modelKey]: { ...existing, ...updates },
+              },
+            };
+          })
+        );
+      };
+
+      const reasoning =
+        qualityLevelRef.current !== 'unset' ? { effort: qualityLevelRef.current } : undefined;
+
+      try {
+        const response = await chat.sendMessage({
+          messages: history,
+          model: actualModelId,
+          providerId: targetProviderId,
+          stream: shouldStreamRef.current,
+          providerStream: providerStreamRef.current,
+          requestId,
+          signal: abortControllerRef.current?.signal,
+          conversationId: targetConversationId,
+          parentConversationId,
+          streamingEnabled: shouldStreamRef.current,
+          toolsEnabled: useToolsRef.current,
+          tools: enabledToolsRef.current,
+          qualityLevel: qualityLevelRef.current,
+          reasoning,
+          systemPrompt: systemPromptRef.current || undefined,
+          activeSystemPromptId: activeSystemPromptIdRef.current || undefined,
+          modelCapabilities: modelCapabilities,
+          onToken: (token: string) => {
+            updateTargetMessageState((current) => {
+              const currentContent = typeof current.content === 'string' ? current.content : '';
+              return { content: currentContent + token };
+            });
+          },
+          onEvent: (event) => {
+            if (event.type === 'text') {
+              updateTargetMessageState((current) => {
+                const currentContent = typeof current.content === 'string' ? current.content : '';
+                return { content: currentContent + event.value };
+              });
+            } else if (event.type === 'tool_call') {
+              updateTargetMessageState((current) => {
+                const currentTextLength =
+                  typeof current.content === 'string' ? current.content.length : 0;
+                const existingToolCalls = current.tool_calls || [];
+                const updatedToolCalls = mergeToolCallDelta(
+                  existingToolCalls,
+                  event.value,
+                  currentTextLength
+                );
+                return { tool_calls: updatedToolCalls };
+              });
+            } else if (event.type === 'tool_output') {
+              updateTargetMessageState((current) => {
+                const outputValue = event.value;
+                const toolCallId = outputValue.tool_call_id;
+                const outputName = outputValue.name;
+                const existingToolOutputs = current.tool_outputs || [];
+
+                const existingIdx = existingToolOutputs.findIndex((out: any) => {
+                  if (toolCallId && out.tool_call_id) return out.tool_call_id === toolCallId;
+                  if (outputName && out.name) return out.name === outputName;
+                  return false;
+                });
+
+                if (existingIdx === -1) {
+                  return { tool_outputs: [...existingToolOutputs, outputValue] };
+                }
+                return {};
+              });
+            } else if (event.type === 'usage') {
+              updateTargetMessageState(() => ({ usage: event.value }));
+            }
+          },
+        } as ChatOptionsExtended);
+
+        if (isPrimary) {
+          const responseContent = response.content as MessageContent;
+          updateTargetMessageState(() => ({
+            content: responseContent ?? '',
+          }));
+          if (response.conversation?.id && !conversationId) {
+            setConversationId(response.conversation.id);
+          }
+          const effectiveConversationId = response.conversation?.id ?? conversationId;
+          if (effectiveConversationId) {
+            conversationsApi.invalidateDetailCache(effectiveConversationId);
+          }
+          conversationsApi.clearListCache();
+        } else {
+          setMessages((prev) =>
+            prev.map((msg) => {
+              if (msg.id !== messageId) return msg;
+              const existing = msg.comparisonResults?.[modelKey];
+              if (!existing) return msg;
+
+              const responseContent = response.content as MessageContent;
+              const hasResponseContent =
+                typeof responseContent === 'string'
+                  ? responseContent.length > 0
+                  : Array.isArray(responseContent)
+                    ? responseContent.length > 0
+                    : responseContent != null;
+              const finalContent = hasResponseContent ? responseContent : existing.content;
+
+              return {
+                ...msg,
+                comparisonResults: {
+                  ...(msg.comparisonResults || {}),
+                  [modelKey]: {
+                    ...existing,
+                    content: finalContent,
+                    status: 'complete' as const,
+                  },
+                },
+              };
+            })
+          );
+
+          if (response.conversation?.id) {
+            setLinkedConversations((prev) => ({
+              ...prev,
+              [modelKey]: response.conversation!.id,
+            }));
+          }
+          const effectiveConversationId = response.conversation?.id ?? targetConversationId;
+          if (effectiveConversationId) {
+            conversationsApi.invalidateDetailCache(effectiveConversationId);
+          }
+          conversationsApi.clearListCache();
+        }
+      } catch (err) {
+        let errorMessage: string;
+        if (err instanceof StreamingNotSupportedError) {
+          errorMessage = 'Streaming not supported by provider';
+        } else if (err instanceof APIError) {
+          errorMessage = formatUpstreamError(err);
+        } else if (err instanceof Error && err.name === 'AbortError') {
+          errorMessage = 'Message cancelled';
+        } else if (err instanceof Error) {
+          errorMessage = err.message;
+        } else {
+          errorMessage = 'Failed to regenerate';
+        }
+
+        if (isPrimary) {
+          setError(errorMessage);
+        } else {
+          setMessages((prev) =>
+            prev.map((msg) => {
+              if (msg.id !== messageId) return msg;
+              const existing = msg.comparisonResults?.[modelKey];
+              if (!existing) return msg;
+              return {
+                ...msg,
+                comparisonResults: {
+                  ...(msg.comparisonResults || {}),
+                  [modelKey]: {
+                    ...existing,
+                    status: 'error' as const,
+                    error: errorMessage,
+                  },
+                },
+              };
+            })
+          );
+        }
+      } finally {
+        setStatus('idle');
+        setPending((prev) => ({ ...prev, streaming: false }));
+        currentRequestIdRef.current = null;
+        abortControllerRef.current = null;
+      }
+    },
+    [status, conversationId, modelCapabilities]
   );
 
   // Actions - Editing
@@ -1234,6 +1906,13 @@ export function useChat() {
       // If a new conversation was created, update the conversation ID
       if (result.new_conversation_id !== conversationId) {
         setConversationId(result.new_conversation_id);
+        setCompareModels([]);
+        setLinkedConversations({});
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.comparisonResults ? { ...message, comparisonResults: undefined } : message
+          )
+        );
       }
 
       cancelEdit();
@@ -1388,7 +2067,6 @@ export function useChat() {
         setUser({ id: profile.id });
       } catch {
         // User not authenticated, that's ok
-        console.log('[useChat] User not authenticated');
       }
     };
     loadUser();
@@ -1439,6 +2117,40 @@ export function useChat() {
     loadProvidersAndModels();
   }, [loadProvidersAndModels]);
 
+  // Normalize comparison models once model options are available so UI selections resolve.
+  useEffect(() => {
+    if (compareModels.length === 0 || modelOptions.length === 0) return;
+
+    const optionValues = new Set(modelOptions.map((option) => option.value));
+    let didChange = false;
+    const normalized: string[] = [];
+
+    for (const modelId of compareModels) {
+      let nextModel = modelId;
+
+      if (!optionValues.has(nextModel) && !nextModel.includes('::')) {
+        const providerId =
+          modelToProviderRef.current[nextModel] || modelToProvider[nextModel] || '';
+        const qualified = providerId ? `${providerId}::${nextModel}` : '';
+        if (qualified && optionValues.has(qualified)) {
+          nextModel = qualified;
+          didChange = true;
+        }
+      }
+
+      if (!normalized.includes(nextModel)) {
+        if (nextModel !== modelId) didChange = true;
+        normalized.push(nextModel);
+      } else if (nextModel === modelId) {
+        didChange = true;
+      }
+    }
+
+    if (didChange) {
+      setCompareModels(normalized);
+    }
+  }, [compareModels, modelOptions, modelToProvider]);
+
   // Restore draft message when user and conversation are available
   // This preserves drafts across session expiry and re-authentication
   useEffect(() => {
@@ -1451,7 +2163,6 @@ export function useChat() {
     const timer = setTimeout(() => {
       const savedDraft = getDraft(user.id, conversationId);
       if (savedDraft && savedDraft.trim()) {
-        console.log('[useChat] Restoring draft for conversation:', conversationId ?? 'new');
         setInput(savedDraft);
       }
       draftRestoredRef.current = true;
@@ -1508,6 +2219,8 @@ export function useChat() {
     user,
     activeSystemPromptId,
     systemPrompt,
+    compareModels,
+    linkedConversations,
 
     // Actions
     setMessages,
@@ -1521,6 +2234,7 @@ export function useChat() {
     setImages,
     setFiles,
     setActiveSystemPromptId: setActiveSystemPromptIdWrapper,
+    setCompareModels,
     toggleSidebar,
     toggleRightSidebar,
     selectConversation,
@@ -1531,6 +2245,7 @@ export function useChat() {
     sendMessage,
     stopStreaming,
     regenerate,
+    retryComparisonModel,
     startEdit,
     cancelEdit,
     updateEditContent,

@@ -81,7 +81,8 @@ export class ConversationManager {
       qualityLevel: params.qualityLevel || null,
       reasoningEffort: params.reasoningEffort || null,
       verbosity: params.verbosity || null,
-      metadata: params.metadata || {}
+      metadata: params.metadata || {},
+      parentConversationId: params.parentConversationId || null,
     });
 
     return conversationId;

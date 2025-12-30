@@ -12,6 +12,7 @@ import {
   softDeleteConversation,
   listConversationsIncludingDeleted,
   forkConversationFromMessage,
+  getLinkedConversations,
 } from '../db/conversations.js';
 import {
   getMessagesPage,
@@ -202,6 +203,25 @@ conversationsRouter.delete('/v1/conversations/:id', (req, res) => {
     return res.status(204).end();
   } catch (e) {
     logger.error('[conversations] delete error', e);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+// GET /v1/conversations/:id/linked (get linked comparison conversations)
+conversationsRouter.get('/v1/conversations/:id/linked', (req, res) => {
+  if (!config.persistence.enabled) return notImplemented(res);
+  try {
+    const userId = req.user.id; // Guaranteed by authenticateToken middleware
+
+    getDb();
+    // First verify the parent conversation exists and belongs to the user
+    const parentConvo = getConversationById({ id: req.params.id, userId });
+    if (!parentConvo) return res.status(404).json({ error: 'not_found' });
+
+    const linkedConversations = getLinkedConversations({ parentId: req.params.id, userId });
+    return res.json({ conversations: linkedConversations });
+  } catch (e) {
+    logger.error('[conversations] get linked error', e);
     return res.status(500).json({ error: 'internal_error' });
   }
 });

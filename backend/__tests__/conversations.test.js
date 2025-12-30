@@ -170,6 +170,23 @@ describe('GET /v1/conversations', () => {
   assert.equal(items[1].id, 'c2');
   assert.equal(items[1].provider_id, 'p2');
   });
+
+  test('excludes linked comparison conversations from list results', async () => {
+    createConversation({ id: 'parent', sessionId, userId: testUser.id, title: 'parent' });
+    createConversation({
+      id: 'linked',
+      sessionId,
+      userId: testUser.id,
+      title: 'linked',
+      parentConversationId: 'parent',
+    });
+    createConversation({ id: 'standalone', sessionId, userId: testUser.id, title: 'standalone' });
+
+    const app = makeApp();
+    const res = await request(app).get('/v1/conversations').set('x-session-id', sessionId);
+    const ids = res.body.items.map((item) => item.id).sort();
+    assert.deepEqual(ids, ['parent', 'standalone']);
+  });
 });
 
 // --- GET /v1/conversations/:id ---
@@ -232,6 +249,76 @@ describe('GET /v1/conversations/:id', () => {
     const res = await request(app).get('/v1/conversations/c1').set('x-session-id', sessionId);
     assert.equal(res.status, 500);
     assert.equal(res.body.error, 'auth_error');
+  });
+});
+
+// --- GET /v1/conversations/:id/linked ---
+describe('GET /v1/conversations/:id/linked', () => {
+  test('returns linked comparison conversations for the parent', async () => {
+    createConversation({ id: 'parent', sessionId, userId: testUser.id, title: 'parent' });
+    createConversation({
+      id: 'child-1',
+      sessionId,
+      userId: testUser.id,
+      title: 'child 1',
+      parentConversationId: 'parent',
+    });
+    createConversation({
+      id: 'child-2',
+      sessionId,
+      userId: testUser.id,
+      title: 'child 2',
+      parentConversationId: 'parent',
+    });
+
+    const app = makeApp();
+    const res = await request(app)
+      .get('/v1/conversations/parent/linked')
+      .set('x-session-id', sessionId);
+
+    assert.equal(res.status, 200);
+    const ids = res.body.conversations.map((item) => item.id).sort();
+    assert.deepEqual(ids, ['child-1', 'child-2']);
+  });
+
+  test('returns 404 when parent conversation is not owned by the user', async () => {
+    const otherUser = createUser({
+      email: 'other@example.com',
+      passwordHash: 'pw',
+      displayName: 'Other User',
+    });
+    createConversation({ id: 'other-parent', sessionId, userId: otherUser.id, title: 'other' });
+
+    const app = makeApp();
+    const res = await request(app)
+      .get('/v1/conversations/other-parent/linked')
+      .set('x-session-id', sessionId);
+
+    assert.equal(res.status, 404);
+  });
+});
+
+// --- DELETE /v1/conversations/:id ---
+describe('DELETE /v1/conversations/:id', () => {
+  test('soft deletes linked comparison conversations with the parent', async () => {
+    createConversation({ id: 'parent', sessionId, userId: testUser.id, title: 'parent' });
+    createConversation({
+      id: 'linked',
+      sessionId,
+      userId: testUser.id,
+      title: 'linked',
+      parentConversationId: 'parent',
+    });
+
+    const app = makeApp();
+    const res = await request(app).delete('/v1/conversations/parent').set('x-session-id', sessionId);
+    assert.equal(res.status, 204);
+
+    const db = getDb();
+    const parent = db.prepare('SELECT deleted_at FROM conversations WHERE id = ?').get('parent');
+    const linked = db.prepare('SELECT deleted_at FROM conversations WHERE id = ?').get('linked');
+    assert.ok(parent.deleted_at);
+    assert.ok(linked.deleted_at);
   });
 });
 

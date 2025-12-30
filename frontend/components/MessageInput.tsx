@@ -47,6 +47,8 @@ interface MessageInputProps {
   onImagesChange?: (images: ImageAttachment[]) => void;
   files?: FileAttachment[];
   onFilesChange?: (files: FileAttachment[]) => void;
+  disabled?: boolean;
+  disabledReason?: string;
 }
 
 export interface MessageInputRef {
@@ -73,6 +75,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     onImagesChange,
     files = [],
     onFilesChange,
+    disabled = false,
+    disabledReason = 'Selected models are unavailable. Refresh models to resume.',
   },
   ref
 ) {
@@ -118,6 +122,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
   // Check if we can send (have text or images)
   const canSend = input.trim().length > 0 || images.length > 0;
+  const inputLocked = disabled;
+  const controlsDisabled = inputLocked || pending.streaming;
 
   // Helper to check if a tool is disabled due to missing API key
   const isToolDisabled = (name: string) => {
@@ -193,6 +199,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     }
   }, [attachOpen]);
 
+  useEffect(() => {
+    if (!inputLocked) return;
+    setToolsOpen(false);
+    setAttachOpen(false);
+  }, [inputLocked]);
+
   // Load tool specs for the selector UI
   useEffect(() => {
     let mounted = true;
@@ -247,12 +259,16 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   const handleKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      if (pending.streaming) onStop();
-      else onSend();
+      if (pending.streaming) {
+        onStop();
+      } else if (!inputLocked) {
+        onSend();
+      }
     }
   };
 
   const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (inputLocked) return;
     if (!onImagesChange) return;
 
     const items = Array.from(event.clipboardData?.items || []);
@@ -284,6 +300,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
   // Image handling
   const handleImageFiles = async (imageFiles: File[]) => {
+    if (inputLocked) return;
     if (!onImagesChange || !images) return;
 
     try {
@@ -307,10 +324,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   };
 
   const handleImageUploadClick = () => {
+    if (inputLocked) return;
     imageInputRef.current?.click();
   };
 
   const handleImageInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (inputLocked) return;
     const imageFiles = Array.from(e.target.files || []);
     if (imageFiles.length > 0) {
       handleImageFiles(imageFiles);
@@ -321,6 +340,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
   // File handling
   const handleFileFiles = async (textFiles: File[]) => {
+    if (inputLocked) return;
     if (!onFilesChange || !files) return;
 
     try {
@@ -338,10 +358,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   };
 
   const handleFileUploadClick = () => {
+    if (inputLocked) return;
     fileInputRef.current?.click();
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (inputLocked) return;
     const textFiles = Array.from(e.target.files || []);
     if (textFiles.length > 0) {
       handleFileFiles(textFiles);
@@ -352,6 +374,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
   // Tools handling
   const handleSearchToggle = (enabled: boolean) => {
+    if (inputLocked) return;
     const searchTools = ['web_search', 'web_search_exa', 'web_search_searxng', 'web_fetch'];
     let next: string[];
 
@@ -371,6 +394,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
   // Combined file handler for drag and drop (both images and text files)
   const handleDroppedFiles = async (droppedFiles: File[]) => {
+    if (inputLocked) return;
     // Separate images from text files
     const imageFiles = droppedFiles.filter((file) => file.type.startsWith('image/'));
     const textFiles = droppedFiles.filter((file) => !file.type.startsWith('image/'));
@@ -390,7 +414,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   return (
     <ImageUploadZone
       onFiles={handleDroppedFiles}
-      disabled={pending.streaming}
+      disabled={controlsDisabled}
       fullPage={true}
       clickToUpload={false} // Avoid overlay input intercepting hover events (tooltips)
       fileFilter={() => true} // Accept all files, we'll sort them in handleDroppedFiles
@@ -399,8 +423,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
         className=""
         onSubmit={(e) => {
           e.preventDefault();
-          if (pending.streaming) onStop();
-          else onSend();
+          if (pending.streaming) {
+            onStop();
+          } else if (!inputLocked) {
+            onSend();
+          }
         }}
       >
         <div>
@@ -436,7 +463,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                     <button
                       type="button"
                       onClick={() => setAttachOpen(!attachOpen)}
-                      disabled={pending.streaming}
+                      disabled={controlsDisabled}
                       className={`flex-shrink-0 p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
                         images.length > 0 || files.length > 0
                           ? 'text-zinc-900 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-800'
@@ -451,7 +478,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                       <button
                         type="button"
                         onClick={() => setAttachOpen(!attachOpen)}
-                        disabled={pending.streaming}
+                        disabled={controlsDisabled}
                         className={`flex-shrink-0 p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
                           images.length > 0 || files.length > 0
                             ? 'text-zinc-900 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-800'
@@ -469,9 +496,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                         <button
                           type="button"
                           onClick={() => {
+                            if (inputLocked) return;
                             setAttachOpen(false);
                             handleImageUploadClick();
                           }}
+                          disabled={inputLocked}
                           className="w-full text-left p-2.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm flex items-center text-zinc-700 dark:text-zinc-300 transition-colors"
                         >
                           <ImagePlus className="w-4 h-4 mr-2.5" /> Upload Image
@@ -481,9 +510,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                         <button
                           type="button"
                           onClick={() => {
+                            if (inputLocked) return;
                             setAttachOpen(false);
                             handleFileUploadClick();
                           }}
+                          disabled={inputLocked}
                           className="w-full text-left p-2.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm flex items-center text-zinc-700 dark:text-zinc-300 transition-colors"
                         >
                           <FileText className="w-4 h-4 mr-2.5" /> Upload File
@@ -518,12 +549,15 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
               <textarea
                 ref={inputRef}
                 className="flex-1 resize-none bg-transparent border-0 outline-none text-sm placeholder-zinc-400 dark:placeholder-zinc-500 text-zinc-800 dark:text-zinc-200"
-                placeholder="Type your message..."
+                placeholder={inputLocked ? disabledReason : 'Type your message...'}
                 value={input}
                 onChange={(e) => onInputChange(e.target.value)}
                 onKeyDown={handleKey}
                 onPaste={handlePaste}
                 rows={1}
+                disabled={inputLocked}
+                aria-disabled={inputLocked}
+                title={inputLocked ? disabledReason : undefined}
               />
             </div>
 
@@ -542,6 +576,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                       ariaLabel="Reasoning Effort"
                       className="flex-shrink-0"
                       model={model.split('::').pop() || model}
+                      disabled={controlsDisabled}
                     />
                   </Tooltip>
 
@@ -549,7 +584,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   <Tooltip content="Stream responses in real-time">
                     <button
                       type="button"
-                      onClick={() => onShouldStreamChange(!shouldStream)}
+                      onClick={() => {
+                        if (inputLocked) return;
+                        onShouldStreamChange(!shouldStream);
+                      }}
+                      disabled={inputLocked}
                       className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg border transition-all duration-200 ${
                         shouldStream
                           ? 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100'
@@ -577,7 +616,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   <Tooltip content="Enable web search (Tavily + Exa)">
                     <button
                       type="button"
-                      onClick={() => handleSearchToggle(!searchEnabled)}
+                      onClick={() => {
+                        if (inputLocked) return;
+                        handleSearchToggle(!searchEnabled);
+                      }}
+                      disabled={inputLocked}
                       className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg border transition-all duration-200 ${
                         searchEnabled
                           ? 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100'
@@ -597,7 +640,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                       <button
                         type="button"
                         aria-label="Tools"
-                        onClick={() => setToolsOpen((v) => !v)}
+                        onClick={() => {
+                          if (inputLocked) return;
+                          setToolsOpen((v) => !v);
+                        }}
+                        disabled={inputLocked}
                         className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors duration-150"
                       >
                         <Wrench className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
@@ -629,7 +676,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                               <Toggle
                                 ariaLabel="Enable tools"
                                 checked={localSelected.length > 0}
+                                disabled={controlsDisabled}
                                 onChange={(v: boolean) => {
+                                  if (inputLocked) return;
                                   if (!v) {
                                     setLocalSelected([]);
                                     onEnabledToolsChange?.([]);
@@ -655,6 +704,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                                 type="text"
                                 value={toolFilter}
                                 onChange={(e) => setToolFilter(e.target.value)}
+                                disabled={controlsDisabled}
                                 placeholder="Search tools..."
                                 className="flex-1 text-sm px-3 py-2 border border-zinc-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-200 dark:focus:ring-zinc-700"
                               />
@@ -666,6 +716,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                               <button
                                 type="button"
                                 onClick={() => {
+                                  if (inputLocked) return;
                                   const all = availableTools
                                     .filter((t) => !isToolDisabled(t.name))
                                     .map((t) => t.name);
@@ -673,6 +724,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                                   onEnabledToolsChange?.(all);
                                   onUseToolsChange?.(all.length > 0);
                                 }}
+                                disabled={controlsDisabled}
                                 className="text-xs px-3 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors"
                               >
                                 Select all
@@ -680,6 +732,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                               <button
                                 type="button"
                                 onClick={() => {
+                                  if (inputLocked) return;
                                   const visibleIds = filteredTools
                                     .filter((t) => !isToolDisabled(t.name))
                                     .map((t) => t.name);
@@ -688,6 +741,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                                   onEnabledToolsChange?.(next);
                                   onUseToolsChange?.(next.length > 0);
                                 }}
+                                disabled={controlsDisabled}
                                 className="text-xs px-3 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors"
                               >
                                 Select visible
@@ -695,10 +749,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                               <button
                                 type="button"
                                 onClick={() => {
+                                  if (inputLocked) return;
                                   setLocalSelected([]);
                                   onEnabledToolsChange?.([]);
                                   onUseToolsChange?.(false);
                                 }}
+                                disabled={controlsDisabled}
                                 className="text-xs px-3 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors"
                               >
                                 Clear
@@ -706,12 +762,14 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                               <button
                                 type="button"
                                 onClick={() => {
+                                  if (inputLocked) return;
                                   const visibleIds = new Set(filteredTools.map((t) => t.name));
                                   const next = localSelected.filter((x) => !visibleIds.has(x));
                                   setLocalSelected(next);
                                   onEnabledToolsChange?.(next);
                                   onUseToolsChange?.(next.length > 0);
                                 }}
+                                disabled={controlsDisabled}
                                 className="text-xs px-3 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors"
                               >
                                 Clear visible
@@ -745,6 +803,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                                     key={id}
                                     type="button"
                                     onClick={() => {
+                                      if (inputLocked) return;
                                       if (isDisabled) return;
                                       const next = checked
                                         ? localSelected.filter((x) => x !== id)
@@ -817,11 +876,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                 onClick={() => {
                   if (pending.streaming) {
                     onStop();
-                  } else {
+                  } else if (!inputLocked) {
                     onSend();
                   }
                 }}
-                disabled={!canSend && !pending.streaming}
+                disabled={(!canSend || inputLocked) && !pending.streaming}
                 className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md disabled:hover:shadow-none flex-shrink-0"
               >
                 {pending.streaming ? (

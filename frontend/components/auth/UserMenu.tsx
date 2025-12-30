@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { User, LogOut, ChevronDown } from 'lucide-react';
+import { User, LogOut } from 'lucide-react';
 
 interface UserMenuProps {
   user: {

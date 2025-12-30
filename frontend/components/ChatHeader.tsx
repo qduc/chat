@@ -2,6 +2,7 @@ import React from 'react';
 import { Sun, Moon, Settings, RefreshCw, Loader2, PanelLeft, PanelRight, Plus } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import ModelSelector from './ui/ModelSelector';
+import CompareSelector from './ui/CompareSelector';
 import { type Group as TabGroup } from './ui/TabbedSelect';
 import { AuthButton } from './auth/AuthButton';
 
@@ -24,6 +25,12 @@ interface ChatHeaderProps {
   onToggleRightSidebar?: () => void;
   showLeftSidebarButton?: boolean;
   showRightSidebarButton?: boolean;
+  selectedComparisonModels?: string[];
+  onComparisonModelsChange?: (models: string[]) => void;
+  comparisonLocked?: boolean;
+  comparisonLockReason?: string;
+  modelSelectionLocked?: boolean;
+  modelSelectionLockReason?: string;
 }
 
 export function ChatHeader({
@@ -44,6 +51,12 @@ export function ChatHeader({
   showLeftSidebarButton = false,
   showRightSidebarButton = false,
   onNewChat,
+  selectedComparisonModels = [],
+  onComparisonModelsChange,
+  comparisonLocked = false,
+  comparisonLockReason = 'Model comparison is locked after the first message.',
+  modelSelectionLocked = false,
+  modelSelectionLockReason = 'Primary model is locked after comparison starts.',
 }: ChatHeaderProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
 
@@ -135,7 +148,21 @@ export function ChatHeader({
             className="text-sm sm:text-base md:text-lg"
             ariaLabel="Model"
             onAfterChange={onFocusMessageInput}
+            disabled={modelSelectionLocked}
+            disabledReason={modelSelectionLockReason}
           />
+          {onComparisonModelsChange && (
+            <CompareSelector
+              primaryModel={model}
+              selectedModels={selectedComparisonModels}
+              onChange={onComparisonModelsChange}
+              groups={effectiveGroups}
+              fallbackOptions={effectiveFallback}
+              className="hidden sm:block"
+              disabled={comparisonLocked}
+              disabledReason={comparisonLockReason}
+            />
+          )}
           {onRefreshModels && (
             <button
               onClick={onRefreshModels}

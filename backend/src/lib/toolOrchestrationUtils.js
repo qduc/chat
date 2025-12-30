@@ -747,7 +747,7 @@ export async function executeToolCallsParallel(toolCalls, userId = null, options
   let pLimit;
   try {
     pLimit = (await import('p-limit')).default;
-  } catch (err) {
+  } catch (_err) {
     // If p-limit is not available, fall back to Promise.allSettled (unbounded)
     pLimit = null;
   }
@@ -767,7 +767,7 @@ export async function executeToolCallsParallel(toolCalls, userId = null, options
         const out = { ...result, tool_call_id: call.id, index, duration_ms: duration, status: 'success' };
         try {
           if (typeof onToolComplete === 'function') onToolComplete(out, index);
-        } catch (e) {
+        } catch (_e) {
           // Swallow callback errors
         }
         return out;
@@ -783,7 +783,7 @@ export async function executeToolCallsParallel(toolCalls, userId = null, options
         };
         try {
           if (typeof onToolComplete === 'function') onToolComplete(out, index);
-        } catch (e) {}
+        } catch (_e) {}
         return out;
       }
     };

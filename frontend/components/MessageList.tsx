@@ -27,12 +27,16 @@ import {
   type ImageContent,
 } from '../lib';
 import { useStreamingScroll } from '../hooks/useStreamingScroll';
+import { useIsMobile } from '../hooks/useIsMobile';
 import { WelcomeMessage } from './WelcomeMessage';
 
 interface MessageListProps {
   messages: ChatMessage[];
   pending: PendingState;
   conversationId: string | null;
+  compareModels: string[];
+  primaryModelLabel: string | null;
+  canSend: boolean;
   editingMessageId: string | null;
   editingContent: string;
   onCopy: (text: string) => void;
@@ -42,17 +46,54 @@ interface MessageListProps {
   onApplyLocalEdit: (messageId: string, content: MessageContent) => void;
   onEditingContentChange: (content: string) => void;
   onRetryMessage: (messageId: string) => void;
+  onRetryComparisonModel?: (messageId: string, modelId: string) => void;
   onScrollStateChange?: (state: { showTop: boolean; showBottom: boolean }) => void;
   containerRef?: React.RefObject<HTMLDivElement>;
   onSuggestionClick?: (text: string) => void;
-  onFork?: (messageId: string) => void;
+  onFork?: (messageId: string, modelId: string) => void;
 }
+
+// Maximum number of model columns to display side-by-side
+const MAX_COMPARISON_COLUMNS = 3;
 
 // Helper function to split messages with tool calls into separate messages
 function splitMessagesWithToolCalls(messages: ChatMessage[]): ChatMessage[] {
   // Keep original message shape and avoid splitting tool calls into separate messages.
   // We render tool calls and any tool outputs inside the same assistant bubble below.
   return messages;
+}
+
+// Deep comparison for comparisonResults objects to detect changes from linked conversations
+function deepEqualComparisonResults(
+  a: Record<string, { content: any; usage?: any; status: string; error?: string }> | undefined,
+  b: Record<string, { content: any; usage?: any; status: string; error?: string }> | undefined
+): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined) return false;
+
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+
+  if (keysA.length !== keysB.length) return false;
+
+  for (const key of keysA) {
+    if (!keysB.includes(key)) return false;
+
+    const objA = a[key];
+    const objB = b[key];
+
+    // Compare content - stringify for deep comparison
+    if (JSON.stringify(objA.content) !== JSON.stringify(objB.content)) return false;
+
+    // Compare usage
+    if (JSON.stringify(objA.usage) !== JSON.stringify(objB.usage)) return false;
+
+    // Compare status and error
+    if (objA.status !== objB.status) return false;
+    if (objA.error !== objB.error) return false;
+  }
+
+  return true;
 }
 
 type ToolOutput = NonNullable<ChatMessage['tool_outputs']>[number];
@@ -227,6 +268,9 @@ interface MessageProps {
   message: ChatMessage;
   isStreaming: boolean;
   conversationId: string | null;
+  compareModels: string[];
+  primaryModelLabel: string | null;
+  canSend: boolean;
   editingMessageId: string | null;
   editingContent: string;
   onCopy: (text: string) => void;
@@ -235,6 +279,7 @@ interface MessageProps {
   onApplyLocalEdit: (messageId: string) => void;
   onEditingContentChange: (content: string) => void;
   onRetryMessage?: (messageId: string) => void;
+  onRetryComparisonModel?: (messageId: string, modelId: string) => void;
   editingTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
   lastUserMessageRef: React.RefObject<HTMLDivElement | null> | null;
   resizeEditingTextarea: () => void;
@@ -252,13 +297,21 @@ interface MessageProps {
   onEditingImageUploadClick: () => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   toolbarRef?: React.RefObject<HTMLDivElement | null>;
-  onFork?: (messageId: string) => void;
+  onFork?: (messageId: string, modelId: string) => void;
+  selectedComparisonModels: string[];
+  onToggleComparisonModel: (modelId: string, event?: React.MouseEvent) => void;
+  onSelectAllComparisonModels: (models: string[]) => void;
+  isMobile: boolean;
+  showComparisonTabs: boolean;
 }
 
 const Message = React.memo<MessageProps>(
   function Message({
     message,
     isStreaming,
+    compareModels,
+    primaryModelLabel,
+    canSend,
     editingMessageId,
     editingContent,
     onEditMessage,
@@ -266,6 +319,7 @@ const Message = React.memo<MessageProps>(
     onApplyLocalEdit,
     onEditingContentChange,
     onRetryMessage,
+    onRetryComparisonModel,
     editingTextareaRef,
     lastUserMessageRef,
     resizeEditingTextarea,
@@ -283,10 +337,18 @@ const Message = React.memo<MessageProps>(
     fileInputRef,
     toolbarRef,
     onFork,
+    selectedComparisonModels,
+    onToggleComparisonModel,
+    onSelectAllComparisonModels,
+    isMobile,
+    showComparisonTabs,
   }: {
     message: ChatMessage;
     isStreaming: boolean;
     conversationId: string | null;
+    compareModels: string[];
+    primaryModelLabel: string | null;
+    canSend: boolean;
     editingMessageId: string | null;
     editingContent: string;
     onCopy: (text: string) => void;
@@ -295,6 +357,7 @@ const Message = React.memo<MessageProps>(
     onApplyLocalEdit: (messageId: string, content?: MessageContent) => void;
     onEditingContentChange: (content: string) => void;
     onRetryMessage?: (messageId: string) => void;
+    onRetryComparisonModel?: (messageId: string, modelId: string) => void;
     editingTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
     lastUserMessageRef: React.RefObject<HTMLDivElement | null> | null;
     toolbarRef?: React.RefObject<HTMLDivElement | null>;
@@ -311,14 +374,408 @@ const Message = React.memo<MessageProps>(
     onEditingPaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
     onEditingImageUploadClick: () => void;
     fileInputRef: React.RefObject<HTMLInputElement | null>;
-    onFork?: (messageId: string) => void;
+    onFork?: (messageId: string, modelId: string) => void;
+    selectedComparisonModels: string[];
+    onToggleComparisonModel: (modelId: string, event?: React.MouseEvent) => void;
+    onSelectAllComparisonModels: (models: string[]) => void;
+    isMobile: boolean;
+    showComparisonTabs: boolean;
   }) {
     const isUser = message.role === 'user';
     const isEditing = editingMessageId === message.id;
-    const assistantSegments = !isUser ? buildAssistantSegments(message) : [];
+
+    // Comparison Logic
+    const baseComparisonModels = Object.keys(message.comparisonResults || {});
+    const showStreamingTabs = isStreaming && compareModels.length > 0;
+    const comparisonModels = showStreamingTabs
+      ? Array.from(new Set([...baseComparisonModels, ...compareModels]))
+      : baseComparisonModels;
+    const hasComparison = comparisonModels.length > 0;
+
+    // All available models including primary
+    const allModels = ['primary', ...comparisonModels];
+
+    // Filter selected models to only valid ones
+    const resolvedSelectedModels = selectedComparisonModels.filter(
+      (m) => m === 'primary' || comparisonModels.includes(m)
+    );
+    // Ensure at least primary is selected
+    const activeModels = resolvedSelectedModels.length > 0 ? resolvedSelectedModels : ['primary'];
+
+    // Build display data for each selected model
+    const modelDisplayData = activeModels.map((modelId) => {
+      if (modelId === 'primary') {
+        return {
+          modelId,
+          displayMessage: message,
+          isModelStreaming: isStreaming,
+          assistantSegments: !isUser ? buildAssistantSegments(message) : [],
+        };
+      }
+
+      const result = message.comparisonResults?.[modelId];
+      if (result) {
+        const displayMessage = {
+          ...message,
+          content: result.content,
+          tool_calls: result.tool_calls,
+          tool_outputs: result.tool_outputs,
+          message_events: result.message_events,
+          usage: result.usage,
+        };
+        return {
+          modelId,
+          displayMessage,
+          isModelStreaming: result.status === 'streaming',
+          assistantSegments: !isUser ? buildAssistantSegments(displayMessage) : [],
+        };
+      }
+
+      // Model not yet available (streaming)
+      const displayMessage = {
+        ...message,
+        content: '',
+        tool_calls: undefined,
+        tool_outputs: undefined,
+        message_events: undefined,
+        usage: undefined,
+      };
+      return {
+        modelId,
+        displayMessage,
+        isModelStreaming: pending.streaming,
+        assistantSegments: [],
+      };
+    });
+
+    const isMultiColumn = activeModels.length > 1;
+
+    // Helper to get model display name
+    const getModelDisplayName = (modelId: string) => {
+      if (modelId === 'primary') {
+        return primaryModelLabel
+          ? primaryModelLabel.includes('::')
+            ? primaryModelLabel.split('::')[1]
+            : primaryModelLabel
+          : 'Primary';
+      }
+      return modelId.includes('::') ? modelId.split('::')[1] : modelId;
+    };
+
+    // Helper to render tool call segments
+    const renderToolSegment = (
+      segment: { kind: 'tool_call'; toolCall: any; outputs: ToolOutput[] },
+      segmentIndex: number,
+      modelId: string
+    ) => {
+      const { toolCall, outputs } = segment;
+      const toolName = toolCall.function?.name;
+      let parsedArgs = {};
+      const argsRaw = toolCall.function?.arguments || '';
+      let argsParseFailed = false;
+
+      if (typeof argsRaw === 'string') {
+        if (argsRaw.trim()) {
+          try {
+            parsedArgs = JSON.parse(argsRaw);
+          } catch {
+            argsParseFailed = true;
+          }
+        }
+      } else {
+        parsedArgs = argsRaw;
+      }
+
+      const getToolIcon = (name: string) => {
+        const iconProps = {
+          size: 14,
+          strokeWidth: 1.5,
+          className:
+            'text-zinc-400 dark:text-zinc-500 group-hover/tool-btn:text-zinc-600 dark:group-hover/tool-btn:text-zinc-300 transition-colors duration-300',
+        };
+        switch (name) {
+          case 'get_time':
+            return <Clock {...iconProps} />;
+          case 'web_search':
+            return <Search {...iconProps} />;
+          default:
+            return <Zap {...iconProps} />;
+        }
+      };
+
+      const getToolDisplayName = (name: string) => {
+        switch (name) {
+          case 'get_time':
+            return 'Check Time';
+          case 'web_search':
+            return 'Search Web';
+          default:
+            return name;
+        }
+      };
+
+      const toggleKey = `${message.id}-${modelId}-${toolCall.id ?? segmentIndex}`;
+      const isCollapsed = collapsedToolOutputs[toggleKey] ?? true;
+
+      const getInputSummary = (args: any, raw: string, parseFailed: boolean) => {
+        if (parseFailed && raw) {
+          const cleaned = raw.trim().replace(/\s+/g, ' ');
+          return cleaned.length > 80 ? cleaned.slice(0, 77) + '...' : cleaned;
+        }
+        if (!args || (typeof args === 'object' && Object.keys(args).length === 0)) {
+          return null;
+        }
+        try {
+          if (typeof args === 'string') {
+            const cleaned = args.trim().replace(/\s+/g, ' ');
+            return cleaned.length > 80 ? cleaned.slice(0, 77) + '...' : cleaned;
+          }
+          const str = JSON.stringify(args);
+          const cleaned = str.replace(/\s+/g, ' ');
+          return cleaned.length > 80 ? cleaned.slice(0, 77) + '...' : cleaned;
+        } catch {
+          return String(args).slice(0, 80);
+        }
+      };
+
+      const inputSummary = getInputSummary(parsedArgs, argsRaw, argsParseFailed);
+      const hasDetails =
+        outputs.length > 0 ||
+        Object.keys(parsedArgs).length > 0 ||
+        (argsParseFailed && argsRaw.trim().length > 0);
+      const isCompleted = outputs.length > 0;
+
+      return (
+        <div
+          key={`tool-${modelId}-${segmentIndex}`}
+          className="my-3 rounded-xl border border-zinc-200/60 dark:border-zinc-800/60 bg-white dark:bg-zinc-900/30 overflow-hidden shadow-sm"
+        >
+          <button
+            onClick={() => {
+              if (!hasDetails) return;
+              setCollapsedToolOutputs((s) => ({ ...s, [toggleKey]: !isCollapsed }));
+            }}
+            className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors select-none ${
+              !hasDetails
+                ? 'cursor-default'
+                : 'hover:bg-zinc-50 dark:hover:bg-white/5 cursor-pointer'
+            }`}
+          >
+            <div
+              className={`text-zinc-400 dark:text-zinc-500 scale-90 ${!isCompleted ? 'animate-pulse' : ''}`}
+            >
+              {React.cloneElement(getToolIcon(toolName) as React.ReactElement<any>, {
+                fill: isCompleted ? 'currentColor' : 'none',
+                className: isCompleted
+                  ? 'text-zinc-500 dark:text-zinc-400'
+                  : 'text-zinc-400 dark:text-zinc-500',
+              })}
+            </div>
+            <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300 font-mono">
+              {getToolDisplayName(toolName)}
+            </span>
+            {isCollapsed && inputSummary && (
+              <span className="ml-2 text-xs text-zinc-400 dark:text-zinc-500 truncate max-w-[300px] opacity-80 font-mono">
+                {inputSummary}
+              </span>
+            )}
+            {hasDetails && (
+              <div className="ml-auto flex items-center gap-2">
+                <ChevronDown
+                  size={14}
+                  className={`transition-transform duration-200 ${!isCollapsed ? 'rotate-180' : ''} text-zinc-400 dark:text-zinc-500`}
+                />
+              </div>
+            )}
+          </button>
+          {!isCollapsed && hasDetails && (
+            <div className="border-t border-zinc-100 dark:border-zinc-800/50 bg-zinc-50/50 dark:bg-black/20 px-4 py-3 text-[13px]">
+              <div className="space-y-4">
+                {(Object.keys(parsedArgs).length > 0 ||
+                  (argsParseFailed && argsRaw.trim().length > 0)) && (
+                  <div className="space-y-1.5">
+                    <div className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-600 uppercase tracking-wider pl-0.5 mb-1.5">
+                      Parameters
+                    </div>
+                    <div className="font-mono text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed">
+                      {argsParseFailed ? argsRaw : JSON.stringify(parsedArgs, null, 2)}
+                    </div>
+                  </div>
+                )}
+                {outputs.length > 0 && (
+                  <div className="space-y-1.5">
+                    <div className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-600 uppercase tracking-wider pl-0.5 mb-1.5">
+                      Result
+                    </div>
+                    <div className="space-y-3">
+                      {outputs.map((out: any, outIdx: number) => {
+                        const raw = out.output ?? out;
+                        let formatted = '';
+                        if (typeof raw === 'string') {
+                          formatted = raw;
+                        } else {
+                          try {
+                            formatted = JSON.stringify(raw, null, 2);
+                          } catch {
+                            formatted = String(raw);
+                          }
+                        }
+                        return (
+                          <div
+                            key={outIdx}
+                            className="font-mono text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed"
+                          >
+                            {formatted}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // Helper to render a single model response column
+    const renderModelResponse = (data: (typeof modelDisplayData)[0]) => {
+      const { modelId, displayMessage: dm, isModelStreaming, assistantSegments: segments } = data;
+
+      return (
+        <div
+          key={modelId}
+          className={`space-y-3 max-w-3xl ${isMultiColumn ? 'flex-1 min-w-0' : ''}`}
+        >
+          {isMultiColumn && (
+            <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400 pb-1 border-b border-zinc-100 dark:border-zinc-800">
+              {getModelDisplayName(modelId)}
+            </div>
+          )}
+          {segments.length === 0 ? (
+            <div className="text-base leading-relaxed text-zinc-800 dark:text-zinc-200">
+              {isModelStreaming || pending.abort ? (
+                <span className="inline-flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-current animate-bounce"
+                    style={{ animationDelay: '0ms' }}
+                  />
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-current animate-bounce"
+                    style={{ animationDelay: '150ms' }}
+                  />
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-current animate-bounce"
+                    style={{ animationDelay: '300ms' }}
+                  />
+                </span>
+              ) : (
+                <span className="text-zinc-500 dark:text-zinc-400 italic">No response content</span>
+              )}
+            </div>
+          ) : (
+            segments.map((segment, segmentIndex) => {
+              if (segment.kind === 'text') {
+                if (!segment.text) return null;
+                return (
+                  <div
+                    key={`text-${modelId}-${segmentIndex}`}
+                    className="text-base leading-relaxed text-zinc-900 dark:text-zinc-200"
+                  >
+                    <Markdown text={segment.text} isStreaming={isModelStreaming} />
+                  </div>
+                );
+              }
+              return renderToolSegment(segment, segmentIndex, modelId);
+            })
+          )}
+
+          {/* Stats row for this model */}
+          {!isEditing && (dm.content || !isUser) && (
+            <div className="mt-2 flex items-center justify-between opacity-70 group-hover:opacity-100 transition-opacity text-xs border-t border-zinc-100 dark:border-zinc-800/50 pt-2">
+              <div className="flex items-center gap-2 overflow-hidden mr-2">
+                {streamingStats &&
+                  streamingStats.tokensPerSecond > 0 &&
+                  modelId === 'primary' &&
+                  !isMultiColumn && (
+                    <div className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 text-[10px] font-mono whitespace-nowrap">
+                      {streamingStats.tokensPerSecond.toFixed(1)} t/s
+                    </div>
+                  )}
+                {dm.usage && (
+                  <div className="px-1.5 py-0.5 rounded bg-zinc-50 dark:bg-zinc-800/50 text-slate-500 dark:text-slate-500 text-[10px] font-mono whitespace-nowrap">
+                    {dm.usage.prompt_tokens + dm.usage.completion_tokens} tokens
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                {dm.content && (
+                  <div className="relative">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        handleCopy(`${message.id}-${modelId}`, extractTextFromContent(dm.content))
+                      }
+                      title="Copy"
+                      className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
+                    >
+                      <Copy className="w-3.5 h-3.5" aria-hidden="true" />
+                      <span className="sr-only">Copy</span>
+                    </button>
+                    {copiedMessageId === `${message.id}-${modelId}` && (
+                      <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-white text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap z-10 animate-fade-in shadow-lg">
+                        Copied
+                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[3px] border-r-[3px] border-t-[4px] border-transparent border-t-slate-800 dark:border-t-slate-700"></div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {onFork && (
+                  <button
+                    type="button"
+                    onClick={() => onFork(message.id, modelId)}
+                    title="Fork"
+                    className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
+                  >
+                    <GitFork className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span className="sr-only">Fork</span>
+                  </button>
+                )}
+                {!pending.streaming && hasComparison && !isUser && onRetryComparisonModel && (
+                  <button
+                    type="button"
+                    onClick={() => onRetryComparisonModel(message.id, modelId)}
+                    title="Retry this model"
+                    disabled={actionsDisabled}
+                    className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span className="sr-only">Retry this model</span>
+                  </button>
+                )}
+                {!pending.streaming && !hasComparison && (
+                  <button
+                    type="button"
+                    onClick={() => onRetryMessage && onRetryMessage(message.id)}
+                    title="Regenerate"
+                    disabled={actionsDisabled}
+                    className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span className="sr-only">Regenerate</span>
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    };
 
     // For editing, check if we have either text or images
     const canSaveEdit = editingContent.trim().length > 0 || editingImages.length > 0;
+    const actionsDisabled = !canSend;
 
     return (
       <div
@@ -334,10 +791,79 @@ const Message = React.memo<MessageProps>(
           className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? 'max-w-full sm:max-w-[85%] md:max-w-[75%] lg:max-w-[60%] order-first' : 'w-full'}`}
           style={{ minWidth: 0 }}
         >
+          {hasComparison && !isUser && showComparisonTabs && (
+            <div className="flex items-center gap-2 mb-2 overflow-x-auto pb-1 no-scrollbar">
+              {/* All button - hidden on mobile (single model only) */}
+              {!isMobile && (
+                <button
+                  onClick={() => onSelectAllComparisonModels(allModels)}
+                  className={`px-2.5 py-1 text-xs rounded-full border transition-colors whitespace-nowrap ${
+                    activeModels.length === Math.min(allModels.length, MAX_COMPARISON_COLUMNS)
+                      ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
+                      : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
+                  }`}
+                >
+                  All
+                </button>
+              )}
+              {allModels.map((modelId) => {
+                const isSelected = activeModels.includes(modelId);
+                // On mobile: no disabled state (radio behavior)
+                // On desktop: disable if max columns reached
+                const isDisabled =
+                  !isMobile && !isSelected && activeModels.length >= MAX_COMPARISON_COLUMNS;
+                const displayName =
+                  modelId === 'primary'
+                    ? primaryModelLabel
+                      ? primaryModelLabel.includes('::')
+                        ? primaryModelLabel.split('::')[1]
+                        : primaryModelLabel
+                      : 'Primary'
+                    : modelId.includes('::')
+                      ? modelId.split('::')[1]
+                      : modelId;
+
+                return (
+                  <button
+                    key={modelId}
+                    onClick={(e) => onToggleComparisonModel(modelId, e)}
+                    disabled={isDisabled}
+                    title={isDisabled ? `Maximum ${MAX_COMPARISON_COLUMNS} models` : undefined}
+                    className={`px-3 py-1 text-xs rounded-full border transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+                      isSelected
+                        ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
+                        : isDisabled
+                          ? 'bg-zinc-50 dark:bg-zinc-900/50 text-zinc-400 dark:text-zinc-600 border-zinc-200 dark:border-zinc-800 cursor-not-allowed opacity-50'
+                          : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
+                    }`}
+                  >
+                    {/* Checkbox indicator - only on desktop */}
+                    {!isMobile && (
+                      <span
+                        className={`w-3 h-3 rounded border flex items-center justify-center text-[10px] ${
+                          isSelected
+                            ? 'bg-white dark:bg-zinc-900 border-white dark:border-zinc-900 text-zinc-800 dark:text-zinc-200'
+                            : 'border-zinc-400 dark:border-zinc-500'
+                        }`}
+                      >
+                        {isSelected && '✓'}
+                      </span>
+                    )}
+                    {displayName}
+                  </button>
+                );
+              })}
+              {/* Hint text - hidden on mobile */}
+              <span className="hidden md:inline ml-auto text-[10px] text-zinc-400 dark:text-zinc-600 whitespace-nowrap">
+                {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+click for single model
+              </span>
+            </div>
+          )}
+
           {isEditing ? (
             <ImageUploadZone
               onFiles={onEditingImagesChange}
-              disabled={false}
+              disabled={actionsDisabled}
               fullPage={false}
               clickToUpload={false}
             >
@@ -378,9 +904,12 @@ const Message = React.memo<MessageProps>(
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                       e.preventDefault();
+                      if (actionsDisabled) return;
                       onApplyLocalEdit(message.id);
                     }
                   }}
+                  disabled={actionsDisabled}
+                  aria-disabled={actionsDisabled}
                   className="w-full min-h-[100px] resize-vertical bg-transparent border-0 outline-none text-base leading-relaxed text-zinc-800 dark:text-zinc-200 placeholder-zinc-500 dark:placeholder-zinc-400"
                   placeholder="Edit your message... (paste or drop images)"
                   style={{ overflow: 'hidden' }}
@@ -390,7 +919,8 @@ const Message = React.memo<MessageProps>(
                   <button
                     type="button"
                     onClick={onEditingImageUploadClick}
-                    className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors"
+                    disabled={actionsDisabled}
+                    className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span className="text-sm">📎</span>
                     {editingImages.length > 0
@@ -407,7 +937,7 @@ const Message = React.memo<MessageProps>(
                     </button>
                     <button
                       onClick={() => onApplyLocalEdit(message.id)}
-                      disabled={!canSaveEdit}
+                      disabled={actionsDisabled || !canSaveEdit}
                       className="px-3 py-1.5 text-xs rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                     >
                       Save
@@ -422,298 +952,36 @@ const Message = React.memo<MessageProps>(
                 <div className="rounded-2xl px-5 py-3.5 text-base leading-relaxed bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100">
                   <MessageContentRenderer content={message.content} isStreaming={false} />
                 </div>
+              ) : isMultiColumn ? (
+                /* Multi-column side-by-side view - stacks on mobile */
+                <div className="flex flex-col md:flex-row gap-4">
+                  {modelDisplayData.map((data) => renderModelResponse(data))}
+                </div>
               ) : (
-                <div className="space-y-3">
-                  {assistantSegments.length === 0 ? (
-                    <div className="text-base leading-relaxed text-zinc-800 dark:text-zinc-200">
-                      {pending.streaming || pending.abort ? (
-                        <span className="inline-flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
-                          <span
-                            className="w-1.5 h-1.5 rounded-full bg-current animate-bounce"
-                            style={{ animationDelay: '0ms' }}
-                          />
-                          <span
-                            className="w-1.5 h-1.5 rounded-full bg-current animate-bounce"
-                            style={{ animationDelay: '150ms' }}
-                          />
-                          <span
-                            className="w-1.5 h-1.5 rounded-full bg-current animate-bounce"
-                            style={{ animationDelay: '300ms' }}
-                          />
-                        </span>
-                      ) : (
-                        <span className="text-zinc-500 dark:text-zinc-400 italic">
-                          No response content
-                        </span>
-                      )}
-                    </div>
-                  ) : (
-                    assistantSegments.map((segment, segmentIndex) => {
-                      if (segment.kind === 'text') {
-                        if (!segment.text) {
-                          return null;
-                        }
-                        return (
-                          <div
-                            key={`text-${segmentIndex}`}
-                            className="text-base leading-relaxed text-zinc-900 dark:text-zinc-200"
-                          >
-                            <Markdown text={segment.text} isStreaming={isStreaming} />
-                          </div>
-                        );
-                      }
+                /* Single column view */
+                modelDisplayData.map((data) => renderModelResponse(data))
+              )}
 
-                      const { toolCall, outputs } = segment;
-                      const toolName = toolCall.function?.name;
-                      let parsedArgs = {};
-                      const argsRaw = toolCall.function?.arguments || '';
-                      let argsParseFailed = false;
-
-                      // Try to parse arguments if they're a string
-                      if (typeof argsRaw === 'string') {
-                        if (argsRaw.trim()) {
-                          try {
-                            parsedArgs = JSON.parse(argsRaw);
-                          } catch {
-                            // If parse fails, it might be streaming (incomplete JSON)
-                            // Show the raw string instead of empty object
-                            argsParseFailed = true;
-                          }
-                        }
-                      } else {
-                        parsedArgs = argsRaw;
-                      }
-
-                      const getToolIcon = (name: string) => {
-                        const iconProps = {
-                          size: 14,
-                          strokeWidth: 1.5,
-                          className:
-                            'text-zinc-400 dark:text-zinc-500 group-hover/tool-btn:text-zinc-600 dark:group-hover/tool-btn:text-zinc-300 transition-colors duration-300',
-                        };
-                        switch (name) {
-                          case 'get_time':
-                            return <Clock {...iconProps} />;
-                          case 'web_search':
-                            return <Search {...iconProps} />;
-                          default:
-                            return <Zap {...iconProps} />;
-                        }
-                      };
-
-                      const getToolDisplayName = (name: string) => {
-                        switch (name) {
-                          case 'get_time':
-                            return 'Check Time';
-                          case 'web_search':
-                            return 'Search Web';
-                          default:
-                            return name;
-                        }
-                      };
-
-                      const toggleKey = `${message.id}-${toolCall.id ?? segmentIndex}`;
-                      const isCollapsed = collapsedToolOutputs[toggleKey] ?? true;
-
-                      const getOutputSummary = (outputs: any[]) => {
-                        if (!outputs || outputs.length === 0) return null;
-
-                        const firstOutput = outputs[0];
-                        const raw = firstOutput.output ?? firstOutput;
-
-                        if (typeof raw === 'string') {
-                          const cleaned = raw.trim().replace(/\s+/g, ' ');
-                          return cleaned.length > 80 ? cleaned.slice(0, 77) + '...' : cleaned;
-                        }
-
-                        if (typeof raw === 'object' && raw !== null) {
-                          if ('result' in raw) return String(raw.result).slice(0, 80);
-                          if ('message' in raw) return String(raw.message).slice(0, 80);
-                          if ('data' in raw && typeof raw.data === 'string')
-                            return raw.data.slice(0, 80);
-                          return 'Completed successfully';
-                        }
-
-                        return null;
-                      };
-
-                      const outputSummary = getOutputSummary(outputs);
-                      const getInputSummary = (args: any, raw: string, parseFailed: boolean) => {
-                        // If parsing failed, show the raw incomplete JSON string
-                        if (parseFailed && raw) {
-                          const cleaned = raw.trim().replace(/\s+/g, ' ');
-                          return cleaned.length > 80 ? cleaned.slice(0, 77) + '...' : cleaned;
-                        }
-
-                        // If successfully parsed, show formatted JSON
-                        if (!args || (typeof args === 'object' && Object.keys(args).length === 0)) {
-                          return null;
-                        }
-
-                        try {
-                          if (typeof args === 'string') {
-                            const cleaned = args.trim().replace(/\s+/g, ' ');
-                            return cleaned.length > 80 ? cleaned.slice(0, 77) + '...' : cleaned;
-                          }
-
-                          const str = JSON.stringify(args);
-                          const cleaned = str.replace(/\s+/g, ' ');
-                          return cleaned.length > 80 ? cleaned.slice(0, 77) + '...' : cleaned;
-                        } catch {
-                          return String(args).slice(0, 80);
-                        }
-                      };
-
-                      const inputSummary = getInputSummary(parsedArgs, argsRaw, argsParseFailed);
-                      const hasDetails =
-                        outputs.length > 0 ||
-                        Object.keys(parsedArgs).length > 0 ||
-                        (argsParseFailed && argsRaw.trim().length > 0);
-
-                      const isCompleted = outputs.length > 0;
-
-                      return (
-                        <div
-                          key={`tool-${segmentIndex}`}
-                          className="my-3 rounded-xl border border-zinc-200/60 dark:border-zinc-800/60 bg-white dark:bg-zinc-900/30 overflow-hidden shadow-sm"
-                        >
-                          <button
-                            onClick={() => {
-                              if (!hasDetails) return;
-                              setCollapsedToolOutputs((s) => ({ ...s, [toggleKey]: !isCollapsed }));
-                            }}
-                            className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors select-none ${
-                              !hasDetails
-                                ? 'cursor-default'
-                                : 'hover:bg-zinc-50 dark:hover:bg-white/5 cursor-pointer'
-                            }`}
-                          >
-                            <div
-                              className={`text-zinc-400 dark:text-zinc-500 scale-90 ${!isCompleted ? 'animate-pulse' : ''}`}
-                            >
-                              {React.cloneElement(
-                                getToolIcon(toolName) as React.ReactElement<any>,
-                                {
-                                  fill: isCompleted ? 'currentColor' : 'none',
-                                  className: isCompleted
-                                    ? 'text-zinc-500 dark:text-zinc-400'
-                                    : 'text-zinc-400 dark:text-zinc-500',
-                                }
-                              )}
-                            </div>
-                            <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300 font-mono">
-                              {getToolDisplayName(toolName)}
-                            </span>
-
-                            {/* Always show params summary when collapsed if available */}
-                            {isCollapsed && inputSummary && (
-                              <span className="ml-2 text-xs text-zinc-400 dark:text-zinc-500 truncate max-w-[300px] opacity-80 font-mono">
-                                {inputSummary}
-                              </span>
-                            )}
-
-                            {hasDetails && (
-                              <div className="ml-auto flex items-center gap-2">
-                                <ChevronDown
-                                  size={14}
-                                  className={`transition-transform duration-200 ${!isCollapsed ? 'rotate-180' : ''} text-zinc-400 dark:text-zinc-500`}
-                                />
-                              </div>
-                            )}
-                          </button>
-
-                          {!isCollapsed && hasDetails && (
-                            <div className="border-t border-zinc-100 dark:border-zinc-800/50 bg-zinc-50/50 dark:bg-black/20 px-4 py-3 text-[13px]">
-                              <div className="space-y-4">
-                                {(Object.keys(parsedArgs).length > 0 ||
-                                  (argsParseFailed && argsRaw.trim().length > 0)) && (
-                                  <div className="space-y-1.5">
-                                    <div className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-600 uppercase tracking-wider pl-0.5 mb-1.5">
-                                      Parameters
-                                    </div>
-                                    <div className="font-mono text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed">
-                                      {argsParseFailed
-                                        ? argsRaw
-                                        : JSON.stringify(parsedArgs, null, 2)}
-                                    </div>
-                                  </div>
-                                )}
-
-                                {outputs.length > 0 && (
-                                  <div className="space-y-1.5">
-                                    <div className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-600 uppercase tracking-wider pl-0.5 mb-1.5">
-                                      Result
-                                    </div>
-                                    <div className="space-y-3">
-                                      {outputs.map((out: any, outIdx: number) => {
-                                        const raw = out.output ?? out;
-                                        let formatted = '';
-                                        if (typeof raw === 'string') {
-                                          formatted = raw;
-                                        } else {
-                                          try {
-                                            formatted = JSON.stringify(raw, null, 2);
-                                          } catch {
-                                            formatted = String(raw);
-                                          }
-                                        }
-                                        return (
-                                          <div
-                                            key={outIdx}
-                                            className="font-mono text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed"
-                                          >
-                                            {formatted}
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })
-                  )}
+              {!isUser && hasComparison && onRetryMessage && !pending.streaming && (
+                <div className="mt-2 flex justify-end">
+                  <button
+                    onClick={() => onRetryMessage(message.id)}
+                    disabled={actionsDisabled}
+                    className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Retry all models"
+                    type="button"
+                  >
+                    Retry all models
+                  </button>
                 </div>
               )}
 
-              {!isEditing && (message.content || !isUser) && (
+              {/* User message toolbar */}
+              {isUser && !isEditing && message.content && (
                 <div
-                  className={`mt-1 flex items-center ${isUser ? 'justify-end' : 'justify-between'} opacity-70 group-hover:opacity-100 transition-opacity text-xs`}
-                  ref={isUser && toolbarRef ? toolbarRef : undefined}
+                  className="mt-1 flex items-center justify-end opacity-70 group-hover:opacity-100 transition-opacity text-xs"
+                  ref={toolbarRef}
                 >
-                  {/* Show stats for assistant messages */}
-                  {!isUser && (
-                    <div className="flex items-center gap-2">
-                      {streamingStats && streamingStats.tokensPerSecond > 0 && (
-                        <div className="px-2 py-1 rounded-md bg-white/60 dark:bg-neutral-800/50 text-slate-600 dark:text-slate-400 text-xs font-mono">
-                          {streamingStats.tokensPerSecond.toFixed(1)} tok/s
-                        </div>
-                      )}
-                      {message.usage && (
-                        <div className="px-2 py-1 rounded-md bg-white/60 dark:bg-neutral-800/50 text-slate-600 dark:text-slate-400 text-xs font-mono flex items-center gap-2">
-                          {message.usage.provider && (
-                            <span className="font-medium">{message.usage.provider}</span>
-                          )}
-                          {(message.usage.prompt_tokens !== undefined ||
-                            message.usage.completion_tokens !== undefined) && (
-                            <span className="text-slate-500 dark:text-slate-500">•</span>
-                          )}
-                          {message.usage.prompt_tokens !== undefined &&
-                            message.usage.completion_tokens !== undefined && (
-                              <span>
-                                {message.usage.prompt_tokens + message.usage.completion_tokens}{' '}
-                                tokens ({message.usage.prompt_tokens}↑ +{' '}
-                                {message.usage.completion_tokens}↓)
-                              </span>
-                            )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
                   <div className="flex items-center gap-2">
                     {message.content && (
                       <div className="relative">
@@ -723,57 +991,31 @@ const Message = React.memo<MessageProps>(
                             handleCopy(message.id, extractTextFromContent(message.content))
                           }
                           title="Copy"
-                          className="p-2 rounded-md bg-white/60 dark:bg-neutral-800/50 hover:bg-white/90 dark:hover:bg-neutral-700/80 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+                          className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
                         >
                           <Copy className="w-3 h-3" aria-hidden="true" />
                           <span className="sr-only">Copy</span>
                         </button>
                         {copiedMessageId === message.id && (
-                          <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-white text-xs px-2 py-1 rounded whitespace-nowrap z-10 animate-fade-in">
+                          <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-white text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap z-10 animate-fade-in shadow-lg">
                             Copied
-                            <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-2 border-r-2 border-t-2 border-transparent border-t-slate-800 dark:border-t-slate-700"></div>
+                            <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[3px] border-r-[3px] border-t-[4px] border-transparent border-t-slate-800 dark:border-t-slate-700"></div>
                           </div>
                         )}
                       </div>
                     )}
-
-                    {onFork && (
-                      <button
-                        type="button"
-                        onClick={() => onFork(message.id)}
-                        title="Fork"
-                        className="p-2 rounded-md bg-white/60 dark:bg-neutral-800/50 hover:bg-white/90 dark:hover:bg-neutral-700/80 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
-                      >
-                        <GitFork className="w-3 h-3" aria-hidden="true" />
-                        <span className="sr-only">Fork</span>
-                      </button>
-                    )}
-
-                    {isUser
-                      ? message.content && (
-                          <button
-                            type="button"
-                            onClick={() =>
-                              onEditMessage(message.id, extractTextFromContent(message.content))
-                            }
-                            title="Edit"
-                            className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
-                          >
-                            <Edit2 className="w-3 h-3" aria-hidden="true" />
-                            <span className="sr-only">Edit</span>
-                          </button>
-                        )
-                      : !pending.streaming && (
-                          <button
-                            type="button"
-                            onClick={() => onRetryMessage && onRetryMessage(message.id)}
-                            title="Regenerate"
-                            className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
-                          >
-                            <RefreshCw className="w-3 h-3" aria-hidden="true" />
-                            <span className="sr-only">Regenerate</span>
-                          </button>
-                        )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onEditMessage(message.id, extractTextFromContent(message.content))
+                      }
+                      title="Edit"
+                      disabled={actionsDisabled}
+                      className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Edit2 className="w-3 h-3" aria-hidden="true" />
+                      <span className="sr-only">Edit</span>
+                    </button>
                   </div>
                 </div>
               )}
@@ -789,8 +1031,12 @@ const Message = React.memo<MessageProps>(
       prev.message.content === next.message.content &&
       prev.message.tool_calls === next.message.tool_calls &&
       prev.message.tool_outputs === next.message.tool_outputs &&
+      // Deep compare comparisonResults to detect changes from linked conversations
+      deepEqualComparisonResults(prev.message.comparisonResults, next.message.comparisonResults) &&
       prev.message.usage === next.message.usage &&
       prev.isStreaming === next.isStreaming &&
+      prev.compareModels === next.compareModels &&
+      prev.canSend === next.canSend &&
       prev.editingMessageId === next.editingMessageId &&
       prev.editingContent === next.editingContent &&
       prev.pending.streaming === next.pending.streaming &&
@@ -798,7 +1044,10 @@ const Message = React.memo<MessageProps>(
       prev.copiedMessageId === next.copiedMessageId &&
       prev.streamingStats?.tokensPerSecond === next.streamingStats?.tokensPerSecond &&
       prev.editingImages === next.editingImages &&
-      prev.toolbarRef === next.toolbarRef
+      prev.toolbarRef === next.toolbarRef &&
+      prev.selectedComparisonModels === next.selectedComparisonModels &&
+      prev.isMobile === next.isMobile &&
+      prev.showComparisonTabs === next.showComparisonTabs
     );
   }
 );
@@ -807,6 +1056,9 @@ export function MessageList({
   messages,
   pending,
   conversationId,
+  compareModels,
+  primaryModelLabel,
+  canSend,
   editingMessageId,
   editingContent,
   onCopy,
@@ -815,6 +1067,7 @@ export function MessageList({
   onApplyLocalEdit,
   onEditingContentChange,
   onRetryMessage,
+  onRetryComparisonModel,
   onScrollStateChange,
   containerRef: externalContainerRef,
   onSuggestionClick,
@@ -826,6 +1079,15 @@ export function MessageList({
   const editingTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [collapsedToolOutputs, setCollapsedToolOutputs] = useState<Record<string, boolean>>({});
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
+  const [selectedComparisonModels, setSelectedComparisonModels] = useState<string[]>(['primary']);
+  // Track which conversation we've initialized model selection for
+  const initializedComparisonRef = useRef<string | null>(null);
+  const isMobile = useIsMobile();
+  // On mobile, only show one model at a time
+  const effectiveSelectedModels = isMobile
+    ? [selectedComparisonModels[0] || 'primary']
+    : selectedComparisonModels;
+  const hasMultiColumnLayout = effectiveSelectedModels.length > 1;
   const { dynamicBottomPadding, lastUserMessageRef, toolbarRef, bottomRef } = useStreamingScroll(
     messages,
     pending,
@@ -863,6 +1125,97 @@ export function MessageList({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingMessageId]);
+
+  // Track previous conversation to detect changes
+  const prevConversationIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    // When conversation changes, reset to primary and clear initialization
+    if (prevConversationIdRef.current !== conversationId) {
+      prevConversationIdRef.current = conversationId;
+      initializedComparisonRef.current = null;
+      setSelectedComparisonModels(['primary']);
+    }
+  }, [conversationId]);
+
+  useEffect(() => {
+    // Skip if already initialized for this conversation
+    if (initializedComparisonRef.current === conversationId) {
+      return;
+    }
+
+    // Skip if no messages yet (wait for them to load)
+    if (messages.length === 0) {
+      return;
+    }
+
+    // Gather all comparison models from messages
+    const allComparisonModels = new Set<string>();
+    messages.forEach((m) => {
+      if (m.comparisonResults) {
+        Object.keys(m.comparisonResults).forEach((modelId) => {
+          allComparisonModels.add(modelId);
+        });
+      }
+    });
+
+    if (allComparisonModels.size === 0) {
+      // Wait for comparison results to load before locking in default selection.
+      return;
+    }
+
+    // Mark as initialized for this conversation once comparison models exist.
+    initializedComparisonRef.current = conversationId;
+
+    // This is a comparison conversation - select up to MAX_COMPARISON_COLUMNS models
+    const modelsToSelect = ['primary', ...Array.from(allComparisonModels)].slice(
+      0,
+      MAX_COMPARISON_COLUMNS
+    );
+    setSelectedComparisonModels(modelsToSelect);
+  }, [conversationId, messages]);
+
+  // Toggle handler for comparison model selection
+  // On mobile: radio behavior (one model at a time)
+  // On desktop: checkbox behavior with Ctrl/Cmd+click for solo mode
+  const handleToggleComparisonModel = useCallback(
+    (modelId: string, event?: React.MouseEvent) => {
+      // On mobile, always use radio behavior
+      if (isMobile) {
+        setSelectedComparisonModels([modelId]);
+        return;
+      }
+
+      const isSoloClick = event?.metaKey || event?.ctrlKey;
+
+      if (isSoloClick) {
+        // Solo mode: show only this model
+        setSelectedComparisonModels([modelId]);
+        return;
+      }
+
+      setSelectedComparisonModels((prev) => {
+        if (prev.includes(modelId)) {
+          // Don't allow deselecting the last model
+          if (prev.length === 1) {
+            return prev;
+          }
+          return prev.filter((m) => m !== modelId);
+        }
+        // Don't allow selecting more than MAX_COMPARISON_COLUMNS
+        if (prev.length >= MAX_COMPARISON_COLUMNS) {
+          return prev;
+        }
+        return [...prev, modelId];
+      });
+    },
+    [isMobile]
+  );
+
+  // Handler to select all comparison models (up to MAX_COMPARISON_COLUMNS)
+  const handleSelectAllComparisonModels = useCallback((models: string[]) => {
+    setSelectedComparisonModels(models.slice(0, MAX_COMPARISON_COLUMNS));
+  }, []);
 
   // Handle image upload during editing
   const handleEditingImageFiles = useCallback(async (files: File[]) => {
@@ -920,20 +1273,23 @@ export function MessageList({
 
   // Handle image upload button click
   const handleEditingImageUploadClick = useCallback(() => {
+    if (!canSend) return;
     fileInputRef.current?.click();
-  }, []);
+  }, [canSend]);
 
   // Wrapper functions to clear streaming stats when regenerating or editing
   const handleRetryMessage = useCallback(
     (messageId: string) => {
+      if (!canSend) return;
       setStreamingStats(null);
       onRetryMessage(messageId);
     },
-    [onRetryMessage]
+    [canSend, onRetryMessage]
   );
 
   const handleApplyLocalEdit = useCallback(
     (messageId: string) => {
+      if (!canSend) return;
       setStreamingStats(null);
 
       const trimmedText = editingContent.trim();
@@ -956,7 +1312,7 @@ export function MessageList({
 
       onApplyLocalEdit(messageId, nextContent);
     },
-    [editingContent, editingImages, onApplyLocalEdit]
+    [canSend, editingContent, editingImages, onApplyLocalEdit]
   );
 
   // Handle copy with tooltip feedback
@@ -1028,6 +1384,10 @@ export function MessageList({
 
   // Split messages with tool calls into separate messages
   const processedMessages = useMemo(() => splitMessagesWithToolCalls(messages), [messages]);
+  const firstAssistantMessageId = useMemo(() => {
+    const firstAssistant = processedMessages.find((message) => message.role === 'assistant');
+    return firstAssistant?.id ?? null;
+  }, [processedMessages]);
 
   // Track scroll position to show/hide scroll buttons
   useEffect(() => {
@@ -1056,7 +1416,7 @@ export function MessageList({
       style={{ willChange: 'scroll-position' }}
     >
       <div
-        className="w-full mx-auto max-w-3xl px-4 sm:px-4 md:px-6 py-6 space-y-6"
+        className={`w-full mx-auto px-4 sm:px-4 md:px-6 py-6 space-y-6 ${hasMultiColumnLayout ? 'max-w-6xl' : 'max-w-3xl'}`}
         style={{ paddingBottom: dynamicBottomPadding }}
       >
         {messages.length === 0 && <WelcomeMessage onSuggestionClick={onSuggestionClick} />}
@@ -1077,6 +1437,9 @@ export function MessageList({
               message={m}
               isStreaming={isStreaming}
               conversationId={conversationId}
+              compareModels={compareModels}
+              primaryModelLabel={primaryModelLabel}
+              canSend={canSend}
               editingMessageId={editingMessageId}
               editingContent={editingContent}
               onCopy={onCopy}
@@ -1085,6 +1448,7 @@ export function MessageList({
               onApplyLocalEdit={handleApplyLocalEdit}
               onEditingContentChange={onEditingContentChange}
               onRetryMessage={handleRetryMessage}
+              onRetryComparisonModel={onRetryComparisonModel}
               editingTextareaRef={editingTextareaRef}
               lastUserMessageRef={isRecentUserMessage ? lastUserMessageRef : null}
               toolbarRef={isRecentUserMessage ? toolbarRef : undefined}
@@ -1102,6 +1466,11 @@ export function MessageList({
               onEditingImageUploadClick={handleEditingImageUploadClick}
               fileInputRef={fileInputRef}
               onFork={onFork}
+              selectedComparisonModels={effectiveSelectedModels}
+              onToggleComparisonModel={handleToggleComparisonModel}
+              onSelectAllComparisonModels={handleSelectAllComparisonModels}
+              isMobile={isMobile}
+              showComparisonTabs={m.id === firstAssistantMessageId}
             />
           );
         })}

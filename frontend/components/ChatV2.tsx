@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { ArrowUp, ArrowDown, Bot } from 'lucide-react';
@@ -36,12 +36,87 @@ export function ChatV2() {
   const frameRef = useRef<number | null>(null);
   const messageListRef = useRef<HTMLDivElement>(null!);
   const [scrollButtons, setScrollButtons] = useState({ showTop: false, showBottom: false });
+  const [showScrollButtons, setShowScrollButtons] = useState(false);
+  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isLoadingConversationRef = useRef(false);
   const messageInputRef = useRef<MessageInputRef>(null);
   const messageInputContainerRef = useRef<HTMLDivElement>(null);
   const [messageInputHeight, setMessageInputHeight] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
   const hasCheckedMobileRef = useRef(false);
+
+  const modelAvailability = useMemo(() => {
+    if (chat.isLoadingModels || chat.modelOptions.length === 0) {
+      return { locked: false, missing: [] as string[] };
+    }
+
+    const optionValues = new Set(chat.modelOptions.map((option) => option.value));
+    const resolveModel = (modelId: string) => {
+      if (!modelId) return null;
+      if (optionValues.has(modelId)) return modelId;
+
+      if (!modelId.includes('::')) {
+        const providerId = chat.modelToProvider[modelId] || '';
+        if (providerId) {
+          const qualified = `${providerId}::${modelId}`;
+          if (optionValues.has(qualified)) return qualified;
+        }
+
+        const suffixMatch = chat.modelOptions.find((option) =>
+          option.value.endsWith(`::${modelId}`)
+        );
+        if (suffixMatch) return suffixMatch.value;
+      }
+
+      return null;
+    };
+
+    const candidates = [chat.model, ...chat.compareModels].filter(Boolean);
+    const missing: string[] = [];
+    const seen = new Set<string>();
+
+    for (const modelId of candidates) {
+      if (seen.has(modelId)) continue;
+      seen.add(modelId);
+      if (!resolveModel(modelId)) {
+        missing.push(modelId);
+      }
+    }
+
+    const hasConversation = chat.messages.length > 0 || !!chat.conversationId;
+    const hasComparison = chat.compareModels.length > 0;
+    return {
+      locked: hasConversation && hasComparison && missing.length > 0,
+      missing,
+    };
+  }, [
+    chat.isLoadingModels,
+    chat.modelOptions,
+    chat.modelToProvider,
+    chat.model,
+    chat.compareModels,
+    chat.messages.length,
+    chat.conversationId,
+  ]);
+
+  const unavailableModelLabels = useMemo(
+    () =>
+      modelAvailability.missing.map((modelId) =>
+        modelId.includes('::') ? modelId.split('::')[1] : modelId
+      ),
+    [modelAvailability.missing]
+  );
+  const modelLockReason = modelAvailability.locked
+    ? `Unavailable model${unavailableModelLabels.length === 1 ? '' : 's'}: ${unavailableModelLabels.join(
+        ', '
+      )}. Refresh models to resume.`
+    : undefined;
+  const modelSelectionLocked =
+    modelAvailability.locked || (chat.messages.length > 0 && chat.compareModels.length > 0);
+  const modelSelectionLockReason = modelAvailability.locked
+    ? modelLockReason
+    : 'Primary model is locked for comparison chats after the first message. Start a new chat to change.';
+  const canSend = !modelAvailability.locked;
 
   // Detect mobile screen size and auto-collapse sidebars on mount
   useEffect(() => {
@@ -80,6 +155,36 @@ export function ChatV2() {
 
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  // Handle scroll button visibility with auto-hide
+  useEffect(() => {
+    const container = messageListRef.current;
+    if (!container) return;
+
+    const handleScroll = () => {
+      // Show buttons on scroll activity
+      setShowScrollButtons(true);
+
+      // Clear existing timeout
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+
+      // Hide buttons after 2 seconds of no scrolling
+      scrollTimeoutRef.current = setTimeout(() => {
+        setShowScrollButtons(false);
+      }, 2000);
+    };
+
+    container.addEventListener('scroll', handleScroll, { passive: true });
+
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+      }
+    };
   }, []);
 
   // Simple event handlers
@@ -286,6 +391,7 @@ export function ChatV2() {
 
   const handleRetryMessage = useCallback(
     async (messageId: string) => {
+      if (!canSend) return;
       if (chat.status === 'streaming') return;
       if (chat.messages.length === 0) return;
 
@@ -300,11 +406,21 @@ export function ChatV2() {
       const base = chat.messages.slice(0, idx);
       chat.regenerate(base);
     },
-    [chat]
+    [canSend, chat]
+  );
+
+  const handleRetryComparisonModel = useCallback(
+    async (messageId: string, modelId: string) => {
+      if (!canSend) return;
+      if (chat.status === 'streaming') return;
+      await chat.retryComparisonModel(messageId, modelId);
+    },
+    [canSend, chat]
   );
 
   const handleApplyLocalEdit = useCallback(
     async (messageId: string, updatedContent: MessageContent) => {
+      if (!canSend) return;
       if (chat.status === 'streaming') {
         chat.stopStreaming();
       }
@@ -324,18 +440,40 @@ export function ChatV2() {
         chat.regenerate(baseMessages);
       }
     },
-    [chat]
+    [canSend, chat]
   );
 
   const handleFork = useCallback(
-    (messageId: string) => {
+    (messageId: string, modelId: string) => {
       const idx = chat.messages.findIndex((m) => m.id === messageId);
       if (idx === -1) return;
 
-      const newMessages = chat.messages.slice(0, idx + 1);
+      const forkModelId = modelId === 'primary' ? chat.model : modelId;
+      const newMessages = chat.messages.slice(0, idx + 1).map((message) => {
+        if (message.role !== 'assistant') {
+          return message.comparisonResults ? { ...message, comparisonResults: undefined } : message;
+        }
+
+        if (modelId !== 'primary') {
+          const comparison = message.comparisonResults?.[modelId];
+          if (comparison) {
+            return {
+              ...message,
+              content: comparison.content ?? '',
+              tool_calls: comparison.tool_calls,
+              tool_outputs: comparison.tool_outputs,
+              message_events: comparison.message_events,
+              usage: comparison.usage,
+              comparisonResults: undefined,
+            };
+          }
+        }
+
+        return message.comparisonResults ? { ...message, comparisonResults: undefined } : message;
+      });
 
       // Capture current settings to preserve them
-      const currentModel = chat.model;
+      const currentModel = forkModelId || chat.model;
       const currentProviderId = chat.providerId;
       const currentUseTools = chat.useTools;
       const currentEnabledTools = chat.enabledTools;
@@ -345,11 +483,16 @@ export function ChatV2() {
       const currentActiveSystemPromptId = chat.activeSystemPromptId;
 
       chat.newChat();
+      chat.setCompareModels([]);
       chat.setMessages(newMessages);
 
       // Restore settings
       if (currentModel) chat.setModel(currentModel);
-      if (currentProviderId) chat.setProviderId(currentProviderId);
+      if (currentModel?.includes('::')) {
+        chat.setProviderId(currentModel.split('::')[0]);
+      } else if (currentProviderId) {
+        chat.setProviderId(currentProviderId);
+      }
       chat.setUseTools(currentUseTools);
       chat.setEnabledTools(currentEnabledTools);
       chat.setShouldStream(currentShouldStream);
@@ -363,16 +506,18 @@ export function ChatV2() {
   );
 
   const handleGenerate = useCallback(() => {
+    if (!canSend) return;
     if (chat.messages.length > 0) {
       chat.regenerate(chat.messages);
     }
-  }, [chat]);
+  }, [canSend, chat]);
 
   const showGenerateButton =
     chat.messages.length > 0 &&
     chat.messages[chat.messages.length - 1].role === 'user' &&
     chat.status !== 'streaming' &&
-    !chat.pending.streaming;
+    !chat.pending.streaming &&
+    canSend;
 
   // Load conversations and hydrate from URL on first load
   useEffect(() => {
@@ -455,13 +600,14 @@ export function ChatV2() {
 
   // Clear the input immediately when the user presses send, then invoke sendMessage
   const handleSend = useCallback(() => {
+    if (!canSend) return;
     const messageToSend = chat.input;
     // clear input right away so the UI feels responsive
     chat.setInput('');
     // call sendMessage with the captured content so it doesn't rely on chat.input after clearing
     void chat.sendMessage(messageToSend);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat.input, chat.setInput, chat.sendMessage]);
+  }, [canSend, chat.input, chat.setInput, chat.sendMessage]);
 
   // Scroll functions
   const scrollToTop = useCallback(() => {
@@ -568,6 +714,12 @@ export function ChatV2() {
           onToggleRightSidebar={chat.toggleRightSidebar}
           showLeftSidebarButton={chat.historyEnabled}
           showRightSidebarButton={true}
+          selectedComparisonModels={chat.compareModels}
+          onComparisonModelsChange={chat.setCompareModels}
+          comparisonLocked={chat.messages.length > 0}
+          comparisonLockReason="Model comparison is locked after the first message. Start a new chat to change."
+          modelSelectionLocked={modelSelectionLocked}
+          modelSelectionLockReason={modelSelectionLockReason}
         />
         <div className="flex flex-1 min-h-0 min-w-0">
           <div className="flex flex-col flex-1 relative min-w-0">
@@ -575,6 +727,9 @@ export function ChatV2() {
               messages={chat.messages}
               pending={chat.pending}
               conversationId={chat.conversationId}
+              compareModels={chat.compareModels}
+              primaryModelLabel={chat.model}
+              canSend={canSend}
               editingMessageId={chat.editingMessageId}
               editingContent={chat.editingContent}
               onCopy={handleCopy}
@@ -584,6 +739,7 @@ export function ChatV2() {
               onApplyLocalEdit={handleApplyLocalEdit}
               onEditingContentChange={chat.updateEditContent}
               onRetryMessage={handleRetryMessage}
+              onRetryComparisonModel={handleRetryComparisonModel}
               onScrollStateChange={setScrollButtons}
               containerRef={messageListRef}
               onSuggestionClick={handleSuggestionClick}
@@ -600,7 +756,11 @@ export function ChatV2() {
               {scrollButtons.showTop && (
                 <button
                   onClick={scrollToTop}
-                  className="pointer-events-auto p-1.5 rounded-full bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-200 border border-zinc-200/70 dark:border-zinc-700/70 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors aspect-square"
+                  className={`p-1.5 rounded-full bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-200 border border-zinc-200/70 dark:border-zinc-700/70 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all duration-200 aspect-square ${
+                    showScrollButtons
+                      ? 'opacity-100 scale-100 pointer-events-auto'
+                      : 'opacity-0 scale-95 pointer-events-none'
+                  }`}
                   aria-label="Scroll to top"
                   title="Scroll to top"
                 >
@@ -610,7 +770,11 @@ export function ChatV2() {
               {scrollButtons.showBottom && (
                 <button
                   onClick={() => scrollToBottom()}
-                  className="pointer-events-auto p-1.5 rounded-full bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-200 border border-zinc-200/70 dark:border-zinc-700/70 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors aspect-square"
+                  className={`p-1.5 rounded-full bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-200 border border-zinc-200/70 dark:border-zinc-700/70 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all duration-200 aspect-square ${
+                    showScrollButtons
+                      ? 'opacity-100 scale-100 pointer-events-auto'
+                      : 'opacity-0 scale-95 pointer-events-none'
+                  }`}
                   aria-label="Scroll to bottom"
                   title="Scroll to bottom"
                 >
@@ -656,6 +820,8 @@ export function ChatV2() {
                   onImagesChange={chat.setImages}
                   files={chat.files}
                   onFilesChange={chat.setFiles}
+                  disabled={!canSend}
+                  disabledReason={modelLockReason}
                 />
               )}
             </div>

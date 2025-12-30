@@ -221,6 +221,23 @@ export interface ChatMessage {
   };
   reasoning_details?: any[];
   reasoning_tokens?: number | null;
+  comparisonResults?: Record<
+    string,
+    {
+      content: MessageContent;
+      tool_calls?: any[];
+      tool_outputs?: Array<{
+        tool_call_id?: string;
+        name?: string;
+        output: any;
+        status?: string;
+      }>;
+      message_events?: MessageEvent[];
+      usage?: any;
+      status: 'streaming' | 'complete' | 'error';
+      error?: string;
+    }
+  >;
 }
 
 export interface MessageEvent {

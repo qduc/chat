@@ -177,7 +177,7 @@ interface ImagePreviewOverlayProps {
   onClose: () => void;
 }
 
-function ImagePreviewOverlay({ image, src, onClose }: ImagePreviewOverlayProps) {
+function ImagePreviewOverlay({ src, onClose }: ImagePreviewOverlayProps) {
   React.useEffect(() => {
     if (typeof window === 'undefined') {
       return;
