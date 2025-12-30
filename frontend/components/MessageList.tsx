@@ -1033,6 +1033,18 @@ const Message = React.memo<MessageProps>(
                         )}
                       </div>
                     )}
+                    {onFork && (
+                      <button
+                        type="button"
+                        onClick={() => onFork(message.id, 'primary')}
+                        title="Fork"
+                        disabled={actionsDisabled}
+                        className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <GitFork className="w-3 h-3" aria-hidden="true" />
+                        <span className="sr-only">Fork</span>
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() =>
