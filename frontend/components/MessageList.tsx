@@ -116,15 +116,15 @@ function formatUsageLabel(usage?: ChatMessage['usage']): string | null {
 
   if (hasPrompt || hasCompletion) {
     const parts: string[] = [];
-    if (hasPrompt) parts.push(`in ${prompt}`);
-    if (hasCompletion) parts.push(`out ${completion}`);
+    if (hasPrompt) parts.push(`↑ ${prompt}`);
+    if (hasCompletion) parts.push(`↓ ${completion}`);
     if (hasTotal && !(hasPrompt && hasCompletion && prompt! + completion! === total)) {
-      parts.push(`total ${total}`);
+      parts.push(`⇅ ${total}`);
     }
     return parts.join(' · ');
   }
 
-  return `total ${total}`;
+  return `⇅ ${total}`;
 }
 
 function buildAssistantSegments(message: ChatMessage): AssistantSegment[] {
