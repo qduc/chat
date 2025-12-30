@@ -159,6 +159,7 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
 });
 
 // GET /v1/conversations/:id (metadata + messages with pagination)
+// Optional: ?include_linked=messages to include linked conversations with their messages
 conversationsRouter.get('/v1/conversations/:id', (req, res) => {
   if (!config.persistence.enabled) return notImplemented(res);
   try {
@@ -178,13 +179,33 @@ conversationsRouter.get('/v1/conversations/:id', (req, res) => {
 
     const sysPrompt = convo?.metadata?.system_prompt || null;
     const activePromptId = convo?.metadata?.active_system_prompt_id || null;
-    return res.json({
+
+    const response = {
       ...convo,
       system_prompt: sysPrompt,
       active_system_prompt_id: activePromptId,
       messages: page.messages,
       next_after_seq: page.next_after_seq,
-    });
+    };
+
+    // Include linked conversations with their messages if requested
+    const includeLinked = req.query.include_linked;
+    if (includeLinked === 'messages') {
+      const linkedConvos = getLinkedConversations({ parentId: req.params.id, userId });
+      response.linked_conversations = linkedConvos.map((linked) => {
+        const linkedPage = getMessagesPage({
+          conversationId: linked.id,
+          afterSeq: 0,
+          limit: 200, // Get all messages for linked conversations
+        });
+        return {
+          ...linked,
+          messages: linkedPage.messages,
+        };
+      });
+    }
+
+    return res.json(response);
   } catch (e) {
     logger.error('[conversations] get error', e);
     return res.status(500).json({ error: 'internal_error' });

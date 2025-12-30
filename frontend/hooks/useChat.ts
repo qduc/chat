@@ -530,7 +530,8 @@ export function useChat() {
         }
 
         // Request a larger message page by default so the UI can show history
-        const data = await conversationsApi.get(id, { limit: 200 });
+        // Also include linked comparison conversations with their messages in a single request
+        const data = await conversationsApi.get(id, { limit: 200, include_linked: 'messages' });
 
         // Convert backend messages to frontend format
         const rawMessages: Message[] = data.messages.map((msg) => {
@@ -660,105 +661,85 @@ export function useChat() {
           activeSystemPromptIdRef.current = data.active_system_prompt_id;
         }
 
-        // Load linked comparison conversations (if any)
-        try {
-          const linkedResult = await conversationsApi.getLinked(id);
-          if (linkedResult.conversations && linkedResult.conversations.length > 0) {
-            const linkedMap: Record<string, string> = {};
+        // Process linked comparison conversations (already fetched with main request)
+        if (data.linked_conversations && data.linked_conversations.length > 0) {
+          const linkedMap: Record<string, string> = {};
 
-            // Fetch messages from each linked conversation and populate comparisonResults
-            for (const linked of linkedResult.conversations) {
-              if (linked.model) {
-                const rawLinkedModel = String(linked.model).trim();
-                if (!rawLinkedModel) continue;
-                const linkedProviderId =
-                  typeof linked.provider_id === 'string' ? linked.provider_id.trim() : '';
-                const normalizedLinkedModel = rawLinkedModel.includes('::')
-                  ? rawLinkedModel
-                  : linkedProviderId
-                    ? `${linkedProviderId}::${rawLinkedModel}`
-                    : resolveProviderFromModel(rawLinkedModel)
-                      ? `${resolveProviderFromModel(rawLinkedModel)}::${rawLinkedModel}`
-                      : rawLinkedModel;
+          // Process each linked conversation and populate comparisonResults
+          for (const linked of data.linked_conversations) {
+            if (linked.model) {
+              const rawLinkedModel = String(linked.model).trim();
+              if (!rawLinkedModel) continue;
+              const linkedProviderId =
+                typeof linked.provider_id === 'string' ? linked.provider_id.trim() : '';
+              const normalizedLinkedModel = rawLinkedModel.includes('::')
+                ? rawLinkedModel
+                : linkedProviderId
+                  ? `${linkedProviderId}::${rawLinkedModel}`
+                  : resolveProviderFromModel(rawLinkedModel)
+                    ? `${resolveProviderFromModel(rawLinkedModel)}::${rawLinkedModel}`
+                    : rawLinkedModel;
 
-                linkedMap[normalizedLinkedModel] = linked.id;
+              linkedMap[normalizedLinkedModel] = linked.id;
 
-                // Fetch the linked conversation's messages
-                try {
-                  const linkedData = await conversationsApi.get(linked.id);
-                  if (linkedData.messages && linkedData.messages.length > 0) {
-                    // Merge linked conversation messages into comparisonResults
-                    setMessages((prevMessages) => {
-                      // Build a map of user message indices to assistant message indices
-                      // for the linked conversation
-                      const linkedUserIndices: number[] = [];
-                      const linkedAssistantIndices: number[] = [];
+              // Messages are already included in the response
+              if (linked.messages && linked.messages.length > 0) {
+                // Merge linked conversation messages into comparisonResults
+                setMessages((prevMessages) => {
+                  // Build a map of assistant message indices for the linked conversation
+                  const linkedAssistantIndices: number[] = [];
 
-                      for (let i = 0; i < linkedData.messages.length; i++) {
-                        const msg = linkedData.messages[i];
-                        if (msg.role === 'user') {
-                          linkedUserIndices.push(i);
-                        } else if (msg.role === 'assistant') {
-                          linkedAssistantIndices.push(i);
-                        }
-                      }
-
-                      // Build comparison results for each message
-                      const updatedMessages = prevMessages.map((msg, idx) => {
-                        if (msg.role !== 'assistant') return msg;
-
-                        // Find the corresponding assistant message in the linked conversation
-                        // by matching the position (index among assistant messages)
-                        const assistantIndex =
-                          prevMessages.slice(0, idx + 1).filter((m) => m.role === 'assistant')
-                            .length - 1;
-
-                        if (assistantIndex >= 0 && assistantIndex < linkedAssistantIndices.length) {
-                          const linkedIdx = linkedAssistantIndices[assistantIndex];
-                          const linkedMsg = linkedData.messages[linkedIdx];
-                          if (linkedMsg) {
-                            return {
-                              ...msg,
-                              comparisonResults: {
-                                ...msg.comparisonResults,
-                                [normalizedLinkedModel]: {
-                                  content: linkedMsg.content ?? '',
-                                  usage: (linkedMsg as any).usage,
-                                  status: 'complete' as const,
-                                  tool_calls: linkedMsg.tool_calls,
-                                  tool_outputs: linkedMsg.tool_outputs,
-                                  message_events: linkedMsg.message_events,
-                                },
-                              },
-                            };
-                          }
-                        }
-                        return msg;
-                      });
-
-                      return updatedMessages;
-                    });
+                  for (let i = 0; i < linked.messages.length; i++) {
+                    const msg = linked.messages[i];
+                    if (msg.role === 'assistant') {
+                      linkedAssistantIndices.push(i);
+                    }
                   }
-                } catch (err) {
-                  console.warn(
-                    `[useChat] Failed to load messages from linked conversation ${linked.id}:`,
-                    err
-                  );
-                  // Continue with other linked conversations
-                }
+
+                  // Build comparison results for each message
+                  const updatedMessages = prevMessages.map((msg, idx) => {
+                    if (msg.role !== 'assistant') return msg;
+
+                    // Find the corresponding assistant message in the linked conversation
+                    // by matching the position (index among assistant messages)
+                    const assistantIndex =
+                      prevMessages.slice(0, idx + 1).filter((m) => m.role === 'assistant').length -
+                      1;
+
+                    if (assistantIndex >= 0 && assistantIndex < linkedAssistantIndices.length) {
+                      const linkedIdx = linkedAssistantIndices[assistantIndex];
+                      const linkedMsg = linked.messages[linkedIdx];
+                      if (linkedMsg) {
+                        return {
+                          ...msg,
+                          comparisonResults: {
+                            ...msg.comparisonResults,
+                            [normalizedLinkedModel]: {
+                              content: linkedMsg.content ?? '',
+                              usage: (linkedMsg as any).usage,
+                              status: 'complete' as const,
+                              tool_calls: linkedMsg.tool_calls,
+                              tool_outputs: linkedMsg.tool_outputs,
+                              message_events: linkedMsg.message_events,
+                            },
+                          },
+                        };
+                      }
+                    }
+                    return msg;
+                  });
+
+                  return updatedMessages;
+                });
               }
             }
-            setLinkedConversations(linkedMap);
-            const primaryModelValue = finalModelValue || modelRef.current;
-            setCompareModels(
-              Object.keys(linkedMap).filter((modelId) => modelId && modelId !== primaryModelValue)
-            );
-          } else {
-            setLinkedConversations({});
-            setCompareModels([]);
           }
-        } catch {
-          // Non-fatal: if loading linked conversations fails, just clear state
+          setLinkedConversations(linkedMap);
+          const primaryModelValue = finalModelValue || modelRef.current;
+          setCompareModels(
+            Object.keys(linkedMap).filter((modelId) => modelId && modelId !== primaryModelValue)
+          );
+        } else {
           setLinkedConversations({});
           setCompareModels([]);
         }

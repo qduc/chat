@@ -1024,6 +1024,7 @@ export const conversations = {
     const searchParams = new URLSearchParams();
     if (params.after_seq) searchParams.set('after_seq', String(params.after_seq));
     if (params.limit) searchParams.set('limit', String(params.limit));
+    if (params.include_linked) searchParams.set('include_linked', params.include_linked);
 
     const cacheKey = `get:${id}:${searchParams.toString()}`;
     const cached = conversationDetailCache.get(cacheKey);
