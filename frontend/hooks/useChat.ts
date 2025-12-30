@@ -1929,17 +1929,25 @@ export function useChat() {
   }, [editingMessageId, editingContent, conversationId, cancelEdit]);
 
   // Actions - Models & Providers
-  const loadProvidersAndModels = useCallback(async () => {
+  const loadProvidersAndModels = useCallback(async (options?: { forceRefresh?: boolean }) => {
     try {
       setIsLoadingModels(true);
 
-      // Fetch providers list
-      const providersResponse = await httpClient.get<{ providers: Provider[] }>('/v1/providers');
-      const providersList = providersResponse.data.providers.filter(
-        (p: Provider) => p.enabled === 1
-      );
+      // Use batch endpoint to fetch all models in one call
+      const endpoint = options?.forceRefresh ? '/v1/models?refresh=true' : '/v1/models';
+      const response = await httpClient.get<{
+        providers: Array<{
+          provider: { id: string; name: string; provider_type: string };
+          models: any[];
+        }>;
+        cached: boolean;
+        cachedAt: string;
+        errors?: Array<{ providerId: string; providerName: string; error: string }>;
+      }>(endpoint);
 
-      if (providersList.length === 0) {
+      const providerModels = response.data.providers || [];
+
+      if (providerModels.length === 0) {
         setModelGroups([]);
         setModelOptions([]);
         setModelToProvider({});
@@ -1947,72 +1955,66 @@ export function useChat() {
         return;
       }
 
-      // Fetch models for each provider
       const groups: ModelGroup[] = [];
-      const options: ModelOption[] = [];
+      const allOptions: ModelOption[] = [];
       const modelToProviderMap: Record<string, string> = {};
       const capabilitiesMap: Record<string, any> = {};
 
-      for (const provider of providersList) {
-        try {
-          const modelsResponse = await httpClient.get<{ provider: any; models: any[] }>(
-            `/v1/providers/${provider.id}/models`
-          );
-          const models = modelsResponse.data.models || [];
+      for (const { provider, models } of providerModels) {
+        if (models.length > 0) {
+          // Create model options for this provider with provider-qualified values
+          const providerOptions: ModelOption[] = models.map((model: any) => ({
+            value: `${provider.id}::${model.id}`,
+            label: model.id,
+          }));
 
-          if (models.length > 0) {
-            // Create model options for this provider with provider-qualified values
-            const providerOptions: ModelOption[] = models.map((model: any) => ({
-              value: `${provider.id}::${model.id}`,
-              label: model.id,
-            }));
+          groups.push({
+            id: provider.id,
+            label: provider.name,
+            options: providerOptions,
+          });
 
-            groups.push({
-              id: provider.id,
-              label: provider.name,
-              options: providerOptions,
-            });
+          allOptions.push(...providerOptions);
 
-            options.push(...providerOptions);
+          // Build model to provider mapping and store model capabilities
+          models.forEach((model: any) => {
+            const qualifiedId = `${provider.id}::${model.id}`;
+            modelToProviderMap[qualifiedId] = provider.id;
+            capabilitiesMap[qualifiedId] = model;
 
-            // Build model to provider mapping (now using qualified model IDs)
-            // and store model capabilities
-            models.forEach((model: any) => {
-              const qualifiedId = `${provider.id}::${model.id}`;
-              modelToProviderMap[qualifiedId] = provider.id;
-              capabilitiesMap[qualifiedId] = model;
+            if (!modelToProviderMap[model.id]) {
+              modelToProviderMap[model.id] = provider.id;
+            }
 
-              if (!modelToProviderMap[model.id]) {
-                modelToProviderMap[model.id] = provider.id;
-              }
-
-              if (Array.isArray(model.aliases)) {
-                for (const alias of model.aliases) {
-                  if (typeof alias === 'string' && !modelToProviderMap[alias]) {
-                    modelToProviderMap[alias] = provider.id;
-                  }
+            if (Array.isArray(model.aliases)) {
+              for (const alias of model.aliases) {
+                if (typeof alias === 'string' && !modelToProviderMap[alias]) {
+                  modelToProviderMap[alias] = provider.id;
                 }
               }
-            });
-          }
-        } catch (err) {
-          console.warn(`Failed to load models for provider ${provider.name}:`, err);
+            }
+          });
         }
       }
 
       setModelGroups(groups);
-      setModelOptions(options);
+      setModelOptions(allOptions);
       setModelToProvider(modelToProviderMap);
       setModelCapabilities(capabilitiesMap);
       modelToProviderRef.current = modelToProviderMap;
 
-      // Set default provider if not already set (use functional update to avoid capturing providerId)
-      if (providersList.length > 0) {
+      // Set default provider if not already set
+      if (providerModels.length > 0) {
         setProviderId((prev) => {
-          const nextValue = prev ?? providersList[0].id;
+          const nextValue = prev ?? providerModels[0].provider.id;
           providerIdRef.current = nextValue;
           return nextValue;
         });
+      }
+
+      // Log any errors from providers that failed to fetch
+      if (response.data.errors && response.data.errors.length > 0) {
+        console.warn('Some providers failed to fetch models:', response.data.errors);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load models');
@@ -2020,6 +2022,11 @@ export function useChat() {
       setIsLoadingModels(false);
     }
   }, []);
+
+  // Force refresh models from external providers (bypasses cache)
+  const forceRefreshModels = useCallback(() => {
+    return loadProvidersAndModels({ forceRefresh: true });
+  }, [loadProvidersAndModels]);
 
   const setInlineSystemPromptOverride = useCallback((prompt: string | null) => {
     setSystemPrompt(prompt);
@@ -2258,6 +2265,7 @@ export function useChat() {
     updateEditContent,
     saveEdit,
     loadProvidersAndModels,
+    forceRefreshModels,
     setInlineSystemPromptOverride,
   };
 }
