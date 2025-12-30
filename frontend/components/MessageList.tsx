@@ -971,6 +971,27 @@ const Message = React.memo<MessageProps>(
                   ref={toolbarRef}
                 >
                   <div className="flex items-center gap-2">
+                    {message.content && (
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            handleCopy(message.id, extractTextFromContent(message.content))
+                          }
+                          title="Copy"
+                          className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+                        >
+                          <Copy className="w-3 h-3" aria-hidden="true" />
+                          <span className="sr-only">Copy</span>
+                        </button>
+                        {copiedMessageId === message.id && (
+                          <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-white text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap z-10 animate-fade-in shadow-lg">
+                            Copied
+                            <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[3px] border-r-[3px] border-t-[4px] border-transparent border-t-slate-800 dark:border-t-slate-700"></div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <button
                       type="button"
                       onClick={() =>
