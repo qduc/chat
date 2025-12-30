@@ -116,6 +116,7 @@ export function ChatV2() {
   const modelSelectionLockReason = modelAvailability.locked
     ? modelLockReason
     : 'Primary model is locked for comparison chats after the first message. Start a new chat to change.';
+  const canSend = !modelAvailability.locked;
 
   // Detect mobile screen size and auto-collapse sidebars on mount
   useEffect(() => {
@@ -390,6 +391,7 @@ export function ChatV2() {
 
   const handleRetryMessage = useCallback(
     async (messageId: string) => {
+      if (!canSend) return;
       if (chat.status === 'streaming') return;
       if (chat.messages.length === 0) return;
 
@@ -404,19 +406,21 @@ export function ChatV2() {
       const base = chat.messages.slice(0, idx);
       chat.regenerate(base);
     },
-    [chat]
+    [canSend, chat]
   );
 
   const handleRetryComparisonModel = useCallback(
     async (messageId: string, modelId: string) => {
+      if (!canSend) return;
       if (chat.status === 'streaming') return;
       await chat.retryComparisonModel(messageId, modelId);
     },
-    [chat]
+    [canSend, chat]
   );
 
   const handleApplyLocalEdit = useCallback(
     async (messageId: string, updatedContent: MessageContent) => {
+      if (!canSend) return;
       if (chat.status === 'streaming') {
         chat.stopStreaming();
       }
@@ -436,7 +440,7 @@ export function ChatV2() {
         chat.regenerate(baseMessages);
       }
     },
-    [chat]
+    [canSend, chat]
   );
 
   const handleFork = useCallback(
@@ -502,16 +506,18 @@ export function ChatV2() {
   );
 
   const handleGenerate = useCallback(() => {
+    if (!canSend) return;
     if (chat.messages.length > 0) {
       chat.regenerate(chat.messages);
     }
-  }, [chat]);
+  }, [canSend, chat]);
 
   const showGenerateButton =
     chat.messages.length > 0 &&
     chat.messages[chat.messages.length - 1].role === 'user' &&
     chat.status !== 'streaming' &&
-    !chat.pending.streaming;
+    !chat.pending.streaming &&
+    canSend;
 
   // Load conversations and hydrate from URL on first load
   useEffect(() => {
@@ -594,13 +600,14 @@ export function ChatV2() {
 
   // Clear the input immediately when the user presses send, then invoke sendMessage
   const handleSend = useCallback(() => {
+    if (!canSend) return;
     const messageToSend = chat.input;
     // clear input right away so the UI feels responsive
     chat.setInput('');
     // call sendMessage with the captured content so it doesn't rely on chat.input after clearing
     void chat.sendMessage(messageToSend);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat.input, chat.setInput, chat.sendMessage]);
+  }, [canSend, chat.input, chat.setInput, chat.sendMessage]);
 
   // Scroll functions
   const scrollToTop = useCallback(() => {
@@ -722,6 +729,7 @@ export function ChatV2() {
               conversationId={chat.conversationId}
               compareModels={chat.compareModels}
               primaryModelLabel={chat.model}
+              canSend={canSend}
               editingMessageId={chat.editingMessageId}
               editingContent={chat.editingContent}
               onCopy={handleCopy}
@@ -812,7 +820,7 @@ export function ChatV2() {
                   onImagesChange={chat.setImages}
                   files={chat.files}
                   onFilesChange={chat.setFiles}
-                  disabled={modelAvailability.locked}
+                  disabled={!canSend}
                   disabledReason={modelLockReason}
                 />
               )}

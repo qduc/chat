@@ -36,6 +36,7 @@ interface MessageListProps {
   conversationId: string | null;
   compareModels: string[];
   primaryModelLabel: string | null;
+  canSend: boolean;
   editingMessageId: string | null;
   editingContent: string;
   onCopy: (text: string) => void;
@@ -269,6 +270,7 @@ interface MessageProps {
   conversationId: string | null;
   compareModels: string[];
   primaryModelLabel: string | null;
+  canSend: boolean;
   editingMessageId: string | null;
   editingContent: string;
   onCopy: (text: string) => void;
@@ -309,6 +311,7 @@ const Message = React.memo<MessageProps>(
     isStreaming,
     compareModels,
     primaryModelLabel,
+    canSend,
     editingMessageId,
     editingContent,
     onEditMessage,
@@ -345,6 +348,7 @@ const Message = React.memo<MessageProps>(
     conversationId: string | null;
     compareModels: string[];
     primaryModelLabel: string | null;
+    canSend: boolean;
     editingMessageId: string | null;
     editingContent: string;
     onCopy: (text: string) => void;
@@ -743,7 +747,8 @@ const Message = React.memo<MessageProps>(
                     type="button"
                     onClick={() => onRetryComparisonModel(message.id, modelId)}
                     title="Retry this model"
-                    className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
+                    disabled={actionsDisabled}
+                    className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
                     <span className="sr-only">Retry this model</span>
@@ -754,7 +759,8 @@ const Message = React.memo<MessageProps>(
                     type="button"
                     onClick={() => onRetryMessage && onRetryMessage(message.id)}
                     title="Regenerate"
-                    className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
+                    disabled={actionsDisabled}
+                    className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
                     <span className="sr-only">Regenerate</span>
@@ -769,6 +775,7 @@ const Message = React.memo<MessageProps>(
 
     // For editing, check if we have either text or images
     const canSaveEdit = editingContent.trim().length > 0 || editingImages.length > 0;
+    const actionsDisabled = !canSend;
 
     return (
       <div
@@ -856,7 +863,7 @@ const Message = React.memo<MessageProps>(
           {isEditing ? (
             <ImageUploadZone
               onFiles={onEditingImagesChange}
-              disabled={false}
+              disabled={actionsDisabled}
               fullPage={false}
               clickToUpload={false}
             >
@@ -897,9 +904,12 @@ const Message = React.memo<MessageProps>(
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
                       e.preventDefault();
+                      if (actionsDisabled) return;
                       onApplyLocalEdit(message.id);
                     }
                   }}
+                  disabled={actionsDisabled}
+                  aria-disabled={actionsDisabled}
                   className="w-full min-h-[100px] resize-vertical bg-transparent border-0 outline-none text-base leading-relaxed text-zinc-800 dark:text-zinc-200 placeholder-zinc-500 dark:placeholder-zinc-400"
                   placeholder="Edit your message... (paste or drop images)"
                   style={{ overflow: 'hidden' }}
@@ -909,7 +919,8 @@ const Message = React.memo<MessageProps>(
                   <button
                     type="button"
                     onClick={onEditingImageUploadClick}
-                    className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors"
+                    disabled={actionsDisabled}
+                    className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     <span className="text-sm">📎</span>
                     {editingImages.length > 0
@@ -926,7 +937,7 @@ const Message = React.memo<MessageProps>(
                     </button>
                     <button
                       onClick={() => onApplyLocalEdit(message.id)}
-                      disabled={!canSaveEdit}
+                      disabled={actionsDisabled || !canSaveEdit}
                       className="px-3 py-1.5 text-xs rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                     >
                       Save
@@ -955,7 +966,8 @@ const Message = React.memo<MessageProps>(
                 <div className="mt-2 flex justify-end">
                   <button
                     onClick={() => onRetryMessage(message.id)}
-                    className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
+                    disabled={actionsDisabled}
+                    className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     title="Retry all models"
                     type="button"
                   >
@@ -998,7 +1010,8 @@ const Message = React.memo<MessageProps>(
                         onEditMessage(message.id, extractTextFromContent(message.content))
                       }
                       title="Edit"
-                      className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+                      disabled={actionsDisabled}
+                      className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       <Edit2 className="w-3 h-3" aria-hidden="true" />
                       <span className="sr-only">Edit</span>
@@ -1023,6 +1036,7 @@ const Message = React.memo<MessageProps>(
       prev.message.usage === next.message.usage &&
       prev.isStreaming === next.isStreaming &&
       prev.compareModels === next.compareModels &&
+      prev.canSend === next.canSend &&
       prev.editingMessageId === next.editingMessageId &&
       prev.editingContent === next.editingContent &&
       prev.pending.streaming === next.pending.streaming &&
@@ -1044,6 +1058,7 @@ export function MessageList({
   conversationId,
   compareModels,
   primaryModelLabel,
+  canSend,
   editingMessageId,
   editingContent,
   onCopy,
@@ -1258,20 +1273,23 @@ export function MessageList({
 
   // Handle image upload button click
   const handleEditingImageUploadClick = useCallback(() => {
+    if (!canSend) return;
     fileInputRef.current?.click();
-  }, []);
+  }, [canSend]);
 
   // Wrapper functions to clear streaming stats when regenerating or editing
   const handleRetryMessage = useCallback(
     (messageId: string) => {
+      if (!canSend) return;
       setStreamingStats(null);
       onRetryMessage(messageId);
     },
-    [onRetryMessage]
+    [canSend, onRetryMessage]
   );
 
   const handleApplyLocalEdit = useCallback(
     (messageId: string) => {
+      if (!canSend) return;
       setStreamingStats(null);
 
       const trimmedText = editingContent.trim();
@@ -1294,7 +1312,7 @@ export function MessageList({
 
       onApplyLocalEdit(messageId, nextContent);
     },
-    [editingContent, editingImages, onApplyLocalEdit]
+    [canSend, editingContent, editingImages, onApplyLocalEdit]
   );
 
   // Handle copy with tooltip feedback
@@ -1421,6 +1439,7 @@ export function MessageList({
               conversationId={conversationId}
               compareModels={compareModels}
               primaryModelLabel={primaryModelLabel}
+              canSend={canSend}
               editingMessageId={editingMessageId}
               editingContent={editingContent}
               onCopy={onCopy}
