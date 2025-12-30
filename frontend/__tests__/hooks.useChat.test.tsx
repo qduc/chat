@@ -639,9 +639,7 @@ describe('useChat hook', () => {
 
     expect(mockConversations.create).toHaveBeenCalled();
     expect(mockChat.sendMessage).toHaveBeenCalledTimes(2);
-    expect(mockChat.sendMessage).toHaveBeenCalledWith(
-      expect.objectContaining({ model: 'gpt-4o' })
-    );
+    expect(mockChat.sendMessage).toHaveBeenCalledWith(expect.objectContaining({ model: 'gpt-4o' }));
     expect(mockChat.sendMessage).toHaveBeenCalledWith(
       expect.objectContaining({ model: 'gpt-4o-mini' })
     );

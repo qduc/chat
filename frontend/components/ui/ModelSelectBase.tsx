@@ -219,7 +219,7 @@ export default function ModelSelectBase<T extends SelectOption>({
   const dropdownPosition = dropdownAlign === 'right' ? 'right-0' : 'left-0';
 
   return (
-    <div className={`relative ${className}`} ref={dropdownRef} aria-label={ariaLabel}>
+    <div className={`relative ${className}`} ref={dropdownRef}>
       {trigger}
 
       {isOpen && (
