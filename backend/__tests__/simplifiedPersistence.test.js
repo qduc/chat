@@ -98,15 +98,18 @@ describe('Checkpoint persistence', () => {
     persistence.recordAssistantFinal({ finishReason: 'stop' });
 
     const updated = db
-      .prepare('SELECT status, content, finish_reason, tokens_in, tokens_out, total_tokens FROM messages WHERE id = ?')
+      .prepare('SELECT status, content, metadata_json FROM messages WHERE id = ?')
       .get(persistence.currentMessageId);
 
     expect(updated.status).toBe('final');
     expect(updated.content).toBe('complete text');
-    expect(updated.finish_reason).toBe('stop');
-    expect(updated.tokens_in).toBe(2);
-    expect(updated.tokens_out).toBe(3);
-    expect(updated.total_tokens).toBe(5);
+    const metadata = JSON.parse(updated.metadata_json);
+    expect(metadata.finish_reason).toBe('stop');
+    expect(metadata.usage).toEqual({
+      prompt_tokens: 2,
+      completion_tokens: 3,
+      total_tokens: 5,
+    });
   });
 
   test('preserves partial content on disconnect', async () => {
@@ -117,12 +120,13 @@ describe('Checkpoint persistence', () => {
     persistence.markError();
 
     const updated = db
-      .prepare('SELECT status, content, finish_reason FROM messages WHERE id = ?')
+      .prepare('SELECT status, content, metadata_json FROM messages WHERE id = ?')
       .get(persistence.currentMessageId);
 
     expect(updated.status).toBe('error');
     expect(updated.content).toBe('partial');
-    expect(updated.finish_reason).toBe('error');
+    const metadata = JSON.parse(updated.metadata_json);
+    expect(metadata.finish_reason).toBe('error');
   });
 
   test('respects checkpoint.enabled=false configuration', async () => {
@@ -150,13 +154,14 @@ describe('Checkpoint persistence', () => {
     const db = getDb();
     // We need to find the message by content/seq since we don't have the ID from draft
     const saved = db
-      .prepare('SELECT status, content, finish_reason FROM messages WHERE conversation_id = ? AND seq = ?')
+      .prepare('SELECT status, content, metadata_json FROM messages WHERE conversation_id = ? AND seq = ?')
       .get(persistence.conversationId, persistence.assistantSeq);
 
     expect(saved).toBeDefined();
     expect(saved.status).toBe('final');
     expect(saved.content).toBe('fallback content');
-    expect(saved.finish_reason).toBe('stop');
+    const metadata = JSON.parse(saved.metadata_json);
+    expect(metadata.finish_reason).toBe('stop');
   });
 
   test('persists tool calls and tool outputs when finalized', async () => {

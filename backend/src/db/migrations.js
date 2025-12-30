@@ -48,13 +48,29 @@ async function loadMigrations() {
   return migrations;
 }
 
+async function loadBaselineMigration() {
+  const migrationsDir = join(__dirname, 'migrations');
+  const baselinePath = join(migrationsDir, 'baseline.js');
+  const migration = await import(baselinePath);
+  return migration.default;
+}
+
 // Load migrations dynamically
 const migrations = await loadMigrations();
+const baselineMigration = await loadBaselineMigration();
 
 export function runMigrations(db) {
   try {
     const doMigrate = getMigrate();
-    doMigrate(db, migrations);
+    const useBaseline = shouldUseBaselineMigration(db);
+    if (useBaseline) {
+      applyBaselineMigration(db);
+      if (process.env.NODE_ENV !== 'test') {
+        logger.info('[db] Applied baseline migration for blank database');
+      }
+    } else {
+      doMigrate(db, migrations);
+    }
     if (process.env.NODE_ENV !== 'test') {
       logger.info('[db] Migrations completed successfully');
     }
@@ -71,3 +87,23 @@ export function getCurrentVersion(db) {
 }
 
 export { migrations };
+
+function shouldUseBaselineMigration(db) {
+  const version = getCurrentVersion(db);
+  const tables = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+    .all();
+  return version === 0 && tables.length === 0;
+}
+
+function applyBaselineMigration(db) {
+  if (typeof baselineMigration.up === 'function') {
+    baselineMigration.up(db);
+  } else if (typeof baselineMigration.up === 'string') {
+    db.exec(baselineMigration.up);
+  }
+  const latestVersion = migrations[migrations.length - 1]?.version ?? 0;
+  if (latestVersion > 0) {
+    db.pragma(`user_version = ${latestVersion}`);
+  }
+}
