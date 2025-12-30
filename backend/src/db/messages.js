@@ -54,15 +54,10 @@ function normalizeMessageContent(content) {
   return { textContent: '', jsonContent: null };
 }
 
-function serializeReasoningDetails(details) {
-  if (details === undefined) return { json: undefined };
-  if (details === null) return { json: null };
-
-  try {
-    return { json: JSON.stringify(details) };
-  } catch {
-    return { json: null };
-  }
+function normalizeReasoningDetails(details) {
+  if (details === undefined) return undefined;
+  if (details === null) return null;
+  return details;
 }
 
 function normalizeReasoningTokens(value) {
@@ -87,6 +82,67 @@ function parseJsonField(raw, messageId, fieldName) {
     return JSON.parse(raw);
   } catch (error) {
     logger.warn(`Failed to parse ${fieldName} for message ${messageId}`, error);
+    return null;
+  }
+}
+
+function parseMetadataJson(raw, messageId) {
+  if (raw == null) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch (error) {
+    logger.warn(`Failed to parse metadata_json for message ${messageId}`, error);
+    return null;
+  }
+}
+
+function setOrDeleteField(target, key, value) {
+  if (value === undefined) return;
+  if (value === null) {
+    delete target[key];
+    return;
+  }
+  target[key] = value;
+}
+
+function buildMetadataJson({
+  existing = null,
+  finishReason,
+  responseId,
+  provider,
+  reasoningDetails,
+  reasoningTokens,
+  tokensIn,
+  tokensOut,
+  totalTokens,
+}) {
+  const metadata = existing && typeof existing === 'object' ? { ...existing } : {};
+  const usage = metadata.usage && typeof metadata.usage === 'object' ? { ...metadata.usage } : {};
+
+  setOrDeleteField(metadata, 'finish_reason', finishReason);
+  setOrDeleteField(metadata, 'response_id', responseId);
+  setOrDeleteField(metadata, 'provider', provider);
+
+  if (reasoningDetails !== undefined) {
+    setOrDeleteField(metadata, 'reasoning_details', reasoningDetails);
+  }
+
+  setOrDeleteField(usage, 'prompt_tokens', tokensIn);
+  setOrDeleteField(usage, 'completion_tokens', tokensOut);
+  setOrDeleteField(usage, 'total_tokens', totalTokens);
+  setOrDeleteField(usage, 'reasoning_tokens', reasoningTokens);
+
+  if (Object.keys(usage).length > 0) {
+    metadata.usage = usage;
+  } else if (tokensIn !== undefined || tokensOut !== undefined || totalTokens !== undefined || reasoningTokens !== undefined) {
+    delete metadata.usage;
+  }
+
+  if (Object.keys(metadata).length === 0) return null;
+  try {
+    return JSON.stringify(metadata);
+  } catch {
     return null;
   }
 }
@@ -176,9 +232,18 @@ export function finalizeAssistantMessage({
 }) {
   const db = getDb();
   const now = new Date().toISOString();
+  const existing = db
+    .prepare(`SELECT metadata_json FROM messages WHERE id = @messageId`)
+    .get({ messageId });
+  const metadata = parseMetadataJson(existing?.metadata_json, messageId);
+  const metadataJson = buildMetadataJson({
+    existing: metadata,
+    finishReason,
+    responseId,
+  });
   db.prepare(
-    `UPDATE messages SET status=@status, finish_reason=@finishReason, response_id=@responseId, updated_at=@now WHERE id=@messageId`
-  ).run({ messageId, finishReason, status, responseId, now });
+    `UPDATE messages SET status=@status, metadata_json=@metadataJson, updated_at=@now WHERE id=@messageId`
+  ).run({ messageId, status, metadataJson, now });
 }
 
 export function markAssistantError({ messageId }) {
@@ -200,35 +265,42 @@ export function insertAssistantFinal({
   tokensIn = undefined,
   tokensOut = undefined,
   totalTokens = undefined,
+
+  provider = undefined,
   clientMessageId = null,
 }) {
   const db = getDb();
   const now = new Date().toISOString();
 
   const { textContent, jsonContent } = normalizeMessageContent(content);
-  const { json: reasoningJson } = serializeReasoningDetails(reasoningDetails);
+  const normalizedReasoning = normalizeReasoningDetails(reasoningDetails);
   const normalizedTokens = normalizeReasoningTokens(reasoningTokens);
   const normalizedTokensIn = normalizeTokenCount(tokensIn);
   const normalizedTokensOut = normalizeTokenCount(tokensOut);
   const normalizedTotalTokens = normalizeTokenCount(totalTokens);
+  const metadataJson = buildMetadataJson({
+    finishReason,
+    responseId,
+    provider,
+    reasoningDetails: normalizedReasoning,
+    reasoningTokens: normalizedTokens,
+    tokensIn: normalizedTokensIn,
+    tokensOut: normalizedTokensOut,
+    totalTokens: normalizedTotalTokens,
+  });
 
   const info = db
     .prepare(
-      `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, tokens_in, tokens_out, total_tokens, finish_reason, response_id, reasoning_details, reasoning_tokens, client_message_id, created_at, updated_at)
-     VALUES (@conversationId, 'assistant', 'final', @content, @contentJson, @seq, @tokensIn, @tokensOut, @totalTokens, @finishReason, @responseId, @reasoningDetails, @reasoningTokens, @clientMessageId, @now, @now)`
+      `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, metadata_json, client_message_id, created_at, updated_at)
+     VALUES (@conversationId, 'assistant', 'final', @content, @contentJson, @seq, @metadataJson, @clientMessageId, @now, @now)`
+
     )
     .run({
       conversationId,
       content: textContent || '',
       contentJson: jsonContent,
       seq,
-      tokensIn: normalizedTokensIn ?? null,
-      tokensOut: normalizedTokensOut ?? null,
-      totalTokens: normalizedTotalTokens ?? null,
-      finishReason,
-      responseId,
-      reasoningDetails: reasoningJson === undefined ? null : reasoningJson,
-      reasoningTokens: normalizedTokens ?? null,
+      metadataJson,
       clientMessageId,
       now,
     });
@@ -258,12 +330,13 @@ export function insertToolMessage({ conversationId, content, seq, status = 'succ
 export function markAssistantErrorBySeq({ conversationId, seq }) {
   const db = getDb();
   const now = new Date().toISOString();
+  const metadataJson = buildMetadataJson({ finishReason: 'error' });
   const info = db
     .prepare(
-      `INSERT INTO messages (conversation_id, role, status, content, seq, finish_reason, created_at, updated_at)
-     VALUES (@conversationId, 'assistant', 'error', '', @seq, 'error', @now, @now)`
+      `INSERT INTO messages (conversation_id, role, status, content, seq, metadata_json, created_at, updated_at)
+     VALUES (@conversationId, 'assistant', 'error', '', @seq, @metadataJson, @now, @now)`
     )
-    .run({ conversationId, seq, now });
+    .run({ conversationId, seq, metadataJson, now });
   return { id: info.lastInsertRowid, seq };
 }
 
@@ -284,7 +357,7 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
   const sanitizedLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
   const messages = db
     .prepare(
-      `SELECT id, seq, role, status, content, content_json, tokens_in, tokens_out, total_tokens, reasoning_details, reasoning_tokens, client_message_id, response_id, created_at
+      `SELECT id, seq, role, status, content, content_json, metadata_json, client_message_id, created_at
      FROM messages WHERE conversation_id=@conversationId AND seq > @afterSeq
      ORDER BY seq ASC LIMIT @limit`
     )
@@ -308,41 +381,49 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
     }
     delete message.content_json;
 
-    if (message.reasoning_details) {
-      const parsedReasoning = parseJsonField(message.reasoning_details, message.id, 'reasoning_details');
-      message.reasoning_details = parsedReasoning ?? null;
+    const metadata = parseMetadataJson(message.metadata_json, message.id) || {};
+    const usage = metadata.usage && typeof metadata.usage === 'object' ? metadata.usage : null;
+
+    if (Array.isArray(metadata.reasoning_details)) {
+      message.reasoning_details = metadata.reasoning_details;
     } else {
       message.reasoning_details = null;
     }
 
-    if (message.reasoning_tokens != null) {
-      message.reasoning_tokens = Number(message.reasoning_tokens);
+    if (metadata.provider != null) {
+      message.provider = metadata.provider;
     }
 
-    const promptTokens = message.tokens_in != null ? Number(message.tokens_in) : null;
-    const completionTokens = message.tokens_out != null ? Number(message.tokens_out) : null;
+    if (metadata.response_id != null) {
+      message.response_id = metadata.response_id;
+    }
+
+    const promptTokens =
+      usage?.prompt_tokens != null ? Number(usage.prompt_tokens) : null;
+    const completionTokens =
+      usage?.completion_tokens != null ? Number(usage.completion_tokens) : null;
+    const reasoningTokens =
+      usage?.reasoning_tokens != null ? Number(usage.reasoning_tokens) : null;
     const totalTokens =
-      message.total_tokens != null
-        ? Number(message.total_tokens)
+      usage?.total_tokens != null
+        ? Number(usage.total_tokens)
         : (promptTokens != null && completionTokens != null ? promptTokens + completionTokens : null);
 
     if (
       promptTokens != null ||
       completionTokens != null ||
       totalTokens != null ||
-      message.reasoning_tokens != null
+      reasoningTokens != null
     ) {
       message.usage = {
         ...(promptTokens != null ? { prompt_tokens: promptTokens } : {}),
         ...(completionTokens != null ? { completion_tokens: completionTokens } : {}),
         ...(totalTokens != null ? { total_tokens: totalTokens } : {}),
-        ...(message.reasoning_tokens != null ? { reasoning_tokens: Number(message.reasoning_tokens) } : {}),
+        ...(reasoningTokens != null ? { reasoning_tokens: reasoningTokens } : {}),
       };
     }
 
-    delete message.tokens_in;
-    delete message.tokens_out;
-    delete message.total_tokens;
+    delete message.metadata_json;
   }
 
   // Fetch tool calls and outputs for all messages in batch (using integer IDs)
@@ -450,7 +531,7 @@ export function getLastMessage({ conversationId }) {
   const db = getDb();
   const message = db
     .prepare(
-      `SELECT id, seq, role, status, content, content_json, tokens_in, tokens_out, total_tokens, reasoning_details, reasoning_tokens, client_message_id, created_at
+      `SELECT id, seq, role, status, content, content_json, metadata_json, client_message_id, created_at
      FROM messages WHERE conversation_id=@conversationId
      ORDER BY seq DESC LIMIT 1`
     )
@@ -471,41 +552,49 @@ export function getLastMessage({ conversationId }) {
   // Remove content_json from response (internal field)
   delete message.content_json;
 
-  if (message.reasoning_details) {
-    const parsedReasoning = parseJsonField(message.reasoning_details, message.id, 'reasoning_details');
-    message.reasoning_details = parsedReasoning ?? null;
+  const metadata = parseMetadataJson(message.metadata_json, message.id) || {};
+  const usage = metadata.usage && typeof metadata.usage === 'object' ? metadata.usage : null;
+
+  if (Array.isArray(metadata.reasoning_details)) {
+    message.reasoning_details = metadata.reasoning_details;
   } else {
     message.reasoning_details = null;
   }
 
-  if (message.reasoning_tokens != null) {
-    message.reasoning_tokens = Number(message.reasoning_tokens);
+  if (metadata.provider != null) {
+    message.provider = metadata.provider;
   }
 
-  const promptTokens = message.tokens_in != null ? Number(message.tokens_in) : null;
-  const completionTokens = message.tokens_out != null ? Number(message.tokens_out) : null;
+  if (metadata.response_id != null) {
+    message.response_id = metadata.response_id;
+  }
+
+  const promptTokens =
+    usage?.prompt_tokens != null ? Number(usage.prompt_tokens) : null;
+  const completionTokens =
+    usage?.completion_tokens != null ? Number(usage.completion_tokens) : null;
+  const reasoningTokens =
+    usage?.reasoning_tokens != null ? Number(usage.reasoning_tokens) : null;
   const totalTokens =
-    message.total_tokens != null
-      ? Number(message.total_tokens)
+    usage?.total_tokens != null
+      ? Number(usage.total_tokens)
       : (promptTokens != null && completionTokens != null ? promptTokens + completionTokens : null);
 
   if (
     promptTokens != null ||
     completionTokens != null ||
     totalTokens != null ||
-    message.reasoning_tokens != null
+    reasoningTokens != null
   ) {
     message.usage = {
       ...(promptTokens != null ? { prompt_tokens: promptTokens } : {}),
       ...(completionTokens != null ? { completion_tokens: completionTokens } : {}),
       ...(totalTokens != null ? { total_tokens: totalTokens } : {}),
-      ...(message.reasoning_tokens != null ? { reasoning_tokens: Number(message.reasoning_tokens) } : {}),
+      ...(reasoningTokens != null ? { reasoning_tokens: reasoningTokens } : {}),
     };
   }
 
-  delete message.tokens_in;
-  delete message.tokens_out;
-  delete message.total_tokens;
+  delete message.metadata_json;
 
   // Fetch tool calls for this message (using integer ID)
   const toolCalls = db
@@ -568,19 +657,26 @@ export function getLastMessage({ conversationId }) {
 
 export function getLastAssistantResponseId({ conversationId }) {
   const db = getDb();
-  const message = db
+  const rows = db
     .prepare(
-      `SELECT response_id
-     FROM messages
-     WHERE conversation_id=@conversationId
-       AND role='assistant'
-       AND response_id IS NOT NULL
-     ORDER BY seq DESC
-     LIMIT 1`
+      `SELECT metadata_json, id
+       FROM messages
+       WHERE conversation_id=@conversationId
+         AND role='assistant'
+         AND metadata_json IS NOT NULL
+       ORDER BY seq DESC
+       LIMIT 25`
     )
-    .get({ conversationId });
-  const responseId = message?.response_id || null;
-  return responseId;
+    .all({ conversationId });
+
+  for (const row of rows) {
+    const metadata = parseMetadataJson(row.metadata_json, row.id);
+    if (metadata?.response_id) {
+      return metadata.response_id;
+    }
+  }
+
+  return null;
 }
 
 export function getMessageByClientId({ conversationId, clientMessageId, userId }) {
@@ -613,6 +709,7 @@ export function updateMessageContent({
   totalTokens,
   finishReason,
   responseId,
+  provider,
 }) {
   if (!userId) {
     throw new Error('userId is required');
@@ -631,58 +728,40 @@ export function updateMessageContent({
   if (!message) return null;
 
   const { textContent, jsonContent } = normalizeMessageContent(content);
-  const { json: reasoningJson } = serializeReasoningDetails(reasoningDetails);
+  const normalizedReasoning = normalizeReasoningDetails(reasoningDetails);
   const normalizedTokens = normalizeReasoningTokens(reasoningTokens);
   const normalizedTokensIn = normalizeTokenCount(tokensIn);
   const normalizedTokensOut = normalizeTokenCount(tokensOut);
   const normalizedTotalTokens = normalizeTokenCount(totalTokens);
 
-  const updates = ['content = @content', 'content_json = @contentJson', 'updated_at = @now'];
+  const existingMetadataRow = db
+    .prepare(`SELECT metadata_json FROM messages WHERE id = @messageId`)
+    .get({ messageId });
+  const existingMetadata = parseMetadataJson(existingMetadataRow?.metadata_json, messageId);
+  const metadataJson = buildMetadataJson({
+    existing: existingMetadata,
+    finishReason,
+    responseId,
+    provider,
+    reasoningDetails: normalizedReasoning,
+    reasoningTokens: normalizedTokens,
+    tokensIn: normalizedTokensIn,
+    tokensOut: normalizedTokensOut,
+    totalTokens: normalizedTotalTokens,
+  });
+
+  const updates = ['content = @content', 'content_json = @contentJson', 'metadata_json = @metadataJson', 'updated_at = @now'];
   const params = {
     messageId,
     content: textContent,
     contentJson: jsonContent,
+    metadataJson,
     now,
   };
 
   if (status !== undefined) {
     updates.push('status = @status');
     params.status = status;
-  }
-
-  if (reasoningJson !== undefined) {
-    updates.push('reasoning_details = @reasoningDetails');
-    params.reasoningDetails = reasoningJson;
-  }
-
-  if (normalizedTokens !== undefined) {
-    updates.push('reasoning_tokens = @reasoningTokens');
-    params.reasoningTokens = normalizedTokens;
-  }
-
-  if (normalizedTokensIn !== undefined) {
-    updates.push('tokens_in = @tokensIn');
-    params.tokensIn = normalizedTokensIn;
-  }
-
-  if (normalizedTokensOut !== undefined) {
-    updates.push('tokens_out = @tokensOut');
-    params.tokensOut = normalizedTokensOut;
-  }
-
-  if (normalizedTotalTokens !== undefined) {
-    updates.push('total_tokens = @totalTokens');
-    params.totalTokens = normalizedTotalTokens;
-  }
-
-  if (finishReason !== undefined) {
-    updates.push('finish_reason = @finishReason');
-    params.finishReason = finishReason;
-  }
-
-  if (responseId !== undefined) {
-    updates.push('response_id = @responseId');
-    params.responseId = responseId;
   }
 
   const updateSql = `UPDATE messages SET ${updates.join(', ')} WHERE id = @messageId`;

@@ -200,6 +200,7 @@ export interface ChatMessage {
   content: MessageContent;
   seq?: number; // Message sequence number from backend
   responseId?: string; // Response ID for assistant messages to maintain conversation context
+  provider?: string; // Provider used for this message
   // Local image attachments (used during composition, converted to content format for API)
   images?: ImageAttachment[];
   tool_calls?: any[];
@@ -318,6 +319,7 @@ export interface ConversationWithMessages {
     status: string;
     content: MessageContent | null;
     created_at: string;
+    provider?: string;
     // Image references stored in database (after upload)
     images?: Array<{
       id: string;

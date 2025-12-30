@@ -471,6 +471,7 @@ async function handleRequest(context, req, res) {
 
   if (flags.streamToFrontend) {
     // Always stream to frontend (for consistent SSE protocol)
+    // Always stream to frontend (for consistent SSE protocol)
     // Check if upstream actually returned a stream or a JSON response
     const contentType = upstream.headers?.get?.('content-type') || '';
     const isStreamResponse = contentType.includes('text/event-stream') || contentType.includes('text/plain');
@@ -482,6 +483,10 @@ async function handleRequest(context, req, res) {
         const normalizedUsage = extractUsage(upstreamJson);
         if (normalizedUsage) {
           persistence?.setUsage?.(normalizedUsage);
+        }
+
+        if (upstreamJson.provider && persistence && typeof persistence.setProvider === 'function') {
+          persistence.setProvider(upstreamJson.provider);
         }
 
         // Persist the response
@@ -657,6 +662,9 @@ async function handleRequest(context, req, res) {
     // JSON response (for backward compatibility and when explicitly requested)
     try {
       const responseBody = await upstream.json();
+      if (responseBody.provider && persistence && typeof persistence.setProvider === 'function') {
+        persistence.setProvider(responseBody.provider);
+      }
       addConversationMetadata(responseBody, persistence);
       return res.status(200).json(responseBody);
     } catch (err) {

@@ -17,6 +17,7 @@ export interface PendingState {
     startTime: number;
     messageId: string;
     lastUpdated: number;
+    provider?: string;
   };
 }
 
@@ -492,6 +493,7 @@ export function useChat() {
     startTime: number;
     messageId: string;
     lastUpdated: number;
+    provider?: string;
   } | null>(null);
 
   // Track whether draft has been restored to avoid restoring multiple times
@@ -561,6 +563,7 @@ export function useChat() {
             reasoning_details: msg.reasoning_details ?? undefined,
             reasoning_tokens: msg.reasoning_tokens ?? undefined,
             usage: (msg as any).usage ?? undefined,
+            provider: (msg as any).provider ?? (msg as any).usage?.provider ?? undefined,
           };
         });
 
@@ -909,6 +912,7 @@ export function useChat() {
           startTime: Date.now(),
           messageId,
           lastUpdated: Date.now(),
+          provider: undefined,
         };
         setPending({
           streaming: true,
@@ -1170,7 +1174,10 @@ export function useChat() {
 
                 updateMessageState(isPrimary, targetModel, (current) => {
                   const currentContent = typeof current.content === 'string' ? current.content : '';
-                  return { content: currentContent + token };
+                  return {
+                    content: currentContent + token,
+                    provider: tokenStatsRef.current?.provider, // Update provider from stats if available
+                  };
                 });
               },
               onEvent: (event) => {
@@ -1213,7 +1220,6 @@ export function useChat() {
                     const outputName = outputValue.name;
                     const existingToolOutputs = current.tool_outputs || [];
 
-                    // Check if this tool output already exists
                     const existingIdx = existingToolOutputs.findIndex((out: any) => {
                       if (toolCallId && out.tool_call_id) return out.tool_call_id === toolCallId;
                       if (outputName && out.name) return out.name === outputName;
@@ -1223,7 +1229,7 @@ export function useChat() {
                     if (existingIdx === -1) {
                       return { tool_outputs: [...existingToolOutputs, outputValue] };
                     }
-                    return {}; // No update if duplicate
+                    return {};
                   });
                 } else if (event.type === 'usage') {
                   updateMessageState(isPrimary, targetModel, (current) => {
@@ -1242,7 +1248,7 @@ export function useChat() {
                         if (unchanged) return {};
                       }
                     }
-                    return { usage: event.value };
+                    return { usage: event.value, provider: event.value.provider };
                   });
                 }
               },

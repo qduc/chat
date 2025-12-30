@@ -64,6 +64,7 @@ export class SimplifiedPersistence {
       minCharacters: config?.persistence?.checkpoint?.minCharacters ?? 500,
       enabled: config?.persistence?.checkpoint?.enabled ?? true,
     };
+    this.upstreamProvider = null;
   }
 
   /**
@@ -528,6 +529,11 @@ export class SimplifiedPersistence {
     }
   }
 
+  setProvider(provider) {
+    if (!this.persist || !provider) return;
+    this.upstreamProvider = String(provider);
+  }
+
   _finalizeReasoningDetails() {
     if (Array.isArray(this.reasoningDetails)) {
       return this._clone(this.reasoningDetails);
@@ -639,6 +645,7 @@ export class SimplifiedPersistence {
           tokensIn: this.tokensIn,
           tokensOut: this.tokensOut,
           totalTokens: this.totalTokens,
+          provider: this.upstreamProvider,
         });
 
         this.assistantMessageId = String(this.currentMessageId);
@@ -655,20 +662,20 @@ export class SimplifiedPersistence {
         if (found && found.id) {
           // Update the found row directly (bypass user join checks)
           try {
-            const now = new Date().toISOString();
-            db.prepare(`UPDATE messages SET status=@status, content=@content, content_json=@contentJson, finish_reason=@finishReason, response_id=@responseId, reasoning_details=@reasoningDetails, reasoning_tokens=@reasoningTokens, tokens_in=@tokensIn, tokens_out=@tokensOut, total_tokens=@totalTokens, updated_at=@now WHERE id=@id`).run({
-              id: found.id,
+            updateMessageContent({
+              messageId: found.id,
+              conversationId: this.conversationId,
+              userId: this.userId,
+              content: this.assistantContentJson ?? this.assistantBuffer,
               status: 'final',
-              content: this.assistantContentJson ? this._extractTextFromMixedContent(this.assistantContentJson) : (this.assistantBuffer || ''),
-              contentJson: this.assistantContentJson ? JSON.stringify(this.assistantContentJson) : null,
               finishReason,
               responseId: responseId || this.responseId,
-              reasoningDetails: this._finalizeReasoningDetails() ? JSON.stringify(this._finalizeReasoningDetails()) : null,
-              reasoningTokens: this.reasoningTokens ?? null,
-              tokensIn: this.tokensIn ?? null,
-              tokensOut: this.tokensOut ?? null,
-              totalTokens: this.totalTokens ?? null,
-              now,
+              reasoningDetails: this._finalizeReasoningDetails(),
+              reasoningTokens: this.reasoningTokens,
+              tokensIn: this.tokensIn,
+              tokensOut: this.tokensOut,
+              totalTokens: this.totalTokens,
+              provider: this.upstreamProvider,
             });
             this.currentMessageId = found.id;
             this.assistantMessageId = String(found.id);
@@ -686,6 +693,7 @@ export class SimplifiedPersistence {
               tokensIn: this.tokensIn,
               tokensOut: this.tokensOut,
               totalTokens: this.totalTokens,
+              provider: this.upstreamProvider,
             });
             if (result && result.id) {
               this.currentMessageId = result.id;
@@ -705,6 +713,7 @@ export class SimplifiedPersistence {
             tokensIn: this.tokensIn,
             tokensOut: this.tokensOut,
             totalTokens: this.totalTokens,
+            provider: this.upstreamProvider,
           });
           if (result && result.id) {
             this.currentMessageId = result.id;
@@ -945,20 +954,20 @@ export class SimplifiedPersistence {
 
       if (targetId) {
         try {
-          const now = new Date().toISOString();
-          db.prepare(`UPDATE messages SET status=@status, content=@content, content_json=@contentJson, finish_reason=@finishReason, response_id=@responseId, reasoning_details=@reasoningDetails, reasoning_tokens=@reasoningTokens, tokens_in=@tokensIn, tokens_out=@tokensOut, total_tokens=@totalTokens, updated_at=@now WHERE id=@messageId`).run({
+          updateMessageContent({
             messageId: targetId,
+            conversationId: this.conversationId,
+            userId: this.userId,
+            content: this.assistantContentJson ?? this.assistantBuffer,
             status: 'error',
-            content: this.assistantContentJson ? this._extractTextFromMixedContent(this.assistantContentJson) : (this.assistantBuffer || ''),
-            contentJson: this.assistantContentJson ? JSON.stringify(this.assistantContentJson) : null,
             finishReason: 'error',
             responseId: this.responseId || null,
-            reasoningDetails: this._finalizeReasoningDetails() ? JSON.stringify(this._finalizeReasoningDetails()) : null,
-            reasoningTokens: this.reasoningTokens ?? null,
-            tokensIn: this.tokensIn ?? null,
-            tokensOut: this.tokensOut ?? null,
-            totalTokens: this.totalTokens ?? null,
-            now,
+            reasoningDetails: this._finalizeReasoningDetails(),
+            reasoningTokens: this.reasoningTokens,
+            tokensIn: this.tokensIn,
+            tokensOut: this.tokensOut,
+            totalTokens: this.totalTokens,
+            provider: this.upstreamProvider,
           });
         } catch (err) {
           logger.warn('[SimplifiedPersistence] markError update failed, falling back to seq-based error:', err?.message || err);

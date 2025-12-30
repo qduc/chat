@@ -13,8 +13,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
-    "migrate": "node scripts/migrate.js",
-    "backfill:message-events": "node scripts/backfill-message-events.js"
+    "migrate": "node scripts/migrate.js"
   },
   "dependencies": {
     "@blackglory/better-sqlite3-migrations": "^0.1.20",
