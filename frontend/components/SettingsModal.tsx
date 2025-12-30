@@ -22,6 +22,7 @@ import ModelSelector from './ui/ModelSelector';
 import { httpClient } from '../lib';
 import { HttpError } from '../lib';
 import { resolveApiBase } from '../lib';
+import { useToast } from './ui/Toast';
 
 interface SettingsModalProps {
   open: boolean;
@@ -66,10 +67,9 @@ export default function SettingsModal({
     model_filter?: string;
   }>({ name: '', provider_type: 'openai', base_url: '', enabled: true });
   const [saving, setSaving] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const [success, setSuccess] = React.useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState('providers');
+  const { showToast } = useToast();
   // Per-engine search API key state
   type SearchEngine = 'tavily' | 'exa' | 'searxng';
   const [searchApiKeys, setSearchApiKeys] = React.useState<Record<SearchEngine, string>>({
@@ -162,8 +162,6 @@ export default function SettingsModal({
   const fetchProviders = React.useCallback(async () => {
     try {
       setLoadingProviders(true);
-      setError(null);
-      setSuccess(null);
       const response = await httpClient.get<{ providers: ProviderRow[] }>(
         `${apiBase}/v1/providers`
       );
@@ -177,16 +175,14 @@ export default function SettingsModal({
       }
     } catch (e: any) {
       const message = e instanceof HttpError ? e.message : e?.message || 'Failed to load providers';
-      setError(message);
+      showToast({ message, variant: 'error' });
     } finally {
       setLoadingProviders(false);
     }
-  }, [apiBase, selectedId, populateFormFromRow]);
+  }, [apiBase, selectedId, populateFormFromRow, showToast]);
 
   React.useEffect(() => {
     if (open) {
-      setError(null);
-      setSuccess(null);
       fetchProviders();
     }
     if (open) {
@@ -247,16 +243,6 @@ export default function SettingsModal({
     lastTestTime,
   ]);
 
-  // Auto-clear success messages after 3 seconds
-  React.useEffect(() => {
-    if (success) {
-      const timer = setTimeout(() => {
-        setSuccess(null);
-      }, 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [success]);
-
   const onSelectProvider = (r: ProviderRow) => {
     setSelectedId(r.id);
     populateFormFromRow(r);
@@ -265,8 +251,6 @@ export default function SettingsModal({
   async function onSaveProvider() {
     try {
       setSaving(true);
-      setError(null);
-      setSuccess(null);
       const payload: any = {
         name: form.name,
         provider_type: form.provider_type,
@@ -305,10 +289,13 @@ export default function SettingsModal({
       }
       await fetchProviders();
       if (onProvidersChanged) onProvidersChanged();
-      setSuccess(form.id ? 'Provider updated successfully!' : 'Provider created successfully!');
+      showToast({
+        message: form.id ? 'Provider updated successfully!' : 'Provider created successfully!',
+        variant: 'success',
+      });
     } catch (e: any) {
       const message = e instanceof HttpError ? e.message : e?.message || 'Failed to save provider';
-      setError(message);
+      showToast({ message, variant: 'error' });
     } finally {
       setSaving(false);
     }
@@ -322,17 +309,15 @@ export default function SettingsModal({
     setShowDeleteConfirm(false);
     try {
       setSaving(true);
-      setError(null);
-      setSuccess(null);
       await httpClient.delete(`${apiBase}/v1/providers/${target}`);
       resetForm();
       await fetchProviders();
       if (onProvidersChanged) onProvidersChanged();
-      setSuccess('Provider deleted successfully!');
+      showToast({ message: 'Provider deleted successfully!', variant: 'success' });
     } catch (e: any) {
       const message =
         e instanceof HttpError ? e.message : e?.message || 'Failed to delete provider';
-      setError(message);
+      showToast({ message, variant: 'error' });
     } finally {
       setSaving(false);
     }
@@ -353,11 +338,12 @@ export default function SettingsModal({
       );
 
       try {
-        setError(null);
-        setSuccess(null);
         await httpClient.put(`${apiBase}/v1/providers/${providerId}`, { enabled });
 
-        setSuccess(`Provider ${enabled ? 'enabled' : 'disabled'} successfully!`);
+        showToast({
+          message: `Provider ${enabled ? 'enabled' : 'disabled'} successfully!`,
+          variant: 'success',
+        });
         if (onProvidersChanged) onProvidersChanged();
       } catch (error: any) {
         // Revert on failure
@@ -367,9 +353,10 @@ export default function SettingsModal({
         const provider = providers.find((p) => p.id === providerId);
         const message =
           error instanceof HttpError ? error.message : error?.message || 'Unknown error';
-        setError(
-          `Failed to ${enabled ? 'enable' : 'disable'} ${provider?.name || 'provider'}: ${message}`
-        );
+        showToast({
+          message: `Failed to ${enabled ? 'enable' : 'disable'} ${provider?.name || 'provider'}: ${message}`,
+          variant: 'error',
+        });
       } finally {
         // Remove from loading set
         setToggleLoading((prev) => {
@@ -379,7 +366,7 @@ export default function SettingsModal({
         });
       }
     },
-    [apiBase, providers, onProvidersChanged]
+    [apiBase, providers, onProvidersChanged, showToast]
   );
 
   async function testProviderConnection() {
@@ -407,7 +394,6 @@ export default function SettingsModal({
     try {
       setTesting(true);
       setTestResult(null);
-      setError(null);
 
       let testPayload;
       let endpoint;
@@ -545,20 +531,6 @@ export default function SettingsModal({
                   Refresh
                 </button>
               </div>
-
-              {/* Error Alert */}
-              {error && (
-                <div className="rounded-lg bg-red-50 dark:bg-red-900/20 p-3 border border-red-200/70 dark:border-red-800/70">
-                  <div className="text-sm text-red-700 dark:text-red-400">{error}</div>
-                </div>
-              )}
-
-              {/* Success Alert */}
-              {success && (
-                <div className="rounded-lg bg-green-50 dark:bg-green-900/20 p-3 border border-green-200/70 dark:border-green-800/70">
-                  <div className="text-sm text-green-700 dark:text-green-400">{success}</div>
-                </div>
-              )}
 
               {/* Main Content - Responsive Grid */}
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 lg:gap-6 lg:max-h-[600px]">
@@ -942,13 +914,6 @@ export default function SettingsModal({
                 </div>
               </div>
 
-              {/* Success Alert for search API key save */}
-              {success && (
-                <div className="rounded-lg bg-green-50 dark:bg-green-900/20 p-3 border border-green-200/70 dark:border-green-800/70">
-                  <div className="text-sm text-green-700 dark:text-green-400">{success}</div>
-                </div>
-              )}
-
               {/* Two-column grid layout on larger screens */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 lg:gap-5">
                 {/* SearXNG Configuration Card */}
@@ -1014,7 +979,6 @@ export default function SettingsModal({
                       onClick={async () => {
                         setSearxBaseUrlSaving(true);
                         setSearxBaseUrlError(null);
-                        setSuccess(null);
                         try {
                           const trimmedValue = searxBaseUrl.trim();
                           if (trimmedValue && !/^https?:\/\//i.test(trimmedValue)) {
@@ -1026,7 +990,10 @@ export default function SettingsModal({
                             searxng_base_url: trimmedValue || null,
                           });
                           setInitialSearxBaseUrl(trimmedValue);
-                          setSuccess('SearXNG base URL saved successfully!');
+                          showToast({
+                            message: 'SearXNG base URL saved successfully!',
+                            variant: 'success',
+                          });
                         } catch (err: any) {
                           setSearxBaseUrlError(err?.message || 'Failed to save SearXNG base URL');
                         } finally {
@@ -1108,7 +1075,6 @@ export default function SettingsModal({
                       onClick={async () => {
                         setSearchSaving((prev) => ({ ...prev, searxng: true }));
                         setSearchErrors((prev) => ({ ...prev, searxng: null }));
-                        setSuccess(null);
                         try {
                           if (searchApiKeys.searxng && searchApiKeys.searxng.trim() !== '') {
                             await httpClient.put('/v1/user-settings', {
@@ -1118,7 +1084,10 @@ export default function SettingsModal({
                               ...prev,
                               searxng: searchApiKeys.searxng,
                             }));
-                            setSuccess('SearXNG API key saved successfully!');
+                            showToast({
+                              message: 'SearXNG API key saved successfully!',
+                              variant: 'success',
+                            });
                           } else {
                             setSearchErrors((prev) => ({
                               ...prev,
@@ -1232,7 +1201,6 @@ export default function SettingsModal({
                       onClick={async () => {
                         setSearchSaving((prev) => ({ ...prev, tavily: true }));
                         setSearchErrors((prev) => ({ ...prev, tavily: null }));
-                        setSuccess(null);
                         try {
                           if (searchApiKeys.tavily && searchApiKeys.tavily.trim() !== '') {
                             await httpClient.put('/v1/user-settings', {
@@ -1242,7 +1210,10 @@ export default function SettingsModal({
                               ...prev,
                               tavily: searchApiKeys.tavily,
                             }));
-                            setSuccess('Tavily API key saved successfully!');
+                            showToast({
+                              message: 'Tavily API key saved successfully!',
+                              variant: 'success',
+                            });
                           } else {
                             setSearchErrors((prev) => ({
                               ...prev,
@@ -1353,7 +1324,6 @@ export default function SettingsModal({
                       onClick={async () => {
                         setSearchSaving((prev) => ({ ...prev, exa: true }));
                         setSearchErrors((prev) => ({ ...prev, exa: null }));
-                        setSuccess(null);
                         try {
                           if (searchApiKeys.exa && searchApiKeys.exa.trim() !== '') {
                             await httpClient.put('/v1/user-settings', {
@@ -1363,7 +1333,10 @@ export default function SettingsModal({
                               ...prev,
                               exa: searchApiKeys.exa,
                             }));
-                            setSuccess('Exa API key saved successfully!');
+                            showToast({
+                              message: 'Exa API key saved successfully!',
+                              variant: 'success',
+                            });
                           } else {
                             setSearchErrors((prev) => ({
                               ...prev,
@@ -1423,13 +1396,6 @@ export default function SettingsModal({
                 </div>
               </div>
 
-              {/* Success Alert */}
-              {success && (
-                <div className="rounded-lg bg-green-50 dark:bg-green-900/20 p-3 border border-green-200/70 dark:border-green-800/70">
-                  <div className="text-sm text-green-700 dark:text-green-400">{success}</div>
-                </div>
-              )}
-
               {/* Max Tool Iterations Card */}
               <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200/70 dark:border-zinc-800 p-5 shadow-sm space-y-4">
                 <div>
@@ -1478,7 +1444,6 @@ export default function SettingsModal({
                     onClick={async () => {
                       setMaxToolIterationsSaving(true);
                       setMaxToolIterationsError(null);
-                      setSuccess(null);
                       try {
                         const trimmed = (maxToolIterations || '').toString().trim();
                         if (!/^[0-9]+$/.test(trimmed)) {
@@ -1493,7 +1458,10 @@ export default function SettingsModal({
                         });
                         setInitialMaxToolIterations(String(parsed));
                         setMaxToolIterations(String(parsed));
-                        setSuccess('Maximum tool iterations saved successfully!');
+                        showToast({
+                          message: 'Maximum tool iterations saved successfully!',
+                          variant: 'success',
+                        });
                       } catch (err: any) {
                         setMaxToolIterationsError(
                           err?.message || 'Failed to save maximum tool iterations'
@@ -1570,13 +1538,15 @@ export default function SettingsModal({
                     onClick={async () => {
                       setChoreModelSaving(true);
                       setChoreModelError(null);
-                      setSuccess(null);
                       try {
                         await httpClient.put('/v1/user-settings', {
                           chore_model: choreModel,
                         });
                         setInitialChoreModel(choreModel);
-                        setSuccess('Chore model saved successfully!');
+                        showToast({
+                          message: 'Chore model saved successfully!',
+                          variant: 'success',
+                        });
                       } catch (err: any) {
                         setChoreModelError(err?.message || 'Failed to save chore model');
                       } finally {
