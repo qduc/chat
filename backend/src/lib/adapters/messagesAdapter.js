@@ -1,4 +1,5 @@
 import { BaseAdapter } from './baseAdapter.js';
+import { normalizeUsage } from '../utils/usage.js';
 import { convertContentPartImage } from '../localImageEncoder.js';
 
 const ANTHROPIC_ALLOWED_REQUEST_KEYS = new Set([
@@ -421,12 +422,9 @@ export class MessagesAdapter extends BaseAdapter {
     });
 
     // Add usage information
-    if (anthropicResponse.usage) {
-      openAIResponse.usage = {
-        prompt_tokens: anthropicResponse.usage.input_tokens || 0,
-        completion_tokens: anthropicResponse.usage.output_tokens || 0,
-        total_tokens: (anthropicResponse.usage.input_tokens || 0) + (anthropicResponse.usage.output_tokens || 0),
-      };
+    const usage = normalizeUsage(anthropicResponse.usage);
+    if (usage) {
+      openAIResponse.usage = usage;
     }
 
     return openAIResponse;
@@ -545,13 +543,7 @@ export class MessagesAdapter extends BaseAdapter {
               finish_reason: this.mapStopReason(event.delta?.stop_reason),
             },
           ],
-          usage: event.usage
-            ? {
-                prompt_tokens: 0,
-                completion_tokens: event.usage.output_tokens || 0,
-                total_tokens: event.usage.output_tokens || 0,
-              }
-            : undefined,
+          usage: normalizeUsage(event.usage),
         };
 
       case 'message_stop':

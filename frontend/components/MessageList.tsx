@@ -102,6 +102,31 @@ type AssistantSegment =
   | { kind: 'text'; text: string }
   | { kind: 'tool_call'; toolCall: any; outputs: ToolOutput[] };
 
+function formatUsageLabel(usage?: ChatMessage['usage']): string | null {
+  if (!usage) return null;
+  const prompt = usage.prompt_tokens;
+  const completion = usage.completion_tokens;
+  const total = usage.total_tokens;
+
+  const hasPrompt = Number.isFinite(prompt);
+  const hasCompletion = Number.isFinite(completion);
+  const hasTotal = Number.isFinite(total);
+
+  if (!hasPrompt && !hasCompletion && !hasTotal) return null;
+
+  if (hasPrompt || hasCompletion) {
+    const parts: string[] = [];
+    if (hasPrompt) parts.push(`in ${prompt}`);
+    if (hasCompletion) parts.push(`out ${completion}`);
+    if (hasTotal && !(hasPrompt && hasCompletion && prompt! + completion! === total)) {
+      parts.push(`total ${total}`);
+    }
+    return parts.join(' · ');
+  }
+
+  return `total ${total}`;
+}
+
 function buildAssistantSegments(message: ChatMessage): AssistantSegment[] {
   if (message.role !== 'assistant') {
     const textContent = extractTextFromContent(message.content);
@@ -703,11 +728,15 @@ const Message = React.memo<MessageProps>(
                       {streamingStats.tokensPerSecond.toFixed(1)} t/s
                     </div>
                   )}
-                {dm.usage && (
-                  <div className="px-1.5 py-0.5 rounded bg-zinc-50 dark:bg-zinc-800/50 text-slate-500 dark:text-slate-500 text-[10px] font-mono whitespace-nowrap">
-                    {dm.usage.prompt_tokens + dm.usage.completion_tokens} tokens
-                  </div>
-                )}
+                {(() => {
+                  const usageLabel = formatUsageLabel(dm.usage);
+                  if (!usageLabel) return null;
+                  return (
+                    <div className="px-1.5 py-0.5 rounded bg-zinc-50 dark:bg-zinc-800/50 text-slate-500 dark:text-slate-500 text-[10px] font-mono whitespace-nowrap">
+                      {usageLabel} tokens
+                    </div>
+                  );
+                })()}
               </div>
               <div className="flex items-center gap-1.5 flex-shrink-0">
                 {dm.content && (
@@ -1003,6 +1032,18 @@ const Message = React.memo<MessageProps>(
                           </div>
                         )}
                       </div>
+                    )}
+                    {onFork && (
+                      <button
+                        type="button"
+                        onClick={() => onFork(message.id, 'primary')}
+                        title="Fork"
+                        disabled={actionsDisabled}
+                        className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        <GitFork className="w-3 h-3" aria-hidden="true" />
+                        <span className="sr-only">Fork</span>
+                      </button>
                     )}
                     <button
                       type="button"

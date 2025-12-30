@@ -15,6 +15,7 @@ import { setupStreamingHeaders } from './streamingHandler.js';
 import { config as envConfig } from '../env.js';
 import { logger } from '../logger.js';
 import { addPromptCaching } from './promptCaching.js';
+import { extractUsage, normalizeUsage } from './utils/usage.js';
 import { createAbortError } from './abortUtils.js';
 import {
   buildConversationMessagesOptimized,
@@ -188,6 +189,10 @@ export async function handleToolsStreaming({
       if (!isStreamResponse) {
         // Upstream returned JSON instead of stream - handle it as non-streaming
         const upstreamJson = await upstream.json();
+        const normalizedUsage = extractUsage(upstreamJson);
+        if (normalizedUsage) {
+          persistence?.setUsage?.(normalizedUsage);
+        }
 
         // Capture response_id
         const responseId = upstreamJson.id;
@@ -227,6 +232,17 @@ export async function handleToolsStreaming({
             );
             writeAndFlush(res, `data: ${JSON.stringify(contentChunk)}\n\n`);
             appendToPersistence(persistence, safeContent);
+          }
+
+          if (normalizedUsage) {
+            writeAndFlush(
+              res,
+              `data: ${JSON.stringify({
+                usage: normalizedUsage,
+                ...(upstreamJson.model ? { model: upstreamJson.model } : {}),
+                ...(upstreamJson.provider ? { provider: upstreamJson.provider } : {}),
+              })}\n\n`
+            );
           }
 
           // Handle tool_calls
@@ -298,6 +314,9 @@ export async function handleToolsStreaming({
             {},
             finishReason
           );
+          if (normalizedUsage) {
+            finalChunk.usage = normalizedUsage;
+          }
           writeAndFlush(res, `data: ${JSON.stringify(finalChunk)}\n\n`);
 
           recordFinalToPersistence(persistence, finishReason, responseId);
@@ -441,6 +460,13 @@ export async function handleToolsStreaming({
                   const tokens = obj.usage.reasoning_tokens ?? obj.usage.completion_tokens_details.reasoning_tokens;
                   if (persistence && typeof persistence.setReasoningTokens === 'function') {
                     persistence.setReasoningTokens(tokens);
+                  }
+                }
+
+                if (obj?.usage && persistence && typeof persistence.setUsage === 'function') {
+                  const usage = normalizeUsage(obj.usage);
+                  if (usage) {
+                    persistence.setUsage(usage);
                   }
                 }
 

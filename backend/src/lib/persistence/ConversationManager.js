@@ -238,6 +238,9 @@ export class ConversationManager {
             content: msg.content,
             reasoningDetails: msg.reasoning_details,
             reasoningTokens: msg.reasoning_tokens,
+            tokensIn: msg.usage?.prompt_tokens,
+            tokensOut: msg.usage?.completion_tokens,
+            totalTokens: msg.usage?.total_tokens,
           });
 
           if (msg.role === 'assistant') {
@@ -684,6 +687,9 @@ export class ConversationManager {
       responseId: params.responseId || null,
       reasoningDetails: params.reasoningDetails,
       reasoningTokens: params.reasoningTokens,
+      tokensIn: params.tokensIn,
+      tokensOut: params.tokensOut,
+      totalTokens: params.totalTokens,
     });
   }
 

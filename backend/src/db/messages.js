@@ -73,6 +73,14 @@ function normalizeReasoningTokens(value) {
   return Math.max(0, Math.trunc(asNumber));
 }
 
+function normalizeTokenCount(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const asNumber = Number(value);
+  if (!Number.isFinite(asNumber)) return null;
+  return Math.max(0, Math.trunc(asNumber));
+}
+
 function parseJsonField(raw, messageId, fieldName) {
   if (raw == null) return null;
   try {
@@ -189,6 +197,9 @@ export function insertAssistantFinal({
   responseId = null,
   reasoningDetails = undefined,
   reasoningTokens = undefined,
+  tokensIn = undefined,
+  tokensOut = undefined,
+  totalTokens = undefined,
   clientMessageId = null,
 }) {
   const db = getDb();
@@ -197,17 +208,23 @@ export function insertAssistantFinal({
   const { textContent, jsonContent } = normalizeMessageContent(content);
   const { json: reasoningJson } = serializeReasoningDetails(reasoningDetails);
   const normalizedTokens = normalizeReasoningTokens(reasoningTokens);
+  const normalizedTokensIn = normalizeTokenCount(tokensIn);
+  const normalizedTokensOut = normalizeTokenCount(tokensOut);
+  const normalizedTotalTokens = normalizeTokenCount(totalTokens);
 
   const info = db
     .prepare(
-      `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, finish_reason, response_id, reasoning_details, reasoning_tokens, client_message_id, created_at, updated_at)
-     VALUES (@conversationId, 'assistant', 'final', @content, @contentJson, @seq, @finishReason, @responseId, @reasoningDetails, @reasoningTokens, @clientMessageId, @now, @now)`
+      `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, tokens_in, tokens_out, total_tokens, finish_reason, response_id, reasoning_details, reasoning_tokens, client_message_id, created_at, updated_at)
+     VALUES (@conversationId, 'assistant', 'final', @content, @contentJson, @seq, @tokensIn, @tokensOut, @totalTokens, @finishReason, @responseId, @reasoningDetails, @reasoningTokens, @clientMessageId, @now, @now)`
     )
     .run({
       conversationId,
       content: textContent || '',
       contentJson: jsonContent,
       seq,
+      tokensIn: normalizedTokensIn ?? null,
+      tokensOut: normalizedTokensOut ?? null,
+      totalTokens: normalizedTotalTokens ?? null,
       finishReason,
       responseId,
       reasoningDetails: reasoningJson === undefined ? null : reasoningJson,
@@ -267,7 +284,7 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
   const sanitizedLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
   const messages = db
     .prepare(
-      `SELECT id, seq, role, status, content, content_json, reasoning_details, reasoning_tokens, client_message_id, response_id, created_at
+      `SELECT id, seq, role, status, content, content_json, tokens_in, tokens_out, total_tokens, reasoning_details, reasoning_tokens, client_message_id, response_id, created_at
      FROM messages WHERE conversation_id=@conversationId AND seq > @afterSeq
      ORDER BY seq ASC LIMIT @limit`
     )
@@ -301,6 +318,31 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
     if (message.reasoning_tokens != null) {
       message.reasoning_tokens = Number(message.reasoning_tokens);
     }
+
+    const promptTokens = message.tokens_in != null ? Number(message.tokens_in) : null;
+    const completionTokens = message.tokens_out != null ? Number(message.tokens_out) : null;
+    const totalTokens =
+      message.total_tokens != null
+        ? Number(message.total_tokens)
+        : (promptTokens != null && completionTokens != null ? promptTokens + completionTokens : null);
+
+    if (
+      promptTokens != null ||
+      completionTokens != null ||
+      totalTokens != null ||
+      message.reasoning_tokens != null
+    ) {
+      message.usage = {
+        ...(promptTokens != null ? { prompt_tokens: promptTokens } : {}),
+        ...(completionTokens != null ? { completion_tokens: completionTokens } : {}),
+        ...(totalTokens != null ? { total_tokens: totalTokens } : {}),
+        ...(message.reasoning_tokens != null ? { reasoning_tokens: Number(message.reasoning_tokens) } : {}),
+      };
+    }
+
+    delete message.tokens_in;
+    delete message.tokens_out;
+    delete message.total_tokens;
   }
 
   // Fetch tool calls and outputs for all messages in batch (using integer IDs)
@@ -408,7 +450,7 @@ export function getLastMessage({ conversationId }) {
   const db = getDb();
   const message = db
     .prepare(
-      `SELECT id, seq, role, status, content, content_json, reasoning_details, reasoning_tokens, client_message_id, created_at
+      `SELECT id, seq, role, status, content, content_json, tokens_in, tokens_out, total_tokens, reasoning_details, reasoning_tokens, client_message_id, created_at
      FROM messages WHERE conversation_id=@conversationId
      ORDER BY seq DESC LIMIT 1`
     )
@@ -439,6 +481,31 @@ export function getLastMessage({ conversationId }) {
   if (message.reasoning_tokens != null) {
     message.reasoning_tokens = Number(message.reasoning_tokens);
   }
+
+  const promptTokens = message.tokens_in != null ? Number(message.tokens_in) : null;
+  const completionTokens = message.tokens_out != null ? Number(message.tokens_out) : null;
+  const totalTokens =
+    message.total_tokens != null
+      ? Number(message.total_tokens)
+      : (promptTokens != null && completionTokens != null ? promptTokens + completionTokens : null);
+
+  if (
+    promptTokens != null ||
+    completionTokens != null ||
+    totalTokens != null ||
+    message.reasoning_tokens != null
+  ) {
+    message.usage = {
+      ...(promptTokens != null ? { prompt_tokens: promptTokens } : {}),
+      ...(completionTokens != null ? { completion_tokens: completionTokens } : {}),
+      ...(totalTokens != null ? { total_tokens: totalTokens } : {}),
+      ...(message.reasoning_tokens != null ? { reasoning_tokens: Number(message.reasoning_tokens) } : {}),
+    };
+  }
+
+  delete message.tokens_in;
+  delete message.tokens_out;
+  delete message.total_tokens;
 
   // Fetch tool calls for this message (using integer ID)
   const toolCalls = db
@@ -541,6 +608,9 @@ export function updateMessageContent({
   status,
   reasoningDetails,
   reasoningTokens,
+  tokensIn,
+  tokensOut,
+  totalTokens,
   finishReason,
   responseId,
 }) {
@@ -563,6 +633,9 @@ export function updateMessageContent({
   const { textContent, jsonContent } = normalizeMessageContent(content);
   const { json: reasoningJson } = serializeReasoningDetails(reasoningDetails);
   const normalizedTokens = normalizeReasoningTokens(reasoningTokens);
+  const normalizedTokensIn = normalizeTokenCount(tokensIn);
+  const normalizedTokensOut = normalizeTokenCount(tokensOut);
+  const normalizedTotalTokens = normalizeTokenCount(totalTokens);
 
   const updates = ['content = @content', 'content_json = @contentJson', 'updated_at = @now'];
   const params = {
@@ -585,6 +658,21 @@ export function updateMessageContent({
   if (normalizedTokens !== undefined) {
     updates.push('reasoning_tokens = @reasoningTokens');
     params.reasoningTokens = normalizedTokens;
+  }
+
+  if (normalizedTokensIn !== undefined) {
+    updates.push('tokens_in = @tokensIn');
+    params.tokensIn = normalizedTokensIn;
+  }
+
+  if (normalizedTokensOut !== undefined) {
+    updates.push('tokens_out = @tokensOut');
+    params.tokensOut = normalizedTokensOut;
+  }
+
+  if (normalizedTotalTokens !== undefined) {
+    updates.push('total_tokens = @totalTokens');
+    params.totalTokens = normalizedTotalTokens;
   }
 
   if (finishReason !== undefined) {

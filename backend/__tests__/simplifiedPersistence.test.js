@@ -94,15 +94,19 @@ describe('Checkpoint persistence', () => {
     const db = getDb();
 
     persistence.appendContent('complete text');
+    persistence.setUsage({ prompt_tokens: 2, completion_tokens: 3, total_tokens: 5 });
     persistence.recordAssistantFinal({ finishReason: 'stop' });
 
     const updated = db
-      .prepare('SELECT status, content, finish_reason FROM messages WHERE id = ?')
+      .prepare('SELECT status, content, finish_reason, tokens_in, tokens_out, total_tokens FROM messages WHERE id = ?')
       .get(persistence.currentMessageId);
 
     expect(updated.status).toBe('final');
     expect(updated.content).toBe('complete text');
     expect(updated.finish_reason).toBe('stop');
+    expect(updated.tokens_in).toBe(2);
+    expect(updated.tokens_out).toBe(3);
+    expect(updated.total_tokens).toBe(5);
   });
 
   test('preserves partial content on disconnect', async () => {

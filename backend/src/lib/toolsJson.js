@@ -14,6 +14,7 @@ import {
   streamDeltaEvent,
   streamDone,
 } from './toolOrchestrationUtils.js';
+import { extractUsage } from './utils/usage.js';
 import { logger } from '../logger.js';
 import { getUserMaxToolIterations } from '../db/users.js';
 
@@ -240,6 +241,11 @@ class JsonResponseHandler extends ResponseHandler {
       if (persistence && typeof persistence.setReasoningTokens === 'function') {
         persistence.setReasoningTokens(reasoningTokens);
       }
+    }
+
+    const normalizedUsage = extractUsage(response);
+    if (normalizedUsage && persistence && typeof persistence.setUsage === 'function') {
+      persistence.setUsage(normalizedUsage);
     }
 
     if (message?.content) {

@@ -156,6 +156,32 @@ describe('DB helpers', () => {
       assert.equal(message.message_events[0].payload.text, 'Hello ');
       assert.equal(message.message_events[1].payload.text, 'world');
     });
+
+    test('hydrates usage from stored token columns', () => {
+      createConversation({ id: 'conv', sessionId, userId: testUser.id });
+      const db = getDb();
+      db.prepare(
+        `INSERT INTO messages (conversation_id, role, content, seq, tokens_in, tokens_out, total_tokens, reasoning_tokens)
+         VALUES (@cid, 'assistant', @c, @s, @tin, @tout, @tt, @rt)`
+      ).run({
+        cid: 'conv',
+        c: 'hello',
+        s: 1,
+        tin: 3,
+        tout: 4,
+        tt: 7,
+        rt: 2,
+      });
+
+      const page = getMessagesPage({ conversationId: 'conv', afterSeq: 0, limit: 10 });
+      const [message] = page.messages;
+      assert.deepEqual(message.usage, {
+        prompt_tokens: 3,
+        completion_tokens: 4,
+        total_tokens: 7,
+        reasoning_tokens: 2,
+      });
+    });
   });
 
   describe('retentionSweep', () => {
