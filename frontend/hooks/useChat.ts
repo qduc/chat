@@ -1592,16 +1592,16 @@ export function useChat() {
         (!Array.isArray(msg.tool_calls) || msg.tool_calls.length === 0) &&
         (!Array.isArray(msg.tool_outputs) || msg.tool_outputs.length === 0);
 
+      const isPrimary = modelId === 'primary';
+      const modelKey = isPrimary ? modelRef.current : modelId;
+      if (!modelKey) return;
+
       const history = buildHistoryForModel(
         historySource.filter((msg) => !isEmptyAssistantPlaceholder(msg)),
         modelKey,
         isPrimary
       );
       if (history.length === 0) return;
-
-      const isPrimary = modelId === 'primary';
-      const modelKey = isPrimary ? modelRef.current : modelId;
-      if (!modelKey) return;
 
       const actualModelId = modelKey.includes('::') ? modelKey.split('::')[1] : modelKey;
       let targetProviderId = providerIdRef.current || '';
