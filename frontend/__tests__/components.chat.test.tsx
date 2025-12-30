@@ -593,7 +593,10 @@ describe('<Chat />', () => {
 
     // Wait for conversation to load
     await waitFor(() => {
-      expect(mockConversations.get).toHaveBeenCalledWith('conv-with-prompt', { limit: 200 });
+      expect(mockConversations.get).toHaveBeenCalledWith('conv-with-prompt', {
+        limit: 200,
+        include_linked: 'messages',
+      });
     });
 
     // Now select conversation without prompt
@@ -601,7 +604,10 @@ describe('<Chat />', () => {
 
     // Verify that getConversationApi was called with the conversation without prompt
     await waitFor(() => {
-      expect(mockConversations.get).toHaveBeenCalledWith('conv-no-prompt', { limit: 200 });
+      expect(mockConversations.get).toHaveBeenCalledWith('conv-no-prompt', {
+        limit: 200,
+        include_linked: 'messages',
+      });
     });
 
     // The test verifies that the API calls happen correctly

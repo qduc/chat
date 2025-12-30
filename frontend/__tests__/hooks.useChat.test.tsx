@@ -52,30 +52,29 @@ function createHttpResponse<T>(data: T): HttpResponse<T> {
 
 function arrangeHttpMocks() {
   mockHttpClient.get.mockImplementation((url: string) => {
-    if (url === '/v1/providers') {
+    if (url.startsWith('/v1/models')) {
       return Promise.resolve(
         createHttpResponse({
           providers: [
-            { id: 'openai', name: 'OpenAI', enabled: 1 },
-            { id: 'disabled', name: 'Disabled', enabled: 0 },
+            {
+              provider: { id: 'openai', name: 'OpenAI', provider_type: 'openai' },
+              models: [{ id: 'gpt-4o' }, { id: 'gpt-4o-mini' }],
+            },
+            {
+              provider: { id: 'disabled', name: 'Disabled', provider_type: 'mock' },
+              models: [],
+            },
           ],
+          cached: false,
+          cachedAt: new Date().toISOString(),
+          errors: [],
         })
       );
     }
-    if (url === '/v1/providers/openai/models') {
-      return Promise.resolve(
-        createHttpResponse({
-          provider: { id: 'openai' },
-          models: [{ id: 'gpt-4o' }, { id: 'gpt-4o-mini' }],
-        })
-      );
+    if (url === '/v1/system-prompts') {
+      return Promise.resolve(createHttpResponse({ system_prompts: [] }));
     }
-    return Promise.resolve(
-      createHttpResponse({
-        provider: { id: 'unknown' },
-        models: [],
-      })
-    );
+    return Promise.resolve(createHttpResponse({ providers: [] }));
   });
 }
 
@@ -517,10 +516,12 @@ describe('useChat hook', () => {
     });
 
     mockHttpClient.get.mockImplementation((url: string) => {
-      if (url === '/v1/providers') {
-        return Promise.resolve(createHttpResponse({ providers: [] }));
+      if (url.startsWith('/v1/models')) {
+        return Promise.resolve(
+          createHttpResponse({ providers: [], cached: false, cachedAt: new Date().toISOString() })
+        );
       }
-      return Promise.resolve(createHttpResponse({ provider: { id: 'none' }, models: [] }));
+      return Promise.resolve(createHttpResponse({ providers: [] }));
     });
 
     mockAuth.getProfile.mockResolvedValue({
@@ -548,7 +549,7 @@ describe('useChat hook', () => {
   test('loadProvidersAndModels builds groups and provider mapping', async () => {
     const { result } = renderUseChat();
 
-    await waitFor(() => expect(mockHttpClient.get).toHaveBeenCalledWith('/v1/providers'));
+    await waitFor(() => expect(mockHttpClient.get).toHaveBeenCalledWith('/v1/models'));
     await waitFor(() => expect(result.current.modelGroups.length).toBeGreaterThan(0));
 
     expect(result.current.modelGroups[0]).toMatchObject({
@@ -569,33 +570,26 @@ describe('useChat hook', () => {
   test('handles duplicate model IDs across different providers', async () => {
     // Arrange: Mock two providers with the same model ID
     mockHttpClient.get.mockImplementation((url: string) => {
-      if (url === '/v1/providers') {
+      if (url.startsWith('/v1/models')) {
         return Promise.resolve(
           createHttpResponse({
             providers: [
-              { id: 'provider1', name: 'Provider 1', enabled: 1 },
-              { id: 'provider2', name: 'Provider 2', enabled: 1 },
+              {
+                provider: { id: 'provider1', name: 'Provider 1', provider_type: 'custom' },
+                models: [{ id: 'shared-model' }, { id: 'model-1' }],
+              },
+              {
+                provider: { id: 'provider2', name: 'Provider 2', provider_type: 'custom' },
+                models: [{ id: 'shared-model' }, { id: 'model-2' }],
+              },
             ],
+            cached: false,
+            cachedAt: new Date().toISOString(),
+            errors: [],
           })
         );
       }
-      if (url === '/v1/providers/provider1/models') {
-        return Promise.resolve(
-          createHttpResponse({
-            provider: { id: 'provider1' },
-            models: [{ id: 'shared-model' }, { id: 'model-1' }],
-          })
-        );
-      }
-      if (url === '/v1/providers/provider2/models') {
-        return Promise.resolve(
-          createHttpResponse({
-            provider: { id: 'provider2' },
-            models: [{ id: 'shared-model' }, { id: 'model-2' }],
-          })
-        );
-      }
-      return Promise.resolve(createHttpResponse({ provider: { id: 'unknown' }, models: [] }));
+      return Promise.resolve(createHttpResponse({ providers: [] }));
     });
 
     mockAuth.getProfile.mockResolvedValue({
