@@ -1,7 +1,7 @@
 import { renderHook, act, waitFor } from '@testing-library/react';
 import type { ChatOptionsExtended } from '../lib/types';
 import { useChat } from '../hooks/useChat';
-import { APIError } from '../lib/streaming';
+import { APIError, StreamingNotSupportedError } from '../lib/streaming';
 
 jest.mock('../lib/api', () => ({
   conversations: {
@@ -650,5 +650,136 @@ describe('useChat hook', () => {
       status: 'complete',
     });
     expect(result.current.linkedConversations['openai::gpt-4o-mini']).toBe('conv-gpt-4o-mini');
+  });
+
+  test('restores saved draft on mount after user profile loads', async () => {
+    jest.useFakeTimers();
+    const draftKey = 'chatforge_draft_user-123_new';
+    window.localStorage.setItem(draftKey, 'Saved draft text');
+
+    const { result } = renderUseChat();
+
+    await waitFor(() => expect(result.current.user?.id).toBe('user-123'));
+
+    await act(async () => {
+      jest.advanceTimersByTime(150);
+    });
+
+    expect(result.current.input).toBe('Saved draft text');
+    jest.useRealTimers();
+  });
+
+  test('debounces draft saving while typing', async () => {
+    jest.useFakeTimers();
+    const draftKey = 'chatforge_draft_user-123_new';
+    const { result } = renderUseChat();
+
+    await waitFor(() => expect(result.current.user?.id).toBe('user-123'));
+
+    act(() => {
+      result.current.setInput('Draft to persist');
+    });
+
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+    });
+
+    expect(window.localStorage.getItem(draftKey)).toBe('Draft to persist');
+    jest.useRealTimers();
+  });
+
+  test('sendMessage retries without provider streaming when unsupported', async () => {
+    jest.useFakeTimers();
+    const now = new Date().toISOString();
+
+    mockChat.sendMessage
+      .mockRejectedValueOnce(new StreamingNotSupportedError('Streaming not supported'))
+      .mockResolvedValueOnce({
+        content: 'Retried response',
+        conversation: { id: 'conv-retry', title: 'Retry', created_at: now },
+      });
+
+    const { result } = renderUseChat();
+
+    await act(async () => {
+      await result.current.sendMessage('Hello');
+    });
+
+    await act(async () => {
+      jest.runOnlyPendingTimers();
+    });
+
+    await waitFor(() => expect(mockChat.sendMessage).toHaveBeenCalledTimes(2));
+    expect(mockChat.sendMessage.mock.calls[1][0].providerStream).toBe(false);
+    await waitFor(() => expect(result.current.status).toBe('idle'));
+    expect(result.current.messages).toHaveLength(2);
+    jest.useRealTimers();
+  });
+
+  test('sendMessage includes files and images in the outgoing payload', async () => {
+    const now = new Date().toISOString();
+    mockChat.sendMessage.mockResolvedValue({
+      content: 'ok',
+      conversation: { id: 'conv-files', title: 'Files', created_at: now },
+    });
+
+    const { result } = renderUseChat();
+
+    act(() => {
+      result.current.setInput('Please review the files');
+      result.current.setFiles([{ name: 'example.ts', content: 'console.log(1);' }]);
+      result.current.setImages([
+        { url: 'http://example.com/image.png', downloadUrl: 'http://cdn/image.png' },
+      ]);
+    });
+
+    await act(async () => {
+      await result.current.sendMessage();
+    });
+
+    const payload = mockChat.sendMessage.mock.calls[0][0];
+    const userMessage = payload.messages[0];
+    expect(Array.isArray(userMessage.content)).toBe(true);
+    expect(userMessage.content[0]).toMatchObject({
+      type: 'text',
+    });
+    expect(userMessage.content[0].text).toContain('File: example.ts');
+    expect(userMessage.content[0].text).toContain('```typescript');
+    expect(userMessage.content[0].text).toContain('Please review the files');
+    expect(userMessage.content[1]).toEqual({
+      type: 'image_url',
+      image_url: { url: 'http://cdn/image.png' },
+    });
+    expect(result.current.input).toBe('');
+    expect(result.current.files).toEqual([]);
+    expect(result.current.images).toEqual([]);
+  });
+
+  test('regenerate reuses the original user message id without duplication', async () => {
+    const now = new Date().toISOString();
+    mockChat.sendMessage.mockResolvedValue({
+      content: 'regenerated',
+      conversation: { id: 'conv-regenerate', title: 'Regenerated', created_at: now },
+    });
+
+    const { result } = renderUseChat();
+
+    act(() => {
+      result.current.setModel('openai::gpt-4o');
+    });
+
+    const baseMessages = [
+      { id: 'user-1', role: 'user', content: 'Original question' },
+      { id: 'assistant-1', role: 'assistant', content: 'Old answer' },
+    ];
+
+    await act(async () => {
+      await result.current.regenerate(baseMessages as any);
+    });
+
+    expect(result.current.messages).toHaveLength(3);
+    const payload = mockChat.sendMessage.mock.calls[0][0];
+    const userMessageIds = payload.messages.filter((msg: any) => msg.id === 'user-1');
+    expect(userMessageIds).toHaveLength(1);
   });
 });
