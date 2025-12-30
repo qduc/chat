@@ -7,29 +7,12 @@ on:
         description: 'Tag to build and publish'
         required: false
         type: string
-      skip_ci:
-        description: 'Skip CI'
-        required: false
-        type: boolean
-        default: false
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag to build and publish (e.g., v1.0.0)'
-        required: true
-        type: string
 
 permissions:
   contents: write
 
 jobs:
-  ci:
-    if: github.event_name != 'workflow_call' && inputs.skip_ci != true
-    uses: ./.github/workflows/ci.yml
-
   build:
-    needs: ci
-    if: always() && (needs.ci.result == 'success' || needs.ci.result == 'skipped')
     strategy:
       matrix:
         include:
@@ -108,9 +91,9 @@ jobs:
           cp -r frontend/out electron/frontend/out
 
       - name: Set app version from tag
-        if: startsWith(github.ref, 'refs/tags/')
+        if: inputs.tag != '' || startsWith(github.ref, 'refs/tags/')
         env:
-          GITHUB_TAG: ${{ github.ref_name }}
+          GITHUB_TAG: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
         run: |
           echo "Setting package versions from tag: $GITHUB_TAG"
           node scripts/sync-version.js "$GITHUB_TAG"
@@ -164,6 +147,18 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      - name: Resolve release tag
+        id: resolve_tag
+        shell: bash
+        run: |
+          TAG=""
+          if [ -n "${{ inputs.tag }}" ]; then
+            TAG="${{ inputs.tag }}"
+          elif [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            TAG="${{ github.ref_name }}"
+          fi
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+
       - name: Checkout code
         uses: actions/checkout@v4
 
@@ -178,10 +173,12 @@ jobs:
           find artifacts -type f -name "*" | head -50
 
       - name: Create GitHub Release
+        if: steps.resolve_tag.outputs.tag != ''
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.resolve_tag.outputs.tag }}
           draft: false
-          prerelease: ${{ contains(github.ref_name, '-') }}
+          prerelease: ${{ contains(steps.resolve_tag.outputs.tag, '-') }}
           generate_release_notes: true
           files: |
             artifacts/**/*.AppImage

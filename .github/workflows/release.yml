@@ -1,6 +1,8 @@
-name: Release Orchestrator
+name: Pipeline
 
 on:
+  pull_request:
+    branches: [ main ]
   push:
     tags:
       - 'v*'
@@ -19,10 +21,10 @@ jobs:
 
   docker-publish:
     needs: ci
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
     uses: ./.github/workflows/docker-publish.yml
     with:
       tag: ${{ inputs.tag }}
-      skip_ci: true
     secrets: inherit
     permissions:
       contents: read
@@ -30,10 +32,10 @@ jobs:
 
   electron-release:
     needs: ci
+    if: github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
     uses: ./.github/workflows/electron-release.yml
     with:
       tag: ${{ inputs.tag }}
-      skip_ci: true
     secrets: inherit
     permissions:
       contents: write

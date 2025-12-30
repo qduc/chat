@@ -7,29 +7,12 @@ on:
         description: 'Tag to build and publish'
         required: false
         type: string
-      skip_ci:
-        description: 'Skip CI'
-        required: false
-        type: boolean
-        default: false
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag to build and publish (e.g., v1.0.0)'
-        required: true
-        type: string
 
 env:
   REGISTRY: docker.io
   IMAGE_NAME: qduc/chat
 
 jobs:
-  ci:
-    if: github.event_name != 'workflow_call' && inputs.skip_ci != true
-    uses: ./.github/workflows/ci.yml
-    permissions:
-      contents: read
-
   prepare:
     runs-on: ubuntu-latest
     outputs:
@@ -51,8 +34,7 @@ jobs:
           echo "version_short=${VERSION#v}" >> $GITHUB_OUTPUT
 
   build:
-    needs: [ci, prepare]
-    if: always() && (needs.ci.result == 'success' || needs.ci.result == 'skipped')
+    needs: prepare
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
