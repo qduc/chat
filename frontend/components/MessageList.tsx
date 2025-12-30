@@ -49,7 +49,7 @@ interface MessageListProps {
   onScrollStateChange?: (state: { showTop: boolean; showBottom: boolean }) => void;
   containerRef?: React.RefObject<HTMLDivElement>;
   onSuggestionClick?: (text: string) => void;
-  onFork?: (messageId: string) => void;
+  onFork?: (messageId: string, modelId: string) => void;
 }
 
 // Maximum number of model columns to display side-by-side
@@ -295,11 +295,12 @@ interface MessageProps {
   onEditingImageUploadClick: () => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   toolbarRef?: React.RefObject<HTMLDivElement | null>;
-  onFork?: (messageId: string) => void;
+  onFork?: (messageId: string, modelId: string) => void;
   selectedComparisonModels: string[];
   onToggleComparisonModel: (modelId: string, event?: React.MouseEvent) => void;
   onSelectAllComparisonModels: (models: string[]) => void;
   isMobile: boolean;
+  showComparisonTabs: boolean;
 }
 
 const Message = React.memo<MessageProps>(
@@ -369,7 +370,7 @@ const Message = React.memo<MessageProps>(
     onEditingPaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
     onEditingImageUploadClick: () => void;
     fileInputRef: React.RefObject<HTMLInputElement | null>;
-    onFork?: (messageId: string) => void;
+    onFork?: (messageId: string, modelId: string) => void;
     selectedComparisonModels: string[];
     onToggleComparisonModel: (modelId: string, event?: React.MouseEvent) => void;
     onSelectAllComparisonModels: (models: string[]) => void;
@@ -726,6 +727,17 @@ const Message = React.memo<MessageProps>(
                     )}
                   </div>
                 )}
+                {onFork && (
+                  <button
+                    type="button"
+                    onClick={() => onFork(message.id, modelId)}
+                    title="Fork"
+                    className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
+                  >
+                    <GitFork className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span className="sr-only">Fork</span>
+                  </button>
+                )}
                 {!pending.streaming && hasComparison && !isUser && onRetryComparisonModel && (
                   <button
                     type="button"
@@ -735,17 +747,6 @@ const Message = React.memo<MessageProps>(
                   >
                     <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
                     <span className="sr-only">Retry this model</span>
-                  </button>
-                )}
-                {onFork && (
-                  <button
-                    type="button"
-                    onClick={() => onFork(message.id)}
-                    title="Fork"
-                    className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
-                  >
-                    <GitFork className="w-3.5 h-3.5" aria-hidden="true" />
-                    <span className="sr-only">Fork</span>
                   </button>
                 )}
                 {!pending.streaming && !hasComparison && (

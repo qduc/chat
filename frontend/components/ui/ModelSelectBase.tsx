@@ -287,6 +287,7 @@ export default function ModelSelectBase<T extends SelectOption>({
                 className={`overflow-y-auto ${listClassName}`}
                 style={{ contentVisibility: 'auto' }}
                 role="listbox"
+                aria-label={ariaLabel}
               >
                 {sections.map((section, sectionIndex) => {
                   const sectionOffset = sections

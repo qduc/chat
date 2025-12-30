@@ -440,14 +440,36 @@ export function ChatV2() {
   );
 
   const handleFork = useCallback(
-    (messageId: string) => {
+    (messageId: string, modelId: string) => {
       const idx = chat.messages.findIndex((m) => m.id === messageId);
       if (idx === -1) return;
 
-      const newMessages = chat.messages.slice(0, idx + 1);
+      const forkModelId = modelId === 'primary' ? chat.model : modelId;
+      const newMessages = chat.messages.slice(0, idx + 1).map((message) => {
+        if (message.role !== 'assistant') {
+          return message.comparisonResults ? { ...message, comparisonResults: undefined } : message;
+        }
+
+        if (modelId !== 'primary') {
+          const comparison = message.comparisonResults?.[modelId];
+          if (comparison) {
+            return {
+              ...message,
+              content: comparison.content ?? '',
+              tool_calls: comparison.tool_calls,
+              tool_outputs: comparison.tool_outputs,
+              message_events: comparison.message_events,
+              usage: comparison.usage,
+              comparisonResults: undefined,
+            };
+          }
+        }
+
+        return message.comparisonResults ? { ...message, comparisonResults: undefined } : message;
+      });
 
       // Capture current settings to preserve them
-      const currentModel = chat.model;
+      const currentModel = forkModelId || chat.model;
       const currentProviderId = chat.providerId;
       const currentUseTools = chat.useTools;
       const currentEnabledTools = chat.enabledTools;
@@ -457,11 +479,16 @@ export function ChatV2() {
       const currentActiveSystemPromptId = chat.activeSystemPromptId;
 
       chat.newChat();
+      chat.setCompareModels([]);
       chat.setMessages(newMessages);
 
       // Restore settings
       if (currentModel) chat.setModel(currentModel);
-      if (currentProviderId) chat.setProviderId(currentProviderId);
+      if (currentModel?.includes('::')) {
+        chat.setProviderId(currentModel.split('::')[0]);
+      } else if (currentProviderId) {
+        chat.setProviderId(currentProviderId);
+      }
       chat.setUseTools(currentUseTools);
       chat.setEnabledTools(currentEnabledTools);
       chat.setShouldStream(currentShouldStream);
