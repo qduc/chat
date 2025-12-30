@@ -46,6 +46,24 @@ function normalizeStoredMessage(message) {
   if (!message) return null;
   if (!['user', 'assistant', 'tool'].includes(message.role)) return null;
 
+  // Skip in-progress assistant drafts (created before streaming starts) and
+  // any assistant entries that are effectively empty. These drafts can be
+  // fetched from the database when building the request body and would
+  // otherwise appear as an empty assistant message sent upstream.
+  const isStreamingAssistant = message.role === 'assistant' && message.status === 'streaming';
+  const hasToolCalls = Array.isArray(message.tool_calls) && message.tool_calls.length > 0;
+  const hasToolOutputs = Array.isArray(message.tool_outputs) && message.tool_outputs.length > 0;
+  const isContentEmpty =
+    message.content === '' ||
+    message.content === null ||
+    message.content === undefined ||
+    (Array.isArray(message.content) && message.content.length === 0);
+  const isEmptyAssistant = message.role === 'assistant' && isContentEmpty && !hasToolCalls && !hasToolOutputs;
+
+  if (isStreamingAssistant || isEmptyAssistant) {
+    return null;
+  }
+
   const normalized = {
     role: message.role,
     content: message.content ?? ''
