@@ -346,6 +346,16 @@ export interface ConversationWithMessages {
     reasoning_tokens?: number | null;
   }[];
   next_after_seq: number | null;
+  // Linked comparison conversations (included when include_linked=messages)
+  linked_conversations?: Array<{
+    id: string;
+    title?: string | null;
+    provider_id?: string | null;
+    model?: string | null;
+    created_at: string;
+    updated_at?: string;
+    messages: ConversationWithMessages['messages'];
+  }>;
 }
 
 export interface ToolSpec {
@@ -452,6 +462,7 @@ export interface ListConversationsParams {
 export interface GetConversationParams {
   after_seq?: number;
   limit?: number;
+  include_linked?: 'messages';
 }
 
 export interface EditMessageResult {

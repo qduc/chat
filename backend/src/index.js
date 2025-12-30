@@ -124,6 +124,110 @@ if (config.persistence.enabled && process.env.NODE_ENV !== 'test') {
   logger.info({ msg: 'database:disabled', persistence: false });
 }
 
+// Model cache background refresh worker
+import {
+  getCachedUserIds,
+  setCachedModels,
+  getCacheStats,
+} from './lib/modelCache.js';
+import { listProviders, getProviderByIdWithApiKey } from './db/providers.js';
+import { createProviderWithSettings } from './lib/providers/index.js';
+import { filterModels } from './lib/modelFilter.js';
+
+if (process.env.NODE_ENV !== 'test') {
+  const modelRefreshIntervalMs = Number(process.env.MODEL_CACHE_REFRESH_MS) || 60 * 60 * 1000; // hourly default
+
+  /**
+   * Refresh models for a single user
+   * @param {string} userId
+   */
+  async function refreshModelsForUser(userId) {
+    const providers = listProviders(userId).filter((p) => p.enabled === 1);
+    const results = [];
+
+    for (const provider of providers) {
+      try {
+        const row = getProviderByIdWithApiKey(provider.id, userId);
+        if (!row || !row.api_key) continue;
+
+        const providerType = (row.provider_type || 'openai').toLowerCase();
+        const baseUrl = row.base_url || '';
+        const headers =
+          typeof row.extra_headers === 'object' && row.extra_headers !== null ? row.extra_headers : {};
+
+        const providerInstance = createProviderWithSettings(config, providerType, {
+          apiKey: row.api_key,
+          baseUrl,
+          headers,
+        });
+
+        let models = await providerInstance.listModels({
+          timeoutMs: config.providerConfig.modelFetchTimeoutMs,
+        });
+
+        const metadata = typeof row.metadata === 'object' && row.metadata !== null ? row.metadata : {};
+        if (metadata.model_filter) {
+          models = filterModels(models, metadata.model_filter);
+        }
+
+        results.push({
+          provider: {
+            id: row.id,
+            name: row.name,
+            provider_type: row.provider_type,
+          },
+          models,
+        });
+      } catch (err) {
+        logger.warn({
+          msg: 'modelcache:provider_refresh_error',
+          userId,
+          providerId: provider.id,
+          error: err.message,
+        });
+        // Continue with other providers
+      }
+    }
+
+    setCachedModels(userId, results);
+  }
+
+  const modelRefreshInterval = setInterval(async () => {
+    try {
+      const userIds = getCachedUserIds();
+
+      if (userIds.length === 0) {
+        logger.debug({ msg: 'modelcache:no_users_to_refresh' });
+        return;
+      }
+
+      logger.info({ msg: 'modelcache:refresh_started', userCount: userIds.length });
+
+      for (const userId of userIds) {
+        try {
+          await refreshModelsForUser(userId);
+        } catch (err) {
+          logger.warn({ msg: 'modelcache:user_refresh_error', userId, error: err.message });
+        }
+      }
+
+      const stats = getCacheStats();
+      logger.info({ msg: 'modelcache:refresh_done', ...stats });
+    } catch (e) {
+      logger.error({ msg: 'modelcache:refresh_error', err: e });
+    }
+  }, modelRefreshIntervalMs);
+
+  if (typeof modelRefreshInterval.unref === 'function') {
+    modelRefreshInterval.unref();
+  }
+
+  logger.info({
+    msg: 'modelcache:started',
+    intervalSec: Math.round(modelRefreshIntervalMs / 1000),
+  });
+}
+
 // Start server and keep a reference so we can close it gracefully when auto-starting
 if (process.env.NODE_ENV !== 'test' && !process.env.SKIP_AUTO_START) {
   const server = app.listen(config.port, () => {
