@@ -560,7 +560,7 @@ export function useChat() {
             tool_outputs: msg.tool_outputs,
             reasoning_details: msg.reasoning_details ?? undefined,
             reasoning_tokens: msg.reasoning_tokens ?? undefined,
-            usage: msg.usage ?? undefined,
+            usage: (msg as any).usage ?? undefined,
           };
         });
 
