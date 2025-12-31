@@ -3,7 +3,13 @@
  * Handles text, image, and file content in messages
  */
 
-import type { MessageContent, TextContent, ImageContent, FileContent } from './types';
+import type {
+  MessageContent,
+  TextContent,
+  ImageContent,
+  FileContent,
+  InputAudioContent,
+} from './types';
 
 /**
  * Extract text content from MessageContent (string or mixed content array)
@@ -53,6 +59,21 @@ export function hasImages(content: MessageContent): boolean {
 }
 
 /**
+ * Check if content contains audio inputs
+ */
+export function hasAudio(content: MessageContent): boolean {
+  if (typeof content === 'string') {
+    return false;
+  }
+
+  if (Array.isArray(content)) {
+    return content.some((item) => (item as any)?.type === 'input_audio');
+  }
+
+  return false;
+}
+
+/**
  * Extract image content from MessageContent
  */
 export function extractImagesFromContent(content: MessageContent): ImageContent[] {
@@ -71,6 +92,23 @@ export function extractImagesFromContent(content: MessageContent): ImageContent[
           url: item.image_url.url,
         },
       }));
+  }
+
+  return [];
+}
+
+/**
+ * Extract audio content parts from MessageContent
+ */
+export function extractAudioFromContent(content: MessageContent): InputAudioContent[] {
+  if (typeof content === 'string') {
+    return [];
+  }
+
+  if (Array.isArray(content)) {
+    return content.filter(
+      (item): item is InputAudioContent => (item as any)?.type === 'input_audio'
+    );
   }
 
   return [];
@@ -118,7 +156,7 @@ export function normalizeMessageContent(content: MessageContent): MessageContent
       if (item.type === 'text') {
         return item.text.trim().length > 0;
       }
-      return true; // Keep all image items
+      return true; // Keep all non-text items (images/audio/etc)
     });
 
     // If only one text item remains, convert to string

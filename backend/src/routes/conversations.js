@@ -269,7 +269,7 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
     }
 
     // If content is a string, trim it and validate it's not empty
-    // If content is an array (mixed content with images), validate it has at least some text or images
+    // If content is an array (mixed content), validate it has at least some text or attachments
     let validatedContent;
     if (typeof content === 'string') {
       validatedContent = content.trim();
@@ -279,10 +279,11 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
           .json({ error: 'bad_request', message: 'Message content cannot be empty' });
       }
     } else {
-      // Array content: ensure it has at least one text or image item
-      const hasTextContent = content.some(item => item.type === 'text' && item.text?.trim());
-      const hasImageContent = content.some(item => item.type === 'image_url');
-      if (!hasTextContent && !hasImageContent) {
+      // Array content: ensure it has at least one text, image, or audio item
+      const hasTextContent = content.some(item => item?.type === 'text' && item.text?.trim());
+      const hasImageContent = content.some(item => item?.type === 'image_url');
+      const hasAudioContent = content.some(item => item?.type === 'input_audio');
+      if (!hasTextContent && !hasImageContent && !hasAudioContent) {
         return res
           .status(400)
           .json({ error: 'bad_request', message: 'Message content cannot be empty' });

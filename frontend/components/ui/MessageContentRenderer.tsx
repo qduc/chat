@@ -1,8 +1,15 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
-import type { MessageContent, ImageContent } from '../../lib';
-import { extractImagesFromContent, hasImages, extractFilesAndText } from '../../lib';
+import type { MessageContent, ImageContent, InputAudioContent } from '../../lib';
+import {
+  extractImagesFromContent,
+  hasImages,
+  extractFilesAndText,
+  extractAudioFromContent,
+  hasAudio,
+} from '../../lib';
+import { audioPartToDataUrl } from '../../lib/audioUtils';
 import Markdown from '../Markdown';
 import { useSecureImageUrl } from '../../hooks/useSecureImageUrl';
 import { FileContentPreview } from './FileContentPreview';
@@ -29,6 +36,8 @@ export function MessageContentRenderer({
   const { text: textWithoutFiles, files } = extractFilesAndText(content);
   const imageContents = extractImagesFromContent(content);
   const hasImageContent = hasImages(content);
+  const audioContents = extractAudioFromContent(content);
+  const hasAudioContent = hasAudio(content);
   const hasFileContent = files.length > 0;
   const [selectedImage, setSelectedImage] = React.useState<SelectedImage | null>(null);
 
@@ -54,6 +63,13 @@ export function MessageContentRenderer({
           </div>
         )}
 
+        {/* Render audio for user messages (attached audio before text) */}
+        {imagesFirst && hasAudioContent && audioContents.length > 0 && (
+          <div className="space-y-2">
+            <MessageAudios audios={audioContents} />
+          </div>
+        )}
+
         {/* Render images for user messages (attached images before text) */}
         {imagesFirst && hasImageContent && imageContents.length > 0 && (
           <div className="space-y-2">
@@ -71,8 +87,15 @@ export function MessageContentRenderer({
           </div>
         )}
 
+        {/* Render audio after text for assistant messages */}
+        {!imagesFirst && hasAudioContent && audioContents.length > 0 && (
+          <div className="space-y-2">
+            <MessageAudios audios={audioContents} />
+          </div>
+        )}
+
         {/* If no content at all, show placeholder */}
-        {!textWithoutFiles && !hasImageContent && !hasFileContent && (
+        {!textWithoutFiles && !hasImageContent && !hasFileContent && !hasAudioContent && (
           <span className="text-zinc-500 dark:text-zinc-400 italic">No content</span>
         )}
       </div>
@@ -85,6 +108,40 @@ export function MessageContentRenderer({
         />
       )}
     </>
+  );
+}
+
+function MessageAudios({ audios }: { audios: InputAudioContent[] }) {
+  if (!audios.length) return null;
+
+  return (
+    <div className="space-y-2">
+      {audios.map((audio, idx) => {
+        const src = audioPartToDataUrl(audio);
+        if (!src) {
+          return (
+            <div
+              key={idx}
+              className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 p-3 text-sm text-zinc-600 dark:text-zinc-300"
+            >
+              Audio attachment (unavailable)
+            </div>
+          );
+        }
+
+        return (
+          <div
+            key={idx}
+            className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 p-3"
+          >
+            <audio controls preload="metadata" className="w-full">
+              <source src={src} />
+              Your browser does not support the audio element.
+            </audio>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
