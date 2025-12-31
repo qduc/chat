@@ -3,6 +3,7 @@ import { convertContentPartImage } from '../localImageEncoder.js';
 
 const OPENAI_ALLOWED_REQUEST_KEYS = new Set([
   'frequency_penalty',
+  'image_config',
   'logit_bias',
   'logprobs',
   'max_completion_tokens',

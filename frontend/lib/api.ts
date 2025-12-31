@@ -298,6 +298,7 @@ interface OpenAIStreamChunkChoiceDelta {
   tool_output?: any;
   reasoning?: string;
   reasoning_content?: string;
+  images?: Array<{ image_url: { url: string } }>;
 }
 
 interface OpenAIStreamChunkChoice {
@@ -947,6 +948,15 @@ function processStreamChunk(
 
     onToken?.(delta.content);
     return { ...result, content: delta.content };
+  }
+
+  if (delta?.images && Array.isArray(delta.images) && delta.images.length > 0) {
+    // Emit generated images as events for the frontend to handle
+    for (const img of delta.images) {
+      if (img?.image_url?.url) {
+        onEvent?.({ type: 'generated_image', value: img });
+      }
+    }
   }
 
   if (delta?.tool_calls) {

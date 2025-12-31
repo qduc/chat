@@ -1212,6 +1212,35 @@ export function useChat() {
                     }
                     return {};
                   });
+                } else if (event.type === 'generated_image') {
+                  // Handle generated images - convert content to array format if needed
+                  updateMessageState(isPrimary, targetModel, (current) => {
+                    const img = event.value;
+                    if (!img?.image_url?.url) return {};
+
+                    const newImageContent = {
+                      type: 'image_url' as const,
+                      image_url: { url: img.image_url.url },
+                    };
+
+                    // Get existing content
+                    let contentArray: any[];
+                    if (typeof current.content === 'string') {
+                      // Convert string to array format
+                      contentArray = current.content
+                        ? [{ type: 'text', text: current.content }]
+                        : [];
+                    } else if (Array.isArray(current.content)) {
+                      contentArray = [...current.content];
+                    } else {
+                      contentArray = [];
+                    }
+
+                    // Add the new image
+                    contentArray.push(newImageContent);
+
+                    return { content: contentArray };
+                  });
                 } else if (event.type === 'usage') {
                   updateMessageState(isPrimary, targetModel, (current) => {
                     // For primary, check if usage actually changed
@@ -1748,6 +1777,33 @@ export function useChat() {
                   return { tool_outputs: [...existingToolOutputs, outputValue] };
                 }
                 return {};
+              });
+            } else if (event.type === 'generated_image') {
+              // Handle generated images - convert content to array format if needed
+              updateTargetMessageState((current) => {
+                const img = event.value;
+                if (!img?.image_url?.url) return {};
+
+                const newImageContent = {
+                  type: 'image_url' as const,
+                  image_url: { url: img.image_url.url },
+                };
+
+                // Get existing content
+                let contentArray: any[];
+                if (typeof current.content === 'string') {
+                  // Convert string to array format
+                  contentArray = current.content ? [{ type: 'text', text: current.content }] : [];
+                } else if (Array.isArray(current.content)) {
+                  contentArray = [...current.content];
+                } else {
+                  contentArray = [];
+                }
+
+                // Add the new image
+                contentArray.push(newImageContent);
+
+                return { content: contentArray };
               });
             } else if (event.type === 'usage') {
               updateTargetMessageState(() => ({ usage: event.value }));

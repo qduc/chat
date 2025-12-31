@@ -10,6 +10,7 @@ interface MessageContentRendererProps {
   content: MessageContent;
   isStreaming?: boolean;
   className?: string;
+  role?: 'user' | 'assistant' | 'system' | 'tool';
 }
 
 interface SelectedImage {
@@ -21,6 +22,7 @@ export function MessageContentRenderer({
   content,
   isStreaming = false,
   className = '',
+  role = 'user',
 }: MessageContentRendererProps) {
   // Extract text and images from content
   const textContent = extractTextFromContent(content);
@@ -36,11 +38,15 @@ export function MessageContentRenderer({
     setSelectedImage(null);
   }, []);
 
+  // For assistant messages, render text first then images (generated images appear after text)
+  // For user messages, render images first then text (attached images appear before text)
+  const imagesFirst = role === 'user';
+
   return (
     <>
       <div className={`space-y-3 ${className}`}>
-        {/* Render images first if they exist */}
-        {hasImageContent && imageContents.length > 0 && (
+        {/* Render images first for user messages (attached images before text) */}
+        {imagesFirst && hasImageContent && imageContents.length > 0 && (
           <div className="space-y-2">
             <MessageImages images={imageContents} onImageClick={handleImageClick} />
           </div>
@@ -48,6 +54,13 @@ export function MessageContentRenderer({
 
         {/* Render text content */}
         {textContent && <Markdown text={textContent} isStreaming={isStreaming} />}
+
+        {/* Render images after text for assistant messages (generated images after text) */}
+        {!imagesFirst && hasImageContent && imageContents.length > 0 && (
+          <div className="space-y-2">
+            <MessageImages images={imageContents} onImageClick={handleImageClick} />
+          </div>
+        )}
 
         {/* If no content at all, show placeholder */}
         {!textContent && !hasImageContent && (
