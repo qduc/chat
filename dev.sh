@@ -123,6 +123,9 @@ fi
 cmd=${1:-}
 shift || true
 case "$cmd" in
+  build)
+    NODE_ENV=production "${DC[@]}" build "$@"
+    ;;
   exec)
     # Add -T flag to disable TTY allocation for non-interactive environments (CI, AI tools)
     if [ -t 0 ] && [ -t 1 ]; then

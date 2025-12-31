@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
   // Disable gzip compression to ensure SSE streams flush properly
   compress: false,
   output: 'export',
+  outputFileTracingRoot: __dirname,
   async rewrites() {
     return [
       {
