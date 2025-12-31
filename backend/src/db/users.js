@@ -50,7 +50,6 @@ export function createUser({ email, passwordHash, displayName }) {
   }
 
   // Return user without password hash
-  // eslint-disable-next-line no-unused-vars
   const { password_hash, ...userWithoutPassword } = user;
   return userWithoutPassword;
 }

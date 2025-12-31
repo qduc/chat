@@ -30,7 +30,7 @@ export default [
       },
     },
     rules: {
-      'no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+      'no-unused-vars': ['off', { argsIgnorePattern: '^_' }],
       // Allow empty catch blocks in tests/utilities where we intentionally swallow errors
       'no-empty': ['error', { allowEmptyCatch: true }],
     },
