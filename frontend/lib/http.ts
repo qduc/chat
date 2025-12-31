@@ -93,6 +93,7 @@ class AuthenticatedHttpClient {
   private timeout: number;
   private retries: number;
   private isRefreshing = false;
+  private refreshPromise: Promise<void> | null = null;
   private requestQueue: QueuedRequest[] = [];
   private refreshTokenFn?: () => Promise<void>;
 
@@ -197,12 +198,22 @@ class AuthenticatedHttpClient {
     url: string,
     options: RequestOptions
   ): Promise<HttpResponse<T>> {
-    // Check if we can attempt a refresh (need refresh token and refresh function)
-    if (this.isRefreshing || !this.refreshTokenFn) {
-      console.warn('[http] Cannot refresh token:', {
-        isRefreshing: this.isRefreshing,
-        hasRefreshFn: !!this.refreshTokenFn,
-      });
+    // If already refreshing, wait for the ongoing refresh and retry
+    if (this.isRefreshing && this.refreshPromise) {
+      try {
+        await this.refreshPromise;
+        // Refresh succeeded, retry the request with new token
+        const retryOptions = { ...options, skipRetry: true };
+        return await this.makeRequest<T>(url, retryOptions);
+      } catch {
+        // Refresh failed (already handled by the original refresh initiator)
+        throw new HttpError(401, 'Authentication expired');
+      }
+    }
+
+    // Check if we have a refresh function
+    if (!this.refreshTokenFn) {
+      console.warn('[http] Cannot refresh token: no refresh function');
       throw new HttpError(401, 'Authentication required');
     }
 
@@ -210,9 +221,12 @@ class AuthenticatedHttpClient {
     this.isRefreshing = true;
     setAuthReady(false);
 
+    // Create a promise that other concurrent requests can wait on
+    this.refreshPromise = this.refreshTokenFn();
+
     try {
       // Attempt to refresh the token
-      await this.refreshTokenFn();
+      await this.refreshPromise;
 
       // Process queued requests with new token
       await this.processRequestQueue();
@@ -235,6 +249,7 @@ class AuthenticatedHttpClient {
       throw new HttpError(401, 'Authentication expired');
     } finally {
       this.isRefreshing = false;
+      this.refreshPromise = null;
       setAuthReady(true);
     }
   }

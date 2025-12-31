@@ -118,6 +118,8 @@ export function ChatV2() {
     : 'Primary model is locked for comparison chats after the first message. Start a new chat to change.';
   const canSend = !modelAvailability.locked;
 
+  const { sidebarCollapsed, rightSidebarCollapsed, toggleSidebar, toggleRightSidebar } = chat;
+
   // Detect mobile screen size and auto-collapse sidebars on mount
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -128,21 +130,16 @@ export function ChatV2() {
 
     // Auto-collapse both sidebars on initial mount if mobile
     if (mobile) {
-      if (!chat.sidebarCollapsed) {
-        chat.toggleSidebar();
+      if (!sidebarCollapsed) {
+        toggleSidebar();
       }
-      if (!chat.rightSidebarCollapsed) {
-        chat.toggleRightSidebar();
+      if (!rightSidebarCollapsed) {
+        toggleRightSidebar();
       }
     }
 
     hasCheckedMobileRef.current = true;
-  }, [
-    chat.sidebarCollapsed,
-    chat.rightSidebarCollapsed,
-    chat.toggleSidebar,
-    chat.toggleRightSidebar,
-  ]);
+  }, [sidebarCollapsed, rightSidebarCollapsed, toggleSidebar, toggleRightSidebar]);
 
   // Track window resize for responsive behavior
   useEffect(() => {

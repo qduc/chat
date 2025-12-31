@@ -64,6 +64,10 @@ export {
   extractImagesFromContent,
   createMixedContent,
   normalizeMessageContent,
+  hasFileAttachments,
+  extractFilesFromText,
+  removeFileBlocksFromText,
+  extractFilesAndText,
 } from './contentUtils';
 
 // Model capabilities
@@ -95,6 +99,7 @@ export type {
   Role,
   ImageContent,
   TextContent,
+  FileContent,
   MessageContent,
   ImageAttachment,
   ImageConfig,

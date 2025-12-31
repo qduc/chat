@@ -2,14 +2,16 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import type { MessageContent, ImageContent } from '../../lib';
-import { extractTextFromContent, extractImagesFromContent, hasImages } from '../../lib';
+import { extractImagesFromContent, hasImages, extractFilesAndText } from '../../lib';
 import Markdown from '../Markdown';
 import { useSecureImageUrl } from '../../hooks/useSecureImageUrl';
+import { FileContentPreview } from './FileContentPreview';
 
 interface MessageContentRendererProps {
   content: MessageContent;
   isStreaming?: boolean;
   className?: string;
+  role?: 'user' | 'assistant' | 'system' | 'tool';
 }
 
 interface SelectedImage {
@@ -21,11 +23,13 @@ export function MessageContentRenderer({
   content,
   isStreaming = false,
   className = '',
+  role = 'user',
 }: MessageContentRendererProps) {
-  // Extract text and images from content
-  const textContent = extractTextFromContent(content);
+  // Extract text, images, and files from content
+  const { text: textWithoutFiles, files } = extractFilesAndText(content);
   const imageContents = extractImagesFromContent(content);
   const hasImageContent = hasImages(content);
+  const hasFileContent = files.length > 0;
   const [selectedImage, setSelectedImage] = React.useState<SelectedImage | null>(null);
 
   const handleImageClick = React.useCallback((image: ImageContent, src: string) => {
@@ -36,21 +40,39 @@ export function MessageContentRenderer({
     setSelectedImage(null);
   }, []);
 
+  // For assistant messages, render text first then images (generated images appear after text)
+  // For user messages, render images first then text (attached images appear before text)
+  const imagesFirst = role === 'user';
+
   return (
     <>
       <div className={`space-y-3 ${className}`}>
-        {/* Render images first if they exist */}
-        {hasImageContent && imageContents.length > 0 && (
+        {/* Render file attachments as icons */}
+        {hasFileContent && (
+          <div className="space-y-2">
+            <FileContentPreview files={files} />
+          </div>
+        )}
+
+        {/* Render images for user messages (attached images before text) */}
+        {imagesFirst && hasImageContent && imageContents.length > 0 && (
           <div className="space-y-2">
             <MessageImages images={imageContents} onImageClick={handleImageClick} />
           </div>
         )}
 
-        {/* Render text content */}
-        {textContent && <Markdown text={textContent} isStreaming={isStreaming} />}
+        {/* Render text content (with file blocks removed) */}
+        {textWithoutFiles && <Markdown text={textWithoutFiles} isStreaming={isStreaming} />}
+
+        {/* Render images after text for assistant messages (generated images after text) */}
+        {!imagesFirst && hasImageContent && imageContents.length > 0 && (
+          <div className="space-y-2">
+            <MessageImages images={imageContents} onImageClick={handleImageClick} />
+          </div>
+        )}
 
         {/* If no content at all, show placeholder */}
-        {!textContent && !hasImageContent && (
+        {!textWithoutFiles && !hasImageContent && !hasFileContent && (
           <span className="text-zinc-500 dark:text-zinc-400 italic">No content</span>
         )}
       </div>
@@ -132,7 +154,9 @@ function MessageImage({ image, className = '', onClick }: MessageImageProps) {
       type="button"
       onClick={handleClick}
       disabled={combinedError || !hasSource}
-      className={`relative block w-full rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-800 ${
+      className={`relative block w-full rounded-lg overflow-hidden ${
+        showSpinner || combinedError ? 'bg-zinc-100 dark:bg-zinc-800' : ''
+      } ${
         combinedError || !hasSource ? 'cursor-not-allowed' : 'cursor-zoom-in'
       } focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-zinc-900 ${className}`}
       aria-label="View image"

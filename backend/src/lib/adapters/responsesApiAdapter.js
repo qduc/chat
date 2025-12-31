@@ -20,6 +20,7 @@ const RESERVED_INTERNAL_KEYS = new Set([
 
 const RESPONSES_PASSTHROUGH_KEYS = new Set([
 	'frequency_penalty',
+	'image_config',
 	'logit_bias',
 	'logprobs',
 	'metadata',

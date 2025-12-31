@@ -100,7 +100,8 @@ type ToolOutput = NonNullable<ChatMessage['tool_outputs']>[number];
 
 type AssistantSegment =
   | { kind: 'text'; text: string }
-  | { kind: 'tool_call'; toolCall: any; outputs: ToolOutput[] };
+  | { kind: 'tool_call'; toolCall: any; outputs: ToolOutput[] }
+  | { kind: 'images'; images: ImageContent[] };
 
 function formatUsageLabel(usage?: ChatMessage['usage']): string | null {
   if (!usage) return null;
@@ -137,6 +138,7 @@ function buildAssistantSegments(message: ChatMessage): AssistantSegment[] {
   }
 
   const content = extractTextFromContent(message.content);
+  const imageContents = extractImagesFromContent(message.content);
   const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
   const toolOutputs = Array.isArray(message.tool_outputs) ? message.tool_outputs : [];
   const messageEvents = Array.isArray(message.message_events) ? message.message_events : [];
@@ -158,6 +160,14 @@ function buildAssistantSegments(message: ChatMessage): AssistantSegment[] {
       Number.isFinite(call.textOffset) &&
       call.textOffset > 0
   );
+
+  // Helper to append image segment to end if present
+  const appendImagesSegment = (segments: AssistantSegment[]): AssistantSegment[] => {
+    if (imageContents.length > 0) {
+      segments.push({ kind: 'images', images: imageContents });
+    }
+    return segments;
+  };
 
   if (messageEvents.length > 0) {
     const sortedEvents = [...messageEvents].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
@@ -196,12 +206,13 @@ function buildAssistantSegments(message: ChatMessage): AssistantSegment[] {
     }
 
     if (segments.length > 0) {
-      return segments;
+      return appendImagesSegment(segments);
     }
   }
 
   if (toolCalls.length === 0) {
-    return content ? [{ kind: 'text', text: content }] : [];
+    const segments: AssistantSegment[] = content ? [{ kind: 'text', text: content }] : [];
+    return appendImagesSegment(segments);
   }
 
   // For loaded conversations (no valid textOffset), show tools first, then content
@@ -230,7 +241,7 @@ function buildAssistantSegments(message: ChatMessage): AssistantSegment[] {
       segments.push({ kind: 'text', text: content });
     }
 
-    return segments;
+    return appendImagesSegment(segments);
   }
 
   // For streaming messages with textOffset, use position-based rendering
@@ -285,7 +296,7 @@ function buildAssistantSegments(message: ChatMessage): AssistantSegment[] {
     segments.push({ kind: 'text', text: content });
   }
 
-  return segments;
+  return appendImagesSegment(segments);
 }
 
 // Memoized individual message component
@@ -713,6 +724,18 @@ const Message = React.memo<MessageProps>(
                   </div>
                 );
               }
+              if (segment.kind === 'images') {
+                if (!segment.images || segment.images.length === 0) return null;
+                return (
+                  <div key={`images-${modelId}-${segmentIndex}`} className="mt-3">
+                    <MessageContentRenderer
+                      content={segment.images}
+                      isStreaming={false}
+                      role="assistant"
+                    />
+                  </div>
+                );
+              }
               return renderToolSegment(segment, segmentIndex, modelId);
             })
           )}
@@ -985,7 +1008,11 @@ const Message = React.memo<MessageProps>(
             <>
               {isUser ? (
                 <div className="rounded-2xl px-5 py-3.5 text-base leading-relaxed bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100">
-                  <MessageContentRenderer content={message.content} isStreaming={false} />
+                  <MessageContentRenderer
+                    content={message.content}
+                    isStreaming={false}
+                    role="user"
+                  />
                 </div>
               ) : isMultiColumn ? (
                 /* Multi-column side-by-side view - stacks on mobile */
