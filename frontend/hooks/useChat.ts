@@ -224,6 +224,37 @@ function isEmptyAssistantPayload(
   return !hasContent && !hasToolCalls && !hasToolOutputs;
 }
 
+/**
+ * Helper to create content update with generated image appended
+ * Converts string content to array format and adds the image
+ */
+function createGeneratedImageContentUpdate(
+  currentContent: MessageContent,
+  imageUrl: string
+):
+  | { content: (TextContent | { type: 'image_url'; image_url: { url: string } })[] }
+  | Record<string, never> {
+  const newImageContent = {
+    type: 'image_url' as const,
+    image_url: { url: imageUrl },
+  };
+
+  let contentArray: (TextContent | { type: 'image_url'; image_url: { url: string } })[];
+  if (typeof currentContent === 'string') {
+    contentArray = currentContent ? [{ type: 'text' as const, text: currentContent }] : [];
+  } else if (Array.isArray(currentContent)) {
+    contentArray = [...currentContent] as (
+      | TextContent
+      | { type: 'image_url'; image_url: { url: string } }
+    )[];
+  } else {
+    contentArray = [];
+  }
+
+  contentArray.push(newImageContent);
+  return { content: contentArray };
+}
+
 function buildHistoryForModel(
   sourceMessages: Message[],
   targetModel: string,
@@ -1213,33 +1244,10 @@ export function useChat() {
                     return {};
                   });
                 } else if (event.type === 'generated_image') {
-                  // Handle generated images - convert content to array format if needed
                   updateMessageState(isPrimary, targetModel, (current) => {
                     const img = event.value;
                     if (!img?.image_url?.url) return {};
-
-                    const newImageContent = {
-                      type: 'image_url' as const,
-                      image_url: { url: img.image_url.url },
-                    };
-
-                    // Get existing content
-                    let contentArray: any[];
-                    if (typeof current.content === 'string') {
-                      // Convert string to array format
-                      contentArray = current.content
-                        ? [{ type: 'text', text: current.content }]
-                        : [];
-                    } else if (Array.isArray(current.content)) {
-                      contentArray = [...current.content];
-                    } else {
-                      contentArray = [];
-                    }
-
-                    // Add the new image
-                    contentArray.push(newImageContent);
-
-                    return { content: contentArray };
+                    return createGeneratedImageContentUpdate(current.content, img.image_url.url);
                   });
                 } else if (event.type === 'usage') {
                   updateMessageState(isPrimary, targetModel, (current) => {
@@ -1779,31 +1787,10 @@ export function useChat() {
                 return {};
               });
             } else if (event.type === 'generated_image') {
-              // Handle generated images - convert content to array format if needed
               updateTargetMessageState((current) => {
                 const img = event.value;
                 if (!img?.image_url?.url) return {};
-
-                const newImageContent = {
-                  type: 'image_url' as const,
-                  image_url: { url: img.image_url.url },
-                };
-
-                // Get existing content
-                let contentArray: any[];
-                if (typeof current.content === 'string') {
-                  // Convert string to array format
-                  contentArray = current.content ? [{ type: 'text', text: current.content }] : [];
-                } else if (Array.isArray(current.content)) {
-                  contentArray = [...current.content];
-                } else {
-                  contentArray = [];
-                }
-
-                // Add the new image
-                contentArray.push(newImageContent);
-
-                return { content: contentArray };
+                return createGeneratedImageContentUpdate(current.content, img.image_url.url);
               });
             } else if (event.type === 'usage') {
               updateTargetMessageState(() => ({ usage: event.value }));

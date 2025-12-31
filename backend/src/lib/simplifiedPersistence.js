@@ -582,7 +582,7 @@ export class SimplifiedPersistence {
     } else if (Array.isArray(baseContent)) {
       contentArray = [...baseContent];
     } else if (baseContent && typeof baseContent === 'object') {
-      // Handle other structured content
+      // Handle pre-structured content objects (e.g., JSON content from assistantContentJson)
       contentArray.push(this._clone(baseContent));
     }
 

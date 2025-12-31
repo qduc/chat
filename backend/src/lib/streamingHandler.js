@@ -145,7 +145,7 @@ function setupStreamEventHandlers({
 /**
  * Process a parsed chunk for persistence
  */
-function processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason, generatedImagesBuffer) {
+function processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason, generatedImagesBuffer, seenImageUrls) {
   let finishReason = null;
 
   // Capture response_id from any chunk
@@ -178,10 +178,12 @@ function processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason
     // Capture generated images from delta (streaming image generation)
     if (Array.isArray(delta.images) && delta.images.length > 0) {
       for (const img of delta.images) {
-        if (img?.image_url?.url) {
+        const url = img?.image_url?.url;
+        if (url && !seenImageUrls.has(url)) {
+          seenImageUrls.add(url);
           generatedImagesBuffer.push({
             type: 'image_url',
-            image_url: { url: img.image_url.url },
+            image_url: { url },
           });
         }
       }
@@ -250,17 +252,14 @@ function processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason
   // Capture generated images from message (non-streaming or final)
   if (Array.isArray(message?.images) && message.images.length > 0) {
     for (const img of message.images) {
-      if (img?.image_url?.url) {
-        // Check if already present to avoid duplicates
-        const exists = generatedImagesBuffer.some(
-          (existing) => existing.image_url?.url === img.image_url.url
-        );
-        if (!exists) {
-          generatedImagesBuffer.push({
-            type: 'image_url',
-            image_url: { url: img.image_url.url },
-          });
-        }
+      const url = img?.image_url?.url;
+      // Use Set for O(1) duplicate check
+      if (url && !seenImageUrls.has(url)) {
+        seenImageUrls.add(url);
+        generatedImagesBuffer.push({
+          type: 'image_url',
+          image_url: { url },
+        });
       }
     }
   }
@@ -296,6 +295,7 @@ export async function handleRegularStreaming({
   let lastFinishReason = { value: null };
   let toolCallMap = new Map(); // Accumulate streamed tool calls
   let generatedImagesBuffer = []; // Accumulate generated images during streaming
+  let seenImageUrls = new Set(); // Track seen image URLs for O(1) duplicate detection
 
   // Emit conversation metadata upfront if available so clients receive
   // the conversation id before any model chunks or [DONE]
@@ -337,7 +337,7 @@ export async function handleRegularStreaming({
 
               // Update persistence with translated chunk
               if (persistence && persistence.persist) {
-                processPersistenceChunk(translated, persistence, toolCallMap, lastFinishReason, generatedImagesBuffer);
+                processPersistenceChunk(translated, persistence, toolCallMap, lastFinishReason, generatedImagesBuffer, seenImageUrls);
               }
             }
           },
@@ -358,7 +358,7 @@ export async function handleRegularStreaming({
             chunk,
             leftover,
             (obj) => {
-              processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason, generatedImagesBuffer);
+              processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason, generatedImagesBuffer, seenImageUrls);
             },
             () => { },
             () => { }
