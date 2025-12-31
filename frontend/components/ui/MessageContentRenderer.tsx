@@ -154,7 +154,9 @@ function MessageImage({ image, className = '', onClick }: MessageImageProps) {
       type="button"
       onClick={handleClick}
       disabled={combinedError || !hasSource}
-      className={`relative block w-full rounded-lg overflow-hidden bg-zinc-100 dark:bg-zinc-800 ${
+      className={`relative block w-full rounded-lg overflow-hidden ${
+        showSpinner || combinedError ? 'bg-zinc-100 dark:bg-zinc-800' : ''
+      } ${
         combinedError || !hasSource ? 'cursor-not-allowed' : 'cursor-zoom-in'
       } focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-zinc-900 ${className}`}
       aria-label="View image"
