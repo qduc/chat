@@ -86,6 +86,14 @@ export interface TextContent {
   text: string;
 }
 
+// File content extracted from message text for UI rendering
+export interface FileContent {
+  type: 'file';
+  name: string;
+  language: string;
+  content: string;
+}
+
 export type MessageContent = string | Array<TextContent | ImageContent>;
 
 // Image attachment for local handling (before API conversion)

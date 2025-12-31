@@ -1,9 +1,9 @@
 /**
  * Message content transformation utilities
- * Handles text and image content in messages
+ * Handles text, image, and file content in messages
  */
 
-import type { MessageContent, TextContent, ImageContent } from './types';
+import type { MessageContent, TextContent, ImageContent, FileContent } from './types';
 
 /**
  * Extract text content from MessageContent (string or mixed content array)
@@ -135,4 +135,70 @@ export function normalizeMessageContent(content: MessageContent): MessageContent
   }
 
   return '';
+}
+
+// ============================================================================
+// File Content Utilities
+// ============================================================================
+
+/**
+ * Regex to match file blocks in message text.
+ * Matches: File: filename\n```language\n...content...\n```
+ * - Uses \r?\n to handle both Unix and Windows line endings
+ * - Allows optional whitespace after "File:"
+ * - Content capture is non-greedy to handle multiple file blocks
+ */
+const FILE_BLOCK_REGEX = /File:\s*(.+?)\r?\n```(\w*)\r?\n([\s\S]*?)```/g;
+
+/**
+ * Check if text contains file attachments
+ */
+export function hasFileAttachments(text: string): boolean {
+  const regex = /File:\s*(.+?)\r?\n```(\w*)\r?\n([\s\S]*?)```/;
+  return regex.test(text);
+}
+
+/**
+ * Extract file attachments from text content
+ */
+export function extractFilesFromText(text: string): FileContent[] {
+  const files: FileContent[] = [];
+  const regex = /File:\s*(.+?)\r?\n```(\w*)\r?\n([\s\S]*?)```/g;
+
+  let match;
+  while ((match = regex.exec(text)) !== null) {
+    files.push({
+      type: 'file',
+      name: match[1].trim(),
+      language: match[2] || 'text',
+      content: match[3],
+    });
+  }
+
+  return files;
+}
+
+/**
+ * Remove file blocks from text, returning the remaining user message
+ */
+export function removeFileBlocksFromText(text: string): string {
+  const regex = /File:\s*(.+?)\r?\n```(\w*)\r?\n([\s\S]*?)```/g;
+  return text.replace(regex, '').trim();
+}
+
+/**
+ * Extract files and remaining text from message content
+ */
+export function extractFilesAndText(content: MessageContent): {
+  text: string;
+  files: FileContent[];
+} {
+  const textContent = extractTextFromContent(content);
+  const files = extractFilesFromText(textContent);
+  const remainingText = removeFileBlocksFromText(textContent);
+
+  return {
+    text: remainingText,
+    files,
+  };
 }

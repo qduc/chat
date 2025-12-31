@@ -2,9 +2,10 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { X } from 'lucide-react';
 import type { MessageContent, ImageContent } from '../../lib';
-import { extractTextFromContent, extractImagesFromContent, hasImages } from '../../lib';
+import { extractImagesFromContent, hasImages, extractFilesAndText } from '../../lib';
 import Markdown from '../Markdown';
 import { useSecureImageUrl } from '../../hooks/useSecureImageUrl';
+import { FileContentPreview } from './FileContentPreview';
 
 interface MessageContentRendererProps {
   content: MessageContent;
@@ -22,10 +23,11 @@ export function MessageContentRenderer({
   isStreaming = false,
   className = '',
 }: MessageContentRendererProps) {
-  // Extract text and images from content
-  const textContent = extractTextFromContent(content);
+  // Extract text, images, and files from content
+  const { text: textWithoutFiles, files } = extractFilesAndText(content);
   const imageContents = extractImagesFromContent(content);
   const hasImageContent = hasImages(content);
+  const hasFileContent = files.length > 0;
   const [selectedImage, setSelectedImage] = React.useState<SelectedImage | null>(null);
 
   const handleImageClick = React.useCallback((image: ImageContent, src: string) => {
@@ -39,18 +41,25 @@ export function MessageContentRenderer({
   return (
     <>
       <div className={`space-y-3 ${className}`}>
-        {/* Render images first if they exist */}
+        {/* Render file attachments as icons */}
+        {hasFileContent && (
+          <div className="space-y-2">
+            <FileContentPreview files={files} />
+          </div>
+        )}
+
+        {/* Render images if they exist */}
         {hasImageContent && imageContents.length > 0 && (
           <div className="space-y-2">
             <MessageImages images={imageContents} onImageClick={handleImageClick} />
           </div>
         )}
 
-        {/* Render text content */}
-        {textContent && <Markdown text={textContent} isStreaming={isStreaming} />}
+        {/* Render text content (with file blocks removed) */}
+        {textWithoutFiles && <Markdown text={textWithoutFiles} isStreaming={isStreaming} />}
 
         {/* If no content at all, show placeholder */}
-        {!textContent && !hasImageContent && (
+        {!textWithoutFiles && !hasImageContent && !hasFileContent && (
           <span className="text-zinc-500 dark:text-zinc-400 italic">No content</span>
         )}
       </div>
