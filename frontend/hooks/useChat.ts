@@ -451,7 +451,15 @@ export function useChat() {
       return false;
     }
   });
-  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
+  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const stored = window.localStorage.getItem('rightSidebarCollapsed');
+      return stored === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [historyEnabled] = useState(true); // Make configurable if needed
 
   // Editing State
@@ -564,7 +572,17 @@ export function useChat() {
   }, []);
 
   const toggleRightSidebar = useCallback(() => {
-    setRightSidebarCollapsed((prev) => !prev);
+    setRightSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('rightSidebarCollapsed', String(next));
+        }
+      } catch {
+        // ignore storage failures
+      }
+      return next;
+    });
   }, []);
 
   // Actions - Conversations
