@@ -11,6 +11,7 @@ interface MessageContentRendererProps {
   content: MessageContent;
   isStreaming?: boolean;
   className?: string;
+  role?: 'user' | 'assistant' | 'system' | 'tool';
 }
 
 interface SelectedImage {
@@ -22,6 +23,7 @@ export function MessageContentRenderer({
   content,
   isStreaming = false,
   className = '',
+  role = 'user',
 }: MessageContentRendererProps) {
   // Extract text, images, and files from content
   const { text: textWithoutFiles, files } = extractFilesAndText(content);
@@ -38,6 +40,10 @@ export function MessageContentRenderer({
     setSelectedImage(null);
   }, []);
 
+  // For assistant messages, render text first then images (generated images appear after text)
+  // For user messages, render images first then text (attached images appear before text)
+  const imagesFirst = role === 'user';
+
   return (
     <>
       <div className={`space-y-3 ${className}`}>
@@ -48,8 +54,8 @@ export function MessageContentRenderer({
           </div>
         )}
 
-        {/* Render images if they exist */}
-        {hasImageContent && imageContents.length > 0 && (
+        {/* Render images for user messages (attached images before text) */}
+        {imagesFirst && hasImageContent && imageContents.length > 0 && (
           <div className="space-y-2">
             <MessageImages images={imageContents} onImageClick={handleImageClick} />
           </div>
@@ -57,6 +63,13 @@ export function MessageContentRenderer({
 
         {/* Render text content (with file blocks removed) */}
         {textWithoutFiles && <Markdown text={textWithoutFiles} isStreaming={isStreaming} />}
+
+        {/* Render images after text for assistant messages (generated images after text) */}
+        {!imagesFirst && hasImageContent && imageContents.length > 0 && (
+          <div className="space-y-2">
+            <MessageImages images={imageContents} onImageClick={handleImageClick} />
+          </div>
+        )}
 
         {/* If no content at all, show placeholder */}
         {!textWithoutFiles && !hasImageContent && !hasFileContent && (

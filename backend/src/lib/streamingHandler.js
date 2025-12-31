@@ -15,6 +15,7 @@ export { setupStreamingHeaders } from './streamUtils.js';
  * @param {Object} params.persistence - Simplified persistence manager
  * @param {Object} params.lastFinishReason - Reference to finish reason variable
  * @param {Map} params.toolCallMap - Accumulated tool calls during streaming
+ * @param {Array} params.generatedImagesBuffer - Accumulated generated images during streaming
  */
 function setupStreamEventHandlers({
   upstream,
@@ -23,6 +24,7 @@ function setupStreamEventHandlers({
   persistence,
   lastFinishReason,
   toolCallMap,
+  generatedImagesBuffer,
   abortContext,
   onComplete,
 }) {
@@ -46,6 +48,14 @@ function setupStreamEventHandlers({
             callIds: toolCalls.map(tc => tc?.id)
           });
           persistence.addToolCalls(toolCalls);
+        }
+
+        // Add accumulated generated images to persistence before finalizing
+        if (generatedImagesBuffer && generatedImagesBuffer.length > 0) {
+          logger.debug('[streamingHandler] Adding generated images to persistence', {
+            count: generatedImagesBuffer.length
+          });
+          persistence.setGeneratedImages(generatedImagesBuffer);
         }
 
         const finishReason = overrideFinishReason
@@ -135,7 +145,7 @@ function setupStreamEventHandlers({
 /**
  * Process a parsed chunk for persistence
  */
-function processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason) {
+function processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason, generatedImagesBuffer, seenImageUrls) {
   let finishReason = null;
 
   // Capture response_id from any chunk
@@ -163,6 +173,20 @@ function processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason
 
     if (Array.isArray(delta.reasoning_details) && delta.reasoning_details.length > 0) {
       persistence.setReasoningDetails(delta.reasoning_details);
+    }
+
+    // Capture generated images from delta (streaming image generation)
+    if (Array.isArray(delta.images) && delta.images.length > 0) {
+      for (const img of delta.images) {
+        const url = img?.image_url?.url;
+        if (url && !seenImageUrls.has(url)) {
+          seenImageUrls.add(url);
+          generatedImagesBuffer.push({
+            type: 'image_url',
+            image_url: { url },
+          });
+        }
+      }
     }
 
     // Capture tool_calls from delta (streaming tool calls)
@@ -225,6 +249,21 @@ function processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason
     persistence.setReasoningDetails(message.reasoning_details);
   }
 
+  // Capture generated images from message (non-streaming or final)
+  if (Array.isArray(message?.images) && message.images.length > 0) {
+    for (const img of message.images) {
+      const url = img?.image_url?.url;
+      // Use Set for O(1) duplicate check
+      if (url && !seenImageUrls.has(url)) {
+        seenImageUrls.add(url);
+        generatedImagesBuffer.push({
+          type: 'image_url',
+          image_url: { url },
+        });
+      }
+    }
+  }
+
   // Capture complete tool_calls from message (non-streaming or final)
   if (Array.isArray(message?.tool_calls) && message.tool_calls.length > 0) {
     for (const toolCall of message.tool_calls) {
@@ -255,6 +294,8 @@ export async function handleRegularStreaming({
   let translationLeftover = '';
   let lastFinishReason = { value: null };
   let toolCallMap = new Map(); // Accumulate streamed tool calls
+  let generatedImagesBuffer = []; // Accumulate generated images during streaming
+  let seenImageUrls = new Set(); // Track seen image URLs for O(1) duplicate detection
 
   // Emit conversation metadata upfront if available so clients receive
   // the conversation id before any model chunks or [DONE]
@@ -296,7 +337,7 @@ export async function handleRegularStreaming({
 
               // Update persistence with translated chunk
               if (persistence && persistence.persist) {
-                processPersistenceChunk(translated, persistence, toolCallMap, lastFinishReason);
+                processPersistenceChunk(translated, persistence, toolCallMap, lastFinishReason, generatedImagesBuffer, seenImageUrls);
               }
             }
           },
@@ -317,7 +358,7 @@ export async function handleRegularStreaming({
             chunk,
             leftover,
             (obj) => {
-              processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason);
+              processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason, generatedImagesBuffer, seenImageUrls);
             },
             () => { },
             () => { }
@@ -336,6 +377,7 @@ export async function handleRegularStreaming({
     persistence,
     lastFinishReason,
     toolCallMap,
+    generatedImagesBuffer,
     abortContext,
     onComplete,
   });

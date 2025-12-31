@@ -4,7 +4,7 @@ This document provides essential knowledge for AI agents to be immediately produ
 
 ## Project Overview
 
-**ChatForge** is a modern chat application with a Next.js frontend and Node.js backend, designed as an OpenAI API proxy with enhanced features like conversation persistence, tool orchestration, multi-provider support, JWT authentication, user-scoped multi-tenancy, image/file uploads, advanced reasoning controls, prompt caching optimization, and persistent memory via journal tool.
+**ChatForge** is a modern chat application with a Next.js frontend and Node.js backend, designed as an OpenAI API proxy with enhanced features like conversation persistence, tool orchestration, multi-provider support, JWT authentication, user-scoped multi-tenancy, image/file uploads, advanced reasoning controls, prompt caching optimization, persistent memory via journal tool, model comparison mode, conversation forking, and Electron desktop app support.
 
 ## Architecture Overview
 
@@ -51,6 +51,12 @@ chat/
 9. **Reasoning Controls**: Support for reasoning effort levels and extended thinking modes
 10. **Prompt Caching**: Automatic prompt caching with cache breakpoints to reduce costs and latency
 11. **Persistent Memory**: Journal tool provides AI with cross-conversation memory storage
+12. **Model Comparison Mode**: Side-by-side comparison of responses from multiple models with isolated histories
+13. **Conversation Forking**: Fork conversations at any point to explore alternative paths
+14. **Parallel Tool Execution**: Configurable concurrent tool execution for improved performance
+15. **Streaming Control**: Ability to abort streaming responses and automatic checkpoint persistence
+16. **Desktop App**: Cross-platform Electron app with auto-login and native packaging
+17. **Enhanced WebFetch**: Playwright-based browser automation for SPA support with specialized content extractors
 
 ## Development Workflow
 
@@ -140,8 +146,10 @@ chat/
 **Tool System Philosophy**:
 - Tools are modular, independent units
 - Registry-based discovery and execution
-- Tools can execute in parallel when supported
+- Tools can execute in parallel with configurable concurrency (user-configurable max iterations)
 - Backend expands simplified tool names to full specifications
+- WebFetch tool supports Playwright-based browser automation for SPAs with specialized extractors for Reddit, StackOverflow, and other sites
+- Automatic checkpoint persistence ensures buffered tool calls/outputs survive client disconnects
 
 **Database Philosophy**:
 - User-based data isolation at query level (enforced with NOT NULL constraints on user_id)
@@ -173,10 +181,16 @@ chat/
 - Authentication-aware UI components with login/register flows
 - Image handling with drag-and-drop, paste support, and preview modals
 - File upload support with drag-and-drop for text files
-- Enhanced markdown rendering with language detection, syntax highlighting, and copy functionality
+- Enhanced markdown rendering with language detection, syntax highlighting, copy functionality, code wrapping, and HTML preview
 - Model capabilities dynamically adjust UI based on selected model features
 - Reasoning controls (effort slider) shown conditionally based on model support
 - User settings UI for per-user API key management
+- Model comparison mode with multi-column layout for side-by-side responses
+- Conversation forking UI integrated into message toolbars
+- Toast notifications for user feedback
+- Draft message persistence with auto-save
+- Abort streaming button for canceling in-progress responses
+- Mobile-responsive design with auto-hide scroll buttons
 
 ## Core Conventions
 
@@ -195,11 +209,11 @@ chat/
 ### Universal Rules
 
 - **Authentication**: Always check user authentication for data operations (user_id is required and enforced)
-- **Error Handling**: Use structured error responses, sanitize upstream errors
+- **Error Handling**: Use structured error responses, sanitize upstream errors, exponential backoff retry logic for API calls
 - **Logging**: Structured logging for debugging and monitoring
 - **Type Safety**: TypeScript strict mode on frontend, JSDoc or validation on backend
 - **Testing**: Write tests before committing, both services must pass
-- **Code Quality**: ESLint configured for both frontend and backend with strict linting rules
+- **Code Quality**: ESLint configured for both frontend and backend with strict linting rules enforced by Husky pre-commit hooks
 
 ## Important Architectural Decisions
 
@@ -215,9 +229,22 @@ chat/
 - **Conversation Snapshots**: Each conversation maintains complete settings snapshot for reproducibility
 - **Reasoning Controls**: Advanced reasoning features (effort levels, extended thinking) available across compatible models
 - **Prompt Caching**: Automatic cache breakpoint insertion for Anthropic models to reduce token costs
-- **User Settings**: Per-user API keys for tools (Tavily, Exa, SearXNG) stored securely
+- **User Settings**: Per-user API keys for tools (Tavily, Exa, SearXNG) and configurable max tool iterations stored securely
 - **Journal Tool**: Persistent memory system allowing AI to store and retrieve notes across conversations
-- **Performance**: In-memory caching, model filtering by provider, optimized rendering, and batch database operations
+- **Performance**: In-memory caching, model filtering by provider, optimized rendering, batch database operations, and model caching with background refresh
+- **Model Comparison**: Multi-model comparison mode with isolated conversation histories for side-by-side evaluation
+- **Conversation Forking**: Ability to fork conversations at any message to explore alternative paths
+- **Parallel Tool Execution**: Configurable concurrent tool execution with user-defined max iterations
+- **Streaming Abort**: Client-initiated abort of streaming responses with automatic checkpoint persistence
+- **WebFetch Enhancement**: Playwright-based browser automation with specialized content extractors for Reddit, StackOverflow, and SPA support
+- **Draft Persistence**: Automatic draft message saving across sessions
+- **HTML Preview**: In-modal HTML rendering for code blocks
+- **Electron App**: Cross-platform desktop app with auto-login and native packaging
+- **Linked Conversations**: Support for conversation linking and retrieval in conversation context
+- **Reasoning Format Support**: Support for reasoning_format parameter across compatible models
+- **Retry Logic**: Exponential backoff for API calls (particularly Gemini 429 errors) with configurable retry strategy
+- **Code Quality**: Husky pre-commit hooks enforce linting before commits
+- **Toast Notifications**: User-facing notifications for errors and success messages
 
 ## Finding Your Way Around
 
@@ -239,17 +266,23 @@ chat/
 **UI components**: Check `frontend/components/` organized by feature:
   - Main chat components: `ChatV2.tsx`, `MessageList.tsx`, `MessageInput.tsx`
   - Layout: `ChatHeader.tsx`, `ChatSidebar.tsx`, `RightSidebar.tsx`
-  - Markdown rendering: `Markdown.tsx`
+  - Markdown rendering: `Markdown.tsx` (includes HTML preview, code wrapping, syntax highlighting)
   - Settings: `SettingsModal.tsx`
+  - Model selection: `ModelSelector.tsx`, `CompareSelector.tsx` (unified base component pattern)
   - UI primitives: `components/ui/`
+  - Toast notifications: Check toast integration in relevant components
 **Image handling**: Check `frontend/components/ui/ImagePreview.tsx` (exports both `ImagePreview` and `ImageUploadZone`)
 **File handling**: Check `backend/src/routes/files.js` for file upload API and `frontend/lib/api.ts` for client integration
 **Authentication**: Check `backend/src/routes/auth.js` for auth routes and `frontend/contexts/AuthContext.tsx` for client-side auth state
 **User settings**: Check `backend/src/routes/settings.js` for settings API and `frontend/hooks/useSettings.ts` (if exists) for client integration
 **Journal tool**: Check `backend/src/lib/tools/journal.js` for persistent memory implementation
+**WebFetch tool**: Check `backend/src/lib/tools/webFetch.js` for Playwright-based browser automation and specialized content extractors
+**Electron app**: Check `electron/` directory for desktop app packaging and configuration
+**Model comparison**: Check `frontend/hooks/useChat.ts` for comparison mode state management
+**Conversation forking**: Check conversation forking logic in `frontend/components/` message toolbar components
 **Documentation**: Check `docs/` for ADRs and detailed specs
 **Backend API Specification**: Check `docs/backend_api_spec.md` for the complete backend API specification
-**Linting**: ESLint configs in both `frontend/` and `backend/` directories
+**Linting**: ESLint configs in both `frontend/` and `backend/` directories, Husky hooks in `.husky/`
 **Upstream Logging**: Request and response of upstream API are in `backend/logs/` folder. These files are very long, only read a dozen of lines from the bottom. You can read them without executing in docker container, they have been mounted to this project directory.
 
 ---

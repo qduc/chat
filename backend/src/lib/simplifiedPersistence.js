@@ -43,6 +43,7 @@ export class SimplifiedPersistence {
     this.currentMessageId = null; // Track current assistant message ID for tool call persistence
     this.toolCalls = []; // Buffer tool calls during streaming
     this.toolOutputs = []; // Buffer tool outputs during streaming
+    this.generatedImages = []; // Buffer generated images during streaming
     this.assistantContentJson = null; // Preserve structured assistant content when available
     this.reasoningDetails = null; // Structured reasoning blocks captured from providers
     this.reasoningTextBuffer = ''; // Accumulate reasoning text during streaming when structured data absent
@@ -263,6 +264,7 @@ export class SimplifiedPersistence {
     this.assistantSeq = this.conversationManager.getNextSequence(this.conversationId);
     this.assistantBuffer = '';
     this.assistantContentJson = null;
+    this.generatedImages = [];
     this.reasoningDetails = null;
     this.reasoningTextBuffer = '';
     this.reasoningTokens = null;
@@ -534,6 +536,15 @@ export class SimplifiedPersistence {
     this.upstreamProvider = String(provider);
   }
 
+  /**
+   * Set generated images from model response
+   * @param {Array} images - Array of generated image objects
+   */
+  setGeneratedImages(images) {
+    if (!this.persist || !Array.isArray(images)) return;
+    this.generatedImages = images;
+  }
+
   _finalizeReasoningDetails() {
     if (Array.isArray(this.reasoningDetails)) {
       return this._clone(this.reasoningDetails);
@@ -549,6 +560,45 @@ export class SimplifiedPersistence {
 
     return null;
   }
+
+  /**
+   * Finalize content with generated images
+   * Merges text content and generated images into an array format
+   * @returns {string|Array} The final content with images
+   */
+  _finalizeContentWithImages() {
+    const baseContent = this.assistantContentJson ?? this.assistantBuffer;
+
+    // If no generated images, return content as-is
+    if (!Array.isArray(this.generatedImages) || this.generatedImages.length === 0) {
+      return baseContent;
+    }
+
+    // Convert content to array format if needed and append images
+    let contentArray = [];
+
+    if (typeof baseContent === 'string' && baseContent) {
+      contentArray.push({ type: 'text', text: baseContent });
+    } else if (Array.isArray(baseContent)) {
+      contentArray = [...baseContent];
+    } else if (baseContent && typeof baseContent === 'object') {
+      // Handle pre-structured content objects (e.g., JSON content from assistantContentJson)
+      contentArray.push(this._clone(baseContent));
+    }
+
+    // Append generated images
+    for (const img of this.generatedImages) {
+      if (img?.image_url?.url) {
+        contentArray.push({
+          type: 'image_url',
+          image_url: { url: img.image_url.url },
+        });
+      }
+    }
+
+    return contentArray.length > 0 ? contentArray : '';
+  }
+
   /**
    * Get current content length for textOffset tracking
    * @returns {number} Current length of assistant content
@@ -630,13 +680,14 @@ export class SimplifiedPersistence {
    */
   recordAssistantFinal({ finishReason = 'stop', responseId = null } = {}) {
     if (!this.persist || !this.conversationId || this.assistantSeq === null) return;
+    const finalContent = this._finalizeContentWithImages();
       if (this.currentMessageId) {
         // Update existing draft to final
         updateMessageContent({
           messageId: this.currentMessageId,
           conversationId: this.conversationId,
           userId: this.userId,
-          content: this.assistantContentJson ?? this.assistantBuffer,
+          content: finalContent,
           status: 'final',
           finishReason,
           responseId: responseId || this.responseId,
@@ -666,7 +717,7 @@ export class SimplifiedPersistence {
               messageId: found.id,
               conversationId: this.conversationId,
               userId: this.userId,
-              content: this.assistantContentJson ?? this.assistantBuffer,
+              content: finalContent,
               status: 'final',
               finishReason,
               responseId: responseId || this.responseId,
@@ -684,7 +735,7 @@ export class SimplifiedPersistence {
             logger.warn('[SimplifiedPersistence] Failed to update found draft; falling back to insert:', err?.message || err);
             const result = this.conversationManager.recordAssistantMessage({
               conversationId: this.conversationId,
-              content: this.assistantContentJson ?? this.assistantBuffer,
+              content: finalContent,
               seq: this.assistantSeq,
               finishReason,
               responseId: responseId || this.responseId,
@@ -704,7 +755,7 @@ export class SimplifiedPersistence {
           // No existing row found — insert as final
           const result = this.conversationManager.recordAssistantMessage({
             conversationId: this.conversationId,
-            content: this.assistantContentJson ?? this.assistantBuffer,
+            content: finalContent,
             seq: this.assistantSeq,
             finishReason,
             responseId: responseId || this.responseId,

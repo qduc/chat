@@ -6,26 +6,45 @@
 [![Node.js](https://img.shields.io/badge/node-%3E%3D18-brightgreen.svg)](https://nodejs.org)
 [![Docker](https://img.shields.io/badge/docker-ready-blue.svg)](https://www.docker.com)
 
-ChatForge is a full-stack AI chat application featuring a Next.js 15 frontend and Node.js backend. It acts as an OpenAI-compatible API proxy with enhanced capabilities including conversation persistence, server-side tool orchestration, and multi-provider support.
+ChatForge is a full-stack AI chat application featuring a Next.js 15 frontend and Node.js backend. It acts as an OpenAI-compatible API proxy with enhanced capabilities including conversation persistence, server-side tool orchestration, multi-provider support, model comparison mode, conversation forking, and cross-platform desktop app support.
 
 <img width="1384" height="1005" alt="Screenshot_20251226_222543" src="https://github.com/user-attachments/assets/51b5ee8b-58be-4e1d-a674-b0a202c8b03b" />
 
 ## Features
 
-- **🤖 Server-Side Tool Orchestration** - Unified tool calling with iterative workflows, thinking support, and intelligent error handling
+### Core Capabilities
+- **🤖 Server-Side Tool Orchestration** - Unified tool calling with iterative workflows, thinking support, parallel execution, and intelligent error handling
 - **💬 Real-Time Streaming** - Server-Sent Events (SSE) with tool execution visibility and abort support
 - **💾 Conversation Persistence** - SQLite-backed storage with automatic retention cleanup and migration system
 - **🔌 Multi-Provider Support** - OpenAI-compatible interface with OpenAI, Anthropic, and Gemini providers
-- **🎨 Modern UI** - React 19 with markdown rendering, syntax highlighting, and responsive design
+- **🎨 Modern UI** - React 19 with markdown rendering, syntax highlighting, code wrapping, HTML preview, and responsive design
 - **🗂️ Prompt Management** - Built-in and custom system prompts with conversation-aware selection
+
+### Advanced Features
+- **🔀 Model Comparison Mode** - Side-by-side comparison of multiple models with isolated conversation histories
+- **🍴 Conversation Forking** - Fork conversations at any message to explore alternative paths
+- **⚡ Parallel Tool Execution** - Configurable concurrent tool execution for improved performance
+- **🌐 Enhanced WebFetch** - Playwright-based browser automation with SPA support and specialized extractors for Reddit, StackOverflow
+- **🔄 Streaming Control** - Abort streaming responses with automatic checkpoint persistence
+- **💾 Draft Persistence** - Automatic draft message saving across sessions
+- **🖥️ Desktop App** - Cross-platform Electron app with auto-login and native packaging
+- **🔗 Linked Conversations** - Support for conversation linking and retrieval in context
+
+### Infrastructure & Security
 - **🐳 Docker Ready** - Development and production Docker configurations with hot reload support
 - **🔐 Authentication & User Management** - JWT-based authentication with registration, login, and refresh tokens
 - **👤 User-Scoped Multi-Tenancy** - Per-user provider configuration with isolated conversations and settings
+- **🔁 Retry Logic** - Exponential backoff for API calls with configurable retry strategy
+- **✅ Code Quality** - Husky pre-commit hooks enforce linting before commits
+- **🔔 Toast Notifications** - User-facing notifications for errors and success messages
+
+### AI Capabilities
 - **🖼️ Image Upload & Vision Support** - Multimodal vision support with drag-and-drop UI
 - **📎 File Attachment Support** - Text file upload with content extraction
 - **🧠 Reasoning Controls** - Support for reasoning effort and extended thinking modes
 - **💾 Prompt Caching Optimization** - Automatic cache breakpoints to reduce token costs
 - **📓 Journal Tool** - Persistent memory tool for cross-conversation AI memory
+- **🎯 Model Caching** - Background refresh and batch fetching for optimal performance
 
 ## Prerequisites
 

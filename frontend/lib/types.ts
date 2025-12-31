@@ -260,7 +260,7 @@ export interface MessageEvent {
 }
 
 export interface ChatEvent {
-  type: 'text' | 'reasoning' | 'tool_call' | 'tool_output' | 'usage' | 'final';
+  type: 'text' | 'reasoning' | 'tool_call' | 'tool_output' | 'usage' | 'final' | 'generated_image';
   value: any;
 }
 
