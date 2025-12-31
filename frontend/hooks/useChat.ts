@@ -394,7 +394,20 @@ export function useChat() {
   const [loadingConversations, setLoadingConversations] = useState(false);
 
   // UI State
-  const [input, setInput] = useState('');
+  const [input, setInputState] = useState('');
+
+  const clearError = useCallback(() => {
+    setError(null);
+    setPending((prev) => (prev.error ? { ...prev, error: undefined } : prev));
+  }, []);
+
+  const setInput = useCallback(
+    (val: string | ((prev: string) => string)) => {
+      setInputState(val);
+      clearError();
+    },
+    [clearError]
+  );
   const [status, setStatus] = useState<Status>('idle');
   const [error, setError] = useState<string | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
@@ -422,6 +435,7 @@ export function useChat() {
   const setModel = useCallback((m: string) => {
     setModelState(m);
     modelRef.current = m;
+    clearError();
     try {
       if (typeof window !== 'undefined') {
         window.localStorage.setItem(SELECTED_MODEL_KEY, m);
@@ -523,6 +537,7 @@ export function useChat() {
     async (id: string) => {
       try {
         setLoadingConversations(true);
+        clearError();
 
         // Clear draft for the previous conversation when switching
         if (user?.id && conversationId && conversationId !== id) {
@@ -2022,37 +2037,82 @@ export function useChat() {
         providerIdRef.current = nextValue;
         return nextValue;
       });
+      clearError();
     },
-    []
+    [clearError]
   );
 
-  const setUseToolsWrapper = useCallback((value: boolean) => {
-    setUseTools(value);
-    useToolsRef.current = value;
-  }, []);
+  const setUseToolsWrapper = useCallback(
+    (value: boolean) => {
+      setUseTools(value);
+      useToolsRef.current = value;
+      clearError();
+    },
+    [clearError]
+  );
 
-  const setEnabledToolsWrapper = useCallback((tools: string[]) => {
-    setEnabledTools(tools);
-    enabledToolsRef.current = tools;
-  }, []);
+  const setEnabledToolsWrapper = useCallback(
+    (tools: string[]) => {
+      setEnabledTools(tools);
+      enabledToolsRef.current = tools;
+      clearError();
+    },
+    [clearError]
+  );
 
-  const setShouldStreamWrapper = useCallback((value: boolean) => {
-    setShouldStream(value);
-    shouldStreamRef.current = value;
-    // Control upstream streaming based on user toggle
-    // This affects whether backend requests streaming from upstream provider
-    providerStreamRef.current = value;
-  }, []);
+  const setShouldStreamWrapper = useCallback(
+    (value: boolean) => {
+      setShouldStream(value);
+      shouldStreamRef.current = value;
+      // Control upstream streaming based on user toggle
+      // This affects whether backend requests streaming from upstream provider
+      providerStreamRef.current = value;
+      clearError();
+    },
+    [clearError]
+  );
 
-  const setQualityLevelWrapper = useCallback((level: QualityLevel) => {
-    setQualityLevel(level);
-    qualityLevelRef.current = level;
-  }, []);
+  const setQualityLevelWrapper = useCallback(
+    (level: QualityLevel) => {
+      setQualityLevel(level);
+      qualityLevelRef.current = level;
+      clearError();
+    },
+    [clearError]
+  );
 
-  const setActiveSystemPromptIdWrapper = useCallback((id: string | null | undefined) => {
-    setActiveSystemPromptId(id);
-    activeSystemPromptIdRef.current = id;
-  }, []);
+  const setActiveSystemPromptIdWrapper = useCallback(
+    (id: string | null | undefined) => {
+      setActiveSystemPromptId(id);
+      activeSystemPromptIdRef.current = id;
+      clearError();
+    },
+    [clearError]
+  );
+
+  const setImagesWrapper = useCallback(
+    (imgs: any[] | ((prev: any[]) => any[])) => {
+      setImages(imgs);
+      clearError();
+    },
+    [clearError]
+  );
+
+  const setFilesWrapper = useCallback(
+    (fls: any[] | ((prev: any[]) => any[])) => {
+      setFiles(fls);
+      clearError();
+    },
+    [clearError]
+  );
+
+  const setCompareModelsWrapper = useCallback(
+    (models: string[] | ((prev: string[]) => string[])) => {
+      setCompareModels(models);
+      clearError();
+    },
+    [clearError]
+  );
 
   // Load user profile on mount
   useEffect(() => {
@@ -2226,10 +2286,10 @@ export function useChat() {
     setEnabledTools: setEnabledToolsWrapper,
     setShouldStream: setShouldStreamWrapper,
     setQualityLevel: setQualityLevelWrapper,
-    setImages,
-    setFiles,
+    setImages: setImagesWrapper,
+    setFiles: setFilesWrapper,
     setActiveSystemPromptId: setActiveSystemPromptIdWrapper,
-    setCompareModels,
+    setCompareModels: setCompareModelsWrapper,
     toggleSidebar,
     toggleRightSidebar,
     selectConversation,
