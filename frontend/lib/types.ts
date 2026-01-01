@@ -86,6 +86,21 @@ export interface TextContent {
   text: string;
 }
 
+// Audio input content for OpenRouter/OpenAI-style chat completions
+// Note: OpenRouter docs sometimes show `inputAudio` (SDK shape) while the
+// OpenAI-compatible HTTP API commonly uses `input_audio`. We accept either.
+export interface InputAudioContent {
+  type: 'input_audio';
+  input_audio?: {
+    data: string; // base64 (no data: prefix)
+    format: string; // e.g. wav, mp3, m4a, flac
+  };
+  inputAudio?: {
+    data: string;
+    format: string;
+  };
+}
+
 // File content extracted from message text for UI rendering
 export interface FileContent {
   type: 'file';
@@ -94,7 +109,18 @@ export interface FileContent {
   content: string;
 }
 
-export type MessageContent = string | Array<TextContent | ImageContent>;
+export type MessageContent = string | Array<TextContent | ImageContent | InputAudioContent>;
+
+// Audio attachment for local handling (before conversion to content parts)
+export interface AudioAttachment {
+  id: string;
+  file: File;
+  url: string; // blob URL for preview
+  name: string;
+  size: number;
+  type: string;
+  format?: string; // e.g. wav, mp3
+}
 
 // Image attachment for local handling (before API conversion)
 export interface ImageAttachment {

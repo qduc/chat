@@ -192,6 +192,59 @@ describe('PUT /v1/conversations/:id/messages/:messageId/edit', () => {
     });
   });
 
+  test('edits message with audio - preserves input_audio content when text is updated', async () => {
+    const convId = 'conv-edit-audio-1';
+    createConversation({ id: convId, sessionId, userId, title: 'Audio Edit Test', model: 'm1' });
+
+    const mixedContent = [
+      { type: 'text', text: 'Please transcribe this:' },
+      { type: 'input_audio', input_audio: { data: 'AAAA', format: 'wav' } },
+    ];
+
+    const u1 = insertUserMessage({ conversationId: convId, content: mixedContent, seq: 1 });
+    insertAssistantFinal({ conversationId: convId, content: 'Sure.', seq: 2, finishReason: 'stop' });
+
+    const app = makeApp();
+    await withServer(app, async (port) => {
+      const updatedContent = [
+        { type: 'text', text: 'Transcribe this audio:' },
+        { type: 'input_audio', input_audio: { data: 'AAAA', format: 'wav' } },
+      ];
+
+      const res = await fetch(
+        `http://127.0.0.1:${port}/v1/conversations/${convId}/messages/${u1.id}/edit`,
+        {
+          method: 'PUT',
+          headers: makeAuthHeaders(true),
+          body: JSON.stringify({ content: updatedContent }),
+        }
+      );
+
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.ok(Array.isArray(body.message.content));
+      assert.equal(body.message.content.length, 2);
+      assert.equal(body.message.content[0].type, 'text');
+      assert.equal(body.message.content[0].text, 'Transcribe this audio:');
+      assert.equal(body.message.content[1].type, 'input_audio');
+      assert.equal(body.message.content[1].input_audio.format, 'wav');
+      assert.equal(body.message.content[1].input_audio.data, 'AAAA');
+
+      const newConvId = body.new_conversation_id;
+      assert.ok(newConvId);
+
+      const resNew = await fetch(`http://127.0.0.1:${port}/v1/conversations/${newConvId}`, {
+        headers: makeAuthHeaders(),
+      });
+      const newBody = await resNew.json();
+      assert.equal(newBody.messages.length, 1);
+      const editedMessage = newBody.messages[0];
+      assert.ok(Array.isArray(editedMessage.content));
+      assert.equal(editedMessage.content[1].type, 'input_audio');
+      assert.equal(editedMessage.content[1].input_audio.format, 'wav');
+    });
+  });
+
   test('rejects edit with empty content', async () => {
     const convId = 'conv-edit-empty';
     createConversation({ id: convId, sessionId, userId, title: 'Empty', model: 'm1' });

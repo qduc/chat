@@ -815,6 +815,8 @@ export function ChatV2() {
                   modelCapabilities={chat.modelCapabilities}
                   images={chat.images}
                   onImagesChange={chat.setImages}
+                  audios={chat.audios}
+                  onAudiosChange={chat.setAudios}
                   files={chat.files}
                   onFilesChange={chat.setFiles}
                   disabled={!canSend}

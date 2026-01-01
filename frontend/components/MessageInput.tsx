@@ -7,6 +7,7 @@ import {
   Zap,
   ImagePlus,
   FileText,
+  AudioLines,
   Globe,
   Paperclip,
 } from 'lucide-react';
@@ -19,11 +20,14 @@ import {
   type ImageUploadProgress,
   type FileAttachment,
   type FileUploadProgress,
+  type AudioAttachment,
 } from '../lib';
+import { inferAudioFormat, isAudioFile } from '../lib/audioUtils';
 import Toggle from './ui/Toggle';
 import QualitySlider from './ui/QualitySlider';
 import { ImagePreview, ImageUploadZone } from './ui/ImagePreview';
 import { FilePreview } from './ui/FilePreview';
+import { AudioPreview } from './ui/AudioPreview';
 import Tooltip from './ui/Tooltip';
 import type { QualityLevel } from './ui/QualitySlider';
 
@@ -45,6 +49,8 @@ interface MessageInputProps {
   modelCapabilities?: Record<string, any>; // Model capabilities from provider
   images?: ImageAttachment[];
   onImagesChange?: (images: ImageAttachment[]) => void;
+  audios?: AudioAttachment[];
+  onAudiosChange?: (audios: AudioAttachment[]) => void;
   files?: FileAttachment[];
   onFilesChange?: (files: FileAttachment[]) => void;
   disabled?: boolean;
@@ -73,6 +79,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     modelCapabilities = {},
     images = [],
     onImagesChange,
+    audios = [],
+    onAudiosChange,
     files = [],
     onFilesChange,
     disabled = false,
@@ -84,6 +92,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const toolsDropdownRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const audioInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const attachDropdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -108,6 +117,17 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   const [imageUploadProgress, setImageUploadProgress] = useState<ImageUploadProgress[]>([]);
   const [fileUploadProgress, setFileUploadProgress] = useState<FileUploadProgress[]>([]);
   const [attachOpen, setAttachOpen] = useState(false);
+
+  const generateId = () => {
+    try {
+      if (typeof crypto !== 'undefined' && typeof (crypto as any).randomUUID === 'function') {
+        return (crypto as any).randomUUID();
+      }
+    } catch {
+      // ignore
+    }
+    return `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  };
 
   // ===== COMPUTED VALUES =====
   // Check if both search tools are enabled
@@ -372,6 +392,58 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     e.target.value = '';
   };
 
+  // Audio handling (client-side; encoded to base64 when sending)
+  const handleAudioFiles = (audioFiles: File[]) => {
+    if (inputLocked) return;
+    if (!onAudiosChange) return;
+
+    const next = audioFiles
+      .filter((f) => isAudioFile(f))
+      .map((file) => {
+        const url = URL.createObjectURL(file);
+        return {
+          id: generateId(),
+          file,
+          url,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          format: inferAudioFormat(file),
+        } as AudioAttachment;
+      });
+
+    if (next.length > 0) {
+      onAudiosChange([...(audios || []), ...next]);
+    }
+  };
+
+  const handleRemoveAudio = (audioId: string) => {
+    if (!onAudiosChange) return;
+    const audioToRemove = (audios || []).find((a) => a.id === audioId);
+    if (audioToRemove?.url) {
+      try {
+        URL.revokeObjectURL(audioToRemove.url);
+      } catch {
+        // ignore
+      }
+    }
+    onAudiosChange((audios || []).filter((a) => a.id !== audioId));
+  };
+
+  const handleAudioUploadClick = () => {
+    if (inputLocked) return;
+    audioInputRef.current?.click();
+  };
+
+  const handleAudioInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (inputLocked) return;
+    const audioFiles = Array.from(e.target.files || []);
+    if (audioFiles.length > 0) {
+      handleAudioFiles(audioFiles);
+    }
+    e.target.value = '';
+  };
+
   // Tools handling
   const handleSearchToggle = (enabled: boolean) => {
     if (inputLocked) return;
@@ -395,9 +467,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   // Combined file handler for drag and drop (both images and text files)
   const handleDroppedFiles = async (droppedFiles: File[]) => {
     if (inputLocked) return;
-    // Separate images from text files
+    // Separate images, audio, and (likely) text files
     const imageFiles = droppedFiles.filter((file) => file.type.startsWith('image/'));
-    const textFiles = droppedFiles.filter((file) => !file.type.startsWith('image/'));
+    const audioFiles = droppedFiles.filter((file) => isAudioFile(file));
+    const textFiles = droppedFiles.filter(
+      (file) => !file.type.startsWith('image/') && !isAudioFile(file)
+    );
 
     // Handle images
     if (imageFiles.length > 0 && onImagesChange) {
@@ -407,6 +482,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     // Handle text files
     if (textFiles.length > 0 && onFilesChange) {
       void handleFileFiles(textFiles);
+    }
+
+    // Handle audio
+    if (audioFiles.length > 0 && onAudiosChange) {
+      handleAudioFiles(audioFiles);
     }
   };
 
@@ -454,10 +534,20 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
               </div>
             )}
 
+            {/* ===== AUDIO PREVIEWS ===== */}
+            {audios.length > 0 && (
+              <div className="p-4 pb-2 border-b border-zinc-100 dark:border-zinc-800">
+                <AudioPreview
+                  audios={audios}
+                  onRemove={onAudiosChange ? handleRemoveAudio : undefined}
+                />
+              </div>
+            )}
+
             {/* ===== TEXT INPUT WITH IMAGE/FILE UPLOAD ===== */}
             <div className="flex items-start gap-3 p-3 sm:p-4">
               {/* Attach button */}
-              {(onImagesChange || onFilesChange) && (
+              {(onImagesChange || onFilesChange || onAudiosChange) && (
                 <div className="relative" ref={attachDropdownRef}>
                   {attachOpen ? (
                     <button
@@ -465,7 +555,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                       onClick={() => setAttachOpen(!attachOpen)}
                       disabled={controlsDisabled}
                       className={`flex-shrink-0 p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                        images.length > 0 || files.length > 0
+                        images.length > 0 || files.length > 0 || audios.length > 0
                           ? 'text-zinc-900 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-800'
                           : 'text-zinc-500 dark:text-zinc-400'
                       }`}
@@ -480,7 +570,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                         onClick={() => setAttachOpen(!attachOpen)}
                         disabled={controlsDisabled}
                         className={`flex-shrink-0 p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                          images.length > 0 || files.length > 0
+                          images.length > 0 || files.length > 0 || audios.length > 0
                             ? 'text-zinc-900 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-800'
                             : 'text-zinc-500 dark:text-zinc-400'
                         }`}
@@ -504,6 +594,20 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                           className="w-full text-left p-2.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm flex items-center text-zinc-700 dark:text-zinc-300 transition-colors"
                         >
                           <ImagePlus className="w-4 h-4 mr-2.5" /> Upload Image
+                        </button>
+                      )}
+                      {onAudiosChange && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (inputLocked) return;
+                            setAttachOpen(false);
+                            handleAudioUploadClick();
+                          }}
+                          disabled={inputLocked}
+                          className="w-full text-left p-2.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm flex items-center text-zinc-700 dark:text-zinc-300 transition-colors"
+                        >
+                          <AudioLines className="w-4 h-4 mr-2.5" /> Upload Audio
                         </button>
                       )}
                       {onFilesChange && (
@@ -540,6 +644,16 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                       multiple
                       className="hidden"
                       onChange={handleFileInputChange}
+                    />
+                  )}
+                  {onAudiosChange && (
+                    <input
+                      ref={audioInputRef}
+                      type="file"
+                      accept="audio/*"
+                      multiple
+                      className="hidden"
+                      onChange={handleAudioInputChange}
                     />
                   )}
                 </div>

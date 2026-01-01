@@ -169,6 +169,23 @@ async function normalizeContentPart(part, role) {
     }
   }
 
+  if (part.type === 'input_audio') {
+    const payload =
+      part.input_audio && typeof part.input_audio === 'object'
+        ? part.input_audio
+        : (part.inputAudio && typeof part.inputAudio === 'object' ? part.inputAudio : null);
+
+    const data = typeof payload?.data === 'string' ? payload.data : '';
+    const format = typeof payload?.format === 'string' ? payload.format : '';
+    if (!data || !format) return null;
+
+    // Keep OpenAI-compatible shape; providers that don't support it will error upstream.
+    return {
+      type: 'input_audio',
+      input_audio: { data, format },
+    };
+  }
+
   if (part.type === 'image_url') {
     const imageUrlRaw = typeof part.image_url === 'string' ? part.image_url : part.image_url?.url || null;
     const imageUrl = imageUrlRaw ? await maybeConvertLocalImageUrl(imageUrlRaw) : null;

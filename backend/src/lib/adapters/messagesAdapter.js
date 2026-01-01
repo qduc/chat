@@ -44,6 +44,10 @@ async function normalizeMessageForAnthropic(message) {
   if ('content' in message) {
     const content = message.content;
     if (Array.isArray(content)) {
+      // Anthropic Messages API does not support audio input parts.
+      if (content.some((part) => part?.type === 'input_audio')) {
+        throw new Error('Audio input (input_audio) is not supported for Anthropic providers');
+      }
       // Convert multimodal content
       const convertedParts = await Promise.all(content.map(async (part) => {
         if (typeof part === 'string') {

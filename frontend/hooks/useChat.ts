@@ -1,11 +1,12 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSystemPrompts } from './useSystemPrompts';
-import type { MessageContent, TextContent, MessageEvent } from '../lib';
+import type { MessageContent, TextContent, MessageEvent, AudioAttachment } from '../lib';
 import { conversations as conversationsApi, chat, auth } from '../lib/api';
 import { httpClient } from '../lib/http';
 import { APIError, StreamingNotSupportedError } from '../lib/streaming';
 import type { ConversationMeta, Provider, ChatOptionsExtended } from '../lib/types';
 import { supportsReasoningControls, getDraft, setDraft, clearDraft } from '../lib';
+import { attachmentToInputAudioPart } from '../lib/audioUtils';
 
 // Types
 export interface PendingState {
@@ -450,7 +451,15 @@ export function useChat() {
       return false;
     }
   });
-  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState(false);
+  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      const stored = window.localStorage.getItem('rightSidebarCollapsed');
+      return stored === 'true';
+    } catch {
+      return false;
+    }
+  });
   const [historyEnabled] = useState(true); // Make configurable if needed
 
   // Editing State
@@ -496,6 +505,9 @@ export function useChat() {
 
   // Image State
   const [images, setImages] = useState<any[]>([]);
+
+  // Audio State
+  const [audios, setAudios] = useState<AudioAttachment[]>([]);
 
   // File State
   const [files, setFiles] = useState<any[]>([]);
@@ -560,7 +572,17 @@ export function useChat() {
   }, []);
 
   const toggleRightSidebar = useCallback(() => {
-    setRightSidebarCollapsed((prev) => !prev);
+    setRightSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem('rightSidebarCollapsed', String(next));
+        }
+      } catch {
+        // ignore storage failures
+      }
+      return next;
+    });
   }, []);
 
   // Actions - Conversations
@@ -851,6 +873,17 @@ export function useChat() {
     setEditingMessageId(null);
     setEditingContent('');
     setImages([]);
+    // Revoke any blob URLs for pending audio attachments
+    setAudios((prev) => {
+      try {
+        prev.forEach((a) => {
+          if (a?.url && typeof URL !== 'undefined') URL.revokeObjectURL(a.url);
+        });
+      } catch {
+        // ignore
+      }
+      return [];
+    });
     setFiles([]);
     setCurrentConversationTitle(null);
     setLinkedConversations({});
@@ -922,7 +955,7 @@ export function useChat() {
       }
     ) => {
       const messageText = content || input;
-      if (!messageText.trim() && images.length === 0) return;
+      if (!messageText.trim() && images.length === 0 && audios.length === 0) return;
 
       try {
         setStatus('streaming');
@@ -989,17 +1022,28 @@ export function useChat() {
           finalMessageText = fileContexts + '\n\n' + messageText;
         }
 
-        // Convert images to content format if present
+        // Convert images + audio to content format if present
         let messageContent: MessageContent = finalMessageText;
-        if (images.length > 0) {
-          const contentParts: any[] = [{ type: 'text', text: finalMessageText }];
+        if (images.length > 0 || audios.length > 0) {
+          const contentParts: any[] = [];
+          if (finalMessageText.trim().length > 0) {
+            contentParts.push({ type: 'text', text: finalMessageText });
+          }
+
           for (const img of images) {
             contentParts.push({
               type: 'image_url',
               image_url: { url: img.downloadUrl || img.url },
             });
           }
-          messageContent = contentParts;
+
+          if (audios.length > 0) {
+            const audioParts = await Promise.all(audios.map((a) => attachmentToInputAudioPart(a)));
+            contentParts.push(...audioParts);
+          }
+
+          // If all parts got filtered out, fall back to empty string
+          messageContent = contentParts.length > 0 ? contentParts : '';
         }
 
         // Create user message (reuse provided clientMessageId when regenerating)
@@ -1026,9 +1070,20 @@ export function useChat() {
         // Always append assistant placeholder (even when regenerating)
         setMessages((prev) => [...prev, assistantMessage]);
 
-        // Clear input, images, and files immediately after adding message to UI
+        // Clear input, images, audio, and files immediately after adding message to UI
         setInput('');
         setImages([]);
+        // Revoke audio blob URLs to avoid leaks
+        setAudios((prev) => {
+          try {
+            prev.forEach((a) => {
+              if (a?.url && typeof URL !== 'undefined') URL.revokeObjectURL(a.url);
+            });
+          } catch {
+            // ignore
+          }
+          return [];
+        });
         setFiles([]);
 
         // Send message with streaming
@@ -1565,7 +1620,7 @@ export function useChat() {
         abortControllerRef.current = null;
       }
     },
-    [input, images, files, conversationId, modelCapabilities, compareModels, user?.id]
+    [input, images, audios, files, conversationId, modelCapabilities, compareModels, user?.id]
   );
 
   const stopStreaming = useCallback(() => {
@@ -1921,7 +1976,14 @@ export function useChat() {
     const contentStr =
       typeof content === 'string'
         ? content
-        : content.map((c) => (c.type === 'text' ? c.text : '[Image]')).join('\n');
+        : content
+            .map((c: any) => {
+              if (c?.type === 'text') return c.text;
+              if (c?.type === 'image_url') return '[Image]';
+              if (c?.type === 'input_audio') return '[Audio]';
+              return '[Attachment]';
+            })
+            .join('\n');
     setEditingContent(contentStr);
   }, []);
 
@@ -2141,6 +2203,14 @@ export function useChat() {
     [clearError]
   );
 
+  const setAudiosWrapper = useCallback(
+    (items: AudioAttachment[] | ((prev: AudioAttachment[]) => AudioAttachment[])) => {
+      setAudios(items);
+      clearError();
+    },
+    [clearError]
+  );
+
   const setFilesWrapper = useCallback(
     (fls: any[] | ((prev: any[]) => any[])) => {
       setFiles(fls);
@@ -2313,6 +2383,7 @@ export function useChat() {
     shouldStream,
     qualityLevel,
     images,
+    audios,
     files,
     user,
     activeSystemPromptId,
@@ -2330,6 +2401,7 @@ export function useChat() {
     setShouldStream: setShouldStreamWrapper,
     setQualityLevel: setQualityLevelWrapper,
     setImages: setImagesWrapper,
+    setAudios: setAudiosWrapper,
     setFiles: setFilesWrapper,
     setActiveSystemPromptId: setActiveSystemPromptIdWrapper,
     setCompareModels: setCompareModelsWrapper,
