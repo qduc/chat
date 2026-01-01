@@ -21,6 +21,7 @@ import {
   createMixedContent,
   extractImagesFromContent,
   extractTextFromContent,
+  hasAudio,
   type ChatMessage,
   type MessageContent,
   type ImageAttachment,
@@ -419,6 +420,7 @@ const Message = React.memo<MessageProps>(
   }) {
     const isUser = message.role === 'user';
     const isEditing = editingMessageId === message.id;
+    const messageHasAudio = hasAudio(message.content);
 
     // Comparison Logic
     const baseComparisonModels = Object.keys(message.comparisonResults || {});
@@ -846,7 +848,7 @@ const Message = React.memo<MessageProps>(
           </div>
         )}
         <div
-          className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? 'max-w-full sm:max-w-[85%] md:max-w-[75%] lg:max-w-[60%] order-first' : 'w-full'}`}
+          className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? (messageHasAudio ? 'max-w-full order-first' : 'max-w-full sm:max-w-[85%] md:max-w-[75%] lg:max-w-[60%] order-first') : 'w-full'}`}
           style={{ minWidth: 0 }}
         >
           {hasComparison && !isUser && showComparisonTabs && (
@@ -1007,7 +1009,9 @@ const Message = React.memo<MessageProps>(
           ) : (
             <>
               {isUser ? (
-                <div className="rounded-2xl px-5 py-3.5 text-base leading-relaxed bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100">
+                <div
+                  className={`rounded-2xl px-5 py-3.5 text-base leading-relaxed bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100 ${messageHasAudio ? 'min-w-[280px] sm:min-w-[400px]' : ''}`}
+                >
                   <MessageContentRenderer
                     content={message.content}
                     isStreaming={false}
