@@ -78,6 +78,26 @@ export class GeminiAdapter extends BaseAdapter {
                   });
                 }
               }
+            } else if (part.type === 'input_audio') {
+              // Handle audio content
+              const payload =
+                part.input_audio && typeof part.input_audio === 'object'
+                  ? part.input_audio
+                  : (part.inputAudio && typeof part.inputAudio === 'object' ? part.inputAudio : null);
+
+              const data = typeof payload?.data === 'string' ? payload.data : '';
+              const format = typeof payload?.format === 'string' ? payload.format : '';
+
+              if (data && format) {
+                // Convert format to MIME type (e.g., 'wav' -> 'audio/wav')
+                const mimeType = format.startsWith('audio/') ? format : `audio/${format}`;
+                parts.push({
+                  inline_data: {
+                    mime_type: mimeType,
+                    data: data,
+                  },
+                });
+              }
             }
           }
         }
@@ -188,6 +208,11 @@ export class GeminiAdapter extends BaseAdapter {
     if (top_p !== undefined) geminiRequest.generationConfig.topP = top_p;
     if (top_k !== undefined) geminiRequest.generationConfig.topK = top_k;
     if (stop) geminiRequest.generationConfig.stopSequences = Array.isArray(stop) ? stop : [stop];
+
+    // Enable image generation for models with "image" in the name
+    if (model.toLowerCase().includes('image')) {
+      geminiRequest.generationConfig.responseModalities = ["IMAGE", "TEXT"];
+    }
 
     // Internal flags
     geminiRequest.__model = model;
