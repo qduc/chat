@@ -325,7 +325,7 @@ interface MessageProps {
   copiedMessageId: string | null;
   handleCopy: (messageId: string, text: string) => void;
   pending: PendingState;
-  streamingStats: { tokensPerSecond: number } | null;
+  streamingStats: { tokensPerSecond: number; isEstimate?: boolean } | null;
   // Image editing support
   editingImages: ImageAttachment[];
   onEditingImagesChange: (files: File[]) => void;
@@ -404,7 +404,7 @@ const Message = React.memo<MessageProps>(
     copiedMessageId: string | null;
     handleCopy: (messageId: string, text: string) => void;
     pending: PendingState;
-    streamingStats: { tokensPerSecond: number } | null;
+    streamingStats: { tokensPerSecond: number; isEstimate?: boolean } | null;
     editingImages: ImageAttachment[];
     onEditingImagesChange: (files: File[]) => void;
     onRemoveEditingImage: (id: string) => void;
@@ -751,6 +751,7 @@ const Message = React.memo<MessageProps>(
                   modelId === 'primary' &&
                   !isMultiColumn && (
                     <div className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 text-[10px] font-mono whitespace-nowrap">
+                      {streamingStats.isEstimate ? '~' : ''}
                       {streamingStats.tokensPerSecond.toFixed(1)} t/s
                     </div>
                   )}
@@ -1121,6 +1122,7 @@ const Message = React.memo<MessageProps>(
       prev.collapsedToolOutputs === next.collapsedToolOutputs &&
       prev.copiedMessageId === next.copiedMessageId &&
       prev.streamingStats?.tokensPerSecond === next.streamingStats?.tokensPerSecond &&
+      prev.streamingStats?.isEstimate === next.streamingStats?.isEstimate &&
       prev.editingImages === next.editingImages &&
       prev.toolbarRef === next.toolbarRef &&
       prev.selectedComparisonModels === next.selectedComparisonModels &&
@@ -1173,7 +1175,10 @@ export function MessageList({
   );
 
   // Streaming statistics - now calculated from actual token count
-  const [streamingStats, setStreamingStats] = useState<{ tokensPerSecond: number } | null>(null);
+  const [streamingStats, setStreamingStats] = useState<{
+    tokensPerSecond: number;
+    isEstimate?: boolean;
+  } | null>(null);
   const lastTokenStatsMessageIdRef = useRef<string | null>(null);
 
   // Editing images state - tracks images being edited
@@ -1430,7 +1435,7 @@ export function MessageList({
       setStreamingStats(null);
     }
 
-    const { count, startTime, lastUpdated } = stats;
+    const { count, startTime, lastUpdated, isEstimate } = stats;
 
     if (!Number.isFinite(startTime) || count <= 0) {
       return;
@@ -1450,12 +1455,13 @@ export function MessageList({
       return;
     }
 
-    setStreamingStats({ tokensPerSecond });
+    setStreamingStats({ tokensPerSecond, isEstimate });
   }, [
     pending.streaming,
     pending.tokenStats,
     pending.tokenStats?.messageId,
     pending.tokenStats?.count,
+    pending.tokenStats?.isEstimate,
     pending.tokenStats?.startTime,
     pending.tokenStats?.lastUpdated,
   ]);
