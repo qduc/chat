@@ -610,12 +610,13 @@ const MarkdownComponents: any = {
     </blockquote>
   ),
   table: ({ children }: any) => (
-    <div className="overflow-x-auto my-4 rounded-lg border border-zinc-200 dark:border-zinc-800">
-      <table className="min-w-full text-sm border-collapse bg-white dark:bg-zinc-950">
+    <div className="my-6 w-full overflow-y-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
+      <table className="min-w-full text-sm border-collapse bg-white dark:bg-zinc-900">
         {children}
       </table>
     </div>
   ),
+
   th: ({ children }: any) => (
     <th className="text-left px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 font-semibold bg-zinc-50 dark:bg-zinc-900 first:rounded-tl-lg last:rounded-tr-lg">
       {processTableCellContent(children)}

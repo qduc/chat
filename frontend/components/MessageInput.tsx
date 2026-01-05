@@ -892,7 +892,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                           </div>
 
                           {/* Tools list */}
-                          <div className="max-h-80 overflow-y-auto overscroll-contain scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700 scrollbar-track-transparent">
+                          <div className="max-h-80 overflow-y-auto overscroll-contain scrollbar-thin scrollbar-track-transparent">
                             {availableTools.length === 0 && (
                               <div className="text-sm text-zinc-500 dark:text-zinc-400 p-4 text-center">
                                 No tools available

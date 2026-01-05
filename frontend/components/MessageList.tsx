@@ -1496,7 +1496,7 @@ export function MessageList({
   return (
     <main
       ref={containerRef}
-      className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-neutral-700 scrollbar-track-transparent relative"
+      className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-track-transparent relative"
       style={{ willChange: 'scroll-position' }}
     >
       <div

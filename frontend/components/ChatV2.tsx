@@ -652,9 +652,9 @@ export function ChatV2() {
   }, []);
 
   return (
-    <div className="flex h-dvh max-h-dvh bg-white dark:bg-zinc-950 relative overflow-x-hidden">
-      {/* Mobile Backdrop */}
-      {(!chat.sidebarCollapsed || !chat.rightSidebarCollapsed) && (
+    <div className="flex h-dvh max-h-dvh bg-white dark:bg-zinc-900 relative overflow-x-hidden">
+      {/* Mobile Sidebar Overlay */}
+      {isMobile && (!chat.sidebarCollapsed || !chat.rightSidebarCollapsed) && (
         <div
           className="md:hidden fixed inset-0 bg-black/50 z-40 transition-opacity"
           onClick={() => {

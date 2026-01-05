@@ -374,10 +374,7 @@ export function RightSidebar({
           transition: isResizing ? 'none' : 'width 0.3s ease-in-out',
           willChange: isResizing ? 'width' : undefined,
         }}
-        className={`
-          z-30 flex flex-col bg-white dark:bg-zinc-950 border-l border-zinc-200/50 dark:border-zinc-800/50 relative h-full
-          ${!collapsed ? 'w-72 sm:w-80 md:w-auto' : 'w-16 md:w-auto'}
-        `}
+        className="z-30 flex flex-col bg-white dark:bg-zinc-900 border-l border-zinc-200/50 dark:border-zinc-800/50 relative h-full"
       >
         {collapsed ? (
           // Collapsed state - compact indicator
@@ -486,7 +483,7 @@ export function RightSidebar({
                           }
                         }
                       }}
-                      className="flex-1 p-4 rounded-xl resize-none focus:outline-none bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/50 dark:border-zinc-800/50 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-600 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700 scrollbar-track-transparent"
+                      className="flex-1 p-4 rounded-xl resize-none focus:outline-none bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/50 dark:border-zinc-800/50 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-600 scrollbar-thin scrollbar-track-transparent"
                       placeholder={
                         effectiveSelectedPromptId
                           ? isBuiltIn

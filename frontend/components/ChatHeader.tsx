@@ -111,7 +111,7 @@ export function ChatHeader({
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white dark:bg-zinc-950 border-b border-zinc-200/50 dark:border-zinc-800/50 backdrop-blur-sm bg-white/80 dark:bg-zinc-950/80">
+    <header className="sticky top-0 z-40 bg-white dark:bg-zinc-900 border-b border-zinc-200/50 dark:border-zinc-800/50 backdrop-blur-sm bg-white/80 dark:bg-zinc-900/80">
       <div className="px-2 sm:px-4 md:px-6 py-2 sm:py-3 flex items-center justify-between gap-2">
         <div className="flex items-center gap-1 sm:gap-2 flex-1 min-w-0">
           {/* Left Sidebar Toggle - Mobile Only */}

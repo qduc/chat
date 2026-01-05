@@ -35,7 +35,7 @@ export function ChatSidebar({
       aria-label="Conversation history"
       className={`
         ${collapsed ? 'w-16' : 'w-72 md:w-72'}
-        h-full z-40 p-4 flex flex-col bg-slate-50 dark:bg-zinc-950 border-r border-zinc-200/50 dark:border-zinc-800/50
+        h-full z-40 p-4 flex flex-col bg-slate-50 dark:bg-zinc-900 border-r border-zinc-200/50 dark:border-zinc-800/50
         md:transition-[width] md:duration-300 md:ease-in-out
         relative
         ${!collapsed ? 'w-72 sm:w-80' : ''}
@@ -141,7 +141,7 @@ export function ChatSidebar({
               </button>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto space-y-1 scrollbar-thin scrollbar-thumb-zinc-300 dark:scrollbar-thumb-zinc-700 scrollbar-track-transparent">
+          <div className="flex-1 overflow-y-auto space-y-1 scrollbar-thin scrollbar-track-transparent">
             {unsavedPlaceholder && (
               <div
                 className="group flex items-center gap-2 text-sm p-3 rounded-lg bg-white dark:bg-zinc-800/80 shadow-sm border border-dashed border-zinc-300 dark:border-zinc-700 mb-1 cursor-default opacity-80"
