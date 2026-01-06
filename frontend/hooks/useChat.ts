@@ -15,10 +15,12 @@ export interface PendingState {
   abort: AbortController | null;
   tokenStats?: {
     count: number;
+    charCount: number;
     startTime: number;
     messageId: string;
     lastUpdated: number;
     provider?: string;
+    isEstimate: boolean;
   };
 }
 
@@ -547,10 +549,12 @@ export function useChat() {
   // Use ref to track token stats to avoid triggering re-renders on every token
   const tokenStatsRef = useRef<{
     count: number;
+    charCount: number;
     startTime: number;
     messageId: string;
     lastUpdated: number;
     provider?: string;
+    isEstimate: boolean;
   } | null>(null);
 
   // Track whether draft has been restored to avoid restoring multiple times
@@ -969,16 +973,18 @@ export function useChat() {
         currentRequestIdRef.current = messageId;
         tokenStatsRef.current = {
           count: 0,
+          charCount: 0,
           startTime: Date.now(),
           messageId,
           lastUpdated: Date.now(),
           provider: undefined,
+          isEstimate: true,
         };
         setPending({
           streaming: true,
           error: undefined,
           abort: abortControllerRef.current,
-          tokenStats: tokenStatsRef.current,
+          tokenStats: tokenStatsRef.current ?? undefined,
         });
 
         // Prepend file contents to message text if present
@@ -1246,8 +1252,14 @@ export function useChat() {
                   tokenStatsRef.current &&
                   tokenStatsRef.current.messageId === messageId
                 ) {
-                  const isFirstToken = tokenStatsRef.current.count === 0;
-                  tokenStatsRef.current.count += 1;
+                  const isFirstToken = tokenStatsRef.current.charCount === 0;
+                  tokenStatsRef.current.charCount += token.length;
+
+                  // Only update estimated count if we don't have a real one from usage yet
+                  if (tokenStatsRef.current.isEstimate) {
+                    tokenStatsRef.current.count = tokenStatsRef.current.charCount / 4;
+                  }
+
                   if (isFirstToken) {
                     tokenStatsRef.current.startTime = Date.now();
                   }
@@ -1270,8 +1282,14 @@ export function useChat() {
                     tokenStatsRef.current &&
                     tokenStatsRef.current.messageId === messageId
                   ) {
-                    const isFirstContent = tokenStatsRef.current.count === 0;
-                    tokenStatsRef.current.count += 1;
+                    const isFirstContent = tokenStatsRef.current.charCount === 0;
+                    tokenStatsRef.current.charCount += event.value.length;
+
+                    // Only update estimated count if we don't have a real one from usage yet
+                    if (tokenStatsRef.current.isEstimate) {
+                      tokenStatsRef.current.count = tokenStatsRef.current.charCount / 4;
+                    }
+
                     if (isFirstContent) {
                       tokenStatsRef.current.startTime = Date.now();
                     }
@@ -1320,6 +1338,21 @@ export function useChat() {
                     return createGeneratedImageContentUpdate(current.content, img.image_url.url);
                   });
                 } else if (event.type === 'usage') {
+                  const usage = event.value;
+
+                  // Update token stats with accurate count if available
+                  if (
+                    isPrimary &&
+                    tokenStatsRef.current &&
+                    tokenStatsRef.current.messageId === messageId
+                  ) {
+                    if (usage.completion_tokens !== undefined) {
+                      tokenStatsRef.current.count = usage.completion_tokens;
+                      tokenStatsRef.current.isEstimate = false;
+                      tokenStatsRef.current.lastUpdated = Date.now();
+                    }
+                  }
+
                   updateMessageState(isPrimary, targetModel, (current) => {
                     // For primary, check if usage actually changed
                     if (isPrimary) {

@@ -14,7 +14,7 @@ export function WelcomeMessage({ onSuggestionClick }: WelcomeMessageProps) {
       </div>
 
       {/* Heading */}
-      <h1 className="mb-3 text-3xl font-semibold text-zinc-900 dark:text-white tracking-tight">
+      <h1 className="mb-3 text-3xl font-semibold text-zinc-900 dark:text-zinc-200 tracking-tight">
         Welcome to Chat
       </h1>
 
@@ -72,7 +72,7 @@ function SuggestionCard({ icon, text, subtext, onClick }: SuggestionCardProps) {
         {icon}
       </div>
       <div>
-        <div className="font-medium text-zinc-900 dark:text-zinc-200 text-sm group-hover:text-black dark:group-hover:text-white transition-colors">
+        <div className="font-medium text-zinc-900 dark:text-zinc-200 text-sm group-hover:text-black dark:group-hover:text-zinc-200 transition-colors">
           {text}
         </div>
         <div className="text-xs text-zinc-500 dark:text-zinc-500 mt-0.5">{subtext}</div>
