@@ -780,7 +780,28 @@ export function ChatV2() {
               )}
             </div>
 
-            {/* Removed soft fade to keep a cleaner boundaryless look */}
+            {/* Gradient fade overlay above message input */}
+            <div
+              className="absolute bottom-0 left-0 right-0 pointer-events-none z-20"
+              style={{ height: `${messageInputHeight + 48}px` }}
+            >
+              {/* Light mode gradient */}
+              <div
+                className="w-full h-full dark:hidden"
+                style={{
+                  background:
+                    'linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.7) 24px, rgb(255,255,255) 48px, rgb(255,255,255) 100%)',
+                }}
+              />
+              {/* Dark mode gradient */}
+              <div
+                className="hidden dark:block w-full h-full"
+                style={{
+                  background:
+                    'linear-gradient(to bottom, transparent 0%, rgba(24,24,27,0.7) 24px, rgb(24,24,27) 48px, rgb(24,24,27) 100%)',
+                }}
+              />
+            </div>
             <div
               ref={messageInputContainerRef}
               className="absolute bottom-2 sm:bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-3xl px-2 sm:px-4 md:px-6 z-30"
