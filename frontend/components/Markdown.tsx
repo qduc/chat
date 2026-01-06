@@ -413,10 +413,10 @@ const MarkdownComponents: any = {
       <>
         <pre
           ref={preRef}
-          className={`md-pre relative my-3 overflow-hidden rounded-xl border border-zinc-200/60 dark:border-zinc-800/60 bg-zinc-50/50 dark:bg-zinc-900/30`}
+          className={`md-pre relative my-3 max-h-[70vh] overflow-auto rounded-xl border border-zinc-200/60 dark:border-zinc-800/60 bg-zinc-50/50 dark:bg-zinc-900/30`}
         >
           {/* Header with language and copy button */}
-          <div className="flex items-center px-3 py-2 border-b border-zinc-200/40 dark:border-zinc-800/40 bg-zinc-100/40 dark:bg-black/20">
+          <div className="sticky top-0 z-10 flex items-center px-3 py-2 border-b border-zinc-200/40 dark:border-zinc-800/40 bg-zinc-100 dark:bg-zinc-900">
             {language && (
               <span className="text-xs text-zinc-500 dark:text-zinc-500">{language}</span>
             )}
