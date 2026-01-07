@@ -1,10 +1,28 @@
 # ChatForge Backend API Specification
 
-Version: 2025-10-07
+Version: 2026-01-07
 Status: Draft (authoritative for current code on branch `refactor/frontend_rewrite`)
 Base URL: `https://<host>` (all endpoints are prefixed with `/v1` except health which also supports `/health`/`/healthz`)
 Authentication: JSON Web Tokens (JWT) via `Authorization: Bearer <accessToken>` unless explicitly marked Public.
 Content Type: `application/json` unless stated (multipart for image upload, SSE for streaming chat if enabled by client request headers).
+
+## Table of Contents
+- [Conventions](#conventions)
+- [Authentication & Users](#authentication--users)
+- [Health](#health)
+- [Providers](#providers)
+- [Conversations](#conversations)
+- [Chat (Proxy Completions & Tools)](#chat-proxy-completions--tools)
+- [System Prompts](#system-prompts)
+- [Images](#images)
+- [Files](#files)
+- [User Settings](#user-settings)
+- [Error Codes](#error-codes-non-exhaustive)
+- [Security Notes](#security-notes)
+- [Rate Limiting](#rate-limiting)
+- [Streaming Chat Protocol](#streaming-chat-protocol)
+- [Versioning & Compatibility](#versioning--compatibility)
+- [Change Log](#change-log-since-initial-spec)
 
 ## Conventions
 - All date/time fields are ISO 8601 UTC strings unless otherwise noted.
@@ -141,15 +159,18 @@ Success 200:
 {
   "providers": [
     {
-      "provider_id": "uuid",
-      "provider_name": "string",
-      "provider_type": "openai|anthropic|...",
+      "provider": {
+        "id": "uuid",
+        "name": "string",
+        "provider_type": "openai|anthropic|..."
+      },
       "models": [ { id, ...upstream model data } ]
     },
     ...
   ],
   "cached": true|false,
-  "cachedAt": "ISO8601 timestamp" | null
+  "cachedAt": "ISO8601 timestamp" | null,
+  "errors": [ { "providerId": "...", "providerName": "...", "error": "..." } ]
 }
 ```
 Errors: 400 refresh_in_progress (if refresh already running), 500 internal_server_error.
@@ -186,7 +207,7 @@ Returns cursor-paginated list.
 Success 200: shape:
 ```
 {
-  "items": [ { id, title, model, provider_id, created_at, updated_at, deleted_at?, ... } ],
+  "items": [ { id, title, model, provider_id, created_at, ... } ],
   "next_cursor": "..." | null
 }
 ```
@@ -218,12 +239,15 @@ When `include_linked=messages` is specified, linked comparison conversation mess
 200 Response shape:
 ```
 {
-  id, title, model, provider_id,
-  system_prompt: "..." | null,
-  active_system_prompt_id: "uuid" | null,
-  messages: [ { id, seq, role, content, created_at, ... } ],
-  next_after_seq: <next seq or null>,
-  ...other conversation fields
+  "id": "uuid",
+  "title": "...",
+  "model": "...",
+  "provider_id": "uuid",
+  "system_prompt": "..." | null,
+  "active_system_prompt_id": "uuid" | null,
+  "messages": [ { id, seq, role, content, created_at, ... } ],
+  "next_after_seq": <next seq or null>,
+  "linked_conversations": [ { id, title, model, provider_id, messages: [...] }, ... ] // Only if include_linked=messages
 }
 ```
 Errors: 404 not_found, 500 internal_error.
@@ -290,7 +314,7 @@ Returns registered tool specifications and API key status for tools requiring ex
   "tools": [ { type: "function", function: { name, description, parameters } }, ...],
   "available_tools": ["tool_name", ...],
   "tool_api_key_status": {
-    "tool_name": { "hasApiKey": true|false, "requiresApiKey": true|false },
+    "tool_name": { "hasApiKey": true|false, "requiresApiKey": true|false, "missingKeyLabel": "..." },
     ...
   }
 }
@@ -307,15 +331,15 @@ List built-ins and custom prompts.
 200:
 ```
 {
-  "built_ins": [ { id, name, content, ... } ],
-  "custom": [ { id, name, content, ... } ],
+  "built_ins": [ { id, name, body, ... } ],
+  "custom": [ { id, name, body, ... } ],
   "error": null | "partial_failure_reason"
 }
 ```
 
 ### POST /v1/system-prompts
 Create custom prompt.
-Body (validated): `name` (string), `content` (string), optional metadata per schema.
+Body (validated): `name` (string), `body` (string), optional metadata per schema.
 201: new prompt object.
 Errors: 400 validation_error, other codes via service.
 
@@ -375,7 +399,9 @@ Public config for client validation of file uploads.
   "maxFileSize": <bytes>,
   "maxFilesPerMessage": <int>,
   "allowedExtensions": [".txt", ".md", ".json", ...],
-  "allowedMimeTypes": ["text/plain", "application/json", ...]
+  "allowedMimeTypes": ["text/plain", "application/json", ...],
+  "uploadRateLimit": <int>,
+  "storageLimitPerUser": <bytes>
 }
 ```
 
@@ -383,7 +409,7 @@ Public config for client validation of file uploads.
 Multipart form-data with field name `files` (1..maxFilesPerMessage).
 Accepts text-based files (source code, markdown, JSON, etc.).
 Returns:
-- 200 `{ success: true, files: [ { id, url, filename, originalFilename, size, type } ] }`
+- 200 `{ success: true, files: [ { id, url, filename, originalFilename, size, type, content } ] }`
 - 207 Multi-Status if partial success: `{ success: true, files: [...], errors: [ { filename, error } ] }`
 Errors: 400 no_files|upload_failed|invalid_file_type, 413 file_too_large|too_many_files, 500 upload_failed.
 
@@ -465,6 +491,9 @@ When `stream:true` chat responses use SSE with event lines following OpenAI spec
 
 ## Change Log (since initial spec)
 - 2025-10-07: Initial authored spec.
+- 2025-10-16: Added initial documentation and health endpoints.
+- 2025-11-23: Refined provider model fetching and error handling.
+- 2026-01-07: Added specifications for image generation, linked conversations (model comparison), mixed-content messages (audio/images), and streaming abort.
 
 ---
 For questions or proposing changes, open a PR updating this file alongside corresponding tests in `backend/__tests__/*`.
