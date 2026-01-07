@@ -4,7 +4,7 @@ This document provides essential knowledge for AI agents to be immediately produ
 
 ## Project Overview
 
-**ChatForge** is a modern chat application with a Next.js frontend and Node.js backend, designed as an OpenAI API proxy with enhanced features like conversation persistence, tool orchestration, multi-provider support, JWT authentication, user-scoped multi-tenancy, image/file uploads, advanced reasoning controls, prompt caching optimization, persistent memory via journal tool, model comparison mode, conversation forking, and Electron desktop app support.
+**ChatForge** is a modern chat application with a Next.js frontend and Node.js backend, designed as an OpenAI API proxy with enhanced features like conversation persistence, tool orchestration, multi-provider support, JWT authentication, user-scoped multi-tenancy, image/audio/file uploads, advanced reasoning controls, prompt caching optimization, persistent memory via journal tool, model comparison mode, conversation forking, and Electron desktop app support.
 
 ## Architecture Overview
 
@@ -13,6 +13,7 @@ This document provides essential knowledge for AI agents to be immediately produ
 chat/
   frontend/             # Next.js 15 + React 19 + TypeScript
   backend/              # Node.js + Express + SQLite
+  electron/             # Electron desktop app packaging
   docs/                 # Architecture docs and ADRs
   proxy/                # Dev-only Nginx reverse proxy config (compose.dev)
   integration/          # Integration tests
@@ -47,7 +48,7 @@ chat/
 5. **OpenAI API Compatibility**: Backend presents OpenAI-compatible interface while adding features
 6. **Real-time Streaming**: SSE-based streaming for chat and tool execution
 7. **Conversation Settings Persistence**: Complete snapshots of conversation settings (model, provider, tools, reasoning controls) persist across edits and regenerations
-8. **Multimodal Support**: Full image and file handling with upload, paste, preview, and secure metadata storage
+8. **Multimodal Support**: Full image, audio, and file handling with upload, paste, preview, and secure metadata storage
 9. **Reasoning Controls**: Support for reasoning effort levels and extended thinking modes
 10. **Prompt Caching**: Automatic prompt caching with cache breakpoints to reduce costs and latency
 11. **Persistent Memory**: Journal tool provides AI with cross-conversation memory storage
@@ -272,6 +273,7 @@ chat/
   - UI primitives: `components/ui/`
   - Toast notifications: Check toast integration in relevant components
 **Image handling**: Check `frontend/components/ui/ImagePreview.tsx` (exports both `ImagePreview` and `ImageUploadZone`)
+**Audio handling**: Check `frontend/components/ui/AudioPreview.tsx` (exports `AudioPreview`) and `frontend/lib/audioUtils.ts`
 **File handling**: Check `backend/src/routes/files.js` for file upload API and `frontend/lib/api.ts` for client integration
 **Authentication**: Check `backend/src/routes/auth.js` for auth routes and `frontend/contexts/AuthContext.tsx` for client-side auth state
 **User settings**: Check `backend/src/routes/settings.js` for settings API and `frontend/hooks/useSettings.ts` (if exists) for client integration
