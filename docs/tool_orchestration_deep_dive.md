@@ -23,22 +23,32 @@ This document provides an in-depth technical analysis of the tool orchestration 
 
 Tool orchestration in ChatForge is an **iterative, server-side execution system** that:
 - Detects when the LLM requests tool calls
-- Executes tools synchronously (one at a time)
+- Executes tools (sequentially by default, or in parallel with bounded concurrency)
 - Feeds tool results back to the LLM
-- Continues until the LLM provides a final response
+- Continues until the LLM provides a final response or iteration limit is reached
+- Supports client-initiated cancellation with checkpoint persistence
 
 **Key Design Principles:**
 1. **Server-side execution only** - Tools never execute on the client for security
-2. **Iterative loop** - Multiple rounds of tool calls supported within a single request
+2. **Iterative loop** - Multiple rounds of tool calls supported (user-configurable 1-50 iterations)
 3. **Two modes** - Streaming and non-streaming (JSON) orchestration
 4. **User context propagation** - User ID flows through tool execution for user-scoped operations
 5. **Final-only persistence** - Accumulate state during orchestration, write once at the end
+6. **Parallel execution** - Optional bounded concurrency for multiple tool calls via `p-limit`
+7. **Abort support** - Client can cancel streaming with automatic checkpoint persistence
 
 **File Locations:**
 - `backend/src/lib/toolOrchestrationUtils.js` - Core orchestration utilities
 - `backend/src/lib/toolsStreaming.js` - Streaming mode orchestration
 - `backend/src/lib/toolsJson.js` - Non-streaming (JSON) mode orchestration
-- `backend/src/lib/tools/` - Tool implementations
+- `backend/src/lib/tools/` - Tool implementations directory:
+  - `baseTool.js` - Tool factory with `createTool`
+  - `index.js` - Tool registry
+  - `webSearch.js` - Tavily web search
+  - `webSearchExa.js` - Exa web search
+  - `webSearchSearxng.js` - SearXNG web search
+  - `webFetch.js` - URL content fetching with Playwright support
+  - `journal.js` - Persistent memory tool
 - `backend/src/lib/openaiProxy.js` - Request routing and tool name expansion
 
 ---
@@ -47,23 +57,23 @@ Tool orchestration in ChatForge is an **iterative, server-side execution system*
 
 ### Tool Registry Pattern
 
-Tools are registered using a **centralized registry pattern** (`backend/src/lib/tools/index.js:1-30`):
+Tools are registered using a **centralized registry pattern** (`backend/src/lib/tools/index.js`):
 
 ```javascript
 // Import all tools
-import getTimeTool from './getTime.js';
 import webSearchTool from './webSearch.js';
 import webSearchExaTool from './webSearchExa.js';
 import webSearchSearxngTool from './webSearchSearxng.js';
 import webFetchTool from './webFetch.js';
+import journalTool from './journal.js';
 
 // Register in array
 const registeredTools = [
-  getTimeTool,
   webSearchTool,
   webSearchExaTool,
   webSearchSearxngTool,
-  webFetchTool
+  webFetchTool,
+  journalTool
 ];
 
 // Build Map for O(1) lookup by name
@@ -78,6 +88,13 @@ for (const tool of registeredTools) {
 // Export as object for easy access
 export const tools = Object.fromEntries(toolMap.entries());
 ```
+
+**Available Tools:**
+- `web_search` - Tavily-powered web search
+- `web_search_exa` - Exa-powered web search
+- `web_search_searxng` - SearXNG-powered web search
+- `web_fetch` - URL content fetching with Playwright browser automation
+- `journal` - Persistent memory for cross-conversation notes
 
 ### Tool Structure
 
@@ -613,10 +630,13 @@ Iteration 3:
 
 ### Loop Implementation (Streaming)
 
-From `backend/src/lib/toolsStreaming.js:64-474`:
+From `backend/src/lib/toolsStreaming.js`:
 
 ```javascript
-const MAX_ITERATIONS = 10;
+import { getUserMaxToolIterations } from '../db/users.js';
+
+// User-configurable max iterations (default 10, configurable 1-50 via Settings)
+const MAX_ITERATIONS = userId ? getUserMaxToolIterations(userId) : 10;
 
 let iteration = 0;
 let isComplete = false;
@@ -671,9 +691,14 @@ while (!isComplete && iteration < MAX_ITERATIONS) {
 
 ### Loop Implementation (JSON)
 
-From `backend/src/lib/toolsJson.js:572-673`:
+From `backend/src/lib/toolsJson.js`:
 
 ```javascript
+import { getUserMaxToolIterations } from '../db/users.js';
+
+// In createOrchestrationConfig:
+const maxIterations = userId ? getUserMaxToolIterations(userId) : 10;
+
 let iteration = 0;
 let currentPreviousResponseId = previousResponseId;
 
@@ -720,10 +745,13 @@ while (iteration < orchestrationConfig.maxIterations) {
 
 ### Max Iterations Safety
 
-Both implementations have a **safety limit** of 10 iterations:
+Both implementations have a **configurable safety limit** (default 10 iterations, user-configurable from 1-50 via Settings):
 
 ```javascript
-const MAX_ITERATIONS = 10;
+import { getUserMaxToolIterations } from '../db/users.js';
+
+// User-configurable: reads from user_settings table, falls back to 10
+const MAX_ITERATIONS = userId ? getUserMaxToolIterations(userId) : 10;
 
 if (iteration >= MAX_ITERATIONS) {
   const maxIterMsg = '\n\n[Maximum iterations reached]';
@@ -732,7 +760,7 @@ if (iteration >= MAX_ITERATIONS) {
 }
 ```
 
-This prevents infinite loops if the LLM keeps requesting tools.
+This prevents infinite loops if the LLM keeps requesting tools. Users can adjust the limit in **Settings > Search & Web Tools > Max Tool Iterations**.
 
 ---
 
@@ -1060,6 +1088,45 @@ if (reasoningTokens != null) {
 }
 ```
 
+### Reasoning Details Preservation Across Tool Iterations
+
+For models that support reasoning (like OpenRouter's reasoning-enabled models), `reasoning_details` must be **preserved across tool call iterations** to maintain reasoning token continuity.
+
+**Implementation:** `toolOrchestrationUtils.js` and `toolsStreaming.js`
+
+```javascript
+// When normalizing assistant messages with tool calls
+// Preserve reasoning_details for OpenRouter reasoning token continuity
+if (Array.isArray(message.reasoning_details) && message.reasoning_details.length > 0) {
+  normalized.reasoning_details = message.reasoning_details;
+}
+```
+
+**Streaming Accumulation:** `toolsStreaming.js`
+
+```javascript
+let accumulatedReasoningDetails = []; // Accumulate across stream deltas
+
+// Capture reasoning_details from delta or message
+if (Array.isArray(delta.reasoning_details) && delta.reasoning_details.length > 0) {
+  // Merge reasoning_details by index, appending new entries
+  for (const rd of delta.reasoning_details) {
+    // ... merge logic
+  }
+  persistence.setReasoningDetails(delta.reasoning_details);
+}
+
+// Include in assistant message for next iteration
+if (accumulatedReasoningDetails.length > 0) {
+  assistantMessage.reasoning_details = accumulatedReasoningDetails;
+}
+```
+
+**Why This Matters:**
+- OpenRouter and other providers track reasoning tokens across multi-turn conversations
+- Without preserving `reasoning_details`, reasoning context is lost between tool call iterations
+- This ensures models maintain coherent reasoning chains during complex tool orchestration
+
 ---
 
 ## Special Tool Behaviors
@@ -1106,11 +1173,114 @@ const output = await tool.handler(validated, { userId });
 ### Tools Without Side Effects
 
 Most tools are **read-only** and have no side effects:
-- `web_search` - Searches the web
+- `web_search` - Searches the web via Tavily
+- `web_search_exa` - Searches the web via Exa
+- `web_search_searxng` - Searches the web via SearXNG
 - `web_fetch` - Fetches URL content
-- `get_time` - Returns current time
 
 These can be safely retried and don't require transaction management.
+
+### Journal Tool (Persistent Memory)
+
+The `journal` tool provides persistent memory across conversations:
+
+```javascript
+// From backend/src/lib/tools/journal.js
+async function handler(validatedArgs, context = {}) {
+  const userId = context?.userId;
+  if (!userId) {
+    throw new Error('journal tool requires an authenticated user context');
+  }
+
+  if (validatedArgs.mode === 'write') {
+    const { name, content } = validatedArgs;
+    insertJournalEntry({ userId, modelName: name, content });
+    return { success: true };
+  }
+
+  // read mode
+  const entries = listJournalEntries(userId, page, pageSize);
+  return { entries, page, pageSize };
+}
+```
+
+**Modes:**
+- `write` - Save a note with `{ mode: 'write', name: 'model-name', content: 'note content' }`
+- `read` - Read recent entries with `{ mode: 'read', page: 1 }`
+
+**Key Features:**
+- User-scoped via `userId` context (enforced - requires authentication)
+- Entries persist across conversations
+- Paginated read access (default 10 entries per page)
+
+### Web Fetch Tool (Enhanced URL Fetching)
+
+The `web_fetch` tool provides advanced URL content fetching with Playwright browser automation support.
+
+**Parameters:**
+- `url` (required) - URL to fetch
+- `max_chars` - Character limit (200-200,000, default varies)
+- `continuation_token` - Token to continue reading from previous truncation point
+- `use_browser` - Boolean to force Playwright browser automation for SPAs
+
+**Key Features:**
+
+```javascript
+// From backend/src/lib/tools/webFetch.js
+const CACHE_TTL = 5 * 60 * 1000; // 5-minute cache TTL
+
+// Specialized extractors for specific sites
+if (url.includes('reddit.com')) {
+  // Reddit-specific extraction using shreddit-post, shreddit-comment elements
+  const post = document.querySelector('shreddit-post');
+  const comments = document.querySelectorAll('shreddit-comment');
+  method = 'reddit-custom';
+}
+
+if (url.includes('stackoverflow.com')) {
+  // StackOverflow-specific extraction
+  method = 'stackoverflow-custom';
+}
+```
+
+**Continuation Tokens:**
+
+For large pages that exceed `max_chars`, the tool returns a `continuation_token`:
+
+```javascript
+// When content is truncated
+let continuationToken = null;
+if (truncationResult.truncated) {
+  continuationToken = generateCacheKey(url, 'continuation', truncationResult.nextOffset);
+  contentCache.set(continuationToken, {
+    content: fullContent,
+    offset: truncationResult.nextOffset,
+    timestamp: Date.now()
+  });
+}
+
+return {
+  content: truncatedContent,
+  ...(continuationToken && { continuation_token: continuationToken })
+};
+```
+
+**Browser Automation:**
+
+When `use_browser: true` is set or automatic detection triggers it:
+
+```javascript
+// Uses Playwright for JavaScript-rendered content
+import { PlaywrightProvider } from '../browser/PlaywrightProvider.js';
+
+// Provider uses p-limit for bounded concurrency
+this.limit = pLimit(5); // Max 5 concurrent browser pages
+```
+
+**Cache Behavior:**
+- 5-minute TTL for fetched content
+- Continuation tokens cached for paginated reading
+- Automatic cache cleanup on expiration
 
 ### Tools With State
 
@@ -1146,7 +1316,7 @@ if (!tool) {
 
 LLM receives:
 ```
-Error: Unknown tool 'invalid_tool'. Available tools: web_search, web_fetch, get_time, web_search_exa, web_search_searxng. Please check the tool name and try again.
+Error: Unknown tool 'invalid_tool'. Available tools: web_search, web_search_exa, web_search_searxng, web_fetch, journal. Please check the tool name and try again.
 ```
 
 ### Invalid JSON Arguments
@@ -1256,6 +1426,66 @@ req.on('close', () => {
     // Ignore errors
   }
 });
+```
+
+### Abort/Cancel Handling
+
+The system supports **client-initiated cancellation** of streaming responses via an abort mechanism.
+
+**Abort Context Structure:**
+
+```javascript
+// From openaiProxy.js
+const abortContext = {
+  requestId: uniqueRequestId,
+  signal: abortController.signal,
+  cancelState: { cancelled: false }
+};
+```
+
+**Components:**
+- `signal` - AbortController signal for fetch cancellation
+- `cancelState` - Mutable state object to track cancellation across async boundaries
+
+**Usage in Tool Orchestration:**
+
+```javascript
+// From toolsStreaming.js / toolsJson.js
+const abortSignal = abortContext?.signal || null;
+const cancelState = abortContext?.cancelState || null;
+
+// Check before expensive operations
+if (cancelState?.cancelled || abortSignal?.aborted) {
+  // Clean up and exit early
+  persistence.recordAssistantFinal({ finishReason: 'cancelled' });
+  return;
+}
+```
+
+**Cancellation Flow:**
+1. Client sends abort request (e.g., clicks "Stop" button)
+2. Backend sets `cancelState.cancelled = true` and aborts the controller
+3. Active tool calls complete (not interrupted mid-execution)
+4. Loop exits on next iteration check
+5. `finish_reason: 'cancelled'` is set
+6. **Checkpoint persistence** - accumulated content and tool outputs are saved
+
+**Registry Management:**
+
+```javascript
+// From streamAbortRegistry.js
+export function registerStreamAbort(requestId, { controller, cancelState, userId }) {
+  abortMap.set(requestId, { controller, cancelState, userId });
+}
+
+export function triggerStreamAbort(requestId) {
+  const entry = abortMap.get(requestId);
+  if (entry) {
+    entry.controller.abort();
+    entry.cancelState.cancelled = true;
+    abortMap.delete(requestId);
+  }
+}
 ```
 
 ### Upstream Error During Orchestration
@@ -1379,29 +1609,82 @@ persistence.addToolOutputs(outputs);
 persistence.recordAssistantFinal({ finishReason, responseId });
 ```
 
-### 5. Sequential Tool Execution
+### 5. Parallel Tool Execution
 
-**Current:** Tools execute sequentially (one at a time).
+**What:** Execute multiple tool calls concurrently with bounded concurrency.
 
-**Future Optimization:** Parallel tool execution for independent tools:
+**Request Parameters:**
+- `enable_parallel_tool_calls: true` - Enable parallel execution (default: false)
+- `parallel_tool_concurrency: N` - Max concurrent tools (1-5, default: 3)
+
+**Implementation:** `toolOrchestrationUtils.js:executeToolCallsParallel`
 
 ```javascript
-// Current
-for (const toolCall of toolCalls) {
-  const output = await executeToolCall(toolCall, userId);
-  results.push(output);
-}
+import pLimit from 'p-limit';
 
-// Potential optimization
-const results = await Promise.all(
-  toolCalls.map(toolCall => executeToolCall(toolCall, userId))
-);
+export async function executeToolCallsParallel(toolCalls, userId = null, options = {}) {
+  const { concurrency = 3, onToolComplete } = options;
+
+  // Dynamic import of p-limit for bounded concurrency
+  let pLimit;
+  try {
+    pLimit = (await import('p-limit')).default;
+  } catch {
+    pLimit = null; // Fall back to unbounded Promise.allSettled
+  }
+
+  const limit = pLimit ? pLimit(Math.max(1, concurrency)) : null;
+
+  const executeOne = async (toolCall) => {
+    const result = await executeToolCall(toolCall, userId);
+    // Callback for streaming results as each tool completes
+    if (onToolComplete) onToolComplete(result, toolCall);
+    return result;
+  };
+
+  const tasks = limit
+    ? toolCalls.map(tc => limit(() => executeOne(tc)))
+    : toolCalls.map(executeOne);
+
+  const settled = await Promise.allSettled(tasks);
+  return settled.map((r, i) => r.status === 'fulfilled' ? r.value : {
+    name: toolCalls[i]?.function?.name,
+    output: `Error: ${r.reason?.message || 'Unknown error'}`
+  });
+}
 ```
 
-**Considerations:**
-- Some tools may have dependencies (execute sequentially)
-- Rate limits may require throttling
-- Error handling becomes more complex
+**Usage in Streaming Mode:** `toolsStreaming.js`
+
+```javascript
+const shouldParallel =
+  (bodyIn && bodyIn.enable_parallel_tool_calls === true) ||
+  config.parallelTools?.enabled;
+
+const concurrency = Number(
+  bodyIn?.parallel_tool_concurrency ?? config.parallelTools?.concurrency ?? 3
+);
+
+if (shouldParallel && normalizedToolCalls.length > 1) {
+  const { executeToolCallsParallel } = await import('./toolOrchestrationUtils.js');
+  const results = await executeToolCallsParallel(normalizedToolCalls, userId, {
+    concurrency: Math.min(concurrency, 5), // Cap at 5
+    onToolComplete: (result, toolCall) => {
+      // Stream each tool output as it completes
+      streamDeltaEvent({
+        res, model: body.model,
+        event: { tool_output: { tool_call_id: toolCall.id, name: result.name, output: result.output } }
+      });
+    }
+  });
+}
+```
+
+**Benefits:**
+- Faster execution when multiple independent tools are called
+- Results streamed to client as each tool completes (not all at once)
+- Bounded concurrency prevents overwhelming external APIs
+- Graceful fallback if `p-limit` unavailable
 
 ### 6. Non-Streaming Check During Streaming
 
@@ -1459,12 +1742,14 @@ Tool orchestration in ChatForge is a **sophisticated, iterative system** that en
 
 1. **Server-side execution** - Tools never run on the client for security and user data isolation
 2. **Two modes** - Streaming (real-time) and JSON (batch), both supporting multi-turn loops
-3. **Iterative loop** - Supports multiple rounds of tool calls within a single user request
+3. **Iterative loop** - Supports multiple rounds of tool calls with user-configurable max iterations (1-50)
 4. **User-scoped** - User context flows through tool execution for personalized behavior
-5. **Provider-agnostic** - Works across OpenAI, Anthropic, and other providers
+5. **Provider-agnostic** - Works across OpenAI, Anthropic, OpenRouter, and other providers
 6. **Buffered persistence** - Accumulate state in memory, write once at the end
 7. **Robust error handling** - All errors captured and fed back to LLM for recovery
-8. **Optimized for performance** - Response API, prompt caching, early metadata emission
+8. **Optimized for performance** - Response API, prompt caching, early metadata emission, parallel execution
+9. **Abort support** - Client-initiated cancellation with checkpoint persistence
+10. **Reasoning continuity** - `reasoning_details` preserved across tool iterations for multi-turn reasoning
 
 ### Architecture Highlights
 
@@ -1473,10 +1758,19 @@ Tool orchestration in ChatForge is a **sophisticated, iterative system** that en
 - **Factory pattern** for tool creation (`baseTool.js`)
 - **Accumulator pattern** for streaming tool calls (`toolsStreaming.js`)
 - **Final-only persistence** for database writes (`SimplifiedPersistence`)
+- **Bounded parallelism** via `p-limit` for concurrent tool execution
+- **Abort registry** for managing cancellation state (`streamAbortRegistry.js`)
+
+### Available Tools
+
+- `web_search` - Tavily-powered web search
+- `web_search_exa` - Exa-powered web search
+- `web_search_searxng` - SearXNG-powered web search
+- `web_fetch` - URL content fetching with Playwright browser automation, continuation tokens, and specialized extractors
+- `journal` - Persistent memory for cross-conversation notes
 
 ### Future Enhancements
 
-- **Parallel tool execution** for independent tools
 - **Tool result caching** to avoid redundant calls
 - **Tool quota management** for paid APIs
 - **Transactional tools** with rollback support

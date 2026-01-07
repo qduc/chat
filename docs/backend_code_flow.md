@@ -36,6 +36,10 @@ The main server file initializes Express with:
 
 - **Database setup** - `getDb()` triggers migrations and seeders on first call
 - **Retention worker** - Hourly cleanup job for conversation retention policies
+- **Model cache worker** - Background refresh for model cache
+  - Runs on `MODEL_CACHE_REFRESH_MS` interval (default 1 hour)
+  - Refreshes model lists per user in background
+  - Ensures model availability without blocking requests
 - **Security headers** - HSTS, X-Frame-Options, etc. in production
 
 ---
@@ -63,7 +67,7 @@ Tool Orchestration or Direct Proxy
     ↓
 Streaming or JSON Response
     ↓
-Database Persistence (final-only writes)
+Database Persistence (checkpoint + final writes)
 ```
 
 ---
@@ -137,6 +141,8 @@ proxyOpenAIRequest(req, res)
 - Tool names (strings) expanded to full OpenAI specs
 - Message history loaded from database with diff-based sync
 - Response ID tracked for Responses API optimization
+- **Prompt caching**: `addPromptCaching()` inserts cache breakpoints for Anthropic models
+- **Reasoning format**: Transformed based on provider (e.g., `reasoning_format` parameter handling)
 
 ---
 
@@ -190,6 +196,29 @@ export function getConversationById({ id, userId }) {
 #### 6. **users** - Authentication and user profiles
 - **Fields**: id, email, display_name, email_verified
 
+#### 7. **message_events** - Streaming events for progressive rendering
+- **Links**: message_id -> messages
+- **Fields**: type ('content', 'reasoning'), content, seq
+- **Purpose**: Stores individual streaming chunks for replay/recovery
+
+#### 8. **system_prompts** - Built-in and custom prompts
+- **Fields**: id, name, content, is_builtin, user_id
+- **User scoping**: Built-in prompts shared, custom prompts per user
+
+#### 9. **journal** - Persistent AI memory entries
+- **Fields**: id, user_id, content, created_at, updated_at
+- **Purpose**: Enables AI to store and retrieve notes across conversations
+- **User scoping**: Entries strictly scoped per user
+
+#### 10. **user_settings** - Per-user settings and API keys
+- **Fields**: id, user_id, key, value
+- **Purpose**: Stores user-specific configuration (tool API keys, preferences)
+- **Security**: API keys encrypted at rest
+
+#### 11. **sessions** - Session tracking
+- **Fields**: id, user_id, session_id, ip_hash, created_at, last_active_at
+- **Purpose**: Track user sessions for security and analytics
+
 ### Access Patterns
 
 1. **Reads** - Always filtered by `user_id AND deleted_at IS NULL`
@@ -208,11 +237,11 @@ export function getConversationById({ id, userId }) {
 ```javascript
 // tools/index.js
 const registeredTools = [
-  getTimeTool,
   webSearchTool,
   webSearchExaTool,
   webSearchSearxngTool,
-  webFetchTool
+  webFetchTool,
+  journalTool
 ];
 
 const toolMap = new Map(); // name → tool implementation
@@ -291,7 +320,9 @@ createProvider()
 
 **Location**: `backend/src/lib/simplifiedPersistence.js`
 
-### Architecture: Final-only writes (not intermediate writes)
+### Architecture: Hybrid Checkpoint Persistence
+
+The persistence system uses a hybrid approach combining draft checkpoints during streaming with final writes on completion, enabling recovery if clients disconnect mid-stream.
 
 ### Initialization
 
@@ -303,6 +334,16 @@ SimplifiedPersistence
   └─ _setupAssistantRecording() - Prepare for response
 ```
 
+### Checkpoint System
+
+The checkpoint system enables mid-stream recovery:
+
+- **`shouldCheckpoint()`** - Determines if checkpoint needed based on:
+  - Time threshold: 3000ms since last checkpoint
+  - Size threshold: 500+ characters accumulated since last checkpoint
+- **`performCheckpoint()`** - Writes draft message to database during streaming
+- **`createDraftMessage()`** - Creates initial draft with `status='streaming'`
+
 ### Content Accumulation
 
 - `appendContent(delta)` - Buffer assistant message chunks
@@ -312,15 +353,18 @@ SimplifiedPersistence
 
 ### Finalization
 
-- `recordAssistantFinal(finishReason, responseId)` - Write assistant message
+- `recordAssistantFinal(finishReason, responseId)` - Write final assistant message
 - `persistToolCallsAndOutputs()` - Write tool data to DB
 - Tool outputs stored as separate messages with role="tool"
+- Updates draft message status from `'streaming'` to `'complete'`
 
 ### Streaming Integration
 
 - Early metadata emission (conversation ID before chunks)
 - Tool call accumulation during streaming
-- Single database write at stream end
+- Periodic checkpoint writes during long streams
+- Final database write at stream end
+- Recovery of partial content if client disconnects
 
 ---
 
@@ -359,6 +403,29 @@ const conversationMeta = getConversationMetadata(persistence);
 writeAndFlush(res, `data: ${JSON.stringify(conversationMeta)}\n\n`);
 ```
 
+### Message Events Streaming
+
+- **Event types**: `'content'` for regular text, `'reasoning'` for thinking content
+- **Progressive rendering**: Events stored in `message_events` table for replay
+- **Generated images**: DALL-E image responses handled with URL extraction
+
+### Stream Abort Capability
+
+- **Endpoint**: `POST /v1/chat/completions/stop`
+- **Registry**: Active streams tracked by conversation ID
+- **Client disconnect**: Handled via `req.on('close')` listener
+- **Cleanup**: Removes stream from registry, triggers checkpoint persistence
+
+### Client Disconnect Handling
+
+```javascript
+req.on('close', () => {
+  // Persist buffered content as checkpoint
+  // Remove from active stream registry
+  // Mark message with appropriate status
+});
+```
+
 ---
 
 ## 10. Conversation Management
@@ -383,11 +450,17 @@ writeAndFlush(res, `data: ${JSON.stringify(conversationMeta)}\n\n`);
 - Title generation (fire-and-forget background task)
 
 #### 4. Fork
-- Create new conversation
+- Create new conversation with `parent_conversation_id` reference
 - Copy all metadata from original
 - Copy messages up to specified sequence number
+- Enables exploration of alternative conversation paths
 
-#### 5. Soft Delete
+#### 5. Linked Conversations
+- **Field**: `parent_conversation_id` for forking relationships
+- **Model comparison**: Multiple conversations linked for side-by-side evaluation
+- **Endpoint**: `GET /v1/conversations/:id/linked` - Retrieve linked conversations
+
+#### 6. Soft Delete
 - Set deleted_at timestamp
 - Prevents retrieval in normal queries
 
@@ -482,6 +555,40 @@ Loaded based on enabled tools, wrapped with model filtering
 - NOT NULL constraints in schema
 - Every function validates userId before access
 
+### Checkpoint-Based Recovery
+
+- Draft messages created at stream start with `status='streaming'`
+- Periodic checkpoints based on time (3000ms) or size (500 chars)
+- Recovery of partial content on client disconnect
+- Final status update to `'complete'` on successful finish
+
+### Per-User Model Caching
+
+- Model lists cached per user with TTL
+- Background refresh worker updates cache proactively
+- Avoids blocking requests on cache expiry
+- Provider-specific model filtering applied
+
+### Reasoning Format Handling
+
+- `reasoning_format` parameter supported across compatible models
+- Provider-specific transformations in adapter layer
+- Reasoning content streamed separately from main content
+
+### Conversation Forking
+
+- `parent_conversation_id` tracks fork relationships
+- Messages copied up to specified sequence number
+- Independent conversation history after fork point
+- Linked conversations for model comparison mode
+
+### Stream Abort Registry
+
+- Active streams tracked by conversation ID
+- `POST /v1/chat/completions/stop` endpoint for client-initiated abort
+- Automatic cleanup on client disconnect
+- Checkpoint persistence triggered before cleanup
+
 ---
 
 ## Summary
@@ -490,11 +597,15 @@ The ChatForge backend implements a sophisticated **OpenAI-compatible proxy** wit
 
 1. **Layered Security** - Session, authentication, and per-user data isolation
 2. **Flexible Request Processing** - Adapts to tool orchestration vs. direct proxy based on flags
-3. **Efficient Persistence** - Final-only writes with accumulated state management
+3. **Hybrid Checkpoint Persistence** - Draft checkpoints during streaming with final writes on completion
 4. **Multi-Provider Support** - Factory pattern for different AI providers
-5. **Real-time Streaming** - SSE-based with early metadata emission
-6. **Modular Tools** - Registry-based, decoupled tool system
+5. **Real-time Streaming** - SSE-based with early metadata emission and abort capability
+6. **Modular Tools** - Registry-based, decoupled tool system (web search, fetch, journal)
 7. **User-Scoped Data** - Every operation filtered by authenticated user
 8. **Conversation Settings Snapshots** - Complete state captured per conversation for reproducibility
+9. **Conversation Forking** - Fork conversations at any point to explore alternative paths
+10. **Model Comparison** - Linked conversations for side-by-side model evaluation
+11. **Stream Recovery** - Checkpoint-based recovery for client disconnects
+12. **Prompt Caching** - Automatic cache breakpoints for Anthropic models
 
 The architecture prioritizes **separation of concerns**, **type safety**, and **user data isolation** while maintaining **OpenAI API compatibility** and **production reliability**.

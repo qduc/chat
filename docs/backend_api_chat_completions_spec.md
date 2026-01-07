@@ -27,7 +27,7 @@ Required (Bearer token). Request is rejected with 401 if missing/invalid.
   "conversation_id": "uuid",              // Existing conversation; if absent a new one may be auto-created (persisted)
   "provider_id": "uuid",                  // Chooses a stored provider (header `x-provider-id` alternative)
   "system_prompt": "<string>",            // Convenience field; converted into/updates first system message server-side
-  "active_system_prompt_id": "prompt-id?",// Optional persisted system prompt selection
+  "client_request_id": "req_abc123?",     // Optional; used for abort registration (see /stop endpoint)
   "previous_response_id": "resp_123?",    // Optional; used when provider supports Responses API chaining
   "reasoning_effort": "minimal|low|medium|high",
   "verbosity": "low|medium|high",
@@ -35,7 +35,8 @@ Required (Bearer token). Request is rejected with 401 if missing/invalid.
   "toolsEnabled": true|false,             // Client hint for persistence metadata
   "qualityLevel": "default|...",          // Stored in conversation metadata
   "researchMode": true|false,             // (Experimental) stripped before upstream call
-  "id": "client-generated-id?"            // Optional passthrough for some streaming tool call chunk IDs
+  "enable_parallel_tool_calls": true|false, // Enable parallel tool execution (default false)
+  "parallel_tool_concurrency": 1..5       // Max concurrent tool executions when parallel enabled (default 3, max 5)
 }
 ```
 
@@ -43,7 +44,7 @@ Notes:
 - The server injects or replaces a single leading `system` message based on `system_prompt`.
 - `stream` defaults to `true`, so clients receive SSE unless they explicitly send `stream: false`.
 - `provider_stream` can disable upstream streaming without changing the client transport. When omitted it mirrors `stream`. Both `provider_stream` and `providerStream` are accepted.
-- Persistence hints and internal selector fields (`conversation_id`, `provider_id`, `provider`, `streamingEnabled`, `toolsEnabled`, `qualityLevel`, `researchMode`, `system_prompt`, `providerStream`, `provider_stream`) are stripped before the outbound upstream request.
+- Persistence hints and internal selector fields (`conversation_id`, `provider_id`, `provider`, `streamingEnabled`, `toolsEnabled`, `qualityLevel`, `researchMode`, `system_prompt`, `providerStream`, `provider_stream`, `client_request_id`, `enable_parallel_tool_calls`, `parallel_tool_concurrency`) are stripped before the outbound upstream request.
 - If `tools` is an array of strings, the server expands only the tools that match registered names; unmatched names are silently ignored.
 - When a persisted conversation exists, prior history is reconstructed server-side (and may include a `previous_response_id` optimization when the provider supports it), so clients only need to send the latest turn.
 
@@ -55,7 +56,7 @@ Notes:
 | Yes           | false                   | Tool orchestration (JSON) | 1..N | JSON (augmented) |
 | Yes           | true                    | Iterative tool streaming   | 1..N | SSE (content + tool events) |
 
-`N` is bounded by a safety limit (currently 10 iterations). Upstream streaming can additionally be disabled with `provider_stream: false`; the server still streams to the client when `stream: true`.
+`N` is bounded by a user-configurable safety limit (default 10 iterations, adjustable via user settings). Upstream streaming can additionally be disabled with `provider_stream: false`; the server still streams to the client when `stream: true`.
 
 #### Streaming Event Semantics
 When `stream: true` the response headers include `Content-Type: text/event-stream`.
@@ -92,7 +93,14 @@ When `stream: false`, two shapes are returned:
   "created": 1234567890,
   "model": "gpt-4o-mini",
   "choices": [ { "index":0, "message": { "role":"assistant", "content":"Hello!" }, "finish_reason":"stop" } ],
-  "usage": { "prompt_tokens": 12, "completion_tokens": 7, "total_tokens": 19, "reasoning_tokens?": 4 },
+  "usage": {
+    "prompt_tokens": 12,
+    "completion_tokens": 7,
+    "total_tokens": 19,
+    "reasoning_tokens": 4,                           // May appear at top level
+    "reasoning_token_count": 4,                      // Alternate format (some providers)
+    "completion_tokens_details": { "reasoning_tokens": 4 }  // OpenAI nested format
+  },
   "_conversation": {
     "id": "uuid",
     "title": "optional title",
@@ -137,9 +145,13 @@ Iterative algorithm continues until the model stops requesting tools or the max 
 Each iteration:
 1. Call the provider with `stream: provider_stream !== false`. Upstream may respond with either SSE or JSON; the server adapts accordingly.
 2. Stream assistant deltas directly to the client, buffering partial tool call arguments.
-3. When tool calls are complete, emit a consolidated `tool_calls` chunk, execute each tool locally, stream `tool_output` events, append tool results to the conversation history, and continue.
+3. When tool calls are complete, emit a consolidated `tool_calls` chunk, execute each tool (sequentially or in parallel based on `enable_parallel_tool_calls`), stream `tool_output` events, append tool results to the conversation history, and continue.
 4. If no tool calls are requested, stream the model's final completion and finalize persistence.
-5. A guard appends `"[Maximum iterations reached]"` if the safety limit (10) is hit.
+5. A guard appends `"[Maximum iterations reached]"` if the user's configured iteration limit is hit.
+
+**Parallel Tool Execution**: When `enable_parallel_tool_calls: true`, multiple tool calls in a single iteration are executed concurrently up to `parallel_tool_concurrency` (default 3, max 5). Results are streamed as they complete.
+
+**Reasoning Details Preservation**: For providers that return `reasoning_details` arrays (e.g., OpenRouter with extended thinking), these are preserved across tool iterations to maintain reasoning continuity in multi-turn conversations.
 
 Tool outputs are persisted as separate `tool` messages with status (`success` / `error`) after the assistant turn is recorded.
 
@@ -150,6 +162,7 @@ Tool outputs are persisted as separate `tool` messages with status (`success` / 
 Optional request headers:
 - `x-provider-id`: Overrides provider selection (same as body `provider_id`).
 - `x-conversation-id`: Alternate source for the conversation id (body takes precedence).
+- `x-client-request-id`: Client-generated request ID for abort registration (same as body `client_request_id`).
 
 #### Example: Streaming With Tools
 Request:
@@ -195,20 +208,48 @@ Endpoint is not strictly idempotent (new conversation creation, title generation
 - Streaming order: plain proxy => `_conversation` (if any) -> content deltas -> final empty delta -> `[DONE]`; tool streaming => content deltas -> buffered `tool_calls` -> `tool_output` events -> final empty delta -> `_conversation` -> `[DONE]`.
 
 #### Field Removal / Stripping Summary
-Before the upstream call the server removes: `conversation_id`, `provider_id`, `provider`, `system_prompt`, `streamingEnabled`, `toolsEnabled`, `qualityLevel`, `researchMode`, `providerStream`, `provider_stream`, and (for Chat Completions) `previous_response_id`. When the Responses API adapter is active, `previous_response_id` is forwarded.
+Before the upstream call the server removes: `conversation_id`, `provider_id`, `provider`, `system_prompt`, `streamingEnabled`, `toolsEnabled`, `qualityLevel`, `researchMode`, `providerStream`, `provider_stream`, `client_request_id`, `enable_parallel_tool_calls`, `parallel_tool_concurrency`, and (for Chat Completions) `previous_response_id`. When the Responses API adapter is active, `previous_response_id` is forwarded.
 
 #### Backwards Compatibility Notes
 Legacy clients that send their own leading `system` message continue to work; supplying `system_prompt` overwrites it.
 
 #### Limits & Safety
-- Max tool orchestration iterations: 10
-- Stream timeout guard: 30s inactivity abort for tool streaming path
+- Max tool orchestration iterations: User-configurable (default 10, determined by `getUserMaxToolIterations(userId)`)
+- Stream timeout guard: Configurable via `config.providerConfig.streamTimeoutMs` (provider-specific)
 - Tool argument accumulation concatenates deltas until valid JSON (empty => `{}`)
+- Parallel tool concurrency: Max 5 concurrent executions when enabled
 
 #### Observability
 Server logs capture upstream requests and responses (with truncated previews), tool call arguments, tool outputs (truncated), iteration counts, and persistence actions. System prompt bodies are excluded from logs for privacy.
 
+#### Stream Abort Endpoint
+
+### POST /v1/chat/completions/stop
+Aborts an in-progress streaming request.
+
+**Request Body**:
+```
+{
+  "request_id": "req_abc123"   // Required if x-client-request-id header not provided
+}
+```
+
+**Headers**:
+- `x-client-request-id`: Alternative to body `request_id`
+
+**Response**:
+```
+{
+  "stopped": true    // true if request was found and aborted, false otherwise
+}
+```
+
+**Behavior**:
+- When stopped, the persisted message receives `finish_reason: 'cancelled'`
+- Automatic checkpoint persistence ensures buffered tool calls/outputs survive abort
+- No effect if request already completed or not found
+
+---
+
 #### Future Extensions (non-breaking)
-- Parallel tool execution
 - Partial reasoning block streaming
-- Tool call cancellation events

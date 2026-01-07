@@ -2,229 +2,425 @@
 
 ## Overview
 
-ChatForge implements server-side tool orchestration with a modular, registry-based system. Tools are independent units that execute on the backend and can handle complex workflows with iterative execution.
+ChatForge implements server-side tool orchestration with a modular, registry-based system. Tools are independent units that execute on the backend and can handle complex workflows with iterative and parallel execution.
 
-## Adding New Tools
+## Tool Architecture
 
-### Tool Structure
+### Directory Structure
 
-Tools are defined in `backend/src/lib/tools.js` with a consistent interface:
+Tools are organized in the `backend/src/lib/tools/` directory:
+
+```
+backend/src/lib/tools/
+  baseTool.js           # createTool factory function
+  index.js              # Tool registry and exports
+  webSearch.js          # Tavily web search
+  webSearchExa.js       # Exa semantic search
+  webSearchSearxng.js   # SearXNG meta-search
+  webFetch.js           # Web page content extraction
+  journal.js            # Persistent memory storage
+```
+
+### The createTool Factory
+
+All tools use the `createTool` factory from `baseTool.js`:
 
 ```javascript
-export const tools = {
-  your_tool_name: {
-    validate: (args) => {
-      // Validate and normalize arguments
-      if (!args?.requiredParam) {
-        throw new Error('Missing requiredParam');
-      }
-      return { requiredParam: args.requiredParam };
-    },
-    handler: async (validatedArgs) => {
-      // Implement tool logic
-      return { result: 'success' };
+import { createTool } from './baseTool.js';
+
+export const myTool = createTool({
+  name: 'tool_name',
+  description: 'Human-readable description of what the tool does',
+  validate: (args) => {
+    // Validate and normalize arguments
+    // Throw Error if validation fails
+    // Return validated/normalized arguments object
+    return validatedArgs;
+  },
+  handler: async (validatedArgs, context = {}) => {
+    // Implement tool logic
+    // context contains userId for user-scoped operations
+    return result;
+  },
+  openAI: {
+    type: 'function',
+    function: {
+      name: 'tool_name',
+      description: 'Description for the AI model',
+      parameters: {
+        type: 'object',
+        properties: {
+          param1: {
+            type: 'string',
+            description: 'Description of param1',
+          },
+        },
+        required: ['param1'],
+      },
     },
   },
-};
+});
+
+export default myTool;
 ```
+
+The factory validates the tool definition and returns a frozen object with:
+- `name` - Tool identifier
+- `description` - Human-readable description
+- `validate` - Argument validation function
+- `handler` - Execution function
+- `spec` - OpenAI-compatible tool specification
 
 ### Tool Registration
 
-1. **Define the tool** in `backend/src/lib/tools.js`
-2. **Export it** from the tools module
-3. **Register in the tool system** - Automatically discovered via the registry
+Tools are registered in `backend/src/lib/tools/index.js`:
 
-Tools are automatically registered and available via the `/v1/tools` endpoint.
+```javascript
+import webSearchTool from './webSearch.js';
+import webSearchExaTool from './webSearchExa.js';
+import webSearchSearxngTool from './webSearchSearxng.js';
+import webFetchTool from './webFetch.js';
+import journalTool from './journal.js';
+
+const registeredTools = [
+  webSearchTool,
+  webSearchExaTool,
+  webSearchSearxngTool,
+  webFetchTool,
+  journalTool
+];
+
+const toolMap = new Map();
+for (const tool of registeredTools) {
+  if (toolMap.has(tool.name)) {
+    throw new Error(`Duplicate tool name detected: ${tool.name}`);
+  }
+  toolMap.set(tool.name, tool);
+}
+
+export const tools = Object.fromEntries(toolMap.entries());
+
+export function generateOpenAIToolSpecs() {
+  return registeredTools.map((tool) => tool.spec);
+}
+
+export function getAvailableTools() {
+  return registeredTools.map((tool) => tool.name);
+}
+```
+
+## Adding New Tools
+
+### Step 1: Create the Tool File
+
+Create a new file in `backend/src/lib/tools/`:
+
+```javascript
+import { createTool } from './baseTool.js';
+import { logger } from '../../logger.js';
+import { getUserSetting } from '../../db/userSettings.js';
+
+const TOOL_NAME = 'my_tool';
+
+function validate(args) {
+  if (!args || typeof args.query !== 'string' || args.query.trim().length === 0) {
+    throw new Error('my_tool requires a "query" argument of type string');
+  }
+
+  const validated = { query: args.query.trim() };
+
+  // Validate optional parameters
+  if (args.maxResults !== undefined) {
+    const maxResults = Number(args.maxResults);
+    if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 20) {
+      throw new Error('maxResults must be an integer between 1 and 20');
+    }
+    validated.maxResults = maxResults;
+  }
+
+  return validated;
+}
+
+async function handler(validatedArgs, context = {}) {
+  // Extract userId from context for user-scoped operations
+  const userId = context?.userId || null;
+
+  // Example: Get per-user API key
+  let apiKey = null;
+  if (userId) {
+    try {
+      const row = getUserSetting(userId, 'my_tool_api_key');
+      if (row && row.value) apiKey = row.value;
+    } catch (err) {
+      logger.warn('Failed to read user API key', { userId, err: err?.message });
+    }
+  }
+
+  if (!apiKey) {
+    throw new Error('API key not configured. Please add it in Settings.');
+  }
+
+  // Implement tool logic
+  try {
+    const results = await performOperation(validatedArgs, apiKey);
+    return formatResults(results);
+  } catch (error) {
+    logger.error('Tool execution failed:', error);
+    throw new Error(`Tool failed: ${error.message}`);
+  }
+}
+
+export const myTool = createTool({
+  name: TOOL_NAME,
+  description: 'Description for humans',
+  validate,
+  handler,
+  openAI: {
+    type: 'function',
+    function: {
+      name: TOOL_NAME,
+      description: 'Description for AI model - explain when to use this tool',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: {
+            type: 'string',
+            description: 'The query to process',
+          },
+          maxResults: {
+            type: 'integer',
+            minimum: 1,
+            maximum: 20,
+            description: 'Maximum results to return (default: 10)',
+          },
+        },
+        required: ['query'],
+      },
+    },
+  },
+});
+
+export default myTool;
+```
+
+### Step 2: Register the Tool
+
+Add your tool to `backend/src/lib/tools/index.js`:
+
+```javascript
+import myTool from './myTool.js';
+
+const registeredTools = [
+  // ... existing tools
+  myTool,
+];
+```
 
 ### Validation Function
 
 The `validate` function:
 - Receives raw arguments from the API
-- Should validate all input parameters
+- Should validate all input parameters thoroughly
 - Should throw an error with a descriptive message if validation fails
 - Should return the normalized/validated arguments object
-
-```javascript
-validate: (args) => {
-  const errors = [];
-
-  if (!args?.query) {
-    errors.push('query is required');
-  }
-
-  if (args?.maxResults && typeof args.maxResults !== 'number') {
-    errors.push('maxResults must be a number');
-  }
-
-  if (errors.length > 0) {
-    throw new Error(`Validation errors: ${errors.join(', ')}`);
-  }
-
-  return {
-    query: args.query,
-    maxResults: args.maxResults || 10,
-  };
-}
-```
+- Is called before the handler
 
 ### Handler Function
 
 The `handler` function:
-- Receives validated arguments
+- Receives validated arguments as the first parameter
+- Receives a `context` object as the second parameter containing `userId`
 - Can be async for I/O operations
-- Should return result data (not thrown errors)
-- Should gracefully handle edge cases
+- Should return result data (not throw errors for expected failures)
+- Should handle errors gracefully and provide meaningful messages
+
+### The Context Parameter
+
+Handlers receive a `context` object with user information:
 
 ```javascript
-handler: async (validatedArgs) => {
-  try {
-    const results = await performSearch(validatedArgs.query);
-    return {
-      success: true,
-      results: results.slice(0, validatedArgs.maxResults),
-    };
-  } catch (error) {
-    return {
-      success: false,
-      error: error.message,
-    };
+async function handler(validatedArgs, context = {}) {
+  const userId = context?.userId || null;
+
+  if (!userId) {
+    throw new Error('This tool requires an authenticated user');
+  }
+
+  // Use userId for user-scoped operations
+}
+```
+
+### Per-User API Keys
+
+Tools that require external API keys should use the user settings system:
+
+```javascript
+import { getUserSetting } from '../../db/userSettings.js';
+
+async function handler(args, context = {}) {
+  const userId = context?.userId || null;
+
+  let apiKey = null;
+  if (userId) {
+    try {
+      const row = getUserSetting(userId, 'my_api_key');
+      if (row && row.value) apiKey = row.value;
+    } catch (err) {
+      logger.warn('Failed to read API key', { userId, err: err?.message });
+    }
+  }
+
+  if (!apiKey) {
+    throw new Error('API key not configured. Please add it in Settings.');
   }
 }
 ```
 
-## Tool Interface Definition
+## Built-in Tools
 
-For the chat completions API, tools must define their schema for the AI model:
+### web_search (Tavily)
 
-```javascript
-{
-  type: 'function',
-  function: {
-    name: 'tool_name',
-    description: 'Clear description of what the tool does',
-    parameters: {
-      type: 'object',
-      properties: {
-        param1: {
-          type: 'string',
-          description: 'Description of param1',
-        },
-        param2: {
-          type: 'number',
-          description: 'Description of param2',
-        },
-      },
-      required: ['param1'],
-    },
-  },
-}
-```
+Fast, high-quality search with excellent default relevance. Best for quick answers, news/current events, and general queries.
+
+**API Key**: `tavily_api_key` (per-user setting)
+
+**Parameters**:
+- `query` (required) - Search query
+- `search_depth` - "basic" (default) or "advanced"
+- `days` - Number of days for news topic
+- `time_range` - "day", "week", "month", "year"
+- `max_results` - 1-20 (default: 5)
+- `include_answer` - "basic" or "advanced" for AI-generated answers
+- `include_domains` - Array of domains to include
+- `exclude_domains` - Array of domains to exclude
+
+### web_search_exa (Exa)
+
+Deep research with semantic search and custom content extraction. Best for technical queries, detailed specs, and when you need precise excerpts or AI summaries.
+
+**API Key**: `exa_api_key` (per-user setting)
+
+**Parameters**:
+- `query` (required) - Search query
+- `type` - "auto", "keyword", or "neural"
+- `num_results` - 1-100 (default: 10)
+- `include_domains` - Array of domains to include
+- `exclude_domains` - Array of domains to exclude
+- `text` - Boolean or object for full text retrieval
+- `highlights` - Boolean or object for key excerpts
+- `summary` - Boolean or object for AI summaries
+
+### web_search_searxng (SearXNG)
+
+Meta-search aggregating results from multiple engines. Self-hosted option for privacy-conscious users.
+
+**Configuration**: `searxng_base_url` (per-user setting)
+
+**Parameters**:
+- `query` (required) - Search query
+- `category` - "general", "news", "science", "it"
+- `time_range` - "day", "week", "month", "year"
+- `max_results` - 1-20 (default: 10)
+
+### web_fetch
+
+Fetch web pages and convert to Markdown. Supports JavaScript-heavy sites via Playwright browser automation. Includes specialized extractors for Reddit and StackOverflow.
+
+**Parameters**:
+- `url` (required for initial fetch) - URL to fetch
+- `max_chars` - Maximum characters per chunk (default: 10000)
+- `heading` - Array of headings to extract specific sections
+- `continuation_token` - Token for fetching next chunk
+- `use_browser` - Force browser rendering for SPAs
+
+**Features**:
+- Automatic table of contents generation
+- Content extraction with Readability
+- SPA detection and browser fallback
+- Specialized extractors for Reddit (posts + comments) and StackOverflow (Q&A with votes)
+
+### journal
+
+Persistent memory for AI to store and retrieve notes across conversations. User-scoped entries.
+
+**Parameters**:
+- `mode` (required) - "write" or "read"
+- `name` - Model name (required for write)
+- `content` - Note content (required for write)
+- `page` - Page number for read (default: 1)
 
 ## Best Practices
 
 ### Error Handling
 
 - Validate inputs thoroughly in the `validate` function
-- Return meaningful error messages
-- Handle external API failures gracefully
-- Log errors for debugging
+- Return meaningful error messages that help the AI adjust its approach
+- Distinguish between recoverable errors (bad parameters) and infrastructure errors (API down)
+- Log errors for debugging with appropriate context
+
+```javascript
+// 400 Bad Request - AI can fix by adjusting parameters
+if (response.status === 400) {
+  throw new Error(`Invalid parameters: ${message}. Please adjust and try again.`);
+}
+
+// 401/403 - Configuration issue
+if (response.status === 401 || response.status === 403) {
+  throw new Error(`Authentication failed. Check API key in Settings.`);
+}
+
+// 429 - Rate limiting
+if (response.status === 429) {
+  throw new Error(`Rate limit exceeded. Please try again later.`);
+}
+```
 
 ### Performance
 
 - Use async/await for I/O operations
 - Implement timeouts for external calls
-- Cache frequently used data when appropriate
-- Return only necessary data
+- Return only necessary data to minimize token usage
+- Consider caching for frequently accessed data
 
 ### Security
 
 - Validate all user inputs
+- Never expose API keys in error messages
 - Sanitize output if used in other contexts
-- Never expose sensitive information in errors
 - Enforce rate limits if applicable
 
-### Documentation
+## Parallel Tool Execution
 
-- Add clear descriptions of tool purpose
-- Document all parameters
-- Provide examples of usage
-- Document any rate limits or quotas
+The backend supports parallel execution for independent tool calls, reducing latency when the model requests multiple tools simultaneously.
 
-## Example: Web Search Tool
+### Request-Level Control
 
-```javascript
-web_search: {
-  validate: (args) => {
-    if (!args?.query) {
-      throw new Error('query is required');
-    }
-    if (args.query.length > 500) {
-      throw new Error('query must be less than 500 characters');
-    }
-    return {
-      query: args.query.trim(),
-      maxResults: Math.min(args.maxResults || 10, 20),
-    };
-  },
+Per-request parameters:
+- `enable_parallel_tool_calls` (boolean) - Enable parallel execution for this request
+- `parallel_tool_concurrency` (number) - Max concurrent tool executions (bounded by server max)
 
-  handler: async (validatedArgs) => {
-    try {
-      const results = await searchWeb(validatedArgs.query);
-      return {
-        success: true,
-        results: results.map(r => ({
-          title: r.title,
-          url: r.url,
-          snippet: r.snippet,
-        })).slice(0, validatedArgs.maxResults),
-      };
-    } catch (error) {
-      return {
-        success: false,
-        error: `Search failed: ${error.message}`,
-      };
-    }
-  },
-}
-```
+### Server-Level Configuration
 
-## Testing Tools
+Environment variables:
+- `ENABLE_PARALLEL_TOOL_CALLS` (boolean, default: false) - Enable feature globally
+- `PARALLEL_TOOL_CONCURRENCY` (number, default: 3) - Default max concurrency
 
-When adding new tools, include tests:
+### Behavior
 
-```javascript
-describe('your_tool_name', () => {
-  it('should validate required parameters', () => {
-    expect(() => {
-      tools.your_tool_name.validate({});
-    }).toThrow('Missing required parameter');
-  });
-
-  it('should handle successful execution', async () => {
-    const result = await tools.your_tool_name.handler({
-      param1: 'test value',
-    });
-    expect(result.success).toBe(true);
-  });
-});
-```
-
-## Built-in Tools
-
-ChatForge includes several built-in tools:
-
-- **web_search** - Search the web using configured search providers
-- **journal** - Store and retrieve persistent memory entries
-- **file_upload** - Handle file attachments
-- **image_upload** - Handle image attachments
+- Parallel execution is opt-in for backward compatibility
+- Streaming flows emit `tool_output` events as each tool completes
+- Conversation history preserves original tool-call order for the LLM
+- Use conservatively for tools making heavy external requests
 
 ## Tool Orchestration
 
 The tool orchestration system:
 - Executes tools based on AI model requests
-- Supports iterative tool calling (tool calls multiple rounds)
+- Supports iterative tool calling (multiple rounds)
+- Supports parallel tool execution (configurable)
 - Integrates results back into the conversation
 - Handles streaming of tool execution progress
+- Persists checkpoints for recovery from disconnects
 
 See [tool_orchestration_deep_dive.md](tool_orchestration_deep_dive.md) for detailed information about the orchestration engine.
 
@@ -241,30 +437,46 @@ Response includes tool schemas formatted for your AI provider.
 
 ## Configuration
 
-Provider and tool credentials are now stored per user. Open **Settings → Search & Web Tools** in the app to add:
+Provider and tool credentials are stored per user. Open **Settings -> Search & Web Tools** in the app to configure:
 
-- **Tavily API Key** (for the `web_search` tool)
-- **Exa API Key** (for the `web_search_exa` tool)
-- **SearXNG Base URL** (for the `web_search_searxng` tool)
+- **Tavily API Key** - For `web_search` tool
+- **Exa API Key** - For `web_search_exa` tool
+- **SearXNG Base URL** - For `web_search_searxng` tool
 
-No additional environment variables are required for these tools anymore.
+No environment variables are required for these tools - they use per-user settings.
 
-### Parallel tool execution (opt-in)
+## Testing Tools
 
-The backend supports an opt-in parallel execution mode for tool calls. This can reduce latency when the model requests multiple independent tools.
+When adding new tools, include tests:
 
-Environment variables:
+```javascript
+import { describe, it, expect } from 'vitest';
+import { myTool } from './myTool.js';
 
-- `ENABLE_PARALLEL_TOOL_CALLS` (boolean, default: false) — enable the server-level feature flag
-- `PARALLEL_TOOL_CONCURRENCY` (number, default: 3) — default max concurrent tool executions
+describe('my_tool', () => {
+  describe('validate', () => {
+    it('should require query parameter', () => {
+      expect(() => myTool.validate({})).toThrow('requires a "query" argument');
+    });
 
-Request-level overrides (per-call):
+    it('should validate maxResults range', () => {
+      expect(() => myTool.validate({
+        query: 'test',
+        maxResults: 100
+      })).toThrow('must be an integer between 1 and 20');
+    });
 
-- `enable_parallel_tool_calls` (boolean) — opt a single request into parallel tool execution
-- `parallel_tool_concurrency` (number) — override concurrency for a specific request (bounded by server max)
+    it('should return validated args', () => {
+      const result = myTool.validate({ query: '  test  ', maxResults: 5 });
+      expect(result).toEqual({ query: 'test', maxResults: 5 });
+    });
+  });
 
-Notes:
-
-- Parallel execution is opt-in and disabled by default for backward compatibility.
-- Streaming behavior: when enabled in streaming flows the server will stream `tool_output` events as each tool completes; the conversation history and persistence will preserve the original tool-call order so the LLM's next iteration sees results in the expected sequence.
-- Use conservatively for tools that make heavy external requests — tune concurrency with `PARALLEL_TOOL_CONCURRENCY`.
+  describe('handler', () => {
+    it('should require authenticated user', async () => {
+      await expect(myTool.handler({ query: 'test' }, {}))
+        .rejects.toThrow('requires an authenticated user');
+    });
+  });
+});
+```
