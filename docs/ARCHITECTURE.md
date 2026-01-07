@@ -13,6 +13,7 @@
 - **highlight.js** - Code syntax highlighting
 - **KaTeX** - Math rendering
 - **@floating-ui/react** - Tooltips and dropdowns
+- **Electron** - Cross-platform desktop app support
 
 ### Backend
 
@@ -29,6 +30,7 @@
 - **@mozilla/readability** - Web scraping
 - **turndown** - HTML to Markdown conversion
 - **jsdom** - DOM manipulation
+- **Playwright** - Browser automation for SPAs
 
 ## Project Structure
 
@@ -50,6 +52,7 @@ chat/
 │   │   └── prompts/               # System prompt templates
 │   ├── scripts/                   # Database migrations
 │   └── __tests__/                 # Backend test suite
+├── electron/                      # Electron desktop app packaging
 ├── docs/                          # Architecture documentation
 ├── proxy/                         # Dev-only Nginx reverse proxy configuration
 ├── integration/                   # Integration tests
@@ -63,29 +66,34 @@ chat/
 
 - **ChatV2.tsx** - Main chat container managing layout and sidebar
 - **MessageList.tsx** - Message rendering with streaming support
-- **MessageInput.tsx** - User input with file/image upload
-- **useChat Hook** - Centralized state management for chat functionality
+- **MessageInput.tsx** - User input with multi-modal upload (image, audio, files)
+- **useChat Hook** - Centralized state management for chat functionality, including model comparison mode
+- **Markdown.tsx** - Advanced markdown rendering with HTML preview and code wrapping
 
 ### Backend
 
-- **API Proxy** (`backend/src/routes/chat.js`) - OpenAI-compatible chat completions endpoint
-- **Tool Orchestrator** (`backend/src/lib/orchestrators/`) - Server-side tool execution
-- **Persistence Layer** (`backend/src/lib/persistence/`) - SQLite conversation storage
-- **Adapters** (`backend/src/adapters/`) - Provider-specific API implementations
-- **Authentication** (`backend/src/routes/auth.js`) - JWT-based user auth
+- **API Proxy** (`backend/src/routes/chat.js`) - OpenAI-compatible chat completions endpoint with reasoning preservation
+- **Tool Orchestrator** (`backend/src/lib/orchestrators/`) - Server-side tool execution (sequential and parallel)
+- **Persistence Layer** (`backend/src/lib/persistence/`) - SQLite conversation storage with hybrid checkpoint persistence
+- **Adapters** (`backend/src/adapters/`) - Provider-specific API implementations (Responses API, prompt caching)
+- **Authentication** (`backend/src/routes/auth.js`) - JWT-based user auth with Electron auto-login
 
 ## Core Design Principles
 
 1. **User-Based Data Isolation** - All data operations scoped to authenticated users
 2. **JWT Authentication** - Secure token-based authentication with refresh tokens
 3. **Multi-Tenancy** - Per-user provider configs, conversations, and settings
-4. **Server-Side Tool Orchestration** - Tools execute on backend, not client
-5. **OpenAI API Compatibility** - Maintains OpenAI contract while extending features
-6. **Real-time Streaming** - SSE-based streaming with tool execution visibility
+4. **Server-Side Tool Orchestration** - Tools execute on backend, not client (supports parallel execution)
+5. **OpenAI API Compatibility** - Maintains OpenAI contract while adding features
+6. **Real-time Streaming** - SSE-based streaming with tool execution visibility and abort support
 7. **Conversation Snapshots** - Complete settings persist for reproducibility
-8. **Multimodal Support** - Image and file upload with validation
-9. **Reasoning Controls** - Support for reasoning effort and extended thinking
+8. **Multimodal Support** - Image, audio, and file upload with validation and previews
+9. **Reasoning Controls** - Support for reasoning effort and extended thinking with preservation across turns
 10. **Prompt Caching** - Automatic cache breakpoints for cost reduction
+11. **Hybrid Checkpoint Persistence** - Draft messages and checkpoints ensure no data loss on disconnect
+12. **Model Comparison Mode** - Side-by-side evaluation of multiple models in one view
+13. **Conversation Forking** - Branch conversations at any message to explore alternatives
+14. **Desktop App Integration** - Native Electron experience with secure credential storage
 
 ## Request Flow
 

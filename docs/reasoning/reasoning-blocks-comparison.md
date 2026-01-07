@@ -10,21 +10,20 @@
 4. Follow-up requests should resend the original reasoning blocks when continuing conversations, especially around tool calls, without reordering or altering the sequence.
 5. Reasoning controls use unified `reasoning` payload (superseding legacy flags), while `reasoning_tokens` should be tracked for usage reporting.
 
-## ChatForge Implementation Snapshot (October 5, 2025)
+## ChatForge Implementation Status (January 2026)
 
-### Strengths
-- **Reasoning Controls Forwarded**: `responsesApiAdapter` maps `reasoning_effort` to the upstream `reasoning` object, and `openaiProxy` validates allowed values (`minimal`, `low`, `medium`, `high`).
-- **Frontend Reasoning Stream Handling**: `frontend/lib/chat/client.ts` detects `delta.reasoning_content` and emits `<thinking>` segments so UI can distinguish reasoning text in-flight.
+### Resolved Gaps
+- **Propagate `reasoning_details` End-to-End**: ✅ **Resolved**. Adapters and streaming handlers now include reasoning arrays alongside message content. The frontend correctly handles `delta.reasoning_content` and displays `<thinking>` segments.
+- **Persist Structured Reasoning**: ✅ **Resolved**. The persistence layer (hybrid checkpoint persistence) now captures and stores structured reasoning content, ensuring it is preserved across sessions and turns.
+- **Replay Reasoning Blocks in Requests**: ✅ **Resolved**. When building conversation history for models that support it (like OpenRouter), the preserved `reasoning_details` are attached to maintain reasoning continuity, especially during multi-turn tool orchestration.
+- **Audit Usage Reporting**: ✅ **Resolved**. `reasoning_tokens` and `reasoning_token_count` are now tracked and surfaced in API responses and UI for better cost visibility.
 
-### Gaps vs. Guide
-- **Reasoning Details Dropped**: `toChatCompletionResponse` flattens responses to plain `content`, so `reasoning_details` never reach clients. Streaming transformer also ignores `response.reasoning.*` deltas.
-- **Persistence Omits Structured Reasoning**: Conversation manager only stores concatenated strings; the exact `reasoning_details` array is lost, preventing faithful replay in later calls.
-- **History Replay Lacks Reasoning Blocks**: When rebuilding conversation history before sending to OpenRouter, only message text is reconstructed, violating the requirement to resend full reasoning sequences during tool workflows.
-- **UI Displays Tags Instead of Structured Blocks**: Current approach wraps reasoning in `<thinking>` tags rather than surfacing the raw detail objects, which diverges from OpenRouter’s schema and risks incompatibility if formats evolve.
+### Current Implementation Snapshot
 
-## Recommended Follow-ups
-1. **Propagate `reasoning_details` End-to-End**: Extend adapters and streaming handlers to include reasoning arrays alongside message content, and update frontend types to display them explicitly.
-2. **Persist Structured Reasoning**: Adjust storage schema/serialization so each assistant turn retains its `reasoning_details` payload for future resend.
-3. **Replay Reasoning Blocks in Requests**: When building message history for OpenRouter, attach the preserved reasoning segments to maintain continuity during tool calls.
-4. **Audit Usage Reporting**: Ensure `reasoning_tokens` are surfaced to UI/analytics so reasoning effort costs are visible alongside prompt/completion counts.
+- **Reasoning Controls**: `reasoning_effort` and `reasoning_format` are fully supported and mapped to provider-specific payloads.
+- **Streaming Preservation**: Reasoning content is streamed separately and accumulated correctly during tool iterations.
+- **Tool Orchestration Continuity**: `reasoning_details` are preserved across tool call iterations to ensure the model doesn't lose its "train of thought" when executing tools.
+
+## Summary
+The recommendations from October 2025 have been fully implemented. ChatForge now provides robust support for structured reasoning blocks, maintaining parity with OpenRouter's guidance and enhancing the user experience for reasoning-heavy models.
 
