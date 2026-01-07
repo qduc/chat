@@ -14,10 +14,21 @@ Required (Bearer token). Request is rejected with 401 if missing/invalid.
   "messages": [                            // Standard OpenAI chat messages (system injected automatically)
     { "role": "user", "content": "Hello" },
     { "role": "assistant", "content": "..." },
-    { "role": "tool", "tool_call_id": "tc_123", "content": "<tool result>" }
+    { "role": "tool", "tool_call_id": "tc_123", "content": "<tool result>" },
+    { "role": "user", "content": [
+        { "type": "text", "text": "What is in this image?" },
+        { "type": "image_url", "image_url": { "url": "data:image/jpeg;base64,..." } },
+        { "type": "input_audio", "input_audio": { "data": "...", "format": "wav" } }
+      ]
+    }
   ],
   "stream": true|false,                   // Controls client SSE; defaults to true (set false for JSON response)
   "provider_stream": true|false,          // Optional upstream streaming toggle; defaults to match `stream` (alias: providerStream)
+  "modalities": ["text", "image"],        // Required for image generation with some models
+  "image_config": {                       // Configuration for image generation
+    "aspect_ratio": "1:1|16:9|9:16",
+    "size": "1024x1024|..."
+  },
   "tools": [                              // Either simplified tool names or full OpenAI tool specs
     // 1) Simplified: ["weather", "search"] (server expands to registered specs)
     // 2) Full spec objects (OpenAI format):
@@ -28,7 +39,7 @@ Required (Bearer token). Request is rejected with 401 if missing/invalid.
   "provider_id": "uuid",                  // Chooses a stored provider (header `x-provider-id` alternative)
   "system_prompt": "<string>",            // Convenience field; converted into/updates first system message server-side
   "client_request_id": "req_abc123?",     // Optional; used for abort registration (see /stop endpoint)
-  "previous_response_id": "resp_123?",    // Optional; used when provider supports Responses API chaining
+  "previous_response_id": "resp_123?",    // Optional; used when provider supports Responses API chaining (OpenRouter/OpenAI)
   "reasoning_effort": "minimal|low|medium|high",
   "verbosity": "low|medium|high",
   "streamingEnabled": true|false,         // Client hint for persistence metadata
@@ -47,6 +58,8 @@ Notes:
 - Persistence hints and internal selector fields (`conversation_id`, `provider_id`, `provider`, `streamingEnabled`, `toolsEnabled`, `qualityLevel`, `researchMode`, `system_prompt`, `providerStream`, `provider_stream`, `client_request_id`, `enable_parallel_tool_calls`, `parallel_tool_concurrency`) are stripped before the outbound upstream request.
 - If `tools` is an array of strings, the server expands only the tools that match registered names; unmatched names are silently ignored.
 - When a persisted conversation exists, prior history is reconstructed server-side (and may include a `previous_response_id` optimization when the provider supports it), so clients only need to send the latest turn.
+- **Multimodal Content**: `messages.content` supports mixed-content arrays with types `text`, `image_url`, and `input_audio`.
+- **Image Generation**: When using models that support image generation, `modalities` and `image_config` parameters are forwarded to the provider.
 
 #### Modes Matrix
 | Tools Present | Client stream (`stream`) | Behavior Path | Iterations | Client Transport |
@@ -72,6 +85,9 @@ Additional event payload shapes:
 // Standard delta chunk (OpenAI-compatible)
 { "id": "...", "object": "chat.completion.chunk", "created": 123, "model": "...", "choices": [ { "index":0, "delta": { "content": "Hel" } } ] }
 
+// Delta chunk with generated image
+{ "id": "...", "object": "chat.completion.chunk", "choices": [ { "delta": { "images": [ { "image_url": { "url": "data:image/png;base64,..." } } ] } } ] }
+
 // Consolidated tool_calls chunk (tool streaming path, buffered from partial deltas)
 { "id": "...", "object": "chat.completion.chunk", "choices": [ { "delta": { "tool_calls": [ { "id":"tc_x", "type":"function", "function": { "name":"search", "arguments":"{...json...}" } } ] } } ] }
 
@@ -92,7 +108,7 @@ When `stream: false`, two shapes are returned:
   "object": "chat.completion",
   "created": 1234567890,
   "model": "gpt-4o-mini",
-  "choices": [ { "index":0, "message": { "role":"assistant", "content":"Hello!" }, "finish_reason":"stop" } ],
+  "choices": [ { "index":0, "message": { "role":"assistant", "content":"Hello!", "images": [ ... ] }, "finish_reason":"stop" } ],
   "usage": {
     "prompt_tokens": 12,
     "completion_tokens": 7,
@@ -101,6 +117,7 @@ When `stream: false`, two shapes are returned:
     "reasoning_token_count": 4,                      // Alternate format (some providers)
     "completion_tokens_details": { "reasoning_tokens": 4 }  // OpenAI nested format
   },
+  "response_id": "resp_...",                         // For Responses API chaining
   "_conversation": {
     "id": "uuid",
     "title": "optional title",

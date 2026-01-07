@@ -248,8 +248,8 @@ Errors: 404 not_found, 500 internal_error.
 ### PUT /v1/conversations/{id}/messages/{messageId}/edit
 Edits message content then forks conversation starting from that message; deletes subsequent messages in original.
 Body:
-- `content`: string OR mixed-content array (objects with type `text` + `text` field or `image_url` etc.)
-Validation: must not be empty (at least one text or image element).
+- `content`: string OR mixed-content array (objects with type `text`, `image_url`, or `input_audio`)
+Validation: must not be empty (at least one text, image, or audio element).
 200:
 ```
 {
@@ -264,6 +264,7 @@ All endpoints require auth.
 
 ### POST /v1/chat/completions
 See [Chat Completions Spec](./backend_api_chat_completions_spec.md) for full details.
+Supports multimodal inputs (text, images, audio) and image generation.
 
 ### POST /v1/chat/completions/stop
 Abort an in-progress streaming response.
