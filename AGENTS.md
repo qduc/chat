@@ -276,7 +276,7 @@ chat/
 **Audio handling**: Check `frontend/components/ui/AudioPreview.tsx` (exports `AudioPreview`) and `frontend/lib/audioUtils.ts`
 **File handling**: Check `backend/src/routes/files.js` for file upload API and `frontend/lib/api.ts` for client integration
 **Authentication**: Check `backend/src/routes/auth.js` for auth routes and `frontend/contexts/AuthContext.tsx` for client-side auth state
-**User settings**: Check `backend/src/routes/settings.js` for settings API and `frontend/hooks/useSettings.ts` (if exists) for client integration
+**User settings**: Check `backend/src/routes/userSettings.js` for settings API and `frontend/components/SettingsModal.tsx` for client integration
 **Journal tool**: Check `backend/src/lib/tools/journal.js` for persistent memory implementation
 **WebFetch tool**: Check `backend/src/lib/tools/webFetch.js` for Playwright-based browser automation and specialized content extractors
 **Electron app**: Check `electron/` directory for desktop app packaging and configuration
