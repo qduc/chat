@@ -20,6 +20,8 @@ cp backend/.env.example backend/.env
 # Edit backend/.env and set:
 # - JWT_SECRET (a secure random string for authentication)
 npm --prefix backend install
+# Install Playwright browsers (required for web_fetch tool)
+npx playwright install chromium
 
 # Set up frontend
 cp frontend/.env.example frontend/.env.local
@@ -70,6 +72,19 @@ API requests from the browser can now target `http://localhost:3003/api` via the
 ```
 
 Visit http://localhost:3000
+
+### Option 4: Desktop Application (Electron)
+
+ChatForge can be run as a standalone desktop application on macOS, Windows, and Linux.
+
+```bash
+# Build the frontend and run the electron app
+cd electron
+npm install
+npm start
+```
+
+For full details on building and distributing the desktop app, see [electron/README.md](../electron/README.md).
 
 ## Configuration
 

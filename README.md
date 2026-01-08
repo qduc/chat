@@ -40,6 +40,7 @@ ChatForge is a full-stack AI chat application featuring a Next.js 15 frontend an
 
 ### AI Capabilities
 - **🖼️ Image Upload & Vision Support** - Multimodal vision support with drag-and-drop UI
+- **🎙️ Audio Upload Support** - Upload and send audio files for voice-enabled models
 - **📎 File Attachment Support** - Text file upload with content extraction
 - **🧠 Reasoning Controls** - Support for reasoning effort and extended thinking modes
 - **💾 Prompt Caching Optimization** - Automatic cache breakpoints to reduce token costs
@@ -161,6 +162,7 @@ Quick reference:
 chat/
 ├── frontend/          # Next.js 15 + React 19 + TypeScript
 ├── backend/           # Node.js + Express + SQLite
+├── electron/          # Electron desktop app packaging
 ├── docs/              # Technical documentation
 ├── proxy/             # Dev-only Nginx reverse proxy config
 ├── integration/       # Integration tests

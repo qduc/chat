@@ -124,6 +124,21 @@ cp .env.example .env.local
 npm run dev
 ```
 
+### Desktop Application Setup (Electron)
+
+```bash
+# Build frontend first
+cd frontend
+npm install
+npm run build
+cd ..
+
+# Run Electron app
+cd electron
+npm install
+npm start
+```
+
 ## Development Workflow
 
 ### 1. Setting Up Your Environment

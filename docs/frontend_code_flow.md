@@ -119,6 +119,23 @@ const [shouldStream, setShouldStream] = useState(true);
 const [qualityLevel, setQualityLevel] = useState<QualityLevel>('unset');
 ```
 
+#### Model Comparison Mode
+```typescript
+const [compareModels, setCompareModels] = useState<string[]>([]);
+const [linkedConversations, setLinkedConversations] = useState<Record<string, string>>({});
+const [comparisonResults, setComparisonResults] = useState<Record<string, Message[]>>({});
+```
+
+#### Model & Provider Loading
+```typescript
+const [isLoadingModels, setIsLoadingModels] = useState(true);
+const [modelGroups, setModelGroups] = useState<ModelGroup[]>([]);
+const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
+const [modelToProvider, setModelToProvider] = useState<Record<string, string>>({});
+const [currentConversationTitle, setCurrentConversationTitle] = useState<string>('');
+const [activeSystemPromptId, setActiveSystemPromptId] = useState<string | null>(null);
+```
+
 #### UI State
 ```typescript
 const [input, setInput] = useState('');
@@ -145,6 +162,10 @@ const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
    - Re-sends with same settings
 
 4. **stopStreaming**: Aborts ongoing stream via AbortController
+
+5. **retryComparisonModel**: Retries a specific model in comparison mode
+   - Re-sends message to a single model
+   - Updates only that model's results in `comparisonResults`
 
 ### 3. MessageList (components/MessageList.tsx)
 
@@ -176,6 +197,12 @@ function buildAssistantSegments(message: ChatMessage): AssistantSegment[] {
 - Summary view when collapsed
 - Detailed view with JSON formatting when expanded
 
+**Conversation Forking:**
+- `onFork?: (messageId: string, modelId: string)` callback prop
+- Fork icon appears in message toolbar
+- Creates a new linked conversation at the fork point
+- Preserves message history up to fork point
+
 ### 4. MessageInput (components/MessageInput.tsx)
 
 The input area with controls for sending messages.
@@ -183,10 +210,39 @@ The input area with controls for sending messages.
 **Features:**
 - Auto-growing textarea (up to 200px)
 - Image upload via drag-and-drop, paste, or file picker
+- Audio upload for voice messages
 - File upload for code files
 - Tool selection dropdown
 - Reasoning/quality controls for thinking models
 - Stream toggle
+
+**Audio Upload Support:**
+```typescript
+interface AudioAttachment {
+  id: string;
+  file: File;
+  url: string;              // Blob URL for preview
+  name: string;
+  size: number;
+  type: string;
+  format?: string;          // Inferred audio format (mp3, wav, etc.)
+}
+
+const [audios, setAudios] = useState<AudioAttachment[]>([]);
+```
+- Audio files processed for base64 encoding
+- Format inference from file type
+- `AudioPreview` component (`components/ui/AudioPreview.tsx`) for playback preview
+- Audio content sent as input_audio content type
+
+**File Upload Support:**
+```typescript
+const [files, setFiles] = useState<FileAttachment[]>([]);
+```
+- Text file content prepended to message
+- `FileContentPreview` component for file preview
+- Supports 30+ file types (code files, markdown, etc.)
+- Max 5MB per file, 3 files per message
 
 **Image Handling Flow:**
 1. User selects/pastes/drops images
@@ -315,6 +371,173 @@ class SSEParser {
 **Event Types:**
 - `data`: Streaming chunk with message content, tool calls, usage
 - `done`: End of stream marker
+
+### 8. Model Comparison Mode
+
+Enables side-by-side comparison of responses from multiple models.
+
+**State Management (in useChat):**
+```typescript
+const [compareModels, setCompareModels] = useState<string[]>([]);
+const [linkedConversations, setLinkedConversations] = useState<Record<string, string>>({});
+const [comparisonResults, setComparisonResults] = useState<Record<string, Message[]>>({});
+```
+
+**CompareSelector Component (`components/ui/CompareSelector.tsx`):**
+- Multi-model selection interface
+- Uses same base component pattern as `ModelSelector`
+- Displays selected models as tags
+- Enables/disables comparison mode
+
+**Comparison Flow:**
+1. User selects multiple models via `CompareSelector`
+2. `sendMessage` sends parallel requests to each model
+3. Results stored in `comparisonResults` keyed by model ID
+4. `linkedConversations` tracks separate conversation IDs per model
+5. UI renders side-by-side columns with isolated histories
+6. `retryComparisonModel` allows retrying individual model responses
+
+### 9. System Prompt Management
+
+**RightSidebar Component (`components/RightSidebar.tsx`):**
+- Displays and manages system prompts
+- Toggle visibility via UI controls
+- Shows prompt editor interface
+
+**Prompt Editor (`app/components/promptManager/`):**
+- Full CRUD operations for system prompts
+- Built-in prompts vs custom user prompts
+- Prompt selection and activation
+
+**useSystemPrompts Hook (`hooks/useSystemPrompts.ts`):**
+```typescript
+const {
+  prompts,              // List of all prompts
+  activePrompt,         // Currently selected prompt
+  isLoading,            // Loading state
+  createPrompt,         // Create new prompt
+  updatePrompt,         // Update existing prompt
+  deletePrompt,         // Delete prompt
+  setActivePrompt,      // Select a prompt
+} = useSystemPrompts();
+```
+
+**Integration with Chat:**
+- `activeSystemPromptId` state in useChat
+- System prompt sent with each message request
+- Prompt restored when loading conversations
+
+### 10. Theme Support
+
+**ThemeContext (`contexts/ThemeContext.tsx`):**
+```typescript
+type Theme = 'light' | 'dark' | 'system';
+
+interface ThemeContextValue {
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+  resolvedTheme: 'light' | 'dark';  // Actual theme after system resolution
+}
+
+const ThemeProvider: React.FC<{ children: React.ReactNode }>;
+```
+
+**useTheme Hook:**
+```typescript
+const { theme, setTheme, resolvedTheme } = useTheme();
+```
+
+**Features:**
+- Persists preference to localStorage
+- Respects system color scheme preference
+- Applies theme class to document root
+- Components use CSS variables for theming
+
+### 11. Electron Desktop App Support
+
+**Electron Utilities (`lib/electron.ts`):**
+```typescript
+// Check if running in Electron
+export const isElectron = (): boolean;
+
+// Get API base URL (resolved via IPC)
+export const getApiBaseUrl = (): Promise<string>;
+
+// IPC communication helpers
+export const invokeMain = <T>(channel: string, ...args: any[]): Promise<T>;
+```
+
+**Auto-Login in AuthContext:**
+- Detects Electron environment
+- Retrieves stored credentials from Electron main process
+- Automatic session restoration on app launch
+
+**API Base URL Resolution:**
+- In browser: Uses relative URLs or environment variable
+- In Electron: Resolves via IPC to main process
+- Supports local development and production builds
+
+**Electron Main Process (`electron/main.js`):**
+- Native window management
+- IPC handlers for secure credential storage
+- Auto-updater integration
+
+### 12. User Settings
+
+**User Settings Utilities (`lib/userSettings.ts`):**
+```typescript
+interface UserSettings {
+  tavilyApiKey?: string;
+  exaApiKey?: string;
+  searxngUrl?: string;
+  maxToolIterations?: number;
+}
+
+export const getUserSettings = (): Promise<UserSettings>;
+export const updateUserSettings = (settings: Partial<UserSettings>): Promise<void>;
+```
+
+**Per-User API Key Storage:**
+- Tavily search API key
+- Exa search API key
+- SearXNG instance URL
+- Stored securely on backend, scoped to user
+
+**Settings UI (`components/SettingsModal.tsx`):**
+- API key input fields
+- Max tool iterations configuration
+- Validation and save functionality
+
+### 13. Additional Hooks
+
+**useStreamingScroll (`hooks/useStreamingScroll.ts`):**
+```typescript
+const {
+  scrollRef,            // Ref for scroll container
+  isAtBottom,           // Whether scrolled to bottom
+  scrollToBottom,       // Function to scroll to bottom
+  handleScroll,         // Scroll event handler
+} = useStreamingScroll({ isStreaming, messages });
+```
+- Manages auto-scroll during streaming
+- Shows/hides scroll-to-bottom button
+- Preserves scroll position when user scrolls up
+
+**useIsMobile (`hooks/useIsMobile.ts`):**
+```typescript
+const isMobile = useIsMobile();
+```
+- Detects mobile viewport
+- Uses matchMedia for responsive detection
+- Updates on viewport resize
+
+**useSecureImageUrl (`hooks/useSecureImageUrl.ts`):**
+```typescript
+const secureUrl = useSecureImageUrl(imageUrl, accessToken);
+```
+- Generates secure URLs for image access
+- Handles token expiration and refresh
+- Used by `ImagePreview` component
 
 ## Data Flow Patterns
 
@@ -732,7 +955,12 @@ When loading a conversation, these settings are restored to reproduce the exact 
 frontend/
 ├── app/
 │   ├── layout.tsx                 # Root layout with providers
-│   └── page.tsx                   # Entry point (Home → ChatV2)
+│   ├── page.tsx                   # Entry point (Home → ChatV2)
+│   └── components/
+│       └── promptManager/         # System prompt management UI
+│           ├── PromptEditor.tsx   # Prompt editing interface
+│           ├── PromptList.tsx     # List of prompts
+│           └── index.ts           # Public exports
 │
 ├── components/
 │   ├── ChatV2.tsx                 # Main container
@@ -740,7 +968,7 @@ frontend/
 │   ├── MessageInput.tsx           # Input area
 │   ├── ChatHeader.tsx             # Model selector, settings
 │   ├── ChatSidebar.tsx            # Conversation history
-│   ├── RightSidebar.tsx           # System prompts
+│   ├── RightSidebar.tsx           # System prompts sidebar
 │   ├── SettingsModal.tsx          # Provider configuration
 │   ├── Markdown.tsx               # Markdown rendering
 │   ├── auth/                      # Authentication components
@@ -749,16 +977,24 @@ frontend/
 │   │   ├── RegisterForm.tsx
 │   │   └── ProtectedRoute.tsx
 │   └── ui/                        # Reusable UI primitives
-│       ├── ImagePreview.tsx
-│       ├── FilePreview.tsx
-│       ├── ModelSelector.tsx
-│       ├── QualitySlider.tsx
-│       └── Toggle.tsx
+│       ├── ImagePreview.tsx       # Image preview and upload zone
+│       ├── AudioPreview.tsx       # Audio file preview and playback
+│       ├── FilePreview.tsx        # File preview component
+│       ├── FileContentPreview.tsx # File content display
+│       ├── ModelSelector.tsx      # Single model selection
+│       ├── CompareSelector.tsx    # Multi-model comparison selection
+│       ├── QualitySlider.tsx      # Reasoning effort control
+│       └── Toggle.tsx             # Toggle switch component
+│
+├── contexts/
+│   └── ThemeContext.tsx           # Dark/light/system theme management
 │
 ├── hooks/
 │   ├── useChat.ts                 # Central state management
 │   ├── useSystemPrompts.ts        # System prompt management
-│   └── useSecureImageUrl.ts      # Secure image URL handling
+│   ├── useSecureImageUrl.ts       # Secure image URL handling
+│   ├── useStreamingScroll.ts      # Scroll management during streaming
+│   └── useIsMobile.ts             # Mobile viewport detection
 │
 ├── lib/
 │   ├── api.ts                     # Centralized API client
@@ -768,6 +1004,8 @@ frontend/
 │   ├── types.ts                   # Type definitions
 │   ├── contentUtils.ts            # Content manipulation
 │   ├── modelCapabilities.ts       # Model capability detection
+│   ├── electron.ts                # Electron environment utilities
+│   ├── userSettings.ts            # User settings management
 │   └── index.ts                   # Public exports
 │
 └── styles/                        # Global styles
@@ -784,5 +1022,10 @@ The ChatForge frontend follows these key principles:
 5. **User Experience**: Optimistic updates, auto-scroll, keyboard shortcuts
 6. **Error Handling**: Automatic token refresh, retry logic, user-friendly errors
 7. **Modularity**: Clear separation between UI, state, and API layers
+8. **Multi-Modal Support**: Images, audio, and file uploads with previews
+9. **Model Comparison**: Side-by-side comparison of multiple model responses
+10. **Cross-Platform**: Browser and Electron desktop app support
+11. **Theming**: Dark/light/system theme support with context-based management
+12. **System Prompts**: Built-in and custom prompt management
 
-The architecture prioritizes **developer experience** (easy to understand and modify) and **user experience** (fast, responsive, real-time updates) while maintaining production reliability.
+The architecture prioritizes **developer experience** (easy to understand and modify) and **user experience** (fast, responsive, real-time updates) while maintaining production reliability and cross-platform compatibility.
