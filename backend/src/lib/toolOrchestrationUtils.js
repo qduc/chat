@@ -104,7 +104,7 @@ function hasWebSearchToolsEnabled(enabledTools) {
     return false;
   }
 
-  const webSearchToolNames = ['web_search', 'web_search_exa', 'web_search_searxng'];
+  const webSearchToolNames = ['web_search', 'web_search_exa', 'web_search_searxng', 'web_search_firecrawl'];
 
   return enabledTools.some(tool => {
     // Handle both tool spec objects and simple tool names
