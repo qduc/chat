@@ -447,7 +447,13 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   // Tools handling
   const handleSearchToggle = (enabled: boolean) => {
     if (inputLocked) return;
-    const searchTools = ['web_search', 'web_search_exa', 'web_search_searxng', 'web_fetch'];
+    const searchTools = [
+      'web_search',
+      'web_search_exa',
+      'web_search_searxng',
+      'web_search_firecrawl',
+      'web_fetch',
+    ];
     let next: string[];
 
     if (enabled) {
