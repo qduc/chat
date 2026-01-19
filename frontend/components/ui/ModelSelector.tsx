@@ -438,7 +438,7 @@ export default function ModelSelector({
       ariaLabel={ariaLabel}
       className={className}
       dropdownAlign="left"
-      listClassName="max-h-[75vh]"
+      listClassName=""
       tabs={providerTabs}
       activeTab={selectedTab}
       onTabChange={setSelectedTab}

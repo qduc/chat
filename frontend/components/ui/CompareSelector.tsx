@@ -270,7 +270,7 @@ export default function CompareSelector({
       ariaLabel={ariaLabel}
       className={className}
       dropdownAlign="right"
-      listClassName="max-h-[60vh]"
+      listClassName=""
       tabs={providerTabs}
       activeTab={selectedTab}
       onTabChange={setSelectedTab}

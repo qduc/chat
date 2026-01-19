@@ -224,7 +224,7 @@ export default function ModelSelectBase<T extends SelectOption>({
 
       {isOpen && (
         <div
-          className={`absolute top-full ${dropdownPosition} w-80 mt-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-lg max-h-[70vh] overflow-hidden z-50 ${dropdownClassName}`}
+          className={`absolute top-full ${dropdownPosition} w-80 mt-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-xl shadow-lg max-h-[70vh] flex flex-col overflow-hidden z-50 ${dropdownClassName}`}
         >
           {!shouldRenderDropdown ? (
             <div className="p-8 text-center text-zinc-500">Loading...</div>
@@ -232,7 +232,7 @@ export default function ModelSelectBase<T extends SelectOption>({
             <>
               {tabs.length > 1 && (
                 <div
-                  className="flex flex-nowrap overflow-x-auto border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50"
+                  className="flex flex-nowrap overflow-x-auto border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 flex-shrink-0"
                   onWheel={(e) => {
                     e.preventDefault();
                     e.currentTarget.scrollLeft += e.deltaY;
@@ -265,7 +265,7 @@ export default function ModelSelectBase<T extends SelectOption>({
                 </div>
               )}
 
-              <div className="p-2 border-b border-zinc-200 dark:border-zinc-800">
+              <div className="p-2 border-b border-zinc-200 dark:border-zinc-800 flex-shrink-0">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-zinc-400" />
                   <input
@@ -280,11 +280,11 @@ export default function ModelSelectBase<T extends SelectOption>({
                 </div>
               </div>
 
-              {extraHeader}
+              {extraHeader && <div className="flex-shrink-0">{extraHeader}</div>}
 
               <div
                 ref={listRef}
-                className={`overflow-y-auto ${listClassName}`}
+                className={`flex-1 min-h-0 overflow-y-auto ${listClassName}`}
                 style={{ contentVisibility: 'auto' }}
                 role="listbox"
                 aria-label={ariaLabel}
@@ -308,7 +308,7 @@ export default function ModelSelectBase<T extends SelectOption>({
                 {flatItems.length === 0 && emptyState}
               </div>
 
-              {footer}
+              {footer && <div className="flex-shrink-0">{footer}</div>}
             </>
           )}
         </div>
