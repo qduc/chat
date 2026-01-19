@@ -19,6 +19,7 @@ import { authenticateToken } from '../middleware/auth.js';
 import {
   getCachedModels,
   setCachedModels,
+  clearUserCache,
   isRefreshing,
   setRefreshLock,
 } from '../lib/modelCache.js';
@@ -187,6 +188,10 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
         metadata: typeof body.metadata === 'object' && body.metadata !== null ? body.metadata : {},
         user_id: userId, // Set user ownership
       });
+
+      // Invalidate model cache for this user
+      clearUserCache(userId);
+
       res.status(201).json(created);
     } catch (err) {
       if (String(err?.message || '').includes('UNIQUE constraint failed')) {
@@ -226,6 +231,10 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
         userId
       );
       if (!updated) return res.status(404).json({ error: 'not_found' });
+
+      // Invalidate model cache for this user
+      clearUserCache(userId);
+
       res.json(updated);
     } catch (err) {
       res.status(500).json({ error: 'internal_server_error', message: err.message });
@@ -237,6 +246,10 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
       const userId = req.user.id; // Guaranteed by authenticateToken middleware
       const row = setDefaultProvider(req.params.id, userId);
       if (!row) return res.status(404).json({ error: 'not_found' });
+
+      // Invalidate model cache for this user
+      clearUserCache(userId);
+
       res.json(row);
     } catch (err) {
       res.status(500).json({ error: 'internal_server_error', message: err.message });
@@ -248,6 +261,10 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
       const userId = req.user.id; // Guaranteed by authenticateToken middleware
       const ok = deleteProvider(req.params.id, userId);
       if (!ok) return res.status(404).json({ error: 'not_found' });
+
+      // Invalidate model cache for this user
+      clearUserCache(userId);
+
       res.status(204).end();
     } catch (err) {
       res.status(500).json({ error: 'internal_server_error', message: err.message });
