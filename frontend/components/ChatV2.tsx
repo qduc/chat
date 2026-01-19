@@ -848,7 +848,7 @@ export function ChatV2() {
             <SettingsModal
               open={isSettingsOpen}
               onClose={() => setIsSettingsOpen(false)}
-              onProvidersChanged={chat.loadProvidersAndModels}
+              onProvidersChanged={chat.forceRefreshModels}
               modelGroups={chat.modelGroups}
               modelOptions={chat.modelOptions}
             />

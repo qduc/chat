@@ -183,6 +183,124 @@ fi
 # Start release process
 info "Starting release process..."
 
+# Update CHANGELOG.md with Claude
+info "Generating changelog entry with Claude..."
+
+# Check if claude command is available
+if ! command -v claude &> /dev/null; then
+    warning "Claude CLI not found. Skipping automatic changelog update."
+    warning "Please update CHANGELOG.md manually before continuing."
+    read -p "Press Enter to continue after updating CHANGELOG.md..." -r
+else
+    # Get commits since last tag
+    COMMITS=$(git log ${LATEST_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+
+    if [ -z "$COMMITS" ]; then
+        warning "No new commits found since ${LATEST_TAG}"
+    else
+        # Create temporary file for Claude prompt
+        TEMP_PROMPT=$(mktemp)
+        cat > "$TEMP_PROMPT" << EOF
+Based on these git commits, generate a changelog entry for version ${NEW_VERSION}.
+
+Git commits since ${LATEST_TAG}:
+${COMMITS}
+
+Current CHANGELOG.md Unreleased section:
+$(sed -n '/## \[Unreleased\]/,/^---$/p' CHANGELOG.md)
+
+Please generate a changelog entry following the Keep a Changelog format with these sections as needed:
+- Added (new features)
+- Changed (improvements to existing features)
+- Fixed (bug fixes)
+- Deprecated (features being phased out)
+- Breaking Changes (changes requiring user action)
+
+Format the output exactly as:
+## [${NEW_VERSION}] - $(date +%Y-%m-%d)
+
+### Section Name
+- Description
+
+Only include sections that have changes. Keep descriptions concise and user-focused. Output ONLY the changelog entry, nothing else.
+EOF
+
+        # Generate changelog with Claude
+        CHANGELOG_ENTRY=$(claude -p "$(cat "$TEMP_PROMPT")")
+        rm "$TEMP_PROMPT"
+
+        if [ -n "$CHANGELOG_ENTRY" ]; then
+            # Create backup of CHANGELOG.md
+            cp CHANGELOG.md CHANGELOG.md.backup
+
+            # Insert new entry after the Unreleased section
+            # Find the line number where the first release section starts (after ---)
+            INSERT_LINE=$(grep -n "^---$" CHANGELOG.md | head -1 | cut -d: -f1)
+
+            if [ -n "$INSERT_LINE" ]; then
+                # Insert the new changelog entry
+                {
+                    head -n "$INSERT_LINE" CHANGELOG.md
+                    echo ""
+                    echo "$CHANGELOG_ENTRY"
+                    echo ""
+                    tail -n +$((INSERT_LINE + 1)) CHANGELOG.md
+                } > CHANGELOG.md.new
+
+                mv CHANGELOG.md.new CHANGELOG.md
+
+                # Clear the Unreleased section
+                sed -i '/## \[Unreleased\]/,/^---$/{
+                    /## \[Unreleased\]/n
+                    /^---$/!{
+                        /### Added/,/^$/c\
+### Added\
+<!-- New features coming in the next release -->\
+
+                        /### Changed/,/^$/c\
+### Changed\
+<!-- Improvements to existing features -->\
+
+                        /### Fixed/,/^$/c\
+### Fixed\
+<!-- Bug fixes -->\
+
+                        /### Deprecated/,/^$/c\
+### Deprecated\
+<!-- Features being phased out -->\
+
+                        /### Breaking Changes/,/^$/c\
+### Breaking Changes\
+<!-- Changes that require user action -->\
+
+                    }
+                }' CHANGELOG.md
+
+                success "Changelog entry generated and inserted"
+
+                # Show the generated entry
+                echo ""
+                info "Generated changelog entry:"
+                echo "$CHANGELOG_ENTRY"
+                echo ""
+
+                # Commit the changelog update
+                git add CHANGELOG.md
+                git commit -m "docs: update CHANGELOG.md for release ${NEW_TAG}"
+                success "Committed changelog update to ${CURRENT_BRANCH}"
+
+                # Remove backup
+                rm CHANGELOG.md.backup
+            else
+                error "Could not find insertion point in CHANGELOG.md"
+            fi
+        else
+            warning "Claude did not generate a changelog entry. Skipping automatic update."
+            rm CHANGELOG.md.backup 2>/dev/null || true
+        fi
+    fi
+fi
+
 # Switch to main and pull latest
 info "Switching to main branch..."
 git checkout main
@@ -242,4 +360,3 @@ else
     git checkout -
     echo "  ⚠ No new develop branch was created. Current branch remains ${CURRENT_BRANCH}."
 fi
-info "Don't forget to update CHANGELOG.md if you maintain one!"

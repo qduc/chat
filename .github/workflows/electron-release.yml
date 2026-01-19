@@ -172,6 +172,40 @@ jobs:
           echo "Downloaded artifacts:"
           find artifacts -type f -name "*" | head -50
 
+      - name: Extract changelog for release
+        id: changelog
+        shell: bash
+        run: |
+          VERSION="${{ steps.resolve_tag.outputs.tag }}"
+          # Remove 'v' prefix if present
+          VERSION_NUM="${VERSION#v}"
+
+          # Extract changelog section for this version
+          # Using awk to extract content between version headers
+          CHANGELOG=$(awk -v version="$VERSION_NUM" '
+            /^## \[/ {
+              if (found) exit
+              if ($0 ~ "\\[" version "\\]") {
+                found=1
+                next
+              }
+            }
+            found && /^---$/ { exit }
+            found { print }
+          ' CHANGELOG.md)
+
+          if [ -z "$CHANGELOG" ]; then
+            echo "No changelog entry found for version $VERSION_NUM"
+            CHANGELOG="Release $VERSION"
+          fi
+
+          # Save to file to preserve formatting
+          echo "$CHANGELOG" > /tmp/changelog.txt
+
+          # Also output for debugging
+          echo "Extracted changelog:"
+          cat /tmp/changelog.txt
+
       - name: Create GitHub Release
         if: steps.resolve_tag.outputs.tag != ''
         uses: softprops/action-gh-release@v2
@@ -179,6 +213,7 @@ jobs:
           tag_name: ${{ steps.resolve_tag.outputs.tag }}
           draft: false
           prerelease: ${{ contains(steps.resolve_tag.outputs.tag, '-') }}
+          body_path: /tmp/changelog.txt
           generate_release_notes: true
           files: |
             artifacts/**/*.AppImage
