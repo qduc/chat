@@ -24,6 +24,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.12.3] - 2026-01-19
+
+### Added
+- Firecrawl search tool integration
+- Changelog extraction and automatic inclusion in GitHub release body
+
+### Changed
+- Refactored settings modal for improved organization
+
+### Fixed
+- Model list not updating after changing provider configuration
+- Last items in model selector not fully visible
+
+
 ## [0.12.2] - 2026-01-09
 
 ### Fixed
