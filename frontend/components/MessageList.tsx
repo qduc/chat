@@ -447,6 +447,8 @@ const Message = React.memo<MessageProps>(
           modelId,
           displayMessage: message,
           isModelStreaming: isStreaming,
+          isModelError: !!pending.error,
+          error: pending.error,
           assistantSegments: !isUser ? buildAssistantSegments(message) : [],
         };
       }
@@ -466,6 +468,8 @@ const Message = React.memo<MessageProps>(
           modelId,
           displayMessage,
           isModelStreaming: result.status === 'streaming',
+          isModelError: result.status === 'error',
+          error: result.error,
           assistantSegments: !isUser ? buildAssistantSegments(displayMessage) : [],
         };
       }
@@ -483,6 +487,8 @@ const Message = React.memo<MessageProps>(
         modelId,
         displayMessage,
         isModelStreaming: pending.streaming,
+        isModelError: !!pending.error,
+        error: pending.error,
         assistantSegments: [],
       };
     });
@@ -680,7 +686,14 @@ const Message = React.memo<MessageProps>(
 
     // Helper to render a single model response column
     const renderModelResponse = (data: (typeof modelDisplayData)[0]) => {
-      const { modelId, displayMessage: dm, isModelStreaming, assistantSegments: segments } = data;
+      const {
+        modelId,
+        displayMessage: dm,
+        isModelStreaming,
+        isModelError,
+        error: modelError,
+        assistantSegments: segments,
+      } = data;
 
       return (
         <div
@@ -694,7 +707,7 @@ const Message = React.memo<MessageProps>(
           )}
           {segments.length === 0 ? (
             <div className="text-base leading-relaxed text-zinc-800 dark:text-zinc-200">
-              {isModelStreaming || pending.abort ? (
+              {(isModelStreaming || pending.abort) && !isModelError && !pending.error ? (
                 <span className="inline-flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
                   <span
                     className="w-1.5 h-1.5 rounded-full bg-current animate-bounce"
@@ -709,6 +722,11 @@ const Message = React.memo<MessageProps>(
                     style={{ animationDelay: '300ms' }}
                   />
                 </span>
+              ) : isModelError && modelError && isMultiColumn ? (
+                <div className="flex items-start gap-2 text-red-500 dark:text-red-400 text-sm bg-red-50/50 dark:bg-red-950/20 rounded-lg px-3 py-2 border border-red-100 dark:border-red-900/30">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                  <span>{modelError}</span>
+                </div>
               ) : (
                 <span className="text-zinc-500 dark:text-zinc-400 italic">No response content</span>
               )}

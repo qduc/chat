@@ -1530,6 +1530,7 @@ export function useChat() {
                 ...prev,
                 streaming: false,
                 error: errorMessage,
+                abort: null,
               }));
             } else {
               setMessages((prev) => {
@@ -1640,6 +1641,7 @@ export function useChat() {
         setPending((prev) => ({
           ...prev,
           streaming: false,
+          abort: null,
           tokenStats: tokenStatsRef.current ?? undefined,
         }));
       } catch (err) {
@@ -1647,7 +1649,7 @@ export function useChat() {
         // (should unlikely reach here due to inner try/catch)
         setError(err instanceof Error ? err.message : 'Unknown error');
         setStatus('idle');
-        setPending((prev) => ({ ...prev, streaming: false }));
+        setPending((prev) => ({ ...prev, streaming: false, abort: null }));
       } finally {
         currentRequestIdRef.current = null;
         abortControllerRef.current = null;
@@ -1666,7 +1668,7 @@ export function useChat() {
       abortControllerRef.current = null;
     }
     setStatus('idle');
-    setPending((prev) => ({ ...prev, streaming: false }));
+    setPending((prev) => ({ ...prev, streaming: false, abort: null }));
   }, []);
 
   const regenerate = useCallback(
@@ -1972,6 +1974,7 @@ export function useChat() {
 
         if (isPrimary) {
           setError(errorMessage);
+          setPending((prev) => ({ ...prev, error: errorMessage }));
         } else {
           setMessages((prev) =>
             prev.map((msg) => {
@@ -1994,7 +1997,7 @@ export function useChat() {
         }
       } finally {
         setStatus('idle');
-        setPending((prev) => ({ ...prev, streaming: false }));
+        setPending((prev) => ({ ...prev, streaming: false, abort: null }));
         currentRequestIdRef.current = null;
         abortControllerRef.current = null;
       }
