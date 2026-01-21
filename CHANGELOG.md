@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.12.4] - 2026-01-21
+
+### Fixed
+- Inline code blocks now correctly display in monospaced font (CSS variable scoping issue resolved)
+- Browsers no longer attempt to autofill API key fields in settings
+- Firecrawl tool is now properly disabled when no API key is configured
+
+
 ## [0.12.3] - 2026-01-19
 
 ### Added
