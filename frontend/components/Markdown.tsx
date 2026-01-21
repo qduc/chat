@@ -565,7 +565,7 @@ const MarkdownComponents: any = {
 
           {isExpanded && (
             <div className="border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/30 dark:bg-[#0a0a0a]/20">
-              <div className="px-3 py-3 text-[13px] leading-relaxed text-zinc-600 dark:text-zinc-400 font-mono whitespace-pre-wrap">
+              <div className="px-3 py-3 text-[13px] leading-relaxed text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap">
                 {children}
               </div>
             </div>
