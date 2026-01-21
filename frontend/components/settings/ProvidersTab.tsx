@@ -489,6 +489,7 @@ export default function ProvidersTab({ isVisible, isOpen, onProvidersChanged }: 
                 <input
                   id="provider-name"
                   type="text"
+                  autoComplete="off"
                   className="w-full px-3 py-2 lg:py-2.5 border border-zinc-200/70 dark:border-zinc-800 rounded-lg bg-white/80 dark:bg-zinc-900/70 text-sm focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 focus:border-zinc-400 transition-colors"
                   value={form.name}
                   onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
@@ -541,6 +542,7 @@ export default function ProvidersTab({ isVisible, isOpen, onProvidersChanged }: 
                   <input
                     id="base-url"
                     type="url"
+                    autoComplete="off"
                     className="w-full px-3 py-2 lg:py-2.5 border border-zinc-200/70 dark:border-zinc-800 rounded-lg bg-white/80 dark:bg-zinc-900/70 text-sm focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 focus:border-zinc-400 transition-colors"
                     value={form.base_url}
                     onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
@@ -562,6 +564,7 @@ export default function ProvidersTab({ isVisible, isOpen, onProvidersChanged }: 
                 <input
                   id="api-key"
                   type={showApiKey ? 'text' : 'password'}
+                  autoComplete="new-password"
                   className="w-full px-3 py-2 lg:py-2.5 border border-zinc-200/70 dark:border-zinc-800 rounded-lg bg-white/80 dark:bg-zinc-900/70 text-sm focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 focus:border-zinc-400 transition-colors pr-10"
                   value={form.api_key || ''}
                   onChange={(e) => setForm((f) => ({ ...f, api_key: e.target.value }))}
@@ -603,6 +606,7 @@ export default function ProvidersTab({ isVisible, isOpen, onProvidersChanged }: 
                 <input
                   id="model-filter"
                   type="text"
+                  autoComplete="off"
                   className="w-full px-3 py-2 lg:py-2.5 border border-zinc-200/70 dark:border-zinc-800 rounded-lg bg-white/80 dark:bg-zinc-900/70 text-sm focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 focus:border-zinc-400 transition-colors"
                   value={form.model_filter || ''}
                   onChange={(e) => setForm((f) => ({ ...f, model_filter: e.target.value }))}

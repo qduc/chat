@@ -128,7 +128,7 @@ describe('GET /v1/tools', () => {
       }
 
       // Verify specific tools that require API keys are marked correctly
-      const toolsRequiringKeys = ['web_search', 'web_search_exa', 'web_search_searxng'];
+      const toolsRequiringKeys = ['web_search', 'web_search_exa', 'web_search_searxng', 'web_search_firecrawl'];
       for (const toolName of toolsRequiringKeys) {
         if (body.available_tools.includes(toolName)) {
           const status = body.tool_api_key_status[toolName];

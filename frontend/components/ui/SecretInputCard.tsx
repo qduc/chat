@@ -75,6 +75,7 @@ export default function SecretInputCard({
           </div>
           <input
             type={baseUrlField.type || 'url'}
+            autoComplete="off"
             className="w-full px-3 py-2.5 border border-zinc-200/70 dark:border-zinc-800 rounded-lg bg-white/80 dark:bg-zinc-900/70 text-sm focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 focus:border-zinc-400 transition-colors"
             value={baseUrlField.value || ''}
             onChange={(e) => baseUrlField.onChange(e.target.value)}
@@ -103,6 +104,7 @@ export default function SecretInputCard({
         <div className="relative">
           <input
             type={isRevealed ? 'text' : 'password'}
+            autoComplete="new-password"
             className="w-full px-3 py-2.5 pr-10 border border-zinc-200/70 dark:border-zinc-800 rounded-lg bg-white/80 dark:bg-zinc-900/70 text-sm focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 focus:border-zinc-400 transition-colors"
             value={apiKeyField.value || ''}
             onChange={(e) => apiKeyField.onChange(e.target.value)}

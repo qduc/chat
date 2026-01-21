@@ -38,6 +38,7 @@ chatRouter.get('/v1/tools', (req, res) => {
       web_search: { settingKey: 'tavily_api_key', label: 'Tavily API Key' },
       web_search_exa: { settingKey: 'exa_api_key', label: 'Exa API Key' },
       web_search_searxng: { settingKey: 'searxng_base_url', label: 'SearXNG Base URL' },
+      web_search_firecrawl: { settingKey: 'firecrawl_api_key', label: 'Firecrawl API Key' },
     };
 
     // Check each tool's API key status
@@ -61,6 +62,18 @@ chatRouter.get('/v1/tools', (req, res) => {
               settingKey: apiKeyInfo.settingKey,
               err: err?.message
             });
+          }
+        }
+
+        // Special case for firecrawl: allow if custom base URL is set (may be self-hosted)
+        if (toolName === 'web_search_firecrawl' && !hasKey && userId) {
+          try {
+            const baseUrlSetting = getUserSetting(userId, 'firecrawl_base_url');
+            if (baseUrlSetting && baseUrlSetting.value && baseUrlSetting.value !== 'https://api.firecrawl.dev') {
+              hasKey = true;
+            }
+          } catch (err) {
+            // ignore
           }
         }
 

@@ -17,6 +17,7 @@ backend/src/lib/tools/
   webSearch.js          # Tavily web search
   webSearchExa.js       # Exa semantic search
   webSearchSearxng.js   # SearXNG meta-search
+  webSearchFirecrawl.js # Firecrawl web search
   webFetch.js           # Web page content extraction
   journal.js            # Persistent memory storage
 ```
@@ -322,6 +323,17 @@ Meta-search aggregating results from multiple engines. Self-hosted option for pr
 - `time_range` - "day", "week", "month", "year"
 - `max_results` - 1-20 (default: 10)
 
+### web_search_firecrawl (Firecrawl)
+
+Search the web and convert results into clean Markdown using Firecrawl. Supports local instances.
+
+**Configuration**: `firecrawl_api_key` and `firecrawl_base_url` (per-user settings)
+
+**Parameters**:
+- `query` (required) - Search query
+- `page_options` - Object for page fetching (e.g. `onlyMainContent`, `fetchPageContent`)
+- `search_options` - Object for search (e.g. `limit`)
+
 ### web_fetch
 
 Fetch web pages and convert to Markdown. Supports JavaScript-heavy sites via Playwright browser automation. Includes specialized extractors for Reddit and StackOverflow.
@@ -442,6 +454,8 @@ Provider and tool credentials are stored per user. Open **Settings -> Search & W
 - **Tavily API Key** - For `web_search` tool
 - **Exa API Key** - For `web_search_exa` tool
 - **SearXNG Base URL** - For `web_search_searxng` tool
+- **Firecrawl API Key** - For `web_search_firecrawl` tool
+- **Firecrawl Base URL** (Optional) - For `web_search_firecrawl` tool (defaults to cloud API)
 
 No environment variables are required for these tools - they use per-user settings.
 
