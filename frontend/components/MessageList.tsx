@@ -1064,7 +1064,7 @@ const Message = React.memo<MessageProps>(
               {/* User message toolbar */}
               {isUser && !isEditing && message.content && (
                 <div
-                  className="mt-1 flex items-center justify-end opacity-70 group-hover:opacity-100 transition-opacity text-xs"
+                  className="mt-1 flex items-center justify-end opacity-0 group-hover:opacity-100 transition-opacity text-xs pointer-events-none group-hover:pointer-events-auto"
                   ref={toolbarRef}
                 >
                   <div className="flex items-center gap-2">
