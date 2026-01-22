@@ -294,13 +294,18 @@ export class SimplifiedPersistence {
 
     const incomingSystemPrompt = ConversationTitleService.extractSystemPrompt(bodyIn);
     const settings = this.persistenceConfig.extractRequestSettings(bodyIn);
-    const { activeTools: incomingActiveTools = [], model: incomingModel } = settings;
+    const {
+      activeTools: incomingActiveTools = [],
+      model: incomingModel,
+      customRequestParamsId: incomingCustomRequestParamsId,
+    } = settings;
     const updates = this.persistenceConfig.checkMetadataUpdates(
       this.conversationMeta,
       incomingSystemPrompt,
       this.providerId,
       incomingActiveTools,
-      incomingModel
+      incomingModel,
+      incomingCustomRequestParamsId
     );
 
     try {
@@ -333,6 +338,16 @@ export class SimplifiedPersistence {
           active_tools: updates.activeTools,
         };
         this.conversationMeta.active_tools = updates.activeTools;
+      }
+
+      if (updates.needsCustomRequestParamsUpdate) {
+        this.conversationManager.updateMetadata(this.conversationId, userId, {
+          custom_request_params_id: updates.customRequestParamsId ?? null,
+        });
+        this.conversationMeta.metadata = {
+          ...(this.conversationMeta.metadata || {}),
+          custom_request_params_id: updates.customRequestParamsId ?? null,
+        };
       }
 
       // Update conversation settings (streaming, tools, quality, reasoning, verbosity)

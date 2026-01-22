@@ -10,6 +10,7 @@ interface SettingsModalProps {
   open: boolean;
   onClose: () => void;
   onProvidersChanged?: () => void;
+  onSettingsChanged?: () => void;
   modelGroups: any[] | null;
   modelOptions: any[];
 }
@@ -18,6 +19,7 @@ export default function SettingsModal({
   open,
   onClose,
   onProvidersChanged,
+  onSettingsChanged,
   modelGroups,
   modelOptions,
 }: SettingsModalProps) {
@@ -98,6 +100,7 @@ export default function SettingsModal({
             isOpen={open}
             modelGroups={modelGroups}
             modelOptions={modelOptions}
+            onSettingsChanged={onSettingsChanged}
           />
         </div>
       </Modal>

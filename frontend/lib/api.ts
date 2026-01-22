@@ -447,6 +447,10 @@ function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: bo
     }),
   };
 
+  if (Object.hasOwn(extendedOptions as any, 'customRequestParamsId')) {
+    bodyObj.custom_request_params_id = (extendedOptions as any).customRequestParamsId ?? null;
+  }
+
   // Check if model supports reasoning before adding reasoning parameters
   const modelCapabilities = (extendedOptions as any).modelCapabilities;
   const supportsReasoning = supportsReasoningControls(model, modelCapabilities);
@@ -546,6 +550,9 @@ function processNonStreamingData(
           : {}),
         ...(Array.isArray(json._conversation.active_tools)
           ? { active_tools: json._conversation.active_tools }
+          : {}),
+        ...(Object.hasOwn(json._conversation, 'custom_request_params_id')
+          ? { custom_request_params_id: json._conversation.custom_request_params_id ?? null }
           : {}),
         ...(json._conversation.seq !== undefined ? { seq: json._conversation.seq } : {}),
         ...(json._conversation.user_message_id !== undefined
@@ -831,6 +838,9 @@ function processStreamChunk(
           : {}),
         ...(Array.isArray(data._conversation.active_tools)
           ? { active_tools: data._conversation.active_tools }
+          : {}),
+        ...(Object.hasOwn(data._conversation, 'custom_request_params_id')
+          ? { custom_request_params_id: data._conversation.custom_request_params_id ?? null }
           : {}),
         ...(data._conversation.seq !== undefined ? { seq: data._conversation.seq } : {}),
         ...(data._conversation.user_message_id !== undefined

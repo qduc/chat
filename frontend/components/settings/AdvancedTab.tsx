@@ -11,6 +11,7 @@ interface AdvancedTabProps {
   isOpen: boolean;
   modelGroups: any[] | null;
   modelOptions: any[];
+  onSettingsChanged?: () => void;
 }
 
 export default function AdvancedTab({
@@ -18,6 +19,7 @@ export default function AdvancedTab({
   isOpen,
   modelGroups,
   modelOptions,
+  onSettingsChanged,
 }: AdvancedTabProps) {
   const { showToast } = useToast();
 
@@ -30,6 +32,11 @@ export default function AdvancedTab({
   const [initialChoreModel, setInitialChoreModel] = React.useState<string>('');
   const [choreModelSaving, setChoreModelSaving] = React.useState(false);
   const [choreModelError, setChoreModelError] = React.useState<string | null>(null);
+
+  const [customParamsText, setCustomParamsText] = React.useState<string>('[]');
+  const [initialCustomParamsText, setInitialCustomParamsText] = React.useState<string>('[]');
+  const [customParamsSaving, setCustomParamsSaving] = React.useState(false);
+  const [customParamsError, setCustomParamsError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!isOpen) return;
@@ -47,9 +54,18 @@ export default function AdvancedTab({
         setChoreModel(loadedChoreModel);
         setInitialChoreModel(loadedChoreModel);
         setChoreModelError(null);
+
+        const loadedCustomParams = keys.custom_request_params ?? null;
+        const nextCustomParamsText = loadedCustomParams
+          ? JSON.stringify(loadedCustomParams, null, 2)
+          : '[]';
+        setCustomParamsText(nextCustomParamsText);
+        setInitialCustomParamsText(nextCustomParamsText);
+        setCustomParamsError(null);
       } catch (err: any) {
         setMaxToolIterationsError(err?.message || 'Failed to load max tool iterations');
         setChoreModelError(err?.message || 'Failed to load chore model');
+        setCustomParamsError(err?.message || 'Failed to load custom request params');
       }
     })();
   }, [isOpen]);
@@ -214,6 +230,7 @@ export default function AdvancedTab({
                   message: 'Chore model saved successfully!',
                   variant: 'success',
                 });
+                onSettingsChanged?.();
               } catch (err: any) {
                 setChoreModelError(err?.message || 'Failed to save chore model');
               } finally {
@@ -232,6 +249,117 @@ export default function AdvancedTab({
               <>
                 <Save className="w-4 h-4" />
                 {choreModel === initialChoreModel ? 'Saved' : 'Save Setting'}
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+
+      {/* Custom Request Params Card */}
+      <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200/70 dark:border-zinc-800 p-5 shadow-sm space-y-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <label className="block text-sm font-semibold text-zinc-900 dark:text-zinc-100">
+              Custom Request Params
+            </label>
+            {customParamsText === initialCustomParamsText && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium">
+                <Check className="w-3 h-3" />
+                Saved
+              </span>
+            )}
+          </div>
+          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+            Define reusable JSON blocks to append to upstream requests. Example:
+          </p>
+          <pre className="mt-2 text-xs bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/70 dark:border-zinc-700/70 rounded-lg p-3 text-zinc-700 dark:text-zinc-200 overflow-x-auto">
+            {`[
+  {
+    "id": "thinking-on",
+    "label": "Thinking on",
+    "params": {
+      "chat_template_kwargs": {
+        "enable_thinking": 1
+      }
+    }
+  }
+]`}
+          </pre>
+        </div>
+
+        <div className="space-y-3">
+          <textarea
+            rows={8}
+            className="w-full px-3 py-2.5 border border-zinc-200/70 dark:border-zinc-800 rounded-lg bg-white/80 dark:bg-zinc-900/70 text-sm font-mono focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 focus:border-zinc-400 transition-colors"
+            value={customParamsText}
+            onChange={(e) => {
+              setCustomParamsText(e.target.value);
+              setCustomParamsError(null);
+            }}
+            placeholder="[]"
+          />
+
+          {customParamsError && (
+            <p className="text-xs text-red-600 dark:text-red-400 flex items-start gap-1.5">
+              <XCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
+              <span>{customParamsError}</span>
+            </p>
+          )}
+
+          <button
+            type="button"
+            onClick={async () => {
+              setCustomParamsSaving(true);
+              setCustomParamsError(null);
+              try {
+                const trimmed = customParamsText.trim();
+                if (!trimmed) {
+                  await httpClient.put('/v1/user-settings', {
+                    custom_request_params: null,
+                  });
+                  setCustomParamsText('[]');
+                  setInitialCustomParamsText('[]');
+                  showToast({
+                    message: 'Custom request params cleared.',
+                    variant: 'success',
+                  });
+                  onSettingsChanged?.();
+                  return;
+                }
+
+                const parsed = JSON.parse(trimmed);
+                if (!Array.isArray(parsed)) {
+                  throw new Error('Custom request params must be a JSON array');
+                }
+
+                await httpClient.put('/v1/user-settings', {
+                  custom_request_params: parsed,
+                });
+                setInitialCustomParamsText(JSON.stringify(parsed, null, 2));
+                setCustomParamsText(JSON.stringify(parsed, null, 2));
+                showToast({
+                  message: 'Custom request params saved successfully!',
+                  variant: 'success',
+                });
+                onSettingsChanged?.();
+              } catch (err: any) {
+                setCustomParamsError(err?.message || 'Failed to save custom request params');
+              } finally {
+                setCustomParamsSaving(false);
+              }
+            }}
+            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 text-white dark:text-zinc-900 disabled:cursor-not-allowed transition-colors shadow-sm"
+            disabled={customParamsSaving || customParamsText === initialCustomParamsText}
+          >
+            {customParamsSaving ? (
+              <>
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4" />
+                {customParamsText === initialCustomParamsText ? 'Saved' : 'Save Presets'}
               </>
             )}
           </button>

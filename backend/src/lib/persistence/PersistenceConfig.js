@@ -80,11 +80,23 @@ export class PersistenceConfig {
       ? bodyIn.systemPrompt.trim()
       : (typeof bodyIn?.system_prompt === 'string' ? bodyIn.system_prompt.trim() : '');
 
+    const hasCustomParamsId = bodyIn && Object.hasOwn(bodyIn, 'custom_request_params_id');
+    const customRequestParamsId = hasCustomParamsId
+      ? (typeof bodyIn.custom_request_params_id === 'string'
+        ? bodyIn.custom_request_params_id.trim()
+        : bodyIn.custom_request_params_id === null
+          ? null
+          : undefined)
+      : undefined;
+
     const metadata = {};
     if (systemPrompt) {
       metadata.system_prompt = systemPrompt;
     }
     metadata.active_tools = persistedToolsEnabled ? activeTools : [];
+    if (customRequestParamsId !== undefined) {
+      metadata.custom_request_params_id = customRequestParamsId;
+    }
 
     return {
       model: bodyIn.model || this.getDefaultModel(),
@@ -96,6 +108,7 @@ export class PersistenceConfig {
       systemPrompt,
       metadata,
       activeTools: metadata.active_tools,
+      customRequestParamsId,
     };
   }
 
@@ -165,13 +178,16 @@ export class PersistenceConfig {
    * @param {string} incomingModel - New model
    * @returns {Object} Update flags and values
    */
-  checkMetadataUpdates(existingConvo, incomingSystemPrompt, incomingProviderId, incomingActiveTools = [], incomingModel = null) {
+  checkMetadataUpdates(existingConvo, incomingSystemPrompt, incomingProviderId, incomingActiveTools = [], incomingModel = null, incomingCustomRequestParamsId = undefined) {
     const existingSystemPrompt = existingConvo?.metadata?.system_prompt || null;
     const existingProviderId = existingConvo?.providerId;
     const existingModel = existingConvo?.model;
     const existingActiveTools = Array.isArray(existingConvo?.metadata?.active_tools)
       ? existingConvo.metadata.active_tools
       : [];
+    const existingCustomRequestParamsId = Object.hasOwn(existingConvo?.metadata || {}, 'custom_request_params_id')
+      ? existingConvo.metadata.custom_request_params_id
+      : undefined;
     const normalizedIncomingTools = Array.isArray(incomingActiveTools)
       ? incomingActiveTools
       : [];
@@ -181,6 +197,8 @@ export class PersistenceConfig {
     const needsSystemUpdate = incomingSystemPrompt && incomingSystemPrompt !== existingSystemPrompt;
     const needsProviderUpdate = incomingProviderId && incomingProviderId !== existingProviderId;
     const needsModelUpdate = incomingModel && incomingModel !== existingModel;
+    const needsCustomRequestParamsUpdate = incomingCustomRequestParamsId !== undefined
+      && incomingCustomRequestParamsId !== existingCustomRequestParamsId;
 
     return {
       needsSystemUpdate,
@@ -191,6 +209,8 @@ export class PersistenceConfig {
       model: incomingModel,
       needsActiveToolsUpdate,
       activeTools: normalizedIncomingTools,
+      needsCustomRequestParamsUpdate,
+      customRequestParamsId: incomingCustomRequestParamsId,
     };
   }
 

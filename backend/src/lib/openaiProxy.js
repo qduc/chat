@@ -12,6 +12,7 @@ import { logger } from '../logger.js';
 import { addPromptCaching } from './promptCaching.js';
 import { registerStreamAbort, unregisterStreamAbort } from './streamAbortRegistry.js';
 import { isAbortError } from './abortUtils.js';
+import { getUserSetting } from '../db/userSettings.js';
 
 // --- Helpers: sanitize, validate, selection, and error shaping ---
 
@@ -58,6 +59,8 @@ async function sanitizeIncomingBody(bodyIn, helpers = {}) {
   delete body.system_prompt;
   delete body.providerStream;
   delete body.client_request_id;
+  delete body.custom_request_params_id;
+  delete body.custom_request_params;
 
   if (providerStreamInput !== undefined) {
     body.provider_stream = providerStreamInput;
@@ -81,6 +84,46 @@ async function sanitizeIncomingBody(bodyIn, helpers = {}) {
     // ignore expansion errors and let downstream validation handle unexpected shapes
   }
   return body;
+}
+
+function normalizeCustomRequestParams(raw) {
+  if (!raw) return [];
+  let parsed = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .map((item, index) => {
+      if (!item || typeof item !== 'object') return null;
+      const label = typeof item.label === 'string' ? item.label.trim() : '';
+      const id = typeof item.id === 'string' && item.id.trim()
+        ? item.id.trim()
+        : label || `preset-${index + 1}`;
+      const params = item.params;
+      return {
+        id,
+        label: label || id,
+        params,
+      };
+    })
+    .filter(Boolean);
+}
+
+function resolveCustomRequestParams({ userId, customRequestParamsId }) {
+  if (!userId || !customRequestParamsId) return null;
+  const setting = getUserSetting(userId, 'custom_request_params');
+  if (!setting?.value) return null;
+  const presets = normalizeCustomRequestParams(setting.value);
+  const match = presets.find((preset) => preset.id === customRequestParamsId || preset.label === customRequestParamsId);
+  if (!match || !match.params) return null;
+  if (typeof match.params !== 'object' || Array.isArray(match.params)) return null;
+  return match.params;
 }
 
 function validateAndNormalizeReasoningControls(body, { reasoningAllowed }) {
@@ -178,6 +221,21 @@ async function buildRequestContext(req) {
     userId,
     sessionId
   });
+
+  const customRequestParamsId = Object.hasOwn(bodyIn, 'custom_request_params_id')
+    ? (typeof bodyIn.custom_request_params_id === 'string'
+      ? bodyIn.custom_request_params_id.trim()
+      : bodyIn.custom_request_params_id === null
+        ? null
+        : undefined)
+    : undefined;
+
+  if (customRequestParamsId) {
+    const customParams = resolveCustomRequestParams({ userId, customRequestParamsId });
+    if (customParams) {
+      body.custom_request_params = customParams;
+    }
+  }
 
   // Resolve default model from DB-backed provider settings when missing
   if (!body.model) {

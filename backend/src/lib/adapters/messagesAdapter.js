@@ -26,6 +26,24 @@ const RESERVED_INTERNAL_KEYS = new Set([
   'previous_response_id',
 ]);
 
+const CUSTOM_REQUEST_PARAMS_BLOCKLIST = new Set([
+  'model',
+  'messages',
+  'stream',
+  'tools',
+  'tool_choice',
+  'max_tokens',
+  'system',
+]);
+
+function applyCustomRequestParams(target, customParams) {
+  if (!customParams || typeof customParams !== 'object' || Array.isArray(customParams)) return;
+  for (const [key, value] of Object.entries(customParams)) {
+    if (CUSTOM_REQUEST_PARAMS_BLOCKLIST.has(key)) continue;
+    target[key] = value;
+  }
+}
+
 /**
  * Convert OpenAI-style message format to Anthropic Messages API format
  */
@@ -292,6 +310,8 @@ export class MessagesAdapter extends BaseAdapter {
         normalized[key] = value;
       }
     }
+
+    applyCustomRequestParams(normalized, payload.custom_request_params);
 
     return normalized;
   }

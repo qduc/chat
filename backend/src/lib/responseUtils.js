@@ -20,6 +20,7 @@ export function addConversationMetadata(responseBody, persistence) {
         ? persistence.conversationMeta.metadata.active_tools
         : [],
       active_system_prompt_id: persistence.conversationMeta.metadata?.active_system_prompt_id || null,
+      custom_request_params_id: persistence.conversationMeta.metadata?.custom_request_params_id ?? null,
       seq: persistence.assistantSeq || null,
   user_message_id: persistence.userMessageId ?? null,
   assistant_message_id: persistence.assistantMessageId ?? (persistence.currentMessageId != null ? String(persistence.currentMessageId) : null),
@@ -46,6 +47,7 @@ export function getConversationMetadata(persistence) {
           ? persistence.conversationMeta.metadata.active_tools
           : [],
         active_system_prompt_id: persistence.conversationMeta.metadata?.active_system_prompt_id || null,
+        custom_request_params_id: persistence.conversationMeta.metadata?.custom_request_params_id ?? null,
         seq: persistence.assistantSeq || null,
     user_message_id: persistence.userMessageId ?? null,
     assistant_message_id: persistence.assistantMessageId ?? (persistence.currentMessageId != null ? String(persistence.currentMessageId) : null),
