@@ -9,7 +9,6 @@ import {
   ImagePlus,
   FileText,
   AudioLines,
-  Globe,
   Paperclip,
   Check,
 } from 'lucide-react';
@@ -144,11 +143,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   };
 
   // ===== COMPUTED VALUES =====
-  // Check if both search tools are enabled
-  const searchEnabled = useMemo(() => {
-    return localSelected.includes('web_search') && localSelected.includes('web_search_exa');
-  }, [localSelected]);
-
   // Check if model supports thinking/reasoning
   const supportsThinking = useMemo(() => {
     return supportsReasoningControls(model, modelCapabilities);
@@ -498,32 +492,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     e.target.value = '';
   };
 
-  // Tools handling
-  const handleSearchToggle = (enabled: boolean) => {
-    if (inputLocked) return;
-    const searchTools = [
-      'web_search',
-      'web_search_exa',
-      'web_search_searxng',
-      'web_search_firecrawl',
-      'web_fetch',
-    ];
-    let next: string[];
-
-    if (enabled) {
-      // Only add search tools that are not disabled due to missing API keys
-      const enabledSearchTools = searchTools.filter((tool) => !isToolDisabled(tool));
-      next = [...new Set([...localSelected, ...enabledSearchTools])];
-    } else {
-      // Remove both search tools
-      next = localSelected.filter((t) => !searchTools.includes(t));
-    }
-
-    setLocalSelected(next);
-    onEnabledToolsChange?.(next);
-    onUseToolsChange?.(next.length > 0);
-  };
-
   // Combined file handler for drag and drop (both images and text files)
   const handleDroppedFiles = async (droppedFiles: File[]) => {
     if (inputLocked) return;
@@ -786,28 +754,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
                 {/* Tools Group */}
                 <div className="flex items-center gap-2 sm:gap-3">
-                  {/* Search toggle */}
-                  <Tooltip content="Enable web search (Tavily + Exa)">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (inputLocked) return;
-                        handleSearchToggle(!searchEnabled);
-                      }}
-                      disabled={inputLocked}
-                      className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg border transition-all duration-200 ${
-                        searchEnabled
-                          ? 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100'
-                          : 'border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400'
-                      }`}
-                    >
-                      <Globe className="w-3 h-3 sm:w-4 sm:h-4" />
-                      <span className="text-xs sm:text-sm font-medium hidden sm:inline">
-                        Search
-                      </span>
-                    </button>
-                  </Tooltip>
-
                   {/* Custom params selector */}
                   <Tooltip content="Select custom request params">
                     <div className="relative" ref={customParamsDropdownRef}>
