@@ -153,7 +153,17 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
       metadata,
     });
     const convo = getConversationById({ id, userId });
-    return res.status(201).json(convo);
+
+    const response = {
+      ...convo,
+      system_prompt: convo?.metadata?.system_prompt || null,
+      active_system_prompt_id: convo?.metadata?.active_system_prompt_id || null,
+      custom_request_params_id: Object.hasOwn(convo?.metadata || {}, 'custom_request_params_id')
+        ? convo?.metadata?.custom_request_params_id
+        : null,
+    };
+
+    return res.status(201).json(response);
   } catch (e) {
     logger.error('[conversations] create error', e);
     if (
