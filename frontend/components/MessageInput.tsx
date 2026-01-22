@@ -818,32 +818,60 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                                 (item) => item === preset.id || item === preset.label
                               );
                               return (
-                                <button
+                                <Tooltip
                                   key={preset.id}
-                                  type="button"
-                                  onClick={() => {
-                                    const nextIds = isActive
-                                      ? localCustomParamsIds.filter(
-                                          (item) => item !== preset.id && item !== preset.label
-                                        )
-                                      : Array.from(new Set([...localCustomParamsIds, preset.id]));
-                                    setLocalCustomParamsIds(nextIds);
-                                    onCustomRequestParamsIdChange?.(
-                                      nextIds.length > 0 ? nextIds : null
-                                    );
-                                  }}
-                                  disabled={controlsDisabled}
-                                  className={`w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors ${
-                                    isActive
-                                      ? 'text-zinc-900 dark:text-zinc-100 font-medium'
-                                      : 'text-zinc-600 dark:text-zinc-300'
-                                  }`}
+                                  placement="right"
+                                  delay={300}
+                                  content={
+                                    <div className="space-y-1.5 min-w-0 max-w-[300px]">
+                                      <div className="font-semibold text-[11px] border-b border-white/10 dark:border-zinc-200/10 pb-1 mb-1">
+                                        {preset.label}
+                                      </div>
+                                      <pre className="text-[10px] font-mono leading-relaxed overflow-x-auto whitespace-pre-wrap">
+                                        {JSON.stringify(preset.params, null, 2)}
+                                      </pre>
+                                    </div>
+                                  }
                                 >
-                                  <span>{preset.label}</span>
-                                  {isActive && (
-                                    <Check className="w-4 h-4 text-zinc-500 dark:text-zinc-300" />
-                                  )}
-                                </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const nextIds = isActive
+                                        ? localCustomParamsIds.filter(
+                                            (item) => item !== preset.id && item !== preset.label
+                                          )
+                                        : Array.from(new Set([...localCustomParamsIds, preset.id]));
+                                      setLocalCustomParamsIds(nextIds);
+                                      onCustomRequestParamsIdChange?.(
+                                        nextIds.length > 0 ? nextIds : null
+                                      );
+                                    }}
+                                    disabled={controlsDisabled}
+                                    className={`w-full flex items-start justify-between px-4 py-2.5 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors ${
+                                      isActive ? 'bg-zinc-50/50 dark:bg-zinc-800/50' : ''
+                                    }`}
+                                  >
+                                    <div className="flex-1 min-w-0 pr-2">
+                                      <div
+                                        className={`text-sm ${
+                                          isActive
+                                            ? 'text-zinc-900 dark:text-zinc-100 font-semibold'
+                                            : 'text-zinc-700 dark:text-zinc-300'
+                                        }`}
+                                      >
+                                        {preset.label}
+                                      </div>
+                                      <div className="text-[10px] text-zinc-500 dark:text-zinc-400 font-mono truncate mt-0.5">
+                                        {JSON.stringify(preset.params)}
+                                      </div>
+                                    </div>
+                                    {isActive && (
+                                      <div className="flex-shrink-0 pt-0.5">
+                                        <Check className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
+                                      </div>
+                                    )}
+                                  </button>
+                                </Tooltip>
                               );
                             })}
                           </div>
