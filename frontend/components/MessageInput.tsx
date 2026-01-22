@@ -577,7 +577,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
               {/* Attach button */}
               {(onImagesChange || onFilesChange || onAudiosChange) && (
                 <div className="relative" ref={attachDropdownRef}>
-                  {attachOpen ? (
+                  <Tooltip content="Attach files" disabled={attachOpen}>
                     <button
                       type="button"
                       onClick={() => setAttachOpen(!attachOpen)}
@@ -591,23 +591,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                     >
                       <Paperclip className="w-4 h-4" />
                     </button>
-                  ) : (
-                    <Tooltip content="Attach files">
-                      <button
-                        type="button"
-                        onClick={() => setAttachOpen(!attachOpen)}
-                        disabled={controlsDisabled}
-                        className={`flex-shrink-0 p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                          images.length > 0 || files.length > 0 || audios.length > 0
-                            ? 'text-zinc-900 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-800'
-                            : 'text-zinc-500 dark:text-zinc-400'
-                        }`}
-                        aria-label="Attach Files"
-                      >
-                        <Paperclip className="w-4 h-4" />
-                      </button>
-                    </Tooltip>
-                  )}
+                  </Tooltip>
                   {attachOpen && (
                     <div className="absolute bottom-full mb-2 left-0 w-48 sm:w-56 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl rounded-xl p-1.5 z-50">
                       {onImagesChange && (
@@ -755,7 +739,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                 {/* Tools Group */}
                 <div className="flex items-center gap-2 sm:gap-3">
                   {/* Custom params selector */}
-                  <Tooltip content="Select custom request params">
+                  <Tooltip content="Select custom request params" disabled={customParamsOpen}>
                     <div className="relative" ref={customParamsDropdownRef}>
                       <button
                         type="button"
@@ -881,7 +865,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   </Tooltip>
 
                   {/* Tools selector */}
-                  <Tooltip content="Select tools to enable">
+                  <Tooltip content="Select tools to enable" disabled={toolsOpen}>
                     <div className="relative" ref={toolsDropdownRef}>
                       <button
                         type="button"

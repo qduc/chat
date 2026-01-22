@@ -22,6 +22,7 @@ interface TooltipProps {
   children: ReactNode;
   delay?: number;
   placement?: Placement;
+  disabled?: boolean;
 }
 
 export default function Tooltip({
@@ -29,6 +30,7 @@ export default function Tooltip({
   children,
   delay = 400,
   placement = 'top',
+  disabled = false,
 }: TooltipProps) {
   const arrowRef = useRef<SVGSVGElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -37,6 +39,11 @@ export default function Tooltip({
     () => [offset(8), flip({ padding: 8 }), shift({ padding: 8 }), arrow({ element: arrowRef })],
     []
   );
+
+  // Force close when disabled
+  if (disabled && open) {
+    setOpen(false);
+  }
 
   const {
     refs,
@@ -51,8 +58,12 @@ export default function Tooltip({
     placement,
   });
 
-  const hover = useHover(context, { delay: { open: delay, close: 80 }, move: false });
-  const focus = useFocus(context);
+  const hover = useHover(context, {
+    delay: { open: delay, close: 80 },
+    move: false,
+    enabled: !disabled,
+  });
+  const focus = useFocus(context, { enabled: !disabled });
   const role = useRole(context, { role: 'tooltip' });
   const dismiss = useDismiss(context);
   const { getReferenceProps, getFloatingProps } = useInteractions([hover, focus, role, dismiss]);
@@ -71,7 +82,7 @@ export default function Tooltip({
       <div ref={refs.setReference} className="inline-flex" {...getReferenceProps()}>
         {children}
       </div>
-      {open && content && (
+      {open && content && !disabled && (
         <FloatingPortal>
           <div
             ref={refs.setFloating}
