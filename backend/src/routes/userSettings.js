@@ -14,11 +14,43 @@ export function createUserSettingsRouter() {
     try {
       const userId = req.user.id;
       const body = req.body || {};
-      const supportedKeys = ['tavily_api_key', 'exa_api_key', 'searxng_api_key', 'searxng_base_url', 'chore_model'];
+      const supportedKeys = ['tavily_api_key', 'exa_api_key', 'searxng_api_key', 'searxng_base_url', 'chore_model', 'custom_request_params'];
       const updated = {};
       for (const key of supportedKeys) {
         if (Object.hasOwn(body, key)) {
           const value = body[key];
+          if (key === 'custom_request_params') {
+            if (value == null || value === '') {
+              upsertUserSetting(userId, key, null);
+              updated[key] = null;
+              continue;
+            }
+
+            let parsed = value;
+            if (typeof value === 'string') {
+              try {
+                parsed = JSON.parse(value);
+              } catch {
+                return res.status(400).json({
+                  error: 'invalid_value',
+                  message: 'custom_request_params must be valid JSON',
+                });
+              }
+            }
+
+            try {
+              const storedValue = JSON.stringify(parsed ?? null);
+              upsertUserSetting(userId, key, storedValue === 'null' ? null : storedValue);
+              updated[key] = parsed ?? null;
+            } catch (err) {
+              return res.status(400).json({
+                error: 'invalid_value',
+                message: 'custom_request_params must be JSON-serializable',
+              });
+            }
+            continue;
+          }
+
           const normalized = typeof value === 'string' ? value.trim() : value;
           const storedValue = normalized === '' ? null : normalized;
           upsertUserSetting(userId, key, storedValue);

@@ -10,6 +10,14 @@ export class GeminiAdapter extends BaseAdapter {
   constructor(options = {}) {
     super(options);
   }
+  applyCustomRequestParams(target, customParams) {
+    if (!customParams || typeof customParams !== 'object' || Array.isArray(customParams)) return;
+    const blocklist = new Set(['model', 'messages', 'contents', 'generationConfig', 'tools', 'tool_choice', 'stream']);
+    for (const [key, value] of Object.entries(customParams)) {
+      if (blocklist.has(key)) continue;
+      target[key] = value;
+    }
+  }
 
   /**
    * Convert OpenAI-style message format to Gemini format
@@ -218,6 +226,7 @@ export class GeminiAdapter extends BaseAdapter {
     geminiRequest.__model = model;
     geminiRequest.__stream = stream;
 
+    this.applyCustomRequestParams(geminiRequest, internalRequest.custom_request_params);
     return geminiRequest;
   }
 

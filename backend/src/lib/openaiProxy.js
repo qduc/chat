@@ -12,6 +12,8 @@ import { logger } from '../logger.js';
 import { addPromptCaching } from './promptCaching.js';
 import { registerStreamAbort, unregisterStreamAbort } from './streamAbortRegistry.js';
 import { isAbortError } from './abortUtils.js';
+import { getUserSetting } from '../db/userSettings.js';
+import { normalizeCustomRequestParamsIds } from './customRequestParams.js';
 
 // --- Helpers: sanitize, validate, selection, and error shaping ---
 
@@ -58,6 +60,8 @@ async function sanitizeIncomingBody(bodyIn, helpers = {}) {
   delete body.system_prompt;
   delete body.providerStream;
   delete body.client_request_id;
+  delete body.custom_request_params_id;
+  delete body.custom_request_params;
 
   if (providerStreamInput !== undefined) {
     body.provider_stream = providerStreamInput;
@@ -81,6 +85,52 @@ async function sanitizeIncomingBody(bodyIn, helpers = {}) {
     // ignore expansion errors and let downstream validation handle unexpected shapes
   }
   return body;
+}
+
+function normalizeCustomRequestParams(raw) {
+  if (!raw) return [];
+  let parsed = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+
+  if (!Array.isArray(parsed)) return [];
+  return parsed
+    .map((item, index) => {
+      if (!item || typeof item !== 'object') return null;
+      const label = typeof item.label === 'string' ? item.label.trim() : '';
+      const id = typeof item.id === 'string' && item.id.trim()
+        ? item.id.trim()
+        : label || `preset-${index + 1}`;
+      const params = item.params;
+      return {
+        id,
+        label: label || id,
+        params,
+      };
+    })
+    .filter(Boolean);
+}
+
+function resolveCustomRequestParams({ userId, customRequestParamsIds }) {
+  if (!userId || !Array.isArray(customRequestParamsIds) || customRequestParamsIds.length === 0) {
+    return null;
+  }
+  const setting = getUserSetting(userId, 'custom_request_params');
+  if (!setting?.value) return null;
+  const presets = normalizeCustomRequestParams(setting.value);
+  const mergedParams = {};
+  for (const id of customRequestParamsIds) {
+    const match = presets.find((preset) => preset.id === id || preset.label === id);
+    if (!match || !match.params) continue;
+    if (typeof match.params !== 'object' || Array.isArray(match.params)) continue;
+    Object.assign(mergedParams, match.params);
+  }
+  return Object.keys(mergedParams).length > 0 ? mergedParams : null;
 }
 
 function validateAndNormalizeReasoningControls(body, { reasoningAllowed }) {
@@ -178,6 +228,17 @@ async function buildRequestContext(req) {
     userId,
     sessionId
   });
+
+  const customRequestParamsIds = Object.hasOwn(bodyIn, 'custom_request_params_id')
+    ? normalizeCustomRequestParamsIds(bodyIn.custom_request_params_id)
+    : undefined;
+
+  if (Array.isArray(customRequestParamsIds) && customRequestParamsIds.length > 0) {
+    const customParams = resolveCustomRequestParams({ userId, customRequestParamsIds });
+    if (customParams) {
+      body.custom_request_params = customParams;
+    }
+  }
 
   // Resolve default model from DB-backed provider settings when missing
   if (!body.model) {

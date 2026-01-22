@@ -44,6 +44,22 @@ const RESERVED_INTERNAL_KEYS = new Set([
   'previous_response_id',
 ]);
 
+const CUSTOM_REQUEST_PARAMS_BLOCKLIST = new Set([
+  'model',
+  'messages',
+  'stream',
+  'tools',
+  'tool_choice',
+]);
+
+function applyCustomRequestParams(target, customParams) {
+  if (!customParams || typeof customParams !== 'object' || Array.isArray(customParams)) return;
+  for (const [key, value] of Object.entries(customParams)) {
+    if (CUSTOM_REQUEST_PARAMS_BLOCKLIST.has(key)) continue;
+    target[key] = value;
+  }
+}
+
 function normalizeToolCall(toolCall) {
   if (!toolCall || typeof toolCall !== 'object') return null;
   const fn = toolCall.function || {};
@@ -260,6 +276,8 @@ export class ChatCompletionsAdapter extends BaseAdapter {
       }
       // format === 'none': Don't include reasoning fields
     }
+
+    applyCustomRequestParams(normalized, payload.custom_request_params);
 
     return normalized;
   }

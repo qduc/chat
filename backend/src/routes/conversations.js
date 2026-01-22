@@ -24,6 +24,7 @@ import {
   countMigratableConversations
 } from '../db/migration.js';
 import { v4 as uuidv4 } from 'uuid';
+import { normalizeCustomRequestParamsIds } from '../lib/customRequestParams.js';
 
 export const conversationsRouter = Router();
 
@@ -124,12 +125,18 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
       toolsEnabled,
       qualityLevel,
       reasoningEffort,
-      verbosity
+      verbosity,
+      custom_request_params_id,
     } = req.body || {};
     const sysPrompt = typeof req.body?.system_prompt === 'string' ? req.body.system_prompt.trim() : (
       typeof req.body?.systemPrompt === 'string' ? req.body.systemPrompt.trim() : ''
     );
+      const customRequestParamsId = normalizeCustomRequestParamsIds(custom_request_params_id);
     const id = uuidv4();
+    const metadata = {
+      ...(sysPrompt ? { system_prompt: sysPrompt } : {}),
+      ...(customRequestParamsId !== undefined ? { custom_request_params_id: customRequestParamsId } : {}),
+    };
     createConversation({
       id,
       sessionId,
@@ -142,10 +149,20 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
       qualityLevel,
       reasoningEffort,
       verbosity,
-      metadata: sysPrompt ? { system_prompt: sysPrompt } : {}
+      metadata,
     });
     const convo = getConversationById({ id, userId });
-    return res.status(201).json(convo);
+
+    const response = {
+      ...convo,
+      system_prompt: convo?.metadata?.system_prompt || null,
+      active_system_prompt_id: convo?.metadata?.active_system_prompt_id || null,
+      custom_request_params_id: Object.hasOwn(convo?.metadata || {}, 'custom_request_params_id')
+        ? convo?.metadata?.custom_request_params_id
+        : null,
+    };
+
+    return res.status(201).json(response);
   } catch (e) {
     logger.error('[conversations] create error', e);
     if (
@@ -179,11 +196,15 @@ conversationsRouter.get('/v1/conversations/:id', (req, res) => {
 
     const sysPrompt = convo?.metadata?.system_prompt || null;
     const activePromptId = convo?.metadata?.active_system_prompt_id || null;
+    const customRequestParamsId = Object.hasOwn(convo?.metadata || {}, 'custom_request_params_id')
+      ? convo?.metadata?.custom_request_params_id
+      : null;
 
     const response = {
       ...convo,
       system_prompt: sysPrompt,
       active_system_prompt_id: activePromptId,
+      custom_request_params_id: customRequestParamsId,
       messages: page.messages,
       next_after_seq: page.next_after_seq,
     };

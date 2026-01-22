@@ -829,6 +829,9 @@ export function ChatV2() {
                   onUseToolsChange={chat.setUseTools}
                   enabledTools={chat.enabledTools}
                   onEnabledToolsChange={chat.setEnabledTools}
+                  customRequestParams={chat.customRequestParams}
+                  customRequestParamsId={chat.customRequestParamsId}
+                  onCustomRequestParamsIdChange={chat.setCustomRequestParamsId}
                   onShouldStreamChange={chat.setShouldStream}
                   model={chat.model}
                   qualityLevel={chat.qualityLevel}
@@ -849,6 +852,7 @@ export function ChatV2() {
               open={isSettingsOpen}
               onClose={() => setIsSettingsOpen(false)}
               onProvidersChanged={chat.forceRefreshModels}
+              onSettingsChanged={chat.refreshUserSettings}
               modelGroups={chat.modelGroups}
               modelOptions={chat.modelOptions}
             />

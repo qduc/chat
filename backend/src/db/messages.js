@@ -76,6 +76,14 @@ function normalizeTokenCount(value) {
   return Math.max(0, Math.trunc(asNumber));
 }
 
+function normalizeTiming(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const asNumber = Number(value);
+  if (!Number.isFinite(asNumber)) return null;
+  return Math.max(0, asNumber);
+}
+
 function parseJsonField(raw, messageId, fieldName) {
   if (raw == null) return null;
   try {
@@ -116,6 +124,8 @@ function buildMetadataJson({
   tokensIn,
   tokensOut,
   totalTokens,
+  promptMs,
+  completionMs,
 }) {
   const metadata = existing && typeof existing === 'object' ? { ...existing } : {};
   const usage = metadata.usage && typeof metadata.usage === 'object' ? { ...metadata.usage } : {};
@@ -132,10 +142,19 @@ function buildMetadataJson({
   setOrDeleteField(usage, 'completion_tokens', tokensOut);
   setOrDeleteField(usage, 'total_tokens', totalTokens);
   setOrDeleteField(usage, 'reasoning_tokens', reasoningTokens);
+  setOrDeleteField(usage, 'prompt_ms', promptMs);
+  setOrDeleteField(usage, 'completion_ms', completionMs);
 
   if (Object.keys(usage).length > 0) {
     metadata.usage = usage;
-  } else if (tokensIn !== undefined || tokensOut !== undefined || totalTokens !== undefined || reasoningTokens !== undefined) {
+  } else if (
+    tokensIn !== undefined ||
+    tokensOut !== undefined ||
+    totalTokens !== undefined ||
+    reasoningTokens !== undefined ||
+    promptMs !== undefined ||
+    completionMs !== undefined
+  ) {
     delete metadata.usage;
   }
 
@@ -265,6 +284,8 @@ export function insertAssistantFinal({
   tokensIn = undefined,
   tokensOut = undefined,
   totalTokens = undefined,
+  promptMs = undefined,
+  completionMs = undefined,
 
   provider = undefined,
   clientMessageId = null,
@@ -278,6 +299,8 @@ export function insertAssistantFinal({
   const normalizedTokensIn = normalizeTokenCount(tokensIn);
   const normalizedTokensOut = normalizeTokenCount(tokensOut);
   const normalizedTotalTokens = normalizeTokenCount(totalTokens);
+  const normalizedPromptMs = normalizeTiming(promptMs);
+  const normalizedCompletionMs = normalizeTiming(completionMs);
   const metadataJson = buildMetadataJson({
     finishReason,
     responseId,
@@ -287,6 +310,8 @@ export function insertAssistantFinal({
     tokensIn: normalizedTokensIn,
     tokensOut: normalizedTokensOut,
     totalTokens: normalizedTotalTokens,
+    promptMs: normalizedPromptMs,
+    completionMs: normalizedCompletionMs,
   });
 
   const info = db
@@ -408,18 +433,24 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
       usage?.total_tokens != null
         ? Number(usage.total_tokens)
         : (promptTokens != null && completionTokens != null ? promptTokens + completionTokens : null);
+    const promptMs = usage?.prompt_ms != null ? Number(usage.prompt_ms) : null;
+    const completionMs = usage?.completion_ms != null ? Number(usage.completion_ms) : null;
 
     if (
       promptTokens != null ||
       completionTokens != null ||
       totalTokens != null ||
-      reasoningTokens != null
+      reasoningTokens != null ||
+      promptMs != null ||
+      completionMs != null
     ) {
       message.usage = {
         ...(promptTokens != null ? { prompt_tokens: promptTokens } : {}),
         ...(completionTokens != null ? { completion_tokens: completionTokens } : {}),
         ...(totalTokens != null ? { total_tokens: totalTokens } : {}),
         ...(reasoningTokens != null ? { reasoning_tokens: reasoningTokens } : {}),
+        ...(promptMs != null ? { prompt_ms: promptMs } : {}),
+        ...(completionMs != null ? { completion_ms: completionMs } : {}),
       };
     }
 
@@ -579,22 +610,28 @@ export function getLastMessage({ conversationId }) {
     usage?.total_tokens != null
       ? Number(usage.total_tokens)
       : (promptTokens != null && completionTokens != null ? promptTokens + completionTokens : null);
+    const promptMs = usage?.prompt_ms != null ? Number(usage.prompt_ms) : null;
+    const completionMs = usage?.completion_ms != null ? Number(usage.completion_ms) : null;
 
-  if (
-    promptTokens != null ||
-    completionTokens != null ||
-    totalTokens != null ||
-    reasoningTokens != null
-  ) {
-    message.usage = {
-      ...(promptTokens != null ? { prompt_tokens: promptTokens } : {}),
-      ...(completionTokens != null ? { completion_tokens: completionTokens } : {}),
-      ...(totalTokens != null ? { total_tokens: totalTokens } : {}),
-      ...(reasoningTokens != null ? { reasoning_tokens: reasoningTokens } : {}),
-    };
-  }
+    if (
+      promptTokens != null ||
+      completionTokens != null ||
+      totalTokens != null ||
+      reasoningTokens != null ||
+      promptMs != null ||
+      completionMs != null
+    ) {
+      message.usage = {
+        ...(promptTokens != null ? { prompt_tokens: promptTokens } : {}),
+        ...(completionTokens != null ? { completion_tokens: completionTokens } : {}),
+        ...(totalTokens != null ? { total_tokens: totalTokens } : {}),
+        ...(reasoningTokens != null ? { reasoning_tokens: reasoningTokens } : {}),
+        ...(promptMs != null ? { prompt_ms: promptMs } : {}),
+        ...(completionMs != null ? { completion_ms: completionMs } : {}),
+      };
+    }
 
-  delete message.metadata_json;
+    delete message.metadata_json;
 
   // Fetch tool calls for this message (using integer ID)
   const toolCalls = db
@@ -707,6 +744,8 @@ export function updateMessageContent({
   tokensIn,
   tokensOut,
   totalTokens,
+  promptMs,
+  completionMs,
   finishReason,
   responseId,
   provider,
@@ -733,6 +772,8 @@ export function updateMessageContent({
   const normalizedTokensIn = normalizeTokenCount(tokensIn);
   const normalizedTokensOut = normalizeTokenCount(tokensOut);
   const normalizedTotalTokens = normalizeTokenCount(totalTokens);
+  const normalizedPromptMs = normalizeTiming(promptMs);
+  const normalizedCompletionMs = normalizeTiming(completionMs);
 
   const existingMetadataRow = db
     .prepare(`SELECT metadata_json FROM messages WHERE id = @messageId`)
@@ -748,6 +789,8 @@ export function updateMessageContent({
     tokensIn: normalizedTokensIn,
     tokensOut: normalizedTokensOut,
     totalTokens: normalizedTotalTokens,
+    promptMs: normalizedPromptMs,
+    completionMs: normalizedCompletionMs,
   });
 
   const updates = ['content = @content', 'content_json = @contentJson', 'metadata_json = @metadataJson', 'updated_at = @now'];

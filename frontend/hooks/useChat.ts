@@ -4,7 +4,12 @@ import type { MessageContent, TextContent, MessageEvent, AudioAttachment } from 
 import { conversations as conversationsApi, chat, auth } from '../lib/api';
 import { httpClient } from '../lib/http';
 import { APIError, StreamingNotSupportedError } from '../lib/streaming';
-import type { ConversationMeta, Provider, ChatOptionsExtended } from '../lib/types';
+import type {
+  ConversationMeta,
+  Provider,
+  ChatOptionsExtended,
+  CustomRequestParamPreset,
+} from '../lib/types';
 import { supportsReasoningControls, getDraft, setDraft, clearDraft } from '../lib';
 import { attachmentToInputAudioPart } from '../lib/audioUtils';
 
@@ -504,6 +509,8 @@ export function useChat() {
   const [enabledTools, setEnabledTools] = useState<string[]>([]);
   const [shouldStream, setShouldStream] = useState(true);
   const [qualityLevel, setQualityLevel] = useState<QualityLevel>('unset');
+  const [customRequestParams, setCustomRequestParams] = useState<CustomRequestParamPreset[]>([]);
+  const [customRequestParamsId, setCustomRequestParamsId] = useState<string[]>([]);
 
   // Image State
   const [images, setImages] = useState<any[]>([]);
@@ -531,6 +538,7 @@ export function useChat() {
   const enabledToolsRef = useRef<string[]>([]);
   const qualityLevelRef = useRef<QualityLevel>('unset');
   const modelToProviderRef = useRef<Record<string, string>>({});
+  const customRequestParamsIdRef = useRef<string[]>([]);
 
   // User State
   const [user, setUser] = useState<{ id: string } | null>(null);
@@ -559,6 +567,21 @@ export function useChat() {
 
   // Track whether draft has been restored to avoid restoring multiple times
   const draftRestoredRef = useRef(false);
+
+  const normalizeCustomRequestParamsIds = useCallback((value: any): string[] => {
+    if (!value) return [];
+    if (Array.isArray(value)) {
+      return value
+        .filter((item) => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed ? [trimmed] : [];
+    }
+    return [];
+  }, []);
 
   // Actions - Sidebar
   const toggleSidebar = useCallback(() => {
@@ -720,6 +743,14 @@ export function useChat() {
           qualityLevelRef.current = data.quality_level as QualityLevel;
         }
 
+        if ('custom_request_params_id' in data) {
+          const nextCustomParamsId = normalizeCustomRequestParamsIds(
+            (data as any).custom_request_params_id
+          );
+          setCustomRequestParamsId(nextCustomParamsId);
+          customRequestParamsIdRef.current = nextCustomParamsId;
+        }
+
         // Apply system prompt
         const promptFromData = (data as any).system_prompt ?? null;
         if (promptFromData !== undefined) {
@@ -821,7 +852,7 @@ export function useChat() {
         setLoadingConversations(false);
       }
     },
-    [user?.id, conversationId]
+    [conversationId, normalizeCustomRequestParamsIds, user?.id]
   );
 
   const deleteConversation = useCallback(
@@ -1241,6 +1272,10 @@ export function useChat() {
               toolsEnabled: useToolsRef.current,
               tools: enabledToolsRef.current,
               qualityLevel: qualityLevelRef.current,
+              customRequestParamsId:
+                customRequestParamsIdRef.current.length > 0
+                  ? customRequestParamsIdRef.current
+                  : null,
               reasoning: reasoning,
               systemPrompt: systemPromptRef.current || undefined,
               activeSystemPromptId: activeSystemPromptIdRef.current || undefined,
@@ -1401,6 +1436,14 @@ export function useChat() {
                 setConversationId(response.conversation.id);
                 setCurrentConversationTitle(response.conversation.title || null);
 
+                if (response.conversation.custom_request_params_id !== undefined) {
+                  const nextCustomParamsId = normalizeCustomRequestParamsIds(
+                    response.conversation.custom_request_params_id
+                  );
+                  setCustomRequestParamsId(nextCustomParamsId);
+                  customRequestParamsIdRef.current = nextCustomParamsId;
+                }
+
                 if (isNewConversation) {
                   const newConversation: Conversation = {
                     id: response.conversation.id,
@@ -1530,6 +1573,7 @@ export function useChat() {
                 ...prev,
                 streaming: false,
                 error: errorMessage,
+                abort: null,
               }));
             } else {
               setMessages((prev) => {
@@ -1574,6 +1618,10 @@ export function useChat() {
               toolsEnabled: useToolsRef.current,
               qualityLevel:
                 qualityLevelRef.current !== 'unset' ? qualityLevelRef.current : undefined,
+              custom_request_params_id:
+                customRequestParamsIdRef.current.length > 0
+                  ? customRequestParamsIdRef.current
+                  : null,
             });
             effectiveConversationId = newConversation.id;
             setConversationId(newConversation.id);
@@ -1640,6 +1688,7 @@ export function useChat() {
         setPending((prev) => ({
           ...prev,
           streaming: false,
+          abort: null,
           tokenStats: tokenStatsRef.current ?? undefined,
         }));
       } catch (err) {
@@ -1647,7 +1696,7 @@ export function useChat() {
         // (should unlikely reach here due to inner try/catch)
         setError(err instanceof Error ? err.message : 'Unknown error');
         setStatus('idle');
-        setPending((prev) => ({ ...prev, streaming: false }));
+        setPending((prev) => ({ ...prev, streaming: false, abort: null }));
       } finally {
         currentRequestIdRef.current = null;
         abortControllerRef.current = null;
@@ -1666,7 +1715,7 @@ export function useChat() {
       abortControllerRef.current = null;
     }
     setStatus('idle');
-    setPending((prev) => ({ ...prev, streaming: false }));
+    setPending((prev) => ({ ...prev, streaming: false, abort: null }));
   }, []);
 
   const regenerate = useCallback(
@@ -1972,6 +2021,7 @@ export function useChat() {
 
         if (isPrimary) {
           setError(errorMessage);
+          setPending((prev) => ({ ...prev, error: errorMessage }));
         } else {
           setMessages((prev) =>
             prev.map((msg) => {
@@ -1994,12 +2044,12 @@ export function useChat() {
         }
       } finally {
         setStatus('idle');
-        setPending((prev) => ({ ...prev, streaming: false }));
+        setPending((prev) => ({ ...prev, streaming: false, abort: null }));
         currentRequestIdRef.current = null;
         abortControllerRef.current = null;
       }
     },
-    [status, conversationId, modelCapabilities]
+    [conversationId, modelCapabilities, normalizeCustomRequestParamsIds, status]
   );
 
   // Actions - Editing
@@ -2219,6 +2269,16 @@ export function useChat() {
     [clearError]
   );
 
+  const setCustomRequestParamsIdWrapper = useCallback(
+    (value: string[] | null) => {
+      const normalized = Array.isArray(value) ? value : [];
+      setCustomRequestParamsId(normalized);
+      customRequestParamsIdRef.current = normalized;
+      clearError();
+    },
+    [clearError]
+  );
+
   const setActiveSystemPromptIdWrapper = useCallback(
     (id: string | null | undefined) => {
       setActiveSystemPromptId(id);
@@ -2227,6 +2287,53 @@ export function useChat() {
     },
     [clearError]
   );
+
+  const normalizeCustomRequestParams = useCallback((value: any): CustomRequestParamPreset[] => {
+    if (!value) return [];
+    const parsed =
+      typeof value === 'string'
+        ? (() => {
+            try {
+              return JSON.parse(value);
+            } catch {
+              return null;
+            }
+          })()
+        : value;
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .map((item: any, index: number) => {
+        if (!item || typeof item !== 'object') return null;
+        const label = typeof item.label === 'string' ? item.label.trim() : '';
+        const id =
+          typeof item.id === 'string' && item.id.trim()
+            ? item.id.trim()
+            : label || `preset-${index + 1}`;
+        const params =
+          item.params && typeof item.params === 'object' && !Array.isArray(item.params)
+            ? item.params
+            : {};
+        return {
+          id,
+          label: label || id,
+          params,
+        };
+      })
+      .filter(Boolean) as CustomRequestParamPreset[];
+  }, []);
+
+  const refreshUserSettings = useCallback(async () => {
+    if (!user?.id) return;
+    try {
+      const res = await httpClient.get('/v1/user-settings');
+      const settings = res.data || {};
+      const presets = normalizeCustomRequestParams(settings.custom_request_params);
+      setCustomRequestParams(presets);
+    } catch (err) {
+      console.warn('[useChat] Failed to load user settings:', err);
+      setCustomRequestParams([]);
+    }
+  }, [normalizeCustomRequestParams, user?.id]);
 
   const setImagesWrapper = useCallback(
     (imgs: any[] | ((prev: any[]) => any[])) => {
@@ -2272,6 +2379,11 @@ export function useChat() {
     };
     loadUser();
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    refreshUserSettings();
+  }, [refreshUserSettings, user?.id]);
 
   // Use system prompts hook (depends on user)
   const { prompts: systemPrompts, loading: systemPromptsLoading } = useSystemPrompts(user?.id);
@@ -2415,6 +2527,8 @@ export function useChat() {
     enabledTools,
     shouldStream,
     qualityLevel,
+    customRequestParams,
+    customRequestParamsId,
     images,
     audios,
     files,
@@ -2433,6 +2547,7 @@ export function useChat() {
     setEnabledTools: setEnabledToolsWrapper,
     setShouldStream: setShouldStreamWrapper,
     setQualityLevel: setQualityLevelWrapper,
+    setCustomRequestParamsId: setCustomRequestParamsIdWrapper,
     setImages: setImagesWrapper,
     setAudios: setAudiosWrapper,
     setFiles: setFilesWrapper,
@@ -2456,5 +2571,6 @@ export function useChat() {
     loadProvidersAndModels,
     forceRefreshModels,
     setInlineSystemPromptOverride,
+    refreshUserSettings,
   };
 }

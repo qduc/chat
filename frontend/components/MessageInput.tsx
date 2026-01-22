@@ -5,11 +5,12 @@ import {
   Gauge,
   Wrench,
   Zap,
+  Sliders,
   ImagePlus,
   FileText,
   AudioLines,
-  Globe,
   Paperclip,
+  Check,
 } from 'lucide-react';
 import type { PendingState } from '@/hooks/useChat';
 import {
@@ -30,6 +31,7 @@ import { FilePreview } from './ui/FilePreview';
 import { AudioPreview } from './ui/AudioPreview';
 import Tooltip from './ui/Tooltip';
 import type { QualityLevel } from './ui/QualitySlider';
+import type { CustomRequestParamPreset } from '../lib/types';
 
 interface MessageInputProps {
   input: string;
@@ -43,6 +45,9 @@ interface MessageInputProps {
   onShouldStreamChange: (val: boolean) => void;
   enabledTools?: string[];
   onEnabledToolsChange?: (list: string[]) => void;
+  customRequestParams?: CustomRequestParamPreset[];
+  customRequestParamsId?: string[] | null;
+  onCustomRequestParamsIdChange?: (ids: string[] | null) => void;
   model: string;
   qualityLevel: QualityLevel;
   onQualityLevelChange: (level: QualityLevel) => void;
@@ -72,6 +77,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     onUseToolsChange,
     enabledTools = [],
     onEnabledToolsChange,
+    customRequestParams = [],
+    customRequestParamsId = null,
+    onCustomRequestParamsIdChange,
     onShouldStreamChange,
     model,
     qualityLevel,
@@ -91,6 +99,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   // ===== REFS =====
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const toolsDropdownRef = useRef<HTMLDivElement | null>(null);
+  const customParamsDropdownRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const audioInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -114,6 +123,10 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   const [toolFilter, setToolFilter] = useState('');
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [localSelected, setLocalSelected] = useState<string[]>(enabledTools);
+  const [customParamsOpen, setCustomParamsOpen] = useState(false);
+  const [localCustomParamsIds, setLocalCustomParamsIds] = useState<string[]>(
+    Array.isArray(customRequestParamsId) ? customRequestParamsId : []
+  );
   const [imageUploadProgress, setImageUploadProgress] = useState<ImageUploadProgress[]>([]);
   const [fileUploadProgress, setFileUploadProgress] = useState<FileUploadProgress[]>([]);
   const [attachOpen, setAttachOpen] = useState(false);
@@ -130,15 +143,29 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   };
 
   // ===== COMPUTED VALUES =====
-  // Check if both search tools are enabled
-  const searchEnabled = useMemo(() => {
-    return localSelected.includes('web_search') && localSelected.includes('web_search_exa');
-  }, [localSelected]);
-
   // Check if model supports thinking/reasoning
   const supportsThinking = useMemo(() => {
     return supportsReasoningControls(model, modelCapabilities);
   }, [model, modelCapabilities]);
+
+  const selectedCustomParamsLabels = useMemo(() => {
+    if (localCustomParamsIds.length === 0) return [];
+    return localCustomParamsIds.map((id) => {
+      const match = customRequestParams.find((preset) => preset.id === id || preset.label === id);
+      return match?.label || id;
+    });
+  }, [customRequestParams, localCustomParamsIds]);
+
+  const selectedCustomParamsLabel = useMemo(() => {
+    if (selectedCustomParamsLabels.length === 0) return 'None';
+    if (selectedCustomParamsLabels.length === 1) return selectedCustomParamsLabels[0];
+    return `${selectedCustomParamsLabels.length} selected`;
+  }, [selectedCustomParamsLabels]);
+
+  const selectedCustomParamsTitle = useMemo(() => {
+    if (selectedCustomParamsLabels.length === 0) return 'None';
+    return selectedCustomParamsLabels.join(', ');
+  }, [selectedCustomParamsLabels]);
 
   // Check if we can send (have text or images)
   const canSend = input.trim().length > 0 || images.length > 0;
@@ -183,6 +210,10 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     setLocalSelected(enabledTools ?? []);
   }, [enabledTools]);
 
+  useEffect(() => {
+    setLocalCustomParamsIds(Array.isArray(customRequestParamsId) ? customRequestParamsId : []);
+  }, [customRequestParamsId]);
+
   // Click outside to close tools dropdown
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -196,6 +227,22 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
   }, [toolsOpen]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (
+        customParamsDropdownRef.current &&
+        !customParamsDropdownRef.current.contains(event.target as Node)
+      ) {
+        setCustomParamsOpen(false);
+      }
+    };
+
+    if (customParamsOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [customParamsOpen]);
 
   // Focus search input when tools open
   useEffect(() => {
@@ -223,6 +270,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     if (!inputLocked) return;
     setToolsOpen(false);
     setAttachOpen(false);
+    setCustomParamsOpen(false);
   }, [inputLocked]);
 
   // Load tool specs for the selector UI
@@ -442,32 +490,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
       handleAudioFiles(audioFiles);
     }
     e.target.value = '';
-  };
-
-  // Tools handling
-  const handleSearchToggle = (enabled: boolean) => {
-    if (inputLocked) return;
-    const searchTools = [
-      'web_search',
-      'web_search_exa',
-      'web_search_searxng',
-      'web_search_firecrawl',
-      'web_fetch',
-    ];
-    let next: string[];
-
-    if (enabled) {
-      // Only add search tools that are not disabled due to missing API keys
-      const enabledSearchTools = searchTools.filter((tool) => !isToolDisabled(tool));
-      next = [...new Set([...localSelected, ...enabledSearchTools])];
-    } else {
-      // Remove both search tools
-      next = localSelected.filter((t) => !searchTools.includes(t));
-    }
-
-    setLocalSelected(next);
-    onEnabledToolsChange?.(next);
-    onUseToolsChange?.(next.length > 0);
   };
 
   // Combined file handler for drag and drop (both images and text files)
@@ -732,26 +754,102 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
                 {/* Tools Group */}
                 <div className="flex items-center gap-2 sm:gap-3">
-                  {/* Search toggle */}
-                  <Tooltip content="Enable web search (Tavily + Exa)">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (inputLocked) return;
-                        handleSearchToggle(!searchEnabled);
-                      }}
-                      disabled={inputLocked}
-                      className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg border transition-all duration-200 ${
-                        searchEnabled
-                          ? 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100'
-                          : 'border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400'
-                      }`}
-                    >
-                      <Globe className="w-3 h-3 sm:w-4 sm:h-4" />
-                      <span className="text-xs sm:text-sm font-medium hidden sm:inline">
-                        Search
-                      </span>
-                    </button>
+                  {/* Custom params selector */}
+                  <Tooltip content="Select custom request params">
+                    <div className="relative" ref={customParamsDropdownRef}>
+                      <button
+                        type="button"
+                        aria-label="Custom request params"
+                        onClick={() => {
+                          if (inputLocked) return;
+                          setCustomParamsOpen((v) => !v);
+                        }}
+                        disabled={inputLocked}
+                        className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors duration-150"
+                      >
+                        <Sliders className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+                        <span
+                          className={`text-xs px-2 py-0.5 rounded-full transition-colors font-medium max-w-[120px] truncate ${
+                            localCustomParamsIds.length > 0
+                              ? 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100'
+                              : 'text-zinc-500 dark:text-zinc-400'
+                          }`}
+                          title={selectedCustomParamsTitle}
+                        >
+                          {selectedCustomParamsLabel}
+                        </span>
+                      </button>
+
+                      {customParamsOpen && (
+                        <div className="fixed bottom-20 sm:bottom-full left-2 right-2 sm:left-0 sm:right-auto sm:mb-2 w-auto sm:w-[320px] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl rounded-xl z-50 overflow-hidden">
+                          <div className="flex items-center justify-between p-4 border-b border-zinc-100 dark:border-zinc-800">
+                            <div>
+                              <div className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
+                                Custom Params
+                              </div>
+                              <div className="text-xs text-zinc-500 dark:text-zinc-400">
+                                {customRequestParams.length} presets
+                              </div>
+                            </div>
+                          </div>
+                          <div className="max-h-[300px] overflow-y-auto">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setLocalCustomParamsIds([]);
+                                onCustomRequestParamsIdChange?.(null);
+                              }}
+                              disabled={controlsDisabled}
+                              className={`w-full text-left px-4 py-2.5 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors ${
+                                localCustomParamsIds.length === 0
+                                  ? 'text-zinc-900 dark:text-zinc-100 font-medium'
+                                  : 'text-zinc-600 dark:text-zinc-300'
+                              }`}
+                            >
+                              None
+                            </button>
+                            {customRequestParams.length === 0 && (
+                              <div className="px-4 py-3 text-xs text-zinc-500 dark:text-zinc-400">
+                                No presets configured. Add them in Settings → Advanced.
+                              </div>
+                            )}
+                            {customRequestParams.map((preset) => {
+                              const isActive = localCustomParamsIds.some(
+                                (item) => item === preset.id || item === preset.label
+                              );
+                              return (
+                                <button
+                                  key={preset.id}
+                                  type="button"
+                                  onClick={() => {
+                                    const nextIds = isActive
+                                      ? localCustomParamsIds.filter(
+                                          (item) => item !== preset.id && item !== preset.label
+                                        )
+                                      : Array.from(new Set([...localCustomParamsIds, preset.id]));
+                                    setLocalCustomParamsIds(nextIds);
+                                    onCustomRequestParamsIdChange?.(
+                                      nextIds.length > 0 ? nextIds : null
+                                    );
+                                  }}
+                                  disabled={controlsDisabled}
+                                  className={`w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors ${
+                                    isActive
+                                      ? 'text-zinc-900 dark:text-zinc-100 font-medium'
+                                      : 'text-zinc-600 dark:text-zinc-300'
+                                  }`}
+                                >
+                                  <span>{preset.label}</span>
+                                  {isActive && (
+                                    <Check className="w-4 h-4 text-zinc-500 dark:text-zinc-300" />
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </Tooltip>
 
                   {/* Tools selector */}

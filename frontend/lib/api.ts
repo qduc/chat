@@ -447,6 +447,15 @@ function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: bo
     }),
   };
 
+  if (Object.hasOwn(extendedOptions as any, 'customRequestParamsId')) {
+    const customParamsId = (extendedOptions as any).customRequestParamsId;
+    bodyObj.custom_request_params_id = Array.isArray(customParamsId)
+      ? customParamsId.length > 0
+        ? customParamsId
+        : null
+      : (customParamsId ?? null);
+  }
+
   // Check if model supports reasoning before adding reasoning parameters
   const modelCapabilities = (extendedOptions as any).modelCapabilities;
   const supportsReasoning = supportsReasoningControls(model, modelCapabilities);
@@ -546,6 +555,9 @@ function processNonStreamingData(
           : {}),
         ...(Array.isArray(json._conversation.active_tools)
           ? { active_tools: json._conversation.active_tools }
+          : {}),
+        ...(Object.hasOwn(json._conversation, 'custom_request_params_id')
+          ? { custom_request_params_id: json._conversation.custom_request_params_id ?? null }
           : {}),
         ...(json._conversation.seq !== undefined ? { seq: json._conversation.seq } : {}),
         ...(json._conversation.user_message_id !== undefined
@@ -819,6 +831,65 @@ function processStreamChunk(
   reasoningDetails?: any[];
   reasoningTokens?: number;
 } {
+  const usageFromTimings = (timings?: any): any | undefined => {
+    if (!timings || typeof timings !== 'object') return undefined;
+
+    const promptTokens =
+      typeof timings.prompt_n === 'number'
+        ? timings.prompt_n
+        : typeof timings.prompt_tokens === 'number'
+          ? timings.prompt_tokens
+          : undefined;
+
+    const completionTokens =
+      typeof timings.predicted_n === 'number'
+        ? timings.predicted_n
+        : typeof timings.completion_tokens === 'number'
+          ? timings.completion_tokens
+          : undefined;
+
+    const totalTokens =
+      typeof timings.total_tokens === 'number'
+        ? timings.total_tokens
+        : promptTokens !== undefined || completionTokens !== undefined
+          ? (promptTokens ?? 0) + (completionTokens ?? 0)
+          : undefined;
+
+    const promptMs =
+      typeof timings.prompt_ms === 'number'
+        ? timings.prompt_ms
+        : typeof timings.promptMs === 'number'
+          ? timings.promptMs
+          : undefined;
+
+    const completionMs =
+      typeof timings.predicted_ms === 'number'
+        ? timings.predicted_ms
+        : typeof timings.completion_ms === 'number'
+          ? timings.completion_ms
+          : typeof timings.completionMs === 'number'
+            ? timings.completionMs
+            : undefined;
+
+    if (
+      promptTokens === undefined &&
+      completionTokens === undefined &&
+      totalTokens === undefined &&
+      promptMs === undefined &&
+      completionMs === undefined
+    ) {
+      return undefined;
+    }
+
+    return {
+      ...(promptTokens !== undefined ? { prompt_tokens: promptTokens } : {}),
+      ...(completionTokens !== undefined ? { completion_tokens: completionTokens } : {}),
+      ...(totalTokens !== undefined ? { total_tokens: totalTokens } : {}),
+      ...(promptMs !== undefined ? { prompt_ms: promptMs } : {}),
+      ...(completionMs !== undefined ? { completion_ms: completionMs } : {}),
+    };
+  };
+
   if (data._conversation) {
     return {
       conversation: {
@@ -831,6 +902,9 @@ function processStreamChunk(
           : {}),
         ...(Array.isArray(data._conversation.active_tools)
           ? { active_tools: data._conversation.active_tools }
+          : {}),
+        ...(Object.hasOwn(data._conversation, 'custom_request_params_id')
+          ? { custom_request_params_id: data._conversation.custom_request_params_id ?? null }
           : {}),
         ...(data._conversation.seq !== undefined ? { seq: data._conversation.seq } : {}),
         ...(data._conversation.user_message_id !== undefined
@@ -858,7 +932,10 @@ function processStreamChunk(
     reasoningTokens?: number;
   } = {};
 
-  if (data.usage || data.provider || data.model) {
+  const timingsUsage = usageFromTimings(data.timings);
+  const hasUsagePayload = data.usage || timingsUsage || data.provider || data.model;
+
+  if (hasUsagePayload) {
     const usage: any = {};
     if (data.provider) usage.provider = data.provider;
     if (data.model) usage.model = data.model;
@@ -871,6 +948,21 @@ function processStreamChunk(
         usage.reasoning_tokens = data.usage.reasoning_tokens;
         result.reasoningTokens = data.usage.reasoning_tokens;
       }
+    }
+
+    if (timingsUsage) {
+      if (usage.prompt_tokens === undefined && timingsUsage.prompt_tokens !== undefined) {
+        usage.prompt_tokens = timingsUsage.prompt_tokens;
+      }
+      if (usage.completion_tokens === undefined && timingsUsage.completion_tokens !== undefined) {
+        usage.completion_tokens = timingsUsage.completion_tokens;
+      }
+      if (usage.total_tokens === undefined && timingsUsage.total_tokens !== undefined) {
+        usage.total_tokens = timingsUsage.total_tokens;
+      }
+      if (timingsUsage.prompt_ms !== undefined) usage.prompt_ms = timingsUsage.prompt_ms;
+      if (timingsUsage.completion_ms !== undefined)
+        usage.completion_ms = timingsUsage.completion_ms;
     }
 
     if (Object.keys(usage).length > 0) {

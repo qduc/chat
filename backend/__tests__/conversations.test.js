@@ -77,7 +77,7 @@ describe('POST /v1/conversations', () => {
       const res = await request(app)
         .post('/v1/conversations')
         .set('x-session-id', sessionId)
-        .send({ title: 't1', provider_id: 'p1', model: 'm1' });
+          .send({ title: 't1', provider_id: 'p1', model: 'm1', custom_request_params_id: ['thinking-on'] });
     assert.equal(res.status, 201);
     const body = res.body;
     assert.ok(body.id);
@@ -85,6 +85,7 @@ describe('POST /v1/conversations', () => {
       assert.equal(body.provider_id, 'p1');
     assert.equal(body.model, 'm1');
     assert.ok(body.created_at);
+      assert.deepEqual(body.custom_request_params_id, ['thinking-on']);
   });
 
   test('creates multiple conversations for an authenticated user (session limit removed)', async () => {
@@ -110,7 +111,14 @@ describe('POST /v1/conversations', () => {
 // --- GET /v1/conversations ---
 describe('GET /v1/conversations', () => {
   test('lists conversations for current session with pagination (cursor, limit)', async () => {
-  createConversation({ id: 'c1', sessionId, userId: testUser.id, title: 'one', provider_id: 'p1' });
+  createConversation({
+    id: 'c1',
+    sessionId,
+    userId: testUser.id,
+    title: 'one',
+    provider_id: 'p1',
+      metadata: { custom_request_params_id: ['thinking-on'] },
+  });
   createConversation({ id: 'c2', sessionId, userId: testUser.id, title: 'two', provider_id: 'p2' });
     // Make ordering deterministic without relying on wall-clock timing
     const db = getDb();
@@ -205,7 +213,14 @@ describe('GET /v1/conversations/:id', () => {
   });
 
   test('returns metadata and first page of messages with next_after_seq', async () => {
-  createConversation({ id: 'c1', sessionId, userId: testUser.id, title: 'hi', provider_id: 'p1' });
+  createConversation({
+    id: 'c1',
+    sessionId,
+    userId: testUser.id,
+    title: 'hi',
+    provider_id: 'p1',
+      metadata: { custom_request_params_id: ['thinking-on'] },
+  });
     const db = getDb();
     const stmt = db.prepare(
       `INSERT INTO messages (conversation_id, role, content, seq) VALUES (@cid, 'user', @c, @s)`
@@ -218,6 +233,7 @@ describe('GET /v1/conversations/:id', () => {
     const body = res.body;
     assert.equal(body.id, 'c1');
       assert.equal(body.provider_id, 'p1');
+      assert.deepEqual(body.custom_request_params_id, ['thinking-on']);
     assert.equal(body.messages.length, 2);
     assert.equal(body.messages[0].seq, 1);
     assert.equal(body.next_after_seq, 2);

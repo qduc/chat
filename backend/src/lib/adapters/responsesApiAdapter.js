@@ -41,6 +41,23 @@ const RESPONSES_PASSTHROUGH_KEYS = new Set([
 	'verbosity',
 ]);
 
+const CUSTOM_REQUEST_PARAMS_BLOCKLIST = new Set([
+  'model',
+  'messages',
+  'stream',
+  'tools',
+  'tool_choice',
+  'input',
+]);
+
+function applyCustomRequestParams(target, customParams) {
+  if (!customParams || typeof customParams !== 'object' || Array.isArray(customParams)) return;
+  for (const [key, value] of Object.entries(customParams)) {
+    if (CUSTOM_REQUEST_PARAMS_BLOCKLIST.has(key)) continue;
+    target[key] = value;
+  }
+}
+
 const DEFAULT_FUNCTION_PARAMETERS = { type: 'object', properties: {} };
 
 function omitReservedKeys(payload) {
@@ -1208,6 +1225,8 @@ export class ResponsesAPIAdapter extends BaseAdapter {
     if (payload.verbosity !== undefined) {
       request.text = { verbosity: payload.verbosity };
     }
+
+    applyCustomRequestParams(request, payload.custom_request_params);
 
     return defineEndpoint(request);
   }

@@ -27,6 +27,38 @@ const CODE_FENCE_PATTERN = /(```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`]*`)/g;
 const BLOCK_LATEX_PATTERN = /(^|[^\\])\\\[((?:\\.|[\s\S])*?)\\\]/g;
 const INLINE_LATEX_PATTERN = /(^|[^\\])\\\(([\s\S]*?)\\\)/g;
 
+const DEFAULT_FENCE_LENGTH = 3;
+
+function getMaxFenceRun(text: string, fenceChar: '`' | '~'): number {
+  if (!text) return 0;
+  const regex = fenceChar === '`' ? /`+/g : /~+/g;
+  let maxRun = 0;
+  let match: RegExpExecArray | null = null;
+
+  while ((match = regex.exec(text))) {
+    if (match[0].length > maxRun) {
+      maxRun = match[0].length;
+    }
+  }
+
+  return maxRun;
+}
+
+function buildThinkingFence(content: string): { opening: string; closing: string } {
+  const maxBackticks = getMaxFenceRun(content, '`');
+  const maxTildes = getMaxFenceRun(content, '~');
+  const backtickLength = Math.max(DEFAULT_FENCE_LENGTH, maxBackticks + 1);
+  const tildeLength = Math.max(DEFAULT_FENCE_LENGTH, maxTildes + 1);
+  const useBackticks = backtickLength <= tildeLength;
+  const fenceChar = useBackticks ? '`' : '~';
+  const fenceLength = useBackticks ? backtickLength : tildeLength;
+  const fence = fenceChar.repeat(fenceLength);
+
+  return {
+    opening: `${fence}thinking`,
+    closing: fence,
+  };
+}
 const CURRENCY_KEYWORDS = new Set([
   'usd',
   'cad',
@@ -565,7 +597,7 @@ const MarkdownComponents: any = {
 
           {isExpanded && (
             <div className="border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/30 dark:bg-[#0a0a0a]/20">
-              <div className="px-3 py-3 text-[13px] leading-relaxed text-zinc-600 dark:text-zinc-400 font-mono whitespace-pre-wrap">
+              <div className="px-3 py-3 text-[13px] leading-relaxed text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap">
                 {children}
               </div>
             </div>
@@ -775,16 +807,23 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
 
     return textToProcess
       .replace(/<thinking>([\s\S]*?)<\/thinking>/g, (match, content) => {
-        // Convert to a custom code block that we can detect
-        return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
+        // Convert to a custom code block that we can detect.
+        // Use a safe fence length to avoid premature closure when content includes ``` or ~~~.
+        const trimmed = content.trim();
+        const fence = buildThinkingFence(trimmed);
+        return `\n${fence.opening}\n${trimmed}\n${fence.closing}\n`;
       })
       .replace(/<think>([\s\S]*?)<\/think>/g, (match, content) => {
         // Convert to a custom code block that we can detect (same as thinking)
-        return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
+        const trimmed = content.trim();
+        const fence = buildThinkingFence(trimmed);
+        return `\n${fence.opening}\n${trimmed}\n${fence.closing}\n`;
       })
       .replace(/<reasoning_summary>([\s\S]*?)<\/reasoning_summary>/g, (match, content) => {
         // Convert reasoning summary to thinking block (reuse same rendering logic)
-        return `\n\`\`\`thinking\n${content.trim()}\n\`\`\`\n`;
+        const trimmed = content.trim();
+        const fence = buildThinkingFence(trimmed);
+        return `\n${fence.opening}\n${trimmed}\n${fence.closing}\n`;
       });
   }, [throttledText]);
 
