@@ -24,6 +24,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.13.1] - 2026-01-22
+
+### Added
+- Show content of custom parameters on hover for better visibility
+
+### Changed
+- Improved tooltip visual styling
+
+### Fixed
+- Tooltips no longer remain visible after clicking buttons that open popups
+- Corrected prompt_tokens calculation in timings to properly account for cached tokens
+
+
 ## [0.13.0] - 2026-01-22
 
 ### Added
