@@ -35,6 +35,7 @@ export function normalizeUsage(usage) {
     usage.prompt_token_count,
     usage.promptTokenCount,
     usage.inputTokenCount,
+    usage.prompt_n,
   );
 
   const completionTokens = coalesceNumber(
@@ -44,6 +45,7 @@ export function normalizeUsage(usage) {
     usage.completion_token_count,
     usage.candidatesTokenCount,
     usage.outputTokenCount,
+    usage.predicted_n,
   );
 
   const cacheCreationTokens = coalesceNumber(
@@ -76,11 +78,27 @@ export function normalizeUsage(usage) {
     usage.thoughts_token_count,
   );
 
+  const promptMs = coalesceNumber(
+    usage.prompt_ms,
+    usage.promptMs,
+  );
+
+  const completionMs = coalesceNumber(
+    usage.completion_ms,
+    usage.completionMs,
+    usage.predicted_ms,
+    usage.predictedMs,
+    usage.output_ms,
+    usage.outputMs,
+  );
+
   const mapped = {};
   if (promptTokens != null) mapped.prompt_tokens = promptTokens;
   if (completionTokens != null) mapped.completion_tokens = completionTokens;
   if (totalTokens != null) mapped.total_tokens = totalTokens;
   if (reasoningTokens != null) mapped.reasoning_tokens = reasoningTokens;
+  if (promptMs != null) mapped.prompt_ms = promptMs;
+  if (completionMs != null) mapped.completion_ms = completionMs;
 
   return Object.keys(mapped).length > 0 ? mapped : undefined;
 }
@@ -88,14 +106,28 @@ export function normalizeUsage(usage) {
 export function extractUsage(payload) {
   if (!payload || typeof payload !== 'object') return undefined;
 
+  const results = [];
+
   const direct = normalizeUsage(payload.usage);
-  if (direct) return direct;
+  if (direct) results.push(direct);
 
   const metadata = normalizeUsage(payload.usageMetadata || payload.usage_metadata);
-  if (metadata) return metadata;
+  if (metadata) results.push(metadata);
 
   const nested = normalizeUsage(payload.response?.usage);
-  if (nested) return nested;
+  if (nested) results.push(nested);
 
-  return undefined;
+  const timings = normalizeUsage(payload.timings);
+  if (timings) results.push(timings);
+
+  if (results.length === 0) return undefined;
+
+  // Merge results: earlier ones take precedence for overlapping fields
+  // (e.g. payload.usage is preferred over payload.timings)
+  const merged = {};
+  for (let i = results.length - 1; i >= 0; i--) {
+    Object.assign(merged, results[i]);
+  }
+
+  return Object.keys(merged).length > 0 ? merged : undefined;
 }

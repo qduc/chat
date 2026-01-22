@@ -463,11 +463,9 @@ export async function handleToolsStreaming({
                   }
                 }
 
-                if (obj?.usage && persistence && typeof persistence.setUsage === 'function') {
-                  const usage = normalizeUsage(obj.usage);
-                  if (usage) {
-                    persistence.setUsage(usage);
-                  }
+                const usage = extractUsage(obj);
+                if (usage && persistence && typeof persistence.setUsage === 'function') {
+                  persistence.setUsage(usage);
                 }
 
                 // Accumulate tool_calls, but do not stream their partial deltas

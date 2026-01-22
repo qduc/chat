@@ -241,6 +241,8 @@ export class ConversationManager {
             tokensIn: msg.usage?.prompt_tokens,
             tokensOut: msg.usage?.completion_tokens,
             totalTokens: msg.usage?.total_tokens,
+            promptMs: msg.usage?.prompt_ms,
+            completionMs: msg.usage?.completion_ms,
           });
 
           if (msg.role === 'assistant') {
@@ -296,6 +298,11 @@ export class ConversationManager {
             finishReason: 'stop',
             reasoningDetails: msg.reasoning_details,
             reasoningTokens: msg.reasoning_tokens,
+            tokensIn: msg.usage?.prompt_tokens,
+            tokensOut: msg.usage?.completion_tokens,
+            totalTokens: msg.usage?.total_tokens,
+            promptMs: msg.usage?.prompt_ms,
+            completionMs: msg.usage?.completion_ms,
             clientMessageId,
           });
 
@@ -602,6 +609,11 @@ export class ConversationManager {
             finishReason: 'stop',
             reasoningDetails: message.reasoning_details,
             reasoningTokens: message.reasoning_tokens,
+            tokensIn: message.usage?.prompt_tokens,
+            tokensOut: message.usage?.completion_tokens,
+            totalTokens: message.usage?.total_tokens,
+            promptMs: message.usage?.prompt_ms,
+            completionMs: message.usage?.completion_ms,
             clientMessageId,
           });
 
@@ -690,6 +702,8 @@ export class ConversationManager {
       tokensIn: params.tokensIn,
       tokensOut: params.tokensOut,
       totalTokens: params.totalTokens,
+      promptMs: params.promptMs,
+      completionMs: params.completionMs,
       provider: params.provider,
     });
   }

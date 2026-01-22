@@ -72,4 +72,57 @@ describe('usage normalization', () => {
       total_tokens: 10,
     });
   });
+
+  test('extracts usage and timings from payload with both', () => {
+    const payload = {
+      usage: {
+        completion_tokens: 101,
+        prompt_tokens: 12,
+        total_tokens: 113,
+      },
+      id: 'chatcmpl-b8po4GClGGYKPgeeVyuTjNwKBJbnWnjQ',
+      timings: {
+        cache_n: 0,
+        prompt_n: 12,
+        prompt_ms: 124.152,
+        prompt_per_token_ms: 10.346,
+        prompt_per_second: 96.65571235260003,
+        predicted_n: 101,
+        predicted_ms: 2288.937,
+        predicted_per_token_ms: 22.662742574257425,
+        predicted_per_second: 44.12528610442315,
+      },
+    };
+
+    const usage = extractUsage(payload);
+
+    assert.deepEqual(usage, {
+      prompt_tokens: 12,
+      completion_tokens: 101,
+      total_tokens: 113,
+      prompt_ms: 124.152,
+      completion_ms: 2288.937,
+    });
+  });
+
+  test('extracts usage from timings ONLY', () => {
+    const payload = {
+      timings: {
+        prompt_n: 15,
+        predicted_n: 25,
+        prompt_ms: 100,
+        predicted_ms: 500,
+      },
+    };
+
+    const usage = extractUsage(payload);
+
+    assert.deepEqual(usage, {
+      prompt_tokens: 15,
+      completion_tokens: 25,
+      total_tokens: 40,
+      prompt_ms: 100,
+      completion_ms: 500,
+    });
+  });
 });

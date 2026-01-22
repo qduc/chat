@@ -1,6 +1,6 @@
 import { parseSSEStream } from './sseParser.js';
 import { writeAndFlush } from './streamUtils.js';
-import { normalizeUsage } from './utils/usage.js';
+import { normalizeUsage, extractUsage } from './utils/usage.js';
 import { getConversationMetadata } from './responseUtils.js';
 import { logger } from '../logger.js';
 
@@ -237,11 +237,9 @@ function processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason
     persistence.setReasoningTokens(reasoningTokens);
   }
 
-  if (obj?.usage) {
-    const normalizedUsage = normalizeUsage(obj.usage);
-    if (normalizedUsage && typeof persistence.setUsage === 'function') {
-      persistence.setUsage(normalizedUsage);
-    }
+  const normalizedUsage = extractUsage(obj);
+  if (normalizedUsage && typeof persistence.setUsage === 'function') {
+    persistence.setUsage(normalizedUsage);
   }
 
   const message = choice?.message;

@@ -51,6 +51,8 @@ export class SimplifiedPersistence {
     this.tokensIn = null; // Prompt/input token usage metadata
     this.tokensOut = null; // Completion/output token usage metadata
     this.totalTokens = null; // Total token usage metadata
+    this.promptMs = null; // Prompt timing metadata
+    this.completionMs = null; // Completion timing metadata
     this.userMessageId = null; // Persisted user message ID from latest sync
     this.assistantMessageId = null; // Persisted assistant message ID for the current turn
     this.messageEventsEnabled = this.persistenceConfig?.isMessageEventsEnabled?.() ?? true;
@@ -271,6 +273,8 @@ export class SimplifiedPersistence {
     this.tokensIn = null;
     this.tokensOut = null;
     this.totalTokens = null;
+    this.promptMs = null;
+    this.completionMs = null;
     this.assistantMessageId = null;
     this.messageEventsEnabled = this.persistenceConfig?.isMessageEventsEnabled?.() ?? true;
     this.messageEvents = [];
@@ -544,6 +548,12 @@ export class SimplifiedPersistence {
     if (normalized.reasoning_tokens != null) {
       this.setReasoningTokens(normalized.reasoning_tokens);
     }
+    if (normalized.prompt_ms != null) {
+      this.promptMs = Number(normalized.prompt_ms);
+    }
+    if (normalized.completion_ms != null) {
+      this.completionMs = Number(normalized.completion_ms);
+    }
   }
 
   setProvider(provider) {
@@ -711,6 +721,8 @@ export class SimplifiedPersistence {
           tokensIn: this.tokensIn,
           tokensOut: this.tokensOut,
           totalTokens: this.totalTokens,
+          promptMs: this.promptMs,
+          completionMs: this.completionMs,
           provider: this.upstreamProvider,
         });
 
@@ -741,6 +753,8 @@ export class SimplifiedPersistence {
               tokensIn: this.tokensIn,
               tokensOut: this.tokensOut,
               totalTokens: this.totalTokens,
+              promptMs: this.promptMs,
+              completionMs: this.completionMs,
               provider: this.upstreamProvider,
             });
             this.currentMessageId = found.id;
@@ -759,6 +773,8 @@ export class SimplifiedPersistence {
               tokensIn: this.tokensIn,
               tokensOut: this.tokensOut,
               totalTokens: this.totalTokens,
+              promptMs: this.promptMs,
+              completionMs: this.completionMs,
               provider: this.upstreamProvider,
             });
             if (result && result.id) {
@@ -779,6 +795,8 @@ export class SimplifiedPersistence {
             tokensIn: this.tokensIn,
             tokensOut: this.tokensOut,
             totalTokens: this.totalTokens,
+            promptMs: this.promptMs,
+            completionMs: this.completionMs,
             provider: this.upstreamProvider,
           });
           if (result && result.id) {
@@ -1033,6 +1051,8 @@ export class SimplifiedPersistence {
             tokensIn: this.tokensIn,
             tokensOut: this.tokensOut,
             totalTokens: this.totalTokens,
+            promptMs: this.promptMs,
+            completionMs: this.completionMs,
             provider: this.upstreamProvider,
           });
         } catch (err) {
@@ -1117,6 +1137,8 @@ export class SimplifiedPersistence {
         tokensIn: this.tokensIn,
         tokensOut: this.tokensOut,
         totalTokens: this.totalTokens,
+        promptMs: this.promptMs,
+        completionMs: this.completionMs,
       });
 
       this.lastCheckpoint = Date.now();
