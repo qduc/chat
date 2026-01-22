@@ -24,6 +24,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.13.0] - 2026-01-22
+
+### Added
+- Custom server parameters support for advanced configuration
+- Usage tracking with timing metrics for improved performance insights
+- Multiple selection support for Custom Request Params
+- Additional metadata in conversation creation responses
+
+### Changed
+- Improved Custom Request Params setting design
+- Enhanced usage extraction and timing normalization for better performance metrics
+- Reduced toolbar clutter by hiding message toolbars until hover
+- Consolidated search functionality into Tools selector (wrench icon), removing dedicated web search button
+
+### Fixed
+- Premature ending of thinking blocks containing code blocks
+- Loading animation persisting when errors occur
+- Incorrect monospace font styling in thinking blocks
+
+
 ## [0.12.4] - 2026-01-21
 
 ### Fixed
