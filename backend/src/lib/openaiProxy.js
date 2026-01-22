@@ -13,6 +13,7 @@ import { addPromptCaching } from './promptCaching.js';
 import { registerStreamAbort, unregisterStreamAbort } from './streamAbortRegistry.js';
 import { isAbortError } from './abortUtils.js';
 import { getUserSetting } from '../db/userSettings.js';
+import { normalizeCustomRequestParamsIds } from './customRequestParams.js';
 
 // --- Helpers: sanitize, validate, selection, and error shaping ---
 
@@ -115,15 +116,21 @@ function normalizeCustomRequestParams(raw) {
     .filter(Boolean);
 }
 
-function resolveCustomRequestParams({ userId, customRequestParamsId }) {
-  if (!userId || !customRequestParamsId) return null;
+function resolveCustomRequestParams({ userId, customRequestParamsIds }) {
+  if (!userId || !Array.isArray(customRequestParamsIds) || customRequestParamsIds.length === 0) {
+    return null;
+  }
   const setting = getUserSetting(userId, 'custom_request_params');
   if (!setting?.value) return null;
   const presets = normalizeCustomRequestParams(setting.value);
-  const match = presets.find((preset) => preset.id === customRequestParamsId || preset.label === customRequestParamsId);
-  if (!match || !match.params) return null;
-  if (typeof match.params !== 'object' || Array.isArray(match.params)) return null;
-  return match.params;
+  const mergedParams = {};
+  for (const id of customRequestParamsIds) {
+    const match = presets.find((preset) => preset.id === id || preset.label === id);
+    if (!match || !match.params) continue;
+    if (typeof match.params !== 'object' || Array.isArray(match.params)) continue;
+    Object.assign(mergedParams, match.params);
+  }
+  return Object.keys(mergedParams).length > 0 ? mergedParams : null;
 }
 
 function validateAndNormalizeReasoningControls(body, { reasoningAllowed }) {
@@ -222,16 +229,12 @@ async function buildRequestContext(req) {
     sessionId
   });
 
-  const customRequestParamsId = Object.hasOwn(bodyIn, 'custom_request_params_id')
-    ? (typeof bodyIn.custom_request_params_id === 'string'
-      ? bodyIn.custom_request_params_id.trim()
-      : bodyIn.custom_request_params_id === null
-        ? null
-        : undefined)
+  const customRequestParamsIds = Object.hasOwn(bodyIn, 'custom_request_params_id')
+    ? normalizeCustomRequestParamsIds(bodyIn.custom_request_params_id)
     : undefined;
 
-  if (customRequestParamsId) {
-    const customParams = resolveCustomRequestParams({ userId, customRequestParamsId });
+  if (Array.isArray(customRequestParamsIds) && customRequestParamsIds.length > 0) {
+    const customParams = resolveCustomRequestParams({ userId, customRequestParamsIds });
     if (customParams) {
       body.custom_request_params = customParams;
     }

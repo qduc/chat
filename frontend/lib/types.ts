@@ -322,7 +322,7 @@ export interface ConversationMeta {
   streaming_enabled?: boolean;
   tools_enabled?: boolean;
   active_tools?: string[];
-  custom_request_params_id?: string | null;
+  custom_request_params_id?: string[] | null;
   research_mode?: boolean;
   quality_level?: string | null;
   reasoning_effort?: string | null;
@@ -347,7 +347,7 @@ export interface ConversationWithMessages {
   streaming_enabled?: boolean;
   tools_enabled?: boolean;
   active_tools?: string[];
-  custom_request_params_id?: string | null;
+  custom_request_params_id?: string[] | null;
   research_mode?: boolean;
   quality_level?: string | null;
   reasoning_effort?: string | null;
@@ -459,7 +459,7 @@ export interface ChatOptionsExtended extends ChatOptions {
   tools?: Array<ToolSpec | string>;
   toolChoice?: any;
   providerStream?: boolean;
-  customRequestParamsId?: string | null;
+  customRequestParamsId?: string[] | null;
   reasoning?: {
     effort?: string;
     verbosity?: string;
@@ -495,7 +495,7 @@ export interface ConversationCreateOptions {
   qualityLevel?: string;
   reasoningEffort?: string;
   verbosity?: string;
-  custom_request_params_id?: string | null;
+  custom_request_params_id?: string[] | null;
 }
 
 export interface ListConversationsParams {

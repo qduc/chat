@@ -448,7 +448,12 @@ function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: bo
   };
 
   if (Object.hasOwn(extendedOptions as any, 'customRequestParamsId')) {
-    bodyObj.custom_request_params_id = (extendedOptions as any).customRequestParamsId ?? null;
+    const customParamsId = (extendedOptions as any).customRequestParamsId;
+    bodyObj.custom_request_params_id = Array.isArray(customParamsId)
+      ? customParamsId.length > 0
+        ? customParamsId
+        : null
+      : (customParamsId ?? null);
   }
 
   // Check if model supports reasoning before adding reasoning parameters

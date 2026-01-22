@@ -11,6 +11,7 @@ import {
   AudioLines,
   Globe,
   Paperclip,
+  Check,
 } from 'lucide-react';
 import type { PendingState } from '@/hooks/useChat';
 import {
@@ -46,8 +47,8 @@ interface MessageInputProps {
   enabledTools?: string[];
   onEnabledToolsChange?: (list: string[]) => void;
   customRequestParams?: CustomRequestParamPreset[];
-  customRequestParamsId?: string | null;
-  onCustomRequestParamsIdChange?: (id: string | null) => void;
+  customRequestParamsId?: string[] | null;
+  onCustomRequestParamsIdChange?: (ids: string[] | null) => void;
   model: string;
   qualityLevel: QualityLevel;
   onQualityLevelChange: (level: QualityLevel) => void;
@@ -124,8 +125,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const [localSelected, setLocalSelected] = useState<string[]>(enabledTools);
   const [customParamsOpen, setCustomParamsOpen] = useState(false);
-  const [localCustomParamsId, setLocalCustomParamsId] = useState<string | null>(
-    customRequestParamsId
+  const [localCustomParamsIds, setLocalCustomParamsIds] = useState<string[]>(
+    Array.isArray(customRequestParamsId) ? customRequestParamsId : []
   );
   const [imageUploadProgress, setImageUploadProgress] = useState<ImageUploadProgress[]>([]);
   const [fileUploadProgress, setFileUploadProgress] = useState<FileUploadProgress[]>([]);
@@ -153,13 +154,24 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     return supportsReasoningControls(model, modelCapabilities);
   }, [model, modelCapabilities]);
 
+  const selectedCustomParamsLabels = useMemo(() => {
+    if (localCustomParamsIds.length === 0) return [];
+    return localCustomParamsIds.map((id) => {
+      const match = customRequestParams.find((preset) => preset.id === id || preset.label === id);
+      return match?.label || id;
+    });
+  }, [customRequestParams, localCustomParamsIds]);
+
   const selectedCustomParamsLabel = useMemo(() => {
-    if (!localCustomParamsId) return 'None';
-    const match = customRequestParams.find(
-      (preset) => preset.id === localCustomParamsId || preset.label === localCustomParamsId
-    );
-    return match?.label || localCustomParamsId;
-  }, [customRequestParams, localCustomParamsId]);
+    if (selectedCustomParamsLabels.length === 0) return 'None';
+    if (selectedCustomParamsLabels.length === 1) return selectedCustomParamsLabels[0];
+    return `${selectedCustomParamsLabels.length} selected`;
+  }, [selectedCustomParamsLabels]);
+
+  const selectedCustomParamsTitle = useMemo(() => {
+    if (selectedCustomParamsLabels.length === 0) return 'None';
+    return selectedCustomParamsLabels.join(', ');
+  }, [selectedCustomParamsLabels]);
 
   // Check if we can send (have text or images)
   const canSend = input.trim().length > 0 || images.length > 0;
@@ -205,7 +217,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   }, [enabledTools]);
 
   useEffect(() => {
-    setLocalCustomParamsId(customRequestParamsId ?? null);
+    setLocalCustomParamsIds(Array.isArray(customRequestParamsId) ? customRequestParamsId : []);
   }, [customRequestParamsId]);
 
   // Click outside to close tools dropdown
@@ -812,11 +824,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                         <Sliders className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
                         <span
                           className={`text-xs px-2 py-0.5 rounded-full transition-colors font-medium max-w-[120px] truncate ${
-                            localCustomParamsId
+                            localCustomParamsIds.length > 0
                               ? 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100'
                               : 'text-zinc-500 dark:text-zinc-400'
                           }`}
-                          title={selectedCustomParamsLabel}
+                          title={selectedCustomParamsTitle}
                         >
                           {selectedCustomParamsLabel}
                         </span>
@@ -838,13 +850,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                             <button
                               type="button"
                               onClick={() => {
-                                setLocalCustomParamsId(null);
+                                setLocalCustomParamsIds([]);
                                 onCustomRequestParamsIdChange?.(null);
-                                setCustomParamsOpen(false);
                               }}
                               disabled={controlsDisabled}
                               className={`w-full text-left px-4 py-2.5 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors ${
-                                !localCustomParamsId
+                                localCustomParamsIds.length === 0
                                   ? 'text-zinc-900 dark:text-zinc-100 font-medium'
                                   : 'text-zinc-600 dark:text-zinc-300'
                               }`}
@@ -857,24 +868,35 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                               </div>
                             )}
                             {customRequestParams.map((preset) => {
-                              const isActive = preset.id === localCustomParamsId;
+                              const isActive = localCustomParamsIds.some(
+                                (item) => item === preset.id || item === preset.label
+                              );
                               return (
                                 <button
                                   key={preset.id}
                                   type="button"
                                   onClick={() => {
-                                    setLocalCustomParamsId(preset.id);
-                                    onCustomRequestParamsIdChange?.(preset.id);
-                                    setCustomParamsOpen(false);
+                                    const nextIds = isActive
+                                      ? localCustomParamsIds.filter(
+                                          (item) => item !== preset.id && item !== preset.label
+                                        )
+                                      : Array.from(new Set([...localCustomParamsIds, preset.id]));
+                                    setLocalCustomParamsIds(nextIds);
+                                    onCustomRequestParamsIdChange?.(
+                                      nextIds.length > 0 ? nextIds : null
+                                    );
                                   }}
                                   disabled={controlsDisabled}
-                                  className={`w-full text-left px-4 py-2.5 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors ${
+                                  className={`w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors ${
                                     isActive
                                       ? 'text-zinc-900 dark:text-zinc-100 font-medium'
                                       : 'text-zinc-600 dark:text-zinc-300'
                                   }`}
                                 >
-                                  {preset.label}
+                                  <span>{preset.label}</span>
+                                  {isActive && (
+                                    <Check className="w-4 h-4 text-zinc-500 dark:text-zinc-300" />
+                                  )}
                                 </button>
                               );
                             })}

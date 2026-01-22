@@ -510,7 +510,7 @@ export function useChat() {
   const [shouldStream, setShouldStream] = useState(true);
   const [qualityLevel, setQualityLevel] = useState<QualityLevel>('unset');
   const [customRequestParams, setCustomRequestParams] = useState<CustomRequestParamPreset[]>([]);
-  const [customRequestParamsId, setCustomRequestParamsId] = useState<string | null>(null);
+  const [customRequestParamsId, setCustomRequestParamsId] = useState<string[]>([]);
 
   // Image State
   const [images, setImages] = useState<any[]>([]);
@@ -538,7 +538,7 @@ export function useChat() {
   const enabledToolsRef = useRef<string[]>([]);
   const qualityLevelRef = useRef<QualityLevel>('unset');
   const modelToProviderRef = useRef<Record<string, string>>({});
-  const customRequestParamsIdRef = useRef<string | null>(null);
+  const customRequestParamsIdRef = useRef<string[]>([]);
 
   // User State
   const [user, setUser] = useState<{ id: string } | null>(null);
@@ -567,6 +567,21 @@ export function useChat() {
 
   // Track whether draft has been restored to avoid restoring multiple times
   const draftRestoredRef = useRef(false);
+
+  const normalizeCustomRequestParamsIds = useCallback((value: any): string[] => {
+    if (!value) return [];
+    if (Array.isArray(value)) {
+      return value
+        .filter((item) => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean);
+    }
+    if (typeof value === 'string') {
+      const trimmed = value.trim();
+      return trimmed ? [trimmed] : [];
+    }
+    return [];
+  }, []);
 
   // Actions - Sidebar
   const toggleSidebar = useCallback(() => {
@@ -729,7 +744,9 @@ export function useChat() {
         }
 
         if ('custom_request_params_id' in data) {
-          const nextCustomParamsId = (data as any).custom_request_params_id ?? null;
+          const nextCustomParamsId = normalizeCustomRequestParamsIds(
+            (data as any).custom_request_params_id
+          );
           setCustomRequestParamsId(nextCustomParamsId);
           customRequestParamsIdRef.current = nextCustomParamsId;
         }
@@ -835,7 +852,7 @@ export function useChat() {
         setLoadingConversations(false);
       }
     },
-    [user?.id, conversationId]
+    [conversationId, normalizeCustomRequestParamsIds, user?.id]
   );
 
   const deleteConversation = useCallback(
@@ -1255,7 +1272,10 @@ export function useChat() {
               toolsEnabled: useToolsRef.current,
               tools: enabledToolsRef.current,
               qualityLevel: qualityLevelRef.current,
-              customRequestParamsId: customRequestParamsIdRef.current ?? null,
+              customRequestParamsId:
+                customRequestParamsIdRef.current.length > 0
+                  ? customRequestParamsIdRef.current
+                  : null,
               reasoning: reasoning,
               systemPrompt: systemPromptRef.current || undefined,
               activeSystemPromptId: activeSystemPromptIdRef.current || undefined,
@@ -1417,7 +1437,9 @@ export function useChat() {
                 setCurrentConversationTitle(response.conversation.title || null);
 
                 if (response.conversation.custom_request_params_id !== undefined) {
-                  const nextCustomParamsId = response.conversation.custom_request_params_id ?? null;
+                  const nextCustomParamsId = normalizeCustomRequestParamsIds(
+                    response.conversation.custom_request_params_id
+                  );
                   setCustomRequestParamsId(nextCustomParamsId);
                   customRequestParamsIdRef.current = nextCustomParamsId;
                 }
@@ -1596,7 +1618,10 @@ export function useChat() {
               toolsEnabled: useToolsRef.current,
               qualityLevel:
                 qualityLevelRef.current !== 'unset' ? qualityLevelRef.current : undefined,
-              custom_request_params_id: customRequestParamsIdRef.current ?? null,
+              custom_request_params_id:
+                customRequestParamsIdRef.current.length > 0
+                  ? customRequestParamsIdRef.current
+                  : null,
             });
             effectiveConversationId = newConversation.id;
             setConversationId(newConversation.id);
@@ -2024,7 +2049,7 @@ export function useChat() {
         abortControllerRef.current = null;
       }
     },
-    [status, conversationId, modelCapabilities]
+    [conversationId, modelCapabilities, normalizeCustomRequestParamsIds, status]
   );
 
   // Actions - Editing
@@ -2245,9 +2270,10 @@ export function useChat() {
   );
 
   const setCustomRequestParamsIdWrapper = useCallback(
-    (value: string | null) => {
-      setCustomRequestParamsId(value);
-      customRequestParamsIdRef.current = value;
+    (value: string[] | null) => {
+      const normalized = Array.isArray(value) ? value : [];
+      setCustomRequestParamsId(normalized);
+      customRequestParamsIdRef.current = normalized;
       clearError();
     },
     [clearError]

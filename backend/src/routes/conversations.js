@@ -24,6 +24,7 @@ import {
   countMigratableConversations
 } from '../db/migration.js';
 import { v4 as uuidv4 } from 'uuid';
+import { normalizeCustomRequestParamsIds } from '../lib/customRequestParams.js';
 
 export const conversationsRouter = Router();
 
@@ -130,9 +131,7 @@ conversationsRouter.post('/v1/conversations', (req, res) => {
     const sysPrompt = typeof req.body?.system_prompt === 'string' ? req.body.system_prompt.trim() : (
       typeof req.body?.systemPrompt === 'string' ? req.body.systemPrompt.trim() : ''
     );
-    const customRequestParamsId = typeof custom_request_params_id === 'string'
-      ? custom_request_params_id.trim()
-      : (custom_request_params_id === null ? null : undefined);
+      const customRequestParamsId = normalizeCustomRequestParamsIds(custom_request_params_id);
     const id = uuidv4();
     const metadata = {
       ...(sysPrompt ? { system_prompt: sysPrompt } : {}),

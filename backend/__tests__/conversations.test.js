@@ -77,7 +77,7 @@ describe('POST /v1/conversations', () => {
       const res = await request(app)
         .post('/v1/conversations')
         .set('x-session-id', sessionId)
-        .send({ title: 't1', provider_id: 'p1', model: 'm1', custom_request_params_id: 'thinking-on' });
+          .send({ title: 't1', provider_id: 'p1', model: 'm1', custom_request_params_id: ['thinking-on'] });
     assert.equal(res.status, 201);
     const body = res.body;
     assert.ok(body.id);
@@ -85,7 +85,7 @@ describe('POST /v1/conversations', () => {
       assert.equal(body.provider_id, 'p1');
     assert.equal(body.model, 'm1');
     assert.ok(body.created_at);
-    assert.equal(body.custom_request_params_id, 'thinking-on');
+      assert.deepEqual(body.custom_request_params_id, ['thinking-on']);
   });
 
   test('creates multiple conversations for an authenticated user (session limit removed)', async () => {
@@ -117,7 +117,7 @@ describe('GET /v1/conversations', () => {
     userId: testUser.id,
     title: 'one',
     provider_id: 'p1',
-    metadata: { custom_request_params_id: 'thinking-on' },
+      metadata: { custom_request_params_id: ['thinking-on'] },
   });
   createConversation({ id: 'c2', sessionId, userId: testUser.id, title: 'two', provider_id: 'p2' });
     // Make ordering deterministic without relying on wall-clock timing
@@ -219,7 +219,7 @@ describe('GET /v1/conversations/:id', () => {
     userId: testUser.id,
     title: 'hi',
     provider_id: 'p1',
-    metadata: { custom_request_params_id: 'thinking-on' },
+      metadata: { custom_request_params_id: ['thinking-on'] },
   });
     const db = getDb();
     const stmt = db.prepare(
@@ -233,7 +233,7 @@ describe('GET /v1/conversations/:id', () => {
     const body = res.body;
     assert.equal(body.id, 'c1');
       assert.equal(body.provider_id, 'p1');
-    assert.equal(body.custom_request_params_id, 'thinking-on');
+      assert.deepEqual(body.custom_request_params_id, ['thinking-on']);
     assert.equal(body.messages.length, 2);
     assert.equal(body.messages[0].seq, 1);
     assert.equal(body.next_after_seq, 2);

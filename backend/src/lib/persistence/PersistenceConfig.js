@@ -1,4 +1,5 @@
 import { logger } from '../../logger.js';
+import { normalizeCustomRequestParamsIds } from '../customRequestParams.js';
 
 /**
  * Centralized configuration management for persistence operations
@@ -82,11 +83,7 @@ export class PersistenceConfig {
 
     const hasCustomParamsId = bodyIn && Object.hasOwn(bodyIn, 'custom_request_params_id');
     const customRequestParamsId = hasCustomParamsId
-      ? (typeof bodyIn.custom_request_params_id === 'string'
-        ? bodyIn.custom_request_params_id.trim()
-        : bodyIn.custom_request_params_id === null
-          ? null
-          : undefined)
+      ? normalizeCustomRequestParamsIds(bodyIn.custom_request_params_id)
       : undefined;
 
     const metadata = {};
@@ -186,7 +183,7 @@ export class PersistenceConfig {
       ? existingConvo.metadata.active_tools
       : [];
     const existingCustomRequestParamsId = Object.hasOwn(existingConvo?.metadata || {}, 'custom_request_params_id')
-      ? existingConvo.metadata.custom_request_params_id
+      ? normalizeCustomRequestParamsIds(existingConvo.metadata.custom_request_params_id)
       : undefined;
     const normalizedIncomingTools = Array.isArray(incomingActiveTools)
       ? incomingActiveTools
@@ -198,7 +195,7 @@ export class PersistenceConfig {
     const needsProviderUpdate = incomingProviderId && incomingProviderId !== existingProviderId;
     const needsModelUpdate = incomingModel && incomingModel !== existingModel;
     const needsCustomRequestParamsUpdate = incomingCustomRequestParamsId !== undefined
-      && incomingCustomRequestParamsId !== existingCustomRequestParamsId;
+      && !this._areCustomRequestParamsEqual(incomingCustomRequestParamsId, existingCustomRequestParamsId);
 
     return {
       needsSystemUpdate,
@@ -212,6 +209,20 @@ export class PersistenceConfig {
       needsCustomRequestParamsUpdate,
       customRequestParamsId: incomingCustomRequestParamsId,
     };
+  }
+
+  _areCustomRequestParamsEqual(valueA, valueB) {
+    const normalizedA = normalizeCustomRequestParamsIds(valueA);
+    const normalizedB = normalizeCustomRequestParamsIds(valueB);
+
+    if (normalizedA === undefined || normalizedB === undefined) {
+      return normalizedA === normalizedB;
+    }
+    if (normalizedA === null || normalizedB === null) {
+      return normalizedA === normalizedB;
+    }
+    if (normalizedA.length !== normalizedB.length) return false;
+    return normalizedA.every((value, idx) => value === normalizedB[idx]);
   }
 
   /**
