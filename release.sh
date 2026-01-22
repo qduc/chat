@@ -195,7 +195,9 @@ else
     # Get commits since last tag
     COMMITS=$(git log ${LATEST_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
 
-    if [ -z "$COMMITS" ]; then
+    if grep -q "## \[${NEW_VERSION}\]" CHANGELOG.md; then
+        success "Changelog entry for version ${NEW_VERSION} already exists in CHANGELOG.md. Skipping automated update."
+    elif [ -z "$COMMITS" ]; then
         warning "No new commits found since ${LATEST_TAG}"
     else
         # Create temporary file for Claude prompt
@@ -250,31 +252,28 @@ EOF
                 mv CHANGELOG.md.new CHANGELOG.md
 
                 # Clear the Unreleased section
-                sed -i '/## \[Unreleased\]/,/^---$/{
-                    /## \[Unreleased\]/n
-                    /^---$/!{
-                        /### Added/,/^$/c\
-### Added\
-<!-- New features coming in the next release -->\
+                {
+                    sed -n '1,/## \[Unreleased\]/p' CHANGELOG.md
+                    echo ""
+                    echo "### Added"
+                    echo "<!-- New features coming in the next release -->"
+                    echo ""
+                    echo "### Changed"
+                    echo "<!-- Improvements to existing features -->"
+                    echo ""
+                    echo "### Fixed"
+                    echo "<!-- Bug fixes -->"
+                    echo ""
+                    echo "### Deprecated"
+                    echo "<!-- Features being phased out -->"
+                    echo ""
+                    echo "### Breaking Changes"
+                    echo "<!-- Changes that require user action -->"
+                    echo ""
+                    sed -n '/^---$/,$p' CHANGELOG.md
+                } > CHANGELOG.md.new
 
-                        /### Changed/,/^$/c\
-### Changed\
-<!-- Improvements to existing features -->\
-
-                        /### Fixed/,/^$/c\
-### Fixed\
-<!-- Bug fixes -->\
-
-                        /### Deprecated/,/^$/c\
-### Deprecated\
-<!-- Features being phased out -->\
-
-                        /### Breaking Changes/,/^$/c\
-### Breaking Changes\
-<!-- Changes that require user action -->\
-
-                    }
-                }' CHANGELOG.md
+                mv CHANGELOG.md.new CHANGELOG.md
 
                 success "Changelog entry generated and inserted"
 
