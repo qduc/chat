@@ -836,7 +836,7 @@ function processStreamChunk(
 
     const promptTokens =
       typeof timings.prompt_n === 'number'
-        ? timings.prompt_n
+        ? (timings.cache_n || 0) + timings.prompt_n
         : typeof timings.prompt_tokens === 'number'
           ? timings.prompt_tokens
           : undefined;

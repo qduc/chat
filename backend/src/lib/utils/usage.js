@@ -35,7 +35,9 @@ export function normalizeUsage(usage) {
     usage.prompt_token_count,
     usage.promptTokenCount,
     usage.inputTokenCount,
-    usage.prompt_n,
+    usage.prompt_n !== undefined
+      ? (toNumber(usage.cache_n) || 0) + toNumber(usage.prompt_n)
+      : undefined
   );
 
   const completionTokens = coalesceNumber(

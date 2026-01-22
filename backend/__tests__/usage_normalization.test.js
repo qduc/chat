@@ -125,4 +125,22 @@ describe('usage normalization', () => {
       completion_ms: 500,
     });
   });
+
+  test('sums cache_n and prompt_n from timings', () => {
+    const payload = {
+      timings: {
+        cache_n: 10,
+        prompt_n: 5,
+        predicted_n: 20,
+      },
+    };
+
+    const usage = extractUsage(payload);
+
+    assert.deepEqual(usage, {
+      prompt_tokens: 15,
+      completion_tokens: 20,
+      total_tokens: 35,
+    });
+  });
 });
