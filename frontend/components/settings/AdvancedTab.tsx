@@ -12,6 +12,8 @@ import {
   X,
   Code,
   AlertCircle,
+  Copy,
+  CopyPlus,
 } from 'lucide-react';
 import ModelSelector from '../ui/ModelSelector';
 import { httpClient } from '../../lib';
@@ -136,22 +138,44 @@ export default function AdvancedTab({
     setEditJsonError(null);
   };
 
+  const generateIdFromName = (name: string): string => {
+    return name
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 50);
+  };
+
   const saveEditing = () => {
     // Validate
     if (!editLabel.trim()) {
       setEditJsonError('Label is required');
       return;
     }
-    if (!editId.trim()) {
-      setEditJsonError('ID is required');
-      return;
-    }
-
-    // Check UNIQUE ID
-    if (isEditingNew || (editingPreset && editingPreset.id !== editId)) {
-      if (customParams.some((p) => p.id === editId)) {
-        setEditJsonError('ID must be unique');
+    let finalId = editId.trim();
+    if (!finalId) {
+      finalId = generateIdFromName(editLabel.trim());
+      if (!finalId) {
+        setEditJsonError('Could not generate ID from label. Please enter an ID manually.');
         return;
+      }
+      // Handle collision for auto-generated ID
+      let candidateId = finalId;
+      let counter = 1;
+      while (customParams.some((p) => p.id === candidateId)) {
+        candidateId = `${finalId}-${counter}`;
+        counter++;
+      }
+      finalId = candidateId;
+    } else {
+      // Check UNIQUE ID if entered manually
+      if (isEditingNew || (editingPreset && editingPreset.id !== finalId)) {
+        if (customParams.some((p) => p.id === finalId)) {
+          setEditJsonError('ID must be unique');
+          return;
+        }
       }
     }
 
@@ -171,7 +195,7 @@ export default function AdvancedTab({
     }
 
     const newPreset: CustomParamPreset = {
-      id: editId.trim(),
+      id: finalId,
       label: editLabel.trim(),
       params: parsedParams,
     };
@@ -190,6 +214,15 @@ export default function AdvancedTab({
 
     handleSaveCustomParams(newParamsList);
     setEditingPreset(null);
+  };
+
+  const duplicatePreset = (preset: CustomParamPreset) => {
+    setEditingPreset({ id: '', label: '', params: {} });
+    setIsEditingNew(true);
+    setEditLabel(`${preset.label} (Copy)`);
+    setEditId('');
+    setEditParamsJson(JSON.stringify(preset.params, null, 2));
+    setEditJsonError(null);
   };
 
   const deletePreset = (id: string) => {
@@ -257,6 +290,7 @@ export default function AdvancedTab({
 
           <button
             type="button"
+            title="Save maximum tool call iterations"
             onClick={async () => {
               setMaxToolIterationsSaving(true);
               setMaxToolIterationsError(null);
@@ -347,6 +381,7 @@ export default function AdvancedTab({
 
           <button
             type="button"
+            title="Save chore model setting"
             onClick={async () => {
               setChoreModelSaving(true);
               setChoreModelError(null);
@@ -403,6 +438,7 @@ export default function AdvancedTab({
               onClick={() => startEditing()}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 rounded-md transition-colors"
               type="button"
+              title="Add a new custom request parameter preset"
             >
               <Plus className="w-3.5 h-3.5" />
               Add Preset
@@ -427,6 +463,7 @@ export default function AdvancedTab({
                 onClick={() => setEditingPreset(null)}
                 className="text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
                 type="button"
+                title="Cancel editing"
               >
                 <X className="w-4 h-4" />
               </button>
@@ -447,11 +484,11 @@ export default function AdvancedTab({
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                  ID (Unique)
+                  ID (Optional)
                 </label>
                 <input
                   type="text"
-                  placeholder="my-preset-id"
+                  placeholder="Auto-generated"
                   value={editId}
                   onChange={(e) => setEditId(e.target.value)}
                   className="w-full px-3 py-2 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 font-mono"
@@ -460,8 +497,21 @@ export default function AdvancedTab({
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center gap-1">
-                <Code className="w-3 h-3" /> API Params (JSON Object)
+              <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center justify-between gap-1 w-full">
+                <span className="flex items-center gap-1">
+                  <Code className="w-3 h-3" /> API Params (JSON Object)
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(editParamsJson);
+                    showToast({ message: 'JSON copied to clipboard!', variant: 'success' });
+                  }}
+                  className="text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
+                  title="Copy JSON to clipboard"
+                >
+                  <Copy className="w-3 h-3" />
+                </button>
               </label>
               <textarea
                 rows={6}
@@ -488,6 +538,7 @@ export default function AdvancedTab({
                 onClick={() => setEditingPreset(null)}
                 className="px-3 py-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-md transition-colors"
                 type="button"
+                title="Cancel editing"
               >
                 Cancel
               </button>
@@ -496,6 +547,7 @@ export default function AdvancedTab({
                 disabled={customParamsSaving}
                 className="px-3 py-1.5 text-xs font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-md hover:opacity-90 transition-opacity flex items-center gap-1.5"
                 type="button"
+                title="Save this preset"
               >
                 {customParamsSaving && <RefreshCw className="w-3 h-3 animate-spin" />}
                 Save Preset
@@ -527,9 +579,31 @@ export default function AdvancedTab({
                   </div>
                   <div className="flex items-center gap-1">
                     <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(JSON.stringify(preset.params, null, 2));
+                        showToast({
+                          message: 'Params copied to clipboard!',
+                          variant: 'success',
+                        });
+                      }}
+                      className="p-1.5 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded transition-colors"
+                      title="Copy JSON to clipboard"
+                      type="button"
+                    >
+                      <Copy className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => duplicatePreset(preset)}
+                      className="p-1.5 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded transition-colors"
+                      title="Duplicate preset"
+                      type="button"
+                    >
+                      <CopyPlus className="w-3.5 h-3.5" />
+                    </button>
+                    <button
                       onClick={() => startEditing(preset)}
                       className="p-1.5 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded transition-colors"
-                      title="Edit"
+                      title="Edit preset"
                       type="button"
                     >
                       <Edit2 className="w-3.5 h-3.5" />
@@ -537,7 +611,7 @@ export default function AdvancedTab({
                     <button
                       onClick={() => deletePreset(preset.id)}
                       className="p-1.5 text-zinc-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-                      title="Delete"
+                      title="Delete preset"
                       type="button"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
