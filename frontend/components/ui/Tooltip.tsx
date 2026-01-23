@@ -24,6 +24,7 @@ interface TooltipProps {
   delay?: number;
   placement?: Placement;
   disabled?: boolean;
+  className?: string;
 }
 
 export default function Tooltip({
@@ -32,6 +33,7 @@ export default function Tooltip({
   delay = 400,
   placement = 'top',
   disabled = false,
+  className,
 }: TooltipProps) {
   const arrowRef = useRef<SVGSVGElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -87,7 +89,7 @@ export default function Tooltip({
 
   return (
     <>
-      <div ref={refs.setReference} className="inline-flex" {...getReferenceProps()}>
+      <div ref={refs.setReference} className={className ?? 'inline-flex'} {...getReferenceProps()}>
         {children}
       </div>
       {isMounted && content && !disabled && (
