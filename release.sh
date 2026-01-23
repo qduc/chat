@@ -286,6 +286,7 @@ EOF
                 # Commit the changelog update
                 git add CHANGELOG.md
                 git commit -m "docs: update CHANGELOG.md for release ${NEW_TAG}"
+                git push origin ${CURRENT_BRANCH}
                 success "Committed changelog update to ${CURRENT_BRANCH}"
 
                 # Remove backup

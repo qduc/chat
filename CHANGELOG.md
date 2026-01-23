@@ -24,6 +24,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.13.2] - 2026-01-23
+
+### Added
+- Clear button for custom parameters and tools to quickly reset configurations
+- Copy button for custom parameters settings to duplicate existing configurations
+- Auto-generated IDs for custom parameter settings for better tracking and management
+
+
 ## [0.13.1] - 2026-01-22
 
 ### Added

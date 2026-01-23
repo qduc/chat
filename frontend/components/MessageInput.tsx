@@ -11,6 +11,7 @@ import {
   AudioLines,
   Paperclip,
   Check,
+  X,
 } from 'lucide-react';
 import type { PendingState } from '@/hooks/useChat';
 import {
@@ -749,9 +750,26 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                           setCustomParamsOpen((v) => !v);
                         }}
                         disabled={inputLocked}
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors duration-150"
+                        className="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors duration-150"
                       >
-                        <Sliders className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+                        <div className="relative w-4 h-4 flex items-center justify-center">
+                          <Sliders
+                            className={`w-4 h-4 text-zinc-500 dark:text-zinc-400 transition-opacity duration-200 ${localCustomParamsIds.length > 0 ? 'group-hover:opacity-0' : ''}`}
+                          />
+                          {localCustomParamsIds.length > 0 && (
+                            <div
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setLocalCustomParamsIds([]);
+                                onCustomRequestParamsIdChange?.(null);
+                              }}
+                              className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+                              title="Clear custom params"
+                            >
+                              <X className="w-4 h-4" />
+                            </div>
+                          )}
+                        </div>
                         <span
                           className={`text-xs px-2 py-0.5 rounded-full transition-colors font-medium max-w-[120px] truncate ${
                             localCustomParamsIds.length > 0
@@ -875,9 +893,27 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                           setToolsOpen((v) => !v);
                         }}
                         disabled={inputLocked}
-                        className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors duration-150"
+                        className="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors duration-150"
                       >
-                        <Wrench className="w-4 h-4 text-zinc-500 dark:text-zinc-400" />
+                        <div className="relative w-4 h-4 flex items-center justify-center">
+                          <Wrench
+                            className={`w-4 h-4 text-zinc-500 dark:text-zinc-400 transition-opacity duration-200 ${localSelected.length > 0 ? 'group-hover:opacity-0' : ''}`}
+                          />
+                          {localSelected.length > 0 && (
+                            <div
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setLocalSelected([]);
+                                onEnabledToolsChange?.([]);
+                                onUseToolsChange?.(false);
+                              }}
+                              className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+                              title="Clear enabled tools"
+                            >
+                              <X className="w-4 h-4" />
+                            </div>
+                          )}
+                        </div>
                         <span
                           className={`text-xs px-2 py-0.5 rounded-full transition-colors font-medium ${
                             localSelected.length > 0
