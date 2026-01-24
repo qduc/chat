@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.14.1] - 2026-01-24
+
+### Changed
+- Improved visual presentation of judge response display
+- Updated delete icon to use consistent Trash component across UI
+
+
 ## [0.14.0] - 2026-01-24
 
 ### Added
