@@ -1140,13 +1140,13 @@ const Message = React.memo<MessageProps>(
                           key={evaluation.id}
                           className="border border-emerald-200/70 dark:border-emerald-900/50 bg-emerald-50/70 dark:bg-emerald-950/30 rounded-xl px-4 py-3"
                         >
-                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-700 dark:text-emerald-300">
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-emerald-700 dark:text-emerald-300">
                             <div className="flex items-center gap-2">
                               <Trophy className="w-3.5 h-3.5" />
                               <span>Winner: {winnerLabel}</span>
                             </div>
                             <div className="flex items-center gap-2">
-                              <div className="flex items-center gap-2 text-[11px] text-emerald-600 dark:text-emerald-400">
+                              <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
                                 <span>Judge: {judgeLabel}</span>
                                 {evaluation.criteria ? <span>• {evaluation.criteria}</span> : null}
                               </div>
@@ -1160,17 +1160,55 @@ const Message = React.memo<MessageProps>(
                             </div>
                           </div>
                           <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-emerald-800 dark:text-emerald-100">
-                            <div className="flex items-center justify-between bg-white/60 dark:bg-emerald-950/40 rounded-lg px-2.5 py-1.5">
-                              <span>{primaryLabel}</span>
-                              <span>{evaluation.score_a ?? '—'}</span>
+                            <div
+                              className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 ${
+                                evaluation.winner === 'model_a'
+                                  ? 'bg-yellow-100 dark:bg-yellow-950/40 border border-yellow-300 dark:border-yellow-700'
+                                  : 'bg-white/60 dark:bg-emerald-950/40'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                {evaluation.winner === 'model_a' && (
+                                  <Trophy className="w-3 h-3 text-yellow-600 dark:text-yellow-400" />
+                                )}
+                                <span
+                                  className={evaluation.winner === 'model_a' ? 'font-semibold' : ''}
+                                >
+                                  {primaryLabel}
+                                </span>
+                              </div>
+                              <span
+                                className={evaluation.winner === 'model_a' ? 'font-semibold' : ''}
+                              >
+                                {evaluation.score_a ?? '—'}
+                              </span>
                             </div>
-                            <div className="flex items-center justify-between bg-white/60 dark:bg-emerald-950/40 rounded-lg px-2.5 py-1.5">
-                              <span>{modelLabel}</span>
-                              <span>{evaluation.score_b ?? '—'}</span>
+                            <div
+                              className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 ${
+                                evaluation.winner === 'model_b'
+                                  ? 'bg-yellow-100 dark:bg-yellow-950/40 border border-yellow-300 dark:border-yellow-700'
+                                  : 'bg-white/60 dark:bg-emerald-950/40'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                {evaluation.winner === 'model_b' && (
+                                  <Trophy className="w-3 h-3 text-yellow-600 dark:text-yellow-400" />
+                                )}
+                                <span
+                                  className={evaluation.winner === 'model_b' ? 'font-semibold' : ''}
+                                >
+                                  {modelLabel}
+                                </span>
+                              </div>
+                              <span
+                                className={evaluation.winner === 'model_b' ? 'font-semibold' : ''}
+                              >
+                                {evaluation.score_b ?? '—'}
+                              </span>
                             </div>
                           </div>
                           {evaluation.reasoning && (
-                            <div className="mt-2 text-sm text-emerald-900 dark:text-emerald-100">
+                            <div className="mt-2 text-base leading-relaxed text-emerald-900 dark:text-emerald-100">
                               <Markdown text={evaluation.reasoning} className="md-compact" />
                             </div>
                           )}
