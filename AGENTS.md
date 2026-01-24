@@ -58,6 +58,9 @@ chat/
 15. **Streaming Control**: Ability to abort streaming responses and automatic checkpoint persistence
 16. **Desktop App**: Cross-platform Electron app with auto-login and native packaging
 17. **Enhanced WebFetch**: Playwright-based browser automation for SPA support with specialized content extractors
+18. **Judge/Evaluation System**: Automated model response comparison with judge models providing scores and reasoning
+19. **Custom Request Parameters**: User-defined API parameters with multi-select support for advanced configuration
+20. **Usage Tracking**: Comprehensive timing metrics and token usage tracking for performance insights
 
 ## Development Workflow
 
@@ -161,6 +164,9 @@ chat/
 - JWT secrets stored in environment (never in database)
 - Image and file metadata stored with user ownership validation
 - Journal entries scoped per user for persistent AI memory
+- Evaluation system for judge-based model comparison with scores and reasoning
+- Custom request parameters stored per user for advanced API configuration
+- Message IDs use UUID format consistently across frontend and backend
 
 ### Frontend Patterns
 
@@ -246,6 +252,10 @@ chat/
 - **Retry Logic**: Exponential backoff for API calls (particularly Gemini 429 errors) with configurable retry strategy
 - **Code Quality**: Husky pre-commit hooks enforce linting before commits
 - **Toast Notifications**: User-facing notifications for errors and success messages
+- **Judge/Evaluation System**: Automated comparison of model responses with configurable judge models, scoring, and reasoning persistence
+- **Custom Request Parameters**: User-configurable API parameters with multi-select support stored in user settings
+- **Usage Tracking**: Comprehensive timing metrics including prompt tokens (with cached token accounting) and performance insights
+- **Message ID Protocol**: Consistent UUID-based message IDs for assistant responses across all components
 
 ## Finding Your Way Around
 

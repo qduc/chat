@@ -8,13 +8,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-<!-- New features coming in the next release -->
+- **Judge/Evaluation System** - Compare model responses with automated judge model evaluation, scoring, and reasoning
+- **Custom Request Parameters** - User-defined request parameters with multi-select support for advanced API configuration
+- **Usage Tracking with Timing Metrics** - Comprehensive performance insights including prompt tokens, cached tokens, and timing data
+- **Auto-generated IDs** - Custom parameter settings now include auto-generated IDs for better tracking
 
 ### Changed
-<!-- Improvements to existing features -->
+- **Message ID Protocol** - Unified to use UUIDs consistently for assistant responses across frontend and backend
+- **OpenAI API Compatibility** - Updated response_format parameter handling (moved to text.format for compatibility)
+- **Usage Extraction** - Enhanced timing normalization and prompt token calculation to properly account for cached tokens
 
 ### Fixed
-<!-- Bug fixes -->
+- **Toolbar Visibility** - User message toolbars now hidden until hover to reduce clutter
+- **Custom Parameters UI** - Improved width consistency in custom request parameter popup items
 
 ### Deprecated
 <!-- Features being phased out -->
