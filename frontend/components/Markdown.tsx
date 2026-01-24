@@ -368,7 +368,7 @@ const MarkdownComponents: any = {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="md-link underline decoration-zinc-300 hover:decoration-zinc-400 text-zinc-700 dark:text-zinc-300 transition-colors"
+      className="md-link underline decoration-zinc-300 hover:decoration-zinc-400 transition-colors"
     >
       {children}
     </a>
@@ -614,7 +614,7 @@ const MarkdownComponents: any = {
     // Handle inline code (single backticks)
     return (
       <code
-        className={`${className || ''} bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 px-1.5 py-0.5 rounded text-sm font-mono`}
+        className={`${className || ''} bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-sm font-mono`}
       >
         {children}
       </code>
@@ -637,7 +637,7 @@ const MarkdownComponents: any = {
   ol: ({ children }: any) => <ol className="list-decimal ml-6 space-y-2 mb-4">{children}</ol>,
   li: ({ children }: any) => <li className="leading-relaxed">{children}</li>,
   blockquote: ({ children }: any) => (
-    <blockquote className="border-l-2 border-zinc-300 dark:border-zinc-700 pl-4 py-2 my-4 italic text-zinc-700 dark:text-zinc-300 bg-zinc-50 dark:bg-zinc-900/50 rounded-r-lg leading-relaxed">
+    <blockquote className="border-l-2 border-zinc-300 dark:border-zinc-700 pl-4 py-2 my-4 italic bg-zinc-50 dark:bg-zinc-900/50 rounded-r-lg leading-relaxed">
       {children}
     </blockquote>
   ),

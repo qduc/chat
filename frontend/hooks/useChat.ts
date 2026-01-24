@@ -66,6 +66,7 @@ export interface Message {
   comparisonResults?: Record<
     string,
     {
+      messageId?: string;
       content: MessageContent;
       usage?: any;
       status: 'streaming' | 'complete' | 'error';
@@ -1451,7 +1452,10 @@ export function useChat() {
                   ...prev.slice(0, lastIdx),
                   {
                     ...lastMsg,
-                    id: response.conversation?.assistant_message_id ?? lastMsg.id,
+                    id:
+                      response.conversation?.assistant_message_id != null
+                        ? String(response.conversation.assistant_message_id)
+                        : lastMsg.id,
                     content: finalContent,
                   },
                 ];

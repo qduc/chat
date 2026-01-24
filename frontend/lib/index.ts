@@ -70,6 +70,7 @@ export {
   extractFilesFromText,
   removeFileBlocksFromText,
   extractFilesAndText,
+  extractReasoningFromPartialJson,
 } from './contentUtils';
 
 // Model capabilities

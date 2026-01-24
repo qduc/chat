@@ -83,7 +83,8 @@ function buildJudgePrompt({ criteria, userPrompt, responseA, responseB, modelALa
     `  "score_b": number,\n` +
     `  "reasoning": string\n` +
     `}\n\n` +
-    `Be concise, cite concrete differences, and avoid mentioning that you are an AI.`;
+    `Be thorough, cite concrete differences, and format the answer structured.\n` +
+    `You can use markdown in the "reasoning" field to produce a structured, easy-to-read response with bold text, lists, or tables if needed.`;
 
   const user = `User Prompt:\n${promptText}\n\n` +
     `${modelALabel} Response:\n${responseAText}\n\n` +

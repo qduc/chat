@@ -235,6 +235,14 @@ main {
   word-break: break-word;
 }
 
+/* Compact version for judge boxes and reasoning */
+.md-compact .md-h1 { font-size: 1.25rem; margin-top: 1rem; margin-bottom: 0.5rem; }
+.md-compact .md-h2 { font-size: 1.125rem; margin-top: 0.75rem; margin-bottom: 0.4rem; }
+.md-compact .md-h3 { font-size: 1rem; margin-top: 0.5rem; margin-bottom: 0.25rem; }
+.md-compact .md-p { margin-top: 0.5rem; }
+.md-compact ul, .md-compact ol { margin-bottom: 0.5rem; }
+.md-compact blockquote { margin-top: 0.5rem; margin-bottom: 0.5rem; padding-top: 0.25rem; padding-bottom: 0.25rem; }
+
 .md-content :where(p, li, a, code, pre, blockquote, td, th) {
   max-width: 100%;
   min-width: 0;

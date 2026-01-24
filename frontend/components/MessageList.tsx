@@ -27,6 +27,7 @@ import {
   extractImagesFromContent,
   extractTextFromContent,
   hasAudio,
+  extractReasoningFromPartialJson,
   type ChatMessage,
   type MessageContent,
   type ImageAttachment,
@@ -1146,7 +1147,13 @@ const Message = React.memo<MessageProps>(
                             {draft.status === 'error' ? (
                               <div className="text-red-600 dark:text-red-300">{draft.error}</div>
                             ) : (
-                              <Markdown text={draft.content || 'Analyzing...'} />
+                              <Markdown
+                                text={
+                                  extractReasoningFromPartialJson(draft.content) || 'Analyzing...'
+                                }
+                                isStreaming={draft.status === 'streaming'}
+                                className="md-compact !text-amber-900 dark:!text-amber-100"
+                              />
                             )}
                           </div>
                         </div>
@@ -1193,7 +1200,7 @@ const Message = React.memo<MessageProps>(
                           </div>
                           {evaluation.reasoning && (
                             <div className="mt-2 text-sm text-emerald-900 dark:text-emerald-100">
-                              <Markdown text={evaluation.reasoning} />
+                              <Markdown text={evaluation.reasoning} className="md-compact" />
                             </div>
                           )}
                         </div>
