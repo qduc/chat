@@ -13,6 +13,7 @@ import {
   GitFork,
   Scale,
   Trophy,
+  Trash,
 } from 'lucide-react';
 import Markdown from './Markdown';
 import { MessageContentRenderer } from './ui/MessageContentRenderer';
@@ -1154,7 +1155,7 @@ const Message = React.memo<MessageProps>(
                                 title="Delete judge response"
                                 className="p-1 rounded hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 transition-colors"
                               >
-                                <span className="text-[10px]">✕</span>
+                                <Trash className="w-3.5 h-3.5" />
                               </button>
                             </div>
                           </div>
