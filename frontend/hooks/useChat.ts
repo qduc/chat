@@ -440,6 +440,10 @@ export function useChat() {
     messagesRef.current = messages;
   }, [messages]);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const conversationIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    conversationIdRef.current = conversationId;
+  }, [conversationId]);
   const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
   const [evaluationDrafts, setEvaluationDrafts] = useState<EvaluationDraft[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -1488,31 +1492,37 @@ export function useChat() {
                     if (exists) return prev;
                     return [newConversation, ...prev];
                   });
+                }
 
-                  if (
-                    !response.conversation.title ||
-                    response.conversation.title === 'Untitled conversation'
-                  ) {
-                    setTimeout(async () => {
-                      try {
-                        const updated = await conversationsApi.get(response.conversation!.id, {
-                          limit: 1,
-                        });
-                        if (updated.title && updated.title !== response.conversation!.title) {
+                // If the backend may generate a conversation title asynchronously (e.g., model comparison
+                // mode creates linked conversations), fetch the updated conversation metadata after a short
+                // delay when the returned title is missing or is a placeholder. Run this regardless of whether
+                // the conversation was newly created to ensure the UI updates without requiring a reload.
+                if (
+                  !response.conversation.title ||
+                  response.conversation.title === 'Untitled conversation'
+                ) {
+                  setTimeout(async () => {
+                    try {
+                      const updated = await conversationsApi.get(response.conversation!.id, {
+                        limit: 1,
+                      });
+                      if (updated.title && updated.title !== response.conversation!.title) {
+                        if (conversationIdRef.current === response.conversation!.id) {
                           setCurrentConversationTitle(updated.title);
-                          setConversations((prev) =>
-                            prev.map((c) =>
-                              c.id === response.conversation!.id
-                                ? { ...c, title: updated.title ?? c.title }
-                                : c
-                            )
-                          );
                         }
-                      } catch (err) {
-                        console.warn('Failed to fetch updated conversation title:', err);
+                        setConversations((prev) =>
+                          prev.map((c) =>
+                            c.id === response.conversation!.id
+                              ? { ...c, title: updated.title ?? c.title }
+                              : c
+                          )
+                        );
                       }
-                    }, 2000);
-                  }
+                    } catch (err) {
+                      console.warn('Failed to fetch updated conversation title:', err);
+                    }
+                  }, 2000);
                 }
               }
 
