@@ -200,16 +200,25 @@ else
     elif [ -z "$COMMITS" ]; then
         warning "No new commits found since ${LATEST_TAG}"
     else
+        # Check if [Unreleased] section exists
+        HAS_UNRELEASED=$(grep -q "## \[Unreleased\]" CHANGELOG.md && echo "true" || echo "false")
+
+        # Extract notes if it exists
+        UNRELEASED_NOTES=""
+        if [ "$HAS_UNRELEASED" = "true" ]; then
+            UNRELEASED_NOTES=$(sed -n '/## \[Unreleased\]/,/^---$/p' CHANGELOG.md | grep -v "## \[Unreleased\]" | grep -v "^---$")
+        fi
+
         # Create temporary file for Claude prompt
         TEMP_PROMPT=$(mktemp)
         cat > "$TEMP_PROMPT" << EOF
-Based on these git commits, generate a changelog entry for version ${NEW_VERSION}.
+Based on these git commits and existing manual notes, generate a changelog entry for version ${NEW_VERSION}.
 
 Git commits since ${LATEST_TAG}:
 ${COMMITS}
 
-Current CHANGELOG.md Unreleased section:
-$(sed -n '/## \[Unreleased\]/,/^---$/p' CHANGELOG.md)
+Manual notes from Unreleased section:
+${UNRELEASED_NOTES}
 
 Please generate a changelog entry following the Keep a Changelog format with these sections as needed:
 - Added (new features)
@@ -235,46 +244,30 @@ EOF
             # Create backup of CHANGELOG.md
             cp CHANGELOG.md CHANGELOG.md.backup
 
-            # Insert new entry after the Unreleased section
-            # Find the line number where the first release section starts (after ---)
-            INSERT_LINE=$(grep -n "^---$" CHANGELOG.md | head -1 | cut -d: -f1)
+            # Insert new entry
+            INSERT_POINT=$(grep -n "^---$" CHANGELOG.md | head -1 | cut -d: -f1)
 
-            if [ -n "$INSERT_LINE" ]; then
-                # Insert the new changelog entry
+            if [ -n "$INSERT_POINT" ]; then
                 {
-                    head -n "$INSERT_LINE" CHANGELOG.md
+                    # Header + everything before the separator
+                    if [ "$HAS_UNRELEASED" = "true" ]; then
+                        # Print up to the header (excluding the header itself)
+                        sed -n "1,/## \[Unreleased\]/p" CHANGELOG.md | grep -v "## \[Unreleased\]"
+                    else
+                        # Print everything before the separator
+                        head -n $((INSERT_POINT - 1)) CHANGELOG.md
+                    fi
+
+                    echo "---"
                     echo ""
                     echo "$CHANGELOG_ENTRY"
                     echo ""
-                    tail -n +$((INSERT_LINE + 1)) CHANGELOG.md
+
+                    # Everything AFTER the separator
+                    tail -n +$((INSERT_POINT + 1)) CHANGELOG.md
                 } > CHANGELOG.md.new
 
                 mv CHANGELOG.md.new CHANGELOG.md
-
-                # Clear the Unreleased section
-                {
-                    sed -n '1,/## \[Unreleased\]/p' CHANGELOG.md
-                    echo ""
-                    echo "### Added"
-                    echo "<!-- New features coming in the next release -->"
-                    echo ""
-                    echo "### Changed"
-                    echo "<!-- Improvements to existing features -->"
-                    echo ""
-                    echo "### Fixed"
-                    echo "<!-- Bug fixes -->"
-                    echo ""
-                    echo "### Deprecated"
-                    echo "<!-- Features being phased out -->"
-                    echo ""
-                    echo "### Breaking Changes"
-                    echo "<!-- Changes that require user action -->"
-                    echo ""
-                    sed -n '/^---$/,$p' CHANGELOG.md
-                } > CHANGELOG.md.new
-
-                mv CHANGELOG.md.new CHANGELOG.md
-
                 success "Changelog entry generated and inserted"
 
                 # Show the generated entry
