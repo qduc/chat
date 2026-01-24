@@ -11,7 +11,7 @@ import { createOpenAIRequest, setupStreamingHeaders, writeAndFlush, createChatCo
 import { parseSSEStream } from '../lib/sseParser.js';
 import { getDb } from '../db/client.js';
 import { getMessageContentByClientId, getPreviousUserMessage } from '../db/messages.js';
-import { getEvaluationByPair, createEvaluation } from '../db/evaluations.js';
+import { getEvaluationByPair, createEvaluation, deleteEvaluation } from '../db/evaluations.js';
 
 export const chatRouter = Router();
 
@@ -324,6 +324,28 @@ chatRouter.post('/v1/chat/judge', async (req, res) => {
     });
   } catch (error) {
     logger.error('[judge] error', error);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+chatRouter.delete('/v1/chat/judge/:id', async (req, res) => {
+  const userId = req.user?.id;
+  if (!userId) {
+    return res.status(401).json({ error: 'unauthorized' });
+  }
+
+  try {
+    const success = deleteEvaluation({ id: req.params.id, userId });
+    if (!success) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+    return res.status(204).end();
+  } catch (error) {
+    logger.error({
+      msg: 'delete_evaluation_error',
+      id: req.params.id,
+      error: error.message,
+    });
     return res.status(500).json({ error: 'internal_error' });
   }
 });

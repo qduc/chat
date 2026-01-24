@@ -2189,6 +2189,16 @@ export function useChat() {
     [conversationId]
   );
 
+  const deleteJudgeResponse = useCallback(async (id: string) => {
+    try {
+      await judge.deleteEvaluation(id);
+      setEvaluations((prev) => prev.filter((evalItem) => evalItem.id !== id));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete judge response');
+      throw err;
+    }
+  }, []);
+
   // Actions - Editing
   const startEdit = useCallback((messageId: string, content: MessageContent) => {
     setEditingMessageId(messageId);
@@ -2704,6 +2714,8 @@ export function useChat() {
     regenerate,
     retryComparisonModel,
     judgeComparison,
+    deleteJudgeResponse,
+    clearError,
     startEdit,
     cancelEdit,
     updateEditContent,

@@ -743,6 +743,7 @@ export function ChatV2() {
               onRetryMessage={handleRetryMessage}
               onRetryComparisonModel={handleRetryComparisonModel}
               onJudge={chat.judgeComparison}
+              onDeleteJudgeResponse={chat.deleteJudgeResponse}
               onScrollStateChange={setScrollButtons}
               containerRef={messageListRef}
               onSuggestionClick={handleSuggestionClick}

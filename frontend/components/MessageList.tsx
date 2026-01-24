@@ -74,6 +74,7 @@ interface MessageListProps {
     judgeModelId: string;
     criteria?: string | null;
   }) => Promise<unknown>;
+  onDeleteJudgeResponse: (id: string) => Promise<void>;
 }
 
 // Maximum number of model columns to display side-by-side
@@ -366,6 +367,7 @@ interface MessageProps {
   isMobile: boolean;
   showComparisonTabs: boolean;
   onOpenJudgeModal?: (messageId: string, comparisonModelIds: string[]) => void;
+  onDeleteJudgeResponse: (id: string) => Promise<void>;
 }
 
 const Message = React.memo<MessageProps>(
@@ -409,48 +411,7 @@ const Message = React.memo<MessageProps>(
     isMobile,
     showComparisonTabs,
     onOpenJudgeModal,
-  }: {
-    message: ChatMessage;
-    isStreaming: boolean;
-    conversationId: string | null;
-    compareModels: string[];
-    primaryModelLabel: string | null;
-    linkedConversations: Record<string, string>;
-    evaluations: Evaluation[];
-    evaluationDrafts: EvaluationDraft[];
-    canSend: boolean;
-    editingMessageId: string | null;
-    editingContent: string;
-    onCopy: (text: string) => void;
-    onEditMessage: (messageId: string, content: string) => void;
-    onCancelEdit: () => void;
-    onApplyLocalEdit: (messageId: string, content?: MessageContent) => void;
-    onEditingContentChange: (content: string) => void;
-    onRetryMessage?: (messageId: string) => void;
-    onRetryComparisonModel?: (messageId: string, modelId: string) => void;
-    editingTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
-    lastUserMessageRef: React.RefObject<HTMLDivElement | null> | null;
-    toolbarRef?: React.RefObject<HTMLDivElement | null>;
-    resizeEditingTextarea: () => void;
-    collapsedToolOutputs: Record<string, boolean>;
-    setCollapsedToolOutputs: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
-    copiedMessageId: string | null;
-    handleCopy: (messageId: string, text: string) => void;
-    pending: PendingState;
-    streamingStats: { tokensPerSecond: number; isEstimate?: boolean } | null;
-    editingImages: ImageAttachment[];
-    onEditingImagesChange: (files: File[]) => void;
-    onRemoveEditingImage: (id: string) => void;
-    onEditingPaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
-    onEditingImageUploadClick: () => void;
-    fileInputRef: React.RefObject<HTMLInputElement | null>;
-    onFork?: (messageId: string, modelId: string) => void;
-    selectedComparisonModels: string[];
-    onToggleComparisonModel: (modelId: string, event?: React.MouseEvent) => void;
-    onSelectAllComparisonModels: (models: string[]) => void;
-    isMobile: boolean;
-    showComparisonTabs: boolean;
-    onOpenJudgeModal?: (messageId: string, comparisonModelIds: string[]) => void;
+    onDeleteJudgeResponse,
   }) {
     const isUser = message.role === 'user';
     const isEditing = editingMessageId === message.id;
@@ -1183,9 +1144,18 @@ const Message = React.memo<MessageProps>(
                               <Trophy className="w-3.5 h-3.5" />
                               <span>Winner: {winnerLabel}</span>
                             </div>
-                            <div className="flex items-center gap-2 text-[11px] text-emerald-600 dark:text-emerald-400">
-                              <span>Judge: {judgeLabel}</span>
-                              {evaluation.criteria ? <span>• {evaluation.criteria}</span> : null}
+                            <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 text-[11px] text-emerald-600 dark:text-emerald-400">
+                                <span>Judge: {judgeLabel}</span>
+                                {evaluation.criteria ? <span>• {evaluation.criteria}</span> : null}
+                              </div>
+                              <button
+                                onClick={() => onDeleteJudgeResponse(evaluation.id)}
+                                title="Delete judge response"
+                                className="p-1 rounded hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 transition-colors"
+                              >
+                                <span className="text-[10px]">✕</span>
+                              </button>
                             </div>
                           </div>
                           <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-emerald-800 dark:text-emerald-100">
@@ -1311,7 +1281,8 @@ const Message = React.memo<MessageProps>(
       prev.toolbarRef === next.toolbarRef &&
       prev.selectedComparisonModels === next.selectedComparisonModels &&
       prev.isMobile === next.isMobile &&
-      prev.showComparisonTabs === next.showComparisonTabs
+      prev.showComparisonTabs === next.showComparisonTabs &&
+      prev.onDeleteJudgeResponse === next.onDeleteJudgeResponse
     );
   }
 );
@@ -1342,6 +1313,7 @@ export function MessageList({
   onSuggestionClick,
   onFork,
   onJudge,
+  onDeleteJudgeResponse,
 }: MessageListProps) {
   const { showToast } = useToast();
 
@@ -1918,6 +1890,7 @@ export function MessageList({
                 isMobile={isMobile}
                 showComparisonTabs={m.id === firstAssistantMessageId}
                 onOpenJudgeModal={openJudgeModal}
+                onDeleteJudgeResponse={onDeleteJudgeResponse}
               />
             );
           })}

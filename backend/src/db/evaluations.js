@@ -123,3 +123,13 @@ export function createEvaluation({
     created_at,
   };
 }
+
+export function deleteEvaluation({ id, userId }) {
+  if (!userId) {
+    throw new Error('userId is required');
+  }
+  const db = getDb();
+  const query = `DELETE FROM evaluations WHERE id = @id AND user_id = @userId`;
+  const result = db.prepare(query).run({ id, userId });
+  return result.changes > 0;
+}

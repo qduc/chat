@@ -478,6 +478,19 @@ export const judge = {
       throw error;
     }
   },
+
+  async deleteEvaluation(id: string): Promise<void> {
+    await waitForAuthReady();
+    const apiBase = resolveApiBase();
+    try {
+      await httpClient.delete(`${apiBase}/v1/chat/judge/${id}`);
+    } catch (error) {
+      if (error instanceof HttpError) {
+        throw new APIError(error.status, error.message, error.data);
+      }
+      throw error;
+    }
+  },
 };
 
 function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: boolean): any {
