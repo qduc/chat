@@ -241,7 +241,7 @@ export default function CompareSelector({
         if (disabled) return;
         setIsOpen(!isOpen);
       }}
-      className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors border ${
+      className={`flex items-center gap-2 px-2 sm:px-3 h-8 sm:h-10 rounded-lg transition-colors border ${
         disabled
           ? 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-zinc-400 dark:text-zinc-600 cursor-not-allowed'
           : activeCount > 0 || isOpen
