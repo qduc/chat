@@ -725,12 +725,63 @@ export function getMessageByClientId({ conversationId, clientMessageId, userId }
   const query = `SELECT m.id, m.conversation_id, m.role, m.seq, m.client_message_id
      FROM messages m
      JOIN conversations c ON m.conversation_id = c.id
-     WHERE m.client_message_id = @clientMessageId
+     WHERE (m.client_message_id = @clientMessageId OR m.id = @clientMessageId)
        AND c.id = @conversationId
        AND c.deleted_at IS NULL
        AND c.user_id = @userId`;
 
   return db.prepare(query).get({ clientMessageId, conversationId, userId });
+}
+
+function hydrateMessageContentRow(row) {
+  if (!row) return null;
+  if (row.content_json) {
+    const parsedContent = parseJsonField(row.content_json, row.id, 'content_json');
+    if (parsedContent !== null) {
+      row.content = parsedContent;
+    }
+  }
+  delete row.content_json;
+  return row;
+}
+
+export function getMessageContentByClientId({ conversationId, clientMessageId, userId }) {
+  if (!userId) {
+    throw new Error('userId is required');
+  }
+
+  const db = getDb();
+  const query = `SELECT m.id, m.conversation_id, m.role, m.seq, m.content, m.content_json, m.client_message_id
+     FROM messages m
+     JOIN conversations c ON m.conversation_id = c.id
+     WHERE (m.client_message_id = @clientMessageId OR m.id = @clientMessageId)
+       AND c.id = @conversationId
+       AND c.deleted_at IS NULL
+       AND c.user_id = @userId`;
+
+  const row = db.prepare(query).get({ clientMessageId, conversationId, userId });
+  return hydrateMessageContentRow(row);
+}
+
+export function getPreviousUserMessage({ conversationId, beforeSeq, userId }) {
+  if (!userId) {
+    throw new Error('userId is required');
+  }
+
+  const db = getDb();
+  const query = `SELECT m.id, m.conversation_id, m.role, m.seq, m.content, m.content_json
+     FROM messages m
+     JOIN conversations c ON m.conversation_id = c.id
+     WHERE m.conversation_id = @conversationId
+       AND m.role = 'user'
+       AND m.seq < @beforeSeq
+       AND c.deleted_at IS NULL
+       AND c.user_id = @userId
+     ORDER BY m.seq DESC
+     LIMIT 1`;
+
+  const row = db.prepare(query).get({ conversationId, beforeSeq, userId });
+  return hydrateMessageContentRow(row);
 }
 
 export function updateMessageContent({

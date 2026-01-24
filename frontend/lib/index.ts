@@ -3,7 +3,7 @@
  */
 
 // Core API modules
-export { auth, chat, conversations, images, files, tools, providers } from './api';
+export { auth, chat, judge, conversations, images, files, tools, providers } from './api';
 import { auth as _auth } from './api';
 
 // Use the canonical `auth` implementation from ./api as the exported

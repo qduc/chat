@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSystemPrompts } from './useSystemPrompts';
 import type { MessageContent, TextContent, MessageEvent, AudioAttachment } from '../lib';
-import { conversations as conversationsApi, chat, auth } from '../lib/api';
+import { conversations as conversationsApi, chat, judge, auth } from '../lib/api';
 import { httpClient } from '../lib/http';
 import { APIError, StreamingNotSupportedError } from '../lib/streaming';
 import type {
@@ -9,6 +9,7 @@ import type {
   Provider,
   ChatOptionsExtended,
   CustomRequestParamPreset,
+  Evaluation,
 } from '../lib/types';
 import { supportsReasoningControls, getDraft, setDraft, clearDraft } from '../lib';
 import { attachmentToInputAudioPart } from '../lib/audioUtils';
@@ -27,6 +28,17 @@ export interface PendingState {
     provider?: string;
     isEstimate: boolean;
   };
+}
+
+export interface EvaluationDraft {
+  id: string;
+  messageId: string;
+  comparisonModelId: string;
+  judgeModelId: string;
+  criteria?: string | null;
+  content: string;
+  status: 'streaming' | 'error';
+  error?: string;
 }
 
 export interface Message {
@@ -427,6 +439,8 @@ export function useChat() {
     messagesRef.current = messages;
   }, [messages]);
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [evaluations, setEvaluations] = useState<Evaluation[]>([]);
+  const [evaluationDrafts, setEvaluationDrafts] = useState<EvaluationDraft[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [currentConversationTitle, setCurrentConversationTitle] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
@@ -667,6 +681,8 @@ export function useChat() {
         const convertedMessages = mergeToolOutputsToAssistantMessages(rawMessages);
 
         setMessages(convertedMessages);
+        setEvaluations(Array.isArray((data as any).evaluations) ? (data as any).evaluations : []);
+        setEvaluationDrafts([]);
         setConversationId(id);
         setCurrentConversationTitle(data.title || null);
 
@@ -818,6 +834,7 @@ export function useChat() {
                           comparisonResults: {
                             ...msg.comparisonResults,
                             [normalizedLinkedModel]: {
+                              messageId: linkedMsg.id != null ? String(linkedMsg.id) : undefined,
                               content: linkedMsg.content ?? '',
                               usage: (linkedMsg as any).usage,
                               status: 'complete' as const,
@@ -901,6 +918,8 @@ export function useChat() {
 
   const newChat = useCallback(() => {
     setMessages([]);
+    setEvaluations([]);
+    setEvaluationDrafts([]);
     setConversationId(null);
     setInput('');
     setError(null);
@@ -1248,6 +1267,7 @@ export function useChat() {
                   comparisonResults: {
                     ...(lastMsg.comparisonResults || {}),
                     [targetModel]: {
+                      messageId: undefined,
                       content: '',
                       status: 'streaming',
                     },
@@ -1524,6 +1544,10 @@ export function useChat() {
                       ...lastMsg.comparisonResults,
                       [targetModel]: {
                         ...existingRes,
+                        messageId:
+                          response.conversation?.assistant_message_id != null
+                            ? String(response.conversation.assistant_message_id)
+                            : existingRes.messageId,
                         content: finalContent,
                         status: 'complete',
                       },
@@ -1985,6 +2009,10 @@ export function useChat() {
                   ...(msg.comparisonResults || {}),
                   [modelKey]: {
                     ...existing,
+                    messageId:
+                      response.conversation?.assistant_message_id != null
+                        ? String(response.conversation.assistant_message_id)
+                        : existing.messageId,
                     content: finalContent,
                     status: 'complete' as const,
                   },
@@ -2050,6 +2078,104 @@ export function useChat() {
       }
     },
     [conversationId, modelCapabilities, normalizeCustomRequestParamsIds, status]
+  );
+
+  const judgeComparison = useCallback(
+    async (options: {
+      messageId: string;
+      comparisonModelId: string;
+      judgeModelId: string;
+      criteria?: string | null;
+    }) => {
+      const { messageId, comparisonModelId, judgeModelId, criteria } = options;
+      if (!conversationId) {
+        throw new Error('No active conversation');
+      }
+
+      const comparisonConversationId = linkedConversationsRef.current[comparisonModelId];
+      if (!comparisonConversationId) {
+        throw new Error('Comparison conversation not found for model');
+      }
+
+      const primaryMessage = messagesRef.current.find((msg) => msg.id === messageId);
+      const comparisonMessageId =
+        primaryMessage?.comparisonResults?.[comparisonModelId]?.messageId ?? null;
+
+      if (!comparisonMessageId) {
+        // Previously we (incorrectly) sent comparison_message_id = messageId, which fails once
+        // linked conversations have different message ids.
+        throw new Error('Comparison message not found for evaluation');
+      }
+
+      let judgeProviderId: string | null = null;
+      if (!judgeModelId.includes('::')) {
+        judgeProviderId = modelToProviderRef.current[judgeModelId] || null;
+      }
+
+      const draftId = generateClientId();
+      const draft: EvaluationDraft = {
+        id: draftId,
+        messageId,
+        comparisonModelId,
+        judgeModelId,
+        criteria: criteria ?? null,
+        content: '',
+        status: 'streaming',
+      };
+
+      setEvaluationDrafts((prev) => [...prev, draft]);
+
+      try {
+        const evaluation = await judge.evaluate({
+          conversationId,
+          comparisonConversationId,
+          messageId,
+          comparisonMessageId,
+          judgeModelId,
+          judgeProviderId,
+          criteria,
+          onToken: (token) => {
+            setEvaluationDrafts((prev) =>
+              prev.map((item) =>
+                item.id === draftId ? { ...item, content: `${item.content}${token}` } : item
+              )
+            );
+          },
+          onEvaluation: (evaluated) => {
+            setEvaluations((prev) => {
+              const idx = prev.findIndex((entry) => entry.id === evaluated.id);
+              if (idx >= 0) {
+                const next = [...prev];
+                next[idx] = evaluated;
+                return next;
+              }
+              return [...prev, evaluated];
+            });
+          },
+        });
+
+        setEvaluations((prev) => {
+          const idx = prev.findIndex((entry) => entry.id === evaluation.id);
+          if (idx >= 0) {
+            const next = [...prev];
+            next[idx] = evaluation;
+            return next;
+          }
+          return [...prev, evaluation];
+        });
+        setEvaluationDrafts((prev) => prev.filter((item) => item.id !== draftId));
+        return evaluation;
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Failed to judge responses';
+        setEvaluationDrafts((prev) =>
+          prev.map((item) =>
+            item.id === draftId ? { ...item, status: 'error', error: errorMessage } : item
+          )
+        );
+        throw err;
+      }
+    },
+    [conversationId]
   );
 
   // Actions - Editing
@@ -2537,6 +2663,8 @@ export function useChat() {
     systemPrompt,
     compareModels,
     linkedConversations,
+    evaluations,
+    evaluationDrafts,
 
     // Actions
     setMessages,
@@ -2564,6 +2692,7 @@ export function useChat() {
     stopStreaming,
     regenerate,
     retryComparisonModel,
+    judgeComparison,
     startEdit,
     cancelEdit,
     updateEditContent,

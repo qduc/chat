@@ -42,6 +42,7 @@ import type {
   ToolsResponse,
   Provider,
   Role,
+  Evaluation,
 } from './types';
 
 // Resolve API base URL
@@ -388,6 +389,94 @@ export const chat = {
       request_id: requestId,
     });
     return response.data;
+  },
+};
+
+export interface JudgeOptions {
+  conversationId: string;
+  comparisonConversationId: string;
+  messageId: string;
+  comparisonMessageId: string;
+  judgeModelId: string;
+  criteria?: string | null;
+  judgeProviderId?: string | null;
+  apiBase?: string;
+  signal?: AbortSignal;
+  requestId?: string;
+  onToken?: (token: string) => void;
+  onEvaluation?: (evaluation: Evaluation) => void;
+}
+
+export const judge = {
+  async evaluate(options: JudgeOptions): Promise<Evaluation> {
+    await waitForAuthReady();
+    const {
+      apiBase = resolveApiBase(),
+      signal,
+      requestId,
+      onToken,
+      onEvaluation,
+      ...payload
+    } = options;
+
+    const bodyObj = {
+      conversation_id: payload.conversationId,
+      comparison_conversation_id: payload.comparisonConversationId,
+      message_id: payload.messageId,
+      comparison_message_id: payload.comparisonMessageId,
+      judge_model: payload.judgeModelId,
+      judge_provider_id: payload.judgeProviderId ?? undefined,
+      criteria: payload.criteria ?? null,
+    };
+
+    const requestHeaders = {
+      Accept: 'text/event-stream',
+      ...(requestId ? { 'x-client-request-id': requestId } : {}),
+    };
+
+    try {
+      const httpResponse = await httpClient.post(`${apiBase}/v1/chat/judge`, bodyObj, {
+        signal,
+        headers: requestHeaders,
+      });
+
+      let responseData = httpResponse.data;
+      if (!isStreamingResponse(responseData)) {
+        if (typeof fetch !== 'function') {
+          throw new Error('Streaming fetch is not available in this environment');
+        }
+
+        const fallbackHeaders: Record<string, string> = {
+          'Content-Type': 'application/json',
+          ...requestHeaders,
+        };
+
+        if (typeof window !== 'undefined') {
+          const token = getToken();
+          if (token) {
+            fallbackHeaders.Authorization = `Bearer ${token}`;
+          }
+        }
+        if (requestId) {
+          fallbackHeaders['x-client-request-id'] = requestId;
+        }
+
+        responseData = await fetch(`${apiBase}/v1/chat/judge`, {
+          method: 'POST',
+          headers: fallbackHeaders,
+          body: JSON.stringify(bodyObj),
+          signal,
+          credentials: 'include',
+        });
+      }
+
+      return handleJudgeStreamingResponse(responseData as Response, onToken, onEvaluation);
+    } catch (error) {
+      if (error instanceof HttpError) {
+        throw new APIError(error.status, error.message, error.data);
+      }
+      throw error;
+    }
   },
 };
 
@@ -812,6 +901,110 @@ async function handleStreamingResponse(
   }
 
   return finalizeResponse();
+}
+
+async function handleJudgeStreamingResponse(
+  response: Response,
+  onToken?: (token: string) => void,
+  onEvaluation?: (evaluation: Evaluation) => void
+): Promise<Evaluation> {
+  const decoder = new TextDecoder('utf-8');
+  const parser = new SSEParser();
+
+  let content = '';
+  let evaluation: Evaluation | null = null;
+
+  const finalize = (): Evaluation => {
+    if (evaluation) return evaluation;
+    // Fallback if evaluation wasn't sent explicitly
+    try {
+      const parsed = content ? JSON.parse(content) : null;
+      return {
+        id: 'unknown',
+        user_id: 'unknown',
+        conversation_id: 'unknown',
+        model_a_conversation_id: 'unknown',
+        model_a_message_id: 'unknown',
+        model_b_conversation_id: 'unknown',
+        model_b_message_id: 'unknown',
+        judge_model_id: 'unknown',
+        criteria: null,
+        score_a: Number.isFinite(Number(parsed?.score_a)) ? Number(parsed?.score_a) : null,
+        score_b: Number.isFinite(Number(parsed?.score_b)) ? Number(parsed?.score_b) : null,
+        winner: typeof parsed?.winner === 'string' ? parsed.winner : 'tie',
+        reasoning: typeof parsed?.reasoning === 'string' ? parsed.reasoning : content,
+        created_at: new Date().toISOString(),
+      };
+    } catch {
+      return {
+        id: 'unknown',
+        user_id: 'unknown',
+        conversation_id: 'unknown',
+        model_a_conversation_id: 'unknown',
+        model_a_message_id: 'unknown',
+        model_b_conversation_id: 'unknown',
+        model_b_message_id: 'unknown',
+        judge_model_id: 'unknown',
+        criteria: null,
+        score_a: null,
+        score_b: null,
+        winner: 'tie',
+        reasoning: content,
+        created_at: new Date().toISOString(),
+      };
+    }
+  };
+
+  const body: any = response.body;
+  const processChunk = (chunk: string): Evaluation | null => {
+    const events = parser.parse(chunk);
+    for (const event of events) {
+      if (event.type === 'done') {
+        return finalize();
+      }
+
+      if (event.type === 'data' && event.data) {
+        if (event.data.type === 'evaluation' && event.data.evaluation) {
+          evaluation = event.data.evaluation as Evaluation;
+          onEvaluation?.(evaluation);
+          continue;
+        }
+
+        const delta = event.data?.choices?.[0]?.delta;
+        if (delta?.content) {
+          content += delta.content;
+          onToken?.(delta.content);
+        }
+      }
+    }
+
+    return null;
+  };
+
+  if (body && typeof body.getReader === 'function') {
+    const reader = body.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const text = decoder.decode(value, { stream: true });
+      const maybeEvaluation = processChunk(text);
+      if (maybeEvaluation) return maybeEvaluation;
+    }
+    return finalize();
+  }
+
+  if (body && typeof body[Symbol.asyncIterator] === 'function') {
+    for await (const chunk of body as any) {
+      const text = typeof chunk === 'string' ? chunk : decoder.decode(chunk, { stream: true });
+      const maybeEvaluation = processChunk(text);
+      if (maybeEvaluation) return maybeEvaluation;
+    }
+    return finalize();
+  }
+
+  const text = await response.text();
+  const maybeEvaluation = processChunk(text);
+  return maybeEvaluation || finalize();
 }
 
 function processStreamChunk(

@@ -19,6 +19,7 @@ import {
   updateMessageContent,
   deleteMessagesAfterSeq,
 } from '../db/messages.js';
+import { listEvaluationsForConversation } from '../db/evaluations.js';
 import {
   migrateSessionConversationsToUser,
   countMigratableConversations
@@ -206,6 +207,7 @@ conversationsRouter.get('/v1/conversations/:id', (req, res) => {
       active_system_prompt_id: activePromptId,
       custom_request_params_id: customRequestParamsId,
       messages: page.messages,
+      evaluations: listEvaluationsForConversation({ conversationId: req.params.id, userId }),
       next_after_seq: page.next_after_seq,
     };
 

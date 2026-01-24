@@ -259,6 +259,11 @@ export interface ChatMessage {
   comparisonResults?: Record<
     string,
     {
+      /**
+       * The message id in the *comparison conversation* that corresponds to this primary assistant message.
+       * Used by judge/evaluation calls which must reference the correct conversation-scoped message id.
+       */
+      messageId?: string;
       content: MessageContent;
       tool_calls?: any[];
       tool_outputs?: Array<{
@@ -273,6 +278,23 @@ export interface ChatMessage {
       error?: string;
     }
   >;
+}
+
+export interface Evaluation {
+  id: string;
+  user_id: string;
+  conversation_id: string;
+  model_a_conversation_id: string;
+  model_a_message_id: string;
+  model_b_conversation_id: string;
+  model_b_message_id: string;
+  judge_model_id: string;
+  criteria?: string | null;
+  score_a?: number | null;
+  score_b?: number | null;
+  winner?: string | null;
+  reasoning?: string | null;
+  created_at: string;
 }
 
 export interface MessageEvent {
@@ -388,6 +410,7 @@ export interface ConversationWithMessages {
     reasoning_tokens?: number | null;
   }[];
   next_after_seq: number | null;
+  evaluations?: Evaluation[];
   // Linked comparison conversations (included when include_linked=messages)
   linked_conversations?: Array<{
     id: string;
