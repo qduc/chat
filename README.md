@@ -22,13 +22,16 @@ https://github.com/user-attachments/assets/ef24a533-4ceb-40ff-8d7b-27a88ac76bb1
 
 ### Advanced Features
 - **🔀 Model Comparison Mode** - Side-by-side comparison of multiple models with isolated conversation histories
+- **⚖️ Judge/Evaluation System** - Automated model response evaluation with judge models providing scores and reasoning
 - **🍴 Conversation Forking** - Fork conversations at any message to explore alternative paths
+- **⚙️ Custom Request Parameters** - User-defined API parameters with multi-select support for advanced configuration
 - **⚡ Parallel Tool Execution** - Configurable concurrent tool execution for improved performance
 - **🌐 Enhanced WebFetch** - Playwright-based browser automation with SPA support and specialized extractors for Reddit, StackOverflow
 - **🔄 Streaming Control** - Abort streaming responses with automatic checkpoint persistence
 - **💾 Draft Persistence** - Automatic draft message saving across sessions
 - **🖥️ Desktop App** - Cross-platform Electron app with auto-login and native packaging
 - **🔗 Linked Conversations** - Support for conversation linking and retrieval in context
+- **📊 Usage Tracking** - Comprehensive timing metrics and token usage insights for performance optimization
 
 ### Infrastructure & Security
 - **🐳 Docker Ready** - Development and production Docker configurations with hot reload support

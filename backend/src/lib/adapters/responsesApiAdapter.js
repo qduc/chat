@@ -28,7 +28,6 @@ const RESPONSES_PASSTHROUGH_KEYS = new Set([
 	'parallel_tool_calls',
 	'prediction',
 	'reasoning_effort',
-	'response_format',
 	'seed',
 	'stop',
 	'store',
@@ -1222,8 +1221,15 @@ export class ResponsesAPIAdapter extends BaseAdapter {
         summary: 'auto',
       };
     }
-    if (payload.verbosity !== undefined) {
-      request.text = { verbosity: payload.verbosity };
+
+    if (payload.verbosity !== undefined || payload.response_format !== undefined) {
+      request.text = request.text || {};
+      if (payload.verbosity !== undefined) {
+        request.text.verbosity = payload.verbosity;
+      }
+      if (payload.response_format !== undefined) {
+        request.text.format = payload.response_format;
+      }
     }
 
     applyCustomRequestParams(request, payload.custom_request_params);

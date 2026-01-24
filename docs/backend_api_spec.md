@@ -1,6 +1,6 @@
 # ChatForge Backend API Specification
 
-Version: 2026-01-07
+Version: 2026-01-24
 Status: Draft (authoritative for current code on branch `refactor/frontend_rewrite`)
 Base URL: `https://<host>` (all endpoints are prefixed with `/v1` except health which also supports `/health`/`/healthz`)
 Authentication: JSON Web Tokens (JWT) via `Authorization: Bearer <accessToken>` unless explicitly marked Public.
@@ -245,7 +245,9 @@ When `include_linked=messages` is specified, linked comparison conversation mess
   "provider_id": "uuid",
   "system_prompt": "..." | null,
   "active_system_prompt_id": "uuid" | null,
+  "custom_request_params_id": "uuid" | null,
   "messages": [ { id, seq, role, content, created_at, ... } ],
+  "evaluations": [ { id, user_id, conversation_id, model_a_conversation_id, model_a_message_id, model_b_conversation_id, model_b_message_id, judge_model_id, criteria, score_a, score_b, winner, reasoning, created_at } ],
   "next_after_seq": <next seq or null>,
   "linked_conversations": [ { id, title, model, provider_id, messages: [...] }, ... ] // Only if include_linked=messages
 }
@@ -303,6 +305,64 @@ Success 200:
 - `stopped: true` indicates the streaming response was successfully aborted.
 - `stopped: false` indicates no matching active stream was found.
 Errors: 400 missing_request_id (when no request_id provided in body or header).
+
+### POST /v1/chat/judge
+Evaluate and compare two model responses using a judge model.
+Request body:
+```
+{
+  "conversation_id": "uuid",                  // Main conversation ID
+  "comparison_conversation_id": "uuid",       // Comparison conversation ID
+  "message_id": "uuid",                       // Message A (assistant response) to evaluate
+  "comparison_message_id": "uuid",            // Message B (assistant response) to compare against
+  "judge_model": "model-id",                  // Judge model identifier
+  "judge_provider_id": "provider-uuid",       // Optional: specific provider for judge model
+  "criteria": "string"                        // Optional: evaluation criteria
+}
+```
+
+Behavior:
+- Returns cached evaluation if one exists for the same message pair, judge model, and criteria
+- Fetches both messages and the previous user prompt
+- Sends evaluation request to judge model with JSON response format
+- Streams the judge's response as SSE events
+- Stores evaluation result in database
+
+Success 200 (SSE stream):
+```
+data: {"id":"judge-...","object":"chat.completion.chunk","choices":[{"delta":{"content":"..."},"index":0}]}
+data: {"id":"judge-...","object":"chat.completion.chunk","choices":[{"delta":{},"index":0,"finish_reason":"stop"}]}
+data: {"type":"evaluation","evaluation":{"id":"...","user_id":"...","conversation_id":"...","model_a_conversation_id":"...","model_a_message_id":"...","model_b_conversation_id":"...","model_b_message_id":"...","judge_model_id":"...","criteria":"...","score_a":8,"score_b":7,"winner":"a","reasoning":"...","created_at":"..."}}
+data: [DONE]
+```
+
+Evaluation object structure:
+- `id` - Evaluation UUID
+- `user_id` - User who created the evaluation
+- `conversation_id` - Main conversation ID
+- `model_a_conversation_id` / `model_a_message_id` - First message being evaluated
+- `model_b_conversation_id` / `model_b_message_id` - Second message being compared
+- `judge_model_id` - Model used for judging
+- `criteria` - Optional evaluation criteria (null if not specified)
+- `score_a` / `score_b` - Numeric scores (null if not provided by judge)
+- `winner` - "a", "b", or "tie"
+- `reasoning` - Judge's explanation
+- `created_at` - ISO timestamp
+
+Errors:
+- 400 bad_request (missing required fields or invalid judge_model)
+- 401 unauthorized
+- 404 not_found (messages not found)
+- 500 internal_error
+- 501 not_implemented (when persistence is disabled)
+
+### DELETE /v1/chat/judge/:id
+Delete an evaluation by ID.
+Success 204: No content (evaluation deleted successfully).
+Errors:
+- 401 unauthorized
+- 404 not_found (evaluation doesn't exist or doesn't belong to user)
+- 500 internal_error
 
 ---
 

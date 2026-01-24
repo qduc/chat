@@ -824,6 +824,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                                   key={preset.id}
                                   placement="right"
                                   delay={300}
+                                  className="w-full"
                                   content={
                                     <div className="space-y-1.5 min-w-0 max-w-[300px]">
                                       <div className="font-semibold text-[11px] border-b border-white/10 dark:border-zinc-200/10 pb-1 mb-1">

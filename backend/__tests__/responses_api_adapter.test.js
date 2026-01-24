@@ -186,6 +186,22 @@ describe('ResponsesAPIAdapter', () => {
         output: 'Search results',
       });
     });
+
+    test('moves response_format and verbosity to text object', async () => {
+      const adapter = createAdapter();
+      const request = await adapter.translateRequest({
+        messages: [{ role: 'user', content: 'What is the JSON?' }],
+        response_format: { type: 'json_object' },
+        verbosity: 'high',
+      });
+
+      expect(request.text).toEqual({
+        format: { type: 'json_object' },
+        verbosity: 'high',
+      });
+      expect(request.response_format).toBeUndefined();
+      expect(request.verbosity).toBeUndefined();
+    });
   });
 
   describe('translateResponse', () => {

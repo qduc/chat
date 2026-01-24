@@ -28,6 +28,8 @@ export {
   getMessagesPage,
   getLastMessage,
   getLastAssistantResponseId,
+  getMessageContentByClientId,
+  getPreviousUserMessage,
   updateMessageContent,
   deleteMessagesAfterSeq,
   clearAllMessages,
@@ -56,3 +58,9 @@ export {
   getToolOutputsByMessageIds,
   deleteToolCallsAndOutputsByMessageId,
 } from './toolCalls.js';
+
+export {
+  listEvaluationsForConversation,
+  getEvaluationByPair,
+  createEvaluation,
+} from './evaluations.js';

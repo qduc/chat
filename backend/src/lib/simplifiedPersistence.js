@@ -1,3 +1,4 @@
+import { v4 as uuidv4 } from 'uuid';
 import { getDb } from '../db/client.js';
 import {
   ConversationManager,
@@ -275,7 +276,7 @@ export class SimplifiedPersistence {
     this.totalTokens = null;
     this.promptMs = null;
     this.completionMs = null;
-    this.assistantMessageId = null;
+    this.assistantMessageId = uuidv4();
     this.messageEventsEnabled = this.persistenceConfig?.isMessageEventsEnabled?.() ?? true;
     this.messageEvents = [];
     this.nextEventSeq = 0;
@@ -726,7 +727,7 @@ export class SimplifiedPersistence {
           provider: this.upstreamProvider,
         });
 
-        this.assistantMessageId = String(this.currentMessageId);
+        // Maintain assistantMessageId as the UUID generated during setup
         logger.debug('[SimplifiedPersistence] Updated draft to final', {
           conversationId: this.conversationId,
           messageId: this.currentMessageId,
@@ -758,7 +759,7 @@ export class SimplifiedPersistence {
               provider: this.upstreamProvider,
             });
             this.currentMessageId = found.id;
-            this.assistantMessageId = String(found.id);
+            this.assistantMessageId = this.assistantMessageId || uuidv4();
             logger.debug('[SimplifiedPersistence] Updated found draft (by seq) to final', { conversationId: this.conversationId, messageId: found.id });
           } catch (err) {
             logger.warn('[SimplifiedPersistence] Failed to update found draft; falling back to insert:', err?.message || err);
@@ -776,10 +777,11 @@ export class SimplifiedPersistence {
               promptMs: this.promptMs,
               completionMs: this.completionMs,
               provider: this.upstreamProvider,
+              clientMessageId: this.assistantMessageId,
             });
             if (result && result.id) {
               this.currentMessageId = result.id;
-              this.assistantMessageId = String(result.id);
+              this.assistantMessageId = result.clientMessageId || this.assistantMessageId;
             }
           }
         } else {
@@ -798,10 +800,11 @@ export class SimplifiedPersistence {
             promptMs: this.promptMs,
             completionMs: this.completionMs,
             provider: this.upstreamProvider,
+            clientMessageId: this.assistantMessageId,
           });
           if (result && result.id) {
             this.currentMessageId = result.id;
-            this.assistantMessageId = String(result.id);
+            this.assistantMessageId = result.clientMessageId || this.assistantMessageId;
             logger.debug('[SimplifiedPersistence] Assistant message recorded', {
               conversationId: this.conversationId,
               messageId: this.currentMessageId,
@@ -1079,9 +1082,14 @@ export class SimplifiedPersistence {
       const db = getDb();
       const now = new Date().toISOString();
       const info = db.prepare(
-        `INSERT INTO messages (conversation_id, role, status, content, seq, created_at, updated_at)
-         VALUES (@conversationId, 'assistant', 'draft', '', @seq, @now, @now)`
-      ).run({ conversationId: this.conversationId, seq: this.assistantSeq, now });
+        `INSERT INTO messages (conversation_id, role, status, content, seq, client_message_id, created_at, updated_at)
+         VALUES (@conversationId, 'assistant', 'draft', '', @seq, @clientMessageId, @now, @now)`
+      ).run({
+        conversationId: this.conversationId,
+        seq: this.assistantSeq,
+        clientMessageId: this.assistantMessageId,
+        now
+      });
 
       this.currentMessageId = info.lastInsertRowid;
       this.lastCheckpoint = Date.now();

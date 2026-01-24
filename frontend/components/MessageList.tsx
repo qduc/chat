@@ -11,22 +11,29 @@ import {
   AlertCircle,
   ChevronDown,
   GitFork,
+  Scale,
+  Trophy,
 } from 'lucide-react';
 import Markdown from './Markdown';
 import { MessageContentRenderer } from './ui/MessageContentRenderer';
 import { ImagePreview, ImageUploadZone } from './ui/ImagePreview';
-import type { PendingState } from '../hooks/useChat';
+import { Modal } from './ui/Modal';
+import ModelSelector from './ui/ModelSelector';
+import { useToast } from './ui/Toast';
+import type { PendingState, EvaluationDraft } from '../hooks/useChat';
 import {
   images,
   createMixedContent,
   extractImagesFromContent,
   extractTextFromContent,
   hasAudio,
+  extractReasoningFromPartialJson,
   type ChatMessage,
   type MessageContent,
   type ImageAttachment,
   type ImageContent,
 } from '../lib';
+import type { Evaluation } from '../lib/types';
 import { useStreamingScroll } from '../hooks/useStreamingScroll';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { WelcomeMessage } from './WelcomeMessage';
@@ -37,6 +44,15 @@ interface MessageListProps {
   conversationId: string | null;
   compareModels: string[];
   primaryModelLabel: string | null;
+  modelGroups: Array<{
+    id: string;
+    label: string;
+    options: Array<{ value: string; label: string }>;
+  }>;
+  modelOptions: Array<{ value: string; label: string }>;
+  linkedConversations: Record<string, string>;
+  evaluations: Evaluation[];
+  evaluationDrafts: EvaluationDraft[];
   canSend: boolean;
   editingMessageId: string | null;
   editingContent: string;
@@ -52,6 +68,13 @@ interface MessageListProps {
   containerRef?: React.RefObject<HTMLDivElement>;
   onSuggestionClick?: (text: string) => void;
   onFork?: (messageId: string, modelId: string) => void;
+  onJudge?: (options: {
+    messageId: string;
+    comparisonModelId: string;
+    judgeModelId: string;
+    criteria?: string | null;
+  }) => Promise<unknown>;
+  onDeleteJudgeResponse: (id: string) => Promise<void>;
 }
 
 // Maximum number of model columns to display side-by-side
@@ -307,6 +330,9 @@ interface MessageProps {
   conversationId: string | null;
   compareModels: string[];
   primaryModelLabel: string | null;
+  linkedConversations: Record<string, string>;
+  evaluations: Evaluation[];
+  evaluationDrafts: EvaluationDraft[];
   canSend: boolean;
   editingMessageId: string | null;
   editingContent: string;
@@ -340,6 +366,8 @@ interface MessageProps {
   onSelectAllComparisonModels: (models: string[]) => void;
   isMobile: boolean;
   showComparisonTabs: boolean;
+  onOpenJudgeModal?: (messageId: string, comparisonModelIds: string[]) => void;
+  onDeleteJudgeResponse: (id: string) => Promise<void>;
 }
 
 const Message = React.memo<MessageProps>(
@@ -348,6 +376,9 @@ const Message = React.memo<MessageProps>(
     isStreaming,
     compareModels,
     primaryModelLabel,
+    linkedConversations,
+    evaluations,
+    evaluationDrafts,
     canSend,
     editingMessageId,
     editingContent,
@@ -379,44 +410,8 @@ const Message = React.memo<MessageProps>(
     onSelectAllComparisonModels,
     isMobile,
     showComparisonTabs,
-  }: {
-    message: ChatMessage;
-    isStreaming: boolean;
-    conversationId: string | null;
-    compareModels: string[];
-    primaryModelLabel: string | null;
-    canSend: boolean;
-    editingMessageId: string | null;
-    editingContent: string;
-    onCopy: (text: string) => void;
-    onEditMessage: (messageId: string, content: string) => void;
-    onCancelEdit: () => void;
-    onApplyLocalEdit: (messageId: string, content?: MessageContent) => void;
-    onEditingContentChange: (content: string) => void;
-    onRetryMessage?: (messageId: string) => void;
-    onRetryComparisonModel?: (messageId: string, modelId: string) => void;
-    editingTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
-    lastUserMessageRef: React.RefObject<HTMLDivElement | null> | null;
-    toolbarRef?: React.RefObject<HTMLDivElement | null>;
-    resizeEditingTextarea: () => void;
-    collapsedToolOutputs: Record<string, boolean>;
-    setCollapsedToolOutputs: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
-    copiedMessageId: string | null;
-    handleCopy: (messageId: string, text: string) => void;
-    pending: PendingState;
-    streamingStats: { tokensPerSecond: number; isEstimate?: boolean } | null;
-    editingImages: ImageAttachment[];
-    onEditingImagesChange: (files: File[]) => void;
-    onRemoveEditingImage: (id: string) => void;
-    onEditingPaste: (e: React.ClipboardEvent<HTMLTextAreaElement>) => void;
-    onEditingImageUploadClick: () => void;
-    fileInputRef: React.RefObject<HTMLInputElement | null>;
-    onFork?: (messageId: string, modelId: string) => void;
-    selectedComparisonModels: string[];
-    onToggleComparisonModel: (modelId: string, event?: React.MouseEvent) => void;
-    onSelectAllComparisonModels: (models: string[]) => void;
-    isMobile: boolean;
-    showComparisonTabs: boolean;
+    onOpenJudgeModal,
+    onDeleteJudgeResponse,
   }) {
     const isUser = message.role === 'user';
     const isEditing = editingMessageId === message.id;
@@ -429,6 +424,34 @@ const Message = React.memo<MessageProps>(
       ? Array.from(new Set([...baseComparisonModels, ...compareModels]))
       : baseComparisonModels;
     const hasComparison = comparisonModels.length > 0;
+
+    const comparisonModelIds = Object.keys(message.comparisonResults || {});
+    const primaryLabel = primaryModelLabel
+      ? primaryModelLabel.includes('::')
+        ? primaryModelLabel.split('::')[1]
+        : primaryModelLabel
+      : 'Primary';
+
+    const resolveModelLabel = (modelId: string | null | undefined) => {
+      if (!modelId) return 'Model';
+      if (modelId === 'primary') return primaryLabel;
+      return modelId.includes('::') ? modelId.split('::')[1] : modelId;
+    };
+
+    const resolveComparisonModelId = (conversationId: string | null | undefined) => {
+      if (!conversationId) return null;
+      const match = Object.entries(linkedConversations).find(
+        ([, convoId]) => convoId === conversationId
+      );
+      return match ? match[0] : null;
+    };
+
+    const evaluationsForMessage = evaluations.filter(
+      (evaluation) => evaluation.model_a_message_id === message.id
+    );
+    const evaluationDraftsForMessage = evaluationDrafts.filter(
+      (draft) => draft.messageId === message.id
+    );
 
     // All available models including primary
     const allModels = ['primary', ...comparisonModels];
@@ -1047,6 +1070,115 @@ const Message = React.memo<MessageProps>(
                 modelDisplayData.map((data) => renderModelResponse(data))
               )}
 
+              {!isUser && hasComparison && onOpenJudgeModal && comparisonModelIds.length > 0 && (
+                <div className="mt-3 flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => onOpenJudgeModal(message.id, comparisonModelIds)}
+                    disabled={actionsDisabled}
+                    className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-full border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Scale className="w-3.5 h-3.5" aria-hidden="true" />
+                    Judge
+                  </button>
+                </div>
+              )}
+
+              {!isUser &&
+                hasComparison &&
+                (evaluationDraftsForMessage.length > 0 || evaluationsForMessage.length > 0) && (
+                  <div className="mt-3 space-y-3">
+                    {evaluationDraftsForMessage.map((draft) => {
+                      const modelLabel = resolveModelLabel(draft.comparisonModelId);
+                      return (
+                        <div
+                          key={draft.id}
+                          className="border border-amber-200/70 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/30 rounded-xl px-4 py-3"
+                        >
+                          <div className="flex items-center justify-between text-xs text-amber-700 dark:text-amber-300">
+                            <div className="flex items-center gap-2">
+                              <Scale className="w-3.5 h-3.5" />
+                              <span>Judging vs {modelLabel}</span>
+                            </div>
+                            <span className="uppercase tracking-wide">
+                              {draft.status === 'error' ? 'Failed' : 'Working'}
+                            </span>
+                          </div>
+                          <div className="mt-2 text-sm text-amber-900 dark:text-amber-100">
+                            {draft.status === 'error' ? (
+                              <div className="text-red-600 dark:text-red-300">{draft.error}</div>
+                            ) : (
+                              <Markdown
+                                text={
+                                  extractReasoningFromPartialJson(draft.content) || 'Analyzing...'
+                                }
+                                isStreaming={draft.status === 'streaming'}
+                                className="md-compact !text-amber-900 dark:!text-amber-100"
+                              />
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+
+                    {evaluationsForMessage.map((evaluation) => {
+                      const comparisonModelId = resolveComparisonModelId(
+                        evaluation.model_b_conversation_id
+                      );
+                      const modelLabel = resolveModelLabel(comparisonModelId);
+                      const judgeLabel = resolveModelLabel(evaluation.judge_model_id);
+                      const winnerLabel =
+                        evaluation.winner === 'model_a'
+                          ? primaryLabel
+                          : evaluation.winner === 'model_b'
+                            ? modelLabel
+                            : 'Tie';
+
+                      return (
+                        <div
+                          key={evaluation.id}
+                          className="border border-emerald-200/70 dark:border-emerald-900/50 bg-emerald-50/70 dark:bg-emerald-950/30 rounded-xl px-4 py-3"
+                        >
+                          <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-emerald-700 dark:text-emerald-300">
+                            <div className="flex items-center gap-2">
+                              <Trophy className="w-3.5 h-3.5" />
+                              <span>Winner: {winnerLabel}</span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 text-[11px] text-emerald-600 dark:text-emerald-400">
+                                <span>Judge: {judgeLabel}</span>
+                                {evaluation.criteria ? <span>• {evaluation.criteria}</span> : null}
+                              </div>
+                              <button
+                                onClick={() => onDeleteJudgeResponse(evaluation.id)}
+                                title="Delete judge response"
+                                className="p-1 rounded hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 transition-colors"
+                              >
+                                <span className="text-[10px]">✕</span>
+                              </button>
+                            </div>
+                          </div>
+                          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-emerald-800 dark:text-emerald-100">
+                            <div className="flex items-center justify-between bg-white/60 dark:bg-emerald-950/40 rounded-lg px-2.5 py-1.5">
+                              <span>{primaryLabel}</span>
+                              <span>{evaluation.score_a ?? '—'}</span>
+                            </div>
+                            <div className="flex items-center justify-between bg-white/60 dark:bg-emerald-950/40 rounded-lg px-2.5 py-1.5">
+                              <span>{modelLabel}</span>
+                              <span>{evaluation.score_b ?? '—'}</span>
+                            </div>
+                          </div>
+                          {evaluation.reasoning && (
+                            <div className="mt-2 text-sm text-emerald-900 dark:text-emerald-100">
+                              <Markdown text={evaluation.reasoning} className="md-compact" />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
               {!isUser && hasComparison && onRetryMessage && !pending.streaming && (
                 <div className="mt-2 flex justify-end">
                   <button
@@ -1133,6 +1265,10 @@ const Message = React.memo<MessageProps>(
       prev.message.usage === next.message.usage &&
       prev.isStreaming === next.isStreaming &&
       prev.compareModels === next.compareModels &&
+      prev.primaryModelLabel === next.primaryModelLabel &&
+      prev.linkedConversations === next.linkedConversations &&
+      prev.evaluations === next.evaluations &&
+      prev.evaluationDrafts === next.evaluationDrafts &&
       prev.canSend === next.canSend &&
       prev.editingMessageId === next.editingMessageId &&
       prev.editingContent === next.editingContent &&
@@ -1145,7 +1281,8 @@ const Message = React.memo<MessageProps>(
       prev.toolbarRef === next.toolbarRef &&
       prev.selectedComparisonModels === next.selectedComparisonModels &&
       prev.isMobile === next.isMobile &&
-      prev.showComparisonTabs === next.showComparisonTabs
+      prev.showComparisonTabs === next.showComparisonTabs &&
+      prev.onDeleteJudgeResponse === next.onDeleteJudgeResponse
     );
   }
 );
@@ -1156,6 +1293,11 @@ export function MessageList({
   conversationId,
   compareModels,
   primaryModelLabel,
+  modelGroups,
+  modelOptions,
+  linkedConversations,
+  evaluations,
+  evaluationDrafts,
   canSend,
   editingMessageId,
   editingContent,
@@ -1170,7 +1312,11 @@ export function MessageList({
   containerRef: externalContainerRef,
   onSuggestionClick,
   onFork,
+  onJudge,
+  onDeleteJudgeResponse,
 }: MessageListProps) {
+  const { showToast } = useToast();
+
   // Debug logging
   const internalContainerRef = useRef<HTMLDivElement | null>(null);
   const containerRef = externalContainerRef || internalContainerRef;
@@ -1192,6 +1338,31 @@ export function MessageList({
     containerRef
   );
 
+  const [isJudgeModalOpen, setIsJudgeModalOpen] = useState(false);
+  const [judgeMessageId, setJudgeMessageId] = useState<string | null>(null);
+  const [judgeComparisonModelId, setJudgeComparisonModelId] = useState<string | null>(null);
+  const [judgeModelId, setJudgeModelId] = useState<string>('');
+  const [judgeCriteria, setJudgeCriteria] = useState<
+    'general' | 'fact' | 'creative' | 'code' | 'custom'
+  >('general');
+  const [judgeCustomCriteria, setJudgeCustomCriteria] = useState('');
+
+  const judgeAvailableComparisonModels = useMemo(() => {
+    if (!judgeMessageId) return [] as string[];
+    const target = messages.find((msg) => msg.id === judgeMessageId);
+    return target ? Object.keys(target.comparisonResults || {}) : [];
+  }, [judgeMessageId, messages]);
+
+  useEffect(() => {
+    if (judgeAvailableComparisonModels.length === 0) return;
+    if (
+      !judgeComparisonModelId ||
+      !judgeAvailableComparisonModels.includes(judgeComparisonModelId)
+    ) {
+      setJudgeComparisonModelId(judgeAvailableComparisonModels[0]);
+    }
+  }, [judgeAvailableComparisonModels, judgeComparisonModelId]);
+
   // Streaming statistics - now calculated from actual token count
   const [streamingStats, setStreamingStats] = useState<{
     tokensPerSecond: number;
@@ -1202,6 +1373,17 @@ export function MessageList({
   // Editing images state - tracks images being edited
   const [editingImages, setEditingImages] = useState<ImageAttachment[]>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  const judgeCriteriaOptions = useMemo(
+    () => [
+      { id: 'general', label: 'General check', helper: 'Overall correctness and helpfulness.' },
+      { id: 'fact', label: 'Fact check', helper: 'Accuracy and factual correctness.' },
+      { id: 'creative', label: 'Creative check', helper: 'Originality and expressiveness.' },
+      { id: 'code', label: 'Code quality', helper: 'Correctness, clarity, and best practices.' },
+      { id: 'custom', label: 'Custom', helper: 'Specify your own criteria.' },
+    ],
+    []
+  );
 
   // When entering edit mode, initialize editing images from message content
   useEffect(() => {
@@ -1416,6 +1598,62 @@ export function MessageList({
     [canSend, editingContent, editingImages, onApplyLocalEdit]
   );
 
+  const openJudgeModal = useCallback(
+    (messageId: string, comparisonModelIds: string[]) => {
+      if (!onJudge || comparisonModelIds.length === 0) return;
+      setJudgeMessageId(messageId);
+      setJudgeComparisonModelId(comparisonModelIds[0]);
+      const fallbackModel = modelOptions[0]?.value || '';
+      const defaultJudgeModel = judgeModelId || primaryModelLabel || fallbackModel;
+      setJudgeModelId(defaultJudgeModel);
+      setJudgeCriteria('general');
+      setJudgeCustomCriteria('');
+      setIsJudgeModalOpen(true);
+    },
+    [modelOptions, onJudge, judgeModelId, primaryModelLabel]
+  );
+
+  const closeJudgeModal = useCallback(() => {
+    setIsJudgeModalOpen(false);
+  }, []);
+
+  const handleJudgeConfirm = useCallback(() => {
+    if (!onJudge || !judgeMessageId || !judgeComparisonModelId || !judgeModelId) return;
+    const selectedCriteria = judgeCriteriaOptions.find((item) => item.id === judgeCriteria);
+    const criteriaText =
+      judgeCriteria === 'custom'
+        ? judgeCustomCriteria.trim()
+        : selectedCriteria?.label || 'General check';
+
+    // Close the modal immediately so streaming can be observed inline under the message.
+    // (The judge call streams tokens into evaluationDrafts.)
+    setIsJudgeModalOpen(false);
+
+    void onJudge({
+      messageId: judgeMessageId,
+      comparisonModelId: judgeComparisonModelId,
+      judgeModelId,
+      criteria: criteriaText || null,
+    }).catch((err) => {
+      const message = err instanceof Error ? err.message : 'Failed to judge responses';
+      showToast({ message, variant: 'error' });
+    });
+  }, [
+    judgeMessageId,
+    judgeComparisonModelId,
+    judgeModelId,
+    judgeCriteria,
+    judgeCustomCriteria,
+    judgeCriteriaOptions,
+    onJudge,
+    showToast,
+  ]);
+
+  const formatModelLabel = useCallback((modelId: string | null | undefined) => {
+    if (!modelId) return 'Model';
+    return modelId.includes('::') ? modelId.split('::')[1] : modelId;
+  }, []);
+
   // Handle copy with tooltip feedback
   const handleCopy = (messageId: string, text: string) => {
     onCopy(text);
@@ -1512,81 +1750,162 @@ export function MessageList({
   }, [messages.length, onScrollStateChange, containerRef]);
 
   return (
-    <main
-      ref={containerRef}
-      className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-track-transparent relative"
-      style={{ willChange: 'scroll-position' }}
-    >
-      <div
-        className={`w-full mx-auto px-4 sm:px-4 md:px-6 py-6 space-y-6 ${hasMultiColumnLayout ? 'max-w-6xl' : 'max-w-3xl'}`}
-        style={{ paddingBottom: dynamicBottomPadding }}
+    <>
+      <Modal
+        open={isJudgeModalOpen}
+        onClose={closeJudgeModal}
+        title="Judge responses"
+        maxWidthClassName="max-w-2xl"
       >
-        {messages.length === 0 && <WelcomeMessage onSuggestionClick={onSuggestionClick} />}
-        {processedMessages.map((m, idx) => {
-          const isUser = m.role === 'user';
-          const isStreaming = pending.streaming && idx === processedMessages.length - 1;
-          const isLastAssistantMessage = !isUser && idx === processedMessages.length - 1;
-          // Set ref to the most recent user message (could be last or second-to-last)
-          const isRecentUserMessage =
-            isUser &&
-            (idx === processedMessages.length - 1 || // last message is user
-              (idx === processedMessages.length - 2 &&
-                processedMessages[processedMessages.length - 1]?.role === 'assistant')); // second-to-last is user, last is assistant
-
-          return (
-            <Message
-              key={m.id}
-              message={m}
-              isStreaming={isStreaming}
-              conversationId={conversationId}
-              compareModels={compareModels}
-              primaryModelLabel={primaryModelLabel}
-              canSend={canSend}
-              editingMessageId={editingMessageId}
-              editingContent={editingContent}
-              onCopy={onCopy}
-              onEditMessage={onEditMessage}
-              onCancelEdit={onCancelEdit}
-              onApplyLocalEdit={handleApplyLocalEdit}
-              onEditingContentChange={onEditingContentChange}
-              onRetryMessage={handleRetryMessage}
-              onRetryComparisonModel={onRetryComparisonModel}
-              editingTextareaRef={editingTextareaRef}
-              lastUserMessageRef={isRecentUserMessage ? lastUserMessageRef : null}
-              toolbarRef={isRecentUserMessage ? toolbarRef : undefined}
-              resizeEditingTextarea={resizeEditingTextarea}
-              collapsedToolOutputs={collapsedToolOutputs}
-              setCollapsedToolOutputs={setCollapsedToolOutputs}
-              copiedMessageId={copiedMessageId}
-              handleCopy={handleCopy}
-              pending={pending}
-              streamingStats={isLastAssistantMessage ? streamingStats : null}
-              editingImages={editingImages}
-              onEditingImagesChange={handleEditingImageFiles}
-              onRemoveEditingImage={handleRemoveEditingImage}
-              onEditingPaste={handleEditingPaste}
-              onEditingImageUploadClick={handleEditingImageUploadClick}
-              fileInputRef={fileInputRef}
-              onFork={onFork}
-              selectedComparisonModels={effectiveSelectedModels}
-              onToggleComparisonModel={handleToggleComparisonModel}
-              onSelectAllComparisonModels={handleSelectAllComparisonModels}
-              isMobile={isMobile}
-              showComparisonTabs={m.id === firstAssistantMessageId}
-            />
-          );
-        })}
-        {pending.error && (
-          <div className="flex items-start gap-3 text-base text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-xl px-4 py-3 shadow-sm">
-            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-            <div>
-              <div className="font-medium mb-1">Error occurred</div>
-              <div className="text-red-600 dark:text-red-400">{pending.error}</div>
+        <div className="space-y-4">
+          <div>
+            <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400">
+              Judge model
+            </label>
+            <div className="mt-2">
+              <ModelSelector
+                value={judgeModelId || modelOptions[0]?.value || ''}
+                onChange={setJudgeModelId}
+                groups={modelGroups}
+                fallbackOptions={modelOptions}
+                ariaLabel="Select judge model"
+              />
             </div>
           </div>
-        )}
-        <div ref={bottomRef} />
-      </div>
-    </main>
+
+          <div>
+            <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400">
+              Criteria
+            </label>
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {judgeCriteriaOptions.map((option) => (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => setJudgeCriteria(option.id as typeof judgeCriteria)}
+                  className={`px-3 py-2 text-xs rounded-lg border transition-colors text-left ${
+                    judgeCriteria === option.id
+                      ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
+                      : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
+                  }`}
+                >
+                  <div className="font-medium">{option.label}</div>
+                  <div className="text-[10px] opacity-70">{option.helper}</div>
+                </button>
+              ))}
+            </div>
+            {judgeCriteria === 'custom' && (
+              <input
+                type="text"
+                value={judgeCustomCriteria}
+                onChange={(e) => setJudgeCustomCriteria(e.target.value)}
+                placeholder="Enter custom criteria..."
+                className="mt-2 w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-zinc-800 dark:text-zinc-100"
+              />
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-2">
+            <button
+              type="button"
+              onClick={closeJudgeModal}
+              className="px-3 py-2 text-xs rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleJudgeConfirm}
+              disabled={!judgeModelId || !judgeComparisonModelId}
+              className="px-3 py-2 text-xs rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-medium disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Start judging
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      <main
+        ref={containerRef}
+        className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-track-transparent relative"
+        style={{ willChange: 'scroll-position' }}
+      >
+        <div
+          className={`w-full mx-auto px-4 sm:px-4 md:px-6 py-6 space-y-6 ${hasMultiColumnLayout ? 'max-w-6xl' : 'max-w-3xl'}`}
+          style={{ paddingBottom: dynamicBottomPadding }}
+        >
+          {messages.length === 0 && <WelcomeMessage onSuggestionClick={onSuggestionClick} />}
+          {processedMessages.map((m, idx) => {
+            const isUser = m.role === 'user';
+            const isStreaming = pending.streaming && idx === processedMessages.length - 1;
+            const isLastAssistantMessage = !isUser && idx === processedMessages.length - 1;
+            // Set ref to the most recent user message (could be last or second-to-last)
+            const isRecentUserMessage =
+              isUser &&
+              (idx === processedMessages.length - 1 || // last message is user
+                (idx === processedMessages.length - 2 &&
+                  processedMessages[processedMessages.length - 1]?.role === 'assistant')); // second-to-last is user, last is assistant
+
+            return (
+              <Message
+                key={m.id}
+                message={m}
+                isStreaming={isStreaming}
+                conversationId={conversationId}
+                compareModels={compareModels}
+                primaryModelLabel={primaryModelLabel}
+                linkedConversations={linkedConversations}
+                evaluations={evaluations}
+                evaluationDrafts={evaluationDrafts}
+                canSend={canSend}
+                editingMessageId={editingMessageId}
+                editingContent={editingContent}
+                onCopy={onCopy}
+                onEditMessage={onEditMessage}
+                onCancelEdit={onCancelEdit}
+                onApplyLocalEdit={handleApplyLocalEdit}
+                onEditingContentChange={onEditingContentChange}
+                onRetryMessage={handleRetryMessage}
+                onRetryComparisonModel={onRetryComparisonModel}
+                editingTextareaRef={editingTextareaRef}
+                lastUserMessageRef={isRecentUserMessage ? lastUserMessageRef : null}
+                toolbarRef={isRecentUserMessage ? toolbarRef : undefined}
+                resizeEditingTextarea={resizeEditingTextarea}
+                collapsedToolOutputs={collapsedToolOutputs}
+                setCollapsedToolOutputs={setCollapsedToolOutputs}
+                copiedMessageId={copiedMessageId}
+                handleCopy={handleCopy}
+                pending={pending}
+                streamingStats={isLastAssistantMessage ? streamingStats : null}
+                editingImages={editingImages}
+                onEditingImagesChange={handleEditingImageFiles}
+                onRemoveEditingImage={handleRemoveEditingImage}
+                onEditingPaste={handleEditingPaste}
+                onEditingImageUploadClick={handleEditingImageUploadClick}
+                fileInputRef={fileInputRef}
+                onFork={onFork}
+                selectedComparisonModels={effectiveSelectedModels}
+                onToggleComparisonModel={handleToggleComparisonModel}
+                onSelectAllComparisonModels={handleSelectAllComparisonModels}
+                isMobile={isMobile}
+                showComparisonTabs={m.id === firstAssistantMessageId}
+                onOpenJudgeModal={openJudgeModal}
+                onDeleteJudgeResponse={onDeleteJudgeResponse}
+              />
+            );
+          })}
+          {pending.error && (
+            <div className="flex items-start gap-3 text-base text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-xl px-4 py-3 shadow-sm">
+              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+              <div>
+                <div className="font-medium mb-1">Error occurred</div>
+                <div className="text-red-600 dark:text-red-400">{pending.error}</div>
+              </div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+      </main>
+    </>
   );
 }

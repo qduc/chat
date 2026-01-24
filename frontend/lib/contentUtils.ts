@@ -240,3 +240,38 @@ export function extractFilesAndText(content: MessageContent): {
     files,
   };
 }
+
+/**
+ * Extract reasoning from partial JSON string (used for streaming judge results)
+ */
+export function extractReasoningFromPartialJson(partialJson: string | null | undefined): string {
+  if (!partialJson || !partialJson.trim()) return '';
+
+  const trimmed = partialJson.trim();
+
+  // If it doesn't look like JSON (starts with {), just return it as is
+  if (!trimmed.startsWith('{')) {
+    return trimmed;
+  }
+
+  // Matches "reasoning": " followed by any characters until the end OR an unescaped double quote
+  // The ([^"\\]*(?:\\.[^"\\]*)*) part matches a string with escapes
+  const regex = /"reasoning"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"?/;
+  const match = partialJson.match(regex);
+  if (match) {
+    return (match[1] || '')
+      .replace(/\\n/g, '\n')
+      .replace(/\\r/g, '\r')
+      .replace(/\\t/g, '\t')
+      .replace(/\\"/g, '"')
+      .replace(/\\\\/g, '\\');
+  }
+
+  // If we found the "reasoning" key but no value yet, return empty
+  if (partialJson.includes('"reasoning"')) {
+    return '';
+  }
+
+  // Otherwise return empty as we are likely still in other fields
+  return '';
+}

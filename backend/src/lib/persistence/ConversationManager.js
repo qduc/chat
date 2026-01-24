@@ -705,6 +705,7 @@ export class ConversationManager {
       promptMs: params.promptMs,
       completionMs: params.completionMs,
       provider: params.provider,
+      clientMessageId: params.clientMessageId,
     });
   }
 

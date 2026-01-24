@@ -726,6 +726,11 @@ export function ChatV2() {
               conversationId={chat.conversationId}
               compareModels={chat.compareModels}
               primaryModelLabel={chat.model}
+              modelGroups={chat.modelGroups}
+              modelOptions={chat.modelOptions}
+              linkedConversations={chat.linkedConversations}
+              evaluations={chat.evaluations}
+              evaluationDrafts={chat.evaluationDrafts}
               canSend={canSend}
               editingMessageId={chat.editingMessageId}
               editingContent={chat.editingContent}
@@ -737,6 +742,8 @@ export function ChatV2() {
               onEditingContentChange={chat.updateEditContent}
               onRetryMessage={handleRetryMessage}
               onRetryComparisonModel={handleRetryComparisonModel}
+              onJudge={chat.judgeComparison}
+              onDeleteJudgeResponse={chat.deleteJudgeResponse}
               onScrollStateChange={setScrollButtons}
               containerRef={messageListRef}
               onSuggestionClick={handleSuggestionClick}

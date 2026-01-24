@@ -94,6 +94,9 @@ chat/
 12. **Model Comparison Mode** - Side-by-side evaluation of multiple models in one view
 13. **Conversation Forking** - Branch conversations at any message to explore alternatives
 14. **Desktop App Integration** - Native Electron experience with secure credential storage
+15. **Judge/Evaluation System** - Automated model response comparison with configurable judge models
+16. **Custom Request Parameters** - User-defined API parameters for advanced configuration
+17. **Usage Tracking** - Comprehensive timing metrics and token usage analysis
 
 ## Request Flow
 
@@ -142,6 +145,7 @@ ChatForge uses SQLite with migration-based schema evolution. Key tables:
 - **system_prompts** - Built-in and custom prompts
 - **settings** - User preferences
 - **journal_entries** - Persistent AI memory
+- **evaluations** - Judge-based model comparison results with scores and reasoning
 
 All tables enforce user-based data isolation with NOT NULL `user_id` constraints.
 
