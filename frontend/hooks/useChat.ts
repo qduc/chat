@@ -1446,8 +1446,15 @@ export function useChat() {
                       ? responseContent.length > 0
                       : responseContent != null;
 
-                const finalContent = hasResponseContent ? responseContent : lastMsg.content;
-                return [...prev.slice(0, lastIdx), { ...lastMsg, content: finalContent }];
+                const finalContent = hasResponseContent ? response.content : lastMsg.content;
+                return [
+                  ...prev.slice(0, lastIdx),
+                  {
+                    ...lastMsg,
+                    id: response.conversation?.assistant_message_id ?? lastMsg.id,
+                    content: finalContent,
+                  },
+                ];
               });
 
               // Update conversation metadata if returned
