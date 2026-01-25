@@ -145,7 +145,7 @@ export function ChatHeader({
             onChange={onModelChange}
             groups={effectiveGroups}
             fallbackOptions={effectiveFallback}
-            className="flex-1 min-w-0 text-sm sm:text-base md:text-lg"
+            className="flex-1 min-w-0 text-sm sm:text-base md:text-lg sm:flex-none"
             ariaLabel="Model"
             onAfterChange={onFocusMessageInput}
             disabled={modelSelectionLocked}
