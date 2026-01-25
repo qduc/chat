@@ -33,7 +33,7 @@ export interface PendingState {
 export interface EvaluationDraft {
   id: string;
   messageId: string;
-  comparisonModelId: string;
+  comparisonModelIds: string[];
   judgeModelId: string;
   criteria?: string | null;
   content: string;
@@ -2104,29 +2104,38 @@ export function useChat() {
   const judgeComparison = useCallback(
     async (options: {
       messageId: string;
-      comparisonModelId: string;
+      comparisonModelIds: string[];
       judgeModelId: string;
       criteria?: string | null;
     }) => {
-      const { messageId, comparisonModelId, judgeModelId, criteria } = options;
+      const uniqueComparisonModelIds = Array.from(new Set(options.comparisonModelIds));
+      const { messageId, judgeModelId, criteria } = options;
       if (!conversationId) {
         throw new Error('No active conversation');
       }
 
-      const comparisonConversationId = linkedConversationsRef.current[comparisonModelId];
-      if (!comparisonConversationId) {
-        throw new Error('Comparison conversation not found for model');
+      if (!uniqueComparisonModelIds.length) {
+        throw new Error('No comparison models selected');
       }
 
       const primaryMessage = messagesRef.current.find((msg) => msg.id === messageId);
-      const comparisonMessageId =
-        primaryMessage?.comparisonResults?.[comparisonModelId]?.messageId ?? null;
+      const comparisonModels = uniqueComparisonModelIds.map((modelId) => {
+        const comparisonConversationId = linkedConversationsRef.current[modelId];
+        const comparisonMessageId = primaryMessage?.comparisonResults?.[modelId]?.messageId ?? null;
 
-      if (!comparisonMessageId) {
-        // Previously we (incorrectly) sent comparison_message_id = messageId, which fails once
-        // linked conversations have different message ids.
-        throw new Error('Comparison message not found for evaluation');
-      }
+        if (!comparisonConversationId) {
+          throw new Error(`Comparison conversation not found for model ${modelId}`);
+        }
+        if (!comparisonMessageId) {
+          throw new Error(`Comparison message not found for model ${modelId}`);
+        }
+
+        return {
+          modelId,
+          conversationId: comparisonConversationId,
+          messageId: comparisonMessageId,
+        };
+      });
 
       let judgeProviderId: string | null = null;
       if (!judgeModelId.includes('::')) {
@@ -2137,7 +2146,7 @@ export function useChat() {
       const draft: EvaluationDraft = {
         id: draftId,
         messageId,
-        comparisonModelId,
+        comparisonModelIds: uniqueComparisonModelIds,
         judgeModelId,
         criteria: criteria ?? null,
         content: '',
@@ -2149,9 +2158,8 @@ export function useChat() {
       try {
         const evaluation = await judge.evaluate({
           conversationId,
-          comparisonConversationId,
           messageId,
-          comparisonMessageId,
+          comparisonModels,
           judgeModelId,
           judgeProviderId,
           criteria,

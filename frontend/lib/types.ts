@@ -295,6 +295,12 @@ export interface Evaluation {
   winner?: string | null;
   reasoning?: string | null;
   created_at: string;
+  models?: Array<{
+    model_id?: string | null;
+    conversation_id: string;
+    message_id: string;
+    score?: number | null;
+  }>;
 }
 
 export interface MessageEvent {

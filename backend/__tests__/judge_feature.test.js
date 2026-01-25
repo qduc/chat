@@ -29,7 +29,7 @@ beforeAll(() => {
 
 beforeEach(() => {
   const db = getDb();
-  db.exec('DELETE FROM evaluations; DELETE FROM messages; DELETE FROM conversations; DELETE FROM sessions; DELETE FROM users;');
+  db.exec('DELETE FROM evaluation_models; DELETE FROM evaluations; DELETE FROM messages; DELETE FROM conversations; DELETE FROM sessions; DELETE FROM users;');
 });
 
 afterAll(() => {
@@ -108,6 +108,58 @@ describe('POST /v1/chat/judge', () => {
     assert.equal(rows.length, 1);
     assert.equal(rows[0].model_a_message_id, 'assistant-a');
     assert.equal(rows[0].model_b_message_id, 'assistant-b');
+  });
+
+  test('supports multi-model judging', async () => {
+    const app = makeApp({ mockUser });
+    seedJudgeConversations();
+
+    createConversation({
+      id: 'conv-compare-2',
+      sessionId,
+      userId: mockUser.id,
+      title: 'Compare 2',
+      provider_id: 'p1',
+      model: 'gpt-3.5-turbo',
+      parentConversationId: 'conv-primary',
+    });
+
+    insertAssistantFinal({
+      conversationId: 'conv-compare-2',
+      content: 'Paris is the capital city.',
+      seq: 1,
+      finishReason: 'stop',
+      clientMessageId: 'assistant-c',
+    });
+
+    const res = await request(app)
+      .post('/v1/chat/judge')
+      .send({
+        conversation_id: 'conv-primary',
+        message_id: 'assistant-a',
+        comparison_models: [
+          {
+            model_id: 'model-1',
+            conversation_id: 'conv-compare',
+            message_id: 'assistant-b',
+          },
+          {
+            model_id: 'model-2',
+            conversation_id: 'conv-compare-2',
+            message_id: 'assistant-c',
+          },
+        ],
+        judge_model: 'gpt-3.5-turbo',
+        criteria: 'Fact check',
+      });
+
+    assert.equal(res.status, 200);
+
+    const db = getDb();
+    const evaluations = db.prepare('SELECT * FROM evaluations').all();
+    assert.equal(evaluations.length, 1);
+    const modelRows = db.prepare('SELECT * FROM evaluation_models').all();
+    assert.equal(modelRows.length, 3);
   });
 
   test('returns cached evaluation without hitting upstream', async () => {

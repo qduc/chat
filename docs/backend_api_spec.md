@@ -307,17 +307,35 @@ Success 200:
 Errors: 400 missing_request_id (when no request_id provided in body or header).
 
 ### POST /v1/chat/judge
-Evaluate and compare two model responses using a judge model.
+Evaluate and compare multiple model responses using a judge model.
 Request body:
 ```
 {
-  "conversation_id": "uuid",                  // Main conversation ID
-  "comparison_conversation_id": "uuid",       // Comparison conversation ID
-  "message_id": "uuid",                       // Message A (assistant response) to evaluate
-  "comparison_message_id": "uuid",            // Message B (assistant response) to compare against
+  "conversation_id": "uuid",                  // Main conversation ID (primary)
+  "message_id": "uuid",                       // Primary assistant response to evaluate
+  "comparison_models": [                      // Comparison responses (one or more)
+    {
+      "model_id": "model-key",                // Model identifier used in UI (optional)
+      "conversation_id": "uuid",
+      "message_id": "uuid"
+    }
+  ],
   "judge_model": "model-id",                  // Judge model identifier
   "judge_provider_id": "provider-uuid",       // Optional: specific provider for judge model
   "criteria": "string"                        // Optional: evaluation criteria
+}
+```
+
+Legacy request body (pairwise only):
+```
+{
+  "conversation_id": "uuid",
+  "comparison_conversation_id": "uuid",
+  "message_id": "uuid",
+  "comparison_message_id": "uuid",
+  "judge_model": "model-id",
+  "judge_provider_id": "provider-uuid",
+  "criteria": "string"
 }
 ```
 
@@ -332,7 +350,7 @@ Success 200 (SSE stream):
 ```
 data: {"id":"judge-...","object":"chat.completion.chunk","choices":[{"delta":{"content":"..."},"index":0}]}
 data: {"id":"judge-...","object":"chat.completion.chunk","choices":[{"delta":{},"index":0,"finish_reason":"stop"}]}
-data: {"type":"evaluation","evaluation":{"id":"...","user_id":"...","conversation_id":"...","model_a_conversation_id":"...","model_a_message_id":"...","model_b_conversation_id":"...","model_b_message_id":"...","judge_model_id":"...","criteria":"...","score_a":8,"score_b":7,"winner":"a","reasoning":"...","created_at":"..."}}
+data: {"type":"evaluation","evaluation":{"id":"...","user_id":"...","conversation_id":"...","model_a_conversation_id":"...","model_a_message_id":"...","model_b_conversation_id":"...","model_b_message_id":"...","judge_model_id":"...","criteria":"...","score_a":8,"score_b":7,"winner":"primary","reasoning":"...","created_at":"...","models":[{"model_id":"primary","conversation_id":"...","message_id":"...","score":8}]}}
 data: [DONE]
 ```
 
@@ -345,9 +363,10 @@ Evaluation object structure:
 - `judge_model_id` - Model used for judging
 - `criteria` - Optional evaluation criteria (null if not specified)
 - `score_a` / `score_b` - Numeric scores (null if not provided by judge)
-- `winner` - "a", "b", or "tie"
+- `winner` - "primary", "<model_id>", or "tie"
 - `reasoning` - Judge's explanation
 - `created_at` - ISO timestamp
+- `models` - Optional array of per-model scores (model_id, conversation_id, message_id, score)
 
 Errors:
 - 400 bad_request (missing required fields or invalid judge_model)

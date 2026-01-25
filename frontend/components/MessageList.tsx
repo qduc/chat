@@ -71,7 +71,7 @@ interface MessageListProps {
   onFork?: (messageId: string, modelId: string) => void;
   onJudge?: (options: {
     messageId: string;
-    comparisonModelId: string;
+    comparisonModelIds: string[];
     judgeModelId: string;
     criteria?: string | null;
   }) => Promise<unknown>;
@@ -1090,7 +1090,9 @@ const Message = React.memo<MessageProps>(
                 (evaluationDraftsForMessage.length > 0 || evaluationsForMessage.length > 0) && (
                   <div className="mt-3 space-y-3">
                     {evaluationDraftsForMessage.map((draft) => {
-                      const modelLabel = resolveModelLabel(draft.comparisonModelId);
+                      const modelLabels = draft.comparisonModelIds
+                        .map((modelId) => resolveModelLabel(modelId))
+                        .join(', ');
                       return (
                         <div
                           key={draft.id}
@@ -1099,7 +1101,7 @@ const Message = React.memo<MessageProps>(
                           <div className="flex items-center justify-between text-xs text-amber-700 dark:text-amber-300">
                             <div className="flex items-center gap-2">
                               <Scale className="w-3.5 h-3.5" />
-                              <span>Judging vs {modelLabel}</span>
+                              <span>Judging vs {modelLabels}</span>
                             </div>
                             <span className="uppercase tracking-wide">
                               {draft.status === 'error' ? 'Failed' : 'Working'}
@@ -1123,17 +1125,54 @@ const Message = React.memo<MessageProps>(
                     })}
 
                     {evaluationsForMessage.map((evaluation) => {
-                      const comparisonModelId = resolveComparisonModelId(
+                      const fallbackComparisonModelId = resolveComparisonModelId(
                         evaluation.model_b_conversation_id
                       );
-                      const modelLabel = resolveModelLabel(comparisonModelId);
+                      const evaluationModels =
+                        evaluation.models && evaluation.models.length > 0
+                          ? evaluation.models
+                          : [
+                              {
+                                model_id: 'primary',
+                                conversation_id: evaluation.model_a_conversation_id,
+                                message_id: evaluation.model_a_message_id,
+                                score: evaluation.score_a ?? null,
+                              },
+                              {
+                                model_id: fallbackComparisonModelId ?? null,
+                                conversation_id: evaluation.model_b_conversation_id,
+                                message_id: evaluation.model_b_message_id,
+                                score: evaluation.score_b ?? null,
+                              },
+                            ];
+
+                      const resolveEvaluationModelLabel = (model: (typeof evaluationModels)[0]) => {
+                        if (model.model_id === 'primary') return primaryLabel;
+                        if (model.model_id) return resolveModelLabel(model.model_id);
+                        if (model.conversation_id === evaluation.model_a_conversation_id) {
+                          return primaryLabel;
+                        }
+                        const comparisonModelId = resolveComparisonModelId(model.conversation_id);
+                        return resolveModelLabel(comparisonModelId);
+                      };
+
+                      const winnerLabel = (() => {
+                        if (!evaluation.winner || evaluation.winner === 'tie') return 'Tie';
+                        if (evaluation.winner === 'model_a' || evaluation.winner === 'primary') {
+                          return primaryLabel;
+                        }
+                        if (evaluation.winner === 'model_b') {
+                          return resolveModelLabel(fallbackComparisonModelId);
+                        }
+                        const winnerModel = evaluationModels.find(
+                          (model) => model.model_id === evaluation.winner
+                        );
+                        return winnerModel
+                          ? resolveEvaluationModelLabel(winnerModel)
+                          : evaluation.winner;
+                      })();
+
                       const judgeLabel = resolveModelLabel(evaluation.judge_model_id);
-                      const winnerLabel =
-                        evaluation.winner === 'model_a'
-                          ? primaryLabel
-                          : evaluation.winner === 'model_b'
-                            ? modelLabel
-                            : 'Tie';
 
                       return (
                         <div
@@ -1159,53 +1198,42 @@ const Message = React.memo<MessageProps>(
                               </button>
                             </div>
                           </div>
-                          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-emerald-800 dark:text-emerald-100">
-                            <div
-                              className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 ${
-                                evaluation.winner === 'model_a'
-                                  ? 'bg-yellow-100 dark:bg-yellow-950/40 border border-yellow-300 dark:border-yellow-700'
-                                  : 'bg-white/60 dark:bg-emerald-950/40'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2">
-                                {evaluation.winner === 'model_a' && (
-                                  <Trophy className="w-3 h-3 text-yellow-600 dark:text-yellow-400" />
-                                )}
-                                <span
-                                  className={evaluation.winner === 'model_a' ? 'font-semibold' : ''}
+                          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-emerald-800 dark:text-emerald-100">
+                            {evaluationModels.map((model) => {
+                              const label = resolveEvaluationModelLabel(model);
+                              const isPrimary =
+                                model.model_id === 'primary' ||
+                                model.conversation_id === evaluation.model_a_conversation_id;
+                              const isWinner =
+                                evaluation.winner === 'tie' || !evaluation.winner
+                                  ? false
+                                  : evaluation.winner === 'model_a'
+                                    ? model.conversation_id === evaluation.model_a_conversation_id
+                                    : evaluation.winner === 'model_b'
+                                      ? model.conversation_id === evaluation.model_b_conversation_id
+                                      : evaluation.winner === model.model_id;
+
+                              return (
+                                <div
+                                  key={`${evaluation.id}-${model.conversation_id}-${model.message_id}`}
+                                  className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 ${
+                                    isWinner
+                                      ? 'bg-yellow-100 dark:bg-yellow-950/40 border border-yellow-300 dark:border-yellow-700'
+                                      : 'bg-white/60 dark:bg-emerald-950/40'
+                                  }`}
                                 >
-                                  {primaryLabel}
-                                </span>
-                              </div>
-                              <span
-                                className={evaluation.winner === 'model_a' ? 'font-semibold' : ''}
-                              >
-                                {evaluation.score_a ?? '—'}
-                              </span>
-                            </div>
-                            <div
-                              className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 ${
-                                evaluation.winner === 'model_b'
-                                  ? 'bg-yellow-100 dark:bg-yellow-950/40 border border-yellow-300 dark:border-yellow-700'
-                                  : 'bg-white/60 dark:bg-emerald-950/40'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2">
-                                {evaluation.winner === 'model_b' && (
-                                  <Trophy className="w-3 h-3 text-yellow-600 dark:text-yellow-400" />
-                                )}
-                                <span
-                                  className={evaluation.winner === 'model_b' ? 'font-semibold' : ''}
-                                >
-                                  {modelLabel}
-                                </span>
-                              </div>
-                              <span
-                                className={evaluation.winner === 'model_b' ? 'font-semibold' : ''}
-                              >
-                                {evaluation.score_b ?? '—'}
-                              </span>
-                            </div>
+                                  <div className="flex items-center gap-2">
+                                    {isWinner && (
+                                      <Trophy className="w-3 h-3 text-yellow-600 dark:text-yellow-400" />
+                                    )}
+                                    <span className={isWinner ? 'font-semibold' : ''}>{label}</span>
+                                  </div>
+                                  <span className={isWinner ? 'font-semibold' : ''}>
+                                    {model.score ?? '—'}
+                                  </span>
+                                </div>
+                              );
+                            })}
                           </div>
                           {evaluation.reasoning && (
                             <div className="mt-2 text-base leading-relaxed text-emerald-900 dark:text-emerald-100">
@@ -1379,7 +1407,7 @@ export function MessageList({
 
   const [isJudgeModalOpen, setIsJudgeModalOpen] = useState(false);
   const [judgeMessageId, setJudgeMessageId] = useState<string | null>(null);
-  const [judgeComparisonModelId, setJudgeComparisonModelId] = useState<string | null>(null);
+  const [judgeComparisonModelIds, setJudgeComparisonModelIds] = useState<string[]>([]);
   const [judgeModelId, setJudgeModelId] = useState<string>('');
   const [judgeCriteria, setJudgeCriteria] = useState<
     'general' | 'fact' | 'creative' | 'code' | 'custom'
@@ -1394,13 +1422,12 @@ export function MessageList({
 
   useEffect(() => {
     if (judgeAvailableComparisonModels.length === 0) return;
-    if (
-      !judgeComparisonModelId ||
-      !judgeAvailableComparisonModels.includes(judgeComparisonModelId)
-    ) {
-      setJudgeComparisonModelId(judgeAvailableComparisonModels[0]);
-    }
-  }, [judgeAvailableComparisonModels, judgeComparisonModelId]);
+    setJudgeComparisonModelIds((prev) => {
+      const next = prev.filter((modelId) => judgeAvailableComparisonModels.includes(modelId));
+      if (next.length > 0) return next;
+      return [judgeAvailableComparisonModels[0]];
+    });
+  }, [judgeAvailableComparisonModels]);
 
   // Streaming statistics - now calculated from actual token count
   const [streamingStats, setStreamingStats] = useState<{
@@ -1641,7 +1668,7 @@ export function MessageList({
     (messageId: string, comparisonModelIds: string[]) => {
       if (!onJudge || comparisonModelIds.length === 0) return;
       setJudgeMessageId(messageId);
-      setJudgeComparisonModelId(comparisonModelIds[0]);
+      setJudgeComparisonModelIds(comparisonModelIds);
       const fallbackModel = modelOptions[0]?.value || '';
       const defaultJudgeModel = judgeModelId || primaryModelLabel || fallbackModel;
       setJudgeModelId(defaultJudgeModel);
@@ -1657,7 +1684,9 @@ export function MessageList({
   }, []);
 
   const handleJudgeConfirm = useCallback(() => {
-    if (!onJudge || !judgeMessageId || !judgeComparisonModelId || !judgeModelId) return;
+    if (!onJudge || !judgeMessageId || judgeComparisonModelIds.length === 0 || !judgeModelId) {
+      return;
+    }
     const selectedCriteria = judgeCriteriaOptions.find((item) => item.id === judgeCriteria);
     const criteriaText =
       judgeCriteria === 'custom'
@@ -1670,7 +1699,7 @@ export function MessageList({
 
     void onJudge({
       messageId: judgeMessageId,
-      comparisonModelId: judgeComparisonModelId,
+      comparisonModelIds: judgeComparisonModelIds,
       judgeModelId,
       criteria: criteriaText || null,
     }).catch((err) => {
@@ -1679,7 +1708,7 @@ export function MessageList({
     });
   }, [
     judgeMessageId,
-    judgeComparisonModelId,
+    judgeComparisonModelIds,
     judgeModelId,
     judgeCriteria,
     judgeCustomCriteria,
@@ -1814,6 +1843,41 @@ export function MessageList({
 
           <div>
             <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400">
+              Compare against
+            </label>
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {judgeAvailableComparisonModels.map((modelId) => {
+                const isSelected = judgeComparisonModelIds.includes(modelId);
+                return (
+                  <button
+                    key={modelId}
+                    type="button"
+                    onClick={() =>
+                      setJudgeComparisonModelIds((prev) => {
+                        if (prev.includes(modelId)) {
+                          return prev.filter((id) => id !== modelId);
+                        }
+                        return [...prev, modelId];
+                      })
+                    }
+                    className={`px-3 py-2 text-xs rounded-lg border transition-colors text-left ${
+                      isSelected
+                        ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
+                        : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
+                    }`}
+                  >
+                    <div className="font-medium">{formatModelLabel(modelId)}</div>
+                    <div className="text-[10px] opacity-70">
+                      {isSelected ? 'Selected' : 'Click to include'}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400">
               Criteria
             </label>
             <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1855,7 +1919,7 @@ export function MessageList({
             <button
               type="button"
               onClick={handleJudgeConfirm}
-              disabled={!judgeModelId || !judgeComparisonModelId}
+              disabled={!judgeModelId || judgeComparisonModelIds.length === 0}
               className="px-3 py-2 text-xs rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-medium disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Start judging

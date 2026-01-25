@@ -11,7 +11,12 @@ import { createOpenAIRequest, setupStreamingHeaders, writeAndFlush, createChatCo
 import { parseSSEStream } from '../lib/sseParser.js';
 import { getDb } from '../db/client.js';
 import { getMessageContentByClientId, getPreviousUserMessage } from '../db/messages.js';
-import { getEvaluationByPair, createEvaluation, deleteEvaluation } from '../db/evaluations.js';
+import {
+  getEvaluationByPair,
+  getEvaluationByModelSet,
+  createEvaluation,
+  deleteEvaluation,
+} from '../db/evaluations.js';
 
 export const chatRouter = Router();
 
@@ -65,30 +70,35 @@ function extractTextFromContent(content) {
   return String(content);
 }
 
-function buildJudgePrompt({ criteria, userPrompt, responseA, responseB, modelALabel, modelBLabel }) {
+function buildJudgePrompt({ criteria, userPrompt, responses }) {
   const normalizedCriteria = typeof criteria === 'string' ? criteria.trim() : '';
   const criteriaText = normalizedCriteria
     ? `Criteria: ${normalizedCriteria}`
     : 'Criteria: General correctness and helpfulness.';
   const promptText = userPrompt?.trim() ? userPrompt.trim() : 'No explicit user prompt provided.';
-  const responseAText = responseA?.trim() ? responseA.trim() : '';
-  const responseBText = responseB?.trim() ? responseB.trim() : '';
+  const responseBlocks = responses
+    .map(({ label, content }) => {
+      const responseText = content?.trim() ? content.trim() : '';
+      return `${label} Response:\n${responseText}`;
+    })
+    .join('\n\n');
+  const labelList = responses.map(({ label }) => label).join(', ');
 
-  const system = `You are an impartial judge evaluating two AI responses.\n\n` +
+  const system = `You are an impartial judge evaluating multiple AI responses.\n\n` +
     `${criteriaText}\n\n` +
     `You must return ONLY valid JSON with the following schema:\n` +
     `{\n` +
-    `  "winner": "model_a" | "model_b" | "tie",\n` +
-    `  "score_a": number,\n` +
-    `  "score_b": number,\n` +
+    `  "winner": string | "tie",\n` +
+    `  "scores": { "<label>": number, ... },\n` +
     `  "reasoning": string\n` +
     `}\n\n` +
+    `Use the exact response labels as keys in "scores" and for "winner".\n` +
+    `Available labels: ${labelList}\n` +
     `Be thorough, cite concrete differences, and format the answer structured.\n` +
     `You can use markdown in the "reasoning" field to produce a structured, easy-to-read response with bold text, lists, or tables if needed.`;
 
   const user = `User Prompt:\n${promptText}\n\n` +
-    `${modelALabel} Response:\n${responseAText}\n\n` +
-    `${modelBLabel} Response:\n${responseBText}`;
+    `${responseBlocks}`;
 
   return {
     system,
@@ -128,21 +138,48 @@ chatRouter.post('/v1/chat/judge', async (req, res) => {
     comparison_conversation_id,
     message_id,
     comparison_message_id,
+    comparison_models,
     judge_model,
     judge_provider_id,
     criteria,
   } = req.body || {};
 
   const conversationId = conversation_id || null;
-  const comparisonConversationId = comparison_conversation_id || null;
   const messageId = message_id || null;
-  const comparisonMessageId = comparison_message_id || null;
   const normalizedCriteria = typeof criteria === 'string' ? criteria.trim() : '';
 
-  if (!conversationId || !comparisonConversationId || !messageId || !comparisonMessageId) {
+  if (!conversationId || !messageId) {
     return res.status(400).json({
       error: 'bad_request',
-      message: 'conversation_id, comparison_conversation_id, message_id, comparison_message_id are required',
+      message: 'conversation_id and message_id are required',
+    });
+  }
+
+  const requestedModels = Array.isArray(comparison_models) ? comparison_models : null;
+  let comparisonModels = [];
+
+  if (requestedModels && requestedModels.length > 0) {
+    comparisonModels = requestedModels
+      .map((model) => ({
+        modelId: typeof model?.model_id === 'string' ? model.model_id.trim() : null,
+        conversationId: typeof model?.conversation_id === 'string' ? model.conversation_id : null,
+        messageId: typeof model?.message_id === 'string' ? model.message_id : null,
+      }))
+      .filter((model) => model.conversationId && model.messageId);
+  } else if (comparison_conversation_id && comparison_message_id) {
+    comparisonModels = [
+      {
+        modelId: null,
+        conversationId: comparison_conversation_id,
+        messageId: comparison_message_id,
+      },
+    ];
+  }
+
+  if (!comparisonModels.length) {
+    return res.status(400).json({
+      error: 'bad_request',
+      message: 'comparison_models (or comparison_conversation_id/comparison_message_id) is required',
     });
   }
 
@@ -158,16 +195,38 @@ chatRouter.post('/v1/chat/judge', async (req, res) => {
   try {
     getDb();
 
-    const existing = getEvaluationByPair({
-      userId,
-      conversationId,
-      modelAConversationId: conversationId,
-      modelAMessageId: messageId,
-      modelBConversationId: comparisonConversationId,
-      modelBMessageId: comparisonMessageId,
-      judgeModelId,
-      criteria: normalizedCriteria || null,
-    });
+    const comparisonLabelModels = comparisonModels.map((model, index) => ({
+      ...model,
+      label: model.modelId?.trim() || `model_${index + 1}`,
+    }));
+
+    const modelSet = [
+      { modelId: 'primary', conversationId, messageId },
+      ...comparisonLabelModels.map((model) => ({
+        modelId: model.label,
+        conversationId: model.conversationId,
+        messageId: model.messageId,
+      })),
+    ];
+    const existing =
+      comparisonModels.length === 1
+        ? getEvaluationByPair({
+            userId,
+            conversationId,
+            modelAConversationId: conversationId,
+            modelAMessageId: messageId,
+            modelBConversationId: comparisonModels[0].conversationId,
+            modelBMessageId: comparisonModels[0].messageId,
+            judgeModelId,
+            criteria: normalizedCriteria || null,
+          })
+        : getEvaluationByModelSet({
+            userId,
+            conversationId,
+            judgeModelId,
+            criteria: normalizedCriteria || null,
+            models: modelSet,
+          });
 
     if (existing) {
       setupStreamingHeaders(res);
@@ -181,16 +240,28 @@ chatRouter.post('/v1/chat/judge', async (req, res) => {
       clientMessageId: messageId,
       userId,
     });
-    const messageB = getMessageContentByClientId({
-      conversationId: comparisonConversationId,
-      clientMessageId: comparisonMessageId,
-      userId,
-    });
 
-    if (!messageA || !messageB) {
+    if (!messageA) {
       return res.status(404).json({
         error: 'not_found',
-        message: 'Messages not found for evaluation',
+        message: 'Primary message not found for evaluation',
+      });
+    }
+
+    const comparisonMessages = comparisonLabelModels.map((model) => ({
+      ...model,
+      message: getMessageContentByClientId({
+        conversationId: model.conversationId,
+        clientMessageId: model.messageId,
+        userId,
+      }),
+    }));
+
+    const missingComparison = comparisonMessages.find((model) => !model.message);
+    if (missingComparison) {
+      return res.status(404).json({
+        error: 'not_found',
+        message: 'Comparison messages not found for evaluation',
       });
     }
 
@@ -201,16 +272,23 @@ chatRouter.post('/v1/chat/judge', async (req, res) => {
     });
 
     const responseA = extractTextFromContent(messageA.content);
-    const responseB = extractTextFromContent(messageB.content);
     const userPrompt = promptMessage ? extractTextFromContent(promptMessage.content) : '';
+
+    const responseLabels = comparisonMessages.map((model) => ({
+      label: model.label,
+      modelId: model.modelId?.trim() || null,
+      conversationId: model.conversationId,
+      messageId: model.messageId,
+      content: extractTextFromContent(model.message.content),
+    }));
 
     const prompt = buildJudgePrompt({
       criteria,
       userPrompt,
-      responseA,
-      responseB,
-      modelALabel: 'Model A',
-      modelBLabel: 'Model B',
+      responses: [
+        { label: 'primary', content: responseA },
+        ...responseLabels.map((model) => ({ label: model.label, content: model.content })),
+      ],
     });
 
     const requestBody = {
@@ -257,25 +335,77 @@ chatRouter.post('/v1/chat/judge', async (req, res) => {
         parsed = null;
       }
 
-      const scoreA = Number.isFinite(Number(parsed?.score_a)) ? Number(parsed.score_a) : null;
-      const scoreB = Number.isFinite(Number(parsed?.score_b)) ? Number(parsed.score_b) : null;
-      const winner = typeof parsed?.winner === 'string' ? parsed.winner : 'tie';
+      const scoresObject =
+        parsed && typeof parsed === 'object' && typeof parsed.scores === 'object'
+          ? parsed.scores
+          : null;
+
+      const scoreAFromLegacy = Number.isFinite(Number(parsed?.score_a))
+        ? Number(parsed.score_a)
+        : null;
+      const scoreBFromLegacy = Number.isFinite(Number(parsed?.score_b))
+        ? Number(parsed.score_b)
+        : null;
+
+      const getScoreForLabel = (label, fallback) => {
+        if (!scoresObject || typeof scoresObject !== 'object') {
+          return fallback ?? null;
+        }
+        const raw = scoresObject[label];
+        return Number.isFinite(Number(raw)) ? Number(raw) : fallback ?? null;
+      };
+
+      const winnerRaw = typeof parsed?.winner === 'string' ? parsed.winner : null;
+      let winnerLabel = 'tie';
+      if (winnerRaw === 'model_a') {
+        winnerLabel = 'primary';
+      } else if (winnerRaw === 'model_b') {
+        winnerLabel = responseLabels[0]?.label || 'tie';
+      } else if (
+        winnerRaw &&
+        (winnerRaw === 'tie' ||
+          winnerRaw === 'primary' ||
+          responseLabels.some((r) => r.label === winnerRaw))
+      ) {
+        winnerLabel = winnerRaw;
+      }
+
+      const scoreA = getScoreForLabel('primary', scoreAFromLegacy);
+      const scoreB = responseLabels[0]
+        ? getScoreForLabel(responseLabels[0].label, scoreBFromLegacy)
+        : null;
       const reasoning = typeof parsed?.reasoning === 'string' ? parsed.reasoning : contentBuffer;
+
+      const evaluationModels = [
+        {
+          modelId: 'primary',
+          conversationId,
+          messageId,
+          score: scoreA,
+        },
+        ...responseLabels.map((model) => ({
+          modelId: model.label,
+          conversationId: model.conversationId,
+          messageId: model.messageId,
+          score: getScoreForLabel(model.label, null),
+        })),
+      ];
 
       const evaluation = createEvaluation({
         userId,
         conversationId,
         modelAConversationId: conversationId,
         modelAMessageId: messageId,
-        modelBConversationId: comparisonConversationId,
-        modelBMessageId: comparisonMessageId,
+        modelBConversationId: comparisonModels[0].conversationId,
+        modelBMessageId: comparisonModels[0].messageId,
         judgeModelId,
         criteria: normalizedCriteria || null,
         scoreA,
         scoreB,
-        winner,
+        winner: winnerLabel,
         reasoning,
         createdAt: new Date().toISOString(),
+        models: evaluationModels,
       });
 
       if (lastFinishReason || lastFinishReason === null) {
