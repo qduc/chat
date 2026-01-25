@@ -18,6 +18,10 @@ jest.mock('../lib/api', () => ({
     sendMessage: jest.fn(),
     stopMessage: jest.fn(),
   },
+  judge: {
+    evaluate: jest.fn(),
+    deleteEvaluation: jest.fn(),
+  },
   providers: {
     getToolSpecs: jest.fn(),
   },
@@ -32,12 +36,13 @@ jest.mock('../lib/http', () => ({
   },
 }));
 
-import { conversations, chat, auth } from '../lib/api';
+import { conversations, chat, auth, judge } from '../lib/api';
 import { httpClient } from '../lib/http';
 import type { HttpResponse } from '../lib/http';
 
 const mockConversations = conversations as jest.Mocked<typeof conversations>;
 const mockChat = chat as jest.Mocked<typeof chat>;
+const mockJudge = judge as jest.Mocked<typeof judge>;
 const mockAuth = auth as jest.Mocked<typeof auth>;
 const mockHttpClient = httpClient as jest.Mocked<typeof httpClient>;
 
@@ -822,5 +827,231 @@ describe('useChat hook', () => {
     const payload = mockChat.sendMessage.mock.calls[0][0];
     const userMessageIds = payload.messages.filter((msg: any) => msg.id === 'user-1');
     expect(userMessageIds).toHaveLength(1);
+  });
+
+  test('judgeComparison streams draft content, stores evaluation, and deleteJudgeResponse removes it', async () => {
+    const now = new Date().toISOString();
+    mockConversations.get.mockResolvedValue({
+      id: 'conv-judge',
+      title: 'Judge',
+      model: 'gpt-4o',
+      provider_id: 'openai',
+      created_at: now,
+      messages: [
+        {
+          id: 'user-1',
+          seq: 1,
+          role: 'user',
+          content: 'Question',
+          created_at: now,
+          status: 'completed',
+        },
+        {
+          id: 'assistant-1',
+          seq: 2,
+          role: 'assistant',
+          content: 'Answer',
+          created_at: now,
+          status: 'completed',
+        },
+      ],
+      linked_conversations: [
+        {
+          id: 'conv-mini',
+          model: 'gpt-4o-mini',
+          provider_id: 'openai',
+          messages: [
+            {
+              id: 'assistant-2',
+              role: 'assistant',
+              content: 'Alt',
+            },
+          ],
+        },
+      ],
+      next_after_seq: null,
+    });
+
+    mockJudge.evaluate.mockImplementation(async (options: any) => {
+      options.onToken?.('Draft');
+      const evaluation = {
+        id: 'eval-1',
+        messageId: options.messageId,
+        content: 'Judged',
+        status: 'complete',
+      };
+      options.onEvaluation?.(evaluation);
+      return evaluation;
+    });
+
+    mockJudge.deleteEvaluation.mockResolvedValue(undefined);
+
+    const { result } = renderUseChat();
+
+    await act(async () => {
+      await result.current.selectConversation('conv-judge');
+    });
+
+    await waitFor(() =>
+      expect(result.current.messages[1].comparisonResults?.['openai::gpt-4o-mini']).toBeDefined()
+    );
+
+    await act(async () => {
+      await result.current.judgeComparison({
+        messageId: 'assistant-1',
+        selectedModelIds: ['primary', 'openai::gpt-4o-mini'],
+        judgeModelId: 'openai::gpt-4o',
+      });
+    });
+
+    expect(mockJudge.evaluate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 'conv-judge',
+        messageId: 'assistant-1',
+        judgeModelId: 'openai::gpt-4o',
+        judgeProviderId: null,
+      })
+    );
+    expect(result.current.evaluationDrafts).toHaveLength(0);
+    expect(result.current.evaluations).toHaveLength(1);
+
+    await act(async () => {
+      await result.current.deleteJudgeResponse('eval-1');
+    });
+
+    expect(mockJudge.deleteEvaluation).toHaveBeenCalledWith('eval-1');
+    expect(result.current.evaluations).toHaveLength(0);
+  });
+
+  test('saveEdit updates message content and clears comparison state on forked conversation', async () => {
+    const now = new Date().toISOString();
+    mockConversations.get.mockResolvedValue({
+      id: 'conv-edit',
+      title: 'Editable',
+      model: 'gpt-4o',
+      provider_id: 'openai',
+      created_at: now,
+      messages: [
+        {
+          id: 'msg-1',
+          seq: 1,
+          role: 'user',
+          content: 'Original',
+          created_at: now,
+          status: 'completed',
+        },
+        {
+          id: 'msg-2',
+          seq: 2,
+          role: 'assistant',
+          content: 'Reply',
+          created_at: now,
+          status: 'completed',
+        },
+      ],
+      linked_conversations: [
+        {
+          id: 'conv-mini',
+          model: 'gpt-4o-mini',
+          provider_id: 'openai',
+          messages: [
+            {
+              id: 'msg-2-mini',
+              role: 'assistant',
+              content: 'Alt',
+            },
+          ],
+        },
+      ],
+      next_after_seq: null,
+    });
+    mockConversations.editMessage.mockResolvedValue({
+      new_conversation_id: 'conv-edit-forked',
+    });
+
+    const { result } = renderUseChat();
+
+    await act(async () => {
+      await result.current.selectConversation('conv-edit');
+    });
+
+    await waitFor(() => expect(result.current.compareModels).toEqual(['openai::gpt-4o-mini']));
+    await waitFor(() =>
+      expect(result.current.messages[1].comparisonResults?.['openai::gpt-4o-mini']).toBeDefined()
+    );
+
+    act(() => {
+      result.current.startEdit('msg-1', 'Original');
+      result.current.updateEditContent('Updated text');
+    });
+
+    expect(result.current.compareModels).toEqual(['openai::gpt-4o-mini']);
+
+    await act(async () => {
+      await result.current.saveEdit();
+    });
+
+    expect(mockConversations.editMessage).toHaveBeenCalledWith(
+      'conv-edit',
+      'msg-1',
+      'Updated text'
+    );
+    expect(result.current.conversationId).toBe('conv-edit-forked');
+    expect(result.current.compareModels).toEqual([]);
+    expect(result.current.linkedConversations).toEqual({});
+    expect(result.current.messages[0].content).toBe('Updated text');
+    expect(result.current.messages[1].comparisonResults).toBeUndefined();
+    expect(result.current.editingMessageId).toBeNull();
+    expect(result.current.editingContent).toBe('');
+  });
+
+  test('newChat resets state and reloads saved model preference', async () => {
+    const now = new Date().toISOString();
+    window.localStorage.setItem('selectedModel', 'openai::gpt-4o-mini');
+
+    mockConversations.get.mockResolvedValue({
+      id: 'conv-reset',
+      title: 'Reset Me',
+      model: 'gpt-4o',
+      provider_id: 'openai',
+      created_at: now,
+      messages: [],
+      next_after_seq: null,
+    });
+
+    const { result } = renderUseChat();
+
+    await act(async () => {
+      await result.current.selectConversation('conv-reset');
+    });
+
+    act(() => {
+      result.current.setMessages([{ id: 'msg-1', role: 'user', content: 'Hello' }] as any);
+      result.current.setInput('Draft');
+    });
+
+    act(() => {
+      result.current.newChat();
+    });
+
+    expect(result.current.conversationId).toBeNull();
+    expect(result.current.messages).toHaveLength(0);
+    expect(result.current.input).toBe('');
+    expect(result.current.currentConversationTitle).toBeNull();
+    expect(result.current.model).toBe('openai::gpt-4o-mini');
+  });
+
+  test('toggleSidebar persists collapsed state to localStorage', async () => {
+    window.localStorage.setItem('sidebarCollapsed', 'true');
+    const { result } = renderUseChat();
+
+    expect(result.current.sidebarCollapsed).toBe(true);
+
+    act(() => {
+      result.current.toggleSidebar();
+    });
+
+    expect(result.current.sidebarCollapsed).toBe(false);
+    expect(window.localStorage.getItem('sidebarCollapsed')).toBe('false');
   });
 });
