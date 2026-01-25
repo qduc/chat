@@ -51,6 +51,7 @@ function createHttpResponse<T>(data: T): HttpResponse<T> {
 }
 
 function arrangeHttpMocks() {
+  mockConversations.list.mockResolvedValue({ items: [], next_cursor: null });
   mockHttpClient.get.mockImplementation((url: string) => {
     if (url.startsWith('/v1/models')) {
       return Promise.resolve(
@@ -73,6 +74,9 @@ function arrangeHttpMocks() {
     }
     if (url === '/v1/system-prompts') {
       return Promise.resolve(createHttpResponse({ system_prompts: [] }));
+    }
+    if (url === '/v1/user-settings') {
+      return Promise.resolve(createHttpResponse({}));
     }
     return Promise.resolve(createHttpResponse({ providers: [] }));
   });
@@ -402,6 +406,8 @@ describe('useChat hook', () => {
       sendPromise = result.current.sendMessage('Please stream forever');
     });
 
+    // Wait for the mock to be called and signal to be captured
+    await waitFor(() => expect(capturedSignal).toBeDefined());
     expect(capturedSignal?.aborted).toBe(false);
 
     await act(async () => {
@@ -742,7 +748,9 @@ describe('useChat hook', () => {
     });
 
     await waitFor(() => expect(mockChat.sendMessage).toHaveBeenCalledTimes(2));
-    expect(mockChat.sendMessage.mock.calls[1][0].providerStream).toBe(false);
+    expect((mockChat.sendMessage.mock.calls[1][0] as ChatOptionsExtended).providerStream).toBe(
+      false
+    );
     await waitFor(() => expect(result.current.status).toBe('idle'));
     expect(result.current.messages).toHaveLength(2);
     jest.useRealTimers();
@@ -772,12 +780,13 @@ describe('useChat hook', () => {
     const payload = mockChat.sendMessage.mock.calls[0][0];
     const userMessage = payload.messages[0];
     expect(Array.isArray(userMessage.content)).toBe(true);
-    expect(userMessage.content[0]).toMatchObject({
+    const textContent = (userMessage.content as any[])[0];
+    expect(textContent).toMatchObject({
       type: 'text',
     });
-    expect(userMessage.content[0].text).toContain('File: example.ts');
-    expect(userMessage.content[0].text).toContain('```typescript');
-    expect(userMessage.content[0].text).toContain('Please review the files');
+    expect(textContent.text).toContain('File: example.ts');
+    expect(textContent.text).toContain('```typescript');
+    expect(textContent.text).toContain('Please review the files');
     expect(userMessage.content[1]).toEqual({
       type: 'image_url',
       image_url: { url: 'http://cdn/image.png' },

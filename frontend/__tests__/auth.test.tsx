@@ -44,6 +44,7 @@ jest.mock('../lib/api', () => {
     verifySession: jest.fn(() =>
       Promise.resolve({ valid: false, user: null, reason: 'missing-token' as const })
     ),
+    electronLogin: jest.fn(),
   } as jest.Mocked<AuthApi>;
   return {
     ...actual,
