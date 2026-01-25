@@ -426,6 +426,9 @@ export function useChat() {
               id: isPrimary
                 ? response.conversation?.assistant_message_id?.toString() || messageId
                 : undefined,
+              messageId: isPrimary
+                ? undefined
+                : response.conversation?.assistant_message_id?.toString() || current.messageId,
             }) as any
         );
 
