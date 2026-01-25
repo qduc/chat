@@ -11,15 +11,6 @@ function validate(args) {
 
   const validated = { query: args.query.trim() };
 
-  // Simplified category parameter (mapped from the older 'categories')
-  const category = args.category || args.categories;
-  if (category !== undefined) {
-    if (typeof category !== 'string' || category.trim().length === 0) {
-      throw new Error('category must be a non-empty string');
-    }
-    validated.categories = category.trim();
-  }
-
   if (args.engines !== undefined) {
     if (typeof args.engines !== 'string' || args.engines.trim().length === 0) {
       throw new Error('engines must be a non-empty string');
@@ -85,7 +76,7 @@ function resolveSearxngBaseUrl(userId) {
 }
 
 async function handler(
-  { query, categories, engines, language, pageno, time_range, safesearch, max_results = 10 },
+  { query, engines, language, pageno, time_range, safesearch, max_results = 10 },
   context = {}
 ) {
   const userId = context?.userId || null;
@@ -112,7 +103,6 @@ async function handler(
     format: 'json',
   });
 
-  if (categories !== undefined) params.append('categories', categories);
   if (engines !== undefined) params.append('engines', engines);
   if (language !== undefined) params.append('language', language);
   if (pageno !== undefined) params.append('pageno', pageno.toString());
@@ -255,7 +245,6 @@ async function handler(
     logger.error('Error performing web search with SearXNG:', {
       error: error?.message || String(error),
       query,
-      categories,
       engines,
       language,
     });
@@ -304,11 +293,6 @@ export const webSearchSearxngTool = createTool({
           query: {
             type: 'string',
             description: 'The search query or question.',
-          },
-          category: {
-            type: 'string',
-            enum: ['general', 'news', 'science', 'it'],
-            description: 'Search category (default: "general"). Use "news" for recent events.',
           },
           time_range: {
             type: 'string',

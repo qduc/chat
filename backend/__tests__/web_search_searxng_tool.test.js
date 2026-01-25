@@ -5,7 +5,6 @@ describe('web_search_searxng tool', () => {
   test('validate trims and normalizes arguments', () => {
     const validated = webSearchSearxngTool.validate({
       query: '  latest ai news  ',
-      categories: ' general,news ',
       engines: ' google,duckduckgo ',
       language: ' en ',
       pageno: '2',
@@ -15,7 +14,6 @@ describe('web_search_searxng tool', () => {
     });
 
     assert.equal(validated.query, 'latest ai news');
-    assert.equal(validated.categories, 'general,news');
     assert.equal(validated.engines, 'google,duckduckgo');
     assert.equal(validated.language, 'en');
     assert.equal(validated.pageno, 2);
@@ -83,20 +81,12 @@ describe('web_search_searxng tool', () => {
   test('validate handles optional parameters correctly', () => {
     const validated = webSearchSearxngTool.validate({ query: 'test' });
     assert.equal(validated.query, 'test');
-    assert.equal(validated.categories, undefined);
     assert.equal(validated.engines, undefined);
     assert.equal(validated.language, undefined);
     assert.equal(validated.pageno, undefined);
     assert.equal(validated.time_range, undefined);
     assert.equal(validated.safesearch, undefined);
     assert.equal(validated.max_results, undefined);
-  });
-
-  test('validate rejects empty string for categories', () => {
-    assert.throws(
-      () => webSearchSearxngTool.validate({ query: 'test', categories: '   ' }),
-      /category must be a non-empty string/
-    );
   });
 
   test('validate rejects empty string for engines', () => {
