@@ -71,6 +71,9 @@ export {
   removeFileBlocksFromText,
   extractFilesAndText,
   extractReasoningFromPartialJson,
+  formatUsageLabel,
+  buildAssistantSegments,
+  type AssistantSegment,
 } from './contentUtils';
 
 // Model capabilities

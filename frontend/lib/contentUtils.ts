@@ -275,3 +275,221 @@ export function extractReasoningFromPartialJson(partialJson: string | null | und
   // Otherwise return empty as we are likely still in other fields
   return '';
 }
+
+// ============================================================================
+// Message Display Utilities
+// ============================================================================
+
+import type { ChatMessage } from './types';
+
+// Tool output type alias
+type ToolOutput = NonNullable<ChatMessage['tool_outputs']>[number];
+
+// Segment types for rendering assistant messages
+export type AssistantSegment =
+  | { kind: 'text'; text: string }
+  | { kind: 'tool_call'; toolCall: any; outputs: ToolOutput[] }
+  | { kind: 'images'; images: ImageContent[] };
+
+/**
+ * Format usage label from token usage data
+ */
+export function formatUsageLabel(usage?: ChatMessage['usage']): string | null {
+  if (!usage) return null;
+  const prompt = usage.prompt_tokens;
+  const completion = usage.completion_tokens;
+  const total = usage.total_tokens;
+
+  const hasPrompt = Number.isFinite(prompt);
+  const hasCompletion = Number.isFinite(completion);
+  const hasTotal = Number.isFinite(total);
+
+  if (!hasPrompt && !hasCompletion && !hasTotal) return null;
+
+  if (hasPrompt || hasCompletion) {
+    const parts: string[] = [];
+    if (hasPrompt) parts.push(`↑ ${prompt}`);
+    if (hasCompletion) parts.push(`↓ ${completion}`);
+    if (hasTotal && !(hasPrompt && hasCompletion && prompt! + completion! === total)) {
+      parts.push(`⇅ ${total}`);
+    }
+    return parts.join(' · ');
+  }
+
+  return `⇅ ${total}`;
+}
+
+/**
+ * Build assistant message segments for rendering
+ * Handles interleaved text, tool calls, reasoning, and images
+ */
+export function buildAssistantSegments(message: ChatMessage): AssistantSegment[] {
+  if (message.role !== 'assistant') {
+    const textContent = extractTextFromContent(message.content);
+    if (textContent) {
+      return [{ kind: 'text', text: textContent }];
+    }
+    return [];
+  }
+
+  const content = extractTextFromContent(message.content);
+  const imageContents = extractImagesFromContent(message.content);
+  const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+  const toolOutputs = Array.isArray(message.tool_outputs) ? message.tool_outputs : [];
+  const messageEvents = Array.isArray(message.message_events) ? message.message_events : [];
+
+  // Helper to resolve outputs for a tool call
+  const resolveOutputs = (call: any): ToolOutput[] => {
+    return toolOutputs.filter((out) => {
+      if (!out) return false;
+      if (out.tool_call_id && call?.id) return out.tool_call_id === call.id;
+      if (out.name && call?.function?.name) return out.name === call.function.name;
+      return false;
+    });
+  };
+
+  // Check if any tool call has a valid textOffset
+  const hasValidTextOffset = toolCalls.some(
+    (call: any) =>
+      typeof call?.textOffset === 'number' &&
+      Number.isFinite(call.textOffset) &&
+      call.textOffset > 0
+  );
+
+  // Helper to append image segment to end if present
+  const appendImagesSegment = (segments: AssistantSegment[]): AssistantSegment[] => {
+    if (imageContents.length > 0) {
+      segments.push({ kind: 'images', images: imageContents });
+    }
+    return segments;
+  };
+
+  if (messageEvents.length > 0) {
+    const sortedEvents = [...messageEvents].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
+    const segments: AssistantSegment[] = [];
+
+    for (const event of sortedEvents) {
+      if (event.type === 'content') {
+        const text = typeof event.payload?.text === 'string' ? event.payload.text : '';
+        if (text) {
+          segments.push({ kind: 'text', text });
+        }
+        continue;
+      }
+
+      if (event.type === 'reasoning') {
+        const text = typeof event.payload?.text === 'string' ? event.payload.text : '';
+        if (text) {
+          segments.push({ kind: 'text', text: `<thinking>${text}</thinking>` });
+        }
+        continue;
+      }
+
+      if (event.type === 'tool_call') {
+        const toolCallId = event.payload?.tool_call_id;
+        const toolCallIndex = event.payload?.tool_call_index;
+        const toolCall =
+          (toolCallId ? toolCalls.find((call: any) => call?.id === toolCallId) : undefined) ||
+          (typeof toolCallIndex === 'number'
+            ? toolCalls.find((call: any) => (call?.index ?? 0) === toolCallIndex)
+            : undefined);
+
+        if (toolCall) {
+          segments.push({ kind: 'tool_call', toolCall, outputs: resolveOutputs(toolCall) });
+        }
+      }
+    }
+
+    if (segments.length > 0) {
+      return appendImagesSegment(segments);
+    }
+  }
+
+  if (toolCalls.length === 0) {
+    const segments: AssistantSegment[] = content ? [{ kind: 'text', text: content }] : [];
+    return appendImagesSegment(segments);
+  }
+
+  // For loaded conversations (no valid textOffset), show tools first, then content
+  if (!hasValidTextOffset) {
+    const segments: AssistantSegment[] = [];
+
+    // Add all tool calls at the beginning
+    const sortedCalls = toolCalls
+      .map((call: any, idx: number) => ({
+        idx,
+        call,
+        order: typeof call?.index === 'number' ? call.index : idx,
+      }))
+      .sort((a, b) => a.order - b.order);
+
+    for (const entry of sortedCalls) {
+      segments.push({
+        kind: 'tool_call',
+        toolCall: entry.call,
+        outputs: resolveOutputs(entry.call),
+      });
+    }
+
+    // Add content after tool calls
+    if (content) {
+      segments.push({ kind: 'text', text: content });
+    }
+
+    return appendImagesSegment(segments);
+  }
+
+  // For streaming messages with textOffset, use position-based rendering
+  const sortedCalls = toolCalls
+    .map((call: any, idx: number) => {
+      const offset =
+        typeof call?.textOffset === 'number' && Number.isFinite(call.textOffset)
+          ? Math.max(0, Math.min(call.textOffset, content.length))
+          : undefined;
+      return {
+        idx,
+        call,
+        offset,
+        order: typeof call?.index === 'number' ? call.index : idx,
+      };
+    })
+    .sort((a, b) => {
+      const aOffset = a.offset ?? content.length;
+      const bOffset = b.offset ?? content.length;
+      if (aOffset !== bOffset) return aOffset - bOffset;
+      return a.order - b.order;
+    });
+
+  const segments: AssistantSegment[] = [];
+  let cursor = 0;
+
+  for (const entry of sortedCalls) {
+    const offset = entry.offset ?? content.length;
+    const normalized = Math.max(0, Math.min(offset, content.length));
+    const sliceEnd = Math.max(cursor, normalized);
+
+    if (sliceEnd > cursor) {
+      const textChunk = content.slice(cursor, sliceEnd);
+      if (textChunk) {
+        segments.push({ kind: 'text', text: textChunk });
+      }
+      cursor = sliceEnd;
+    }
+
+    segments.push({ kind: 'tool_call', toolCall: entry.call, outputs: resolveOutputs(entry.call) });
+    cursor = Math.max(cursor, normalized);
+  }
+
+  if (cursor < content.length) {
+    const remaining = content.slice(cursor);
+    if (remaining) {
+      segments.push({ kind: 'text', text: remaining });
+    }
+  }
+
+  if (segments.length === 0 && content) {
+    segments.push({ kind: 'text', text: content });
+  }
+
+  return appendImagesSegment(segments);
+}
