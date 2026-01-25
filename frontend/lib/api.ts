@@ -395,7 +395,7 @@ export const chat = {
 export interface JudgeOptions {
   conversationId: string;
   messageId: string;
-  comparisonModels: Array<{
+  models: Array<{
     modelId: string;
     conversationId: string;
     messageId: string;
@@ -425,7 +425,7 @@ export const judge = {
     const bodyObj = {
       conversation_id: payload.conversationId,
       message_id: payload.messageId,
-      comparison_models: payload.comparisonModels.map((model) => ({
+      models: payload.models.map((model) => ({
         model_id: model.modelId,
         conversation_id: model.conversationId,
         message_id: model.messageId,

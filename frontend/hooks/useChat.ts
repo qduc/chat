@@ -33,7 +33,7 @@ export interface PendingState {
 export interface EvaluationDraft {
   id: string;
   messageId: string;
-  comparisonModelIds: string[];
+  selectedModelIds: string[]; // All models being compared (including primary if selected)
   judgeModelId: string;
   criteria?: string | null;
   content: string;
@@ -2104,37 +2104,51 @@ export function useChat() {
   const judgeComparison = useCallback(
     async (options: {
       messageId: string;
-      comparisonModelIds: string[];
+      selectedModelIds: string[]; // All models to compare (including 'primary' if selected)
       judgeModelId: string;
       criteria?: string | null;
     }) => {
-      const uniqueComparisonModelIds = Array.from(new Set(options.comparisonModelIds));
+      const uniqueSelectedModelIds = Array.from(new Set(options.selectedModelIds));
       const { messageId, judgeModelId, criteria } = options;
       if (!conversationId) {
         throw new Error('No active conversation');
       }
 
-      if (!uniqueComparisonModelIds.length) {
-        throw new Error('No comparison models selected');
+      if (uniqueSelectedModelIds.length < 2) {
+        throw new Error('At least 2 models must be selected for comparison');
       }
 
       const primaryMessage = messagesRef.current.find((msg) => msg.id === messageId);
-      const comparisonModels = uniqueComparisonModelIds.map((modelId) => {
-        const comparisonConversationId = linkedConversationsRef.current[modelId];
-        const comparisonMessageId = primaryMessage?.comparisonResults?.[modelId]?.messageId ?? null;
+      const primaryModelName = modelRef.current;
 
-        if (!comparisonConversationId) {
-          throw new Error(`Comparison conversation not found for model ${modelId}`);
-        }
-        if (!comparisonMessageId) {
-          throw new Error(`Comparison message not found for model ${modelId}`);
-        }
+      // Build models array - each entry has modelId (actual name), conversationId, messageId
+      const models = uniqueSelectedModelIds.map((modelId) => {
+        if (modelId === 'primary') {
+          // Primary model uses the main conversation
+          return {
+            modelId: primaryModelName, // Use actual model name
+            conversationId: conversationId,
+            messageId: messageId,
+          };
+        } else {
+          // Comparison model uses linked conversation
+          const comparisonConversationId = linkedConversationsRef.current[modelId];
+          const comparisonMessageId =
+            primaryMessage?.comparisonResults?.[modelId]?.messageId ?? null;
 
-        return {
-          modelId,
-          conversationId: comparisonConversationId,
-          messageId: comparisonMessageId,
-        };
+          if (!comparisonConversationId) {
+            throw new Error(`Comparison conversation not found for model ${modelId}`);
+          }
+          if (!comparisonMessageId) {
+            throw new Error(`Comparison message not found for model ${modelId}`);
+          }
+
+          return {
+            modelId, // modelId is already the actual model name for comparison models
+            conversationId: comparisonConversationId,
+            messageId: comparisonMessageId,
+          };
+        }
       });
 
       let judgeProviderId: string | null = null;
@@ -2146,7 +2160,7 @@ export function useChat() {
       const draft: EvaluationDraft = {
         id: draftId,
         messageId,
-        comparisonModelIds: uniqueComparisonModelIds,
+        selectedModelIds: uniqueSelectedModelIds,
         judgeModelId,
         criteria: criteria ?? null,
         content: '',
@@ -2159,7 +2173,7 @@ export function useChat() {
         const evaluation = await judge.evaluate({
           conversationId,
           messageId,
-          comparisonModels,
+          models, // Now all models are equal participants with actual names
           judgeModelId,
           judgeProviderId,
           criteria,

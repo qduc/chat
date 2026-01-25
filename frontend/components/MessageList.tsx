@@ -71,7 +71,7 @@ interface MessageListProps {
   onFork?: (messageId: string, modelId: string) => void;
   onJudge?: (options: {
     messageId: string;
-    comparisonModelIds: string[];
+    selectedModelIds: string[]; // All models to compare (including primary if selected)
     judgeModelId: string;
     criteria?: string | null;
   }) => Promise<unknown>;
@@ -1090,9 +1090,11 @@ const Message = React.memo<MessageProps>(
                 (evaluationDraftsForMessage.length > 0 || evaluationsForMessage.length > 0) && (
                   <div className="mt-3 space-y-3">
                     {evaluationDraftsForMessage.map((draft) => {
-                      const modelLabels = draft.comparisonModelIds
-                        .map((modelId) => resolveModelLabel(modelId))
-                        .join(', ');
+                      const modelLabels = draft.selectedModelIds
+                        .map((modelId) =>
+                          modelId === 'primary' ? primaryLabel : resolveModelLabel(modelId)
+                        )
+                        .join(' vs ');
                       return (
                         <div
                           key={draft.id}
@@ -1101,7 +1103,7 @@ const Message = React.memo<MessageProps>(
                           <div className="flex items-center justify-between text-xs text-amber-700 dark:text-amber-300">
                             <div className="flex items-center gap-2">
                               <Scale className="w-3.5 h-3.5" />
-                              <span>Judging vs {modelLabels}</span>
+                              <span>Judging: {modelLabels}</span>
                             </div>
                             <span className="uppercase tracking-wide">
                               {draft.status === 'error' ? 'Failed' : 'Working'}
@@ -1407,27 +1409,27 @@ export function MessageList({
 
   const [isJudgeModalOpen, setIsJudgeModalOpen] = useState(false);
   const [judgeMessageId, setJudgeMessageId] = useState<string | null>(null);
-  const [judgeComparisonModelIds, setJudgeComparisonModelIds] = useState<string[]>([]);
+  const [judgeSelectedModelIds, setJudgeSelectedModelIds] = useState<string[]>([]);
   const [judgeModelId, setJudgeModelId] = useState<string>('');
   const [judgeCriteria, setJudgeCriteria] = useState<
     'general' | 'fact' | 'creative' | 'code' | 'custom'
   >('general');
   const [judgeCustomCriteria, setJudgeCustomCriteria] = useState('');
 
-  const judgeAvailableComparisonModels = useMemo(() => {
+  // All available models for judging (primary + comparison models)
+  const judgeAvailableModels = useMemo(() => {
     if (!judgeMessageId) return [] as string[];
     const target = messages.find((msg) => msg.id === judgeMessageId);
-    return target ? Object.keys(target.comparisonResults || {}) : [];
+    const comparisonModelIds = target ? Object.keys(target.comparisonResults || {}) : [];
+    // Include 'primary' as first option, then comparison models
+    return ['primary', ...comparisonModelIds];
   }, [judgeMessageId, messages]);
 
   useEffect(() => {
-    if (judgeAvailableComparisonModels.length === 0) return;
-    setJudgeComparisonModelIds((prev) => {
-      const next = prev.filter((modelId) => judgeAvailableComparisonModels.includes(modelId));
-      if (next.length > 0) return next;
-      return [judgeAvailableComparisonModels[0]];
-    });
-  }, [judgeAvailableComparisonModels]);
+    if (judgeAvailableModels.length < 2) return;
+    // Select all available models by default
+    setJudgeSelectedModelIds(judgeAvailableModels);
+  }, [judgeAvailableModels]);
 
   // Streaming statistics - now calculated from actual token count
   const [streamingStats, setStreamingStats] = useState<{
@@ -1668,7 +1670,7 @@ export function MessageList({
     (messageId: string, comparisonModelIds: string[]) => {
       if (!onJudge || comparisonModelIds.length === 0) return;
       setJudgeMessageId(messageId);
-      setJudgeComparisonModelIds(comparisonModelIds);
+      // Model selection will be populated by useEffect based on judgeAvailableModels
       const fallbackModel = modelOptions[0]?.value || '';
       const defaultJudgeModel = judgeModelId || primaryModelLabel || fallbackModel;
       setJudgeModelId(defaultJudgeModel);
@@ -1684,7 +1686,8 @@ export function MessageList({
   }, []);
 
   const handleJudgeConfirm = useCallback(() => {
-    if (!onJudge || !judgeMessageId || judgeComparisonModelIds.length === 0 || !judgeModelId) {
+    // Require at least 2 models to compare
+    if (!onJudge || !judgeMessageId || judgeSelectedModelIds.length < 2 || !judgeModelId) {
       return;
     }
     const selectedCriteria = judgeCriteriaOptions.find((item) => item.id === judgeCriteria);
@@ -1699,7 +1702,7 @@ export function MessageList({
 
     void onJudge({
       messageId: judgeMessageId,
-      comparisonModelIds: judgeComparisonModelIds,
+      selectedModelIds: judgeSelectedModelIds,
       judgeModelId,
       criteria: criteriaText || null,
     }).catch((err) => {
@@ -1708,7 +1711,7 @@ export function MessageList({
     });
   }, [
     judgeMessageId,
-    judgeComparisonModelIds,
+    judgeSelectedModelIds,
     judgeModelId,
     judgeCriteria,
     judgeCustomCriteria,
@@ -1843,18 +1846,24 @@ export function MessageList({
 
           <div>
             <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400">
-              Compare against
+              Models to compare
             </label>
             <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {judgeAvailableComparisonModels.map((modelId) => {
-                const isSelected = judgeComparisonModelIds.includes(modelId);
+              {judgeAvailableModels.map((modelId) => {
+                const isSelected = judgeSelectedModelIds.includes(modelId);
+                const displayLabel =
+                  modelId === 'primary'
+                    ? formatModelLabel(primaryModelLabel)
+                    : formatModelLabel(modelId);
                 return (
                   <button
                     key={modelId}
                     type="button"
                     onClick={() =>
-                      setJudgeComparisonModelIds((prev) => {
+                      setJudgeSelectedModelIds((prev) => {
                         if (prev.includes(modelId)) {
+                          // Require at least 2 models
+                          if (prev.length <= 2) return prev;
                           return prev.filter((id) => id !== modelId);
                         }
                         return [...prev, modelId];
@@ -1866,7 +1875,7 @@ export function MessageList({
                         : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
                     }`}
                   >
-                    <div className="font-medium">{formatModelLabel(modelId)}</div>
+                    <div className="font-medium">{displayLabel}</div>
                     <div className="text-[10px] opacity-70">
                       {isSelected ? 'Selected' : 'Click to include'}
                     </div>
@@ -1919,7 +1928,7 @@ export function MessageList({
             <button
               type="button"
               onClick={handleJudgeConfirm}
-              disabled={!judgeModelId || judgeComparisonModelIds.length === 0}
+              disabled={!judgeModelId || judgeSelectedModelIds.length < 2}
               className="px-3 py-2 text-xs rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-medium disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Start judging

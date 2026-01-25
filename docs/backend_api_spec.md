@@ -308,14 +308,18 @@ Errors: 400 missing_request_id (when no request_id provided in body or header).
 
 ### POST /v1/chat/judge
 Evaluate and compare multiple model responses using a judge model.
-Request body:
+
+**New API format (recommended):**
 ```
 {
-  "conversation_id": "uuid",                  // Main conversation ID (primary)
-  "message_id": "uuid",                       // Primary assistant response to evaluate
-  "comparison_models": [                      // Comparison responses (one or more)
+  "models": [                                 // All models to compare (2 or more)
     {
-      "model_id": "model-key",                // Model identifier used in UI (optional)
+      "model_id": "gpt-4o",                   // Actual model name (used in judge prompt)
+      "conversation_id": "uuid",
+      "message_id": "uuid"
+    },
+    {
+      "model_id": "claude-3-opus",
       "conversation_id": "uuid",
       "message_id": "uuid"
     }
@@ -326,7 +330,25 @@ Request body:
 }
 ```
 
-Legacy request body (pairwise only):
+**Legacy API format (comparison_models with implicit primary):**
+```
+{
+  "conversation_id": "uuid",                  // Main conversation ID (implicit primary)
+  "message_id": "uuid",                       // Primary assistant response
+  "comparison_models": [                      // Comparison responses
+    {
+      "model_id": "model-key",                // Model identifier (optional)
+      "conversation_id": "uuid",
+      "message_id": "uuid"
+    }
+  ],
+  "judge_model": "model-id",
+  "judge_provider_id": "provider-uuid",
+  "criteria": "string"
+}
+```
+
+**Oldest legacy API format (pairwise only):**
 ```
 {
   "conversation_id": "uuid",
@@ -340,9 +362,9 @@ Legacy request body (pairwise only):
 ```
 
 Behavior:
-- Returns cached evaluation if one exists for the same message pair, judge model, and criteria
-- Fetches both messages and the previous user prompt
-- Sends evaluation request to judge model with JSON response format
+- Returns cached evaluation if one exists for the same model set, judge model, and criteria
+- Fetches all messages and the previous user prompt
+- Sends evaluation request to judge model with JSON response format using actual model names
 - Streams the judge's response as SSE events
 - Stores evaluation result in database
 
@@ -350,7 +372,7 @@ Success 200 (SSE stream):
 ```
 data: {"id":"judge-...","object":"chat.completion.chunk","choices":[{"delta":{"content":"..."},"index":0}]}
 data: {"id":"judge-...","object":"chat.completion.chunk","choices":[{"delta":{},"index":0,"finish_reason":"stop"}]}
-data: {"type":"evaluation","evaluation":{"id":"...","user_id":"...","conversation_id":"...","model_a_conversation_id":"...","model_a_message_id":"...","model_b_conversation_id":"...","model_b_message_id":"...","judge_model_id":"...","criteria":"...","score_a":8,"score_b":7,"winner":"primary","reasoning":"...","created_at":"...","models":[{"model_id":"primary","conversation_id":"...","message_id":"...","score":8}]}}
+data: {"type":"evaluation","evaluation":{"id":"...","user_id":"...","conversation_id":"...","model_a_conversation_id":"...","model_a_message_id":"...","model_b_conversation_id":"...","model_b_message_id":"...","judge_model_id":"...","criteria":"...","score_a":8,"score_b":7,"winner":"gpt-4o","reasoning":"...","created_at":"...","models":[{"model_id":"gpt-4o","conversation_id":"...","message_id":"...","score":8}]}}
 data: [DONE]
 ```
 
@@ -362,11 +384,11 @@ Evaluation object structure:
 - `model_b_conversation_id` / `model_b_message_id` - Second message being compared
 - `judge_model_id` - Model used for judging
 - `criteria` - Optional evaluation criteria (null if not specified)
-- `score_a` / `score_b` - Numeric scores (null if not provided by judge)
-- `winner` - "primary", "<model_id>", or "tie"
+- `score_a` / `score_b` - Numeric scores for first two models (null if not provided by judge)
+- `winner` - Actual model name (e.g., "gpt-4o") or "tie"
 - `reasoning` - Judge's explanation
 - `created_at` - ISO timestamp
-- `models` - Optional array of per-model scores (model_id, conversation_id, message_id, score)
+- `models` - Array of per-model scores (model_id, conversation_id, message_id, score)
 
 Errors:
 - 400 bad_request (missing required fields or invalid judge_model)
