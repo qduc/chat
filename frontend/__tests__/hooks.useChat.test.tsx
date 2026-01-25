@@ -309,7 +309,7 @@ describe('useChat hook', () => {
           id: 'conv-1',
           title: 'Conversation A',
           model: 'model-a',
-          provider_id: 'provider-a',
+          provider: 'provider-a',
           created_at: now,
           messages: [],
           next_after_seq: null,
@@ -321,7 +321,7 @@ describe('useChat hook', () => {
           id: 'conv-2',
           title: 'Conversation B',
           model: 'model-b',
-          provider_id: conv2Calls >= 2 ? 'provider-b' : 'provider-a',
+          provider: conv2Calls >= 2 ? 'provider-b' : 'provider-a',
           created_at: now,
           messages: [],
           next_after_seq: null,
@@ -459,7 +459,7 @@ describe('useChat hook', () => {
           id: 'conv-1',
           title: 'With provider',
           model: 'gpt-4o',
-          provider_id: 'openai',
+          provider: 'openai',
           created_at: now,
           messages: [],
           next_after_seq: null,
@@ -470,7 +470,7 @@ describe('useChat hook', () => {
           id: 'conv-2',
           title: 'Missing provider',
           model: 'gpt-4o',
-          provider_id: undefined,
+          provider: undefined,
           created_at: now,
           messages: [],
           next_after_seq: null,
@@ -506,7 +506,7 @@ describe('useChat hook', () => {
           id: 'conv-1',
           title: 'First',
           model: 'model-a',
-          provider_id: 'provider-a',
+          provider: 'provider-a',
           created_at: now,
           messages: [],
           next_after_seq: null,
@@ -517,7 +517,7 @@ describe('useChat hook', () => {
           id: 'conv-2',
           title: 'Second missing provider',
           model: 'model-b',
-          provider_id: undefined,
+          provider: undefined,
           created_at: now,
           messages: [],
           next_after_seq: null,
@@ -835,7 +835,7 @@ describe('useChat hook', () => {
       id: 'conv-judge',
       title: 'Judge',
       model: 'gpt-4o',
-      provider_id: 'openai',
+      provider: 'openai',
       created_at: now,
       messages: [
         {
@@ -860,11 +860,15 @@ describe('useChat hook', () => {
           id: 'conv-mini',
           model: 'gpt-4o-mini',
           provider_id: 'openai',
+          created_at: '2024-01-01T00:00:00Z',
           messages: [
             {
               id: 'assistant-2',
+              seq: 2,
               role: 'assistant',
               content: 'Alt',
+              created_at: '2024-01-01T00:02:00Z',
+              status: 'completed',
             },
           ],
         },
@@ -876,9 +880,19 @@ describe('useChat hook', () => {
       options.onToken?.('Draft');
       const evaluation = {
         id: 'eval-1',
-        messageId: options.messageId,
-        content: 'Judged',
-        status: 'complete',
+        user_id: 'user-123',
+        conversation_id: options.conversationId || 'conv-judge',
+        model_a_conversation_id: options.model_a_conversation_id || 'conv-a',
+        model_a_message_id: options.model_a_message_id || 'msg-a',
+        model_b_conversation_id: options.model_b_conversation_id || 'conv-b',
+        model_b_message_id: options.model_b_message_id || 'msg-b',
+        judge_model_id: options.judgeModelId || 'gpt-4o',
+        criteria: options.criteria || null,
+        score_a: options.score_a || null,
+        score_b: options.score_b || null,
+        winner: options.winner || null,
+        reasoning: options.reasoning || null,
+        created_at: new Date().toISOString(),
       };
       options.onEvaluation?.(evaluation);
       return evaluation;
@@ -929,7 +943,7 @@ describe('useChat hook', () => {
       id: 'conv-edit',
       title: 'Editable',
       model: 'gpt-4o',
-      provider_id: 'openai',
+      provider: 'openai',
       created_at: now,
       messages: [
         {
@@ -954,11 +968,15 @@ describe('useChat hook', () => {
           id: 'conv-mini',
           model: 'gpt-4o-mini',
           provider_id: 'openai',
+          created_at: '2024-01-01T00:00:00Z',
           messages: [
             {
               id: 'msg-2-mini',
+              seq: 2,
               role: 'assistant',
               content: 'Alt',
+              created_at: '2024-01-01T00:02:00Z',
+              status: 'completed',
             },
           ],
         },
@@ -966,6 +984,11 @@ describe('useChat hook', () => {
       next_after_seq: null,
     });
     mockConversations.editMessage.mockResolvedValue({
+      message: {
+        id: 'msg-edit',
+        seq: 3,
+        content: 'Edited message',
+      },
       new_conversation_id: 'conv-edit-forked',
     });
 
@@ -1013,7 +1036,7 @@ describe('useChat hook', () => {
       id: 'conv-reset',
       title: 'Reset Me',
       model: 'gpt-4o',
-      provider_id: 'openai',
+      provider: 'openai',
       created_at: now,
       messages: [],
       next_after_seq: null,
