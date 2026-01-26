@@ -32,6 +32,8 @@ interface ChatHeaderProps {
   modelSelectionLockReason?: string;
 }
 
+const EMPTY_STRING_ARRAY: string[] = [];
+
 export function ChatHeader({
   model,
   onModelChange,
@@ -50,7 +52,7 @@ export function ChatHeader({
   showLeftSidebarButton = false,
   showRightSidebarButton = false,
   onNewChat,
-  selectedComparisonModels = [],
+  selectedComparisonModels = EMPTY_STRING_ARRAY,
   onComparisonModelsChange,
   comparisonLocked = false,
   comparisonLockReason = 'Model comparison is locked after the first message.',

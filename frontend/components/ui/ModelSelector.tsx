@@ -27,6 +27,8 @@ interface ModelSelectorProps {
 
 const FAVORITES_KEY = 'chatforge-favorite-models';
 const RECENT_KEY = 'chatforge-recent-models';
+const EMPTY_ARRAY: any[] = [];
+const EMPTY_STRING_ARRAY: string[] = [];
 
 // Memoized ModelItem component to prevent unnecessary re-renders
 const ModelItem = React.memo(
@@ -149,7 +151,7 @@ export default function ModelSelector({
   disabledReason = 'Primary model is locked after comparison starts.',
   favoritesStorageKey = FAVORITES_KEY,
   recentStorageKey = RECENT_KEY,
-  selectedComparisonModels = [],
+  selectedComparisonModels = EMPTY_STRING_ARRAY,
   onComparisonModelsChange,
   comparisonDisabled = false,
   comparisonDisabledReason = 'Model comparison is locked after the first message.',
@@ -260,13 +262,19 @@ export default function ModelSelector({
   // Organize models into sections - optimized single pass
   const organizedModels = useMemo(() => {
     // const start = performance.now(); // Disabled for performance
+    const selectedModels: ModelOption[] = [];
     const favoriteModels: ModelOption[] = [];
     const recentFilteredModels: ModelOption[] = [];
     const otherModels: ModelOption[] = [];
 
+    // Create set of selected model values for quick lookup
+    const selectedSet = new Set([value, ...selectedComparisonModels]);
+
     // Single pass through filteredModels
     for (const model of filteredModels) {
-      if (favorites.has(model.value)) {
+      if (selectedSet.has(model.value)) {
+        selectedModels.push(model);
+      } else if (favorites.has(model.value)) {
         favoriteModels.push(model);
       } else if (recentModels.includes(model.value)) {
         recentFilteredModels.push(model);
@@ -275,20 +283,28 @@ export default function ModelSelector({
       }
     }
 
+    // Sort selected models to put primary model first, then comparison models
+    selectedModels.sort((a, b) => {
+      if (a.value === value) return -1;
+      if (b.value === value) return 1;
+      return 0;
+    });
+
     // Sort recent models by recency
     recentFilteredModels.sort(
       (a, b) => recentModels.indexOf(a.value) - recentModels.indexOf(b.value)
     );
 
     const result = {
+      selected: selectedModels,
       favorites: favoriteModels,
       recent: recentFilteredModels,
       other: otherModels,
     };
     // const end = performance.now();
-    // console.log(`[ModelSelector] organizedModels computed in ${(end - start).toFixed(2)}ms, fav:${result.favorites.length} recent:${result.recent.length} other:${result.other.length}`);
+    // console.log(`[ModelSelector] organizedModels computed in ${(end - start).toFixed(2)}ms, selected:${result.selected.length} fav:${result.favorites.length} recent:${result.recent.length} other:${result.other.length}`);
     return result;
-  }, [filteredModels, favorites, recentModels]);
+  }, [filteredModels, favorites, recentModels, value, selectedComparisonModels]);
 
   const toggleFavorite = useCallback(
     (modelValue: string) => {
@@ -372,6 +388,7 @@ export default function ModelSelector({
   }, [
     searchQuery,
     selectedTab,
+    organizedModels.selected.length,
     organizedModels.favorites.length,
     organizedModels.recent.length,
     organizedModels.other.length,
@@ -401,12 +418,27 @@ export default function ModelSelector({
         }
       }
     }
-  }, [isOpen, value, allModels, providerTabs]);
+    // Only run when the dropdown opens or the selected value changes,
+    // not on every re-render of models or tabs to avoid resetting user's manual tab choice
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, value]);
 
   const displayText = currentModel?.label || value || 'Select model';
 
   const sections = useMemo<Section<ModelOption>[]>(() => {
     const result: Section<ModelOption>[] = [];
+
+    if (organizedModels.selected.length > 0) {
+      result.push({
+        id: 'selected',
+        header: (
+          <div className="px-3 py-1.5 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide bg-zinc-50 dark:bg-zinc-900/50">
+            Selected
+          </div>
+        ),
+        items: organizedModels.selected,
+      });
+    }
 
     if (organizedModels.favorites.length > 0) {
       result.push({
@@ -434,7 +466,9 @@ export default function ModelSelector({
 
     if (organizedModels.other.length > 0) {
       const otherHeader =
-        organizedModels.favorites.length > 0 || organizedModels.recent.length > 0 ? (
+        organizedModels.selected.length > 0 ||
+        organizedModels.favorites.length > 0 ||
+        organizedModels.recent.length > 0 ? (
           <div className="px-3 py-1.5 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide bg-zinc-50 dark:bg-zinc-900/50">
             All Models
           </div>

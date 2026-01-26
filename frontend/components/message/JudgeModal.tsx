@@ -61,7 +61,9 @@ export function JudgeModal({
       setCriteria('general');
       setCustomCriteria('');
     }
-  }, [isOpen, availableModels, initialJudgeModelId, primaryModelLabel, modelOptions]);
+    // Use stable init - only run once when modal opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   const formatModelLabel = (modelId: string | null | undefined) => {
     if (!modelId) return 'Model';
