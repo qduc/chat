@@ -34,6 +34,14 @@ import Tooltip from './ui/Tooltip';
 import type { QualityLevel } from './ui/QualitySlider';
 import type { CustomRequestParamPreset } from '../lib/types';
 
+// Stable empty arrays to prevent infinite re-renders from default parameters
+const EMPTY_STRING_ARRAY: string[] = [];
+const EMPTY_IMAGES_ARRAY: ImageAttachment[] = [];
+const EMPTY_AUDIOS_ARRAY: AudioAttachment[] = [];
+const EMPTY_FILES_ARRAY: FileAttachment[] = [];
+const EMPTY_PARAMS_ARRAY: CustomRequestParamPreset[] = [];
+const EMPTY_CAPABILITIES: Record<string, any> = {};
+
 interface MessageInputProps {
   input: string;
   pending: PendingState;
@@ -76,21 +84,21 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     onStop,
     shouldStream,
     onUseToolsChange,
-    enabledTools = [],
+    enabledTools = EMPTY_STRING_ARRAY,
     onEnabledToolsChange,
-    customRequestParams = [],
+    customRequestParams = EMPTY_PARAMS_ARRAY,
     customRequestParamsId = null,
     onCustomRequestParamsIdChange,
     onShouldStreamChange,
     model,
     qualityLevel,
     onQualityLevelChange,
-    modelCapabilities = {},
-    images = [],
+    modelCapabilities = EMPTY_CAPABILITIES,
+    images = EMPTY_IMAGES_ARRAY,
     onImagesChange,
-    audios = [],
+    audios = EMPTY_AUDIOS_ARRAY,
     onAudiosChange,
-    files = [],
+    files = EMPTY_FILES_ARRAY,
     onFilesChange,
     disabled = false,
     disabledReason = 'Selected models are unavailable. Refresh models to resume.',
