@@ -96,6 +96,8 @@ export function JudgeModal({
               groups={modelGroups}
               fallbackOptions={modelOptions}
               ariaLabel="Select judge model"
+              favoritesStorageKey="chatforge-favorite-judge-models"
+              recentStorageKey="chatforge-recent-judge-models"
             />
           </div>
         </div>

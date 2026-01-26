@@ -16,6 +16,8 @@ interface ModelSelectorProps {
   onAfterChange?: () => void;
   disabled?: boolean;
   disabledReason?: string;
+  favoritesStorageKey?: string;
+  recentStorageKey?: string;
 }
 
 const FAVORITES_KEY = 'chatforge-favorite-models';
@@ -99,6 +101,8 @@ export default function ModelSelector({
   onAfterChange,
   disabled = false,
   disabledReason = 'Primary model is locked after comparison starts.',
+  favoritesStorageKey = FAVORITES_KEY,
+  recentStorageKey = RECENT_KEY,
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -111,19 +115,19 @@ export default function ModelSelector({
   // Load favorites and recent models from localStorage
   useEffect(() => {
     try {
-      const savedFavorites = localStorage.getItem(FAVORITES_KEY);
+      const savedFavorites = localStorage.getItem(favoritesStorageKey);
       if (savedFavorites) {
         setFavorites(new Set(JSON.parse(savedFavorites)));
       }
 
-      const savedRecent = localStorage.getItem(RECENT_KEY);
+      const savedRecent = localStorage.getItem(recentStorageKey);
       if (savedRecent) {
         setRecentModels(JSON.parse(savedRecent));
       }
     } catch (error) {
       console.warn('Failed to load model preferences:', error);
     }
-  }, []);
+  }, [favoritesStorageKey, recentStorageKey]);
 
   // Get all available models with provider info
   const allModels = useMemo(() => {
@@ -234,12 +238,12 @@ export default function ModelSelector({
       setFavorites(newFavorites);
 
       try {
-        localStorage.setItem(FAVORITES_KEY, JSON.stringify([...newFavorites]));
+        localStorage.setItem(favoritesStorageKey, JSON.stringify([...newFavorites]));
       } catch (error) {
         console.warn('Failed to save favorites:', error);
       }
     },
-    [disabled, favorites]
+    [disabled, favorites, favoritesStorageKey]
   );
 
   const handleModelSelect = useCallback(
@@ -256,7 +260,7 @@ export default function ModelSelector({
         setRecentModels(newRecent);
 
         try {
-          localStorage.setItem(RECENT_KEY, JSON.stringify(newRecent));
+          localStorage.setItem(recentStorageKey, JSON.stringify(newRecent));
         } catch (error) {
           console.warn('Failed to save recent models:', error);
         }
@@ -270,7 +274,7 @@ export default function ModelSelector({
         }, 0);
       }
     },
-    [disabled, onChange, favorites, recentModels, onAfterChange]
+    [disabled, onChange, favorites, recentModels, onAfterChange, recentStorageKey]
   );
 
   useEffect(() => {
