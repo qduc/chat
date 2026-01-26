@@ -217,6 +217,14 @@ export class GeminiAdapter extends BaseAdapter {
     if (top_k !== undefined) geminiRequest.generationConfig.topK = top_k;
     if (stop) geminiRequest.generationConfig.stopSequences = Array.isArray(stop) ? stop : [stop];
 
+    // Handle JSON response format
+    if (internalRequest.response_format?.type === 'json_object' || internalRequest.response_format?.type === 'json_schema') {
+      geminiRequest.generationConfig.responseMimeType = 'application/json';
+      if (internalRequest.response_format?.json_schema?.schema) {
+        geminiRequest.generationConfig.responseSchema = internalRequest.response_format.json_schema.schema;
+      }
+    }
+
     // Enable image generation for models with "image" in the name
     if (model.toLowerCase().includes('image')) {
       geminiRequest.generationConfig.responseModalities = ["IMAGE", "TEXT"];

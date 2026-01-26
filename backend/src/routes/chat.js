@@ -311,6 +311,9 @@ chatRouter.post('/v1/chat/judge', async (req, res) => {
       ],
     };
 
+    const { createProvider } = await import('../lib/providers/index.js');
+    const judgeProvider = await createProvider(config, { providerId: judgeProviderId });
+
     const upstream = await createOpenAIRequest(config, requestBody, {
       providerId: judgeProviderId,
     });
@@ -425,7 +428,19 @@ chatRouter.post('/v1/chat/judge', async (req, res) => {
       leftover = parseSSEStream(
         chunk,
         leftover,
-        (obj) => {
+        (rawObj) => {
+          let obj = rawObj;
+          if (judgeProvider?.needsStreamingTranslation?.()) {
+            try {
+              const translated = judgeProvider.translateStreamChunk(rawObj);
+              if (translated === '[DONE]' || !translated) return;
+              obj = translated;
+            } catch (err) {
+              logger.warn('[judge] stream translation failed', err);
+              return;
+            }
+          }
+
           const choice = obj?.choices?.[0];
           const delta = choice?.delta;
           if (delta?.content) {
