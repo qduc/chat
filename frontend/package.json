@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "tsc": "tsc --noEmit",
-    "test": "jest"
+    "test": "jest --silent"
   },
   "dependencies": {
     "@floating-ui/react": "^0.27.16",
