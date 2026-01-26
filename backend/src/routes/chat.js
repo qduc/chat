@@ -70,6 +70,38 @@ function extractTextFromContent(content) {
   return String(content);
 }
 
+function maskModelNames(text, labeledModels) {
+  if (!text || typeof text !== 'string') return text;
+  let maskedText = text;
+  // Sort by length descending to avoid partial replacements (e.g., masking 'gpt-4o-mini' before 'gpt-4o')
+  const sortedModels = [...labeledModels].sort((a, b) => (b.realName?.length || 0) - (a.realName?.length || 0));
+
+  for (const model of sortedModels) {
+    if (model.realName && model.realName.length > 2) {
+      // Escape special characters for regex
+      const escapedName = model.realName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const regex = new RegExp(escapedName, 'gi');
+      maskedText = maskedText.replace(regex, `{{${model.label}}}`);
+    }
+  }
+  return maskedText;
+}
+
+function unmaskModelNames(text, labeledModels) {
+  if (!text || typeof text !== 'string') return text;
+  let unmaskedText = text;
+  for (const model of labeledModels) {
+    const placeholder = `{{${model.label}}}`;
+    const regex = new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+    unmaskedText = unmaskedText.replace(regex, model.realName);
+
+    // Also handle case where model just returned the label without braces (some LLMs might do this)
+    const simpleRegex = new RegExp(`\\b${model.label}\\b`, 'g');
+    unmaskedText = unmaskedText.replace(simpleRegex, model.realName);
+  }
+  return unmaskedText;
+}
+
 function buildJudgePrompt({ criteria, userPrompt, responses }) {
   const normalizedCriteria = typeof criteria === 'string' ? criteria.trim() : '';
   const criteriaText = normalizedCriteria
@@ -86,6 +118,7 @@ function buildJudgePrompt({ criteria, userPrompt, responses }) {
 
   const system = `You are an impartial judge evaluating multiple AI responses.\n\n` +
     `${criteriaText}\n\n` +
+    `To avoid bias, the actual model names have been masked with placeholders like "model_a", "model_b", etc.\n\n` +
     `You must return ONLY valid JSON with the following schema:\n` +
     `{\n` +
     `  "winner": string | "tie",\n` +
@@ -215,11 +248,15 @@ chatRouter.post('/v1/chat/judge', async (req, res) => {
   try {
     getDb();
 
-    // Assign labels to all models (use actual model names, fallback to model_N)
-    const labeledModels = allModels.map((model, index) => ({
-      ...model,
-      label: model.modelId?.trim() || `model_${index + 1}`,
-    }));
+    // Assign labels to all models (use model_a, model_b to avoid bias)
+    const labeledModels = allModels.map((model, index) => {
+      const realName = model.modelId?.trim() || `model_${index + 1}`;
+      return {
+        ...model,
+        label: `model_${String.fromCharCode(97 + index)}`, // model_a, model_b...
+        realName,
+      };
+    });
 
     // Build model set for cache lookup
     const modelSet = labeledModels.map((model) => ({
@@ -283,7 +320,8 @@ chatRouter.post('/v1/chat/judge', async (req, res) => {
       userId,
     });
 
-    const userPrompt = promptMessage ? extractTextFromContent(promptMessage.content) : '';
+    const rawUserPrompt = promptMessage ? extractTextFromContent(promptMessage.content) : '';
+    const userPrompt = maskModelNames(rawUserPrompt, labeledModels);
 
     // Build response data for all models
     const responseData = modelMessages.map((model) => ({
@@ -291,7 +329,7 @@ chatRouter.post('/v1/chat/judge', async (req, res) => {
       modelId: model.modelId?.trim() || null,
       conversationId: model.conversationId,
       messageId: model.messageId,
-      content: extractTextFromContent(model.message.content),
+      content: maskModelNames(extractTextFromContent(model.message.content), labeledModels),
     }));
 
     const prompt = buildJudgePrompt({
@@ -367,19 +405,18 @@ chatRouter.post('/v1/chat/judge', async (req, res) => {
         return Number.isFinite(Number(raw)) ? Number(raw) : fallback ?? null;
       };
 
+      // map generic labels back to real model IDs
       const winnerRaw = typeof parsed?.winner === 'string' ? parsed.winner : null;
       let winnerLabel = 'tie';
       if (winnerRaw === 'model_a') {
-        // Legacy format - map to first model's label
-        winnerLabel = responseData[0]?.label || 'tie';
+        winnerLabel = labeledModels[0].realName;
       } else if (winnerRaw === 'model_b') {
-        // Legacy format - map to second model's label
-        winnerLabel = responseData[1]?.label || 'tie';
-      } else if (
-        winnerRaw &&
-        (winnerRaw === 'tie' || responseData.some((r) => r.label === winnerRaw))
-      ) {
-        winnerLabel = winnerRaw;
+        winnerLabel = labeledModels[1]?.realName || 'tie';
+      } else if (winnerRaw === 'tie') {
+        winnerLabel = 'tie';
+      } else if (winnerRaw) {
+        const found = labeledModels.find(m => m.label === winnerRaw);
+        winnerLabel = found ? found.realName : winnerRaw;
       }
 
       // Get scores for first two models (for backwards compatibility with score_a/score_b)
@@ -387,11 +424,12 @@ chatRouter.post('/v1/chat/judge', async (req, res) => {
       const scoreB = responseData[1]
         ? getScoreForLabel(responseData[1].label, scoreBFromLegacy)
         : null;
-      const reasoning = typeof parsed?.reasoning === 'string' ? parsed.reasoning : contentBuffer;
+      const rawReasoning = typeof parsed?.reasoning === 'string' ? parsed.reasoning : contentBuffer;
+      const reasoning = unmaskModelNames(rawReasoning, labeledModels);
 
       // Build evaluation models with scores from the new format
-      const evaluationModels = responseData.map((model) => ({
-        modelId: model.label,
+      const evaluationModels = responseData.map((model, index) => ({
+        modelId: labeledModels[index].realName,
         conversationId: model.conversationId,
         messageId: model.messageId,
         score: getScoreForLabel(model.label, null),
