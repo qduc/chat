@@ -108,7 +108,12 @@ export function MessageList({
   // Judge modal state
   const [isJudgeModalOpen, setIsJudgeModalOpen] = useState(false);
   const [judgeMessageId, setJudgeMessageId] = useState<string | null>(null);
-  const [judgeModelId, setJudgeModelId] = useState<string>('');
+  const [judgeModelId, setJudgeModelId] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('chatforge-last-judge-model') || '';
+    }
+    return '';
+  });
 
   // Refs for tracking
   const initializedComparisonRef = useRef<string | null>(null);
@@ -406,11 +411,17 @@ export function MessageList({
       if (!onJudge || comparisonModelIds.length === 0) return;
       setJudgeMessageId(messageId);
       const fallbackModel = modelOptions[0]?.value || '';
-      const defaultJudgeModel = judgeModelId || primaryModelLabel || fallbackModel;
-      setJudgeModelId(defaultJudgeModel);
+
+      // Use the persisted judgeModelId if available, otherwise use fallbackModel
+      // We explicitly avoid using primaryModelLabel here to prevent coupling
+      const defaultJudgeModel = judgeModelId || fallbackModel;
+      if (defaultJudgeModel !== judgeModelId) {
+        setJudgeModelId(defaultJudgeModel);
+      }
+
       setIsJudgeModalOpen(true);
     },
-    [modelOptions, onJudge, judgeModelId, primaryModelLabel]
+    [modelOptions, onJudge, judgeModelId]
   );
 
   const closeJudgeModal = useCallback(() => {
@@ -422,6 +433,12 @@ export function MessageList({
       if (!onJudge || !judgeMessageId) return;
 
       setIsJudgeModalOpen(false);
+
+      // Persist the selected judge model
+      setJudgeModelId(options.judgeModelId);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('chatforge-last-judge-model', options.judgeModelId);
+      }
 
       void onJudge({
         messageId: judgeMessageId,

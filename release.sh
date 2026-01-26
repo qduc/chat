@@ -237,7 +237,7 @@ Only include sections that have changes. Keep descriptions concise and user-focu
 EOF
 
         # Generate changelog with Claude
-        CHANGELOG_ENTRY=$(claude -p "$(cat "$TEMP_PROMPT")")
+        CHANGELOG_ENTRY=$(claude --model haiku -p "$(cat "$TEMP_PROMPT")")
         rm "$TEMP_PROMPT"
 
         if [ -n "$CHANGELOG_ENTRY" ]; then

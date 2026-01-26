@@ -727,8 +727,22 @@ describe('tools API', () => {
   it('returns tool specs', async () => {
     const mockTools = {
       tools: [
-        { name: 'search', description: 'Search the web' },
-        { name: 'calculate', description: 'Perform calculations' },
+        {
+          type: 'function',
+          function: {
+            name: 'search',
+            description: 'Search the web',
+            parameters: { type: 'object', properties: {}, required: [] },
+          },
+        },
+        {
+          type: 'function',
+          function: {
+            name: 'calculate',
+            description: 'Perform calculations',
+            parameters: { type: 'object', properties: {}, required: [] },
+          },
+        },
       ],
     };
 
@@ -737,7 +751,7 @@ describe('tools API', () => {
     const result = await tools.getToolSpecs();
 
     expect(result.tools).toHaveLength(2);
-    expect(result.tools[0].name).toBe('search');
+    expect(result.tools[0].function.name).toBe('search');
   });
 });
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Star, StarOff, ChevronDown } from 'lucide-react';
+import { Star, StarOff, ChevronDown, Check, Plus } from 'lucide-react';
 import { type Group as TabGroup } from './TabbedSelect';
 import ModelSelectBase, { type Section, type SelectOption, type Tab } from './ModelSelectBase';
 import Tooltip from './Tooltip';
@@ -16,10 +16,19 @@ interface ModelSelectorProps {
   onAfterChange?: () => void;
   disabled?: boolean;
   disabledReason?: string;
+  favoritesStorageKey?: string;
+  recentStorageKey?: string;
+  // Comparison props
+  selectedComparisonModels?: string[];
+  onComparisonModelsChange?: (models: string[]) => void;
+  comparisonDisabled?: boolean;
+  comparisonDisabledReason?: string;
 }
 
 const FAVORITES_KEY = 'chatforge-favorite-models';
 const RECENT_KEY = 'chatforge-recent-models';
+const EMPTY_ARRAY: any[] = [];
+const EMPTY_STRING_ARRAY: string[] = [];
 
 // Memoized ModelItem component to prevent unnecessary re-renders
 const ModelItem = React.memo(
@@ -31,6 +40,9 @@ const ModelItem = React.memo(
     onSelect,
     isHighlighted,
     id,
+    isInComparison,
+    onToggleComparison,
+    comparisonDisabled,
   }: {
     model: ModelOption;
     isSelected: boolean;
@@ -39,6 +51,9 @@ const ModelItem = React.memo(
     onSelect: (value: string) => void;
     isHighlighted: boolean;
     id: string;
+    isInComparison?: boolean;
+    onToggleComparison?: (value: string) => void;
+    comparisonDisabled?: boolean;
   }) => (
     <div
       id={id}
@@ -83,6 +98,41 @@ const ModelItem = React.memo(
           </div>
         )}
       </button>
+
+      {onToggleComparison && (
+        <div className="flex items-center justify-center w-10 h-9">
+          {isSelected ? (
+            <div
+              className="w-2 h-2 rounded-full bg-zinc-400 dark:bg-zinc-500"
+              title="Primary Model"
+            />
+          ) : (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!comparisonDisabled) onToggleComparison(model.value);
+              }}
+              disabled={comparisonDisabled}
+              className={`${
+                isInComparison ? 'w-4 h-4' : 'w-6 h-6'
+              } rounded flex items-center justify-center transition-colors ${
+                isInComparison
+                  ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900'
+                  : 'text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+              } ${comparisonDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+              title={
+                comparisonDisabled
+                  ? 'Comparison is locked'
+                  : isInComparison
+                    ? 'Remove from comparison'
+                    : 'Add to comparison'
+              }
+            >
+              {isInComparison ? <Check className="w-3 h-3" /> : <Plus className="w-3.5 h-3.5" />}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 );
@@ -99,6 +149,12 @@ export default function ModelSelector({
   onAfterChange,
   disabled = false,
   disabledReason = 'Primary model is locked after comparison starts.',
+  favoritesStorageKey = FAVORITES_KEY,
+  recentStorageKey = RECENT_KEY,
+  selectedComparisonModels = EMPTY_STRING_ARRAY,
+  onComparisonModelsChange,
+  comparisonDisabled = false,
+  comparisonDisabledReason = 'Model comparison is locked after the first message.',
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -111,19 +167,19 @@ export default function ModelSelector({
   // Load favorites and recent models from localStorage
   useEffect(() => {
     try {
-      const savedFavorites = localStorage.getItem(FAVORITES_KEY);
+      const savedFavorites = localStorage.getItem(favoritesStorageKey);
       if (savedFavorites) {
         setFavorites(new Set(JSON.parse(savedFavorites)));
       }
 
-      const savedRecent = localStorage.getItem(RECENT_KEY);
+      const savedRecent = localStorage.getItem(recentStorageKey);
       if (savedRecent) {
         setRecentModels(JSON.parse(savedRecent));
       }
     } catch (error) {
       console.warn('Failed to load model preferences:', error);
     }
-  }, []);
+  }, [favoritesStorageKey, recentStorageKey]);
 
   // Get all available models with provider info
   const allModels = useMemo(() => {
@@ -151,7 +207,20 @@ export default function ModelSelector({
 
   // Get available provider tabs
   const providerTabs = useMemo<Tab[]>(() => {
-    const tabs: Tab[] = [{ id: 'all', label: 'All', count: allModels.length }];
+    const selectedSet = new Set(selectedComparisonModels);
+
+    // Check if any model in a provider group is selected for comparison
+    const hasSelectedInProvider = (providerId: string): boolean => {
+      return allModels.some(
+        (model) => model.providerId === providerId && selectedSet.has(model.value)
+      );
+    };
+
+    const hasAnySelected = selectedComparisonModels.length > 0;
+
+    const tabs: Tab[] = [
+      { id: 'all', label: 'All', count: allModels.length, hasSelected: hasAnySelected },
+    ];
 
     if (groups && groups.length > 1) {
       groups.forEach((group) => {
@@ -159,12 +228,13 @@ export default function ModelSelector({
           id: group.id,
           label: group.label,
           count: group.options.length,
+          hasSelected: hasSelectedInProvider(group.id),
         });
       });
     }
 
     return tabs;
-  }, [groups, allModels.length]);
+  }, [groups, allModels, selectedComparisonModels]);
 
   // Filter models based on search query and selected tab
   const filteredModels = useMemo(() => {
@@ -192,13 +262,19 @@ export default function ModelSelector({
   // Organize models into sections - optimized single pass
   const organizedModels = useMemo(() => {
     // const start = performance.now(); // Disabled for performance
+    const selectedModels: ModelOption[] = [];
     const favoriteModels: ModelOption[] = [];
     const recentFilteredModels: ModelOption[] = [];
     const otherModels: ModelOption[] = [];
 
+    // Create set of selected model values for quick lookup
+    const selectedSet = new Set([value, ...selectedComparisonModels]);
+
     // Single pass through filteredModels
     for (const model of filteredModels) {
-      if (favorites.has(model.value)) {
+      if (selectedSet.has(model.value)) {
+        selectedModels.push(model);
+      } else if (favorites.has(model.value)) {
         favoriteModels.push(model);
       } else if (recentModels.includes(model.value)) {
         recentFilteredModels.push(model);
@@ -207,20 +283,28 @@ export default function ModelSelector({
       }
     }
 
+    // Sort selected models to put primary model first, then comparison models
+    selectedModels.sort((a, b) => {
+      if (a.value === value) return -1;
+      if (b.value === value) return 1;
+      return 0;
+    });
+
     // Sort recent models by recency
     recentFilteredModels.sort(
       (a, b) => recentModels.indexOf(a.value) - recentModels.indexOf(b.value)
     );
 
     const result = {
+      selected: selectedModels,
       favorites: favoriteModels,
       recent: recentFilteredModels,
       other: otherModels,
     };
     // const end = performance.now();
-    // console.log(`[ModelSelector] organizedModels computed in ${(end - start).toFixed(2)}ms, fav:${result.favorites.length} recent:${result.recent.length} other:${result.other.length}`);
+    // console.log(`[ModelSelector] organizedModels computed in ${(end - start).toFixed(2)}ms, selected:${result.selected.length} fav:${result.favorites.length} recent:${result.recent.length} other:${result.other.length}`);
     return result;
-  }, [filteredModels, favorites, recentModels]);
+  }, [filteredModels, favorites, recentModels, value, selectedComparisonModels]);
 
   const toggleFavorite = useCallback(
     (modelValue: string) => {
@@ -234,12 +318,25 @@ export default function ModelSelector({
       setFavorites(newFavorites);
 
       try {
-        localStorage.setItem(FAVORITES_KEY, JSON.stringify([...newFavorites]));
+        localStorage.setItem(favoritesStorageKey, JSON.stringify([...newFavorites]));
       } catch (error) {
         console.warn('Failed to save favorites:', error);
       }
     },
-    [disabled, favorites]
+    [disabled, favorites, favoritesStorageKey]
+  );
+
+  const toggleComparison = useCallback(
+    (modelValue: string) => {
+      if (comparisonDisabled || !onComparisonModelsChange) return;
+
+      const newSelection = selectedComparisonModels.includes(modelValue)
+        ? selectedComparisonModels.filter((m) => m !== modelValue)
+        : [...selectedComparisonModels, modelValue];
+
+      onComparisonModelsChange(newSelection);
+    },
+    [comparisonDisabled, onComparisonModelsChange, selectedComparisonModels]
   );
 
   const handleModelSelect = useCallback(
@@ -256,7 +353,7 @@ export default function ModelSelector({
         setRecentModels(newRecent);
 
         try {
-          localStorage.setItem(RECENT_KEY, JSON.stringify(newRecent));
+          localStorage.setItem(recentStorageKey, JSON.stringify(newRecent));
         } catch (error) {
           console.warn('Failed to save recent models:', error);
         }
@@ -270,7 +367,7 @@ export default function ModelSelector({
         }, 0);
       }
     },
-    [disabled, onChange, favorites, recentModels, onAfterChange]
+    [disabled, onChange, favorites, recentModels, onAfterChange, recentStorageKey]
   );
 
   useEffect(() => {
@@ -291,6 +388,7 @@ export default function ModelSelector({
   }, [
     searchQuery,
     selectedTab,
+    organizedModels.selected.length,
     organizedModels.favorites.length,
     organizedModels.recent.length,
     organizedModels.other.length,
@@ -320,12 +418,27 @@ export default function ModelSelector({
         }
       }
     }
-  }, [isOpen, value, allModels, providerTabs]);
+    // Only run when the dropdown opens or the selected value changes,
+    // not on every re-render of models or tabs to avoid resetting user's manual tab choice
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, value]);
 
   const displayText = currentModel?.label || value || 'Select model';
 
   const sections = useMemo<Section<ModelOption>[]>(() => {
     const result: Section<ModelOption>[] = [];
+
+    if (organizedModels.selected.length > 0) {
+      result.push({
+        id: 'selected',
+        header: (
+          <div className="px-3 py-1.5 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide bg-zinc-50 dark:bg-zinc-900/50">
+            Selected
+          </div>
+        ),
+        items: organizedModels.selected,
+      });
+    }
 
     if (organizedModels.favorites.length > 0) {
       result.push({
@@ -353,7 +466,9 @@ export default function ModelSelector({
 
     if (organizedModels.other.length > 0) {
       const otherHeader =
-        organizedModels.favorites.length > 0 || organizedModels.recent.length > 0 ? (
+        organizedModels.selected.length > 0 ||
+        organizedModels.favorites.length > 0 ||
+        organizedModels.recent.length > 0 ? (
           <div className="px-3 py-1.5 text-xs font-semibold text-zinc-500 dark:text-zinc-400 uppercase tracking-wide bg-zinc-50 dark:bg-zinc-900/50">
             All Models
           </div>
@@ -421,6 +536,11 @@ export default function ModelSelector({
       disabled={disabled}
     >
       <span className="text-xs sm:text-sm truncate flex-1 text-left">{displayText}</span>
+      {selectedComparisonModels.length > 0 && (
+        <span className="flex-shrink-0 px-1.5 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-[10px] font-bold text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700">
+          +{selectedComparisonModels.length}
+        </span>
+      )}
       <ChevronDown
         className={`w-4 h-4 text-zinc-500 transition-transform ${isOpen ? 'rotate-180' : ''}`}
       />
@@ -456,6 +576,9 @@ export default function ModelSelector({
           onToggleFavorite={toggleFavorite}
           onSelect={handleModelSelect}
           isHighlighted={isHighlighted}
+          isInComparison={selectedComparisonModels.includes(model.value)}
+          onToggleComparison={onComparisonModelsChange ? toggleComparison : undefined}
+          comparisonDisabled={comparisonDisabled}
         />
       )}
       emptyState={emptyState}
@@ -472,6 +595,21 @@ export default function ModelSelector({
       }}
       trigger={
         disabled ? <Tooltip content={disabledReason}>{triggerButton}</Tooltip> : triggerButton
+      }
+      extraHeader={
+        selectedComparisonModels.length > 0 ? (
+          <div className="px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/30 flex justify-between items-center">
+            <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              {selectedComparisonModels.length} in comparison
+            </span>
+            <button
+              onClick={() => onComparisonModelsChange?.([])}
+              className="text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        ) : undefined
       }
     />
   );

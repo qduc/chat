@@ -35,12 +35,32 @@ export function EvaluationDisplay({
     return match ? match[0] : null;
   };
 
+  const unmaskReasoning = (text: string, selectedModelIds: string[]) => {
+    let result = text;
+    selectedModelIds.forEach((modelId, index) => {
+      const label = `model_${String.fromCharCode(97 + index)}`;
+      const realName = modelId === 'primary' ? primaryLabel : resolveModelLabel(modelId);
+
+      // Replace {{model_a}}
+      result = result.replace(new RegExp(`\\{\\{${label}\\}\\}`, 'g'), realName);
+      // Replace model_a (word boundary)
+      result = result.replace(new RegExp(`\\b${label}\\b`, 'g'), realName);
+    });
+    return result;
+  };
+
   return (
     <div className="mt-3 space-y-3">
       {evaluationDrafts.map((draft) => {
         const modelLabels = draft.selectedModelIds
           .map((modelId) => (modelId === 'primary' ? primaryLabel : resolveModelLabel(modelId)))
           .join(' vs ');
+
+        const rawReasoning = extractReasoningFromPartialJson(draft.content);
+        const reasoning = rawReasoning
+          ? unmaskReasoning(rawReasoning, draft.selectedModelIds)
+          : 'Analyzing...';
+
         return (
           <div
             key={draft.id}
@@ -60,7 +80,7 @@ export function EvaluationDisplay({
                 <div className="text-red-600 dark:text-red-300">{draft.error}</div>
               ) : (
                 <Markdown
-                  text={extractReasoningFromPartialJson(draft.content) || 'Analyzing...'}
+                  text={reasoning}
                   isStreaming={draft.status === 'streaming'}
                   className="md-compact !text-amber-900 dark:!text-amber-100"
                 />

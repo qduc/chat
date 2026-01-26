@@ -2,7 +2,6 @@ import React from 'react';
 import { Sun, Moon, Settings, RefreshCw, Loader2, PanelLeft, PanelRight, Plus } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
 import ModelSelector from './ui/ModelSelector';
-import CompareSelector from './ui/CompareSelector';
 import { type Group as TabGroup } from './ui/TabbedSelect';
 import { AuthButton } from './auth/AuthButton';
 
@@ -33,6 +32,8 @@ interface ChatHeaderProps {
   modelSelectionLockReason?: string;
 }
 
+const EMPTY_STRING_ARRAY: string[] = [];
+
 export function ChatHeader({
   model,
   onModelChange,
@@ -51,7 +52,7 @@ export function ChatHeader({
   showLeftSidebarButton = false,
   showRightSidebarButton = false,
   onNewChat,
-  selectedComparisonModels = [],
+  selectedComparisonModels = EMPTY_STRING_ARRAY,
   onComparisonModelsChange,
   comparisonLocked = false,
   comparisonLockReason = 'Model comparison is locked after the first message.',
@@ -150,19 +151,11 @@ export function ChatHeader({
             onAfterChange={onFocusMessageInput}
             disabled={modelSelectionLocked}
             disabledReason={modelSelectionLockReason}
+            selectedComparisonModels={selectedComparisonModels}
+            onComparisonModelsChange={onComparisonModelsChange}
+            comparisonDisabled={comparisonLocked}
+            comparisonDisabledReason={comparisonLockReason}
           />
-          {onComparisonModelsChange && (
-            <CompareSelector
-              primaryModel={model}
-              selectedModels={selectedComparisonModels}
-              onChange={onComparisonModelsChange}
-              groups={effectiveGroups}
-              fallbackOptions={effectiveFallback}
-              className="hidden sm:block"
-              disabled={comparisonLocked}
-              disabledReason={comparisonLockReason}
-            />
-          )}
           {onRefreshModels && (
             <button
               onClick={onRefreshModels}
@@ -182,18 +175,6 @@ export function ChatHeader({
         </div>
 
         <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-          {onComparisonModelsChange && (
-            <CompareSelector
-              primaryModel={model}
-              selectedModels={selectedComparisonModels}
-              onChange={onComparisonModelsChange}
-              groups={effectiveGroups}
-              fallbackOptions={effectiveFallback}
-              className="sm:hidden"
-              disabled={comparisonLocked}
-              disabledReason={comparisonLockReason}
-            />
-          )}
           <button
             onClick={onOpenSettings}
             className="w-8 h-8 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center justify-center text-zinc-500 dark:text-zinc-400 transition-colors"

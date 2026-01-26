@@ -57,11 +57,13 @@ export function JudgeModal({
   useEffect(() => {
     if (isOpen && availableModels.length >= 2) {
       setSelectedModelIds(availableModels);
-      setJudgeModelId(initialJudgeModelId || primaryModelLabel || modelOptions[0]?.value || '');
+      setJudgeModelId(initialJudgeModelId || modelOptions[0]?.value || '');
       setCriteria('general');
       setCustomCriteria('');
     }
-  }, [isOpen, availableModels, initialJudgeModelId, primaryModelLabel, modelOptions]);
+    // Use stable init - only run once when modal opens
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   const formatModelLabel = (modelId: string | null | undefined) => {
     if (!modelId) return 'Model';
@@ -96,6 +98,8 @@ export function JudgeModal({
               groups={modelGroups}
               fallbackOptions={modelOptions}
               ariaLabel="Select judge model"
+              favoritesStorageKey="chatforge-favorite-judge-models"
+              recentStorageKey="chatforge-recent-judge-models"
             />
           </div>
         </div>

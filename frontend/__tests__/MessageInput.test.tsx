@@ -157,7 +157,7 @@ jest.mock('../lib/audioUtils', () => ({
 // Default props
 const defaultProps = {
   input: '',
-  pending: { streaming: false, sending: false, loadingConversation: false },
+  pending: { streaming: false, abort: null },
   onInputChange: jest.fn(),
   onSend: jest.fn(),
   onStop: jest.fn(),
@@ -255,7 +255,7 @@ describe('MessageInput', () => {
       render(
         <MessageInput
           {...defaultProps}
-          pending={{ streaming: true, sending: false, loadingConversation: false }}
+          pending={{ streaming: true, abort: null }}
           onStop={onStop}
         />
       );
@@ -293,12 +293,7 @@ describe('MessageInput', () => {
     });
 
     it('shows loading state when streaming', () => {
-      render(
-        <MessageInput
-          {...defaultProps}
-          pending={{ streaming: true, sending: false, loadingConversation: false }}
-        />
-      );
+      render(<MessageInput {...defaultProps} pending={{ streaming: true, abort: null }} />);
 
       expect(screen.getByTestId('loader-icon')).toBeInTheDocument();
     });
@@ -308,7 +303,7 @@ describe('MessageInput', () => {
       render(
         <MessageInput
           {...defaultProps}
-          pending={{ streaming: true, sending: false, loadingConversation: false }}
+          pending={{ streaming: true, abort: null }}
           onStop={onStop}
         />
       );
@@ -550,7 +545,7 @@ describe('MessageInput', () => {
       render(
         <MessageInput
           {...defaultProps}
-          pending={{ streaming: true, sending: false, loadingConversation: false }}
+          pending={{ streaming: true, abort: null }}
           onStop={onStop}
         />
       );
@@ -576,12 +571,7 @@ describe('MessageInput', () => {
     });
 
     it('disables controls during streaming', () => {
-      render(
-        <MessageInput
-          {...defaultProps}
-          pending={{ streaming: true, sending: false, loadingConversation: false }}
-        />
-      );
+      render(<MessageInput {...defaultProps} pending={{ streaming: true, abort: null }} />);
 
       const qualitySlider = screen.getByTestId('quality-slider');
       expect(qualitySlider).toBeDisabled();

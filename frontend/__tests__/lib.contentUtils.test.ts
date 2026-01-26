@@ -385,7 +385,6 @@ Thanks!`;
       id: 'msg-1',
       role: 'assistant' as Role,
       content: 'Hello',
-      created_at: new Date().toISOString(),
       ...overrides,
     });
 
@@ -431,8 +430,8 @@ Thanks!`;
           { id: 'tc-2', function: { name: 'calculate', arguments: '{}' }, index: 1 },
         ],
         tool_outputs: [
-          { tool_call_id: 'tc-1', name: 'search', content: 'Found results' },
-          { tool_call_id: 'tc-2', name: 'calculate', content: '42' },
+          { tool_call_id: 'tc-1', name: 'search', output: 'Found results' },
+          { tool_call_id: 'tc-2', name: 'calculate', output: '42' },
         ],
       });
 
@@ -451,7 +450,7 @@ Thanks!`;
         tool_calls: [
           { id: 'tc-1', function: { name: 'search', arguments: '{}' }, index: 0, textOffset: 6 },
         ],
-        tool_outputs: [{ tool_call_id: 'tc-1', name: 'search', content: 'Found results' }],
+        tool_outputs: [{ tool_call_id: 'tc-1', name: 'search', output: 'Found results' }],
       });
 
       const segments = buildAssistantSegments(msg);
@@ -505,8 +504,8 @@ Thanks!`;
         content: '',
         tool_calls: [{ id: 'tc-123', function: { name: 'test', arguments: '{}' }, index: 0 }],
         tool_outputs: [
-          { tool_call_id: 'tc-123', name: 'test', content: 'output content' },
-          { tool_call_id: 'other', name: 'other', content: 'other output' },
+          { tool_call_id: 'tc-123', name: 'test', output: 'output content' },
+          { tool_call_id: 'other', name: 'other', output: 'other output' },
         ],
       });
 
@@ -516,7 +515,7 @@ Thanks!`;
       expect(segments[0].kind).toBe('tool_call');
       const toolSegment = segments[0] as any;
       expect(toolSegment.outputs).toHaveLength(1);
-      expect(toolSegment.outputs[0].content).toBe('output content');
+      expect(toolSegment.outputs[0].output).toBe('output content');
     });
   });
 });
