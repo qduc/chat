@@ -25,11 +25,11 @@ import { normalizeUsage } from './utils/usage.js';
  * Uses composition pattern with specialized components for better maintainability
  */
 export class SimplifiedPersistence {
-  constructor(config) {
-    this.persistenceConfig = new PersistenceConfig(config);
-    this.conversationManager = new ConversationManager();
-    this.validator = new ConversationValidator(config);
-    this.titleService = new ConversationTitleService(config);
+  constructor(config, helpers = {}) {
+    this.persistenceConfig = helpers.persistenceConfig || new PersistenceConfig(config);
+    this.conversationManager = helpers.conversationManager || new ConversationManager();
+    this.validator = helpers.validator || new ConversationValidator(config);
+    this.titleService = helpers.titleService || new ConversationTitleService(config);
 
     // Runtime state
     this.persist = false;
@@ -221,8 +221,10 @@ export class SimplifiedPersistence {
       this.userMessageId = latestUserMapping?.persistedId != null ? String(latestUserMapping.persistedId) : null;
 
       // Generate title when the conversation is new or still lacks a title.
+      // Skip for linked/comparison conversations as they share the context of the parent.
       // Fire-and-forget to avoid blocking the response.
-      const needsTitle = isNewConversation || !this.conversationMeta?.title;
+      const isLinkedConversation = this.conversationMeta?.parent_conversation_id != null;
+      const needsTitle = (isNewConversation || !this.conversationMeta?.title) && !isLinkedConversation;
       if (needsTitle) {
         const lastUser = ConversationTitleService.findLastUserMessage(messages);
         if (lastUser) {
