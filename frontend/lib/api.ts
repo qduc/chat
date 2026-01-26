@@ -1116,30 +1116,30 @@ function processStreamChunk(
   };
 
   if (data._conversation) {
-    return {
-      conversation: {
-        id: data._conversation.id,
-        title: data._conversation.title,
-        model: data._conversation.model,
-        created_at: data._conversation.created_at,
-        ...(typeof data._conversation.tools_enabled === 'boolean'
-          ? { tools_enabled: data._conversation.tools_enabled }
-          : {}),
-        ...(Array.isArray(data._conversation.active_tools)
-          ? { active_tools: data._conversation.active_tools }
-          : {}),
-        ...(Object.hasOwn(data._conversation, 'custom_request_params_id')
-          ? { custom_request_params_id: data._conversation.custom_request_params_id ?? null }
-          : {}),
-        ...(data._conversation.seq !== undefined ? { seq: data._conversation.seq } : {}),
-        ...(data._conversation.user_message_id !== undefined
-          ? { user_message_id: data._conversation.user_message_id }
-          : {}),
-        ...(data._conversation.assistant_message_id !== undefined
-          ? { assistant_message_id: data._conversation.assistant_message_id }
-          : {}),
-      },
+    const conversation = {
+      id: data._conversation.id,
+      title: data._conversation.title,
+      model: data._conversation.model,
+      created_at: data._conversation.created_at,
+      ...(typeof data._conversation.tools_enabled === 'boolean'
+        ? { tools_enabled: data._conversation.tools_enabled }
+        : {}),
+      ...(Array.isArray(data._conversation.active_tools)
+        ? { active_tools: data._conversation.active_tools }
+        : {}),
+      ...(Object.hasOwn(data._conversation, 'custom_request_params_id')
+        ? { custom_request_params_id: data._conversation.custom_request_params_id ?? null }
+        : {}),
+      ...(data._conversation.seq !== undefined ? { seq: data._conversation.seq } : {}),
+      ...(data._conversation.user_message_id !== undefined
+        ? { user_message_id: data._conversation.user_message_id }
+        : {}),
+      ...(data._conversation.assistant_message_id !== undefined
+        ? { assistant_message_id: data._conversation.assistant_message_id }
+        : {}),
     };
+    onEvent?.({ type: 'conversation', value: conversation });
+    return { conversation };
   }
 
   if (data.reasoning_summary) {

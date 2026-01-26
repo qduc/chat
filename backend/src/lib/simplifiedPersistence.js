@@ -81,7 +81,7 @@ export class SimplifiedPersistence {
    * @param {Object} params.bodyIn - Original request body
    * @returns {Promise<{error?: Object}>} Error object if validation fails
    */
-  async initialize({ conversationId, sessionId, userId = null, req, bodyIn }) {
+  async initialize({ conversationId, sessionId, userId = null, req, bodyIn, onTitleGenerated }) {
     // Store user context for later use
     this.userId = userId;
     this.userMessageId = null;
@@ -120,7 +120,7 @@ export class SimplifiedPersistence {
     const isNewConversation = result.isNewConversation;
 
     // Process message history and generate title if needed
-    await this._processMessageHistory(sessionId, userId, bodyIn, isNewConversation);
+    await this._processMessageHistory(sessionId, userId, bodyIn, isNewConversation, onTitleGenerated);
 
     // Setup for assistant message recording
     this._setupAssistantRecording();
@@ -187,7 +187,7 @@ export class SimplifiedPersistence {
    * Process message history and generate title if needed
    * @private
    */
-  async _processMessageHistory(sessionId, userId, bodyIn, isNewConversation) {
+  async _processMessageHistory(sessionId, userId, bodyIn, isNewConversation, onTitleGenerated) {
     let messages = this.persistenceConfig.filterNonSystemMessages(bodyIn.messages || []);
     const emptyAssistantMessages = messages.filter(
       (msg) =>
@@ -248,6 +248,7 @@ export class SimplifiedPersistence {
                   this.conversationMeta.title = generated;
                 }
                 logger.info(`[SimplifiedPersistence] Title generated: "${generated}"`);
+                if (onTitleGenerated) onTitleGenerated(generated);
               }
             })
             .catch(err => {

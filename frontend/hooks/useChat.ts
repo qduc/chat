@@ -358,6 +358,32 @@ export function useChat() {
               updateMessageState(isPrimary, targetModel, (current) => ({
                 content: (typeof current.content === 'string' ? current.content : '') + event.value,
               }));
+            } else if (event.type === 'conversation') {
+              if (isPrimary && event.value) {
+                const c = event.value;
+                if (!conversationIdRef.current || conversationIdRef.current === c.id) {
+                  if (!conversationIdRef.current) {
+                    setConversationId(c.id);
+                  }
+                  setCurrentConversationTitle(c.title || null);
+                  setConversations((prev) => {
+                    if (prev.some((curr) => curr.id === c.id)) {
+                      return prev.map((curr) =>
+                        curr.id === c.id ? { ...curr, title: c.title || '' } : curr
+                      );
+                    }
+                    return [
+                      {
+                        id: c.id,
+                        title: c.title || '',
+                        created_at: c.created_at,
+                        updatedAt: c.created_at,
+                      },
+                      ...prev,
+                    ];
+                  });
+                }
+              }
             } else if (event.type === 'tool_call') {
               updateMessageState(isPrimary, targetModel, (current) => ({
                 tool_calls: mergeToolCallDelta(
@@ -405,10 +431,10 @@ export function useChat() {
             setConversationId(response.conversation.id);
             setCurrentConversationTitle(response.conversation.title || null);
             if (isNew)
-              setConversations((prev) => [
-                convertConversationMeta(response.conversation as any),
-                ...prev,
-              ]);
+              setConversations((prev) => {
+                if (prev.some((c) => c.id === response.conversation!.id)) return prev;
+                return [convertConversationMeta(response.conversation as any), ...prev];
+              });
           }
           if (user?.id) clearDraft(user.id, conversationIdRef.current || '');
           conversationsApi.clearListCache();
@@ -540,6 +566,8 @@ export function useChat() {
         }
       }
 
+      let primaryResponse: ChatResponse | undefined;
+
       if (effId && activeCompares.length > 0) {
         const p1 = executeRequest(primaryModel, true, messageId, userMsgId, msgContent, {
           conversationId: effId,
@@ -554,13 +582,15 @@ export function useChat() {
             ...opts,
           })
         );
-        await Promise.all([p1, ...p2]);
+        const [resp] = await Promise.all([p1, ...p2]);
+        primaryResponse = resp;
       } else {
         const resp = await executeRequest(primaryModel, true, messageId, userMsgId, msgContent, {
           conversationId: effId || undefined,
           signal,
           ...opts,
         });
+        primaryResponse = resp;
         const parentId = resp?.conversation?.id || effId;
         if (parentId)
           await Promise.all(
@@ -573,6 +603,29 @@ export function useChat() {
               })
             )
           );
+      }
+
+      if (primaryResponse?.conversation) {
+        const c = primaryResponse.conversation;
+        if (!c.title || c.title === 'Untitled conversation' || c.title === 'New conversation') {
+          setTimeout(async () => {
+            if (conversationIdRef.current === c.id) {
+              try {
+                const updated = await conversationsApi.get(c.id, { limit: 1 });
+                if (updated.title && updated.title !== c.title) {
+                  setCurrentConversationTitle(updated.title);
+                  setConversations((prev) =>
+                    prev.map((cur) =>
+                      cur.id === c.id ? { ...cur, title: updated.title || '' } : cur
+                    )
+                  );
+                }
+              } catch (e) {
+                /* ignore */
+              }
+            }
+          }, 3000);
+        }
       }
 
       setStatus('idle');
