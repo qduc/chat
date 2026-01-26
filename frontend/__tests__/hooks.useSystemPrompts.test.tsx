@@ -195,14 +195,14 @@ describe('useSystemPrompts', () => {
 
       await waitFor(() => expect(result.current.loading).toBe(false));
 
-      let updated: CustomPrompt | null = null;
+      let updatedResult: any = null;
       await act(async () => {
-        updated = await result.current.updatePrompt('custom-1', {
+        updatedResult = await result.current.updatePrompt('custom-1', {
           name: 'Updated Name',
         });
       });
 
-      expect(updated?.name).toBe('Updated Name');
+      expect(updatedResult?.name).toBe('Updated Name');
       expect(mockHttpClient.patch).toHaveBeenCalledWith('/v1/system-prompts/custom-1', {
         name: 'Updated Name',
       });

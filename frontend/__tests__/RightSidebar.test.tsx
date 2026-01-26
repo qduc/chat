@@ -29,7 +29,7 @@ const mockPrompts = {
 const mockUseSystemPrompts = {
   prompts: mockPrompts,
   loading: false,
-  error: null,
+  error: null as string | null,
   activePromptId: null,
   setActivePromptId: jest.fn(),
   hasUnsavedChanges: jest.fn(() => false),

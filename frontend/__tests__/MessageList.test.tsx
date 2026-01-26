@@ -84,14 +84,13 @@ const createMessage = (overrides: Partial<ChatMessage> = {}): ChatMessage => ({
   id: `msg-${Date.now()}-${Math.random()}`,
   role: 'user' as Role,
   content: 'Test message',
-  created_at: new Date().toISOString(),
   ...overrides,
 });
 
 // Default props
 const defaultProps = {
   messages: [] as ChatMessage[],
-  pending: { streaming: false, sending: false, loadingConversation: false },
+  pending: { streaming: false, abort: null },
   conversationId: null,
   compareModels: [],
   primaryModelLabel: null,
@@ -164,7 +163,7 @@ describe('MessageList', () => {
         <MessageList
           {...defaultProps}
           messages={messages}
-          pending={{ streaming: true, sending: false, loadingConversation: false }}
+          pending={{ streaming: true, abort: null }}
         />
       );
 
@@ -190,8 +189,7 @@ describe('MessageList', () => {
           {...defaultProps}
           pending={{
             streaming: false,
-            sending: false,
-            loadingConversation: false,
+            abort: null,
             error: 'API Error',
           }}
         />
@@ -288,8 +286,8 @@ describe('MessageList', () => {
           role: 'assistant',
           content: 'Primary answer',
           comparisonResults: {
-            'model-a': { content: 'Model A answer', model: 'model-a' },
-            'model-b': { content: 'Model B answer', model: 'model-b' },
+            'model-a': { content: 'Model A answer', status: 'complete' },
+            'model-b': { content: 'Model B answer', status: 'complete' },
           },
         }),
       ];
@@ -383,7 +381,7 @@ describe('MessageList', () => {
           winner: 'model_a',
           reasoning: 'Model A was better',
           created_at: new Date().toISOString(),
-        },
+        } as any,
       ];
 
       render(<MessageList {...defaultProps} messages={messages} evaluations={evaluations} />);
@@ -395,7 +393,14 @@ describe('MessageList', () => {
       const messages = [createMessage({ id: 'msg-1', role: 'assistant', content: 'Answer' })];
 
       const evaluationDrafts = [
-        { messageId: 'msg-1', modelIds: ['primary', 'model-a'], reasoning: '' },
+        {
+          id: 'draft-1',
+          messageId: 'msg-1',
+          selectedModelIds: ['primary', 'model-a'],
+          judgeModelId: 'gpt-4',
+          content: 'Reasoning...',
+          status: 'streaming' as const,
+        },
       ];
 
       render(
