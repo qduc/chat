@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Star, StarOff, ChevronDown } from 'lucide-react';
+import { Star, StarOff, ChevronDown, Check, Plus } from 'lucide-react';
 import { type Group as TabGroup } from './TabbedSelect';
 import ModelSelectBase, { type Section, type SelectOption, type Tab } from './ModelSelectBase';
 import Tooltip from './Tooltip';
@@ -18,6 +18,11 @@ interface ModelSelectorProps {
   disabledReason?: string;
   favoritesStorageKey?: string;
   recentStorageKey?: string;
+  // Comparison props
+  selectedComparisonModels?: string[];
+  onComparisonModelsChange?: (models: string[]) => void;
+  comparisonDisabled?: boolean;
+  comparisonDisabledReason?: string;
 }
 
 const FAVORITES_KEY = 'chatforge-favorite-models';
@@ -33,6 +38,9 @@ const ModelItem = React.memo(
     onSelect,
     isHighlighted,
     id,
+    isInComparison,
+    onToggleComparison,
+    comparisonDisabled,
   }: {
     model: ModelOption;
     isSelected: boolean;
@@ -41,6 +49,9 @@ const ModelItem = React.memo(
     onSelect: (value: string) => void;
     isHighlighted: boolean;
     id: string;
+    isInComparison?: boolean;
+    onToggleComparison?: (value: string) => void;
+    comparisonDisabled?: boolean;
   }) => (
     <div
       id={id}
@@ -85,6 +96,41 @@ const ModelItem = React.memo(
           </div>
         )}
       </button>
+
+      {onToggleComparison && (
+        <div className="flex items-center justify-center w-10 h-9">
+          {isSelected ? (
+            <div
+              className="w-2 h-2 rounded-full bg-zinc-400 dark:bg-zinc-500"
+              title="Primary Model"
+            />
+          ) : (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!comparisonDisabled) onToggleComparison(model.value);
+              }}
+              disabled={comparisonDisabled}
+              className={`${
+                isInComparison ? 'w-4 h-4' : 'w-6 h-6'
+              } rounded flex items-center justify-center transition-colors ${
+                isInComparison
+                  ? 'bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900'
+                  : 'text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
+              } ${comparisonDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+              title={
+                comparisonDisabled
+                  ? 'Comparison is locked'
+                  : isInComparison
+                    ? 'Remove from comparison'
+                    : 'Add to comparison'
+              }
+            >
+              {isInComparison ? <Check className="w-3 h-3" /> : <Plus className="w-3.5 h-3.5" />}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 );
@@ -103,6 +149,10 @@ export default function ModelSelector({
   disabledReason = 'Primary model is locked after comparison starts.',
   favoritesStorageKey = FAVORITES_KEY,
   recentStorageKey = RECENT_KEY,
+  selectedComparisonModels = [],
+  onComparisonModelsChange,
+  comparisonDisabled = false,
+  comparisonDisabledReason = 'Model comparison is locked after the first message.',
 }: ModelSelectorProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -155,7 +205,20 @@ export default function ModelSelector({
 
   // Get available provider tabs
   const providerTabs = useMemo<Tab[]>(() => {
-    const tabs: Tab[] = [{ id: 'all', label: 'All', count: allModels.length }];
+    const selectedSet = new Set(selectedComparisonModels);
+
+    // Check if any model in a provider group is selected for comparison
+    const hasSelectedInProvider = (providerId: string): boolean => {
+      return allModels.some(
+        (model) => model.providerId === providerId && selectedSet.has(model.value)
+      );
+    };
+
+    const hasAnySelected = selectedComparisonModels.length > 0;
+
+    const tabs: Tab[] = [
+      { id: 'all', label: 'All', count: allModels.length, hasSelected: hasAnySelected },
+    ];
 
     if (groups && groups.length > 1) {
       groups.forEach((group) => {
@@ -163,12 +226,13 @@ export default function ModelSelector({
           id: group.id,
           label: group.label,
           count: group.options.length,
+          hasSelected: hasSelectedInProvider(group.id),
         });
       });
     }
 
     return tabs;
-  }, [groups, allModels.length]);
+  }, [groups, allModels, selectedComparisonModels]);
 
   // Filter models based on search query and selected tab
   const filteredModels = useMemo(() => {
@@ -244,6 +308,19 @@ export default function ModelSelector({
       }
     },
     [disabled, favorites, favoritesStorageKey]
+  );
+
+  const toggleComparison = useCallback(
+    (modelValue: string) => {
+      if (comparisonDisabled || !onComparisonModelsChange) return;
+
+      const newSelection = selectedComparisonModels.includes(modelValue)
+        ? selectedComparisonModels.filter((m) => m !== modelValue)
+        : [...selectedComparisonModels, modelValue];
+
+      onComparisonModelsChange(newSelection);
+    },
+    [comparisonDisabled, onComparisonModelsChange, selectedComparisonModels]
   );
 
   const handleModelSelect = useCallback(
@@ -425,6 +502,11 @@ export default function ModelSelector({
       disabled={disabled}
     >
       <span className="text-xs sm:text-sm truncate flex-1 text-left">{displayText}</span>
+      {selectedComparisonModels.length > 0 && (
+        <span className="flex-shrink-0 px-1.5 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-[10px] font-bold text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700">
+          +{selectedComparisonModels.length}
+        </span>
+      )}
       <ChevronDown
         className={`w-4 h-4 text-zinc-500 transition-transform ${isOpen ? 'rotate-180' : ''}`}
       />
@@ -460,6 +542,9 @@ export default function ModelSelector({
           onToggleFavorite={toggleFavorite}
           onSelect={handleModelSelect}
           isHighlighted={isHighlighted}
+          isInComparison={selectedComparisonModels.includes(model.value)}
+          onToggleComparison={onComparisonModelsChange ? toggleComparison : undefined}
+          comparisonDisabled={comparisonDisabled}
         />
       )}
       emptyState={emptyState}
@@ -476,6 +561,21 @@ export default function ModelSelector({
       }}
       trigger={
         disabled ? <Tooltip content={disabledReason}>{triggerButton}</Tooltip> : triggerButton
+      }
+      extraHeader={
+        selectedComparisonModels.length > 0 ? (
+          <div className="px-3 py-2 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50/50 dark:bg-zinc-900/30 flex justify-between items-center">
+            <span className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+              {selectedComparisonModels.length} in comparison
+            </span>
+            <button
+              onClick={() => onComparisonModelsChange?.([])}
+              className="text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200 transition-colors"
+            >
+              Clear
+            </button>
+          </div>
+        ) : undefined
       }
     />
   );
