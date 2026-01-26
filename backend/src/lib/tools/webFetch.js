@@ -316,16 +316,18 @@ async function handler({ url, maxChars, targetHeadings, continuation_token, useB
       html = await basicFetch(url);
     } catch (error) {
       errorMessages.push(`Basic fetch failed: ${error.message}`);
+      if (error.name === 'AbortError') {
+        throw new Error(`Failed to fetch URL: ${error.message}`);
+      }
+      throw error;
     }
 
     // 2. Check for failure triggers (SPA detection)
     // - No content (fetch failed)
-    // - Very short content (<300 chars usually means stub)
     // - Specific "Enable JS" messages
     // - noscript tag containing JavaScript requirement messages (not just any noscript tag)
     const noscriptNeedsJs = /<noscript[^>]*>.*?(?:enable|require|need).*?javascript/is.test(html);
     const isFailure = !html
-      || html.length < 300
       || html.includes("You need to enable JavaScript")
       || /<title>(?:Just a moment\.\.\.|Attention Required! \| Cloudflare)<\/title>/i.test(html)
       || html.includes("Checking your browser before accessing")
