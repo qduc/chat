@@ -168,6 +168,43 @@ function setupHttpClient() {
       });
     }
 
+    if (url.startsWith('/v1/models')) {
+      return Promise.resolve({
+        data: {
+          providers: [
+            {
+              provider: { id: 'openai', name: 'OpenAI', provider_type: 'openai' },
+              models: [{ id: 'gpt-4o' }, { id: 'gpt-4o-mini' }],
+            },
+          ],
+          cached: false,
+          cachedAt: new Date().toISOString(),
+          errors: [],
+        },
+        status: 200,
+        statusText: 'OK',
+        headers: new Headers(),
+      });
+    }
+
+    if (url === '/v1/system-prompts') {
+      return Promise.resolve({
+        data: { system_prompts: [] },
+        status: 200,
+        statusText: 'OK',
+        headers: new Headers(),
+      });
+    }
+
+    if (url === '/v1/user-settings') {
+      return Promise.resolve({
+        data: {},
+        status: 200,
+        statusText: 'OK',
+        headers: new Headers(),
+      });
+    }
+
     return Promise.resolve({
       data: { provider: { id: 'unknown' }, models: [] },
       status: 200,

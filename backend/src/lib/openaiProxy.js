@@ -3,7 +3,7 @@ import { generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
 import { handleToolsJson } from './toolsJson.js';
 import { handleToolsStreaming } from './toolsStreaming.js';
 import { handleRegularStreaming } from './streamingHandler.js';
-import { setupStreamingHeaders, createOpenAIRequest } from './streamUtils.js';
+import { setupStreamingHeaders, createOpenAIRequest, writeAndFlush } from './streamUtils.js';
 import { extractUsage } from './utils/usage.js';
 import { createProvider } from './providers/index.js';
 import { SimplifiedPersistence } from './simplifiedPersistence.js';
@@ -740,12 +740,23 @@ async function executeRequestHandler(context, req, res) {
   const sessionId = req.sessionId;
   const userId = context.userId; // Use userId from context
 
+  const onTitleGenerated = (newTitle) => {
+    // Only send if the stream is established and active
+    if (!res.writableEnded && res.headersSent) {
+      const conversationMeta = getConversationMetadata(persistence);
+      if (conversationMeta) {
+        writeAndFlush(res, `data: ${JSON.stringify(conversationMeta)}\n\n`);
+      }
+    }
+  };
+
   const initResult = await persistence.initialize({
     conversationId: context.conversationId,
     sessionId,
     userId, // Pass user context to persistence
     req,
-    bodyIn: context.bodyIn
+    bodyIn: context.bodyIn,
+    onTitleGenerated
   });
 
   // Handle persistence validation errors

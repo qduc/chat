@@ -394,9 +394,12 @@ export const chat = {
 
 export interface JudgeOptions {
   conversationId: string;
-  comparisonConversationId: string;
   messageId: string;
-  comparisonMessageId: string;
+  models: Array<{
+    modelId: string;
+    conversationId: string;
+    messageId: string;
+  }>;
   judgeModelId: string;
   criteria?: string | null;
   judgeProviderId?: string | null;
@@ -421,9 +424,12 @@ export const judge = {
 
     const bodyObj = {
       conversation_id: payload.conversationId,
-      comparison_conversation_id: payload.comparisonConversationId,
       message_id: payload.messageId,
-      comparison_message_id: payload.comparisonMessageId,
+      models: payload.models.map((model) => ({
+        model_id: model.modelId,
+        conversation_id: model.conversationId,
+        message_id: model.messageId,
+      })),
       judge_model: payload.judgeModelId,
       judge_provider_id: payload.judgeProviderId ?? undefined,
       criteria: payload.criteria ?? null,
@@ -932,6 +938,18 @@ async function handleJudgeStreamingResponse(
     // Fallback if evaluation wasn't sent explicitly
     try {
       const parsed = content ? JSON.parse(content) : null;
+      const scores =
+        parsed && typeof parsed === 'object' && typeof parsed.scores === 'object'
+          ? parsed.scores
+          : null;
+      const inferredModels = scores
+        ? Object.entries(scores).map(([modelId, score]) => ({
+            model_id: modelId,
+            conversation_id: 'unknown',
+            message_id: 'unknown',
+            score: Number.isFinite(Number(score)) ? Number(score) : null,
+          }))
+        : [];
       return {
         id: 'unknown',
         user_id: 'unknown',
@@ -947,6 +965,7 @@ async function handleJudgeStreamingResponse(
         winner: typeof parsed?.winner === 'string' ? parsed.winner : 'tie',
         reasoning: typeof parsed?.reasoning === 'string' ? parsed.reasoning : content,
         created_at: new Date().toISOString(),
+        models: inferredModels.length > 0 ? inferredModels : undefined,
       };
     } catch {
       return {
@@ -1097,30 +1116,30 @@ function processStreamChunk(
   };
 
   if (data._conversation) {
-    return {
-      conversation: {
-        id: data._conversation.id,
-        title: data._conversation.title,
-        model: data._conversation.model,
-        created_at: data._conversation.created_at,
-        ...(typeof data._conversation.tools_enabled === 'boolean'
-          ? { tools_enabled: data._conversation.tools_enabled }
-          : {}),
-        ...(Array.isArray(data._conversation.active_tools)
-          ? { active_tools: data._conversation.active_tools }
-          : {}),
-        ...(Object.hasOwn(data._conversation, 'custom_request_params_id')
-          ? { custom_request_params_id: data._conversation.custom_request_params_id ?? null }
-          : {}),
-        ...(data._conversation.seq !== undefined ? { seq: data._conversation.seq } : {}),
-        ...(data._conversation.user_message_id !== undefined
-          ? { user_message_id: data._conversation.user_message_id }
-          : {}),
-        ...(data._conversation.assistant_message_id !== undefined
-          ? { assistant_message_id: data._conversation.assistant_message_id }
-          : {}),
-      },
+    const conversation = {
+      id: data._conversation.id,
+      title: data._conversation.title,
+      model: data._conversation.model,
+      created_at: data._conversation.created_at,
+      ...(typeof data._conversation.tools_enabled === 'boolean'
+        ? { tools_enabled: data._conversation.tools_enabled }
+        : {}),
+      ...(Array.isArray(data._conversation.active_tools)
+        ? { active_tools: data._conversation.active_tools }
+        : {}),
+      ...(Object.hasOwn(data._conversation, 'custom_request_params_id')
+        ? { custom_request_params_id: data._conversation.custom_request_params_id ?? null }
+        : {}),
+      ...(data._conversation.seq !== undefined ? { seq: data._conversation.seq } : {}),
+      ...(data._conversation.user_message_id !== undefined
+        ? { user_message_id: data._conversation.user_message_id }
+        : {}),
+      ...(data._conversation.assistant_message_id !== undefined
+        ? { assistant_message_id: data._conversation.assistant_message_id }
+        : {}),
     };
+    onEvent?.({ type: 'conversation', value: conversation });
+    return { conversation };
   }
 
   if (data.reasoning_summary) {

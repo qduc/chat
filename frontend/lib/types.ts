@@ -101,6 +101,32 @@ export interface InputAudioContent {
   };
 }
 
+export interface PendingState {
+  streaming: boolean;
+  error?: string;
+  abort: AbortController | null;
+  tokenStats?: {
+    count: number;
+    charCount: number;
+    startTime: number;
+    messageId: string;
+    lastUpdated: number;
+    provider?: string;
+    isEstimate: boolean;
+  };
+}
+
+export interface EvaluationDraft {
+  id: string;
+  messageId: string;
+  selectedModelIds: string[]; // All models being compared (including primary if selected)
+  judgeModelId: string;
+  criteria?: string | null;
+  content: string;
+  status: 'streaming' | 'error';
+  error?: string;
+}
+
 // File content extracted from message text for UI rendering
 export interface FileContent {
   type: 'file';
@@ -295,6 +321,12 @@ export interface Evaluation {
   winner?: string | null;
   reasoning?: string | null;
   created_at: string;
+  models?: Array<{
+    model_id?: string | null;
+    conversation_id: string;
+    message_id: string;
+    score?: number | null;
+  }>;
 }
 
 export interface MessageEvent {
@@ -328,6 +360,27 @@ export interface ChatResponse {
   reasoning_details?: any[];
   reasoning_tokens?: number | null;
 }
+
+export interface Conversation {
+  id: string;
+  title: string;
+  created_at: string;
+  updatedAt: string;
+}
+
+export interface ModelOption {
+  value: string;
+  label: string;
+}
+
+export interface ModelGroup {
+  id: string;
+  label: string;
+  options: ModelOption[];
+}
+
+export type Status = 'idle' | 'streaming';
+export type QualityLevel = 'unset' | 'minimal' | 'low' | 'medium' | 'high';
 
 export interface CustomRequestParamPreset {
   id: string;
@@ -408,6 +461,14 @@ export interface ConversationWithMessages {
     }>;
     reasoning_details?: any[];
     reasoning_tokens?: number | null;
+    usage?: {
+      provider?: string;
+      model?: string;
+      prompt_tokens?: number;
+      completion_tokens?: number;
+      total_tokens?: number;
+      reasoning_tokens?: number;
+    };
   }[];
   next_after_seq: number | null;
   evaluations?: Evaluation[];
@@ -478,6 +539,7 @@ export interface ChatOptions {
 // Extended options for advanced features
 export interface ChatOptionsExtended extends ChatOptions {
   conversationId?: string;
+  parentConversationId?: string;
   // Accept either full ToolSpec objects or simple tool name strings
   tools?: Array<ToolSpec | string>;
   toolChoice?: any;
@@ -492,6 +554,9 @@ export interface ChatOptionsExtended extends ChatOptions {
   streamingEnabled?: boolean;
   toolsEnabled?: boolean;
   qualityLevel?: string;
+  systemPrompt?: string;
+  activeSystemPromptId?: string | null;
+  modelCapabilities?: any;
 }
 
 // Legacy interface for backward compatibility

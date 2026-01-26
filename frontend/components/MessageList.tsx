@@ -1,34 +1,17 @@
+/**
+ * MessageList - Container component for message rendering
+ * Orchestrates message display, editing, and judge functionality
+ */
+
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
-import React from 'react';
-import {
-  Bot,
-  Clock,
-  Search,
-  Zap,
-  Copy,
-  Edit2,
-  RefreshCw,
-  AlertCircle,
-  ChevronDown,
-  GitFork,
-  Scale,
-  Trophy,
-  Trash,
-} from 'lucide-react';
-import Markdown from './Markdown';
-import { MessageContentRenderer } from './ui/MessageContentRenderer';
-import { ImagePreview, ImageUploadZone } from './ui/ImagePreview';
-import { Modal } from './ui/Modal';
-import ModelSelector from './ui/ModelSelector';
+import { AlertCircle } from 'lucide-react';
 import { useToast } from './ui/Toast';
+import { Message, JudgeModal, MAX_COMPARISON_COLUMNS } from './message';
 import type { PendingState, EvaluationDraft } from '../hooks/useChat';
 import {
   images,
   createMixedContent,
   extractImagesFromContent,
-  extractTextFromContent,
-  hasAudio,
-  extractReasoningFromPartialJson,
   type ChatMessage,
   type MessageContent,
   type ImageAttachment,
@@ -71,1260 +54,12 @@ interface MessageListProps {
   onFork?: (messageId: string, modelId: string) => void;
   onJudge?: (options: {
     messageId: string;
-    comparisonModelId: string;
+    selectedModelIds: string[];
     judgeModelId: string;
     criteria?: string | null;
   }) => Promise<unknown>;
   onDeleteJudgeResponse: (id: string) => Promise<void>;
 }
-
-// Maximum number of model columns to display side-by-side
-const MAX_COMPARISON_COLUMNS = 3;
-
-// Helper function to split messages with tool calls into separate messages
-function splitMessagesWithToolCalls(messages: ChatMessage[]): ChatMessage[] {
-  // Keep original message shape and avoid splitting tool calls into separate messages.
-  // We render tool calls and any tool outputs inside the same assistant bubble below.
-  return messages;
-}
-
-// Deep comparison for comparisonResults objects to detect changes from linked conversations
-function deepEqualComparisonResults(
-  a: Record<string, { content: any; usage?: any; status: string; error?: string }> | undefined,
-  b: Record<string, { content: any; usage?: any; status: string; error?: string }> | undefined
-): boolean {
-  if (a === b) return true;
-  if (a === undefined || b === undefined) return false;
-
-  const keysA = Object.keys(a);
-  const keysB = Object.keys(b);
-
-  if (keysA.length !== keysB.length) return false;
-
-  for (const key of keysA) {
-    if (!keysB.includes(key)) return false;
-
-    const objA = a[key];
-    const objB = b[key];
-
-    // Compare content - stringify for deep comparison
-    if (JSON.stringify(objA.content) !== JSON.stringify(objB.content)) return false;
-
-    // Compare usage
-    if (JSON.stringify(objA.usage) !== JSON.stringify(objB.usage)) return false;
-
-    // Compare status and error
-    if (objA.status !== objB.status) return false;
-    if (objA.error !== objB.error) return false;
-  }
-
-  return true;
-}
-
-type ToolOutput = NonNullable<ChatMessage['tool_outputs']>[number];
-
-type AssistantSegment =
-  | { kind: 'text'; text: string }
-  | { kind: 'tool_call'; toolCall: any; outputs: ToolOutput[] }
-  | { kind: 'images'; images: ImageContent[] };
-
-function formatUsageLabel(usage?: ChatMessage['usage']): string | null {
-  if (!usage) return null;
-  const prompt = usage.prompt_tokens;
-  const completion = usage.completion_tokens;
-  const total = usage.total_tokens;
-
-  const hasPrompt = Number.isFinite(prompt);
-  const hasCompletion = Number.isFinite(completion);
-  const hasTotal = Number.isFinite(total);
-
-  if (!hasPrompt && !hasCompletion && !hasTotal) return null;
-
-  if (hasPrompt || hasCompletion) {
-    const parts: string[] = [];
-    if (hasPrompt) parts.push(`↑ ${prompt}`);
-    if (hasCompletion) parts.push(`↓ ${completion}`);
-    if (hasTotal && !(hasPrompt && hasCompletion && prompt! + completion! === total)) {
-      parts.push(`⇅ ${total}`);
-    }
-    return parts.join(' · ');
-  }
-
-  return `⇅ ${total}`;
-}
-
-function buildAssistantSegments(message: ChatMessage): AssistantSegment[] {
-  if (message.role !== 'assistant') {
-    const textContent = extractTextFromContent(message.content);
-    if (textContent) {
-      return [{ kind: 'text', text: textContent }];
-    }
-    return [];
-  }
-
-  const content = extractTextFromContent(message.content);
-  const imageContents = extractImagesFromContent(message.content);
-  const toolCalls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
-  const toolOutputs = Array.isArray(message.tool_outputs) ? message.tool_outputs : [];
-  const messageEvents = Array.isArray(message.message_events) ? message.message_events : [];
-
-  // Helper to resolve outputs for a tool call
-  const resolveOutputs = (call: any): ToolOutput[] => {
-    return toolOutputs.filter((out) => {
-      if (!out) return false;
-      if (out.tool_call_id && call?.id) return out.tool_call_id === call.id;
-      if (out.name && call?.function?.name) return out.name === call.function.name;
-      return false;
-    });
-  };
-
-  // Check if any tool call has a valid textOffset
-  const hasValidTextOffset = toolCalls.some(
-    (call: any) =>
-      typeof call?.textOffset === 'number' &&
-      Number.isFinite(call.textOffset) &&
-      call.textOffset > 0
-  );
-
-  // Helper to append image segment to end if present
-  const appendImagesSegment = (segments: AssistantSegment[]): AssistantSegment[] => {
-    if (imageContents.length > 0) {
-      segments.push({ kind: 'images', images: imageContents });
-    }
-    return segments;
-  };
-
-  if (messageEvents.length > 0) {
-    const sortedEvents = [...messageEvents].sort((a, b) => (a.seq ?? 0) - (b.seq ?? 0));
-    const segments: AssistantSegment[] = [];
-
-    for (const event of sortedEvents) {
-      if (event.type === 'content') {
-        const text = typeof event.payload?.text === 'string' ? event.payload.text : '';
-        if (text) {
-          segments.push({ kind: 'text', text });
-        }
-        continue;
-      }
-
-      if (event.type === 'reasoning') {
-        const text = typeof event.payload?.text === 'string' ? event.payload.text : '';
-        if (text) {
-          segments.push({ kind: 'text', text: `<thinking>${text}</thinking>` });
-        }
-        continue;
-      }
-
-      if (event.type === 'tool_call') {
-        const toolCallId = event.payload?.tool_call_id;
-        const toolCallIndex = event.payload?.tool_call_index;
-        const toolCall =
-          (toolCallId ? toolCalls.find((call: any) => call?.id === toolCallId) : undefined) ||
-          (typeof toolCallIndex === 'number'
-            ? toolCalls.find((call: any) => (call?.index ?? 0) === toolCallIndex)
-            : undefined);
-
-        if (toolCall) {
-          segments.push({ kind: 'tool_call', toolCall, outputs: resolveOutputs(toolCall) });
-        }
-      }
-    }
-
-    if (segments.length > 0) {
-      return appendImagesSegment(segments);
-    }
-  }
-
-  if (toolCalls.length === 0) {
-    const segments: AssistantSegment[] = content ? [{ kind: 'text', text: content }] : [];
-    return appendImagesSegment(segments);
-  }
-
-  // For loaded conversations (no valid textOffset), show tools first, then content
-  if (!hasValidTextOffset) {
-    const segments: AssistantSegment[] = [];
-
-    // Add all tool calls at the beginning
-    const sortedCalls = toolCalls
-      .map((call: any, idx: number) => ({
-        idx,
-        call,
-        order: typeof call?.index === 'number' ? call.index : idx,
-      }))
-      .sort((a, b) => a.order - b.order);
-
-    for (const entry of sortedCalls) {
-      segments.push({
-        kind: 'tool_call',
-        toolCall: entry.call,
-        outputs: resolveOutputs(entry.call),
-      });
-    }
-
-    // Add content after tool calls
-    if (content) {
-      segments.push({ kind: 'text', text: content });
-    }
-
-    return appendImagesSegment(segments);
-  }
-
-  // For streaming messages with textOffset, use position-based rendering
-  const sortedCalls = toolCalls
-    .map((call: any, idx: number) => {
-      const offset =
-        typeof call?.textOffset === 'number' && Number.isFinite(call.textOffset)
-          ? Math.max(0, Math.min(call.textOffset, content.length))
-          : undefined;
-      return {
-        idx,
-        call,
-        offset,
-        order: typeof call?.index === 'number' ? call.index : idx,
-      };
-    })
-    .sort((a, b) => {
-      const aOffset = a.offset ?? content.length;
-      const bOffset = b.offset ?? content.length;
-      if (aOffset !== bOffset) return aOffset - bOffset;
-      return a.order - b.order;
-    });
-
-  const segments: AssistantSegment[] = [];
-  let cursor = 0;
-
-  for (const entry of sortedCalls) {
-    const offset = entry.offset ?? content.length;
-    const normalized = Math.max(0, Math.min(offset, content.length));
-    const sliceEnd = Math.max(cursor, normalized);
-
-    if (sliceEnd > cursor) {
-      const textChunk = content.slice(cursor, sliceEnd);
-      if (textChunk) {
-        segments.push({ kind: 'text', text: textChunk });
-      }
-      cursor = sliceEnd;
-    }
-
-    segments.push({ kind: 'tool_call', toolCall: entry.call, outputs: resolveOutputs(entry.call) });
-    cursor = Math.max(cursor, normalized);
-  }
-
-  if (cursor < content.length) {
-    const remaining = content.slice(cursor);
-    if (remaining) {
-      segments.push({ kind: 'text', text: remaining });
-    }
-  }
-
-  if (segments.length === 0 && content) {
-    segments.push({ kind: 'text', text: content });
-  }
-
-  return appendImagesSegment(segments);
-}
-
-// Memoized individual message component
-interface MessageProps {
-  message: ChatMessage;
-  isStreaming: boolean;
-  conversationId: string | null;
-  compareModels: string[];
-  primaryModelLabel: string | null;
-  linkedConversations: Record<string, string>;
-  evaluations: Evaluation[];
-  evaluationDrafts: EvaluationDraft[];
-  canSend: boolean;
-  editingMessageId: string | null;
-  editingContent: string;
-  onCopy: (text: string) => void;
-  onEditMessage: (messageId: string, content: string) => void;
-  onCancelEdit: () => void;
-  onApplyLocalEdit: (messageId: string) => void;
-  onEditingContentChange: (content: string) => void;
-  onRetryMessage?: (messageId: string) => void;
-  onRetryComparisonModel?: (messageId: string, modelId: string) => void;
-  editingTextareaRef: React.RefObject<HTMLTextAreaElement | null>;
-  lastUserMessageRef: React.RefObject<HTMLDivElement | null> | null;
-  resizeEditingTextarea: () => void;
-  collapsedToolOutputs: Record<string, boolean>;
-  setCollapsedToolOutputs: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
-  copiedMessageId: string | null;
-  handleCopy: (messageId: string, text: string) => void;
-  pending: PendingState;
-  streamingStats: { tokensPerSecond: number; isEstimate?: boolean } | null;
-  // Image editing support
-  editingImages: ImageAttachment[];
-  onEditingImagesChange: (files: File[]) => void;
-  onRemoveEditingImage: (imageId: string) => void;
-  onEditingPaste: (event: React.ClipboardEvent<HTMLTextAreaElement>) => void;
-  onEditingImageUploadClick: () => void;
-  fileInputRef: React.RefObject<HTMLInputElement | null>;
-  toolbarRef?: React.RefObject<HTMLDivElement | null>;
-  onFork?: (messageId: string, modelId: string) => void;
-  selectedComparisonModels: string[];
-  onToggleComparisonModel: (modelId: string, event?: React.MouseEvent) => void;
-  onSelectAllComparisonModels: (models: string[]) => void;
-  isMobile: boolean;
-  showComparisonTabs: boolean;
-  onOpenJudgeModal?: (messageId: string, comparisonModelIds: string[]) => void;
-  onDeleteJudgeResponse: (id: string) => Promise<void>;
-}
-
-const Message = React.memo<MessageProps>(
-  function Message({
-    message,
-    isStreaming,
-    compareModels,
-    primaryModelLabel,
-    linkedConversations,
-    evaluations,
-    evaluationDrafts,
-    canSend,
-    editingMessageId,
-    editingContent,
-    onEditMessage,
-    onCancelEdit,
-    onApplyLocalEdit,
-    onEditingContentChange,
-    onRetryMessage,
-    onRetryComparisonModel,
-    editingTextareaRef,
-    lastUserMessageRef,
-    resizeEditingTextarea,
-    collapsedToolOutputs,
-    setCollapsedToolOutputs,
-    copiedMessageId,
-    handleCopy,
-    pending,
-    streamingStats,
-    editingImages,
-    onEditingImagesChange,
-    onRemoveEditingImage,
-    onEditingPaste,
-    onEditingImageUploadClick,
-    fileInputRef,
-    toolbarRef,
-    onFork,
-    selectedComparisonModels,
-    onToggleComparisonModel,
-    onSelectAllComparisonModels,
-    isMobile,
-    showComparisonTabs,
-    onOpenJudgeModal,
-    onDeleteJudgeResponse,
-  }) {
-    const isUser = message.role === 'user';
-    const isEditing = editingMessageId === message.id;
-    const messageHasAudio = hasAudio(message.content);
-
-    // Comparison Logic
-    const baseComparisonModels = Object.keys(message.comparisonResults || {});
-    const showStreamingTabs = isStreaming && compareModels.length > 0;
-    const comparisonModels = showStreamingTabs
-      ? Array.from(new Set([...baseComparisonModels, ...compareModels]))
-      : baseComparisonModels;
-    const hasComparison = comparisonModels.length > 0;
-
-    const comparisonModelIds = Object.keys(message.comparisonResults || {});
-    const primaryLabel = primaryModelLabel
-      ? primaryModelLabel.includes('::')
-        ? primaryModelLabel.split('::')[1]
-        : primaryModelLabel
-      : 'Primary';
-
-    const resolveModelLabel = (modelId: string | null | undefined) => {
-      if (!modelId) return 'Model';
-      if (modelId === 'primary') return primaryLabel;
-      return modelId.includes('::') ? modelId.split('::')[1] : modelId;
-    };
-
-    const resolveComparisonModelId = (conversationId: string | null | undefined) => {
-      if (!conversationId) return null;
-      const match = Object.entries(linkedConversations).find(
-        ([, convoId]) => convoId === conversationId
-      );
-      return match ? match[0] : null;
-    };
-
-    const evaluationsForMessage = evaluations.filter(
-      (evaluation) => evaluation.model_a_message_id === message.id
-    );
-    const evaluationDraftsForMessage = evaluationDrafts.filter(
-      (draft) => draft.messageId === message.id
-    );
-
-    // All available models including primary
-    const allModels = ['primary', ...comparisonModels];
-
-    // Filter selected models to only valid ones
-    const resolvedSelectedModels = selectedComparisonModels.filter(
-      (m) => m === 'primary' || comparisonModels.includes(m)
-    );
-    // Ensure at least primary is selected
-    const activeModels = resolvedSelectedModels.length > 0 ? resolvedSelectedModels : ['primary'];
-
-    // Build display data for each selected model
-    const modelDisplayData = activeModels.map((modelId) => {
-      if (modelId === 'primary') {
-        return {
-          modelId,
-          displayMessage: message,
-          isModelStreaming: isStreaming,
-          isModelError: !!pending.error,
-          error: pending.error,
-          assistantSegments: !isUser ? buildAssistantSegments(message) : [],
-        };
-      }
-
-      const result = message.comparisonResults?.[modelId];
-      if (result) {
-        const displayMessage = {
-          ...message,
-          content: result.content,
-          tool_calls: result.tool_calls,
-          tool_outputs: result.tool_outputs,
-          message_events: result.message_events,
-          usage: result.usage,
-          provider: (result as any).provider,
-        };
-        return {
-          modelId,
-          displayMessage,
-          isModelStreaming: result.status === 'streaming',
-          isModelError: result.status === 'error',
-          error: result.error,
-          assistantSegments: !isUser ? buildAssistantSegments(displayMessage) : [],
-        };
-      }
-
-      // Model not yet available (streaming)
-      const displayMessage = {
-        ...message,
-        content: '',
-        tool_calls: undefined,
-        tool_outputs: undefined,
-        message_events: undefined,
-        usage: undefined,
-      };
-      return {
-        modelId,
-        displayMessage,
-        isModelStreaming: pending.streaming,
-        isModelError: !!pending.error,
-        error: pending.error,
-        assistantSegments: [],
-      };
-    });
-
-    const isMultiColumn = activeModels.length > 1;
-
-    // Helper to get model display name
-    const getModelDisplayName = (modelId: string) => {
-      if (modelId === 'primary') {
-        return primaryModelLabel
-          ? primaryModelLabel.includes('::')
-            ? primaryModelLabel.split('::')[1]
-            : primaryModelLabel
-          : 'Primary';
-      }
-      return modelId.includes('::') ? modelId.split('::')[1] : modelId;
-    };
-
-    // Helper to render tool call segments
-    const renderToolSegment = (
-      segment: { kind: 'tool_call'; toolCall: any; outputs: ToolOutput[] },
-      segmentIndex: number,
-      modelId: string
-    ) => {
-      const { toolCall, outputs } = segment;
-      const toolName = toolCall.function?.name;
-      let parsedArgs = {};
-      const argsRaw = toolCall.function?.arguments || '';
-      let argsParseFailed = false;
-
-      if (typeof argsRaw === 'string') {
-        if (argsRaw.trim()) {
-          try {
-            parsedArgs = JSON.parse(argsRaw);
-          } catch {
-            argsParseFailed = true;
-          }
-        }
-      } else {
-        parsedArgs = argsRaw;
-      }
-
-      const getToolIcon = (name: string) => {
-        const iconProps = {
-          size: 14,
-          strokeWidth: 1.5,
-          className:
-            'text-zinc-400 dark:text-zinc-500 group-hover/tool-btn:text-zinc-600 dark:group-hover/tool-btn:text-zinc-300 transition-colors duration-300',
-        };
-        switch (name) {
-          case 'get_time':
-            return <Clock {...iconProps} />;
-          case 'web_search':
-            return <Search {...iconProps} />;
-          default:
-            return <Zap {...iconProps} />;
-        }
-      };
-
-      const getToolDisplayName = (name: string) => {
-        switch (name) {
-          case 'get_time':
-            return 'Check Time';
-          case 'web_search':
-            return 'Search Web';
-          default:
-            return name;
-        }
-      };
-
-      const toggleKey = `${message.id}-${modelId}-${toolCall.id ?? segmentIndex}`;
-      const isCollapsed = collapsedToolOutputs[toggleKey] ?? true;
-
-      const getInputSummary = (args: any, raw: string, parseFailed: boolean) => {
-        if (parseFailed && raw) {
-          const cleaned = raw.trim().replace(/\s+/g, ' ');
-          return cleaned.length > 80 ? cleaned.slice(0, 77) + '...' : cleaned;
-        }
-        if (!args || (typeof args === 'object' && Object.keys(args).length === 0)) {
-          return null;
-        }
-        try {
-          if (typeof args === 'string') {
-            const cleaned = args.trim().replace(/\s+/g, ' ');
-            return cleaned.length > 80 ? cleaned.slice(0, 77) + '...' : cleaned;
-          }
-          const str = JSON.stringify(args);
-          const cleaned = str.replace(/\s+/g, ' ');
-          return cleaned.length > 80 ? cleaned.slice(0, 77) + '...' : cleaned;
-        } catch {
-          return String(args).slice(0, 80);
-        }
-      };
-
-      const inputSummary = getInputSummary(parsedArgs, argsRaw, argsParseFailed);
-      const hasDetails =
-        outputs.length > 0 ||
-        Object.keys(parsedArgs).length > 0 ||
-        (argsParseFailed && argsRaw.trim().length > 0);
-      const isCompleted = outputs.length > 0;
-
-      return (
-        <div
-          key={`tool-${modelId}-${segmentIndex}`}
-          className="my-3 rounded-xl border border-zinc-200/60 dark:border-zinc-800/60 bg-white dark:bg-zinc-900/30 overflow-hidden shadow-sm"
-        >
-          <button
-            onClick={() => {
-              if (!hasDetails) return;
-              setCollapsedToolOutputs((s) => ({ ...s, [toggleKey]: !isCollapsed }));
-            }}
-            className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors select-none ${
-              !hasDetails
-                ? 'cursor-default'
-                : 'hover:bg-zinc-50 dark:hover:bg-white/5 cursor-pointer'
-            }`}
-          >
-            <div
-              className={`text-zinc-400 dark:text-zinc-500 scale-90 ${!isCompleted ? 'animate-pulse' : ''}`}
-            >
-              {React.cloneElement(getToolIcon(toolName) as React.ReactElement<any>, {
-                fill: isCompleted ? 'currentColor' : 'none',
-                className: isCompleted
-                  ? 'text-zinc-500 dark:text-zinc-400'
-                  : 'text-zinc-400 dark:text-zinc-500',
-              })}
-            </div>
-            <span className="text-xs font-medium text-zinc-700 dark:text-zinc-300 font-mono">
-              {getToolDisplayName(toolName)}
-            </span>
-            {isCollapsed && inputSummary && (
-              <span className="ml-2 text-xs text-zinc-400 dark:text-zinc-500 truncate max-w-[300px] opacity-80 font-mono">
-                {inputSummary}
-              </span>
-            )}
-            {hasDetails && (
-              <div className="ml-auto flex items-center gap-2">
-                <ChevronDown
-                  size={14}
-                  className={`transition-transform duration-200 ${!isCollapsed ? 'rotate-180' : ''} text-zinc-400 dark:text-zinc-500`}
-                />
-              </div>
-            )}
-          </button>
-          {!isCollapsed && hasDetails && (
-            <div className="border-t border-zinc-100 dark:border-zinc-800/50 bg-zinc-50/50 dark:bg-black/20 px-4 py-3 text-[13px]">
-              <div className="space-y-4">
-                {(Object.keys(parsedArgs).length > 0 ||
-                  (argsParseFailed && argsRaw.trim().length > 0)) && (
-                  <div className="space-y-1.5">
-                    <div className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-600 uppercase tracking-wider pl-0.5 mb-1.5">
-                      Parameters
-                    </div>
-                    <div className="font-mono text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed">
-                      {argsParseFailed ? argsRaw : JSON.stringify(parsedArgs, null, 2)}
-                    </div>
-                  </div>
-                )}
-                {outputs.length > 0 && (
-                  <div className="space-y-1.5">
-                    <div className="text-[10px] font-semibold text-zinc-400 dark:text-zinc-600 uppercase tracking-wider pl-0.5 mb-1.5">
-                      Result
-                    </div>
-                    <div className="space-y-3">
-                      {outputs.map((out: any, outIdx: number) => {
-                        const raw = out.output ?? out;
-                        let formatted = '';
-                        if (typeof raw === 'string') {
-                          formatted = raw;
-                        } else {
-                          try {
-                            formatted = JSON.stringify(raw, null, 2);
-                          } catch {
-                            formatted = String(raw);
-                          }
-                        }
-                        return (
-                          <div
-                            key={outIdx}
-                            className="font-mono text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap leading-relaxed"
-                          >
-                            {formatted}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      );
-    };
-
-    // Helper to render a single model response column
-    const renderModelResponse = (data: (typeof modelDisplayData)[0]) => {
-      const {
-        modelId,
-        displayMessage: dm,
-        isModelStreaming,
-        isModelError,
-        error: modelError,
-        assistantSegments: segments,
-      } = data;
-
-      return (
-        <div
-          key={modelId}
-          className={`space-y-3 max-w-3xl ${isMultiColumn ? 'flex-1 min-w-0' : ''}`}
-        >
-          {isMultiColumn && (
-            <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400 pb-1 border-b border-zinc-100 dark:border-zinc-800">
-              {getModelDisplayName(modelId)}
-            </div>
-          )}
-          {segments.length === 0 ? (
-            <div className="text-base leading-relaxed text-zinc-800 dark:text-zinc-200">
-              {(isModelStreaming || pending.abort) && !isModelError && !pending.error ? (
-                <span className="inline-flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
-                  <span
-                    className="w-1.5 h-1.5 rounded-full bg-current animate-bounce"
-                    style={{ animationDelay: '0ms' }}
-                  />
-                  <span
-                    className="w-1.5 h-1.5 rounded-full bg-current animate-bounce"
-                    style={{ animationDelay: '150ms' }}
-                  />
-                  <span
-                    className="w-1.5 h-1.5 rounded-full bg-current animate-bounce"
-                    style={{ animationDelay: '300ms' }}
-                  />
-                </span>
-              ) : isModelError && modelError && isMultiColumn ? (
-                <div className="flex items-start gap-2 text-red-500 dark:text-red-400 text-sm bg-red-50/50 dark:bg-red-950/20 rounded-lg px-3 py-2 border border-red-100 dark:border-red-900/30">
-                  <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-                  <span>{modelError}</span>
-                </div>
-              ) : (
-                <span className="text-zinc-500 dark:text-zinc-400 italic">No response content</span>
-              )}
-            </div>
-          ) : (
-            segments.map((segment, segmentIndex) => {
-              if (segment.kind === 'text') {
-                if (!segment.text) return null;
-                return (
-                  <div
-                    key={`text-${modelId}-${segmentIndex}`}
-                    className="text-base leading-relaxed text-zinc-900 dark:text-zinc-200"
-                  >
-                    <Markdown text={segment.text} isStreaming={isModelStreaming} />
-                  </div>
-                );
-              }
-              if (segment.kind === 'images') {
-                if (!segment.images || segment.images.length === 0) return null;
-                return (
-                  <div key={`images-${modelId}-${segmentIndex}`} className="mt-3">
-                    <MessageContentRenderer
-                      content={segment.images}
-                      isStreaming={false}
-                      role="assistant"
-                    />
-                  </div>
-                );
-              }
-              return renderToolSegment(segment, segmentIndex, modelId);
-            })
-          )}
-
-          {/* Stats row for this model */}
-          {!isEditing && (dm.content || !isUser) && (
-            <div className="mt-2 flex items-center justify-between opacity-70 group-hover:opacity-100 transition-opacity text-xs border-t border-zinc-100 dark:border-zinc-800/50 pt-2">
-              <div className="flex items-center gap-2 overflow-hidden mr-2">
-                {streamingStats &&
-                  streamingStats.tokensPerSecond > 0 &&
-                  modelId === 'primary' &&
-                  !isMultiColumn && (
-                    <div className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 text-[10px] font-mono whitespace-nowrap">
-                      {streamingStats.isEstimate ? '~' : ''}
-                      {streamingStats.tokensPerSecond.toFixed(1)} t/s
-                    </div>
-                  )}
-                {(() => {
-                  const usageLabel = formatUsageLabel(dm.usage);
-                  if (!usageLabel) return null;
-                  return (
-                    <div className="px-1.5 py-0.5 rounded bg-zinc-50 dark:bg-zinc-800/50 text-slate-500 dark:text-slate-500 text-[10px] font-mono whitespace-nowrap">
-                      {usageLabel} tokens
-                    </div>
-                  );
-                })()}
-                {dm.provider && (
-                  <div className="px-1.5 py-0.5 rounded bg-zinc-50 dark:bg-zinc-800/50 text-slate-500 dark:text-slate-500 text-[10px] font-mono whitespace-nowrap">
-                    {dm.provider}
-                  </div>
-                )}
-              </div>
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                {dm.content && (
-                  <div className="relative">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleCopy(`${message.id}-${modelId}`, extractTextFromContent(dm.content))
-                      }
-                      title="Copy"
-                      className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
-                    >
-                      <Copy className="w-3.5 h-3.5" aria-hidden="true" />
-                      <span className="sr-only">Copy</span>
-                    </button>
-                    {copiedMessageId === `${message.id}-${modelId}` && (
-                      <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-white text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap z-10 animate-fade-in shadow-lg">
-                        Copied
-                        <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[3px] border-r-[3px] border-t-[4px] border-transparent border-t-slate-800 dark:border-t-slate-700"></div>
-                      </div>
-                    )}
-                  </div>
-                )}
-                {onFork && (
-                  <button
-                    type="button"
-                    onClick={() => onFork(message.id, modelId)}
-                    title="Fork"
-                    className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
-                  >
-                    <GitFork className="w-3.5 h-3.5" aria-hidden="true" />
-                    <span className="sr-only">Fork</span>
-                  </button>
-                )}
-                {!pending.streaming && hasComparison && !isUser && onRetryComparisonModel && (
-                  <button
-                    type="button"
-                    onClick={() => onRetryComparisonModel(message.id, modelId)}
-                    title="Retry this model"
-                    disabled={actionsDisabled}
-                    className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
-                    <span className="sr-only">Retry this model</span>
-                  </button>
-                )}
-                {!pending.streaming && !hasComparison && (
-                  <button
-                    type="button"
-                    onClick={() => onRetryMessage && onRetryMessage(message.id)}
-                    title="Regenerate"
-                    disabled={actionsDisabled}
-                    className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
-                    <span className="sr-only">Regenerate</span>
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      );
-    };
-
-    // For editing, check if we have either text or images
-    const canSaveEdit = editingContent.trim().length > 0 || editingImages.length > 0;
-    const actionsDisabled = !canSend;
-
-    return (
-      <div
-        className={`flex gap-4 ${isUser ? 'justify-end' : 'justify-start'}`}
-        ref={lastUserMessageRef}
-      >
-        {!isUser && (
-          <div className="hidden">
-            <Bot className="w-4 h-4 text-slate-700 dark:text-slate-200" />
-          </div>
-        )}
-        <div
-          className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? (messageHasAudio ? 'max-w-full order-first' : 'max-w-full sm:max-w-[85%] md:max-w-[75%] lg:max-w-[60%] order-first') : 'w-full'}`}
-          style={{ minWidth: 0 }}
-        >
-          {hasComparison && !isUser && showComparisonTabs && (
-            <div className="flex items-center gap-2 mb-2 overflow-x-auto pb-1 no-scrollbar">
-              {/* All button - hidden on mobile (single model only) */}
-              {!isMobile && (
-                <button
-                  onClick={() => onSelectAllComparisonModels(allModels)}
-                  className={`px-2.5 py-1 text-xs rounded-full border transition-colors whitespace-nowrap ${
-                    activeModels.length === Math.min(allModels.length, MAX_COMPARISON_COLUMNS)
-                      ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
-                      : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
-                  }`}
-                >
-                  All
-                </button>
-              )}
-              {allModels.map((modelId) => {
-                const isSelected = activeModels.includes(modelId);
-                // On mobile: no disabled state (radio behavior)
-                // On desktop: disable if max columns reached
-                const isDisabled =
-                  !isMobile && !isSelected && activeModels.length >= MAX_COMPARISON_COLUMNS;
-                const displayName =
-                  modelId === 'primary'
-                    ? primaryModelLabel
-                      ? primaryModelLabel.includes('::')
-                        ? primaryModelLabel.split('::')[1]
-                        : primaryModelLabel
-                      : 'Primary'
-                    : modelId.includes('::')
-                      ? modelId.split('::')[1]
-                      : modelId;
-
-                return (
-                  <button
-                    key={modelId}
-                    onClick={(e) => onToggleComparisonModel(modelId, e)}
-                    disabled={isDisabled}
-                    title={isDisabled ? `Maximum ${MAX_COMPARISON_COLUMNS} models` : undefined}
-                    className={`px-3 py-1 text-xs rounded-full border transition-colors whitespace-nowrap flex items-center gap-1.5 ${
-                      isSelected
-                        ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
-                        : isDisabled
-                          ? 'bg-zinc-50 dark:bg-zinc-900/50 text-zinc-400 dark:text-zinc-600 border-zinc-200 dark:border-zinc-800 cursor-not-allowed opacity-50'
-                          : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
-                    }`}
-                  >
-                    {/* Checkbox indicator - only on desktop */}
-                    {!isMobile && (
-                      <span
-                        className={`w-3 h-3 rounded border flex items-center justify-center text-[10px] ${
-                          isSelected
-                            ? 'bg-white dark:bg-zinc-900 border-white dark:border-zinc-900 text-zinc-800 dark:text-zinc-200'
-                            : 'border-zinc-400 dark:border-zinc-500'
-                        }`}
-                      >
-                        {isSelected && '✓'}
-                      </span>
-                    )}
-                    {displayName}
-                  </button>
-                );
-              })}
-              {/* Hint text - hidden on mobile */}
-              <span className="hidden md:inline ml-auto text-[10px] text-zinc-400 dark:text-zinc-600 whitespace-nowrap">
-                {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+click for single model
-              </span>
-            </div>
-          )}
-
-          {isEditing ? (
-            <ImageUploadZone
-              onFiles={onEditingImagesChange}
-              disabled={actionsDisabled}
-              fullPage={false}
-              clickToUpload={false}
-            >
-              <div className="space-y-2 rounded-2xl bg-white/95 dark:bg-zinc-900/95 border border-zinc-200 dark:border-zinc-800 shadow-sm p-4">
-                {/* Image Previews */}
-                {editingImages.length > 0 && (
-                  <div className="pb-2 border-b border-zinc-200 dark:border-zinc-800">
-                    <ImagePreview
-                      images={editingImages}
-                      uploadProgress={[]}
-                      onRemove={onRemoveEditingImage}
-                    />
-                  </div>
-                )}
-
-                {/* Hidden file input for image upload */}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  className="hidden"
-                  onChange={(e) => {
-                    const files = Array.from(e.target.files || []);
-                    if (files.length > 0) {
-                      onEditingImagesChange(files);
-                    }
-                    e.target.value = '';
-                  }}
-                />
-
-                <textarea
-                  ref={editingTextareaRef}
-                  value={editingContent}
-                  onChange={(e) => onEditingContentChange(e.target.value)}
-                  onInput={resizeEditingTextarea}
-                  onPaste={onEditingPaste}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
-                      e.preventDefault();
-                      if (actionsDisabled) return;
-                      onApplyLocalEdit(message.id);
-                    }
-                  }}
-                  disabled={actionsDisabled}
-                  aria-disabled={actionsDisabled}
-                  className="w-full min-h-[100px] resize-vertical bg-transparent border-0 outline-none text-base leading-relaxed text-zinc-800 dark:text-zinc-200 placeholder-zinc-500 dark:placeholder-zinc-400"
-                  placeholder="Edit your message... (paste or drop images)"
-                  style={{ overflow: 'hidden' }}
-                />
-
-                <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-neutral-700">
-                  <button
-                    type="button"
-                    onClick={onEditingImageUploadClick}
-                    disabled={actionsDisabled}
-                    className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <span className="text-sm">📎</span>
-                    {editingImages.length > 0
-                      ? `${editingImages.length} image${editingImages.length > 1 ? 's' : ''}`
-                      : 'Add images'}
-                  </button>
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={onCancelEdit}
-                      className="px-3 py-1.5 text-xs rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      onClick={() => onApplyLocalEdit(message.id)}
-                      disabled={actionsDisabled || !canSaveEdit}
-                      className="px-3 py-1.5 text-xs rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-                    >
-                      Save
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </ImageUploadZone>
-          ) : (
-            <>
-              {isUser ? (
-                <div
-                  className={`rounded-2xl px-5 py-3.5 text-base leading-relaxed bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100 ${messageHasAudio ? 'min-w-[280px] sm:min-w-[400px]' : ''}`}
-                >
-                  <MessageContentRenderer
-                    content={message.content}
-                    isStreaming={false}
-                    role="user"
-                  />
-                </div>
-              ) : isMultiColumn ? (
-                /* Multi-column side-by-side view - stacks on mobile */
-                <div className="flex flex-col md:flex-row gap-4">
-                  {modelDisplayData.map((data) => renderModelResponse(data))}
-                </div>
-              ) : (
-                /* Single column view */
-                modelDisplayData.map((data) => renderModelResponse(data))
-              )}
-
-              {!isUser && hasComparison && onOpenJudgeModal && comparisonModelIds.length > 0 && (
-                <div className="mt-3 flex justify-center">
-                  <button
-                    type="button"
-                    onClick={() => onOpenJudgeModal(message.id, comparisonModelIds)}
-                    disabled={actionsDisabled}
-                    className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-full border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <Scale className="w-3.5 h-3.5" aria-hidden="true" />
-                    Judge
-                  </button>
-                </div>
-              )}
-
-              {!isUser &&
-                hasComparison &&
-                (evaluationDraftsForMessage.length > 0 || evaluationsForMessage.length > 0) && (
-                  <div className="mt-3 space-y-3">
-                    {evaluationDraftsForMessage.map((draft) => {
-                      const modelLabel = resolveModelLabel(draft.comparisonModelId);
-                      return (
-                        <div
-                          key={draft.id}
-                          className="border border-amber-200/70 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/30 rounded-xl px-4 py-3"
-                        >
-                          <div className="flex items-center justify-between text-xs text-amber-700 dark:text-amber-300">
-                            <div className="flex items-center gap-2">
-                              <Scale className="w-3.5 h-3.5" />
-                              <span>Judging vs {modelLabel}</span>
-                            </div>
-                            <span className="uppercase tracking-wide">
-                              {draft.status === 'error' ? 'Failed' : 'Working'}
-                            </span>
-                          </div>
-                          <div className="mt-2 text-sm text-amber-900 dark:text-amber-100">
-                            {draft.status === 'error' ? (
-                              <div className="text-red-600 dark:text-red-300">{draft.error}</div>
-                            ) : (
-                              <Markdown
-                                text={
-                                  extractReasoningFromPartialJson(draft.content) || 'Analyzing...'
-                                }
-                                isStreaming={draft.status === 'streaming'}
-                                className="md-compact !text-amber-900 dark:!text-amber-100"
-                              />
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {evaluationsForMessage.map((evaluation) => {
-                      const comparisonModelId = resolveComparisonModelId(
-                        evaluation.model_b_conversation_id
-                      );
-                      const modelLabel = resolveModelLabel(comparisonModelId);
-                      const judgeLabel = resolveModelLabel(evaluation.judge_model_id);
-                      const winnerLabel =
-                        evaluation.winner === 'model_a'
-                          ? primaryLabel
-                          : evaluation.winner === 'model_b'
-                            ? modelLabel
-                            : 'Tie';
-
-                      return (
-                        <div
-                          key={evaluation.id}
-                          className="border border-emerald-200/70 dark:border-emerald-900/50 bg-emerald-50/70 dark:bg-emerald-950/30 rounded-xl px-4 py-3"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-emerald-700 dark:text-emerald-300">
-                            <div className="flex items-center gap-2">
-                              <Trophy className="w-3.5 h-3.5" />
-                              <span>Winner: {winnerLabel}</span>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
-                                <span>Judge: {judgeLabel}</span>
-                                {evaluation.criteria ? <span>• {evaluation.criteria}</span> : null}
-                              </div>
-                              <button
-                                onClick={() => onDeleteJudgeResponse(evaluation.id)}
-                                title="Delete judge response"
-                                className="p-1 rounded hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 transition-colors"
-                              >
-                                <Trash className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-                          </div>
-                          <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-emerald-800 dark:text-emerald-100">
-                            <div
-                              className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 ${
-                                evaluation.winner === 'model_a'
-                                  ? 'bg-yellow-100 dark:bg-yellow-950/40 border border-yellow-300 dark:border-yellow-700'
-                                  : 'bg-white/60 dark:bg-emerald-950/40'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2">
-                                {evaluation.winner === 'model_a' && (
-                                  <Trophy className="w-3 h-3 text-yellow-600 dark:text-yellow-400" />
-                                )}
-                                <span
-                                  className={evaluation.winner === 'model_a' ? 'font-semibold' : ''}
-                                >
-                                  {primaryLabel}
-                                </span>
-                              </div>
-                              <span
-                                className={evaluation.winner === 'model_a' ? 'font-semibold' : ''}
-                              >
-                                {evaluation.score_a ?? '—'}
-                              </span>
-                            </div>
-                            <div
-                              className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 ${
-                                evaluation.winner === 'model_b'
-                                  ? 'bg-yellow-100 dark:bg-yellow-950/40 border border-yellow-300 dark:border-yellow-700'
-                                  : 'bg-white/60 dark:bg-emerald-950/40'
-                              }`}
-                            >
-                              <div className="flex items-center gap-2">
-                                {evaluation.winner === 'model_b' && (
-                                  <Trophy className="w-3 h-3 text-yellow-600 dark:text-yellow-400" />
-                                )}
-                                <span
-                                  className={evaluation.winner === 'model_b' ? 'font-semibold' : ''}
-                                >
-                                  {modelLabel}
-                                </span>
-                              </div>
-                              <span
-                                className={evaluation.winner === 'model_b' ? 'font-semibold' : ''}
-                              >
-                                {evaluation.score_b ?? '—'}
-                              </span>
-                            </div>
-                          </div>
-                          {evaluation.reasoning && (
-                            <div className="mt-2 text-base leading-relaxed text-emerald-900 dark:text-emerald-100">
-                              <Markdown text={evaluation.reasoning} className="md-compact" />
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-              {!isUser && hasComparison && onRetryMessage && !pending.streaming && (
-                <div className="mt-2 flex justify-end">
-                  <button
-                    onClick={() => onRetryMessage(message.id)}
-                    disabled={actionsDisabled}
-                    className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="Retry all models"
-                    type="button"
-                  >
-                    Retry all models
-                  </button>
-                </div>
-              )}
-
-              {/* User message toolbar */}
-              {isUser && !isEditing && message.content && (
-                <div
-                  className="mt-1 flex items-center justify-end opacity-0 group-hover:opacity-100 transition-opacity text-xs pointer-events-none group-hover:pointer-events-auto"
-                  ref={toolbarRef}
-                >
-                  <div className="flex items-center gap-2">
-                    {message.content && (
-                      <div className="relative">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            handleCopy(message.id, extractTextFromContent(message.content))
-                          }
-                          title="Copy"
-                          className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
-                        >
-                          <Copy className="w-3 h-3" aria-hidden="true" />
-                          <span className="sr-only">Copy</span>
-                        </button>
-                        {copiedMessageId === message.id && (
-                          <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-white text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap z-10 animate-fade-in shadow-lg">
-                            Copied
-                            <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[3px] border-r-[3px] border-t-[4px] border-transparent border-t-slate-800 dark:border-t-slate-700"></div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                    {onFork && (
-                      <button
-                        type="button"
-                        onClick={() => onFork(message.id, 'primary')}
-                        title="Fork"
-                        disabled={actionsDisabled}
-                        className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        <GitFork className="w-3 h-3" aria-hidden="true" />
-                        <span className="sr-only">Fork</span>
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() =>
-                        onEditMessage(message.id, extractTextFromContent(message.content))
-                      }
-                      title="Edit"
-                      disabled={actionsDisabled}
-                      className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      <Edit2 className="w-3 h-3" aria-hidden="true" />
-                      <span className="sr-only">Edit</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    );
-  },
-  (prev, next) => {
-    // Only re-render if content changed or streaming state changed
-    return (
-      prev.message.content === next.message.content &&
-      prev.message.tool_calls === next.message.tool_calls &&
-      prev.message.tool_outputs === next.message.tool_outputs &&
-      // Deep compare comparisonResults to detect changes from linked conversations
-      deepEqualComparisonResults(prev.message.comparisonResults, next.message.comparisonResults) &&
-      prev.message.usage === next.message.usage &&
-      prev.isStreaming === next.isStreaming &&
-      prev.compareModels === next.compareModels &&
-      prev.primaryModelLabel === next.primaryModelLabel &&
-      prev.linkedConversations === next.linkedConversations &&
-      prev.evaluations === next.evaluations &&
-      prev.evaluationDrafts === next.evaluationDrafts &&
-      prev.canSend === next.canSend &&
-      prev.editingMessageId === next.editingMessageId &&
-      prev.editingContent === next.editingContent &&
-      prev.pending.streaming === next.pending.streaming &&
-      prev.collapsedToolOutputs === next.collapsedToolOutputs &&
-      prev.copiedMessageId === next.copiedMessageId &&
-      prev.streamingStats?.tokensPerSecond === next.streamingStats?.tokensPerSecond &&
-      prev.streamingStats?.isEstimate === next.streamingStats?.isEstimate &&
-      prev.editingImages === next.editingImages &&
-      prev.toolbarRef === next.toolbarRef &&
-      prev.selectedComparisonModels === next.selectedComparisonModels &&
-      prev.isMobile === next.isMobile &&
-      prev.showComparisonTabs === next.showComparisonTabs &&
-      prev.onDeleteJudgeResponse === next.onDeleteJudgeResponse
-    );
-  }
-);
 
 export function MessageList({
   messages,
@@ -1355,85 +90,66 @@ export function MessageList({
   onDeleteJudgeResponse,
 }: MessageListProps) {
   const { showToast } = useToast();
-
-  // Debug logging
   const internalContainerRef = useRef<HTMLDivElement | null>(null);
   const containerRef = externalContainerRef || internalContainerRef;
   const editingTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // State
   const [collapsedToolOutputs, setCollapsedToolOutputs] = useState<Record<string, boolean>>({});
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [selectedComparisonModels, setSelectedComparisonModels] = useState<string[]>(['primary']);
-  // Track which conversation we've initialized model selection for
+  const [editingImages, setEditingImages] = useState<ImageAttachment[]>([]);
+  const [streamingStats, setStreamingStats] = useState<{
+    tokensPerSecond: number;
+    isEstimate?: boolean;
+  } | null>(null);
+
+  // Judge modal state
+  const [isJudgeModalOpen, setIsJudgeModalOpen] = useState(false);
+  const [judgeMessageId, setJudgeMessageId] = useState<string | null>(null);
+  const [judgeModelId, setJudgeModelId] = useState<string>('');
+
+  // Refs for tracking
   const initializedComparisonRef = useRef<string | null>(null);
+  const prevConversationIdRef = useRef<string | null>(null);
+  const lastTokenStatsMessageIdRef = useRef<string | null>(null);
+
   const isMobile = useIsMobile();
-  // On mobile, only show one model at a time
   const effectiveSelectedModels = isMobile
     ? [selectedComparisonModels[0] || 'primary']
     : selectedComparisonModels;
   const hasMultiColumnLayout = effectiveSelectedModels.length > 1;
+
   const { dynamicBottomPadding, lastUserMessageRef, toolbarRef, bottomRef } = useStreamingScroll(
     messages,
     pending,
     containerRef
   );
 
-  const [isJudgeModalOpen, setIsJudgeModalOpen] = useState(false);
-  const [judgeMessageId, setJudgeMessageId] = useState<string | null>(null);
-  const [judgeComparisonModelId, setJudgeComparisonModelId] = useState<string | null>(null);
-  const [judgeModelId, setJudgeModelId] = useState<string>('');
-  const [judgeCriteria, setJudgeCriteria] = useState<
-    'general' | 'fact' | 'creative' | 'code' | 'custom'
-  >('general');
-  const [judgeCustomCriteria, setJudgeCustomCriteria] = useState('');
-
-  const judgeAvailableComparisonModels = useMemo(() => {
+  // Available models for judging
+  const judgeAvailableModels = useMemo(() => {
     if (!judgeMessageId) return [] as string[];
     const target = messages.find((msg) => msg.id === judgeMessageId);
-    return target ? Object.keys(target.comparisonResults || {}) : [];
+    const comparisonModelIds = target ? Object.keys(target.comparisonResults || {}) : [];
+    return ['primary', ...comparisonModelIds];
   }, [judgeMessageId, messages]);
 
-  useEffect(() => {
-    if (judgeAvailableComparisonModels.length === 0) return;
-    if (
-      !judgeComparisonModelId ||
-      !judgeAvailableComparisonModels.includes(judgeComparisonModelId)
-    ) {
-      setJudgeComparisonModelId(judgeAvailableComparisonModels[0]);
-    }
-  }, [judgeAvailableComparisonModels, judgeComparisonModelId]);
+  // First assistant message ID for showing comparison tabs
+  const firstAssistantMessageId = useMemo(() => {
+    const firstAssistant = messages.find((message) => message.role === 'assistant');
+    return firstAssistant?.id ?? null;
+  }, [messages]);
 
-  // Streaming statistics - now calculated from actual token count
-  const [streamingStats, setStreamingStats] = useState<{
-    tokensPerSecond: number;
-    isEstimate?: boolean;
-  } | null>(null);
-  const lastTokenStatsMessageIdRef = useRef<string | null>(null);
-
-  // Editing images state - tracks images being edited
-  const [editingImages, setEditingImages] = useState<ImageAttachment[]>([]);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-
-  const judgeCriteriaOptions = useMemo(
-    () => [
-      { id: 'general', label: 'General check', helper: 'Overall correctness and helpfulness.' },
-      { id: 'fact', label: 'Fact check', helper: 'Accuracy and factual correctness.' },
-      { id: 'creative', label: 'Creative check', helper: 'Originality and expressiveness.' },
-      { id: 'code', label: 'Code quality', helper: 'Correctness, clarity, and best practices.' },
-      { id: 'custom', label: 'Custom', helper: 'Specify your own criteria.' },
-    ],
-    []
-  );
-
-  // When entering edit mode, initialize editing images from message content
+  // Initialize editing images when entering edit mode
   useEffect(() => {
     if (editingMessageId) {
       const message = messages.find((m) => m.id === editingMessageId);
       if (message) {
         const imageContents = extractImagesFromContent(message.content);
-        // Convert ImageContent to ImageAttachment for editing
         const attachments: ImageAttachment[] = imageContents.map((img, idx) => ({
           id: `edit-${editingMessageId}-${idx}`,
-          file: new File([], 'image'), // Placeholder file
+          file: new File([], 'image'),
           url: img.image_url.url,
           name: `Image ${idx + 1}`,
           size: 0,
@@ -1448,11 +164,8 @@ export function MessageList({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingMessageId]);
 
-  // Track previous conversation to detect changes
-  const prevConversationIdRef = useRef<string | null>(null);
-
+  // Reset comparison selection on conversation change
   useEffect(() => {
-    // When conversation changes, reset to primary and clear initialization
     if (prevConversationIdRef.current !== conversationId) {
       prevConversationIdRef.current = conversationId;
       initializedComparisonRef.current = null;
@@ -1460,18 +173,11 @@ export function MessageList({
     }
   }, [conversationId]);
 
+  // Initialize comparison model selection
   useEffect(() => {
-    // Skip if already initialized for this conversation
-    if (initializedComparisonRef.current === conversationId) {
-      return;
-    }
+    if (initializedComparisonRef.current === conversationId) return;
+    if (messages.length === 0) return;
 
-    // Skip if no messages yet (wait for them to load)
-    if (messages.length === 0) {
-      return;
-    }
-
-    // Gather all comparison models from messages
     const allComparisonModels = new Set<string>();
     messages.forEach((m) => {
       if (m.comparisonResults) {
@@ -1481,15 +187,9 @@ export function MessageList({
       }
     });
 
-    if (allComparisonModels.size === 0) {
-      // Wait for comparison results to load before locking in default selection.
-      return;
-    }
+    if (allComparisonModels.size === 0) return;
 
-    // Mark as initialized for this conversation once comparison models exist.
     initializedComparisonRef.current = conversationId;
-
-    // This is a comparison conversation - select up to MAX_COMPARISON_COLUMNS models
     const modelsToSelect = ['primary', ...Array.from(allComparisonModels)].slice(
       0,
       MAX_COMPARISON_COLUMNS
@@ -1497,12 +197,77 @@ export function MessageList({
     setSelectedComparisonModels(modelsToSelect);
   }, [conversationId, messages]);
 
-  // Toggle handler for comparison model selection
-  // On mobile: radio behavior (one model at a time)
-  // On desktop: checkbox behavior with Ctrl/Cmd+click for solo mode
+  // Track streaming statistics
+  useEffect(() => {
+    const stats = pending.tokenStats;
+
+    if (!stats) {
+      lastTokenStatsMessageIdRef.current = null;
+      setStreamingStats(null);
+      return;
+    }
+
+    if (stats.messageId !== lastTokenStatsMessageIdRef.current) {
+      lastTokenStatsMessageIdRef.current = stats.messageId;
+      setStreamingStats(null);
+    }
+
+    const { count, startTime, lastUpdated, isEstimate } = stats;
+
+    if (!Number.isFinite(startTime) || count <= 0) return;
+
+    const endTimestamp =
+      pending.streaming || !Number.isFinite(lastUpdated) ? Date.now() : lastUpdated;
+    const elapsedSeconds = (endTimestamp - startTime) / 1000;
+
+    if (elapsedSeconds <= 0.1) return;
+
+    const tokensPerSecond = count / elapsedSeconds;
+
+    if (!Number.isFinite(tokensPerSecond) || tokensPerSecond <= 0) return;
+
+    setStreamingStats({ tokensPerSecond, isEstimate });
+  }, [
+    pending.streaming,
+    pending.tokenStats,
+    pending.tokenStats?.messageId,
+    pending.tokenStats?.count,
+    pending.tokenStats?.isEstimate,
+    pending.tokenStats?.startTime,
+    pending.tokenStats?.lastUpdated,
+  ]);
+
+  // Resize editing textarea
+  useEffect(() => {
+    const ta = editingTextareaRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${ta.scrollHeight + 2}px`;
+  }, [editingContent, editingMessageId]);
+
+  // Track scroll position
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container || !onScrollStateChange) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = container;
+      const threshold = 100;
+
+      onScrollStateChange({
+        showTop: scrollTop > threshold,
+        showBottom: scrollTop < scrollHeight - clientHeight - threshold,
+      });
+    };
+
+    handleScroll();
+    container.addEventListener('scroll', handleScroll);
+    return () => container.removeEventListener('scroll', handleScroll);
+  }, [messages.length, onScrollStateChange, containerRef]);
+
+  // Handlers
   const handleToggleComparisonModel = useCallback(
     (modelId: string, event?: React.MouseEvent) => {
-      // On mobile, always use radio behavior
       if (isMobile) {
         setSelectedComparisonModels([modelId]);
         return;
@@ -1511,35 +276,26 @@ export function MessageList({
       const isSoloClick = event?.metaKey || event?.ctrlKey;
 
       if (isSoloClick) {
-        // Solo mode: show only this model
         setSelectedComparisonModels([modelId]);
         return;
       }
 
       setSelectedComparisonModels((prev) => {
         if (prev.includes(modelId)) {
-          // Don't allow deselecting the last model
-          if (prev.length === 1) {
-            return prev;
-          }
+          if (prev.length === 1) return prev;
           return prev.filter((m) => m !== modelId);
         }
-        // Don't allow selecting more than MAX_COMPARISON_COLUMNS
-        if (prev.length >= MAX_COMPARISON_COLUMNS) {
-          return prev;
-        }
+        if (prev.length >= MAX_COMPARISON_COLUMNS) return prev;
         return [...prev, modelId];
       });
     },
     [isMobile]
   );
 
-  // Handler to select all comparison models (up to MAX_COMPARISON_COLUMNS)
   const handleSelectAllComparisonModels = useCallback((models: string[]) => {
     setSelectedComparisonModels(models.slice(0, MAX_COMPARISON_COLUMNS));
   }, []);
 
-  // Handle image upload during editing
   const handleEditingImageFiles = useCallback(async (files: File[]) => {
     try {
       const uploadedImages = await images.uploadImages(files, () => {});
@@ -1549,7 +305,6 @@ export function MessageList({
     }
   }, []);
 
-  // Handle image removal during editing
   const handleRemoveEditingImage = useCallback(
     (imageId: string) => {
       const imageToRemove = editingImages.find((img) => img.id === imageId);
@@ -1561,7 +316,6 @@ export function MessageList({
     [editingImages]
   );
 
-  // Handle paste in editing textarea
   const handleEditingPaste = useCallback(
     (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
       const items = Array.from(event.clipboardData?.items || []);
@@ -1593,13 +347,11 @@ export function MessageList({
     [handleEditingImageFiles]
   );
 
-  // Handle image upload button click
   const handleEditingImageUploadClick = useCallback(() => {
     if (!canSend) return;
     fileInputRef.current?.click();
   }, [canSend]);
 
-  // Wrapper functions to clear streaming stats when regenerating or editing
   const handleRetryMessage = useCallback(
     (messageId: string) => {
       if (!canSend) return;
@@ -1615,8 +367,6 @@ export function MessageList({
       setStreamingStats(null);
 
       const trimmedText = editingContent.trim();
-
-      // Convert editing images (ImageAttachment) to ImageContent for message storage
       const imageContents: ImageContent[] = editingImages.map((img) => ({
         type: 'image_url' as const,
         image_url: {
@@ -1625,9 +375,7 @@ export function MessageList({
         },
       }));
 
-      if (!trimmedText && imageContents.length === 0) {
-        return;
-      }
+      if (!trimmedText && imageContents.length === 0) return;
 
       const nextContent =
         imageContents.length > 0 ? createMixedContent(trimmedText, imageContents) : trimmedText;
@@ -1637,16 +385,29 @@ export function MessageList({
     [canSend, editingContent, editingImages, onApplyLocalEdit]
   );
 
+  const handleCopy = useCallback(
+    (messageId: string, text: string) => {
+      onCopy(text);
+      setCopiedMessageId(messageId);
+      setTimeout(() => setCopiedMessageId(null), 2000);
+    },
+    [onCopy]
+  );
+
+  const resizeEditingTextarea = useCallback(() => {
+    const ta = editingTextareaRef.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${ta.scrollHeight + 2}px`;
+  }, []);
+
   const openJudgeModal = useCallback(
     (messageId: string, comparisonModelIds: string[]) => {
       if (!onJudge || comparisonModelIds.length === 0) return;
       setJudgeMessageId(messageId);
-      setJudgeComparisonModelId(comparisonModelIds[0]);
       const fallbackModel = modelOptions[0]?.value || '';
       const defaultJudgeModel = judgeModelId || primaryModelLabel || fallbackModel;
       setJudgeModelId(defaultJudgeModel);
-      setJudgeCriteria('general');
-      setJudgeCustomCriteria('');
       setIsJudgeModalOpen(true);
     },
     [modelOptions, onJudge, judgeModelId, primaryModelLabel]
@@ -1656,213 +417,37 @@ export function MessageList({
     setIsJudgeModalOpen(false);
   }, []);
 
-  const handleJudgeConfirm = useCallback(() => {
-    if (!onJudge || !judgeMessageId || !judgeComparisonModelId || !judgeModelId) return;
-    const selectedCriteria = judgeCriteriaOptions.find((item) => item.id === judgeCriteria);
-    const criteriaText =
-      judgeCriteria === 'custom'
-        ? judgeCustomCriteria.trim()
-        : selectedCriteria?.label || 'General check';
+  const handleJudgeConfirm = useCallback(
+    (options: { judgeModelId: string; selectedModelIds: string[]; criteria: string | null }) => {
+      if (!onJudge || !judgeMessageId) return;
 
-    // Close the modal immediately so streaming can be observed inline under the message.
-    // (The judge call streams tokens into evaluationDrafts.)
-    setIsJudgeModalOpen(false);
+      setIsJudgeModalOpen(false);
 
-    void onJudge({
-      messageId: judgeMessageId,
-      comparisonModelId: judgeComparisonModelId,
-      judgeModelId,
-      criteria: criteriaText || null,
-    }).catch((err) => {
-      const message = err instanceof Error ? err.message : 'Failed to judge responses';
-      showToast({ message, variant: 'error' });
-    });
-  }, [
-    judgeMessageId,
-    judgeComparisonModelId,
-    judgeModelId,
-    judgeCriteria,
-    judgeCustomCriteria,
-    judgeCriteriaOptions,
-    onJudge,
-    showToast,
-  ]);
-
-  const formatModelLabel = useCallback((modelId: string | null | undefined) => {
-    if (!modelId) return 'Model';
-    return modelId.includes('::') ? modelId.split('::')[1] : modelId;
-  }, []);
-
-  // Handle copy with tooltip feedback
-  const handleCopy = (messageId: string, text: string) => {
-    onCopy(text);
-    setCopiedMessageId(messageId);
-    setTimeout(() => setCopiedMessageId(null), 2000);
-  };
-
-  // Resize the editing textarea to fit its content
-  const resizeEditingTextarea = () => {
-    const ta = editingTextareaRef.current;
-    if (!ta) return;
-    // Reset height to allow shrinking, then set to scrollHeight to fit content
-    ta.style.height = 'auto';
-    // Use scrollHeight + 2px to avoid clipping in some browsers
-    ta.style.height = `${ta.scrollHeight + 2}px`;
-  };
-
-  // When editing content changes (including on initial edit open), resize the textarea
-  useEffect(() => {
-    resizeEditingTextarea();
-  }, [editingContent, editingMessageId]);
-
-  // Track streaming statistics using actual token count
-  useEffect(() => {
-    const stats = pending.tokenStats;
-
-    if (!stats) {
-      lastTokenStatsMessageIdRef.current = null;
-      setStreamingStats(null);
-      return;
-    }
-
-    if (stats.messageId !== lastTokenStatsMessageIdRef.current) {
-      lastTokenStatsMessageIdRef.current = stats.messageId;
-      setStreamingStats(null);
-    }
-
-    const { count, startTime, lastUpdated, isEstimate } = stats;
-
-    if (!Number.isFinite(startTime) || count <= 0) {
-      return;
-    }
-
-    const endTimestamp =
-      pending.streaming || !Number.isFinite(lastUpdated) ? Date.now() : lastUpdated;
-    const elapsedSeconds = (endTimestamp - startTime) / 1000;
-
-    if (elapsedSeconds <= 0.1) {
-      return;
-    }
-
-    const tokensPerSecond = count / elapsedSeconds;
-
-    if (!Number.isFinite(tokensPerSecond) || tokensPerSecond <= 0) {
-      return;
-    }
-
-    setStreamingStats({ tokensPerSecond, isEstimate });
-  }, [
-    pending.streaming,
-    pending.tokenStats,
-    pending.tokenStats?.messageId,
-    pending.tokenStats?.count,
-    pending.tokenStats?.isEstimate,
-    pending.tokenStats?.startTime,
-    pending.tokenStats?.lastUpdated,
-  ]);
-
-  // Split messages with tool calls into separate messages
-  const processedMessages = useMemo(() => splitMessagesWithToolCalls(messages), [messages]);
-  const firstAssistantMessageId = useMemo(() => {
-    const firstAssistant = processedMessages.find((message) => message.role === 'assistant');
-    return firstAssistant?.id ?? null;
-  }, [processedMessages]);
-
-  // Track scroll position to show/hide scroll buttons
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container || !onScrollStateChange) return;
-
-    const handleScroll = () => {
-      const { scrollTop, scrollHeight, clientHeight } = container;
-      const threshold = 100; // pixels from top/bottom to show buttons
-
-      onScrollStateChange({
-        showTop: scrollTop > threshold,
-        showBottom: scrollTop < scrollHeight - clientHeight - threshold,
+      void onJudge({
+        messageId: judgeMessageId,
+        selectedModelIds: options.selectedModelIds,
+        judgeModelId: options.judgeModelId,
+        criteria: options.criteria,
+      }).catch((err) => {
+        const message = err instanceof Error ? err.message : 'Failed to judge responses';
+        showToast({ message, variant: 'error' });
       });
-    };
-
-    handleScroll(); // Initial check
-    container.addEventListener('scroll', handleScroll);
-    return () => container.removeEventListener('scroll', handleScroll);
-  }, [messages.length, onScrollStateChange, containerRef]);
+    },
+    [judgeMessageId, onJudge, showToast]
+  );
 
   return (
     <>
-      <Modal
-        open={isJudgeModalOpen}
+      <JudgeModal
+        isOpen={isJudgeModalOpen}
         onClose={closeJudgeModal}
-        title="Judge responses"
-        maxWidthClassName="max-w-2xl"
-      >
-        <div className="space-y-4">
-          <div>
-            <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400">
-              Judge model
-            </label>
-            <div className="mt-2">
-              <ModelSelector
-                value={judgeModelId || modelOptions[0]?.value || ''}
-                onChange={setJudgeModelId}
-                groups={modelGroups}
-                fallbackOptions={modelOptions}
-                ariaLabel="Select judge model"
-              />
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400">
-              Criteria
-            </label>
-            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {judgeCriteriaOptions.map((option) => (
-                <button
-                  key={option.id}
-                  type="button"
-                  onClick={() => setJudgeCriteria(option.id as typeof judgeCriteria)}
-                  className={`px-3 py-2 text-xs rounded-lg border transition-colors text-left ${
-                    judgeCriteria === option.id
-                      ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
-                      : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
-                  }`}
-                >
-                  <div className="font-medium">{option.label}</div>
-                  <div className="text-[10px] opacity-70">{option.helper}</div>
-                </button>
-              ))}
-            </div>
-            {judgeCriteria === 'custom' && (
-              <input
-                type="text"
-                value={judgeCustomCriteria}
-                onChange={(e) => setJudgeCustomCriteria(e.target.value)}
-                placeholder="Enter custom criteria..."
-                className="mt-2 w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-zinc-800 dark:text-zinc-100"
-              />
-            )}
-          </div>
-
-          <div className="flex items-center justify-end gap-2 pt-2">
-            <button
-              type="button"
-              onClick={closeJudgeModal}
-              className="px-3 py-2 text-xs rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleJudgeConfirm}
-              disabled={!judgeModelId || !judgeComparisonModelId}
-              className="px-3 py-2 text-xs rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Start judging
-            </button>
-          </div>
-        </div>
-      </Modal>
+        onConfirm={handleJudgeConfirm}
+        availableModels={judgeAvailableModels}
+        primaryModelLabel={primaryModelLabel}
+        modelGroups={modelGroups}
+        modelOptions={modelOptions}
+        initialJudgeModelId={judgeModelId}
+      />
 
       <main
         ref={containerRef}
@@ -1874,16 +459,15 @@ export function MessageList({
           style={{ paddingBottom: dynamicBottomPadding }}
         >
           {messages.length === 0 && <WelcomeMessage onSuggestionClick={onSuggestionClick} />}
-          {processedMessages.map((m, idx) => {
+          {messages.map((m, idx) => {
             const isUser = m.role === 'user';
-            const isStreaming = pending.streaming && idx === processedMessages.length - 1;
-            const isLastAssistantMessage = !isUser && idx === processedMessages.length - 1;
-            // Set ref to the most recent user message (could be last or second-to-last)
+            const isStreaming = pending.streaming && idx === messages.length - 1;
+            const isLastAssistantMessage = !isUser && idx === messages.length - 1;
             const isRecentUserMessage =
               isUser &&
-              (idx === processedMessages.length - 1 || // last message is user
-                (idx === processedMessages.length - 2 &&
-                  processedMessages[processedMessages.length - 1]?.role === 'assistant')); // second-to-last is user, last is assistant
+              (idx === messages.length - 1 ||
+                (idx === messages.length - 2 &&
+                  messages[messages.length - 1]?.role === 'assistant'));
 
             return (
               <Message

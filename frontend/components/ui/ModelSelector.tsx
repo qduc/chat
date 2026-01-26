@@ -409,7 +409,7 @@ export default function ModelSelector({
           }
         });
       }}
-      className={`flex items-center gap-2 px-3 py-2 rounded-lg transition-colors min-w-0 w-full sm:min-w-48 sm:w-56 ${
+      className={`flex items-center gap-2 px-2 sm:px-3 h-8 sm:h-10 rounded-lg transition-colors min-w-0 w-full sm:min-w-48 sm:w-56 ${
         disabled
           ? 'bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 text-zinc-400 dark:text-zinc-600 cursor-not-allowed'
           : 'bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
@@ -420,7 +420,7 @@ export default function ModelSelector({
       aria-disabled={disabled}
       disabled={disabled}
     >
-      <span className="text-sm truncate flex-1 text-left">{displayText}</span>
+      <span className="text-xs sm:text-sm truncate flex-1 text-left">{displayText}</span>
       <ChevronDown
         className={`w-4 h-4 text-zinc-500 transition-transform ${isOpen ? 'rotate-180' : ''}`}
       />

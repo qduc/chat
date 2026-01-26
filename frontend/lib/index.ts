@@ -71,7 +71,13 @@ export {
   removeFileBlocksFromText,
   extractFilesAndText,
   extractReasoningFromPartialJson,
+  formatUsageLabel,
+  buildAssistantSegments,
+  type AssistantSegment,
 } from './contentUtils';
+
+// Chat utilities
+export * from './chatUtils';
 
 // Model capabilities
 export { supportsReasoningControls } from './modelCapabilities';
@@ -117,12 +123,21 @@ export type {
   FileProcessingState,
   FileUploadProgress,
   ChatMessage,
+  ChatMessage as Message,
   MessageEvent,
   ChatEvent,
   ChatResponse,
+  Conversation,
   ConversationMeta,
   ConversationsList,
   ConversationWithMessages,
+  Evaluation,
+  EvaluationDraft,
+  PendingState,
+  Status,
+  QualityLevel,
+  ModelOption,
+  ModelGroup,
   ToolSpec,
   ToolsResponse,
   ChatOptions,
@@ -137,4 +152,5 @@ export type {
 
   // Provider Types
   Provider,
+  CustomRequestParamPreset,
 } from './types';

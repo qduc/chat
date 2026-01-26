@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.15.0] - 2026-01-26
+
+### Added
+- N-way judge evaluation for comparing responses from multiple models with configurable judge models
+- Real-time conversation title updates for new and existing conversations
+
+### Changed
+- Improved backend test coverage with additional test cases
+- Improved frontend test coverage with additional test cases
+- Enhanced useChat hook for better maintainability and reliability
+- Refactored MessageList.tsx component for improved code quality
+- Optimized mobile UI header row layout
+- Judge evaluation now uses actual model names instead of generic 'primary' label
+- Removed category parameters from SearXNG search tool for better search result quality
+
+### Fixed
+- Type errors in codebase
+- Ensured messageId is correctly assigned in useChat hook for non-primary conversation cases
+- ChatHeader dropdown styling for consistent behavior across breakpoints
+- Reduced test output noise with `--silent` flag
+
+
 ## [0.14.1] - 2026-01-24
 
 ### Changed
