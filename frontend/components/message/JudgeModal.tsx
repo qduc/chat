@@ -57,7 +57,7 @@ export function JudgeModal({
   useEffect(() => {
     if (isOpen && availableModels.length >= 2) {
       setSelectedModelIds(availableModels);
-      setJudgeModelId(initialJudgeModelId || primaryModelLabel || modelOptions[0]?.value || '');
+      setJudgeModelId(initialJudgeModelId || modelOptions[0]?.value || '');
       setCriteria('general');
       setCustomCriteria('');
     }
