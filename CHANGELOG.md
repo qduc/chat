@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.15.1] - 2026-01-27
+
+### Added
+- Customizable storage keys for favorites and recent models in ModelSelector and JudgeModal
+- Bias-mitigation masking mechanism for the model evaluation (judgment) feature
+
+### Changed
+- Refactored comparison feature into ModelSelector using contextual actions per row for improved UX
+- Decoupled judge model selection from the primary chat model with persistence support
+- Judge model selection now orders selected model to the top for easy recognition
+
+### Fixed
+- Title generation request being called many times in comparison mode
+- Cannot change provider in judge model selector
+- Cannot use Gemini provider models as judge
+- Type errors
+- API integration for better maintainability
+
+
 ## [0.15.0] - 2026-01-26
 
 ### Added
