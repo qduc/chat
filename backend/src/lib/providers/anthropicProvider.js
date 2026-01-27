@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream';
 import { logUpstreamRequest, logUpstreamResponse, teeStreamWithPreview } from '../logging/upstreamLogger.js';
-import { BaseProvider, ProviderModelsError } from './baseProvider.js';
+import { BaseProvider, ProviderModelsError, createTimeoutSignal } from './baseProvider.js';
 import { MessagesAdapter } from '../adapters/messagesAdapter.js';
 import { logger } from '../../logger.js';
 import { retryWithBackoff } from '../retryUtils.js';
@@ -225,7 +225,7 @@ export class AnthropicProvider extends BaseProvider {
     const response = await client(url, {
       method: 'GET',
       headers,
-      timeout: timeoutMs,
+      signal: createTimeoutSignal(timeoutMs),
     });
 
     if (!response.ok) {

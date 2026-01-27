@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream';
 import { logUpstreamRequest, logUpstreamResponse, teeStreamWithPreview } from '../logging/upstreamLogger.js';
-import { BaseProvider, ProviderModelsError } from './baseProvider.js';
+import { BaseProvider, ProviderModelsError, createTimeoutSignal } from './baseProvider.js';
 import { ChatCompletionsAdapter } from '../adapters/chatCompletionsAdapter.js';
 import { ResponsesAPIAdapter } from '../adapters/responsesApiAdapter.js';
 import { logger } from '../../logger.js';
@@ -251,7 +251,7 @@ export class OpenAIProvider extends BaseProvider {
       () => client(url, {
         method: 'GET',
         headers,
-        timeout: timeoutMs,
+        signal: createTimeoutSignal(timeoutMs),
       }),
       config.providerConfig.retry
     );

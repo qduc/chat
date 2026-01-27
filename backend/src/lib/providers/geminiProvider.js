@@ -1,4 +1,4 @@
-import { BaseProvider, ProviderModelsError } from './baseProvider.js';
+import { BaseProvider, ProviderModelsError, createTimeoutSignal } from './baseProvider.js';
 import { GeminiAdapter } from '../adapters/geminiAdapter.js';
 import { logger } from '../../logger.js';
 import { logUpstreamRequest, logUpstreamResponse, teeStreamWithPreview } from '../logging/upstreamLogger.js';
@@ -250,7 +250,7 @@ export class GeminiProvider extends BaseProvider {
     const response = await client(url, {
       method: 'GET',
       headers,
-      timeout: timeoutMs,
+      signal: createTimeoutSignal(timeoutMs),
     });
 
     if (!response.ok) {
