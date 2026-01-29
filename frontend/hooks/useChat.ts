@@ -1177,7 +1177,6 @@ export function useChat() {
     setProviderId: (id: string | null) => {
       setProviderId(id);
       providerIdRef.current = id;
-      clearError();
     },
     setUseTools: (v: boolean) => {
       setUseTools(v);
@@ -1259,7 +1258,6 @@ export function useChat() {
     setInlineSystemPromptOverride: (p: string | null) => {
       setSystemPrompt(p);
       systemPromptRef.current = p;
-      clearError();
     },
     refreshUserSettings: () => user?.id && refreshSettings(user.id),
   };
