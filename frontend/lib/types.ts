@@ -380,7 +380,9 @@ export interface ModelGroup {
 }
 
 export type Status = 'idle' | 'streaming';
-export type QualityLevel = 'unset' | 'minimal' | 'low' | 'medium' | 'high';
+export type ReasoningEffortLevel = 'unset' | 'minimal' | 'low' | 'medium' | 'high';
+/** @deprecated Use ReasoningEffortLevel instead */
+export type QualityLevel = ReasoningEffortLevel;
 
 export interface CustomRequestParamPreset {
   id: string;
@@ -399,7 +401,6 @@ export interface ConversationMeta {
   active_tools?: string[];
   custom_request_params_id?: string[] | null;
   research_mode?: boolean;
-  quality_level?: string | null;
   reasoning_effort?: string | null;
   verbosity?: string | null;
   system_prompt?: string | null;
@@ -424,7 +425,6 @@ export interface ConversationWithMessages {
   active_tools?: string[];
   custom_request_params_id?: string[] | null;
   research_mode?: boolean;
-  quality_level?: string | null;
   reasoning_effort?: string | null;
   verbosity?: string | null;
   system_prompt?: string | null;
@@ -553,7 +553,6 @@ export interface ChatOptionsExtended extends ChatOptions {
   // Persistence settings
   streamingEnabled?: boolean;
   toolsEnabled?: boolean;
-  qualityLevel?: string;
   systemPrompt?: string;
   activeSystemPromptId?: string | null;
   modelCapabilities?: any;
@@ -580,7 +579,6 @@ export interface ConversationCreateOptions {
   model?: string;
   streamingEnabled?: boolean;
   toolsEnabled?: boolean;
-  qualityLevel?: string;
   reasoningEffort?: string;
   verbosity?: string;
   custom_request_params_id?: string[] | null;

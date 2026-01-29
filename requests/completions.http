@@ -192,7 +192,6 @@ Content-Type: application/json
   ],
   "stream": true,
   "researchMode": false,
-  "qualityLevel": "balanced",
   "reasoning_effort": "medium",
   "verbosity": "medium",
   "tools": [
@@ -246,7 +245,7 @@ Content-Type: application/json
   "stream": true,
   "provider_id": "openai",
   "conversation_id": "d72297a9-b5f9-48fb-91c8-f83926cc7c0d",
-  "qualityLevel": "minimal",
+  "reasoning_effort": "minimal",
   "reasoning_summary": "auto"
 }
 

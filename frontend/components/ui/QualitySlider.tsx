@@ -1,10 +1,12 @@
 import React, { useEffect } from 'react';
 
-export type QualityLevel = 'unset' | 'minimal' | 'low' | 'medium' | 'high';
+export type ReasoningEffortLevel = 'unset' | 'minimal' | 'low' | 'medium' | 'high';
+/** @deprecated Use ReasoningEffortLevel instead */
+export type QualityLevel = ReasoningEffortLevel;
 
 interface QualitySliderProps {
-  value: QualityLevel;
-  onChange: (value: QualityLevel) => void;
+  value: ReasoningEffortLevel;
+  onChange: (value: ReasoningEffortLevel) => void;
   ariaLabel?: string;
   disabled?: boolean;
   icon?: React.ReactNode;
@@ -32,7 +34,7 @@ export function QualitySlider({
   }, [value, model, supportsMinimal, onChange]);
 
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    onChange(e.target.value as QualityLevel);
+    onChange(e.target.value as ReasoningEffortLevel);
   };
 
   return (

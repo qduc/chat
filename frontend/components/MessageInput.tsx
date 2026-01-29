@@ -31,7 +31,7 @@ import { ImagePreview, ImageUploadZone } from './ui/ImagePreview';
 import { FilePreview } from './ui/FilePreview';
 import { AudioPreview } from './ui/AudioPreview';
 import Tooltip from './ui/Tooltip';
-import type { QualityLevel } from './ui/QualitySlider';
+import type { ReasoningEffortLevel } from './ui/QualitySlider';
 import type { CustomRequestParamPreset } from '../lib/types';
 
 // Stable empty arrays to prevent infinite re-renders from default parameters
@@ -58,8 +58,8 @@ interface MessageInputProps {
   customRequestParamsId?: string[] | null;
   onCustomRequestParamsIdChange?: (ids: string[] | null) => void;
   model: string;
-  qualityLevel: QualityLevel;
-  onQualityLevelChange: (level: QualityLevel) => void;
+  reasoningEffort: ReasoningEffortLevel;
+  onReasoningEffortChange: (level: ReasoningEffortLevel) => void;
   modelCapabilities?: Record<string, any>; // Model capabilities from provider
   images?: ImageAttachment[];
   onImagesChange?: (images: ImageAttachment[]) => void;
@@ -91,8 +91,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     onCustomRequestParamsIdChange,
     onShouldStreamChange,
     model,
-    qualityLevel,
-    onQualityLevelChange,
+    reasoningEffort,
+    onReasoningEffortChange,
     modelCapabilities = EMPTY_CAPABILITIES,
     images = EMPTY_IMAGES_ARRAY,
     onImagesChange,
@@ -705,8 +705,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   {/* Quality/Reasoning control - always visible */}
                   <Tooltip content="Reasoning effort level">
                     <QualitySlider
-                      value={qualityLevel}
-                      onChange={onQualityLevelChange}
+                      value={reasoningEffort}
+                      onChange={onReasoningEffortChange}
                       icon={<Gauge className="w-4 h-4" />}
                       ariaLabel="Reasoning Effort"
                       className="flex-shrink-0"

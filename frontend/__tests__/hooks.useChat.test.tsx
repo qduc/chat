@@ -189,7 +189,7 @@ describe('useChat hook', () => {
       active_tools: ['lookup'],
       system_prompt: 'Be helpful',
       active_system_prompt_id: 'prompt-123',
-      quality_level: 'high',
+      reasoning_effort: 'high',
     });
 
     const { result } = renderUseChat();
@@ -208,7 +208,7 @@ describe('useChat hook', () => {
     expect(result.current.enabledTools).toEqual(['lookup']);
     expect(result.current.systemPrompt).toBe('Be helpful');
     expect(result.current.activeSystemPromptId).toBe('prompt-123');
-    expect(result.current.qualityLevel).toBe('high');
+    expect(result.current.reasoningEffort).toBe('high');
   });
 
   test('selectConversation maps persisted usage into messages', async () => {

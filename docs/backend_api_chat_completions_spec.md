@@ -44,7 +44,6 @@ Required (Bearer token). Request is rejected with 401 if missing/invalid.
   "verbosity": "low|medium|high",
   "streamingEnabled": true|false,         // Client hint for persistence metadata
   "toolsEnabled": true|false,             // Client hint for persistence metadata
-  "qualityLevel": "default|...",          // Stored in conversation metadata
   "researchMode": true|false,             // (Experimental) stripped before upstream call
   "enable_parallel_tool_calls": true|false, // Enable parallel tool execution (default false)
   "parallel_tool_concurrency": 1..5       // Max concurrent tool executions when parallel enabled (default 3, max 5)
@@ -55,7 +54,7 @@ Notes:
 - The server injects or replaces a single leading `system` message based on `system_prompt`.
 - `stream` defaults to `true`, so clients receive SSE unless they explicitly send `stream: false`.
 - `provider_stream` can disable upstream streaming without changing the client transport. When omitted it mirrors `stream`. Both `provider_stream` and `providerStream` are accepted.
-- Persistence hints and internal selector fields (`conversation_id`, `provider_id`, `provider`, `streamingEnabled`, `toolsEnabled`, `qualityLevel`, `researchMode`, `system_prompt`, `providerStream`, `provider_stream`, `client_request_id`, `enable_parallel_tool_calls`, `parallel_tool_concurrency`) are stripped before the outbound upstream request.
+- Persistence hints and internal selector fields (`conversation_id`, `provider_id`, `provider`, `streamingEnabled`, `toolsEnabled`, `researchMode`, `system_prompt`, `providerStream`, `provider_stream`, `client_request_id`, `enable_parallel_tool_calls`, `parallel_tool_concurrency`) are stripped before the outbound upstream request.
 - If `tools` is an array of strings, the server expands only the tools that match registered names; unmatched names are silently ignored.
 - When a persisted conversation exists, prior history is reconstructed server-side (and may include a `previous_response_id` optimization when the provider supports it), so clients only need to send the latest turn.
 - **Multimodal Content**: `messages.content` supports mixed-content arrays with types `text`, `image_url`, and `input_audio`.
@@ -225,7 +224,7 @@ Endpoint is not strictly idempotent (new conversation creation, title generation
 - Streaming order: plain proxy => `_conversation` (if any) -> content deltas -> final empty delta -> `[DONE]`; tool streaming => content deltas -> buffered `tool_calls` -> `tool_output` events -> final empty delta -> `_conversation` -> `[DONE]`.
 
 #### Field Removal / Stripping Summary
-Before the upstream call the server removes: `conversation_id`, `provider_id`, `provider`, `system_prompt`, `streamingEnabled`, `toolsEnabled`, `qualityLevel`, `researchMode`, `providerStream`, `provider_stream`, `client_request_id`, `enable_parallel_tool_calls`, `parallel_tool_concurrency`, and (for Chat Completions) `previous_response_id`. When the Responses API adapter is active, `previous_response_id` is forwarded.
+Before the upstream call the server removes: `conversation_id`, `provider_id`, `provider`, `system_prompt`, `streamingEnabled`, `toolsEnabled`, `researchMode`, `providerStream`, `provider_stream`, `client_request_id`, `enable_parallel_tool_calls`, `parallel_tool_concurrency`, and (for Chat Completions) `previous_response_id`. When the Responses API adapter is active, `previous_response_id` is forwarded.
 
 #### Backwards Compatibility Notes
 Legacy clients that send their own leading `system` message continue to work; supplying `system_prompt` overwrites it.

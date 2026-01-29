@@ -8,7 +8,7 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import { MessageInput, MessageInputRef } from '../components/MessageInput';
-import type { QualityLevel } from '../components/ui/QualitySlider';
+import type { ReasoningEffortLevel } from '../components/ui/QualitySlider';
 
 // Mock the lib/api tools
 jest.mock('../lib/api', () => ({
@@ -166,8 +166,8 @@ const defaultProps = {
   onUseToolsChange: jest.fn(),
   onShouldStreamChange: jest.fn(),
   model: 'gpt-4',
-  qualityLevel: 'medium' as QualityLevel,
-  onQualityLevelChange: jest.fn(),
+  reasoningEffort: 'medium' as ReasoningEffortLevel,
+  onReasoningEffortChange: jest.fn(),
 };
 
 describe('MessageInput', () => {
@@ -335,16 +335,16 @@ describe('MessageInput', () => {
     });
   });
 
-  describe('Quality slider', () => {
-    it('calls onQualityLevelChange when changed', async () => {
-      const onQualityLevelChange = jest.fn();
-      render(<MessageInput {...defaultProps} onQualityLevelChange={onQualityLevelChange} />);
+  describe('Reasoning effort slider', () => {
+    it('calls onReasoningEffortChange when changed', async () => {
+      const onReasoningEffortChange = jest.fn();
+      render(<MessageInput {...defaultProps} onReasoningEffortChange={onReasoningEffortChange} />);
 
       // Quality slider mock renders a select element
       const slider = screen.getByTestId('quality-slider');
       await userEvent.selectOptions(slider, 'high');
 
-      expect(onQualityLevelChange).toHaveBeenCalledWith('high');
+      expect(onReasoningEffortChange).toHaveBeenCalledWith('high');
     });
   });
 

@@ -171,7 +171,7 @@ export function getConversationById({ id, userId }) {
 
 #### 1. **conversations** - Main conversation metadata
 - **Fields**: id, session_id, user_id, title, provider_id, model, metadata (JSON)
-- **Settings**: streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity
+- **Settings**: streaming_enabled, tools_enabled, reasoning_effort, verbosity
 - **Tracks**: created_at, updated_at, deleted_at (soft delete)
 
 #### 2. **messages** - Conversation messages

@@ -68,7 +68,6 @@ describe('openaiProxy.js - Unit Tests', () => {
           streamingEnabled: true,
           toolsEnabled: false,
           researchMode: true,
-          qualityLevel: 'high',
           client_request_id: 'req-123',
           stream: false,
         });
@@ -82,7 +81,6 @@ describe('openaiProxy.js - Unit Tests', () => {
       assert.ok(!Object.hasOwn(lastRequest, 'streamingEnabled'));
       assert.ok(!Object.hasOwn(lastRequest, 'toolsEnabled'));
       assert.ok(!Object.hasOwn(lastRequest, 'researchMode'));
-      assert.ok(!Object.hasOwn(lastRequest, 'qualityLevel'));
       assert.ok(!Object.hasOwn(lastRequest, 'client_request_id'));
     });
 

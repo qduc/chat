@@ -116,7 +116,7 @@ const [modelCapabilities, setModelCapabilities] = useState<any>(null);
 const [useTools, setUseTools] = useState(true);
 const [enabledTools, setEnabledTools] = useState<string[]>([]);
 const [shouldStream, setShouldStream] = useState(true);
-const [qualityLevel, setQualityLevel] = useState<QualityLevel>('unset');
+const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffortLevel>('unset');
 ```
 
 #### Model Comparison Mode
@@ -283,7 +283,7 @@ chat.sendMessage({
   messages, model, providerId,
   stream, providerStream,
   conversationId, toolsEnabled, tools,
-  qualityLevel, reasoning,
+  reasoning,
   systemPrompt, activeSystemPromptId,
   onToken, onEvent
 })
@@ -916,10 +916,10 @@ This allows multiple providers to offer the same model name without conflicts.
 
 Models that support reasoning (like o1, o3, deepseek-r1) can have reasoning effort controlled:
 ```typescript
-qualityLevel: 'unset' | 'minimal' | 'low' | 'medium' | 'high'
+reasoningEffort: 'unset' | 'minimal' | 'low' | 'medium' | 'high'
 ```
 
-This maps to the `reasoning_effort` parameter in the API request.
+This is sent as the `reasoning_effort` parameter in the API request.
 
 ### 5. Conversation Settings Snapshots
 

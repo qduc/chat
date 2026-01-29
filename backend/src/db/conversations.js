@@ -11,7 +11,6 @@ export function createConversation({
   model,
   streamingEnabled = false,
   toolsEnabled = false,
-  qualityLevel = null,
   reasoningEffort = null,
   verbosity = null,
   metadata = {},
@@ -20,8 +19,8 @@ export function createConversation({
   const db = getDb();
   const now = new Date().toISOString();
   db.prepare(
-    `INSERT INTO conversations (id, session_id, user_id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, parent_conversation_id, created_at, updated_at)
-     VALUES (@id, @session_id, @user_id, @title, @provider_id, @model, @metadata, @streaming_enabled, @tools_enabled, @quality_level, @reasoning_effort, @verbosity, @parent_conversation_id, @now, @now)`
+    `INSERT INTO conversations (id, session_id, user_id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, reasoning_effort, verbosity, parent_conversation_id, created_at, updated_at)
+     VALUES (@id, @session_id, @user_id, @title, @provider_id, @model, @metadata, @streaming_enabled, @tools_enabled, @reasoning_effort, @verbosity, @parent_conversation_id, @now, @now)`
   ).run({
     id,
     session_id: sessionId,
@@ -32,7 +31,6 @@ export function createConversation({
     metadata: JSON.stringify(metadata || {}),
     streaming_enabled: streamingEnabled ? 1 : 0,
     tools_enabled: toolsEnabled ? 1 : 0,
-    quality_level: qualityLevel,
     reasoning_effort: reasoningEffort,
     verbosity,
     parent_conversation_id: parentConversationId || null,
@@ -46,7 +44,7 @@ export function getConversationById({ id, userId }) {
   }
 
   const db = getDb();
-  const query = `SELECT id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, parent_conversation_id, created_at FROM conversations
+  const query = `SELECT id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, reasoning_effort, verbosity, parent_conversation_id, created_at FROM conversations
            WHERE id=@id AND user_id=@user_id AND deleted_at IS NULL`;
   const result = db.prepare(query).get({ id, user_id: userId });
 
@@ -130,7 +128,7 @@ export function updateConversationModel({ id, userId, model }) {
   return info.changes > 0;
 }
 
-export function updateConversationSettings({ id, userId, streamingEnabled, toolsEnabled, qualityLevel, reasoningEffort, verbosity }) {
+export function updateConversationSettings({ id, userId, streamingEnabled, toolsEnabled, reasoningEffort, verbosity }) {
   if (!userId) {
     throw new Error('userId is required');
   }
@@ -149,10 +147,6 @@ export function updateConversationSettings({ id, userId, streamingEnabled, tools
   if (toolsEnabled !== undefined) {
     updates.push('tools_enabled=@tools_enabled');
     paramData.tools_enabled = toolsEnabled ? 1 : 0;
-  }
-  if (qualityLevel !== undefined) {
-    updates.push('quality_level=@quality_level');
-    paramData.quality_level = qualityLevel;
   }
   if (reasoningEffort !== undefined) {
     updates.push('reasoning_effort=@reasoning_effort');
@@ -303,8 +297,8 @@ export function forkConversationFromMessage({ originalConversationId, sessionId,
 
   const newConversationId = uuidv4();
   db.prepare(
-    `INSERT INTO conversations (id, session_id, user_id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, quality_level, reasoning_effort, verbosity, created_at, updated_at)
-     VALUES (@id, @session_id, @user_id, @title, @provider_id, @model, @metadata, @streaming_enabled, @tools_enabled, @quality_level, @reasoning_effort, @verbosity, @now, @now)`
+    `INSERT INTO conversations (id, session_id, user_id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, reasoning_effort, verbosity, created_at, updated_at)
+     VALUES (@id, @session_id, @user_id, @title, @provider_id, @model, @metadata, @streaming_enabled, @tools_enabled, @reasoning_effort, @verbosity, @now, @now)`
   ).run({
     id: newConversationId,
     session_id: sessionId,
@@ -315,7 +309,6 @@ export function forkConversationFromMessage({ originalConversationId, sessionId,
     metadata: originalConvo.metadata || '{}',
     streaming_enabled: originalConvo.streaming_enabled || 0,
     tools_enabled: originalConvo.tools_enabled || 0,
-    quality_level: originalConvo.quality_level || null,
     reasoning_effort: originalConvo.reasoning_effort || null,
     verbosity: originalConvo.verbosity || null,
     now,

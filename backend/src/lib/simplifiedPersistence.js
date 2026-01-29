@@ -368,10 +368,6 @@ export class SimplifiedPersistence {
         settingsToUpdate.toolsEnabled = settings.toolsEnabled;
         this.conversationMeta.tools_enabled = settings.toolsEnabled;
       }
-      if (settings.qualityLevel !== undefined && settings.qualityLevel !== this.conversationMeta.quality_level) {
-        settingsToUpdate.qualityLevel = settings.qualityLevel;
-        this.conversationMeta.quality_level = settings.qualityLevel;
-      }
       if (settings.reasoningEffort !== undefined && settings.reasoningEffort !== this.conversationMeta.reasoning_effort) {
         settingsToUpdate.reasoningEffort = settings.reasoningEffort;
         this.conversationMeta.reasoning_effort = settings.reasoningEffort;
