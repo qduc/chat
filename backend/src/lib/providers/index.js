@@ -18,13 +18,14 @@ function normalizeBaseUrl(url) {
 }
 
 const providerConstructors = {
-  openai: OpenAIProvider,
+  'openai-responses': OpenAIProvider,
+  'openai-completions': OpenAIProvider,
   anthropic: AnthropicProvider,
   gemini: GeminiProvider,
 };
 
 export function selectProviderConstructor(providerType) {
-  const key = (providerType || 'openai').toLowerCase();
+  const key = (providerType || 'openai-completions').toLowerCase();
   return providerConstructors[key] || OpenAIProvider;
 }
 

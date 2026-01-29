@@ -56,7 +56,6 @@ async function sanitizeIncomingBody(bodyIn, helpers = {}) {
   delete body.streamingEnabled;
   delete body.toolsEnabled;
   delete body.researchMode;
-  delete body.qualityLevel;
   delete body.system_prompt;
   delete body.providerStream;
   delete body.client_request_id;

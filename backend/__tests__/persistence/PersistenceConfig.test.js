@@ -77,7 +77,7 @@ describe('PersistenceConfig', () => {
         stream: true,
         tools: [{ type: 'function', function: { name: 'test' } }],
         systemPrompt: 'You are helpful',
-        qualityLevel: 'high',
+        reasoning_effort: 'high',
       };
 
       const result = config.extractRequestSettings(bodyIn);
@@ -86,7 +86,7 @@ describe('PersistenceConfig', () => {
       assert.equal(result.streamingEnabled, true);
       assert.equal(result.toolsEnabled, true);
       assert.equal(result.systemPrompt, 'You are helpful');
-      assert.equal(result.qualityLevel, 'high');
+      assert.equal(result.reasoningEffort, 'high');
       assert.deepEqual(result.metadata, {
         system_prompt: 'You are helpful',
         active_tools: ['test']

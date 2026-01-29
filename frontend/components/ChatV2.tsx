@@ -475,7 +475,7 @@ export function ChatV2() {
       const currentUseTools = chat.useTools;
       const currentEnabledTools = chat.enabledTools;
       const currentShouldStream = chat.shouldStream;
-      const currentQualityLevel = chat.qualityLevel;
+      const currentReasoningEffort = chat.reasoningEffort;
       const currentSystemPrompt = chat.systemPrompt;
       const currentActiveSystemPromptId = chat.activeSystemPromptId;
 
@@ -493,7 +493,7 @@ export function ChatV2() {
       chat.setUseTools(currentUseTools);
       chat.setEnabledTools(currentEnabledTools);
       chat.setShouldStream(currentShouldStream);
-      chat.setQualityLevel(currentQualityLevel);
+      chat.setReasoningEffort(currentReasoningEffort);
       chat.setActiveSystemPromptId(currentActiveSystemPromptId);
       if (currentSystemPrompt !== null) {
         chat.setInlineSystemPromptOverride(currentSystemPrompt);
@@ -841,8 +841,8 @@ export function ChatV2() {
                   onCustomRequestParamsIdChange={chat.setCustomRequestParamsId}
                   onShouldStreamChange={chat.setShouldStream}
                   model={chat.model}
-                  qualityLevel={chat.qualityLevel}
-                  onQualityLevelChange={chat.setQualityLevel}
+                  reasoningEffort={chat.reasoningEffort}
+                  onReasoningEffortChange={chat.setReasoningEffort}
                   modelCapabilities={chat.modelCapabilities}
                   images={chat.images}
                   onImagesChange={chat.setImages}

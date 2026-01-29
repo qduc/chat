@@ -19,7 +19,6 @@ const RESERVED_INTERNAL_KEYS = new Set([
   'provider',
   'streamingEnabled',
   'toolsEnabled',
-  'qualityLevel',
   'researchMode',
   'systemPrompt',
   'system_prompt',

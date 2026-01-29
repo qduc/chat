@@ -5,7 +5,6 @@
 import { httpClient, HttpError } from '../http';
 import { getToken, waitForAuthReady } from '../storage';
 import { APIError } from '../streaming';
-import { supportsReasoningControls } from '../modelCapabilities';
 import { resolveApiBase } from '../urlUtils';
 import {
   isStreamingResponse,
@@ -79,9 +78,6 @@ function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: bo
     ...(extendedOptions.toolsEnabled !== undefined && {
       toolsEnabled: extendedOptions.toolsEnabled,
     }),
-    ...(extendedOptions.qualityLevel !== undefined && {
-      qualityLevel: extendedOptions.qualityLevel,
-    }),
     ...((options as any).systemPrompt && { system_prompt: (options as any).systemPrompt }),
     ...((options as any).activeSystemPromptId && {
       active_system_prompt_id: (options as any).activeSystemPromptId,
@@ -97,29 +93,23 @@ function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: bo
       : (customParamsId ?? null);
   }
 
-  // Check if model supports reasoning before adding reasoning parameters
-  const modelCapabilities = (extendedOptions as any).modelCapabilities;
-  const supportsReasoning = supportsReasoningControls(model, modelCapabilities);
-
-  // Only add reasoning parameters if the model supports reasoning
-  if (supportsReasoning) {
-    if (extendedOptions.reasoning) {
-      if (extendedOptions.reasoning.effort) {
-        bodyObj.reasoning_effort = extendedOptions.reasoning.effort;
-      }
-      if (extendedOptions.reasoning.verbosity) {
-        bodyObj.verbosity = extendedOptions.reasoning.verbosity;
-      }
-      if (extendedOptions.reasoning.summary) {
-        bodyObj.reasoning_summary = extendedOptions.reasoning.summary;
-      }
+  // Add reasoning parameters when provided (user decides applicability)
+  if (extendedOptions.reasoning) {
+    if (extendedOptions.reasoning.effort) {
+      bodyObj.reasoning_effort = extendedOptions.reasoning.effort;
     }
-    if ((options as any).reasoningEffort) {
-      bodyObj.reasoning_effort = (options as any).reasoningEffort;
+    if (extendedOptions.reasoning.verbosity) {
+      bodyObj.verbosity = extendedOptions.reasoning.verbosity;
     }
-    if ((options as any).verbosity) {
-      bodyObj.verbosity = (options as any).verbosity;
+    if (extendedOptions.reasoning.summary) {
+      bodyObj.reasoning_summary = extendedOptions.reasoning.summary;
     }
+  }
+  if ((options as any).reasoningEffort) {
+    bodyObj.reasoning_effort = (options as any).reasoningEffort;
+  }
+  if ((options as any).verbosity) {
+    bodyObj.verbosity = (options as any).verbosity;
   }
 
   if (

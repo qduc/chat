@@ -1,14 +1,14 @@
 import { useState, useCallback, useRef } from 'react';
 import { httpClient } from '../lib/http';
-import type { QualityLevel, CustomRequestParamPreset } from '../lib/types';
+import type { ReasoningEffortLevel, CustomRequestParamPreset } from '../lib/types';
 
 /**
- * Hook for managing chat settings (tools, streaming, quality, prompts).
+ * Hook for managing chat settings (tools, streaming, reasoning, prompts).
  *
  * Handles:
  * - Tool usage toggles and enabled tools list
  * - Streaming preferences
- * - Quality/reasoning level controls
+ * - Reasoning effort level controls
  * - System prompt management
  * - Custom request parameters from user settings
  *
@@ -18,7 +18,7 @@ import type { QualityLevel, CustomRequestParamPreset } from '../lib/types';
  * - `useTools` / `setUseTools`: Master tool toggle
  * - `enabledTools` / `setEnabledTools`: List of enabled tool names
  * - `shouldStream` / `setShouldStream`: Streaming preference
- * - `qualityLevel` / `setQualityLevel`: Reasoning effort level
+ * - `reasoningEffort` / `setReasoningEffort`: Reasoning effort level
  * - `systemPrompt` / `activeSystemPromptId`: System prompt state
  * - `customRequestParams` / `customRequestParamsId`: Custom API params
  * - `refreshUserSettings(userId)`: Reload settings from API
@@ -31,8 +31,8 @@ export function useChatSettings() {
   const [shouldStream, setShouldStream] = useState(true);
   const shouldStreamRef = useRef<boolean>(true);
   const providerStreamRef = useRef<boolean>(true);
-  const [qualityLevel, setQualityLevel] = useState<QualityLevel>('unset');
-  const qualityLevelRef = useRef<QualityLevel>('unset');
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffortLevel>('unset');
+  const reasoningEffortRef = useRef<ReasoningEffortLevel>('unset');
   const [customRequestParams, setCustomRequestParams] = useState<CustomRequestParamPreset[]>([]);
   const [customRequestParamsId, setCustomRequestParamsId] = useState<string[]>([]);
   const customRequestParamsIdRef = useRef<string[]>([]);
@@ -60,9 +60,9 @@ export function useChatSettings() {
     providerStreamRef.current = value;
   }, []);
 
-  const setQualityLevelWrapper = useCallback((level: QualityLevel) => {
-    setQualityLevel(level);
-    qualityLevelRef.current = level;
+  const setReasoningEffortWrapper = useCallback((level: ReasoningEffortLevel) => {
+    setReasoningEffort(level);
+    reasoningEffortRef.current = level;
   }, []);
 
   const setCustomRequestParamsIdWrapper = useCallback((value: string[] | null) => {
@@ -133,9 +133,9 @@ export function useChatSettings() {
     shouldStreamRef,
     providerStreamRef,
     setShouldStream: setShouldStreamWrapper,
-    qualityLevel,
-    qualityLevelRef,
-    setQualityLevel: setQualityLevelWrapper,
+    reasoningEffort,
+    reasoningEffortRef,
+    setReasoningEffort: setReasoningEffortWrapper,
     customRequestParams,
     customRequestParamsId,
     customRequestParamsIdRef,

@@ -86,8 +86,8 @@ export class OpenAIProvider extends BaseProvider {
   }
 
   shouldUseResponsesAPI() {
-    const baseUrl = (this.baseUrl || '').toLowerCase();
-    return baseUrl.includes('api.openai.com');
+    const providerType = (this.settings?.providerType || '').toLowerCase();
+    return providerType === 'openai-responses';
   }
 
   resolveResponsesAdapter() {

@@ -77,7 +77,6 @@ describe('Conversation metadata persistence on fork', () => {
       provider_id: 'openai',
       streamingEnabled: true,
       toolsEnabled: true,
-      qualityLevel: 'thorough',
       reasoningEffort: 'high',
       verbosity: 'high',
       metadata: {
@@ -116,7 +115,6 @@ describe('Conversation metadata persistence on fork', () => {
     assert.strictEqual(newConvo.provider_id, 'openai', 'Provider ID should be copied');
     assert.ok(newConvo.streaming_enabled, 'Streaming enabled should be copied');
     assert.ok(newConvo.tools_enabled, 'Tools enabled should be copied');
-    assert.strictEqual(newConvo.quality_level, 'thorough', 'Quality level should be copied');
     assert.strictEqual(newConvo.reasoning_effort, 'high', 'Reasoning effort should be copied');
     assert.strictEqual(newConvo.verbosity, 'high', 'Verbosity should be copied');
 

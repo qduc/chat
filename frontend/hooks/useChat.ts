@@ -26,7 +26,7 @@ import type {
   ModelOption,
   ModelGroup,
   Status,
-  QualityLevel,
+  ReasoningEffortLevel,
   Provider,
   ChatOptionsExtended,
   CustomRequestParamPreset,
@@ -129,9 +129,9 @@ export function useChat() {
     shouldStreamRef,
     providerStreamRef,
     setShouldStream,
-    qualityLevel,
-    qualityLevelRef,
-    setQualityLevel,
+    reasoningEffort,
+    reasoningEffortRef,
+    setReasoningEffort,
     customRequestParams,
     customRequestParamsId,
     customRequestParamsIdRef,
@@ -281,7 +281,7 @@ export function useChat() {
       }
 
       const reasoning =
-        qualityLevelRef.current !== 'unset' ? { effort: qualityLevelRef.current } : undefined;
+        reasoningEffortRef.current !== 'unset' ? { effort: reasoningEffortRef.current } : undefined;
       const historySource = isPrimary
         ? messagesRef.current
         : messagesRef.current.filter((m) => {
@@ -327,7 +327,6 @@ export function useChat() {
           streamingEnabled: shouldStreamRef.current,
           toolsEnabled: useToolsRef.current,
           tools: enabledToolsRef.current,
-          qualityLevel: qualityLevelRef.current,
           reasoning,
           customRequestParamsId:
             customRequestParamsIdRef.current.length > 0 ? customRequestParamsIdRef.current : null,
@@ -479,7 +478,7 @@ export function useChat() {
     [
       providerIdRef,
       modelToProviderRef,
-      qualityLevelRef,
+      reasoningEffortRef,
       messagesRef,
       setMessages,
       shouldStreamRef,
@@ -651,6 +650,9 @@ export function useChat() {
       executeRequest,
       linkedConversationsRef,
       abortControllerRef,
+      currentRequestIdRef,
+      setCurrentConversationTitle,
+      tokenStatsRef,
     ]
   );
 
@@ -658,7 +660,7 @@ export function useChat() {
     async (id: string) => {
       try {
         setStatus('idle');
-        setError(null);
+        clearError();
 
         // We no longer clear the draft when switching conversations.
         // The user expects the draft to stay there if they come back.
@@ -736,9 +738,9 @@ export function useChat() {
           setUseTools(data.tools_enabled);
           useToolsRef.current = data.tools_enabled;
         }
-        if (data.quality_level) {
-          setQualityLevel(data.quality_level as QualityLevel);
-          qualityLevelRef.current = data.quality_level as QualityLevel;
+        if (data.reasoning_effort) {
+          setReasoningEffort(data.reasoning_effort as ReasoningEffortLevel);
+          reasoningEffortRef.current = data.reasoning_effort as ReasoningEffortLevel;
         }
         if ((data as any).custom_request_params_id) {
           const ids = normalizeCustomRequestParamsIds((data as any).custom_request_params_id);
@@ -813,10 +815,9 @@ export function useChat() {
       }
     },
     [
-      user?.id,
-      conversationIdRef,
       setStatus,
       setError,
+      clearError,
       setMessages,
       setEvaluations,
       setEvaluationDrafts,
@@ -834,8 +835,8 @@ export function useChat() {
       providerStreamRef,
       setUseTools,
       useToolsRef,
-      setQualityLevel,
-      qualityLevelRef,
+      setReasoningEffort,
+      reasoningEffortRef,
       normalizeCustomRequestParamsIds,
       setCustomRequestParamsId,
       customRequestParamsIdRef,
@@ -990,8 +991,6 @@ export function useChat() {
     clearAttachments,
     setCurrentConversationTitle,
     setLinkedConversations,
-    user?.id,
-    conversationIdRef,
     restoreSavedModel,
   ]);
 
@@ -1164,7 +1163,7 @@ export function useChat() {
     shouldStream,
     useTools,
     enabledTools,
-    qualityLevel,
+    reasoningEffort,
     customRequestParamsId,
     nextCursor,
     loadingConversations,
@@ -1178,7 +1177,6 @@ export function useChat() {
     setProviderId: (id: string | null) => {
       setProviderId(id);
       providerIdRef.current = id;
-      clearError();
     },
     setUseTools: (v: boolean) => {
       setUseTools(v);
@@ -1196,9 +1194,9 @@ export function useChat() {
       providerStreamRef.current = v;
       clearError();
     },
-    setQualityLevel: (l: QualityLevel) => {
-      setQualityLevel(l);
-      qualityLevelRef.current = l;
+    setReasoningEffort: (l: ReasoningEffortLevel) => {
+      setReasoningEffort(l);
+      reasoningEffortRef.current = l;
       clearError();
     },
     setCustomRequestParamsId: (ids: string[] | null) => {
@@ -1260,7 +1258,6 @@ export function useChat() {
     setInlineSystemPromptOverride: (p: string | null) => {
       setSystemPrompt(p);
       systemPromptRef.current = p;
-      clearError();
     },
     refreshUserSettings: () => user?.id && refreshSettings(user.id),
   };

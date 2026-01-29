@@ -52,7 +52,7 @@ export default function ProvidersTab({ isVisible, isOpen, onProvidersChanged }: 
     enabled: boolean;
     api_key?: string;
     model_filter?: string;
-  }>({ name: '', provider_type: 'openai', base_url: '', enabled: true });
+  }>({ name: '', provider_type: 'openai-completions', base_url: '', enabled: true });
 
   const [saving, setSaving] = React.useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = React.useState(false);
@@ -515,7 +515,8 @@ export default function ProvidersTab({ isVisible, isOpen, onProvidersChanged }: 
                   onChange={(e) => setForm((f) => ({ ...f, provider_type: e.target.value }))}
                   required
                 >
-                  <option value="openai">OpenAI Compatible</option>
+                  <option value="openai-responses">OpenAI Responses API</option>
+                  <option value="openai-completions">OpenAI Chat Completions</option>
                   <option value="anthropic">Anthropic</option>
                   <option value="gemini">Google Gemini</option>
                 </select>
@@ -524,11 +525,13 @@ export default function ProvidersTab({ isVisible, isOpen, onProvidersChanged }: 
                     ? 'Native Anthropic Claude API support with Messages API'
                     : form.provider_type === 'gemini'
                       ? 'Native Google Gemini API support'
-                      : 'Compatible with OpenAI API format (ChatGPT, Claude, most providers)'}
+                      : form.provider_type === 'openai-responses'
+                        ? 'Use OpenAI Responses API (/v1/responses) for advanced features'
+                        : 'Use Chat Completions API (/v1/chat/completions) for broad compatibility'}
                 </p>
               </div>
 
-              {form.provider_type === 'openai' && (
+              {form.provider_type.startsWith('openai') && (
                 <div className="space-y-1.5">
                   <label
                     htmlFor="base-url"

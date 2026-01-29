@@ -37,7 +37,9 @@ function getDefaultBaseUrl(providerType) {
 }
 
 function normalizeProviderType(providerType) {
-  return (providerType || 'openai').toLowerCase();
+  const type = (providerType || 'openai-completions').toLowerCase();
+  const validTypes = ['openai-responses', 'openai-completions', 'anthropic', 'gemini'];
+  return validTypes.includes(type) ? type : 'openai-completions';
 }
 
 function normalizeBaseUrlInput(baseUrl, providerType) {

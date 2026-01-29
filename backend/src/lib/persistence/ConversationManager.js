@@ -78,7 +78,6 @@ export class ConversationManager {
       provider_id: params.providerId,
       streamingEnabled: params.streamingEnabled,
       toolsEnabled: params.toolsEnabled,
-      qualityLevel: params.qualityLevel || null,
       reasoningEffort: params.reasoningEffort || null,
       verbosity: params.verbosity || null,
       metadata: params.metadata || {},
@@ -763,13 +762,12 @@ export class ConversationManager {
   }
 
   /**
-   * Update conversation settings (streaming, tools, quality, reasoning, verbosity)
+   * Update conversation settings (streaming, tools, reasoning, verbosity)
    * @param {string} conversationId - Conversation ID
    * @param {string} userId - User ID
    * @param {Object} settings - Settings to update
    * @param {boolean} [settings.streamingEnabled] - Enable streaming
    * @param {boolean} [settings.toolsEnabled] - Enable tools
-   * @param {string} [settings.qualityLevel] - Quality level
    * @param {string} [settings.reasoningEffort] - Reasoning effort
    * @param {string} [settings.verbosity] - Verbosity level
    */

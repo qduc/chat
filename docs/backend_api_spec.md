@@ -223,7 +223,6 @@ Body (all optional except may desire model/provider):
   "model?": "model-id",
   "streamingEnabled?": true,
   "toolsEnabled?": true,
-  "qualityLevel?": "default|...",
   "reasoningEffort?": "low|medium|high",
   "verbosity?": "...",
   "system_prompt?": "string"  // or legacy systemPrompt
