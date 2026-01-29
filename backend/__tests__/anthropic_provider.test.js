@@ -5,14 +5,18 @@ import { MessagesAdapter } from '../src/lib/adapters/messagesAdapter.js';
 describe('AnthropicProvider', () => {
   let provider;
   let mockConfig;
+  let mockSettings;
 
   beforeEach(() => {
     mockConfig = {
-      anthropicApiKey: 'test-api-key',
       defaultModel: 'claude-3-5-sonnet-20241022',
+    };
+    mockSettings = {
+      apiKey: 'test-api-key',
     };
     provider = new AnthropicProvider({
       config: mockConfig,
+      settings: mockSettings,
       providerId: 'test-provider',
     });
   });
@@ -243,6 +247,7 @@ describe('AnthropicProvider', () => {
       mockFetch = jest.fn();
       provider = new AnthropicProvider({
         config: mockConfig,
+        settings: mockSettings,
         providerId: 'test-provider',
         http: mockFetch,
       });
@@ -275,10 +280,10 @@ describe('AnthropicProvider', () => {
       );
     });
 
-    test('merges defaultHeaders from config and settings', async () => {
+    test('merges defaultHeaders from settings', async () => {
       const customProvider = new AnthropicProvider({
-        config: { providerConfig: { headers: { 'X-Config': '1' } } },
-        settings: { headers: { 'X-Settings': '2' } },
+        config: {},
+        settings: { apiKey: 'test-key', headers: { 'X-Settings': '2' } },
         providerId: 'test',
         http: mockFetch
       });
@@ -288,7 +293,6 @@ describe('AnthropicProvider', () => {
       await customProvider.makeHttpRequest({ model: 'claude' });
 
       const [, options] = mockFetch.mock.calls[0];
-      expect(options.headers['X-Config']).toBe('1');
       expect(options.headers['X-Settings']).toBe('2');
     });
 
@@ -342,6 +346,7 @@ describe('AnthropicProvider', () => {
       mockFetch = jest.fn();
       provider = new AnthropicProvider({
         config: mockConfig,
+        settings: mockSettings,
         providerId: 'test-provider',
         http: mockFetch,
       });
@@ -428,28 +433,29 @@ describe('AnthropicProvider', () => {
   describe('Configuration and Base URL Logic', () => {
     test('isConfigured returns true if x-api-key is in defaultHeaders', () => {
       const headerProvider = new AnthropicProvider({
-        config: { providerConfig: { headers: { 'x-api-key': 'header-key' } } },
+        config: {},
+        settings: { headers: { 'x-api-key': 'header-key' } },
         providerId: 'test'
       });
       expect(headerProvider.isConfigured()).toBe(true);
     });
 
-    test('baseUrl selection prefers config override over default', () => {
+    test('baseUrl uses settings.baseUrl when provided', () => {
       const overrideProvider = new AnthropicProvider({
-        config: { anthropicBaseUrl: 'https://my-proxy.com' },
+        config: {},
+        settings: { baseUrl: 'https://my-proxy.com' },
         providerId: 'test'
       });
       expect(overrideProvider.baseUrl).toBe('https://my-proxy.com');
     });
 
-    test('baseUrl selection ignores OpenAI-like DB base URL', () => {
-      const mismatchedProvider = new AnthropicProvider({
+    test('baseUrl uses default when settings.baseUrl is empty', () => {
+      const defaultProvider = new AnthropicProvider({
         config: {},
-        settings: { baseUrl: 'https://api.openai.com/v1' },
+        settings: { baseUrl: '' },
         providerId: 'test'
       });
-      // Should ignore openai URL and use default
-      expect(mismatchedProvider.baseUrl).toBe('https://api.anthropic.com');
+      expect(defaultProvider.baseUrl).toBe('https://api.anthropic.com');
     });
   });
 

@@ -89,30 +89,24 @@ describe('Provider Interface Compliance', () => {
     });
   });
 
-  describe('baseUrl fallback behavior', () => {
-    // Regression test: when settings.baseUrl is empty string (falsy),
-    // the provider should use its default base URL, not fall through to config.providerConfig.baseUrl
+  describe('baseUrl resolves from settings or defaults', () => {
+    // After cleanup: providers simply use settings.baseUrl || ProviderClass.defaultBaseUrl
     it('GeminiProvider should use default base URL when settings.baseUrl is empty', () => {
-      // This simulates the background refresh scenario where row.base_url is null
-      // and was being converted to empty string, causing the provider to use OpenAI URL
       const provider = new GeminiProvider({
-        config: {
-          providerConfig: { baseUrl: 'https://api.openai.com/v1' }  // Should NOT use this for Gemini
-        },
+        config: {},
         settings: {
           baseUrl: '',  // Empty string - should fall through to default
           apiKey: 'test-key'
         }
       });
 
-      // The baseUrl getter should return Gemini's default, not OpenAI's
       expect(provider.baseUrl).toBe('https://generativelanguage.googleapis.com/v1beta');
     });
 
     it('GeminiProvider should use provided base URL when settings.baseUrl is non-empty', () => {
       const customUrl = 'https://custom.gemini.endpoint/v1beta';
       const provider = new GeminiProvider({
-        config: { providerConfig: { baseUrl: 'https://api.openai.com/v1' } },
+        config: {},
         settings: {
           baseUrl: customUrl,
           apiKey: 'test-key'
@@ -123,56 +117,35 @@ describe('Provider Interface Compliance', () => {
     });
 
     it('createProviderWithSettings should create Gemini provider with correct base URL', () => {
-      // This tests the fix for the background refresh issue
-      const config = { providerConfig: { baseUrl: 'https://api.openai.com/v1' } };
+      const config = {};
       const ProviderClass = selectProviderConstructor('gemini');
       const defaultBaseUrl = ProviderClass.defaultBaseUrl;
 
-      // When baseUrl is null (as it would be from database for Gemini),
-      // we should use the provider's default
       const provider = createProviderWithSettings(config, 'gemini', {
         apiKey: 'test-key',
-        baseUrl: defaultBaseUrl,  // This is what the fixed code does
+        baseUrl: defaultBaseUrl,
         headers: {}
       });
 
       expect(provider.baseUrl).toBe('https://generativelanguage.googleapis.com/v1beta');
     });
 
-    // Anthropic provider regression tests
     it('AnthropicProvider should use default base URL when settings.baseUrl is empty', () => {
       const provider = new AnthropicProvider({
-        config: {
-          providerConfig: { baseUrl: 'https://api.openai.com/v1' }  // Should NOT use this for Anthropic
-        },
+        config: {},
         settings: {
           baseUrl: '',  // Empty string - should fall through to default
           apiKey: 'test-key'
         }
       });
 
-      // The baseUrl getter should return Anthropic's default, not OpenAI's
       expect(provider.baseUrl).toBe('https://api.anthropic.com');
     });
 
-    it('AnthropicProvider should reject OpenAI URL in settings.baseUrl', () => {
-      // If somehow OpenAI URL ends up in settings.baseUrl, it should be ignored
-      const provider = new AnthropicProvider({
-        config: {},
-        settings: {
-          baseUrl: 'https://api.openai.com/v1',  // Wrong URL - should be ignored
-          apiKey: 'test-key'
-        }
-      });
-
-      // Should fall back to Anthropic's default, not use OpenAI URL
-      expect(provider.baseUrl).toBe('https://api.anthropic.com');
-    });
-
-    it('AnthropicProvider should use custom Anthropic-compatible URL', () => {
+    it('AnthropicProvider should use provided base URL', () => {
       const customUrl = 'https://custom.anthropic.proxy/v1';
       const provider = new AnthropicProvider({
-        config: { providerConfig: { baseUrl: 'https://api.openai.com/v1' } },
+        config: {},
         settings: {
           baseUrl: customUrl,
           apiKey: 'test-key'
@@ -183,7 +156,7 @@ describe('Provider Interface Compliance', () => {
     });
 
     it('createProviderWithSettings should create Anthropic provider with correct base URL', () => {
-      const config = { providerConfig: { baseUrl: 'https://api.openai.com/v1' } };
+      const config = {};
       const ProviderClass = selectProviderConstructor('anthropic');
       const defaultBaseUrl = ProviderClass.defaultBaseUrl;
 
@@ -196,26 +169,22 @@ describe('Provider Interface Compliance', () => {
       expect(provider.baseUrl).toBe('https://api.anthropic.com');
     });
 
-    // OpenAI provider tests (should correctly use OpenAI URL from config)
     it('OpenAIProvider should use default base URL when settings.baseUrl is empty', () => {
       const provider = new OpenAIProvider({
-        config: {
-          providerConfig: { baseUrl: 'https://api.openai.com/v1' }
-        },
+        config: {},
         settings: {
           baseUrl: '',  // Empty string
           apiKey: 'test-key'
         }
       });
 
-      // OpenAI should correctly use the OpenAI URL from config (this is expected behavior)
       expect(provider.baseUrl).toBe('https://api.openai.com');
     });
 
     it('OpenAIProvider should use custom OpenAI-compatible URL', () => {
       const customUrl = 'https://custom.openai.proxy/v1';
       const provider = new OpenAIProvider({
-        config: { providerConfig: { baseUrl: 'https://api.openai.com/v1' } },
+        config: {},
         settings: {
           baseUrl: customUrl,
           apiKey: 'test-key'
@@ -227,7 +196,7 @@ describe('Provider Interface Compliance', () => {
     });
 
     it('createProviderWithSettings should create OpenAI provider with correct base URL', () => {
-      const config = { providerConfig: { baseUrl: 'https://api.openai.com/v1' } };
+      const config = {};
       const ProviderClass = selectProviderConstructor('openai');
       const defaultBaseUrl = ProviderClass.defaultBaseUrl;
 

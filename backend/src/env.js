@@ -36,10 +36,6 @@ const parsePositiveNumber = (value, def) => {
 
 const DEFAULT_MODEL = 'gpt-4.1-mini';
 const DEFAULT_TITLE_MODEL = 'gpt-4.1-mini';
-const OPENAI_BASE_URL = 'https://api.openai.com/v1';
-const ANTHROPIC_BASE_URL = 'https://api.anthropic.com';
-
-const providerHeaders = undefined;
 
 export const config = {
   isTest,
@@ -51,17 +47,8 @@ export const config = {
   },
   // Provider selection (default to openai for backward-compat)
   provider: 'openai',
-  // Backward-compat: legacy OpenAI fields still present (now static defaults)
-  openaiBaseUrl: OPENAI_BASE_URL,
-  openaiApiKey: null,
-  // Anthropic provider overrides
-  anthropicBaseUrl: ANTHROPIC_BASE_URL,
-  anthropicApiKey: null,
-  // Generic provider config; falls back to OpenAI values
+  // Shared provider config (timeouts, retry settings)
   providerConfig: {
-    baseUrl: OPENAI_BASE_URL,
-    apiKey: null,
-    headers: providerHeaders,
     timeoutMs: Number(process.env.PROVIDER_TIMEOUT_MS) || 10000, // 10 second default for provider operations
     modelFetchTimeoutMs: Number(process.env.PROVIDER_MODEL_FETCH_TIMEOUT_MS) || 3000, // 3 second default for model fetching
     streamTimeoutMs: Number(process.env.PROVIDER_STREAM_TIMEOUT_MS) || 300000, // 300 second default for streaming operations

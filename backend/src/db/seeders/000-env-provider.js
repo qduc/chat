@@ -1,6 +1,14 @@
 import { config } from '../../env.js';
 import { logger } from '../../logger.js';
 
+// Default base URLs for each provider type
+// Duplicated here to avoid circular dependency with providers/index.js
+const PROVIDER_DEFAULT_BASE_URLS = {
+  openai: 'https://api.openai.com/v1',
+  anthropic: 'https://api.anthropic.com',
+  gemini: 'https://generativelanguage.googleapis.com/v1beta',
+};
+
 export default function seedProviderFromEnv(db, options = {}) {
   const { userId } = options;
   if (!userId) {
@@ -16,24 +24,14 @@ export default function seedProviderFromEnv(db, options = {}) {
     if (existing > 0) return;
 
     const providerType = (config.provider || 'openai').toLowerCase();
-    const defaultBaseUrl =
-      providerType === 'anthropic' ? config?.anthropicBaseUrl || 'https://api.anthropic.com' : config?.openaiBaseUrl;
-    const resolvedBaseUrl = config?.providerConfig?.baseUrl || defaultBaseUrl || null;
-    const baseUrl = resolvedBaseUrl ? String(resolvedBaseUrl).replace(/\/$/, '').replace(/\/v1$/, '') : null;
-    const apiKey =
-      providerType === 'anthropic'
-        ? config?.anthropicApiKey || config?.providerConfig?.apiKey || config?.openaiApiKey || null
-        : config?.providerConfig?.apiKey || config?.openaiApiKey || null;
-    const headersObj = config?.providerConfig?.headers || {};
-
-    if (!apiKey && !baseUrl) return;
+    const baseUrl = PROVIDER_DEFAULT_BASE_URLS[providerType] || PROVIDER_DEFAULT_BASE_URLS.openai;
+    const apiKey = null;  // User configures via UI
+    const headersObj = {};
 
     const now = new Date().toISOString();
-    const name =
-      config?.providerConfig?.name ||
-      (providerType === 'openai' ? 'OpenAI' : providerType);
+    const name = providerType === 'openai' ? 'OpenAI' : providerType.charAt(0).toUpperCase() + providerType.slice(1);
     const id = `${userId}-${providerType}`;
-    const extraHeaders = JSON.stringify(headersObj || {});
+    const extraHeaders = JSON.stringify(headersObj);
     const metadata = JSON.stringify({ model_filter: config?.modelFilter || null });
 
     db.prepare(`

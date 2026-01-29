@@ -70,31 +70,15 @@ export class GeminiProvider extends BaseProvider {
   }
 
   get apiKey() {
-    return this.settings?.apiKey || this.config?.providerConfig?.apiKey || null;
+    return this.settings?.apiKey;
   }
 
   get baseUrl() {
-    // Use settings.baseUrl if provided and truthy
-    if (this.settings?.baseUrl) {
-      return this.settings.baseUrl;
-    }
-
-    // Only use config.providerConfig.baseUrl if it's NOT the OpenAI default
-    // (which is set globally in env.js and doesn't apply to Gemini)
-    const configBaseUrl = this.config?.providerConfig?.baseUrl;
-    if (configBaseUrl && !/api\.openai\.com/i.test(configBaseUrl)) {
-      return configBaseUrl;
-    }
-
-    // Fall back to Gemini's default URL
-    return 'https://generativelanguage.googleapis.com/v1beta';
+    return this.settings?.baseUrl || GeminiProvider.defaultBaseUrl;
   }
 
   get defaultHeaders() {
-    return {
-      ...(this.config?.providerConfig?.headers || {}),
-      ...(this.settings?.headers || {}),
-    };
+    return { ...(this.settings?.headers || {}) };
   }
 
   isConfigured() {

@@ -194,28 +194,16 @@ export const withServer = async (app, fn) => {
 // Registers shared hooks and returns helpers for a test file
 export function createChatProxyTestContext() {
   const upstream = new MockUpstream();
-  let originalBaseUrl;
-  let originalApiKey;
   let originalModel;
-  let originalProviderBaseUrl;
-  let originalProviderApiKey;
 
   beforeAll(async () => {
     await upstream.start();
 
     // Save originals
-    originalBaseUrl = config.openaiBaseUrl;
-    originalApiKey = config.openaiApiKey;
     originalModel = config.defaultModel;
-    originalProviderBaseUrl = config.providerConfig.baseUrl;
-    originalProviderApiKey = config.providerConfig.apiKey;
 
     // Apply test config
-    config.openaiBaseUrl = upstream.getUrl();
-    config.openaiApiKey = 'test-key';
     config.defaultModel = 'gpt-3.5-turbo';
-    config.providerConfig.baseUrl = upstream.getUrl();
-    config.providerConfig.apiKey = 'test-key';
   });
 
   afterAll(async () => {
@@ -226,11 +214,7 @@ export function createChatProxyTestContext() {
     if (db) db.close();
 
     // Restore config
-    config.openaiBaseUrl = originalBaseUrl;
-    config.openaiApiKey = originalApiKey;
     config.defaultModel = originalModel;
-    config.providerConfig.baseUrl = originalProviderBaseUrl;
-    config.providerConfig.apiKey = originalProviderApiKey;
   });
 
   beforeEach(() => {
@@ -246,6 +230,12 @@ export function createChatProxyTestContext() {
       const db = getDb();
       if (db) {
         db.exec('DELETE FROM messages; DELETE FROM conversations; DELETE FROM sessions;');
+        // Create a test provider in the database pointing to the mock upstream
+        const now = new Date().toISOString();
+        db.prepare(`
+          INSERT OR REPLACE INTO providers (id, user_id, name, provider_type, api_key, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at)
+          VALUES ('test-provider', 'chat-format-user', 'Test OpenAI', 'openai', 'test-key', @baseUrl, 1, 1, '{}', '{}', @now, @now)
+        `).run({ baseUrl: upstream.getUrl(), now });
       }
     }
   });
