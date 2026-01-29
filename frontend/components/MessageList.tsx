@@ -21,6 +21,7 @@ import type { Evaluation } from '../lib/types';
 import { useStreamingScroll } from '../hooks/useStreamingScroll';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { WelcomeMessage } from './WelcomeMessage';
+import { useAuth } from '../contexts/AuthContext';
 
 interface MessageListProps {
   messages: ChatMessage[];
@@ -90,6 +91,12 @@ export function MessageList({
   onDeleteJudgeResponse,
 }: MessageListProps) {
   const { showToast } = useToast();
+  const { user } = useAuth();
+  const userId = user?.id;
+  const judgeModelStorageKey = userId
+    ? `chatforge-last-judge-model_${userId}`
+    : 'chatforge-last-judge-model';
+
   const internalContainerRef = useRef<HTMLDivElement | null>(null);
   const containerRef = externalContainerRef || internalContainerRef;
   const editingTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -108,12 +115,15 @@ export function MessageList({
   // Judge modal state
   const [isJudgeModalOpen, setIsJudgeModalOpen] = useState(false);
   const [judgeMessageId, setJudgeMessageId] = useState<string | null>(null);
-  const [judgeModelId, setJudgeModelId] = useState<string>(() => {
+  const [judgeModelId, setJudgeModelId] = useState<string>('');
+
+  // Load judge model from localStorage when user changes
+  useEffect(() => {
     if (typeof window !== 'undefined') {
-      return localStorage.getItem('chatforge-last-judge-model') || '';
+      const saved = localStorage.getItem(judgeModelStorageKey);
+      setJudgeModelId(saved || '');
     }
-    return '';
-  });
+  }, [judgeModelStorageKey]);
 
   // Refs for tracking
   const initializedComparisonRef = useRef<string | null>(null);
@@ -437,7 +447,7 @@ export function MessageList({
       // Persist the selected judge model
       setJudgeModelId(options.judgeModelId);
       if (typeof window !== 'undefined') {
-        localStorage.setItem('chatforge-last-judge-model', options.judgeModelId);
+        localStorage.setItem(judgeModelStorageKey, options.judgeModelId);
       }
 
       void onJudge({
@@ -450,7 +460,7 @@ export function MessageList({
         showToast({ message, variant: 'error' });
       });
     },
-    [judgeMessageId, onJudge, showToast]
+    [judgeMessageId, judgeModelStorageKey, onJudge, showToast]
   );
 
   return (

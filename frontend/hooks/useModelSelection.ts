@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { httpClient } from '../lib';
 import type { ModelGroup, ModelOption } from '../lib';
+import { useAuth } from '../contexts/AuthContext';
 
 const SELECTED_MODEL_KEY = 'selectedModel';
 
@@ -25,6 +26,10 @@ const SELECTED_MODEL_KEY = 'selectedModel';
  * - `forceRefreshModels()`: Force refresh bypassing cache
  */
 export function useModelSelection() {
+  const { user } = useAuth();
+  const userId = user?.id;
+  const storageKey = userId ? `${SELECTED_MODEL_KEY}_${userId}` : SELECTED_MODEL_KEY;
+
   const [model, setModelState] = useState<string>('');
   const modelRef = useRef<string>('');
   const [providerId, setProviderId] = useState<string | null>(null);
@@ -37,17 +42,20 @@ export function useModelSelection() {
   const [modelCapabilities, setModelCapabilities] = useState<any>(null);
 
   // persisted setter - saves last manually selected model to localStorage
-  const setModel = useCallback((m: string) => {
-    setModelState(m);
-    modelRef.current = m;
-    try {
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(SELECTED_MODEL_KEY, m);
+  const setModel = useCallback(
+    (m: string) => {
+      setModelState(m);
+      modelRef.current = m;
+      try {
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(storageKey, m);
+        }
+      } catch {
+        // ignore localStorage errors
       }
-    } catch {
-      // ignore localStorage errors
-    }
-  }, []);
+    },
+    [storageKey]
+  );
 
   const setProviderIdWrapper = useCallback(
     (id: string | null | ((prev: string | null) => string | null)) => {
@@ -163,11 +171,31 @@ export function useModelSelection() {
     loadProvidersAndModels();
   }, [loadProvidersAndModels]);
 
-  // On mount, if no model is set, try to load from localStorage
+  // On mount or user change, try to load from localStorage
   useEffect(() => {
     try {
-      if (typeof window !== 'undefined' && !modelRef.current) {
-        const saved = window.localStorage.getItem(SELECTED_MODEL_KEY);
+      if (typeof window !== 'undefined') {
+        const saved = window.localStorage.getItem(storageKey);
+        if (saved) {
+          setModelState(saved);
+          modelRef.current = saved;
+        } else {
+          // If no saved model for this user, we don't necessarily want to
+          // keep the previous user's model in memory
+          setModelState('');
+          modelRef.current = '';
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [storageKey]);
+
+  // Restore saved model from localStorage (useful for newChat to reset to user preference)
+  const restoreSavedModel = useCallback(() => {
+    try {
+      if (typeof window !== 'undefined') {
+        const saved = window.localStorage.getItem(storageKey);
         if (saved) {
           setModelState(saved);
           modelRef.current = saved;
@@ -176,7 +204,7 @@ export function useModelSelection() {
     } catch {
       // ignore
     }
-  }, []);
+  }, [storageKey]);
 
   return {
     model,
@@ -194,5 +222,6 @@ export function useModelSelection() {
     setProviderId: setProviderIdWrapper,
     loadProvidersAndModels,
     forceRefreshModels,
+    restoreSavedModel,
   };
 }

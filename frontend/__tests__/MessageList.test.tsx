@@ -3,6 +3,22 @@
  * @jest-environment jsdom
  */
 
+jest.mock('../contexts/AuthContext', () => {
+  const authValue = {
+    user: { id: 'user-123', email: 'user@example.com' },
+    isLoading: false,
+    isAuthenticated: true,
+    login: jest.fn(),
+    logout: jest.fn(),
+    register: jest.fn(),
+    refreshAuth: jest.fn(),
+  };
+  return {
+    useAuth: () => authValue,
+    AuthProvider: ({ children }: any) => children,
+  };
+});
+
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';

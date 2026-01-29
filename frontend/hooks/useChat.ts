@@ -45,8 +45,7 @@ import { useChatAttachments } from './useChatAttachments';
 import { useChatSettings } from './useChatSettings';
 import { useCompareMode } from './useCompareMode';
 
-const SELECTED_MODEL_KEY = 'selectedModel';
-
+const DRAFT_RESTORE_DELAY_MS = 100;
 export type { PendingState, EvaluationDraft };
 
 export function useChat() {
@@ -78,6 +77,7 @@ export function useChat() {
     setProviderId,
     loadProvidersAndModels: loadModels,
     forceRefreshModels: forceRefresh,
+    restoreSavedModel,
   } = useModelSelection();
 
   const {
@@ -161,7 +161,6 @@ export function useChat() {
   const [input, setInputState] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<{ id: string } | null>(null);
-  const draftRestoredRef = useRef(false);
 
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
@@ -661,9 +660,8 @@ export function useChat() {
         setStatus('idle');
         setError(null);
 
-        if (user?.id && conversationIdRef.current && conversationIdRef.current !== id) {
-          clearDraft(user.id, conversationIdRef.current);
-        }
+        // We no longer clear the draft when switching conversations.
+        // The user expects the draft to stay there if they come back.
 
         const data = await conversationsApi.get(id, { limit: 200, include_linked: 'messages' });
 
@@ -981,13 +979,8 @@ export function useChat() {
     clearAttachments();
     setCurrentConversationTitle(null);
     setLinkedConversations({});
-    if (user?.id && conversationIdRef.current) clearDraft(user.id, conversationIdRef.current);
-    try {
-      const saved = window.localStorage.getItem(SELECTED_MODEL_KEY);
-      if (saved) setModelState(saved);
-    } catch {
-      /* ignore */
-    }
+    // We no longer clear the draft when starting a new chat.
+    restoreSavedModel();
   }, [
     setMessages,
     setConversationId,
@@ -999,7 +992,7 @@ export function useChat() {
     setLinkedConversations,
     user?.id,
     conversationIdRef,
-    setModelState,
+    restoreSavedModel,
   ]);
 
   const deleteConversation = useCallback(
@@ -1107,19 +1100,32 @@ export function useChat() {
     loadModels();
   }, [loadModels]);
 
+  const lastRestoredIdRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
-    if (!user?.id || draftRestoredRef.current) return;
-    const saved = getDraft(user.id, conversationIdRef.current || '');
-    if (saved) setInput(saved);
-    draftRestoredRef.current = true;
-  }, [user?.id, conversationIdRef, setInput]);
+    if (!user?.id) return;
+    if (lastRestoredIdRef.current === conversationId) return;
+
+    const isFirstRestoration = lastRestoredIdRef.current === undefined;
+    const saved = getDraft(user.id, conversationId || '');
+    if (saved) {
+      if (!isFirstRestoration || input === '') {
+        setInput(saved);
+      }
+    } else if (!isFirstRestoration && input !== '') {
+      setInput('');
+    }
+    lastRestoredIdRef.current = conversationId;
+  }, [user?.id, conversationId, setInput, input]);
 
   useEffect(() => {
-    if (user?.id && input.trim()) {
-      const t = setTimeout(() => setDraft(user.id!, conversationIdRef.current || '', input), 1000);
+    if (user?.id) {
+      const currentConvId = conversationId || '';
+      const t = setTimeout(() => {
+        setDraft(user.id!, currentConvId, input);
+      }, 1000);
       return () => clearTimeout(t);
     }
-  }, [input, user?.id, conversationIdRef]);
+  }, [input, user?.id, conversationId]);
 
   // Use system prompts hook
   const { prompts: systemPrompts, loading: systemPromptsLoading } = useSystemPrompts(user?.id);

@@ -23,7 +23,7 @@ jest.mock('../lib/storage', () => {
     setToken: jest.fn(),
     setRefreshToken: jest.fn(),
     getRefreshToken: jest.fn(() => 'test-refresh-token'),
-    clearTokens: jest.fn(),
+    clearTokens: jest.fn(() => actual.clearTokens()),
     waitForAuthReady: jest.fn(() => Promise.resolve()),
   };
 });
@@ -483,6 +483,39 @@ describe('conversations API - additional coverage', () => {
 
       expect(global.fetch).toHaveBeenCalledTimes(2);
     });
+
+    it('clears all caches when tokens are cleared (behavior test)', async () => {
+      // Populate caches
+      jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(createJsonResponse({ items: [{ id: 'c1' }], next_cursor: null }));
+      await conversations.list();
+
+      jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(createJsonResponse({ id: 'c1', messages: [] }));
+      await conversations.get('c1');
+
+      expect(global.fetch).toHaveBeenCalledTimes(2);
+
+      // Trigger token clearing (logout)
+      storage.clearTokens();
+
+      // Requests should be made again
+      jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(
+          createJsonResponse({ items: [{ id: 'c1-new' }], next_cursor: null })
+        );
+      await conversations.list();
+
+      jest
+        .spyOn(global, 'fetch')
+        .mockResolvedValueOnce(createJsonResponse({ id: 'c1', messages: [] }));
+      await conversations.get('c1');
+
+      expect(global.fetch).toHaveBeenCalledTimes(4);
+    });
   });
 });
 
@@ -793,6 +826,23 @@ describe('providers API', () => {
       await providers.getDefaultProviderId();
 
       expect(global.fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('clears cache when tokens are cleared', async () => {
+      const mockProviders = {
+        providers: [{ id: 'provider-1', enabled: 1, updated_at: '2024-01-01' }],
+      };
+
+      jest.spyOn(global, 'fetch').mockResolvedValueOnce(createJsonResponse(mockProviders));
+      await providers.getDefaultProviderId();
+
+      // Clear tokens
+      storage.clearTokens();
+
+      jest.spyOn(global, 'fetch').mockResolvedValueOnce(createJsonResponse(mockProviders));
+      await providers.getDefaultProviderId();
+
+      expect(global.fetch).toHaveBeenCalledTimes(2);
     });
 
     it('throws when no enabled providers', async () => {
