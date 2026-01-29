@@ -660,7 +660,7 @@ export function useChat() {
     async (id: string) => {
       try {
         setStatus('idle');
-        setError(null);
+        clearError();
 
         // We no longer clear the draft when switching conversations.
         // The user expects the draft to stay there if they come back.
@@ -817,6 +817,7 @@ export function useChat() {
     [
       setStatus,
       setError,
+      clearError,
       setMessages,
       setEvaluations,
       setEvaluationDrafts,
