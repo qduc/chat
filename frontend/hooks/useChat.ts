@@ -45,8 +45,7 @@ import { useChatAttachments } from './useChatAttachments';
 import { useChatSettings } from './useChatSettings';
 import { useCompareMode } from './useCompareMode';
 
-const SELECTED_MODEL_KEY = 'selectedModel';
-
+const DRAFT_RESTORE_DELAY_MS = 100;
 export type { PendingState, EvaluationDraft };
 
 export function useChat() {
@@ -78,6 +77,7 @@ export function useChat() {
     setProviderId,
     loadProvidersAndModels: loadModels,
     forceRefreshModels: forceRefresh,
+    restoreSavedModel,
   } = useModelSelection();
 
   const {
@@ -982,12 +982,7 @@ export function useChat() {
     setCurrentConversationTitle(null);
     setLinkedConversations({});
     if (user?.id && conversationIdRef.current) clearDraft(user.id, conversationIdRef.current);
-    try {
-      const saved = window.localStorage.getItem(SELECTED_MODEL_KEY);
-      if (saved) setModelState(saved);
-    } catch {
-      /* ignore */
-    }
+    restoreSavedModel();
   }, [
     setMessages,
     setConversationId,
@@ -999,7 +994,7 @@ export function useChat() {
     setLinkedConversations,
     user?.id,
     conversationIdRef,
-    setModelState,
+    restoreSavedModel,
   ]);
 
   const deleteConversation = useCallback(

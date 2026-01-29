@@ -3,7 +3,7 @@
  */
 
 import { httpClient, HttpError } from '../http';
-import { waitForAuthReady } from '../storage';
+import { waitForAuthReady, onTokensCleared } from '../storage';
 import { Cache } from '../cache';
 import type {
   ConversationMeta,
@@ -19,6 +19,12 @@ import type {
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const conversationListCache = new Cache<ConversationsList>(CACHE_TTL_MS);
 const conversationDetailCache = new Cache<ConversationWithMessages>(CACHE_TTL_MS);
+
+// Clear caches when tokens are cleared (logout)
+onTokensCleared(() => {
+  conversationListCache.clear();
+  conversationDetailCache.clear();
+});
 
 export const conversations = {
   async create(options: ConversationCreateOptions = {}): Promise<ConversationMeta> {

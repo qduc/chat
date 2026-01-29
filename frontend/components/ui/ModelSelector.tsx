@@ -3,6 +3,7 @@ import { Star, StarOff, ChevronDown, Check, Plus } from 'lucide-react';
 import { type Group as TabGroup } from './TabbedSelect';
 import ModelSelectBase, { type Section, type SelectOption, type Tab } from './ModelSelectBase';
 import Tooltip from './Tooltip';
+import { useAuth } from '../../contexts/AuthContext';
 
 type ModelOption = SelectOption;
 
@@ -156,6 +157,13 @@ export default function ModelSelector({
   comparisonDisabled = false,
   comparisonDisabledReason = 'Model comparison is locked after the first message.',
 }: ModelSelectorProps) {
+  const { user } = useAuth();
+  const userId = user?.id;
+
+  // Derive user-scoped storage keys
+  const scopedFavoritesKey = userId ? `${favoritesStorageKey}_${userId}` : favoritesStorageKey;
+  const scopedRecentKey = userId ? `${recentStorageKey}_${userId}` : recentStorageKey;
+
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
@@ -167,19 +175,25 @@ export default function ModelSelector({
   // Load favorites and recent models from localStorage
   useEffect(() => {
     try {
-      const savedFavorites = localStorage.getItem(favoritesStorageKey);
+      const savedFavorites = localStorage.getItem(scopedFavoritesKey);
       if (savedFavorites) {
         setFavorites(new Set(JSON.parse(savedFavorites)));
+      } else {
+        // Clear previous user's data when switching users
+        setFavorites(new Set());
       }
 
-      const savedRecent = localStorage.getItem(recentStorageKey);
+      const savedRecent = localStorage.getItem(scopedRecentKey);
       if (savedRecent) {
         setRecentModels(JSON.parse(savedRecent));
+      } else {
+        // Clear previous user's data when switching users
+        setRecentModels([]);
       }
     } catch (error) {
       console.warn('Failed to load model preferences:', error);
     }
-  }, [favoritesStorageKey, recentStorageKey]);
+  }, [scopedFavoritesKey, scopedRecentKey]);
 
   // Get all available models with provider info
   const allModels = useMemo(() => {
@@ -318,12 +332,12 @@ export default function ModelSelector({
       setFavorites(newFavorites);
 
       try {
-        localStorage.setItem(favoritesStorageKey, JSON.stringify([...newFavorites]));
+        localStorage.setItem(scopedFavoritesKey, JSON.stringify([...newFavorites]));
       } catch (error) {
         console.warn('Failed to save favorites:', error);
       }
     },
-    [disabled, favorites, favoritesStorageKey]
+    [disabled, favorites, scopedFavoritesKey]
   );
 
   const toggleComparison = useCallback(
@@ -353,7 +367,7 @@ export default function ModelSelector({
         setRecentModels(newRecent);
 
         try {
-          localStorage.setItem(recentStorageKey, JSON.stringify(newRecent));
+          localStorage.setItem(scopedRecentKey, JSON.stringify(newRecent));
         } catch (error) {
           console.warn('Failed to save recent models:', error);
         }
@@ -367,7 +381,7 @@ export default function ModelSelector({
         }, 0);
       }
     },
-    [disabled, onChange, favorites, recentModels, onAfterChange, recentStorageKey]
+    [disabled, onChange, favorites, recentModels, onAfterChange, scopedRecentKey]
   );
 
   useEffect(() => {

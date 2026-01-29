@@ -1,3 +1,19 @@
+jest.mock('../contexts/AuthContext', () => {
+  const authValue = {
+    user: { id: 'user-123', email: 'user@example.com' },
+    isLoading: false,
+    isAuthenticated: true,
+    login: jest.fn(),
+    logout: jest.fn(),
+    register: jest.fn(),
+    refreshAuth: jest.fn(),
+  };
+  return {
+    useAuth: () => authValue,
+    AuthProvider: ({ children }: any) => children,
+  };
+});
+
 import { renderHook, act, waitFor } from '@testing-library/react';
 import type { ChatOptionsExtended } from '../lib/types';
 import { useChat } from '../hooks/useChat';
@@ -119,7 +135,8 @@ describe('useChat hook', () => {
   });
 
   test('loads saved model preference on mount when no active conversation', async () => {
-    window.localStorage.setItem('selectedModel', 'gpt-4o-mini');
+    // Use user-scoped storage key (user-123 from the mock)
+    window.localStorage.setItem('selectedModel_user-123', 'gpt-4o-mini');
 
     const { result } = renderUseChat();
 
@@ -1030,7 +1047,8 @@ describe('useChat hook', () => {
 
   test('newChat resets state and reloads saved model preference', async () => {
     const now = new Date().toISOString();
-    window.localStorage.setItem('selectedModel', 'openai::gpt-4o-mini');
+    // Use user-scoped storage key (user-123 from the mock)
+    window.localStorage.setItem('selectedModel_user-123', 'openai::gpt-4o-mini');
 
     mockConversations.get.mockResolvedValue({
       id: 'conv-reset',

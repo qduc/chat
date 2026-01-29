@@ -3,10 +3,15 @@
  */
 
 import { httpClient } from '../http';
-import { waitForAuthReady } from '../storage';
+import { waitForAuthReady, onTokensCleared } from '../storage';
 import type { Provider } from '../types';
 
 let cachedDefaultProvider: string | null = null;
+
+// Clear cache when tokens are cleared (logout)
+onTokensCleared(() => {
+  cachedDefaultProvider = null;
+});
 
 export const providers = {
   async getDefaultProviderId(): Promise<string> {
