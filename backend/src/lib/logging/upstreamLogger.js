@@ -173,6 +173,15 @@ export function teeStreamWithPreview(readable, { maxBytes = 64 * 1024, encoding 
 
 const LOG_DIR = resolveLogDir();
 
+// Run periodic cleanup so old upstream logs don't linger without new requests.
+if (process.env.NODE_ENV !== 'test') {
+  cleanupOldLogs(LOG_DIR);
+  const logCleanupTimer = setInterval(() => cleanupOldLogs(LOG_DIR), 24 * 60 * 60 * 1000);
+  if (typeof logCleanupTimer.unref === 'function') {
+    logCleanupTimer.unref();
+  }
+}
+
 /**
  * Sanitize an object for logging by truncating base64 image data
  * @param {*} obj - The object to sanitize
