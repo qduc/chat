@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.16.0] - 2026-01-29
+
+### Added
+- Explicit OpenAI provider types: `openai-responses` for the official OpenAI Responses API and `openai-completions` for OpenAI-compatible providers like OpenRouter or local LLMs
+- Periodic log cleanup for upstream logs in non-test environments
+
+### Changed
+- Replaced URL-based provider heuristic with specific provider type configuration
+
+### Fixed
+- Error message no longer persists when changing conversations
+- Error message clears without requiring user interaction
+
+### Removed
+- Unused `quality_level` parameter
+- Unused dependencies and exports
+
+
 ## [0.15.3] - 2026-01-29
 
 ### Added
