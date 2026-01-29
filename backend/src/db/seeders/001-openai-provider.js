@@ -16,8 +16,8 @@ export default function seedOpenAIProvider(db, options = {}) {
 
     // Check if this specific provider already exists
     const existingProvider = db
-      .prepare("SELECT id FROM providers WHERE id = @id AND deleted_at IS NULL")
-      .get({ id: providerId });
+      .prepare("SELECT id FROM providers WHERE id = @id AND user_id = @userId AND deleted_at IS NULL")
+      .get({ id: providerId, userId });
 
     if (existingProvider) {
       logger.info('[seeder] OpenAI provider already exists (id: openai), skipping seeding');
@@ -81,7 +81,7 @@ export default function seedOpenAIProvider(db, options = {}) {
         .get({ userId });
 
       if (defaultProviders?.count === 0) {
-        db.prepare("UPDATE providers SET is_default = 1 WHERE id = @id").run({ id: providerId });
+        db.prepare("UPDATE providers SET is_default = 1 WHERE id = @id AND user_id = @userId").run({ id: providerId, userId });
         logger.info('[seeder] Set OpenAI provider as default');
       }
     } else {

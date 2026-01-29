@@ -264,7 +264,7 @@ function splitMarkdownIntoBlocks(text: string): string[] {
       if (!codeBlockFence) {
         // Opening fence
         codeBlockFence = fence;
-      } else {
+      } else if (fence[0] === codeBlockFence[0]) {
         // Closing fence?
         // Must be same character and at least same length
         // And must not have info string (content after fence)

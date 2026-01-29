@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream';
 import { logUpstreamRequest, logUpstreamResponse, teeStreamWithPreview } from '../logging/upstreamLogger.js';
-import { BaseProvider, ProviderModelsError } from './baseProvider.js';
+import { BaseProvider, ProviderModelsError, createTimeoutSignal } from './baseProvider.js';
 import { ChatCompletionsAdapter } from '../adapters/chatCompletionsAdapter.js';
 import { ResponsesAPIAdapter } from '../adapters/responsesApiAdapter.js';
 import { logger } from '../../logger.js';
@@ -95,23 +95,16 @@ export class OpenAIProvider extends BaseProvider {
   }
 
   get apiKey() {
-    return this.settings?.apiKey || this.config?.providerConfig?.apiKey || this.config?.openaiApiKey;
+    return this.settings?.apiKey;
   }
 
   get baseUrl() {
-    const seededDefaultUrl = 'https://api.openai.com/v1';
-    const dbBaseUrl = this.settings?.baseUrl;
-    const overrideBaseUrl = this.config?.providerConfig?.baseUrl || this.config?.openaiBaseUrl;
-    const shouldPreferOverride = Boolean(overrideBaseUrl) && (!dbBaseUrl || dbBaseUrl === seededDefaultUrl);
-    const configuredBase = shouldPreferOverride ? overrideBaseUrl : dbBaseUrl || overrideBaseUrl || seededDefaultUrl;
-    return String(configuredBase).replace(/\/$/, '').replace(/\/v1$/, '');
+    const url = this.settings?.baseUrl || OpenAIProvider.defaultBaseUrl;
+    return String(url).replace(/\/$/, '').replace(/\/v1$/, '');
   }
 
   get defaultHeaders() {
-    return {
-      ...(this.config?.providerConfig?.headers || {}),
-      ...(this.settings?.headers || {}),
-    };
+    return { ...(this.settings?.headers || {}) };
   }
 
   get httpClient() {
@@ -251,7 +244,7 @@ export class OpenAIProvider extends BaseProvider {
       () => client(url, {
         method: 'GET',
         headers,
-        timeout: timeoutMs,
+        signal: createTimeoutSignal(timeoutMs),
       }),
       config.providerConfig.retry
     );

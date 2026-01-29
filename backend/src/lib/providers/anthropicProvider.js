@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream';
 import { logUpstreamRequest, logUpstreamResponse, teeStreamWithPreview } from '../logging/upstreamLogger.js';
-import { BaseProvider, ProviderModelsError } from './baseProvider.js';
+import { BaseProvider, ProviderModelsError, createTimeoutSignal } from './baseProvider.js';
 import { MessagesAdapter } from '../adapters/messagesAdapter.js';
 import { logger } from '../../logger.js';
 import { retryWithBackoff } from '../retryUtils.js';
@@ -55,38 +55,16 @@ export class AnthropicProvider extends BaseProvider {
   }
 
   get apiKey() {
-    return this.settings?.apiKey || this.config?.providerConfig?.apiKey || this.config?.anthropicApiKey;
+    return this.settings?.apiKey;
   }
 
   get baseUrl() {
-    const seededDefaultUrl = 'https://api.anthropic.com';
-    const dbBaseUrl = this.settings?.baseUrl;
-    const normalizedDbBase = dbBaseUrl ? String(dbBaseUrl).replace(/\/$/, '').replace(/\/v1$/, '') : '';
-    const isMismatchedDbBase = normalizedDbBase && /api\.openai\.com/i.test(normalizedDbBase);
-    const effectiveDbBase = isMismatchedDbBase ? null : normalizedDbBase || null;
-
-    const normalizedAnthropicOverride = this.config?.anthropicBaseUrl
-      ? String(this.config.anthropicBaseUrl).replace(/\/$/, '').replace(/\/v1$/, '')
-      : null;
-    const normalizedProviderOverride = this.config?.providerConfig?.baseUrl
-      ? String(this.config.providerConfig.baseUrl).replace(/\/$/, '').replace(/\/v1$/, '')
-      : null;
-    const providerOverride =
-      normalizedProviderOverride && /anthropic/i.test(normalizedProviderOverride) ? normalizedProviderOverride : null;
-    const overrideBaseUrl = normalizedAnthropicOverride || providerOverride;
-
-    const shouldPreferOverride = Boolean(overrideBaseUrl) && (!effectiveDbBase || effectiveDbBase === seededDefaultUrl);
-    const configuredBase = shouldPreferOverride
-      ? overrideBaseUrl
-      : effectiveDbBase || overrideBaseUrl || seededDefaultUrl;
-    return String(configuredBase).replace(/\/$/, '').replace(/\/v1$/, '');
+    const url = this.settings?.baseUrl || AnthropicProvider.defaultBaseUrl;
+    return String(url).replace(/\/$/, '').replace(/\/v1$/, '');
   }
 
   get defaultHeaders() {
-    return {
-      ...(this.config?.providerConfig?.headers || {}),
-      ...(this.settings?.headers || {}),
-    };
+    return { ...(this.settings?.headers || {}) };
   }
 
   get httpClient() {
@@ -225,7 +203,7 @@ export class AnthropicProvider extends BaseProvider {
     const response = await client(url, {
       method: 'GET',
       headers,
-      timeout: timeoutMs,
+      signal: createTimeoutSignal(timeoutMs),
     });
 
     if (!response.ok) {

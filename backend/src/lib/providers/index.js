@@ -28,29 +28,13 @@ export function selectProviderConstructor(providerType) {
   return providerConstructors[key] || OpenAIProvider;
 }
 
-function getProviderDefaults(providerType, config) {
-  const type = (providerType || config?.provider || 'openai').toLowerCase();
+function getProviderDefaults(providerType) {
+  const type = (providerType || 'openai').toLowerCase();
   const ProviderClass = selectProviderConstructor(type);
-  const defaultBaseUrl = ProviderClass.defaultBaseUrl;
-
-  switch (type) {
-    case 'anthropic':
-      return {
-        baseUrl: config?.anthropicBaseUrl || defaultBaseUrl,
-        apiKey: config?.anthropicApiKey,
-      };
-    case 'gemini':
-      return {
-        baseUrl: config?.geminiBaseUrl || defaultBaseUrl,
-        apiKey: config?.geminiApiKey,
-      };
-    case 'openai':
-    default:
-      return {
-        baseUrl: config?.openaiBaseUrl || config?.providerConfig?.baseUrl || defaultBaseUrl,
-        apiKey: config?.openaiApiKey || config?.providerConfig?.apiKey,
-      };
-  }
+  return {
+    baseUrl: ProviderClass.defaultBaseUrl,
+    apiKey: null,  // API key only from database
+  };
 }
 
 export async function resolveProviderSettings(config, options = {}) {
@@ -85,16 +69,14 @@ export async function resolveProviderSettings(config, options = {}) {
         const responsesApiEnabled =
           typeof metadata?.responses_api_enabled === 'boolean' ? metadata.responses_api_enabled : undefined;
         const providerType = (row.provider_type || config?.provider || 'openai').toLowerCase();
-        const defaults = getProviderDefaults(providerType, config);
-        const baseUrl = normalizeBaseUrl(
-          row.base_url || defaults.baseUrl || config?.providerConfig?.baseUrl || config?.openaiBaseUrl
-        );
+        const defaults = getProviderDefaults(providerType);
+        const baseUrl = normalizeBaseUrl(row.base_url || defaults.baseUrl);
 
         return {
           source: 'db',
           providerType,
           baseUrl,
-          apiKey: row.api_key || defaults.apiKey || config?.providerConfig?.apiKey || config?.openaiApiKey,
+          apiKey: row.api_key || null,
           headers,
           defaultModel: config?.defaultModel, // Only use config defaultModel, not from metadata
           responsesApiEnabled,
@@ -107,15 +89,14 @@ export async function resolveProviderSettings(config, options = {}) {
   }
 
   const providerType = config?.provider || 'openai';
-  const defaults = getProviderDefaults(providerType, config);
-  const baseUrl = normalizeBaseUrl(config?.providerConfig?.baseUrl || defaults.baseUrl || config?.openaiBaseUrl);
+  const defaults = getProviderDefaults(providerType);
 
   return {
     source: 'env',
     providerType,
-    baseUrl,
-    apiKey: config?.providerConfig?.apiKey || defaults.apiKey || config?.openaiApiKey,
-    headers: { ...(config?.providerConfig?.headers || {}) },
+    baseUrl: defaults.baseUrl,
+    apiKey: null,
+    headers: {},
     defaultModel: config?.defaultModel,
     responsesApiEnabled: config?.featureFlags?.responsesApiEnabled,
     raw: null,

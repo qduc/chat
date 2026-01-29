@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.15.2] - 2026-01-29
+
+### Fixed
+- Fixed tool call ID collision between users in multi-user environments
+- Fixed issue where different users could not reuse the same provider name or ID
+- Fixed Gemini provider not fetching model list in background
+- Fixed hung providers blocking background refresh or batch model list calls
+- Fixed code blocks inside thinking blocks causing premature closure of thinking block
+- Fixed session index drift with new migration consistency test
+
+### Changed
+- Cleaned up config.provider design for improved maintainability
+
+
 ## [0.15.1] - 2026-01-27
 
 ### Added

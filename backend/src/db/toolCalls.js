@@ -329,17 +329,18 @@ export function deleteToolCallsAndOutputsByMessageId(messageId) {
  * Update a tool call record
  * @param {Object} params - Tool call parameters
  * @param {string} params.id - Tool call ID to update
+ * @param {string} params.conversationId - Conversation ID (required for composite key lookup)
  * @param {string} params.toolName - Name of the tool
  * @param {string|Object} params.arguments - Tool arguments
  * @returns {boolean} True if updated
  */
-export function updateToolCall({ id, toolName, arguments: args }) {
+export function updateToolCall({ id, conversationId, toolName, arguments: args }) {
   const db = getDb();
   const argsStr = typeof args === 'string' ? args : JSON.stringify(args);
 
   const result = db.prepare(
-    `UPDATE tool_calls SET tool_name = @toolName, arguments = @arguments WHERE id = @id`
-  ).run({ id, toolName, arguments: argsStr });
+    `UPDATE tool_calls SET tool_name = @toolName, arguments = @arguments WHERE id = @id AND conversation_id = @conversationId`
+  ).run({ id, conversationId, toolName, arguments: argsStr });
 
   return result.changes > 0;
 }

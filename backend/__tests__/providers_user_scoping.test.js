@@ -276,4 +276,60 @@ describe('User-scoped Providers', () => {
       expect(response.body.is_default).toBe(1);
     });
   });
+
+  describe('Provider name and ID reuse across users', () => {
+    test('different users can create providers with the same name', async () => {
+      const providerName = 'Shared Provider Name';
+
+      // User 1 creates provider
+      const response1 = await request(server)
+        .post('/v1/providers')
+        .set('Authorization', `Bearer ${token1}`)
+        .send({
+          name: providerName,
+          provider_type: 'openai',
+          api_key: 'sk-user1',
+        });
+      expect(response1.status).toBe(201);
+
+      // User 2 creates provider with the SAME name
+      const response2 = await request(server)
+        .post('/v1/providers')
+        .set('Authorization', `Bearer ${token2}`)
+        .send({
+          name: providerName,
+          provider_type: 'openai',
+          api_key: 'sk-user2',
+        });
+      expect(response2.status).toBe(201);
+    });
+
+    test('different users can create providers with the same ID', async () => {
+      const providerId = 'shared-id';
+
+      // User 1 creates provider
+      const response1 = await request(server)
+        .post('/v1/providers')
+        .set('Authorization', `Bearer ${token1}`)
+        .send({
+          id: providerId,
+          name: 'User 1 Provider',
+          provider_type: 'openai',
+          api_key: 'sk-user1',
+        });
+      expect(response1.status).toBe(201);
+
+      // User 2 creates provider with the SAME ID
+      const response2 = await request(server)
+        .post('/v1/providers')
+        .set('Authorization', `Bearer ${token2}`)
+        .send({
+          id: providerId,
+          name: 'User 2 Provider',
+          provider_type: 'openai',
+          api_key: 'sk-user2',
+        });
+      expect(response2.status).toBe(201);
+    });
+  });
 });

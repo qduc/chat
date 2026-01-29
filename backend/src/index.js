@@ -130,66 +130,22 @@ import {
   setCachedModels,
   getCacheStats,
 } from './lib/modelCache.js';
-import { listProviders, getProviderByIdWithApiKey } from './db/providers.js';
-import { createProviderWithSettings } from './lib/providers/index.js';
-import { filterModels } from './lib/modelFilter.js';
+import { fetchAllModelsForUser } from './lib/modelFetch.js';
 
 if (process.env.NODE_ENV !== 'test') {
   const modelRefreshIntervalMs = Number(process.env.MODEL_CACHE_REFRESH_MS) || 60 * 60 * 1000; // hourly default
 
   /**
-   * Refresh models for a single user
+   * Refresh models for a single user using the shared fetch logic
    * @param {string} userId
    */
   async function refreshModelsForUser(userId) {
-    const providers = listProviders(userId).filter((p) => p.enabled === 1);
-    const results = [];
+    const result = await fetchAllModelsForUser(userId, {
+      parallel: false, // Sequential to be gentle on providers during background refresh
+      skipMissingApiKey: true, // Silently skip providers without API keys
+    });
 
-    for (const provider of providers) {
-      try {
-        const row = getProviderByIdWithApiKey(provider.id, userId);
-        if (!row || !row.api_key) continue;
-
-        const providerType = (row.provider_type || 'openai').toLowerCase();
-        const baseUrl = row.base_url || '';
-        const headers =
-          typeof row.extra_headers === 'object' && row.extra_headers !== null ? row.extra_headers : {};
-
-        const providerInstance = createProviderWithSettings(config, providerType, {
-          apiKey: row.api_key,
-          baseUrl,
-          headers,
-        });
-
-        let models = await providerInstance.listModels({
-          timeoutMs: config.providerConfig.modelFetchTimeoutMs,
-        });
-
-        const metadata = typeof row.metadata === 'object' && row.metadata !== null ? row.metadata : {};
-        if (metadata.model_filter) {
-          models = filterModels(models, metadata.model_filter);
-        }
-
-        results.push({
-          provider: {
-            id: row.id,
-            name: row.name,
-            provider_type: row.provider_type,
-          },
-          models,
-        });
-      } catch (err) {
-        logger.warn({
-          msg: 'modelcache:provider_refresh_error',
-          userId,
-          providerId: provider.id,
-          error: err.message,
-        });
-        // Continue with other providers
-      }
-    }
-
-    setCachedModels(userId, results);
+    setCachedModels(userId, result.providers);
   }
 
   const modelRefreshInterval = setInterval(async () => {

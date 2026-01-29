@@ -487,6 +487,7 @@ describe('toolCalls database module', () => {
 
       const updated = updateToolCall({
         id: 'call_upd',
+        conversationId: TEST_CONVERSATION_ID,
         toolName: 'new_tool',
         arguments: { new: 'args' }
       });
@@ -501,6 +502,7 @@ describe('toolCalls database module', () => {
     test('returns false for non-existent tool call', () => {
       const updated = updateToolCall({
         id: 'nonexistent',
+        conversationId: TEST_CONVERSATION_ID,
         toolName: 'test',
         arguments: '{}'
       });

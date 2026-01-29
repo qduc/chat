@@ -15,6 +15,7 @@ import {
 import { ProviderModelsError } from '../lib/providers/baseProvider.js';
 import { createProviderWithSettings, selectProviderConstructor } from '../lib/providers/index.js';
 import { filterModels } from '../lib/modelFilter.js';
+import { fetchAllModelsForUser as fetchAllModelsForUserShared } from '../lib/modelFetch.js';
 import { authenticateToken } from '../middleware/auth.js';
 import {
   getCachedModels,
@@ -512,7 +513,7 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
       // Fetch fresh data from all providers
       setRefreshLock(userId, true);
       try {
-        const result = await fetchAllModelsForUser(userId, http);
+        const result = await fetchAllModelsForUserShared(userId, { http, parallel: true });
         setCachedModels(userId, result.providers);
 
         return res.json({
@@ -529,82 +530,6 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
       res.status(500).json({ error: 'internal_server_error', message: err.message });
     }
   });
-
-  /**
-   * Fetch all models for a user from all enabled providers (in parallel)
-   * @param {string} userId - User ID
-   * @param {Function} http - HTTP client
-   * @returns {Promise<{providers: Array, errors: Array}>}
-   */
-  async function fetchAllModelsForUser(userId, http) {
-    const providers = listProviders(userId).filter((p) => p.enabled === 1);
-    const results = [];
-    const errors = [];
-
-    // Fetch models from all providers in parallel
-    const fetchPromises = providers.map(async (provider) => {
-      try {
-        const row = getProviderByIdWithApiKey(provider.id, userId);
-        if (!row) {
-          errors.push({ providerId: provider.id, providerName: provider.name, error: 'Provider not found' });
-          return null;
-        }
-
-        const providerType = normalizeProviderType(row.provider_type);
-        const baseUrl = normalizeBaseUrlInput(row.base_url, providerType);
-
-        if (!baseUrl) {
-          errors.push({ providerId: provider.id, providerName: provider.name, error: 'Missing base_url' });
-          return null;
-        }
-
-        const headers = ensurePlainObject(row.extra_headers);
-        const providerInstance = buildProviderInstance(providerType, { apiKey: row.api_key, baseUrl, headers }, http);
-
-        let models = await providerInstance.listModels({
-          timeoutMs: config.providerConfig.modelFetchTimeoutMs,
-        });
-
-        // Apply model filter if configured
-        const metadata = ensurePlainObject(row.metadata);
-        if (metadata.model_filter) {
-          models = filterModels(models, metadata.model_filter);
-        }
-
-        return {
-          provider: {
-            id: row.id,
-            name: row.name,
-            provider_type: row.provider_type,
-          },
-          models,
-        };
-      } catch (err) {
-        const errorMessage =
-          err instanceof ProviderModelsError
-            ? mapProviderStatusToMessage(err.status, 'list')
-            : err.message || 'Unknown error';
-
-        errors.push({
-          providerId: provider.id,
-          providerName: provider.name,
-          error: errorMessage,
-        });
-        return null;
-      }
-    });
-
-    const fetchResults = await Promise.all(fetchPromises);
-
-    // Filter out null results (failed fetches)
-    for (const result of fetchResults) {
-      if (result) {
-        results.push(result);
-      }
-    }
-
-    return { providers: results, errors };
-  }
 
   return providersRouter;
 }

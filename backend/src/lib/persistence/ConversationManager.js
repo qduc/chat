@@ -425,6 +425,7 @@ export class ConversationManager {
       });
       updateToolCall({
         id: tc.id,
+        conversationId,
         toolName: tc.function?.name || tc.tool_name,
         arguments: tc.function?.arguments || tc.arguments
       });

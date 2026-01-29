@@ -191,3 +191,16 @@ export class ProviderModelsError extends Error {
     this.body = body;
   }
 }
+
+export function createTimeoutSignal(timeoutMs) {
+  if (!timeoutMs || !Number.isFinite(timeoutMs)) return undefined;
+  if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function') {
+    return AbortSignal.timeout(timeoutMs);
+  }
+  if (typeof AbortController === 'undefined') return undefined;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error('timeout')), timeoutMs);
+  if (typeof timer.unref === 'function') timer.unref();
+  controller.signal.addEventListener('abort', () => clearTimeout(timer), { once: true });
+  return controller.signal;
+}

@@ -1,5 +1,5 @@
 export default {
-  version: 28,
+  version: 30,
   up: `
       PRAGMA journal_mode = WAL;
 
@@ -54,7 +54,7 @@ export default {
       CREATE INDEX IF NOT EXISTS idx_conversations_parent_id ON conversations(parent_conversation_id);
 
       CREATE TABLE IF NOT EXISTS providers (
-        id TEXT PRIMARY KEY,
+        id TEXT NOT NULL,
         name TEXT NOT NULL,
         provider_type TEXT NOT NULL,
         api_key TEXT NULL,
@@ -66,10 +66,11 @@ export default {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         deleted_at DATETIME NULL,
-        user_id TEXT NOT NULL
+        user_id TEXT NOT NULL,
+        PRIMARY KEY (id, user_id)
       );
 
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_providers_name ON providers(name);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_providers_user_name ON providers(user_id, name);
       CREATE INDEX IF NOT EXISTS idx_providers_default ON providers(is_default);
       CREATE INDEX IF NOT EXISTS idx_providers_enabled ON providers(enabled);
       CREATE INDEX IF NOT EXISTS idx_providers_user_enabled ON providers(user_id, enabled);
@@ -137,7 +138,7 @@ export default {
         WHERE client_message_id IS NOT NULL;
 
       CREATE TABLE IF NOT EXISTS tool_calls (
-        id TEXT PRIMARY KEY,
+        id TEXT NOT NULL,
         message_id INTEGER NOT NULL,
         conversation_id TEXT NOT NULL,
         call_index INTEGER NOT NULL DEFAULT 0,
@@ -145,6 +146,7 @@ export default {
         arguments TEXT NOT NULL DEFAULT '{}',
         text_offset INTEGER NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id, conversation_id),
         FOREIGN KEY(message_id) REFERENCES messages(id) ON DELETE CASCADE,
         FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
       );
@@ -157,7 +159,7 @@ export default {
         output TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'success',
         executed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(tool_call_id) REFERENCES tool_calls(id) ON DELETE CASCADE,
+        FOREIGN KEY(tool_call_id, conversation_id) REFERENCES tool_calls(id, conversation_id) ON DELETE CASCADE,
         FOREIGN KEY(message_id) REFERENCES messages(id) ON DELETE CASCADE,
         FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
       );

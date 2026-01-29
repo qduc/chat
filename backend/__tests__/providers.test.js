@@ -388,15 +388,15 @@ describe('Anthropic provider base URL resolution', () => {
     assert.equal(provider.baseUrl, 'https://api.anthropic.com');
   });
 
-  test('ignores persisted OpenAI base URLs for Anthropic providers', async () => {
+  test('uses persisted base URL when provided', async () => {
     const db = getDb();
     db.exec('DELETE FROM providers;');
     db.prepare(
       `INSERT INTO providers (id, user_id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
-        VALUES ('anth-openai', @user_id, 'Anth With OpenAI','anthropic','sk-ant-123','https://api.openai.com/v1',1,1,'{}','{}',datetime('now'),datetime('now'))`
+        VALUES ('anth-custom', @user_id, 'Anth Custom','anthropic','sk-ant-123','https://my-anthropic-proxy.com',1,1,'{}','{}',datetime('now'),datetime('now'))`
     ).run({ user_id: testUser.id });
 
-    const provider = await createProvider(config, { providerId: 'anth-openai' });
-    assert.equal(provider.baseUrl, 'https://api.anthropic.com');
+    const provider = await createProvider(config, { providerId: 'anth-custom' });
+    assert.equal(provider.baseUrl, 'https://my-anthropic-proxy.com');
   });
 });

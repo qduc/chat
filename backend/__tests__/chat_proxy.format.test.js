@@ -150,36 +150,33 @@ describe('Tool orchestration', () => {
 
     try {
       const app = makeApp({ mockUser });
-      // Ensure provider resolution uses env-config instead of DB rows
-      try { const db = getDb(); db.exec('DELETE FROM providers;'); } catch {}
-      const originalBaseUrl = config.openaiBaseUrl;
-      const originalProviderBase = config.providerConfig.baseUrl;
-      config.openaiBaseUrl = `http://127.0.0.1:${upstream.port}/v1`;
-      config.providerConfig.baseUrl = `http://127.0.0.1:${upstream.port}`;
+      // Create a test provider in the database pointing to the custom upstream
+      const db = getDb();
+      const now = new Date().toISOString();
+      db.exec('DELETE FROM providers;');
+      db.prepare(`
+        INSERT INTO providers (id, user_id, name, provider_type, api_key, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at)
+        VALUES ('iter-test-provider', @userId, 'Test OpenAI', 'openai', 'test-key', @baseUrl, 1, 1, '{}', '{}', @now, @now)
+      `).run({ userId: mockUser.id, baseUrl: `http://127.0.0.1:${upstream.port}`, now });
 
-      try {
-        const res = await request(app)
-          .post('/v1/chat/completions')
-          .send({
-            messages: [{ role: 'user', content: 'What time is it?' }],
-            tools: [{
-              type: 'function',
-              function: {
-                name: 'get_time',
-                description: 'Get the current time',
-                parameters: { type: 'object', properties: {} }
-              }
-            }],
-            stream: true,
-          });
-        assert.equal(res.status, 200);
-        const streamData = res.text;
-        assert(streamData.includes('data:'), 'Should stream SSE data');
-        assert(streamData.includes('[DONE]'), 'Should end with DONE marker');
-      } finally {
-        config.openaiBaseUrl = originalBaseUrl;
-        config.providerConfig.baseUrl = originalProviderBase;
-      }
+      const res = await request(app)
+        .post('/v1/chat/completions')
+        .send({
+          messages: [{ role: 'user', content: 'What time is it?' }],
+          tools: [{
+            type: 'function',
+            function: {
+              name: 'get_time',
+              description: 'Get the current time',
+              parameters: { type: 'object', properties: {} }
+            }
+          }],
+          stream: true,
+        });
+      assert.equal(res.status, 200);
+      const streamData = res.text;
+      assert(streamData.includes('data:'), 'Should stream SSE data');
+      assert(streamData.includes('[DONE]'), 'Should end with DONE marker');
     } finally {
       await upstream.stop();
     }
@@ -203,36 +200,33 @@ describe('Tool orchestration', () => {
 
     try {
       const app = makeApp({ mockUser });
-      // Ensure provider resolution uses env-config instead of DB rows
-      try { const db = getDb(); db.exec('DELETE FROM providers;'); } catch {}
-      const originalBaseUrl = config.openaiBaseUrl;
-      const originalProviderBase = config.providerConfig.baseUrl;
-      config.openaiBaseUrl = `http://127.0.0.1:${upstream.port}/v1`;
-      config.providerConfig.baseUrl = `http://127.0.0.1:${upstream.port}`;
+      // Create a test provider in the database pointing to the custom upstream
+      const db = getDb();
+      const now = new Date().toISOString();
+      db.exec('DELETE FROM providers;');
+      db.prepare(`
+        INSERT INTO providers (id, user_id, name, provider_type, api_key, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at)
+        VALUES ('tool-test-provider', @userId, 'Test OpenAI', 'openai', 'test-key', @baseUrl, 1, 1, '{}', '{}', @now, @now)
+      `).run({ userId: mockUser.id, baseUrl: `http://127.0.0.1:${upstream.port}`, now });
 
-      try {
-        const res = await request(app)
-          .post('/v1/chat/completions')
-          .send({
-            messages: [{ role: 'user', content: 'Get time' }],
-            tools: [{
-              type: 'function',
-              function: {
-                name: 'get_time',
-                description: 'Get current time',
-                parameters: { type: 'object', properties: {} }
-              }
-            }],
-            stream: true,
-          });
-        assert.equal(res.status, 200);
-        const streamData = res.text;
-        assert(streamData.includes('data:'), 'Should stream SSE data');
-        assert(streamData.includes('[DONE]'), 'Should end with DONE marker');
-      } finally {
-        config.openaiBaseUrl = originalBaseUrl;
-        config.providerConfig.baseUrl = originalProviderBase;
-      }
+      const res = await request(app)
+        .post('/v1/chat/completions')
+        .send({
+          messages: [{ role: 'user', content: 'Get time' }],
+          tools: [{
+            type: 'function',
+            function: {
+              name: 'get_time',
+              description: 'Get current time',
+              parameters: { type: 'object', properties: {} }
+            }
+          }],
+          stream: true,
+        });
+      assert.equal(res.status, 200);
+      const streamData = res.text;
+      assert(streamData.includes('data:'), 'Should stream SSE data');
+      assert(streamData.includes('[DONE]'), 'Should end with DONE marker');
     } finally {
       await upstream.stop();
     }

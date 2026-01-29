@@ -4,18 +4,20 @@ import { GeminiProvider } from '../src/lib/providers/geminiProvider.js';
 describe('GeminiProvider', () => {
   let provider;
   let mockConfig;
+  let mockSettings;
   let mockFetch;
 
   beforeEach(() => {
     mockConfig = {
-      providerConfig: {
-        apiKey: 'test-api-key',
-      },
       defaultModel: 'gemini-1.5-pro',
+    };
+    mockSettings = {
+      apiKey: 'test-api-key',
     };
     mockFetch = jest.fn();
     provider = new GeminiProvider({
       config: mockConfig,
+      settings: mockSettings,
       providerId: 'test-gemini',
       http: mockFetch,
     });
@@ -287,10 +289,10 @@ describe('GeminiProvider', () => {
       expect(url).toContain('alt=sse');
     });
 
-    test('merges defaultHeaders from config and settings', async () => {
+    test('merges defaultHeaders from settings', async () => {
       const customProvider = new GeminiProvider({
-        config: { providerConfig: { headers: { 'X-Config': '1' } } },
-        settings: { headers: { 'X-Settings': '2' } },
+        config: {},
+        settings: { apiKey: 'test-key', headers: { 'X-Settings': '2' } },
         providerId: 'test',
         http: mockFetch
       });
@@ -300,7 +302,6 @@ describe('GeminiProvider', () => {
       await customProvider.makeHttpRequest({ __model: 'gemini' });
 
       const [, options] = mockFetch.mock.calls[0];
-      expect(options.headers['X-Config']).toBe('1');
       expect(options.headers['X-Settings']).toBe('2');
     });
 
@@ -341,7 +342,8 @@ describe('GeminiProvider', () => {
 
     test('normalizes base URL for models endpoint', async () => {
       const customProvider = new GeminiProvider({
-        config: { providerConfig: { apiKey: 'key', baseUrl: 'https://custom.api/v1' } },
+        config: {},
+        settings: { apiKey: 'key', baseUrl: 'https://custom.api/v1' },
         providerId: 'custom',
         http: mockFetch
       });
