@@ -138,7 +138,7 @@ export default {
         WHERE client_message_id IS NOT NULL;
 
       CREATE TABLE IF NOT EXISTS tool_calls (
-        id TEXT PRIMARY KEY,
+        id TEXT NOT NULL,
         message_id INTEGER NOT NULL,
         conversation_id TEXT NOT NULL,
         call_index INTEGER NOT NULL DEFAULT 0,
@@ -146,6 +146,7 @@ export default {
         arguments TEXT NOT NULL DEFAULT '{}',
         text_offset INTEGER NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (id, conversation_id),
         FOREIGN KEY(message_id) REFERENCES messages(id) ON DELETE CASCADE,
         FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
       );
@@ -158,7 +159,7 @@ export default {
         output TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'success',
         executed_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY(tool_call_id) REFERENCES tool_calls(id) ON DELETE CASCADE,
+        FOREIGN KEY(tool_call_id, conversation_id) REFERENCES tool_calls(id, conversation_id) ON DELETE CASCADE,
         FOREIGN KEY(message_id) REFERENCES messages(id) ON DELETE CASCADE,
         FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
       );
