@@ -290,6 +290,104 @@ async function basicFetch(url) {
   return html;
 }
 
+/**
+ * Fetches Reddit content using their JSON API and converts it to Markdown.
+ * This is much more reliable than scraping the HTML which is often blocked or slow.
+ */
+async function fetchRedditAsMarkdown(url) {
+  // Convert URL to JSON endpoint: append .json to the thread URL
+  // Handles URLs with or without trailing slash
+  const jsonUrl = url.replace(/\/$/, '') + '.json';
+
+  try {
+    const response = await fetch(jsonUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (compatible; ChatForge/1.0; +https://chatforge.app)',
+      },
+      signal: AbortSignal.timeout(10000),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Reddit JSON API returned status ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    // Reddit thread JSON is an array: [postListing, commentsListing]
+    if (!Array.isArray(data) || data.length < 1) {
+      throw new Error('Invalid Reddit JSON format');
+    }
+
+    const postListing = data[0];
+    const commentsListing = data[1];
+
+    if (!postListing.data || !postListing.data.children || postListing.data.children.length === 0) {
+      throw new Error('No post data found in Reddit JSON');
+    }
+
+    const post = postListing.data.children[0].data;
+    const title = post.title || 'Untitled Reddit Post';
+
+    let markdown = `# ${title}\n\n`;
+    markdown += `By u/${post.author || 'unknown'} in r/${post.subreddit || 'unknown'}\n\n`;
+
+    if (post.selftext) {
+      markdown += `${post.selftext}\n\n`;
+    } else if (post.url && !post.url.includes('reddit.com')) {
+      markdown += `Link: ${post.url}\n\n`;
+    }
+
+    if (commentsListing && commentsListing.data && commentsListing.data.children) {
+      const comments = commentsListing.data.children;
+      if (comments.length > 0) {
+        markdown += `--- \n## Comments\n\n`;
+
+        // Helper to process comment tree (recursive)
+        const processComments = (commentList, depth = 0) => {
+          let commentMd = '';
+          // Limit to top few comments to avoid massive output
+          const limit = depth === 0 ? 15 : 2;
+
+          for (let i = 0; i < Math.min(commentList.length, limit); i++) {
+            const c = commentList[i];
+            if (c.kind !== 't1') continue; // t1 is a comment
+
+            const d = c.data;
+            if (!d.body) continue;
+
+            const indent = '  '.repeat(depth);
+            const quote = depth > 0 ? '> ' : '';
+
+            commentMd += `${indent}${quote}**u/${d.author}** (${d.score} points):\n`;
+            // Handle multiline body with indentation
+            commentMd += d.body.split('\n').map(line => `${indent}${quote}${line}`).join('\n') + '\n\n';
+
+            // Process top reply if any
+            if (d.replies && d.replies.data && d.replies.data.children && depth < 1) {
+              commentMd += processComments(d.replies.data.children, depth + 1);
+            }
+          }
+          return commentMd;
+        };
+
+        markdown += processComments(comments);
+      }
+    }
+
+    return {
+      title,
+      markdown,
+      method: 'reddit-json-api',
+      publishedTime: post.created_utc ? new Date(post.created_utc * 1000).toISOString() : null,
+      author: post.author,
+      subreddit: post.subreddit,
+    };
+  } catch (error) {
+    console.warn(`[webFetch] Reddit JSON fallback failed: ${error.message}`);
+    throw error;
+  }
+}
+
 async function handler({ url, maxChars, targetHeadings, continuation_token, useBrowser }) {
   // Handle continuation token (fetch next chunk from cache)
   if (continuation_token) {
@@ -331,6 +429,7 @@ async function handler({ url, maxChars, targetHeadings, continuation_token, useB
       || html.includes("You need to enable JavaScript")
       || /<title>(?:Just a moment\.\.\.|Attention Required! \| Cloudflare)<\/title>/i.test(html)
       || html.includes("Checking your browser before accessing")
+      || html.includes("blocked by network security")
       || noscriptNeedsJs;
 
     // 3. Fallback to Browser Engine if needed
@@ -366,19 +465,35 @@ async function handler({ url, maxChars, targetHeadings, continuation_token, useB
     let method = 'unknown';
 
     // Strategy 0: Reddit specialized extraction (capture post + comments)
-    if (url.includes('reddit.com')) {
+    if (url.includes('reddit.com') && (url.includes('/comments/') || url.includes('/r/'))) {
+      try {
+        const redditData = await fetchRedditAsMarkdown(url);
+        extractedContent = {
+          html: '', // Markdown is already generated
+          markdown: redditData.markdown,
+          title: redditData.title,
+          publishedTime: redditData.publishedTime,
+        };
+        method = redditData.method;
+      } catch (e) {
+        // Fall back to standard extraction if JSON API fails
+        console.warn('[webFetch] Reddit JSON API strategy failed, falling back to HTML scraping');
+      }
+    }
+
+    if (!extractedContent && url.includes('reddit.com')) {
       const post = document.querySelector('shreddit-post');
       const commentTree = document.querySelector('shreddit-comment-tree') || document.querySelector('#comment-tree');
 
       if (post) {
-        let combinedHtml = post.outerHTML;
+        let combinedHtml = cleanHtml(post.outerHTML); // Clean the specialized HTML
         if (commentTree) {
-          combinedHtml += '<hr><h2>Comments</h2>' + commentTree.outerHTML;
+          combinedHtml += '<hr><h2>Comments</h2>' + cleanHtml(commentTree.outerHTML);
         } else {
           const comments = document.querySelectorAll('shreddit-comment');
           if (comments.length > 0) {
             combinedHtml += '<hr><h2>Comments</h2>';
-            comments.forEach((c) => (combinedHtml += c.outerHTML));
+            comments.forEach((c) => (combinedHtml += cleanHtml(c.outerHTML)));
           }
         }
 
@@ -528,7 +643,7 @@ async function handler({ url, maxChars, targetHeadings, continuation_token, useB
       bulletListMarker: '-',
     });
 
-    let markdown = turndownService.turndown(extractedContent.html);
+    let markdown = extractedContent.markdown || turndownService.turndown(extractedContent.html);
 
     // STRATEGY 2: If page has no headings, use continuation token approach
     const usesContinuation = allHeadings.length === 0 && !targetHeadings;
