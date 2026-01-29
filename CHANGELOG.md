@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.15.3] - 2026-01-29
+
+### Added
+- Reddit content fetching via JSON API for improved reliability
+
+### Fixed
+- Draft content now persists when switching conversations or starting a new chat
+- Stale cache and data leakage issues that occurred when switching users
+
+
 ## [0.15.2] - 2026-01-29
 
 ### Fixed
