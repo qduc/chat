@@ -650,6 +650,9 @@ export function useChat() {
       executeRequest,
       linkedConversationsRef,
       abortControllerRef,
+      currentRequestIdRef,
+      setCurrentConversationTitle,
+      tokenStatsRef,
     ]
   );
 
@@ -812,8 +815,6 @@ export function useChat() {
       }
     },
     [
-      user?.id,
-      conversationIdRef,
       setStatus,
       setError,
       setMessages,
@@ -989,8 +990,6 @@ export function useChat() {
     clearAttachments,
     setCurrentConversationTitle,
     setLinkedConversations,
-    user?.id,
-    conversationIdRef,
     restoreSavedModel,
   ]);
 

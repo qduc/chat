@@ -135,6 +135,7 @@ export type {
   EvaluationDraft,
   PendingState,
   Status,
+  ReasoningEffortLevel,
   QualityLevel,
   ModelOption,
   ModelGroup,
