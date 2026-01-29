@@ -44,7 +44,7 @@ export default function seedProviderFromEnv(db, options = {}) {
         1, 1, @extra_headers, @metadata,
         @now, @now
       )
-      ON CONFLICT(id) DO UPDATE SET
+      ON CONFLICT(id, user_id) DO UPDATE SET
         name=excluded.name,
         provider_type=excluded.provider_type,
         api_key=COALESCE(excluded.api_key, providers.api_key),

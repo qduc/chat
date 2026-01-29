@@ -1,5 +1,5 @@
 export default {
-  version: 28,
+  version: 29,
   up: `
       PRAGMA journal_mode = WAL;
 
@@ -54,7 +54,7 @@ export default {
       CREATE INDEX IF NOT EXISTS idx_conversations_parent_id ON conversations(parent_conversation_id);
 
       CREATE TABLE IF NOT EXISTS providers (
-        id TEXT PRIMARY KEY,
+        id TEXT NOT NULL,
         name TEXT NOT NULL,
         provider_type TEXT NOT NULL,
         api_key TEXT NULL,
@@ -66,10 +66,11 @@ export default {
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         deleted_at DATETIME NULL,
-        user_id TEXT NOT NULL
+        user_id TEXT NOT NULL,
+        PRIMARY KEY (id, user_id)
       );
 
-      CREATE UNIQUE INDEX IF NOT EXISTS idx_providers_name ON providers(name);
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_providers_user_name ON providers(user_id, name);
       CREATE INDEX IF NOT EXISTS idx_providers_default ON providers(is_default);
       CREATE INDEX IF NOT EXISTS idx_providers_enabled ON providers(enabled);
       CREATE INDEX IF NOT EXISTS idx_providers_user_enabled ON providers(user_id, enabled);
