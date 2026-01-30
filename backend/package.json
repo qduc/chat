@@ -17,6 +17,7 @@
   },
   "dependencies": {
     "@blackglory/better-sqlite3-migrations": "^0.1.20",
+    "@qduc/web-fetch": "^0.1.2",
     "@mozilla/readability": "^0.6.0",
     "bcryptjs": "^3.0.2",
     "better-sqlite3": "^12.4.6",
