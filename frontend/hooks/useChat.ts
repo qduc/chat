@@ -653,6 +653,7 @@ export function useChat() {
       currentRequestIdRef,
       setCurrentConversationTitle,
       tokenStatsRef,
+      user,
     ]
   );
 
@@ -992,6 +993,7 @@ export function useChat() {
     setCurrentConversationTitle,
     setLinkedConversations,
     restoreSavedModel,
+    user,
   ]);
 
   const deleteConversation = useCallback(
@@ -1119,6 +1121,10 @@ export function useChat() {
   useEffect(() => {
     if (user?.id) {
       const currentConvId = conversationId || '';
+      if (input === '') {
+        setDraft(user.id, currentConvId, '');
+        return;
+      }
       const t = setTimeout(() => {
         setDraft(user.id!, currentConvId, input);
       }, 1000);
