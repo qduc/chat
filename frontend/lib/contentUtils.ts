@@ -340,11 +340,20 @@ export function buildAssistantSegments(message: ChatMessage): AssistantSegment[]
 
   // Helper to resolve outputs for a tool call
   const resolveOutputs = (call: any): ToolOutput[] => {
-    return toolOutputs.filter((out) => {
+    const matchedOutputs = toolOutputs.filter((out) => {
       if (!out) return false;
       if (out.tool_call_id && call?.id) return out.tool_call_id === call.id;
       if (out.name && call?.function?.name) return out.name === call.function.name;
       return false;
+    });
+
+    // Deduplicate outputs by tool_call_id or name to prevent double rendering during streaming
+    const seen = new Set<string>();
+    return matchedOutputs.filter((out) => {
+      const key = out.tool_call_id || out.name || JSON.stringify(out);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
     });
   };
 
