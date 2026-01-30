@@ -106,7 +106,7 @@ export const Message = React.memo<MessageProps>(
     const isMultiColumn = activeModels.length > 1;
 
     const handleToggleToolOutput = (key: string) => {
-      setCollapsedToolOutputs((s) => ({ ...s, [key]: !s[key] }));
+      setCollapsedToolOutputs((s) => ({ ...s, [key]: !(s[key] ?? true) }));
     };
 
     return (
