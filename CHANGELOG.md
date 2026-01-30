@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.16.1] - 2026-01-30
+
+### Added
+- User context to draft management for improved conversation handling
+
+### Changed
+- Extracted web-fetch to standalone package for reusability
+
+### Fixed
+- Deduplicate outputs by tool_call_id or name to prevent double rendering during streaming
+- Tool output requiring double-click to expand now expands on single click
+
+
 ## [0.16.0] - 2026-01-29
 
 ### Added
