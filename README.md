@@ -8,9 +8,45 @@
 
 ChatForge is a full-stack AI chat application featuring a Next.js 15 frontend and Node.js backend. It acts as an OpenAI-compatible API proxy with enhanced capabilities including conversation persistence, server-side tool orchestration, multi-provider support, model comparison mode, conversation forking, and cross-platform desktop app support.
 
+## Why ChatForge?
+
+While [OpenWebUI](https://github.com/open-webui/open-webui) and [LibreChat](https://github.com/danny-avila/LibreChat) are excellent options, ChatForge distinguishes itself through:
+
+| Feature | ChatForge | OpenWebUI | LibreChat |
+|---------|-----------|-----------|-----------|
+| **Architecture** | Node.js + SQLite (simple, single binary) | Python + complex stack | Node.js + MongoDB |
+| **Browser Automation** | ✅ Playwright with SPA support & specialized extractors | ❌ Basic fetch | ❌ Basic fetch |
+| **Model Comparison** | ✅ Side-by-side with judge/evaluation system | ❌ | ❌ |
+| **Conversation Forking** | ✅ Fork at any message | ❌ | ❌ |
+| **Cross-Conv Memory** | ✅ Built-in Journal tool | ❌ | ❌ |
+| **Prompt Caching** | ✅ Automatic cache breakpoints | ❌ | ❌ |
+| **Desktop App** | ✅ Native Electron with auto-login | ❌ | ❌ |
+| **Checkpoint Persistence** | ✅ Resume aborted streams | ❌ | ❌ |
+| **Usage Analytics** | ✅ Timing metrics & token insights | Limited | Limited |
+
 https://github.com/user-attachments/assets/ef24a533-4ceb-40ff-8d7b-27a88ac76bb1
 
 ## Features
+
+### What Makes ChatForge Unique
+
+**🌐 Enhanced WebFetch with Playwright** — Unlike competitors' basic HTTP fetching, ChatForge uses real browser automation with specialized content extractors for Reddit, StackOverflow, and SPAs that block standard crawlers.
+
+**⚖️ Judge/Evaluation System** — Built-in automated model comparison with configurable judge models that provide numerical scores and reasoning for objective model evaluation.
+
+**🔀 True Model Comparison Mode** — Compare multiple models side-by-side with completely isolated conversation histories, not just message-by-message switching.
+
+**🍴 Conversation Forking** — Fork conversations at any message point to explore alternative paths without losing your original conversation thread.
+
+**📓 Journal Tool** — Persistent cross-conversation memory that allows AI to store and retrieve notes across different chat sessions.
+
+**💾 Prompt Caching Optimization** — Automatic cache breakpoint insertion (especially for Anthropic models) to reduce token costs and latency.
+
+**🔄 Streaming with Checkpoint Persistence** — Abort streaming responses anytime with automatic state preservation, allowing you to resume or branch from any point.
+
+**🖥️ Native Desktop App** — Cross-platform Electron app with auto-login and native packaging, not just a web wrapper.
+
+**⚡ Zero-Config Deployment** — Single Docker image with SQLite (no external database required) vs. complex MongoDB/PostgreSQL setups.
 
 ### Core Capabilities
 - **🤖 Server-Side Tool Orchestration** - Unified tool calling with iterative workflows, thinking support, parallel execution, and intelligent error handling
