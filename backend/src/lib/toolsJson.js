@@ -18,6 +18,37 @@ import { extractUsage } from './utils/usage.js';
 import { logger } from '../logger.js';
 import { getUserMaxToolIterations } from '../db/users.js';
 
+const INVALID_REASONING_RESPONSE_RETRY_LIMIT = 2;
+const INVALID_REASONING_RESPONSE_WARNING =
+  '[Warning: Model returned an incomplete reasoning response (no tool call and no completion). Proceeding after retries.]';
+
+function hasAssistantCompletionContent(content) {
+  if (typeof content === 'string') return content.trim().length > 0;
+  if (!Array.isArray(content)) return false;
+  return content.some((part) => {
+    if (typeof part === 'string') return part.trim().length > 0;
+    if (!part || typeof part !== 'object') return false;
+    if (typeof part.text === 'string' && part.text.trim().length > 0) return true;
+    if (typeof part.content === 'string' && part.content.trim().length > 0) return true;
+    if (typeof part.value === 'string' && part.value.trim().length > 0) return true;
+    if (typeof part.output_text === 'string' && part.output_text.trim().length > 0) return true;
+    return false;
+  });
+}
+
+function hasReasoningSignal(message, response) {
+  return (
+    (Array.isArray(message?.reasoning_details) && message.reasoning_details.length > 0) ||
+    (Array.isArray(response?.reasoning_details) && response.reasoning_details.length > 0) ||
+    (typeof message?.reasoning === 'string' && message.reasoning.trim().length > 0) ||
+    (typeof message?.reasoning_content === 'string' && message.reasoning_content.trim().length > 0)
+  );
+}
+
+function isInvalidReasoningNoCompletion({ hasToolCalls, hasReasoning, hasCompletionContent }) {
+  return !hasToolCalls && hasReasoning && !hasCompletionContent;
+}
+
 /**
  * Configuration class for orchestration behavior
  */
@@ -652,6 +683,7 @@ export async function handleToolsJson({
     });
 
     let iteration = 0;
+    let consecutiveInvalidReasoningResponses = 0;
     let currentPreviousResponseId = previousResponseId; // Track response_id across iterations
 
     // Main orchestration loop - continues until LLM stops requesting tools
@@ -674,11 +706,64 @@ export async function handleToolsJson({
       });
       const message = response?.choices?.[0]?.message;
       const toolCalls = message?.tool_calls || [];
+      const invalidReasoningResponse = isInvalidReasoningNoCompletion({
+        hasToolCalls: toolCalls.length > 0,
+        hasReasoning: hasReasoningSignal(message, response),
+        hasCompletionContent: hasAssistantCompletionContent(message?.content),
+      });
 
       // Update previous_response_id for next iteration
       if (response?.id) {
         currentPreviousResponseId = response.id;
       }
+
+      if (invalidReasoningResponse) {
+        if (consecutiveInvalidReasoningResponses < INVALID_REASONING_RESPONSE_RETRY_LIMIT) {
+          consecutiveInvalidReasoningResponses += 1;
+          logger.warn({
+            msg: 'invalid_reasoning_response_retrying',
+            iteration,
+            retryAttempt: consecutiveInvalidReasoningResponses,
+            maxRetries: INVALID_REASONING_RESPONSE_RETRY_LIMIT,
+            responseId: response?.id || null,
+          });
+          continue;
+        }
+
+        logger.warn({
+          msg: 'invalid_reasoning_response_retry_exhausted',
+          iteration,
+          retries: consecutiveInvalidReasoningResponses,
+          responseId: response?.id || null,
+        });
+
+        const warningResponse = {
+          id: response?.id || `invalid_${Date.now()}`,
+          object: 'chat.completion',
+          created: Math.floor(Date.now() / 1000),
+          model: response?.model || orchestrationConfig.model || config.defaultModel,
+          choices: [{
+            index: 0,
+            message: {
+              role: 'assistant',
+              content: INVALID_REASONING_RESPONSE_WARNING,
+            },
+            finish_reason: 'stop',
+          }],
+          usage: response?.usage,
+        };
+
+        if (orchestrationConfig.streamingEnabled) {
+          const finishReason = await responseHandler.sendFinalResponse(warningResponse, persistence);
+          recordFinalToPersistence(persistence, finishReason, response?.id || (persistence?.responseId ?? null));
+          return res.end();
+        }
+
+        const responseWithEvents = responseHandler.sendFinalResponse(warningResponse, persistence);
+        return res.status(200).json(responseWithEvents);
+      }
+
+      consecutiveInvalidReasoningResponses = 0;
 
       if (!toolCalls.length) {
         // No tools needed - this is the final response

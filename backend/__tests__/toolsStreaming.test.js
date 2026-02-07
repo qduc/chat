@@ -3601,6 +3601,142 @@ describe('toolsStreaming', () => {
         expect(mockRes.end).toHaveBeenCalled();
       });
 
+      test('retries incomplete reasoning response and succeeds on next attempt', async () => {
+        const body = {
+          messages: [{ role: 'user', content: 'Solve this with tools' }],
+          stream: true,
+          tools: [{ type: 'function', function: { name: 'test_tool' } }],
+        };
+        const bodyIn = {};
+
+        const makeUpstream = () => ({
+          ok: true,
+          body: {
+            on: jest.fn((event, handler) => {
+              if (event === 'data') {
+                const chunk = Buffer.from('data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n');
+                handler(chunk);
+              } else if (event === 'end') {
+                handler();
+              }
+            }),
+          },
+        });
+
+        createOpenAIRequest
+          .mockResolvedValueOnce(makeUpstream())
+          .mockResolvedValueOnce(makeUpstream());
+
+        parseSSEStream
+          .mockImplementationOnce((chunk, leftover, onChunk, onDone) => {
+            onChunk({
+              id: 'resp_invalid',
+              choices: [
+                {
+                  delta: { reasoning_content: 'Thinking about tools...' },
+                  finish_reason: 'stop',
+                },
+              ],
+            });
+            onDone();
+            return '';
+          })
+          .mockImplementationOnce((chunk, leftover, onChunk, onDone) => {
+            onChunk({
+              id: 'resp_valid',
+              choices: [
+                {
+                  delta: { content: 'Final answer without tools' },
+                  finish_reason: 'stop',
+                },
+              ],
+            });
+            onDone();
+            return '';
+          });
+
+        await handleToolsStreaming({
+          body,
+          bodyIn,
+          config: mockConfig,
+          res: mockRes,
+          req: mockReq,
+          persistence: mockPersistence,
+        });
+
+        expect(createOpenAIRequest).toHaveBeenCalledTimes(2);
+        expect(streamDeltaEvent).not.toHaveBeenCalledWith(
+          expect.objectContaining({
+            event: expect.objectContaining({
+              content: expect.stringContaining('incomplete reasoning response'),
+            }),
+          })
+        );
+        expect(writeAndFlush).toHaveBeenCalledWith(mockRes, expect.stringContaining('Final answer without tools'));
+      });
+
+      test('emits warning after invalid reasoning retries are exhausted', async () => {
+        const body = {
+          messages: [{ role: 'user', content: 'Need a valid tool response' }],
+          stream: true,
+          tools: [{ type: 'function', function: { name: 'test_tool' } }],
+        };
+        const bodyIn = {};
+
+        const makeUpstream = () => ({
+          ok: true,
+          body: {
+            on: jest.fn((event, handler) => {
+              if (event === 'data') {
+                const chunk = Buffer.from('data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\n');
+                handler(chunk);
+              } else if (event === 'end') {
+                handler();
+              }
+            }),
+          },
+        });
+
+        createOpenAIRequest
+          .mockResolvedValueOnce(makeUpstream())
+          .mockResolvedValueOnce(makeUpstream())
+          .mockResolvedValueOnce(makeUpstream());
+
+        parseSSEStream.mockImplementation((chunk, leftover, onChunk, onDone) => {
+          onChunk({
+            id: 'resp_invalid',
+            choices: [
+              {
+                delta: { reasoning_content: 'Still thinking...' },
+                finish_reason: 'stop',
+              },
+            ],
+          });
+          onDone();
+          return '';
+        });
+
+        await handleToolsStreaming({
+          body,
+          bodyIn,
+          config: mockConfig,
+          res: mockRes,
+          req: mockReq,
+          persistence: mockPersistence,
+        });
+
+        expect(createOpenAIRequest).toHaveBeenCalledTimes(3);
+        expect(streamDeltaEvent).toHaveBeenCalledWith({
+          res: mockRes,
+          model: 'gpt-3.5-turbo',
+          event: {
+            content: expect.stringContaining('incomplete reasoning response'),
+          },
+          prefix: 'iter',
+        });
+        expect(streamDone).toHaveBeenCalledWith(mockRes);
+      });
+
       test('processes malformed tool call JSON', async () => {
         const body = {
           messages: [{ role: 'user', content: 'Hello' }],
