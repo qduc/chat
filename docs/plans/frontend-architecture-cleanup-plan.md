@@ -68,12 +68,12 @@ Exit criteria:
 - Draft persistence no longer implemented inline in `useChat`.
 
 ### Phase 4: Decompose `ChatV2` Controller Logic
-Status: `todo`
+Status: `done`
 
-- [ ] Extract URL sync behavior into `useConversationUrlSync`.
-- [ ] Extract right-sidebar resize behavior into `useResizableRightSidebar`.
-- [ ] Extract scroll-button visibility/controls into `useScrollControls`.
-- [ ] Keep `ChatV2` focused on rendering/wiring.
+- [x] Extract URL sync behavior into `useConversationUrlSync`.
+- [x] Extract right-sidebar resize behavior into `useResizableRightSidebar`.
+- [x] Extract scroll-button visibility/controls into `useScrollControls`.
+- [x] Keep `ChatV2` focused on rendering/wiring.
 
 Exit criteria:
 - `ChatV2` is substantially smaller and side-effect logic is hook-based.
@@ -94,7 +94,7 @@ Exit criteria:
 
 ### Progress Snapshot
 - Overall status: `in progress`
-- Current phase: `Phase 3 complete`
+- Current phase: `Phase 4 complete`
 - Last updated: `2026-02-08`
 
 ### Change Log

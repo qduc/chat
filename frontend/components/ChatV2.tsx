@@ -1,9 +1,11 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { PointerEvent as ReactPointerEvent } from 'react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { ArrowUp, ArrowDown, Bot } from 'lucide-react';
 import { useChat } from '../hooks/useChat';
+import { useConversationUrlSync } from '../hooks/useConversationUrlSync';
+import { useResizableRightSidebar } from '../hooks/useResizableRightSidebar';
+import { useScrollControls } from '../hooks/useScrollControls';
 import { ChatSidebar } from './ChatSidebar';
 import { ChatHeader } from './ChatHeader';
 import { MessageList } from './MessageList';
@@ -19,26 +21,29 @@ export function ChatV2() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('login');
 
-  const DEFAULT_RIGHT_SIDEBAR_WIDTH = 320;
-  const MIN_RIGHT_SIDEBAR_WIDTH = 260;
-  const MAX_RIGHT_SIDEBAR_WIDTH = 560;
-  const [rightSidebarWidth, setRightSidebarWidth] = useState(DEFAULT_RIGHT_SIDEBAR_WIDTH);
-  const [isResizingRightSidebar, setIsResizingRightSidebar] = useState(false);
-  const router = useRouter();
+  const urlSync = useConversationUrlSync({
+    conversationId: chat.conversationId,
+    selectConversation: chat.selectConversation,
+    newChat: chat.newChat,
+    refreshConversations: chat.refreshConversations,
+  });
+
+  const rightSidebar = useResizableRightSidebar({
+    collapsed: chat.rightSidebarCollapsed,
+  });
+
+  const {
+    messageListRef,
+    scrollButtons,
+    showScrollButtons,
+    setScrollButtons,
+    scrollToBottom,
+    scrollToTop,
+  } = useScrollControls();
+
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const initCheckedRef = useRef(false);
-  const initLoadingRef = useRef(false);
   const searchKey = searchParams?.toString();
-  const resizeStateRef = useRef({ startX: 0, startWidth: DEFAULT_RIGHT_SIDEBAR_WIDTH });
-  const isResizingRef = useRef(false);
-  const nextWidthRef = useRef(DEFAULT_RIGHT_SIDEBAR_WIDTH);
-  const frameRef = useRef<number | null>(null);
-  const messageListRef = useRef<HTMLDivElement>(null!);
-  const [scrollButtons, setScrollButtons] = useState({ showTop: false, showBottom: false });
-  const [showScrollButtons, setShowScrollButtons] = useState(false);
-  const scrollTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const isLoadingConversationRef = useRef(false);
   const messageInputRef = useRef<MessageInputRef>(null);
   const messageInputContainerRef = useRef<HTMLDivElement>(null);
   const [messageInputHeight, setMessageInputHeight] = useState(0);
@@ -154,36 +159,6 @@ export function ChatV2() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  // Handle scroll button visibility with auto-hide
-  useEffect(() => {
-    const container = messageListRef.current;
-    if (!container) return;
-
-    const handleScroll = () => {
-      // Show buttons on scroll activity
-      setShowScrollButtons(true);
-
-      // Clear existing timeout
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-
-      // Hide buttons after 2 seconds of no scrolling
-      scrollTimeoutRef.current = setTimeout(() => {
-        setShowScrollButtons(false);
-      }, 2000);
-    };
-
-    container.addEventListener('scroll', handleScroll, { passive: true });
-
-    return () => {
-      container.removeEventListener('scroll', handleScroll);
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-      }
-    };
-  }, []);
-
   // Simple event handlers
   const handleCopy = useCallback(async (text: string) => {
     try {
@@ -203,10 +178,10 @@ export function ChatV2() {
 
   const handleSelectConversation = useCallback(
     async (id: string) => {
-      isLoadingConversationRef.current = true;
+      urlSync.markLoadingConversation();
       await chat.selectConversation(id);
     },
-    [chat]
+    [chat, urlSync]
   );
 
   const handleNewChat = useCallback(() => {
@@ -219,138 +194,6 @@ export function ChatV2() {
 
   const handleFocusMessageInput = useCallback(() => {
     messageInputRef.current?.focus();
-  }, []);
-
-  useEffect(() => {
-    const storedWidth =
-      typeof window !== 'undefined' ? window.localStorage.getItem('rightSidebarWidth') : null;
-    if (!storedWidth) return;
-    const parsed = Number.parseInt(storedWidth, 10);
-    if (Number.isFinite(parsed)) {
-      const clamped = Math.min(Math.max(parsed, MIN_RIGHT_SIDEBAR_WIDTH), MAX_RIGHT_SIDEBAR_WIDTH);
-      nextWidthRef.current = clamped;
-      setRightSidebarWidth(clamped);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (chat.rightSidebarCollapsed) return;
-    if (typeof window === 'undefined') return;
-    window.localStorage.setItem('rightSidebarWidth', String(rightSidebarWidth));
-  }, [rightSidebarWidth, chat.rightSidebarCollapsed]);
-
-  const stopResizing = useCallback(() => {
-    if (!isResizingRef.current) return;
-    isResizingRef.current = false;
-    setIsResizingRightSidebar(false);
-    if (frameRef.current !== null && typeof window !== 'undefined') {
-      window.cancelAnimationFrame(frameRef.current);
-      frameRef.current = null;
-    }
-    setRightSidebarWidth(nextWidthRef.current);
-  }, []);
-
-  const clampRightSidebarWidth = useCallback(
-    (value: number) => {
-      return Math.min(Math.max(value, MIN_RIGHT_SIDEBAR_WIDTH), MAX_RIGHT_SIDEBAR_WIDTH);
-    },
-    [MAX_RIGHT_SIDEBAR_WIDTH, MIN_RIGHT_SIDEBAR_WIDTH]
-  );
-
-  const scheduleWidthUpdate = useCallback(
-    (value: number) => {
-      const clamped = clampRightSidebarWidth(value);
-      nextWidthRef.current = clamped;
-
-      if (typeof window === 'undefined') {
-        setRightSidebarWidth(clamped);
-        return;
-      }
-
-      if (frameRef.current !== null) {
-        return;
-      }
-
-      frameRef.current = window.requestAnimationFrame(() => {
-        frameRef.current = null;
-        setRightSidebarWidth(nextWidthRef.current);
-      });
-    },
-    [clampRightSidebarWidth]
-  );
-
-  const handleResizeMove = useCallback(
-    (event: PointerEvent) => {
-      if (!isResizingRef.current) return;
-      const delta = resizeStateRef.current.startX - event.clientX;
-      const nextWidth = resizeStateRef.current.startWidth + delta;
-      scheduleWidthUpdate(nextWidth);
-    },
-    [scheduleWidthUpdate]
-  );
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const handlePointerMove = (event: PointerEvent) => handleResizeMove(event);
-    const handlePointerUp = () => stopResizing();
-    window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
-    return () => {
-      window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
-    };
-  }, [handleResizeMove, stopResizing]);
-
-  const handleResizeStart = useCallback(
-    (event: ReactPointerEvent<HTMLDivElement>) => {
-      if (chat.rightSidebarCollapsed) return;
-      resizeStateRef.current = {
-        startX: event.clientX,
-        startWidth: rightSidebarWidth,
-      };
-      isResizingRef.current = true;
-      setIsResizingRightSidebar(true);
-    },
-    [rightSidebarWidth, chat.rightSidebarCollapsed]
-  );
-
-  const handleResizeDoubleClick = useCallback(() => {
-    if (chat.rightSidebarCollapsed) return;
-    nextWidthRef.current = clampRightSidebarWidth(DEFAULT_RIGHT_SIDEBAR_WIDTH);
-    setRightSidebarWidth(nextWidthRef.current);
-  }, [DEFAULT_RIGHT_SIDEBAR_WIDTH, clampRightSidebarWidth, chat.rightSidebarCollapsed]);
-
-  useEffect(() => {
-    if (!chat.rightSidebarCollapsed) return;
-    stopResizing();
-  }, [chat.rightSidebarCollapsed, stopResizing]);
-
-  useEffect(() => {
-    if (typeof document === 'undefined') return;
-    if (!isResizingRightSidebar) {
-      document.body.style.removeProperty('cursor');
-      document.body.style.removeProperty('user-select');
-      return;
-    }
-
-    const previousCursor = document.body.style.cursor;
-    const previousUserSelect = document.body.style.userSelect;
-    document.body.style.cursor = 'col-resize';
-    document.body.style.userSelect = 'none';
-
-    return () => {
-      document.body.style.cursor = previousCursor;
-      document.body.style.userSelect = previousUserSelect;
-    };
-  }, [isResizingRightSidebar]);
-
-  useEffect(() => {
-    return () => {
-      if (frameRef.current !== null && typeof window !== 'undefined') {
-        window.cancelAnimationFrame(frameRef.current);
-        frameRef.current = null;
-      }
-    };
   }, []);
 
   // Keyboard shortcut for toggling sidebar (Ctrl/Cmd + \)
@@ -371,20 +214,6 @@ export function ChatV2() {
     return () => window.removeEventListener('keydown', handleKeyDown);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Respond to URL changes (e.g., back/forward) to drive state
-  useEffect(() => {
-    if (!searchParams) return;
-    if (initLoadingRef.current) return;
-    const cid = searchParams.get('c');
-    if (cid && cid !== chat.conversationId) {
-      isLoadingConversationRef.current = true;
-      void chat.selectConversation(cid);
-    } else if (!cid && chat.conversationId) {
-      chat.newChat();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchKey]);
 
   const handleRetryMessage = useCallback(
     async (messageId: string) => {
@@ -516,56 +345,14 @@ export function ChatV2() {
     !chat.pending.streaming &&
     canSend;
 
-  // Load conversations and hydrate from URL on first load
-  useEffect(() => {
-    if (initCheckedRef.current) return;
-    initCheckedRef.current = true;
-
-    // Load conversation list
-    chat.refreshConversations();
-
-    const cid = searchParams?.get('c');
-    if (cid && !chat.conversationId) {
-      initLoadingRef.current = true;
-      isLoadingConversationRef.current = true;
-      (async () => {
-        try {
-          await chat.selectConversation(cid);
-        } finally {
-          initLoadingRef.current = false;
-        }
-      })();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Keep URL in sync with selected conversation
-  useEffect(() => {
-    if (!initCheckedRef.current || initLoadingRef.current) return;
-    const params = new URLSearchParams(searchParams?.toString());
-    if (chat.conversationId) {
-      if (params.get('c') !== chat.conversationId) {
-        params.set('c', chat.conversationId);
-        router.push(`${pathname}?${params.toString()}`);
-      }
-    } else {
-      if (params.has('c')) {
-        params.delete('c');
-        const q = params.toString();
-        router.push(q ? `${pathname}?${q}` : pathname);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chat.conversationId]);
-
   // Scroll to bottom when a conversation is loaded (not when first created)
   useEffect(() => {
-    if (chat.conversationId && isLoadingConversationRef.current) {
+    if (chat.conversationId && urlSync.isLoadingConversation) {
       // Use a timeout to allow the message list to render before scrolling
       setTimeout(() => {
         scrollToBottom('auto');
         // Reset the ref after scrolling
-        isLoadingConversationRef.current = false;
+        urlSync.clearLoadingConversation();
       }, 0);
     }
     // We only want to run this when the conversation ID changes.
@@ -605,28 +392,6 @@ export function ChatV2() {
     void chat.sendMessage(messageToSend);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canSend, chat.input, chat.setInput, chat.sendMessage]);
-
-  // Scroll functions
-  const scrollToTop = useCallback(() => {
-    const container = messageListRef.current;
-    if (!container) return;
-    if (typeof (container as any).scrollTo === 'function') {
-      (container as any).scrollTo({ top: 0, behavior: 'smooth' });
-    } else {
-      container.scrollTop = 0;
-    }
-  }, []);
-
-  const scrollToBottom = useCallback((behavior: 'smooth' | 'auto' = 'smooth') => {
-    const container = messageListRef.current;
-    if (!container) return;
-    const top = container.scrollHeight;
-    if (typeof (container as any).scrollTo === 'function') {
-      (container as any).scrollTo({ top, behavior });
-    } else {
-      container.scrollTop = top;
-    }
-  }, []);
 
   const handleSuggestionClick = useCallback(
     (text: string) => {
@@ -875,9 +640,9 @@ export function ChatV2() {
               role="separator"
               aria-orientation="vertical"
               aria-label="Resize right sidebar"
-              className={`hidden md:block flex-shrink-0 self-stretch w-1 cursor-col-resize select-none transition-colors duration-150 ${isResizingRightSidebar ? 'bg-zinc-400/60 dark:bg-zinc-600/60' : 'bg-transparent hover:bg-zinc-400/40 dark:hover:bg-zinc-600/40'}`}
-              onPointerDown={handleResizeStart}
-              onDoubleClick={handleResizeDoubleClick}
+              className={`hidden md:block flex-shrink-0 self-stretch w-1 cursor-col-resize select-none transition-colors duration-150 ${rightSidebar.isResizing ? 'bg-zinc-400/60 dark:bg-zinc-600/60' : 'bg-transparent hover:bg-zinc-400/40 dark:hover:bg-zinc-600/40'}`}
+              onPointerDown={rightSidebar.handleResizeStart}
+              onDoubleClick={rightSidebar.handleResizeDoubleClick}
             />
           )}
 
@@ -898,8 +663,8 @@ export function ChatV2() {
               onActivePromptIdChange={chat.setActiveSystemPromptId}
               conversationActivePromptId={chat.activeSystemPromptId}
               conversationSystemPrompt={chat.systemPrompt}
-              width={rightSidebarWidth}
-              isResizing={isResizingRightSidebar}
+              width={rightSidebar.width}
+              isResizing={rightSidebar.isResizing}
             />
           </div>
         </div>
