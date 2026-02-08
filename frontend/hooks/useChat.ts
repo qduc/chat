@@ -1,6 +1,6 @@
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useSystemPrompts } from './useSystemPrompts';
-import { getDraft, setDraft } from '../lib';
+import { useDraftPersistence } from './useDraftPersistence';
 import type {
   ChatMessage as Message,
   MessageContent,
@@ -23,8 +23,6 @@ import { useChatSettings } from './useChatSettings';
 import { useCompareMode } from './useCompareMode';
 import { useMessageSendPipeline } from './useMessageSendPipeline';
 import { useConversationHydration } from './useConversationHydration';
-
-const DRAFT_RESTORE_DELAY_MS = 100;
 export type { PendingState, EvaluationDraft };
 
 export function useChat() {
@@ -502,36 +500,7 @@ export function useChat() {
     loadModels();
   }, [loadModels]);
 
-  const lastRestoredIdRef = useRef<string | null | undefined>(undefined);
-  useEffect(() => {
-    if (!user?.id) return;
-    if (lastRestoredIdRef.current === conversationId) return;
-
-    const isFirstRestoration = lastRestoredIdRef.current === undefined;
-    const saved = getDraft(user.id, conversationId || '');
-    if (saved) {
-      if (!isFirstRestoration || input === '') {
-        setInput(saved);
-      }
-    } else if (!isFirstRestoration && input !== '') {
-      setInput('');
-    }
-    lastRestoredIdRef.current = conversationId;
-  }, [user?.id, conversationId, setInput, input]);
-
-  useEffect(() => {
-    if (user?.id) {
-      const currentConvId = conversationId || '';
-      if (input === '') {
-        setDraft(user.id, currentConvId, '');
-        return;
-      }
-      const t = setTimeout(() => {
-        setDraft(user.id!, currentConvId, input);
-      }, 1000);
-      return () => clearTimeout(t);
-    }
-  }, [input, user?.id, conversationId]);
+  useDraftPersistence(user?.id, conversationId, input, setInput);
 
   // Use system prompts hook
   const { prompts: systemPrompts, loading: systemPromptsLoading } = useSystemPrompts(user?.id);

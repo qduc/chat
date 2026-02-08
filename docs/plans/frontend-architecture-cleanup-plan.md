@@ -57,11 +57,12 @@ Exit criteria:
 - `selectConversation` logic in `useChat` becomes thin orchestration only.
 
 ### Phase 3: Extract Draft Persistence
-Status: `todo`
+Status: `done`
 
-- [ ] Create `useDraftPersistence` for restore/save behavior.
-- [ ] Move draft effects out of `useChat`.
-- [ ] Preserve current user-scoped draft behavior.
+- [x] Create `useDraftPersistence` for restore/save behavior.
+- [x] Move draft effects out of `useChat`.
+- [x] Preserve current user-scoped draft behavior.
+- [x] Add focused tests for draft restore and debounced-save behavior.
 
 Exit criteria:
 - Draft persistence no longer implemented inline in `useChat`.
@@ -93,7 +94,7 @@ Exit criteria:
 
 ### Progress Snapshot
 - Overall status: `in progress`
-- Current phase: `Phase 2 complete`
+- Current phase: `Phase 3 complete`
 - Last updated: `2026-02-08`
 
 ### Change Log
