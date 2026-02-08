@@ -293,11 +293,9 @@ export function useConversationHydration(deps: ConversationHydrationDeps) {
           setReasoningEffort(data.reasoning_effort as ReasoningEffortLevel);
           reasoningEffortRef.current = data.reasoning_effort as ReasoningEffortLevel;
         }
-        if ((data as any).custom_request_params_id) {
-          const ids = normalizeCustomRequestParamsIds((data as any).custom_request_params_id);
-          setCustomRequestParamsId(ids);
-          customRequestParamsIdRef.current = ids;
-        }
+        const ids = normalizeCustomRequestParamsIds((data as any).custom_request_params_id);
+        setCustomRequestParamsId(ids);
+        customRequestParamsIdRef.current = ids;
 
         const promptFromData = (data as any).system_prompt ?? null;
         if (promptFromData !== undefined) {

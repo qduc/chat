@@ -129,6 +129,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
   const updateMessageState = useCallback(
     (
       isPrimary: boolean,
+      assistantMessageId: string,
       targetModel: string,
       updater: (
         current: Message | { content: MessageContent; tool_calls?: any[]; tool_outputs?: any[] }
@@ -137,20 +138,33 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         | Partial<{ content: MessageContent; tool_calls?: any[]; tool_outputs?: any[] }>
     ) => {
       setMessages((prev) => {
-        const lastIdx = prev.length - 1;
-        if (lastIdx < 0) return prev;
-        const lastMsg = prev[lastIdx];
+        let messageIdx = prev.findIndex((message) => message.id === assistantMessageId);
+        if (messageIdx < 0 && !isPrimary) {
+          // Primary completion can replace the placeholder assistant id while comparison
+          // requests are still in-flight; recover by targeting the active comparison slot.
+          messageIdx = prev.findIndex(
+            (message) =>
+              message.role === 'assistant' &&
+              message.comparisonResults?.[targetModel]?.status === 'streaming'
+          );
+        }
+        if (messageIdx < 0) return prev;
+        const lastMsg = prev[messageIdx];
         if (!lastMsg || lastMsg.role !== 'assistant') return prev;
 
         if (isPrimary) {
           const updates = updater(lastMsg);
-          return [...prev.slice(0, lastIdx), { ...lastMsg, ...updates }];
+          return [
+            ...prev.slice(0, messageIdx),
+            { ...lastMsg, ...updates },
+            ...prev.slice(messageIdx + 1),
+          ];
         } else {
           const existingRes = lastMsg.comparisonResults?.[targetModel];
           if (!existingRes) return prev;
           const updates = updater(existingRes);
           return [
-            ...prev.slice(0, lastIdx),
+            ...prev.slice(0, messageIdx),
             {
               ...lastMsg,
               comparisonResults: {
@@ -158,6 +172,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 [targetModel]: { ...existingRes, ...updates },
               },
             },
+            ...prev.slice(messageIdx + 1),
           ];
         }
       });
@@ -211,17 +226,20 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
 
       if (!isPrimary) {
         setMessages((prev) => {
-          const last = prev[prev.length - 1];
-          if (!last || last.role !== 'assistant') return prev;
+          const targetIdx = prev.findIndex((m) => m.id === messageId);
+          if (targetIdx < 0) return prev;
+          const targetMessage = prev[targetIdx];
+          if (!targetMessage || targetMessage.role !== 'assistant') return prev;
           return [
-            ...prev.slice(0, -1),
+            ...prev.slice(0, targetIdx),
             {
-              ...last,
+              ...targetMessage,
               comparisonResults: {
-                ...last.comparisonResults,
+                ...targetMessage.comparisonResults,
                 [targetModel]: { messageId: undefined, content: '', status: 'streaming' },
               },
             } as Message,
+            ...prev.slice(targetIdx + 1),
           ];
         });
       }
@@ -259,14 +277,14 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 tokenStatsRef.current.count = tokenStatsRef.current.charCount / 4;
               tokenStatsRef.current.lastUpdated = Date.now();
             }
-            updateMessageState(isPrimary, targetModel, (current) => {
+            updateMessageState(isPrimary, messageId, targetModel, (current) => {
               const prev = typeof current.content === 'string' ? current.content : '';
               return { content: prev + token, provider: tokenStatsRef.current?.provider };
             });
           },
           onEvent: (event: any) => {
             if (event.type === 'text') {
-              updateMessageState(isPrimary, targetModel, (current) => ({
+              updateMessageState(isPrimary, messageId, targetModel, (current) => ({
                 content: (typeof current.content === 'string' ? current.content : '') + event.value,
               }));
             } else if (event.type === 'conversation') {
@@ -296,7 +314,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 }
               }
             } else if (event.type === 'tool_call') {
-              updateMessageState(isPrimary, targetModel, (current) => ({
+              updateMessageState(isPrimary, messageId, targetModel, (current) => ({
                 tool_calls: mergeToolCallDelta(
                   current.tool_calls || [],
                   event.value,
@@ -313,12 +331,12 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 tokenStatsRef.current.count = event.value.completion_tokens;
                 tokenStatsRef.current.isEstimate = false;
               }
-              updateMessageState(isPrimary, targetModel, () => ({
+              updateMessageState(isPrimary, messageId, targetModel, () => ({
                 usage: event.value,
                 provider: event.value.provider,
               }));
             } else if (event.type === 'tool_output') {
-              updateMessageState(isPrimary, targetModel, (current) => ({
+              updateMessageState(isPrimary, messageId, targetModel, (current) => ({
                 tool_outputs: [...(current.tool_outputs || []), event.value],
               }));
             }
@@ -355,6 +373,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
 
         updateMessageState(
           isPrimary,
+          messageId,
           targetModel,
           (current) =>
             ({
@@ -385,7 +404,12 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           setStatus('idle');
           setPending((prev) => ({ ...prev, error: msg, streaming: false }));
         } else
-          updateMessageState(false, targetModel, () => ({ status: 'error', error: msg }) as any);
+          updateMessageState(
+            false,
+            messageId,
+            targetModel,
+            () => ({ status: 'error', error: msg }) as any
+          );
       }
     },
     [

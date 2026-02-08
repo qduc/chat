@@ -1808,6 +1808,109 @@ describe('Phase 0 Characterization Tests', () => {
       );
     });
 
+    test('retryComparisonModel updates only the targeted assistant message', async () => {
+      const now = new Date().toISOString();
+      arrangeHttpMocks();
+      mockAuth.getProfile.mockResolvedValue({
+        id: 'user-123',
+        email: 'user@example.com',
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      mockConversations.get.mockResolvedValue({
+        id: 'conv-retry-target',
+        title: 'Retry Target',
+        model: 'gpt-4o',
+        provider: 'openai',
+        created_at: now,
+        messages: [
+          {
+            id: 'user-1',
+            seq: 1,
+            role: 'user',
+            content: 'Q1',
+            created_at: now,
+            status: 'completed',
+          },
+          {
+            id: 'assistant-1',
+            seq: 2,
+            role: 'assistant',
+            content: 'A1',
+            created_at: now,
+            status: 'completed',
+          },
+          {
+            id: 'user-2',
+            seq: 3,
+            role: 'user',
+            content: 'Q2',
+            created_at: now,
+            status: 'completed',
+          },
+          {
+            id: 'assistant-2',
+            seq: 4,
+            role: 'assistant',
+            content: 'A2',
+            created_at: now,
+            status: 'completed',
+          },
+        ],
+        linked_conversations: [
+          {
+            id: 'conv-mini',
+            model: 'gpt-4o-mini',
+            provider_id: 'openai',
+            created_at: now,
+            messages: [
+              {
+                id: 'assistant-mini-1',
+                seq: 2,
+                role: 'assistant',
+                content: 'Mini A1',
+                created_at: now,
+                status: 'completed',
+              },
+              {
+                id: 'assistant-mini-2',
+                seq: 4,
+                role: 'assistant',
+                content: 'Mini A2',
+                created_at: now,
+                status: 'completed',
+              },
+            ],
+          },
+        ],
+        next_after_seq: null,
+      });
+
+      mockChat.sendMessage.mockResolvedValue({
+        content: 'Retried mini A1',
+        conversation: { id: 'conv-mini', title: 'Mini', created_at: now },
+      });
+
+      const { result } = renderHook(() => useChat());
+
+      await act(async () => {
+        await result.current.selectConversation('conv-retry-target');
+      });
+
+      await act(async () => {
+        await result.current.retryComparisonModel('assistant-1', 'openai::gpt-4o-mini');
+      });
+
+      const firstAssistant = result.current.messages.find((m) => m.id === 'assistant-1');
+      const secondAssistant = result.current.messages.find((m) => m.id === 'assistant-2');
+
+      expect(firstAssistant?.comparisonResults?.['openai::gpt-4o-mini']?.content).toBe(
+        'Retried mini A1'
+      );
+      expect(secondAssistant?.comparisonResults?.['openai::gpt-4o-mini']?.content).toBe('Mini A2');
+    });
+
     test('retryComparisonModel can retry primary model', async () => {
       const now = new Date().toISOString();
       arrangeHttpMocks();
@@ -2073,6 +2176,51 @@ describe('Phase 0 Characterization Tests', () => {
       expect(result.current.activeSystemPromptId).toBe('prompt-abc');
       expect(result.current.reasoningEffort).toBe('high');
       expect(result.current.customRequestParamsId).toEqual(['param-1', 'param-2']);
+    });
+
+    test('selectConversation clears custom request params when snapshot has none', async () => {
+      const now = new Date().toISOString();
+      arrangeHttpMocks();
+      mockAuth.getProfile.mockResolvedValue({
+        id: 'user-123',
+        email: 'user@example.com',
+        createdAt: now,
+        updatedAt: now,
+      });
+
+      mockConversations.get.mockResolvedValueOnce({
+        id: 'conv-with-params',
+        title: 'With Params',
+        model: 'gpt-4o',
+        provider: 'openai',
+        created_at: now,
+        messages: [],
+        custom_request_params_id: ['param-1'],
+        next_after_seq: null,
+      });
+
+      mockConversations.get.mockResolvedValueOnce({
+        id: 'conv-no-params',
+        title: 'No Params',
+        model: 'gpt-4o',
+        provider: 'openai',
+        created_at: now,
+        messages: [],
+        custom_request_params_id: null,
+        next_after_seq: null,
+      });
+
+      const { result } = renderHook(() => useChat());
+
+      await act(async () => {
+        await result.current.selectConversation('conv-with-params');
+      });
+      expect(result.current.customRequestParamsId).toEqual(['param-1']);
+
+      await act(async () => {
+        await result.current.selectConversation('conv-no-params');
+      });
+      expect(result.current.customRequestParamsId).toEqual([]);
     });
 
     test('selectConversation clears linked conversations when none exist', async () => {
