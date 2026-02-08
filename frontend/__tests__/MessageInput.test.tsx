@@ -265,6 +265,16 @@ describe('MessageInput', () => {
 
       expect(onStop).toHaveBeenCalled();
     });
+
+    it('does not call onSend when Enter is pressed with no text or attachments', () => {
+      const onSend = jest.fn();
+      render(<MessageInput {...defaultProps} input="" onSend={onSend} />);
+
+      const textarea = screen.getByPlaceholderText('Type your message...');
+      fireEvent.keyDown(textarea, { key: 'Enter', shiftKey: false });
+
+      expect(onSend).not.toHaveBeenCalled();
+    });
   });
 
   describe('Send button', () => {
@@ -437,6 +447,16 @@ describe('MessageInput', () => {
 
       expect(onFilesChange).toHaveBeenCalled();
     });
+
+    it('enables send button when files are attached without text', () => {
+      const files = [{ id: 'file-1', name: 'test.txt', content: 'Test content' }];
+      render(
+        <MessageInput {...defaultProps} input="" files={files as any} onFilesChange={jest.fn()} />
+      );
+
+      const sendButton = screen.getByRole('button', { name: /send/i });
+      expect(sendButton).not.toBeDisabled();
+    });
   });
 
   describe('Audio previews', () => {
@@ -460,6 +480,21 @@ describe('MessageInput', () => {
       await userEvent.click(removeButton);
 
       expect(onAudiosChange).toHaveBeenCalled();
+    });
+
+    it('enables send button when audios are attached without text', () => {
+      const audios = [{ id: 'audio-1', name: 'test.mp3', url: 'blob:test' }];
+      render(
+        <MessageInput
+          {...defaultProps}
+          input=""
+          audios={audios as any}
+          onAudiosChange={jest.fn()}
+        />
+      );
+
+      const sendButton = screen.getByRole('button', { name: /send/i });
+      expect(sendButton).not.toBeDisabled();
     });
   });
 

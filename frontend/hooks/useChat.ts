@@ -507,7 +507,18 @@ export function useChat() {
   const sendMessage = useCallback(
     async (content?: string, opts?: any) => {
       const text = content || input;
-      if (!text.trim() && !images.length && !audios.length) return;
+      if (!text.trim() && !images.length && !audios.length && !files.length) return;
+
+      let msgContent: MessageContent;
+      try {
+        msgContent = await buildMessageContent(text);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Failed to prepare attachments';
+        setError(msg);
+        setStatus('idle');
+        setPending((prev) => ({ ...prev, error: msg, streaming: false, abort: null }));
+        return;
+      }
 
       setStatus('streaming');
       setError(null);
@@ -529,7 +540,6 @@ export function useChat() {
         tokenStats: tokenStatsRef.current,
       });
 
-      const msgContent = await buildMessageContent(text);
       const userMsgId = opts?.clientMessageId ?? generateClientId();
       if (!opts?.skipLocalUserMessage)
         setMessages((prev) => [
@@ -633,6 +643,7 @@ export function useChat() {
       input,
       images.length,
       audios.length,
+      files.length,
       buildMessageContent,
       setStatus,
       setError,

@@ -818,6 +818,32 @@ describe('useChat hook', () => {
     expect(result.current.images).toEqual([]);
   });
 
+  test('sendMessage allows file-only payloads', async () => {
+    const now = new Date().toISOString();
+    mockChat.sendMessage.mockResolvedValue({
+      content: 'ok',
+      conversation: { id: 'conv-file-only', title: 'Files', created_at: now },
+    });
+
+    const { result } = renderUseChat();
+
+    act(() => {
+      result.current.setInput('');
+      result.current.setFiles([{ name: 'example.ts', content: 'console.log(1);' }]);
+    });
+
+    await act(async () => {
+      await result.current.sendMessage();
+    });
+
+    expect(mockChat.sendMessage).toHaveBeenCalledTimes(1);
+    const payload = mockChat.sendMessage.mock.calls[0][0];
+    const userMessage = payload.messages[0];
+    expect(typeof userMessage.content).toBe('string');
+    expect(userMessage.content).toContain('File: example.ts');
+    expect(result.current.files).toEqual([]);
+  });
+
   test('regenerate reuses the original user message id without duplication', async () => {
     const now = new Date().toISOString();
     mockChat.sendMessage.mockResolvedValue({
