@@ -34,13 +34,13 @@ Exit criteria:
 - High-risk behaviors are pinned by tests before refactoring internals.
 
 ### Phase 1: Extract Send Pipeline
-Status: `todo`
+Status: `done`
 
-- [ ] Create `useMessageSendPipeline` (or similarly named hook/module).
-- [ ] Move payload building, streaming events, response finalization, and failure handling from `useChat` into the new module.
-- [ ] Keep `useChat` return shape unchanged.
-- [ ] Ensure one lifecycle owner for streaming state transitions.
-- [ ] Update tests to target extracted unit(s) + keep integration tests in `useChat`.
+- [x] Create `useMessageSendPipeline` (or similarly named hook/module).
+- [x] Move payload building, streaming events, response finalization, and failure handling from `useChat` into the new module.
+- [x] Keep `useChat` return shape unchanged.
+- [x] Ensure one lifecycle owner for streaming state transitions.
+- [x] Update tests to target extracted unit(s) + keep integration tests in `useChat`.
 
 Exit criteria:
 - `useChat` delegates send orchestration instead of implementing the full pipeline inline.
@@ -92,12 +92,13 @@ Exit criteria:
 ## Tracking
 
 ### Progress Snapshot
-- Overall status: `not started`
-- Current phase: `Phase 0`
+- Overall status: `in progress`
+- Current phase: `Phase 1 complete`
 - Last updated: `2026-02-08`
 
 ### Change Log
 - `2026-02-08`: Initial plan created.
+- `2026-02-08`: Phase 1 complete — extracted send pipeline into `useMessageSendPipeline`.
 
 ## Risks and Controls
 - Risk: Behavior regressions during extraction.
