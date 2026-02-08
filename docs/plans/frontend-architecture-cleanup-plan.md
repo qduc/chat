@@ -46,12 +46,12 @@ Exit criteria:
 - `useChat` delegates send orchestration instead of implementing the full pipeline inline.
 
 ### Phase 2: Extract Conversation Hydration
-Status: `todo`
+Status: `done`
 
-- [ ] Create `useConversationHydration` for `selectConversation` and linked conversation assembly.
-- [ ] Move model/provider/tool/settings restoration logic into hydration module.
-- [ ] Keep conversation selection behavior unchanged.
-- [ ] Add focused tests for hydration edge cases.
+- [x] Create `useConversationHydration` for `selectConversation` and linked conversation assembly.
+- [x] Move model/provider/tool/settings restoration logic into hydration module.
+- [x] Keep conversation selection behavior unchanged.
+- [x] Add focused tests for hydration edge cases.
 
 Exit criteria:
 - `selectConversation` logic in `useChat` becomes thin orchestration only.
@@ -93,7 +93,7 @@ Exit criteria:
 
 ### Progress Snapshot
 - Overall status: `in progress`
-- Current phase: `Phase 1 complete`
+- Current phase: `Phase 2 complete`
 - Last updated: `2026-02-08`
 
 ### Change Log
