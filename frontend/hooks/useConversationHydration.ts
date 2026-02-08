@@ -4,6 +4,7 @@ import type {
   ChatMessage as Message,
   MessageContent,
   ReasoningEffortLevel,
+  Status,
   Evaluation,
   EvaluationDraft,
 } from '../lib';
@@ -16,7 +17,7 @@ import { conversations as conversationsApi } from '../lib/api';
 /** Refs and setters that conversation hydration needs from surrounding hooks. */
 export interface ConversationHydrationDeps {
   // -- Status / error --
-  setStatus: Dispatch<SetStateAction<'idle' | 'streaming' | 'loading'>>;
+  setStatus: Dispatch<SetStateAction<Status>>;
   setError: (msg: string | null) => void;
   clearError: () => void;
 

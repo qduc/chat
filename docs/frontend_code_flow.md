@@ -19,10 +19,11 @@ ChatForge's frontend is a Next.js application that provides a modern, real-time 
                      ▼
 ┌─────────────────────────────────────────────────────────────┐
 │                    ChatV2 (Main Container)                   │
-│  - Layout management                                         │
-│  - Sidebar state                                             │
-│  - URL synchronization                                       │
-│  - Event coordination                                        │
+│  - Layout / rendering / wiring                               │
+│  - Delegates to:                                             │
+│      useConversationUrlSync  (URL ↔ conversation ID)         │
+│      useResizableRightSidebar (drag-to-resize behaviour)     │
+│      useScrollControls       (scroll buttons + helpers)      │
 └────────────────────┬────────────────────────────────────────┘
                      │
         ┌────────────┼────────────┐
@@ -34,16 +35,24 @@ ChatForge's frontend is a Next.js application that provides a modern, real-time 
                      │
                      ▼
               ┌──────────────┐
-              │   useChat    │
+              │   useChat    │  (thin orchestrator)
               │    Hook      │
               └──────┬───────┘
-                     │
-        ┌────────────┼────────────┐
-        ▼            ▼            ▼
-   ┌────────┐  ┌─────────┐  ┌──────────┐
-   │  API   │  │Streaming│  │  HTTP    │
-   │ Layer  │  │ Parser  │  │ Client   │
-   └────────┘  └─────────┘  └──────────┘
+                     │  delegates to:
+        ┌────────────┼────────────────────────┐
+        ▼            ▼                        ▼
+┌──────────────┐ ┌────────────────────┐ ┌──────────────────┐
+│useMessage    │ │useConversation     │ │useDraft          │
+│SendPipeline  │ │Hydration           │ │Persistence       │
+│(send/stream) │ │(select + restore)  │ │(save/restore)    │
+└──────┬───────┘ └────────────────────┘ └──────────────────┘
+       │
+       ├──────────────────────────┐
+       ▼                          ▼
+  ┌─────────┐              ┌──────────┐
+  │Streaming│              │  HTTP    │
+  │ Parser  │              │ Client   │
+  └─────────┘              └──────────┘
 ```
 
 ## Entry Point: app/page.tsx
@@ -68,18 +77,22 @@ function Home() {
 
 ### 1. ChatV2 (components/ChatV2.tsx)
 
-The main container component that orchestrates the entire application.
+The main container component that orchestrates the entire application. After extraction, ChatV2 is focused on **rendering and wiring** — heavy side-effect logic lives in dedicated hooks.
+
+**Delegated hooks:**
+- `useConversationUrlSync` — keeps the `?c=<id>` query param in sync with the active conversation and handles initial URL hydration and back/forward navigation.
+- `useResizableRightSidebar` — pointer tracking, width clamping, localStorage persistence, and body cursor overrides for the right sidebar drag handle.
+- `useScrollControls` — scroll-button visibility (auto-show on scroll, auto-hide after 2 s) and smooth-scroll helpers for the message list.
 
 **State Management:**
 - Consumes `useChat` hook for all chat-related state
-- Manages UI-specific state (sidebar visibility, settings modals)
-- Handles resizable sidebars with drag functionality
+- Manages UI-specific state (settings modals, auth modals, mobile detection)
 
 **Key Features:**
-- **URL Synchronization**: Keeps conversation ID in sync with browser URL
+- **URL Synchronization**: Via `useConversationUrlSync`
 - **Keyboard Shortcuts**: Ctrl/Cmd+\ for sidebar toggling
 - **Message Editing**: Coordinates local edits vs. persisted edits
-- **Scroll Management**: Dynamic scroll buttons and auto-scroll behavior
+- **Scroll Management**: Via `useScrollControls`
 
 **Event Flow:**
 ```
@@ -88,7 +101,13 @@ User Action → ChatV2 Handler → useChat Action → API Call → State Update 
 
 ### 2. useChat Hook (hooks/useChat.ts)
 
-The **central state management hub** - a custom hook that manages all chat functionality using `useState` and `useCallback`.
+The **central state management hub** — a thin orchestrator that composes several specialised hooks and exposes a unified API to ChatV2.
+
+**Delegated hooks:**
+- `useMessageSendPipeline` — payload construction, streaming event handling, response finalisation, failure recovery, and comparison-mode parallel requests.
+- `useConversationHydration` — `selectConversation` loading, model/provider/tool/settings restoration, linked-conversation merging.
+- `useDraftPersistence` — draft restore on conversation switch and debounced save while typing.
+- `useMessages`, `useModelSelection`, `useConversations`, `useChatStreaming`, `useChatAttachments`, `useChatSettings`, `useCompareMode` — fine-grained state slices.
 
 **Philosophy:**
 - Direct state manipulation without complex reducers
@@ -990,7 +1009,20 @@ frontend/
 │   └── ThemeContext.tsx           # Dark/light/system theme management
 │
 ├── hooks/
-│   ├── useChat.ts                 # Central state management
+│   ├── useChat.ts                 # Central state orchestrator (thin, delegates below)
+│   ├── useMessageSendPipeline.ts  # Send/stream/retry/comparison request logic
+│   ├── useConversationHydration.ts# selectConversation loading & settings restoration
+│   ├── useDraftPersistence.ts     # Draft save/restore per conversation
+│   ├── useConversationUrlSync.ts  # URL ↔ conversation ID synchronisation
+│   ├── useResizableRightSidebar.ts# Drag-to-resize right sidebar
+│   ├── useScrollControls.ts       # Scroll-button visibility & helpers
+│   ├── useMessages.ts             # Message list state
+│   ├── useModelSelection.ts       # Model/provider loading & selection
+│   ├── useConversations.ts        # Conversation list & pagination
+│   ├── useChatStreaming.ts        # Streaming status & abort control
+│   ├── useChatAttachments.ts      # Image/audio/file attachment state
+│   ├── useChatSettings.ts         # Tool/stream/reasoning settings state
+│   ├── useCompareMode.ts          # Comparison-mode state
 │   ├── useSystemPrompts.ts        # System prompt management
 │   ├── useSecureImageUrl.ts       # Secure image URL handling
 │   ├── useStreamingScroll.ts      # Scroll management during streaming

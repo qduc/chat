@@ -197,7 +197,7 @@ export function useChat() {
   const pipelineDeps = {
     modelRef,
     providerIdRef,
-    modelToProviderRef: modelToProviderRef as any,
+    modelToProviderRef,
     modelCapabilities,
     reasoningEffortRef,
     shouldStreamRef,
@@ -431,7 +431,6 @@ export function useChat() {
     setCurrentConversationTitle,
     setLinkedConversations,
     restoreSavedModel,
-    user,
   ]);
 
   const deleteConversation = useCallback(

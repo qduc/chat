@@ -79,11 +79,11 @@ Exit criteria:
 - `ChatV2` is substantially smaller and side-effect logic is hook-based.
 
 ### Phase 5: Cleanup + Hardening
-Status: `todo`
+Status: `done`
 
-- [ ] Remove duplicate logic paths discovered during extraction.
-- [ ] Add lightweight architecture notes to `docs/frontend_code_flow.md`.
-- [ ] Run lint + tests:
+- [x] Remove duplicate logic paths discovered during extraction.
+- [x] Add lightweight architecture notes to `docs/frontend_code_flow.md`.
+- [x] Run lint + tests:
   - `cd frontend && npm run lint`
   - `cd frontend && npm test -- --runInBand`
 
@@ -93,8 +93,8 @@ Exit criteria:
 ## Tracking
 
 ### Progress Snapshot
-- Overall status: `in progress`
-- Current phase: `Phase 4 complete`
+- Overall status: `complete`
+- Current phase: `Phase 5 complete`
 - Last updated: `2026-02-08`
 
 ### Change Log

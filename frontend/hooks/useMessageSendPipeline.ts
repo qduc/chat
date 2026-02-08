@@ -8,6 +8,7 @@ import {
 } from '../lib';
 import type {
   ChatMessage as Message,
+  Conversation,
   MessageContent,
   ChatOptionsExtended,
   ChatResponse,
@@ -62,7 +63,7 @@ export interface SendPipelineDeps {
   conversationIdRef: MutableRefObject<string | null>;
   setConversationId: (id: string | null) => void;
   setCurrentConversationTitle: (title: string | null) => void;
-  setConversations: Dispatch<SetStateAction<any[]>>;
+  setConversations: Dispatch<SetStateAction<Conversation[]>>;
 
   // -- Attachments --
   buildMessageContent: (text: string) => Promise<MessageContent>;
