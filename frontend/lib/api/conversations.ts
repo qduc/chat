@@ -43,6 +43,7 @@ export const conversations = {
     const searchParams = new URLSearchParams();
     if (params.cursor) searchParams.set('cursor', params.cursor);
     if (params.limit) searchParams.set('limit', String(params.limit));
+    if (params.search) searchParams.set('search', params.search);
 
     const cacheKey = `list:${searchParams.toString()}`;
     const cached = conversationListCache.get(cacheKey);

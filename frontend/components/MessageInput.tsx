@@ -176,9 +176,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     return selectedCustomParamsLabels.join(', ');
   }, [selectedCustomParamsLabels]);
 
-  // Check if we can send (have text or images)
-  const canSend = input.trim().length > 0 || images.length > 0;
+  // Check if we can send (have text or any supported attachment)
+  const canSend =
+    input.trim().length > 0 || images.length > 0 || audios.length > 0 || files.length > 0;
   const inputLocked = disabled;
+  const canSubmit = canSend && !inputLocked;
   const controlsDisabled = inputLocked || pending.streaming;
 
   // Helper to check if a tool is disabled due to missing API key
@@ -338,7 +340,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
       e.preventDefault();
       if (pending.streaming) {
         onStop();
-      } else if (!inputLocked) {
+      } else if (canSubmit) {
         onSend();
       }
     }
@@ -542,7 +544,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
           e.preventDefault();
           if (pending.streaming) {
             onStop();
-          } else if (!inputLocked) {
+          } else if (canSubmit) {
             onSend();
           }
         }}
@@ -1151,7 +1153,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                 onClick={() => {
                   if (pending.streaming) {
                     onStop();
-                  } else if (!inputLocked) {
+                  } else if (canSubmit) {
                     onSend();
                   }
                 }}

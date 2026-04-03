@@ -1,4 +1,13 @@
-import { Trash2, Loader2, Plus, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  Trash2,
+  Loader2,
+  Plus,
+  RefreshCw,
+  ChevronLeft,
+  ChevronRight,
+  Search,
+  X,
+} from 'lucide-react';
 import type { ConversationMeta } from '../lib';
 
 interface ChatSidebarProps {
@@ -13,6 +22,8 @@ interface ChatSidebarProps {
   onRefresh: () => void;
   onNewChat: () => void;
   onToggleCollapse: () => void;
+  searchQuery?: string;
+  onSearch?: (query: string) => void;
   unsavedPlaceholder?: boolean;
 }
 
@@ -28,6 +39,8 @@ export function ChatSidebar({
   onRefresh,
   onNewChat,
   onToggleCollapse,
+  searchQuery = '',
+  onSearch,
   unsavedPlaceholder,
 }: ChatSidebarProps) {
   return (
@@ -78,6 +91,16 @@ export function ChatSidebar({
             aria-label="Refresh conversation list"
           >
             <RefreshCw className={`w-4 h-4 ${loadingConversations ? 'animate-spin' : ''}`} />
+          </button>
+
+          {/* Search button */}
+          <button
+            className="w-10 h-10 rounded-lg hover:bg-zinc-200/50 dark:hover:bg-zinc-800 transition-colors flex items-center justify-center text-zinc-500 dark:text-zinc-400 cursor-pointer"
+            onClick={onToggleCollapse}
+            title="Search conversations"
+            aria-label="Search conversations"
+          >
+            <Search className="w-4 h-4" />
           </button>
 
           {/* Divider */}
@@ -141,6 +164,31 @@ export function ChatSidebar({
               </button>
             </div>
           </div>
+          {/* Search input */}
+          {onSearch && (
+            <div className="mb-4 px-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 dark:text-zinc-500" />
+                <input
+                  type="text"
+                  placeholder="Search conversations..."
+                  value={searchQuery}
+                  onChange={(e) => onSearch(e.target.value)}
+                  className="w-full pl-9 pr-8 py-2 text-sm rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-300 dark:focus:ring-zinc-600 focus:border-transparent"
+                />
+                {searchQuery && (
+                  <button
+                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-400 dark:text-zinc-500"
+                    onClick={() => onSearch('')}
+                    title="Clear search"
+                    aria-label="Clear search"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
           <div className="flex-1 overflow-y-auto space-y-1 scrollbar-thin scrollbar-track-transparent">
             {unsavedPlaceholder && (
               <div
@@ -155,6 +203,11 @@ export function ChatSidebar({
                     Unsaved fork
                   </div>
                 </div>
+              </div>
+            )}
+            {searchQuery && conversations.length === 0 && !loadingConversations && (
+              <div className="text-sm text-zinc-500 dark:text-zinc-400 text-center py-8 px-4">
+                No conversations found for &quot;{searchQuery}&quot;
               </div>
             )}
             {conversations.map((c) => (

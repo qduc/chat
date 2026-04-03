@@ -187,6 +187,106 @@ describe('toolsJson', () => {
       expect(mockRes.end).toHaveBeenCalled();
     });
 
+    test('retries incomplete reasoning response and succeeds', async () => {
+      const body = {
+        messages: [{ role: 'user', content: 'Use tools if needed' }],
+        stream: false
+      };
+      const bodyIn = {};
+
+      const invalidResponse = {
+        id: 'resp_invalid',
+        choices: [{
+          message: {
+            role: 'assistant',
+            content: '',
+            reasoning_details: [{ type: 'reasoning.text', text: 'Thinking...' }]
+          },
+          finish_reason: 'stop'
+        }]
+      };
+
+      const validResponse = {
+        id: 'resp_valid',
+        choices: [{
+          message: { role: 'assistant', content: 'Final response' },
+          finish_reason: 'stop'
+        }]
+      };
+
+      createOpenAIRequest
+        .mockResolvedValueOnce({ json: jest.fn().mockResolvedValue(invalidResponse) })
+        .mockResolvedValueOnce({ json: jest.fn().mockResolvedValue(validResponse) });
+
+      await handleToolsJson({
+        body,
+        bodyIn,
+        config: mockConfig,
+        res: mockRes,
+        req: mockReq,
+        persistence: mockPersistence
+      });
+
+      expect(createOpenAIRequest).toHaveBeenCalledTimes(2);
+      expect(mockRes.status).toHaveBeenCalledWith(200);
+      expect(mockRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          choices: expect.arrayContaining([
+            expect.objectContaining({
+              message: expect.objectContaining({ content: 'Final response' })
+            })
+          ])
+        })
+      );
+    });
+
+    test('returns warning response after invalid reasoning retries are exhausted', async () => {
+      const body = {
+        messages: [{ role: 'user', content: 'Use tools if needed' }],
+        stream: false
+      };
+      const bodyIn = {};
+
+      const invalidResponse = {
+        id: 'resp_invalid',
+        choices: [{
+          message: {
+            role: 'assistant',
+            content: '',
+            reasoning_details: [{ type: 'reasoning.text', text: 'Still thinking...' }]
+          },
+          finish_reason: 'stop'
+        }]
+      };
+
+      createOpenAIRequest.mockImplementation(() => (
+        Promise.resolve({ json: jest.fn().mockResolvedValue(invalidResponse) })
+      ));
+
+      await handleToolsJson({
+        body,
+        bodyIn,
+        config: mockConfig,
+        res: mockRes,
+        req: mockReq,
+        persistence: mockPersistence
+      });
+
+      expect(createOpenAIRequest).toHaveBeenCalledTimes(3);
+      expect(mockRes.status).toHaveBeenCalledWith(200);
+      expect(mockRes.json).toHaveBeenCalledWith(
+        expect.objectContaining({
+          choices: expect.arrayContaining([
+            expect.objectContaining({
+              message: expect.objectContaining({
+                content: expect.stringContaining('incomplete reasoning response')
+              })
+            })
+          ])
+        })
+      );
+    });
+
     test('handles request with tool calls', async () => {
       const body = {
         messages: [{ role: 'user', content: 'What time is it?' }],

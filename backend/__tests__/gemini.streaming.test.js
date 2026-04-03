@@ -219,6 +219,45 @@ describe('Gemini Provider Streaming Translation', () => {
     expect(translated).toBeNull();
   });
 
+  it('should maintain unique tool call indices across chunks for the same response', () => {
+    const provider = new GeminiProvider({ config: {}, providerId: 'test' });
+
+    const firstChunk = {
+      responseId: 'resp_parallel',
+      candidates: [{
+        content: {
+          parts: [
+            { functionCall: { name: 'search', args: { query: 'first' } } }
+          ]
+        }
+      }]
+    };
+
+    const secondChunk = {
+      responseId: 'resp_parallel',
+      candidates: [{
+        content: {
+          parts: [
+            { functionCall: { name: 'search', args: { query: 'second' } } }
+          ]
+        }
+      }]
+    };
+
+    const firstTranslated = provider.translateStreamChunk(firstChunk);
+    const secondTranslated = provider.translateStreamChunk(secondChunk);
+
+    const firstTool = firstTranslated.choices[0].delta.tool_calls[0];
+    const secondTool = secondTranslated.choices[0].delta.tool_calls[0];
+
+    expect(firstTool.index).toBe(0);
+    expect(secondTool.index).toBe(1);
+    expect(firstTool.id).toBe('call_resp_parallel_0');
+    expect(secondTool.id).toBe('call_resp_parallel_1');
+    expect(firstTool.function.arguments).toBe(JSON.stringify({ query: 'first' }));
+    expect(secondTool.function.arguments).toBe(JSON.stringify({ query: 'second' }));
+  });
+
   it('should handle [DONE] signal', () => {
     const provider = new GeminiProvider({ config: {}, providerId: 'test' });
     expect(provider.translateStreamChunk('data: [DONE]')).toBeNull();

@@ -9,6 +9,8 @@ import { logger } from '../../logger.js';
 export class GeminiAdapter extends BaseAdapter {
   constructor(options = {}) {
     super(options);
+    // Track tool call index per response to ensure unique indices across chunks
+    this._toolCallSeqByResponseId = new Map();
   }
   applyCustomRequestParams(target, customParams) {
     if (!customParams || typeof customParams !== 'object' || Array.isArray(customParams)) return;
@@ -330,15 +332,19 @@ export class GeminiAdapter extends BaseAdapter {
     const functionCalls = parts.filter(p => 'functionCall' in p);
     if (functionCalls.length > 0) {
       logger.debug('[GeminiAdapter] Found function calls', { count: functionCalls.length });
+      const responseId = data.responseId;
+      const baseIndex = responseId ? (this._toolCallSeqByResponseId.get(responseId) || 0) : 0;
+
       delta.tool_calls = functionCalls.map((part, index) => {
+        const toolIndex = baseIndex + index;
         // Use a stable ID based on responseId if available to support potential multi-chunk tool calls
         // Sanitizing to ensure it's a valid ID string
-        const stableId = data.responseId
-          ? `call_${data.responseId}_${index}`.replace(/[^a-zA-Z0-9_]/g, '')
+        const stableId = responseId
+          ? `call_${responseId}_${toolIndex}`.replace(/[^a-zA-Z0-9_]/g, '')
           : `call_${Math.random().toString(36).substr(2, 9)}`;
 
         return {
-          index,
+          index: toolIndex,
           id: stableId,
           type: 'function',
           function: {
@@ -349,6 +355,10 @@ export class GeminiAdapter extends BaseAdapter {
           gemini_thought_signature: part.thoughtSignature || part.functionCall.thoughtSignature
         };
       });
+
+      if (responseId) {
+        this._toolCallSeqByResponseId.set(responseId, baseIndex + functionCalls.length);
+      }
     }
 
     let finishReason = this.mapFinishReason(candidate.finishReason);
@@ -362,6 +372,11 @@ export class GeminiAdapter extends BaseAdapter {
         hasContent: !!delta.content,
         hasTools: delta.tool_calls?.length > 0
     });
+
+    // Cleanup tracking when a response is finished (tool_calls may be intermediate)
+    if (data.responseId && (finishReason === 'stop' || finishReason === 'length' || finishReason === 'content_filter')) {
+      this._toolCallSeqByResponseId.delete(data.responseId);
+    }
 
     // Fix for Gemini sending a STOP chunk after a tool call chunk.
     // If we receive an empty STOP chunk, it often follows a tool call chunk derived from Gemini's behavior.

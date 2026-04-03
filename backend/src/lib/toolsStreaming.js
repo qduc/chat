@@ -7,6 +7,28 @@ function sanitizeContent(content) {
   // If it's an object or number, convert to string
   return String(content);
 }
+
+const INVALID_REASONING_RESPONSE_RETRY_LIMIT = 2;
+const INVALID_REASONING_RESPONSE_WARNING =
+  '[Warning: Model returned an incomplete reasoning response (no tool call and no completion). Proceeding after retries.]';
+
+function hasAssistantCompletionContent(content) {
+  if (typeof content === 'string') return content.trim().length > 0;
+  if (!Array.isArray(content)) return false;
+  return content.some((part) => {
+    if (typeof part === 'string') return part.trim().length > 0;
+    if (!part || typeof part !== 'object') return false;
+    if (typeof part.text === 'string' && part.text.trim().length > 0) return true;
+    if (typeof part.content === 'string' && part.content.trim().length > 0) return true;
+    if (typeof part.value === 'string' && part.value.trim().length > 0) return true;
+    if (typeof part.output_text === 'string' && part.output_text.trim().length > 0) return true;
+    return false;
+  });
+}
+
+function isInvalidReasoningNoCompletion({ hasToolCalls, hasReasoningSignal, hasCompletionContent }) {
+  return !hasToolCalls && hasReasoningSignal && !hasCompletionContent;
+}
 import { generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
 import { parseSSEStream } from './sseParser.js';
 import { createOpenAIRequest, writeAndFlush, createChatCompletionChunk } from './streamUtils.js';
@@ -71,6 +93,7 @@ export async function handleToolsStreaming({
 
     let iteration = 0;
     let isComplete = false;
+    let consecutiveInvalidReasoningResponses = 0;
     let currentPreviousResponseId = previousResponseId; // Track response_id across iterations
 
     while (!isComplete && iteration < MAX_ITERATIONS) {
@@ -206,6 +229,49 @@ export async function handleToolsStreaming({
         // Capture reasoning details and tokens
         if (upstreamJson.choices?.[0]?.message) {
           const message = upstreamJson.choices[0].message;
+          const hasToolCalls = Array.isArray(message.tool_calls) && message.tool_calls.length > 0;
+          const hasReasoningSignal =
+            (Array.isArray(message.reasoning_details) && message.reasoning_details.length > 0) ||
+            (typeof message.reasoning === 'string' && message.reasoning.trim().length > 0) ||
+            (typeof message.reasoning_content === 'string' && message.reasoning_content.trim().length > 0);
+          const hasCompletionContent = hasAssistantCompletionContent(message.content);
+          const invalidReasoningResponse = isInvalidReasoningNoCompletion({
+            hasToolCalls,
+            hasReasoningSignal,
+            hasCompletionContent,
+          });
+
+          if (invalidReasoningResponse) {
+            if (consecutiveInvalidReasoningResponses < INVALID_REASONING_RESPONSE_RETRY_LIMIT) {
+              consecutiveInvalidReasoningResponses += 1;
+              logger.warn({
+                msg: 'invalid_reasoning_response_retrying',
+                iteration,
+                retryAttempt: consecutiveInvalidReasoningResponses,
+                maxRetries: INVALID_REASONING_RESPONSE_RETRY_LIMIT,
+                responseId,
+              });
+              continue;
+            }
+
+            logger.warn({
+              msg: 'invalid_reasoning_response_retry_exhausted',
+              iteration,
+              retries: consecutiveInvalidReasoningResponses,
+              responseId,
+            });
+            streamDeltaEvent({
+              res,
+              model: body.model || config.defaultModel,
+              event: { content: INVALID_REASONING_RESPONSE_WARNING },
+              prefix: 'iter',
+            });
+            appendToPersistence(persistence, INVALID_REASONING_RESPONSE_WARNING);
+            isComplete = true;
+            continue;
+          }
+
+          consecutiveInvalidReasoningResponses = 0;
 
           if (Array.isArray(message.reasoning_details)) {
             if (persistence && typeof persistence.setReasoningDetails === 'function') {
@@ -336,6 +402,8 @@ export async function handleToolsStreaming({
       let responseId = null; // Capture response_id for persistence
       let accumulatedContent = ''; // Accumulate assistant content for conversation history
       let accumulatedReasoningDetails = []; // Accumulate reasoning_details for tool call continuity
+      let sawReasoningSignal = false;
+      let sawCompletionContent = false;
 
       await new Promise((resolve, reject) => {
         // Add timeout to prevent hanging
@@ -412,6 +480,7 @@ export async function handleToolsStreaming({
                 // Accumulate for tool call continuity per OpenRouter best practices
                 // See: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens#preserving-reasoning-blocks
                 if (Array.isArray(delta.reasoning_details) && delta.reasoning_details.length > 0) {
+                  sawReasoningSignal = true;
                   // Merge reasoning_details by index, appending new entries
                   for (const rd of delta.reasoning_details) {
                     const existingIdx = accumulatedReasoningDetails.findIndex(
@@ -441,10 +510,14 @@ export async function handleToolsStreaming({
                 }
 
                 const reasoningText = delta.reasoning_content ?? delta.reasoning;
+                if (typeof reasoningText === 'string' && reasoningText.length > 0) {
+                  sawReasoningSignal = true;
+                }
                 if (reasoningText && persistence && typeof persistence.appendReasoningText === 'function') {
                   persistence.appendReasoningText(reasoningText);
                 }
                 if (message?.reasoning_details && Array.isArray(message.reasoning_details)) {
+                  sawReasoningSignal = true;
                   // For non-streaming message format, replace accumulated with full array
                   accumulatedReasoningDetails = message.reasoning_details;
                   if (persistence && typeof persistence.setReasoningDetails === 'function') {
@@ -517,6 +590,12 @@ export async function handleToolsStreaming({
                 // Accumulate text content only
                 if (delta.content) {
                   accumulatedContent += delta.content;
+                  if (typeof delta.content === 'string' && delta.content.trim().length > 0) {
+                    sawCompletionContent = true;
+                  }
+                }
+                if (hasAssistantCompletionContent(message?.content)) {
+                  sawCompletionContent = true;
                 }
                 appendToPersistence(persistence, delta.content);
               },
@@ -555,6 +634,43 @@ export async function handleToolsStreaming({
       }
 
       const toolCalls = Array.from(toolCallMap.values());
+      const invalidReasoningResponse = isInvalidReasoningNoCompletion({
+        hasToolCalls: toolCalls.length > 0,
+        hasReasoningSignal: sawReasoningSignal || accumulatedReasoningDetails.length > 0,
+        hasCompletionContent: sawCompletionContent || accumulatedContent.trim().length > 0,
+      });
+
+      if (invalidReasoningResponse) {
+        if (consecutiveInvalidReasoningResponses < INVALID_REASONING_RESPONSE_RETRY_LIMIT) {
+          consecutiveInvalidReasoningResponses += 1;
+          logger.warn({
+            msg: 'invalid_reasoning_response_retrying',
+            iteration,
+            retryAttempt: consecutiveInvalidReasoningResponses,
+            maxRetries: INVALID_REASONING_RESPONSE_RETRY_LIMIT,
+            responseId,
+          });
+          continue;
+        }
+
+        logger.warn({
+          msg: 'invalid_reasoning_response_retry_exhausted',
+          iteration,
+          retries: consecutiveInvalidReasoningResponses,
+          responseId,
+        });
+        streamDeltaEvent({
+          res,
+          model: body.model || config.defaultModel,
+          event: { content: INVALID_REASONING_RESPONSE_WARNING },
+          prefix: 'iter',
+        });
+        appendToPersistence(persistence, INVALID_REASONING_RESPONSE_WARNING);
+        isComplete = true;
+        continue;
+      }
+
+      consecutiveInvalidReasoningResponses = 0;
 
       if (toolCalls.length > 0) {
         // Normalize tool calls: ensure arguments is valid JSON (convert empty string to '{}')
