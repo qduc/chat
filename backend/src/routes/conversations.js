@@ -9,6 +9,7 @@ import {
   createConversation,
   getConversationById,
   listConversations,
+  searchConversations,
   softDeleteConversation,
   listConversationsIncludingDeleted,
   forkConversationFromMessage,
@@ -73,17 +74,28 @@ conversationsRouter.post('/v1/conversations/migrate', (req, res) => {
   }
 });
 
-// GET /v1/conversations (list with cursor+limit)
+// GET /v1/conversations (list with cursor+limit, optional search)
 conversationsRouter.get('/v1/conversations', (req, res) => {
   if (!config.persistence.enabled) return notImplemented(res);
   try {
     const userId = req.user.id; // Guaranteed by authenticateToken middleware
 
     getDb();
-    const { cursor, limit, include_deleted } = req.query || {};
+    const { cursor, limit, include_deleted, search } = req.query || {};
     const includeDeleted =
       String(include_deleted) === '1' ||
       String(include_deleted).toLowerCase() === 'true';
+
+    // If search query is provided, use searchConversations
+    if (search && String(search).trim()) {
+      const result = searchConversations({
+        userId,
+        search: String(search).trim(),
+        limit,
+      });
+      return res.json(result);
+    }
+
     const result = includeDeleted
       ? listConversationsIncludingDeleted({
         userId,

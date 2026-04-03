@@ -587,6 +587,7 @@ export interface ConversationCreateOptions {
 export interface ListConversationsParams {
   cursor?: string;
   limit?: number;
+  search?: string;
 }
 
 export interface GetConversationParams {

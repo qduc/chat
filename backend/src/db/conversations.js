@@ -202,6 +202,36 @@ export function listConversations({ userId, cursor, limit }) {
 }
 
 /**
+ * Search conversations by title for a user
+ * @param {string} userId - User ID
+ * @param {string} search - Search query string
+ * @param {number} limit - Max number of results
+ * @returns {Array} Array of conversation metadata
+ */
+export function searchConversations({ userId, search, limit }) {
+  if (!userId) {
+    throw new Error('userId is required');
+  }
+
+  if (!search || !search.trim()) {
+    return listConversations({ userId, limit });
+  }
+
+  const db = getDb();
+  const safeLimit = clampLimit(limit, { fallback: 20, min: 1, max: 100 });
+  const searchPattern = `%${search.trim()}%`;
+
+  // Search by title (case-insensitive), exclude linked/comparison conversations
+  const sql = `SELECT id, title, provider_id, model, created_at FROM conversations
+         WHERE user_id=@userId AND deleted_at IS NULL AND parent_conversation_id IS NULL
+         AND title LIKE @searchPattern
+         ORDER BY datetime(created_at) DESC, id DESC LIMIT @limit`;
+
+  const items = db.prepare(sql).all({ userId, searchPattern, limit: safeLimit });
+  return { items, next_cursor: null };
+}
+
+/**
  * Get linked/comparison conversations for a parent conversation
  * @param {string} parentId - Parent conversation ID
  * @param {string} userId - User ID

@@ -37,6 +37,7 @@ export function useConversations() {
   const [currentConversationTitle, setCurrentConversationTitle] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [loadingConversations, setLoadingConversations] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const refreshConversations = useCallback(async () => {
     try {
@@ -50,6 +51,28 @@ export function useConversations() {
       setLoadingConversations(false);
     }
   }, []);
+
+  const searchConversations = useCallback(
+    async (query: string) => {
+      setSearchQuery(query);
+      if (!query.trim()) {
+        // If query is empty, refresh the full list
+        await refreshConversations();
+        return;
+      }
+      try {
+        setLoadingConversations(true);
+        const data = await conversationsApi.list({ search: query.trim(), limit: 50 });
+        setConversations(data.items.map(convertConversationMeta));
+        setNextCursor(null); // No pagination for search results
+      } catch (err) {
+        console.error('Failed to search conversations:', err);
+      } finally {
+        setLoadingConversations(false);
+      }
+    },
+    [refreshConversations]
+  );
 
   const loadMoreConversations = useCallback(async () => {
     if (!nextCursor || loadingConversations) return;
@@ -95,5 +118,7 @@ export function useConversations() {
     refreshConversations,
     loadMoreConversations,
     deleteConversation,
+    searchQuery,
+    searchConversations,
   };
 }

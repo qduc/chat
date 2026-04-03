@@ -451,6 +451,8 @@ export function ChatV2() {
             onRefresh={chat.refreshConversations}
             onNewChat={handleNewChat}
             onToggleCollapse={chat.toggleSidebar}
+            searchQuery={chat.searchQuery}
+            onSearch={chat.searchConversations}
             unsavedPlaceholder={!chat.conversationId && chat.messages.length > 0}
           />
         </div>

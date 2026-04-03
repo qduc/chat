@@ -70,6 +70,8 @@ export function useChat() {
     refreshConversations: refresh,
     loadMoreConversations: loadMore,
     deleteConversation: deleteConvAction,
+    searchQuery,
+    searchConversations,
   } = useConversations();
 
   const {
@@ -542,6 +544,8 @@ export function useChat() {
     customRequestParamsId,
     nextCursor,
     loadingConversations,
+    searchQuery,
+    searchConversations,
     historyEnabled: !!user,
     sidebarCollapsed: !sidebarOpen,
     rightSidebarCollapsed: !rightSidebarOpen,

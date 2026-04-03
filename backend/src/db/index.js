@@ -10,6 +10,7 @@ export {
   updateConversationSettings,
   countConversationsBySession,
   listConversations,
+  searchConversations,
   softDeleteConversation,
   listConversationsIncludingDeleted,
   forkConversationFromMessage,
