@@ -453,21 +453,28 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       /** Current attachment counts so the gate check works without stale closures. */
       attachmentCounts?: { images: number; audios: number; files: number },
       /** Active comparison models (snapshot to avoid stale closure). */
-      compareModels?: string[]
+      compareModels?: string[],
+      /** Prebuilt message content to bypass attachment processing */
+      overriddenMessageContent?: MessageContent
     ) => {
-      const text = content || currentInput || '';
-      const counts = attachmentCounts || { images: 0, audios: 0, files: 0 };
-      if (!text.trim() && !counts.images && !counts.audios && !counts.files) return;
-
       let msgContent: MessageContent;
-      try {
-        msgContent = await buildMessageContent(text);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Failed to prepare attachments';
-        setError(msg);
-        setStatus('idle');
-        setPending((prev) => ({ ...prev, error: msg, streaming: false, abort: null }));
-        return;
+
+      if (overriddenMessageContent !== undefined) {
+        msgContent = overriddenMessageContent;
+      } else {
+        const text = content || currentInput || '';
+        const counts = attachmentCounts || { images: 0, audios: 0, files: 0 };
+        if (!text.trim() && !counts.images && !counts.audios && !counts.files) return;
+
+        try {
+          msgContent = await buildMessageContent(text);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Failed to prepare attachments';
+          setError(msg);
+          setStatus('idle');
+          setPending((prev) => ({ ...prev, error: msg, streaming: false, abort: null }));
+          return;
+        }
       }
 
       setStatus('streaming');
@@ -631,7 +638,8 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           },
           '', // currentInput – unused because content is explicit
           { images: 0, audios: 0, files: 0 },
-          compareModels
+          compareModels,
+          lastUser.content
         );
     },
     [setMessages, sendMessage]
