@@ -218,29 +218,28 @@ export class GeminiAdapter extends BaseAdapter {
     if (top_p !== undefined) geminiRequest.generationConfig.topP = top_p;
     if (top_k !== undefined) geminiRequest.generationConfig.topK = top_k;
     if (stop) geminiRequest.generationConfig.stopSequences = Array.isArray(stop) ? stop : [stop];
-    
-    // Reasoning controls
-    if (internalRequest.reasoning_effort && internalRequest.reasoning_effort !== 'unset') {
-      const lowerModel = model.toLowerCase();
-      const isGemini3 = lowerModel.includes('gemini-3');
-      const isGemini25 = lowerModel.includes('gemini-2.5');
 
-      if (isGemini3 || isGemini25) {
-        geminiRequest.generationConfig.thinkingConfig = {
-          includeThoughts: true,
-        };
-        
-        if (isGemini3) {
-          // Gemini 3 uses thinkingLevel
-          geminiRequest.generationConfig.thinkingConfig.thinkingLevel = internalRequest.reasoning_effort;
-        } else if (isGemini25) {
-          // Gemini 2.5 uses thinkingBudget (mapping our levels to budgets or -1 for dynamic)
-          // Based on doc, -1 is dynamic. We use -1 for everything other than 'minimal' for 2.5
-          if (internalRequest.reasoning_effort === 'minimal') {
-            geminiRequest.generationConfig.thinkingConfig.thinkingBudget = 0;
-          } else {
-            geminiRequest.generationConfig.thinkingConfig.thinkingBudget = -1;
-          }
+    // Reasoning controls - Always set includeThoughts=true even when reasoning_effort is 'unset'
+    // Apply based on model type but don't guard (allow upstream to return error if unsupported)
+    const lowerModel = model.toLowerCase();
+    const isGemini3 = lowerModel.includes('gemini-3');
+    const isGemma4 = lowerModel.includes('gemma-4');
+
+    geminiRequest.generationConfig.thinkingConfig = {
+      includeThoughts: true,
+    };
+
+    if (internalRequest.reasoning_effort && internalRequest.reasoning_effort !== 'unset') {
+      if (isGemini3 || isGemma4) {
+        // Gemini 3 uses thinkingLevel
+        geminiRequest.generationConfig.thinkingConfig.thinkingLevel = internalRequest.reasoning_effort;
+      } else {
+        // Gemini 2.x and others use thinkingBudget (mapping our levels to budgets or -1 for dynamic)
+        // Based on doc, -1 is dynamic. We use -1 for everything other than 'minimal'.
+        if (internalRequest.reasoning_effort === 'minimal') {
+          geminiRequest.generationConfig.thinkingConfig.thinkingBudget = 0;
+        } else {
+          geminiRequest.generationConfig.thinkingConfig.thinkingBudget = -1;
         }
       }
     }

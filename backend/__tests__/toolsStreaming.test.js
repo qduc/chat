@@ -99,7 +99,6 @@ describe('toolsStreaming', () => {
       getToolsetSpec: jest.fn(() => [
         { type: 'function', function: { name: 'provider_tool', description: 'Provider tool' } },
       ]),
-      supportsReasoningControls: jest.fn(() => false),
     });
 
     // Mock response object
@@ -2811,7 +2810,6 @@ describe('toolsStreaming', () => {
           getToolsetSpec: jest.fn(() => [
             { type: 'function', function: { name: 'provider_tool', description: 'Provider tool' } },
           ]),
-          supportsReasoningControls: jest.fn(() => false),
         };
 
         createProvider.mockResolvedValue(mockProvider);
@@ -2884,7 +2882,6 @@ describe('toolsStreaming', () => {
 
         const mockProvider = {
           getToolsetSpec: jest.fn(() => customProviderTools),
-          supportsReasoningControls: jest.fn(() => true),
         };
 
         createProvider.mockResolvedValue(mockProvider);
@@ -2944,17 +2941,16 @@ describe('toolsStreaming', () => {
         expect(mockProvider.getToolsetSpec).toHaveBeenCalled();
       });
 
-      test('detects reasoning controls support', async () => {
+      test('passes reasoning controls in the request', async () => {
         const body = {
           messages: [{ role: 'user', content: 'Hello' }],
           stream: true,
-          reasoning: true, // Request reasoning controls
+          reasoning_effort: 'high',
         };
         const bodyIn = { provider_id: 'reasoning-provider' };
 
         const mockProvider = {
           getToolsetSpec: jest.fn(() => []),
-          supportsReasoningControls: jest.fn(() => true),
         };
 
         createProvider.mockResolvedValue(mockProvider);
@@ -2998,8 +2994,14 @@ describe('toolsStreaming', () => {
           persistence: mockPersistence,
         });
 
-        // Should check reasoning controls support
-        expect(mockProvider.supportsReasoningControls).toHaveBeenCalled();
+        // Should pass reasoning controls to request
+        expect(createOpenAIRequest).toHaveBeenCalledWith(
+          mockConfig,
+          expect.objectContaining({
+            reasoning_effort: 'high',
+          }),
+          expect.objectContaining({ providerId: 'reasoning-provider' })
+        );
 
         // Should pass reasoning controls to request if supported
         // Note: The actual implementation may handle reasoning differently
@@ -3026,7 +3028,6 @@ describe('toolsStreaming', () => {
           getToolsetSpec: jest.fn(() => [
             { type: 'function', function: { name: 'provider_tool', description: 'Provider tool' } },
           ]),
-          supportsReasoningControls: jest.fn(() => false),
         };
 
         createProvider.mockResolvedValue(mockProvider);

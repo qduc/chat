@@ -285,12 +285,6 @@ export class GeminiProvider extends BaseProvider {
     return true;
   }
 
-  supportsReasoningControls(model) {
-    if (!model) return false;
-    const lowerModel = model.toLowerCase();
-    // Gemini 3.1, 3.0, 3-flash, 2.5-pro, etc.
-    return lowerModel.includes('gemini-3') || lowerModel.includes('gemini-2.5');
-  }
 
   supportsPromptCaching() {
     // Gemini supports context caching but it's a different API (cache manager)

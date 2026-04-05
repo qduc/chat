@@ -21,7 +21,6 @@ function createHeaderShim(entries = {}) {
 function createAdapter(overrides = {}) {
   return new ResponsesAPIAdapter({
     getDefaultModel: () => 'gpt-default',
-    supportsReasoningControls: () => false,
     ...overrides,
   });
 }

@@ -142,10 +142,6 @@ export class BaseProvider {
     return false;
   }
 
-  supportsReasoningControls(_model) {
-    // TODO: report whether reasoning controls are available for the model.
-    return false;
-  }
 
   /**
    * Returns the reasoning format this provider expects.

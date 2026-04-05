@@ -74,7 +74,6 @@ describe('toolsJson', () => {
       getToolsetSpec: jest.fn(() => [
         { type: 'function', function: { name: 'provider_tool', description: 'Provider tool' } }
       ]),
-      supportsReasoningControls: jest.fn(() => false)
     });
 
     // Mock response object
@@ -716,7 +715,6 @@ describe('toolsJson', () => {
         getToolsetSpec: jest.fn(() => [
           { type: 'function', function: { name: 'custom_tool' } }
         ]),
-        supportsReasoningControls: jest.fn(() => true)
       };
 
       createProvider.mockResolvedValue(mockProvider);
@@ -761,7 +759,6 @@ describe('toolsJson', () => {
 
       const mockProvider = {
         getToolsetSpec: jest.fn(() => fallbackToolset),
-        supportsReasoningControls: jest.fn(() => false)
       };
 
       createProvider.mockResolvedValue(mockProvider);
@@ -801,7 +798,7 @@ describe('toolsJson', () => {
       );
     });
 
-    test('includes reasoning controls when provider supports them', async () => {
+    test('includes reasoning controls in the request', async () => {
       const body = {
         messages: [{ role: 'user', content: 'Hello' }],
         stream: false,
@@ -812,7 +809,6 @@ describe('toolsJson', () => {
 
       const mockProvider = {
         getToolsetSpec: jest.fn(() => []),
-        supportsReasoningControls: jest.fn(() => true)
       };
 
       createProvider.mockResolvedValue(mockProvider);

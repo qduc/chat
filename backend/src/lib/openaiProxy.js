@@ -132,45 +132,34 @@ function resolveCustomRequestParams({ userId, customRequestParamsIds }) {
   return Object.keys(mergedParams).length > 0 ? mergedParams : null;
 }
 
-function validateAndNormalizeReasoningControls(body, { reasoningAllowed }) {
-  // Only allow reasoning controls if provider+model supports it
-  const isAllowed = !!reasoningAllowed;
-
+function validateAndNormalizeReasoningControls(body) {
   // Validate and handle reasoning_effort
   if (body.reasoning_effort) {
-    if (!isAllowed) {
-      delete body.reasoning_effort;
-    } else {
-      const allowedEfforts = ['minimal', 'low', 'medium', 'high'];
-      if (!allowedEfforts.includes(body.reasoning_effort)) {
-        return {
-          ok: false,
-          status: 400,
-          payload: {
-            error: 'invalid_request_error',
-            message: `Invalid reasoning_effort. Must be one of ${allowedEfforts.join(', ')}`,
-          },
-        };
-      }
+    const allowedEfforts = ['minimal', 'low', 'medium', 'high'];
+    if (!allowedEfforts.includes(body.reasoning_effort)) {
+      return {
+        ok: false,
+        status: 400,
+        payload: {
+          error: 'invalid_request_error',
+          message: `Invalid reasoning_effort. Must be one of ${allowedEfforts.join(', ')}`,
+        },
+      };
     }
   }
 
   // Validate and handle verbosity
   if (body.verbosity) {
-    if (!isAllowed) {
-      delete body.verbosity;
-    } else {
-      const allowedVerbosity = ['low', 'medium', 'high'];
-      if (!allowedVerbosity.includes(body.verbosity)) {
-        return {
-          ok: false,
-          status: 400,
-          payload: {
-            error: 'invalid_request_error',
-            message: `Invalid verbosity. Must be one of ${allowedVerbosity.join(', ')}`,
-          },
-        };
-      }
+    const allowedVerbosity = ['low', 'medium', 'high'];
+    if (!allowedVerbosity.includes(body.verbosity)) {
+      return {
+        ok: false,
+        status: 400,
+        payload: {
+          error: 'invalid_request_error',
+          message: `Invalid verbosity. Must be one of ${allowedVerbosity.join(', ')}`,
+        },
+      };
     }
   }
 
@@ -266,9 +255,7 @@ async function validateRequestContext(context, req) {
   const { body, provider } = context;
 
   // Validate reasoning controls early and return guard failures
-  const validation = validateAndNormalizeReasoningControls(body, {
-    reasoningAllowed: provider.supportsReasoningControls(body.model),
-  });
+  const validation = validateAndNormalizeReasoningControls(body);
 
   if (!validation.ok) {
     logger.error({

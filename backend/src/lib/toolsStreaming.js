@@ -119,11 +119,9 @@ export async function handleToolsStreaming({
         // Include previous_response_id if available (already validated in buildConversationMessagesOptimized)
         ...(currentPreviousResponseId && { previous_response_id: currentPreviousResponseId }),
       };
-      // Include reasoning controls only if supported by provider
-      if (providerInstance.supportsReasoningControls(requestBody.model)) {
-        if (body.reasoning_effort) requestBody.reasoning_effort = body.reasoning_effort;
-        if (body.verbosity) requestBody.verbosity = body.verbosity;
-      }
+      // Include reasoning controls
+      if (body.reasoning_effort) requestBody.reasoning_effort = body.reasoning_effort;
+      if (body.verbosity) requestBody.verbosity = body.verbosity;
 
       // Apply prompt caching - must be done AFTER messages are finalized
       // This ensures the last user/tool message gets the cache breakpoint

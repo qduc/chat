@@ -420,10 +420,6 @@ describe('AnthropicProvider', () => {
       expect(provider.supportsPromptCaching()).toBe(true);
     });
 
-    test('supportsReasoningControls returns false', () => {
-      expect(provider.supportsReasoningControls()).toBe(false);
-    });
-
     test('getDefaultModel returns fallback when not configured', () => {
       const emptyProvider = new AnthropicProvider({ config: {}, providerId: 'test' });
       expect(emptyProvider.getDefaultModel()).toBe('claude-3-5-sonnet-20241022');

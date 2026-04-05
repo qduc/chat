@@ -321,14 +321,6 @@ describe('BaseProvider', () => {
     });
   });
 
-  describe('supportsReasoningControls', () => {
-    test('should return false by default', () => {
-      const provider = new TestProvider({});
-
-      expect(provider.supportsReasoningControls('gpt-4')).toBe(false);
-    });
-  });
-
   describe('getReasoningFormat', () => {
     test('should return none by default', () => {
       const provider = new TestProvider({});

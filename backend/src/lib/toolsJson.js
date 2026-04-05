@@ -340,11 +340,9 @@ async function callLLM({ messages, config, bodyParams, providerId, providerHttp,
     // Include previous_response_id if available (already validated in buildConversationMessagesOptimized)
     ...(previousResponseId && { previous_response_id: previousResponseId }),
   };
-  // Include reasoning controls only when the provider supports them
-  if (provider?.supportsReasoningControls(requestBody.model)) {
-    if (bodyParams.reasoning_effort) requestBody.reasoning_effort = bodyParams.reasoning_effort;
-    if (bodyParams.verbosity) requestBody.verbosity = bodyParams.verbosity;
-  }
+  // Include reasoning controls
+  if (bodyParams.reasoning_effort) requestBody.reasoning_effort = bodyParams.reasoning_effort;
+  if (bodyParams.verbosity) requestBody.verbosity = bodyParams.verbosity;
 
   // Apply prompt caching
   requestBody = await addPromptCaching(requestBody, {

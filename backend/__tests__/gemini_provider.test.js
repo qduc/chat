@@ -45,10 +45,6 @@ describe('GeminiProvider', () => {
       expect(provider.supportsTools()).toBe(true);
     });
 
-    test('supportsReasoningControls returns false', () => {
-      expect(provider.supportsReasoningControls()).toBe(false);
-    });
-
     test('supportsPromptCaching returns false', () => {
       expect(provider.supportsPromptCaching()).toBe(false);
     });

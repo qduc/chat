@@ -17,7 +17,6 @@ import type { PendingState } from '@/hooks/useChat';
 import {
   images as imageUtils,
   files as filesApi,
-  supportsReasoningControls,
   type ImageAttachment,
   type ImageUploadProgress,
   type FileAttachment,
@@ -152,10 +151,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   };
 
   // ===== COMPUTED VALUES =====
-  // Check if model supports thinking/reasoning
-  const supportsThinking = useMemo(() => {
-    return supportsReasoningControls(model, modelCapabilities);
-  }, [model, modelCapabilities]);
 
   const selectedCustomParamsLabels = useMemo(() => {
     if (localCustomParamsIds.length === 0) return [];
@@ -712,7 +707,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                       icon={<Gauge className="w-4 h-4" />}
                       ariaLabel="Reasoning Effort"
                       className="flex-shrink-0"
-                      model={model.split('::').pop() || model}
                       disabled={controlsDisabled}
                     />
                   </Tooltip>
@@ -742,10 +736,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   </Tooltip>
                 </div>
 
-                {/* Visual separator */}
-                {(supportsThinking || true) && (
-                  <div className="hidden md:block w-px h-5 bg-zinc-200 dark:bg-zinc-800" />
-                )}
+                <div className="hidden md:block w-px h-5 bg-zinc-200 dark:bg-zinc-800" />
 
                 {/* Tools Group */}
                 <div className="flex items-center gap-2 sm:gap-3">
