@@ -254,12 +254,6 @@ export class AnthropicProvider extends BaseProvider {
     return true;
   }
 
-  supportsReasoningControls(_model) {
-    // Anthropic models like Claude 3.5 Sonnet support extended thinking
-    // but it uses a different mechanism than OpenAI's reasoning controls
-    // For now, return false to avoid confusion
-    return false;
-  }
 
   supportsPromptCaching() {
     // Anthropic supports prompt caching natively via cache_control in messages

@@ -134,10 +134,6 @@ export async function providerIsConfigured(config, options = {}) {
   return provider.isConfigured();
 }
 
-export async function providerSupportsReasoning(config, model, options = {}) {
-  const provider = await createProvider(config, options);
-  return provider.supportsReasoningControls(model);
-}
 
 export async function getDefaultModel(config, options = {}) {
   const provider = await createProvider(config, options);

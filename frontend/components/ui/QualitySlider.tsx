@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 
 export type ReasoningEffortLevel = 'unset' | 'minimal' | 'low' | 'medium' | 'high';
 /** @deprecated Use ReasoningEffortLevel instead */
@@ -11,7 +11,6 @@ interface QualitySliderProps {
   disabled?: boolean;
   icon?: React.ReactNode;
   className?: string;
-  model?: string;
 }
 
 export function QualitySlider({
@@ -21,18 +20,7 @@ export function QualitySlider({
   disabled,
   icon,
   className = '',
-  model = '',
 }: QualitySliderProps) {
-  // Check if model supports 'minimal' (gpt-5* or openai/gpt-5*)
-  const supportsMinimal =
-    (model.startsWith('gpt-5') || model.startsWith('openai/gpt-5')) && !model.includes('gpt-5.1');
-
-  useEffect(() => {
-    if (value === 'minimal' && !supportsMinimal) {
-      onChange('unset');
-    }
-  }, [value, model, supportsMinimal, onChange]);
-
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     onChange(e.target.value as ReasoningEffortLevel);
   };
@@ -55,7 +43,7 @@ export function QualitySlider({
                    disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <option value="unset">Unset</option>
-        {supportsMinimal && <option value="minimal">Minimal</option>}
+        <option value="minimal">Minimal</option>
         <option value="low">Low</option>
         <option value="medium">Medium</option>
         <option value="high">High</option>

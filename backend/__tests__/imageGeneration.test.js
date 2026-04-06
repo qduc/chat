@@ -9,7 +9,6 @@ describe('Image Generation Request Parameters', () => {
     function createAdapter(overrides = {}) {
       return new ChatCompletionsAdapter({
         getDefaultModel: () => 'test-model',
-        supportsReasoningControls: () => false,
         ...overrides,
       });
     }

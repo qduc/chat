@@ -219,6 +219,31 @@ export class GeminiAdapter extends BaseAdapter {
     if (top_k !== undefined) geminiRequest.generationConfig.topK = top_k;
     if (stop) geminiRequest.generationConfig.stopSequences = Array.isArray(stop) ? stop : [stop];
 
+    // Reasoning controls - Always set includeThoughts=true even when reasoning_effort is 'unset'
+    // Apply based on model type but don't guard (allow upstream to return error if unsupported)
+    const lowerModel = model.toLowerCase();
+    const isGemini3 = lowerModel.includes('gemini-3');
+    const isGemma4 = lowerModel.includes('gemma-4');
+
+    geminiRequest.generationConfig.thinkingConfig = {
+      includeThoughts: true,
+    };
+
+    if (internalRequest.reasoning_effort && internalRequest.reasoning_effort !== 'unset') {
+      if (isGemini3 || isGemma4) {
+        // Gemini 3 uses thinkingLevel
+        geminiRequest.generationConfig.thinkingConfig.thinkingLevel = internalRequest.reasoning_effort;
+      } else {
+        // Gemini 2.x and others use thinkingBudget (mapping our levels to budgets or -1 for dynamic)
+        // Based on doc, -1 is dynamic. We use -1 for everything other than 'minimal'.
+        if (internalRequest.reasoning_effort === 'minimal') {
+          geminiRequest.generationConfig.thinkingConfig.thinkingBudget = 0;
+        } else {
+          geminiRequest.generationConfig.thinkingConfig.thinkingBudget = -1;
+        }
+      }
+    }
+
     // Handle JSON response format
     if (internalRequest.response_format?.type === 'json_object' || internalRequest.response_format?.type === 'json_schema') {
       geminiRequest.generationConfig.responseMimeType = 'application/json';
@@ -265,9 +290,14 @@ export class GeminiAdapter extends BaseAdapter {
     };
 
     const parts = candidate.content?.parts || [];
-    const textParts = parts.filter(p => 'text' in p).map(p => p.text).join('');
+    const textParts = parts.filter(p => 'text' in p && !p.thought).map(p => p.text).join('');
     if (textParts) {
       message.content = textParts;
+    }
+
+    const thoughtParts = parts.filter(p => 'text' in p && p.thought).map(p => p.text).join('');
+    if (thoughtParts) {
+      message.reasoning_details = [{ type: 'text', text: thoughtParts }];
     }
 
     const functionCalls = parts.filter(p => 'functionCall' in p);
@@ -322,10 +352,25 @@ export class GeminiAdapter extends BaseAdapter {
     const delta = { role: 'assistant' };
     const parts = candidate.content?.parts || [];
 
-    // Text delta
-    const textParts = parts.filter(p => 'text' in p).map(p => p.text).join('');
-    if (textParts) {
-      delta.content = textParts;
+    // Text & Thought delta
+    const textParts = [];
+    const thoughtParts = [];
+
+    for (const p of parts) {
+      if ('text' in p) {
+        if (p.thought) {
+          thoughtParts.push(p.text);
+        } else {
+          textParts.push(p.text);
+        }
+      }
+    }
+
+    if (textParts.length > 0) {
+      delta.content = textParts.join('');
+    }
+    if (thoughtParts.length > 0) {
+      delta.reasoning = thoughtParts.join('');
     }
 
     // Tool call delta (Gemini usually sends full tool call in one go, but we map it to delta)

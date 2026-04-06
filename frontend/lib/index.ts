@@ -79,9 +79,6 @@ export {
 // Chat utilities
 export * from './chatUtils';
 
-// Model capabilities
-export { supportsReasoningControls } from './modelCapabilities';
-
 // Electron utilities
 export { isElectron, getElectronAPI } from './electron';
 

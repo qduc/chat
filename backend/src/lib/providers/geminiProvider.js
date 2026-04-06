@@ -285,9 +285,6 @@ export class GeminiProvider extends BaseProvider {
     return true;
   }
 
-  supportsReasoningControls(_model) {
-    return false;
-  }
 
   supportsPromptCaching() {
     // Gemini supports context caching but it's a different API (cache manager)
