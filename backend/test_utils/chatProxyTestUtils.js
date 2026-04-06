@@ -18,6 +18,7 @@ export class MockUpstream {
     this.lastChatRequestHeaders = null;
     this.lastResponsesRequestBody = null;
     this.streamDelayMs = 0;
+    this.chatErrorResponder = null;
     this.setupRoutes();
   }
 
@@ -28,6 +29,9 @@ export class MockUpstream {
     this.app.post('/v1/chat/completions', (req, res) => {
       this.lastChatRequestBody = req.body;
       this.lastChatRequestHeaders = req.headers;
+      if (typeof this.chatErrorResponder === 'function') {
+        return this.chatErrorResponder(req, res);
+      }
       if (this.shouldError) {
         return res.status(500).json({ error: 'upstream_error' });
       }
@@ -131,6 +135,10 @@ export class MockUpstream {
     this.shouldError = shouldError;
   }
 
+  setChatErrorResponder(responder) {
+    this.chatErrorResponder = typeof responder === 'function' ? responder : null;
+  }
+
   setStreamDelayMs(ms) {
     const numeric = Number(ms);
     this.streamDelayMs = Number.isFinite(numeric) && numeric > 0 ? numeric : 0;
@@ -219,6 +227,7 @@ export function createChatProxyTestContext() {
 
   beforeEach(() => {
     upstream.setError(false);
+    upstream.setChatErrorResponder(null);
     upstream.setStreamDelayMs(0);
     upstream.lastChatRequestBody = null;
     upstream.lastChatRequestHeaders = null;

@@ -228,6 +228,30 @@ describe('openaiProxy.js - Unit Tests', () => {
       assert.ok(res.body.message);
     });
 
+    test('preserves provider message from SSE-formatted upstream errors', async () => {
+      const app = makeApp({ mockUser });
+      upstream.setChatErrorResponder((_req, res) => {
+        res.status(400);
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.end(
+          'data: {"error":{"code":400,"message":"Thinking level is not supported for this model.","status":"INVALID_ARGUMENT"}}\n\n'
+        );
+      });
+
+      const res = await request(app)
+        .post('/v1/chat/completions')
+        .send({
+          messages: [{ role: 'user', content: 'Test' }],
+          stream: false,
+        });
+
+      assert.equal(res.status, 502);
+      assert.equal(res.body.error, 'upstream_error');
+      assert.equal(res.body.message, 'Thinking level is not supported for this model.');
+      assert.equal(res.body.upstream?.status, 400);
+      assert.equal(res.body.upstream?.message, 'Thinking level is not supported for this model.');
+    });
+
     test('handles upstream errors during streaming', async () => {
       const app = makeApp({ mockUser });
       upstream.setError(true);

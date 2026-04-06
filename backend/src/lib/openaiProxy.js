@@ -12,6 +12,7 @@ import { logger } from '../logger.js';
 import { addPromptCaching } from './promptCaching.js';
 import { registerStreamAbort, unregisterStreamAbort } from './streamAbortRegistry.js';
 import { isAbortError } from './abortUtils.js';
+import { extractUpstreamMessage, readUpstreamErrorBody } from './upstreamErrors.js';
 import { getUserSetting } from '../db/userSettings.js';
 import { normalizeCustomRequestParamsIds } from './customRequestParams.js';
 
@@ -180,19 +181,6 @@ function getFlags({ body, provider }) {
 }
 
 
-async function readUpstreamError(upstream) {
-  try {
-    return await upstream.json();
-  } catch {
-    try {
-      const text = await upstream.text();
-      return { error: 'upstream_error', message: text };
-    } catch {
-      return { error: 'upstream_error', message: 'Unknown error' };
-    }
-  }
-}
-
 // --- Request Context Building ---
 
 async function buildRequestContext(req) {
@@ -287,51 +275,8 @@ function handleValidationError(res, validation) {
   return res.status(validation.status).json(validation.payload);
 }
 
-/**
- * Extract a human-readable error message from various upstream response formats.
- * Handles OpenAI, Anthropic, Gemini, and other provider error structures.
- */
-function extractUpstreamMessage(body) {
-  if (typeof body === 'string') {
-    return body;
-  }
-  if (!body || typeof body !== 'object') {
-    return undefined;
-  }
-
-  // Direct message field (OpenAI style)
-  if (typeof body.message === 'string') {
-    return body.message;
-  }
-
-  // Direct error string
-  if (typeof body.error === 'string') {
-    return body.error;
-  }
-
-  // Nested error object with message (Anthropic/OpenAI style)
-  if (body.error && typeof body.error === 'object' && typeof body.error.message === 'string') {
-    return body.error.message;
-  }
-
-  // Array of errors (Gemini style: [{error: {message: "..."}}])
-  if (Array.isArray(body) && body.length > 0) {
-    const first = body[0];
-    if (first && typeof first === 'object') {
-      if (typeof first.message === 'string') {
-        return first.message;
-      }
-      if (first.error && typeof first.error === 'object' && typeof first.error.message === 'string') {
-        return first.error.message;
-      }
-    }
-  }
-
-  return undefined;
-}
-
-async function handleUpstreamError(upstream, persistence) {
-  const upstreamBody = await readUpstreamError(upstream);
+async function handleUpstreamError(upstream, persistence, cachedUpstreamBody) {
+  const upstreamBody = cachedUpstreamBody ?? await readUpstreamErrorBody(upstream);
   if (persistence.persist) persistence.markError();
 
   const upstreamMessage = extractUpstreamMessage(upstreamBody);
@@ -445,6 +390,7 @@ async function handleRequest(context, req, res) {
   });
 
   let upstream;
+  let upstreamErrorBody;
   try {
     upstream = await createOpenAIRequest(config, requestBody, { providerId, signal: abortContext?.signal });
   } catch (error) {
@@ -463,16 +409,16 @@ async function handleRequest(context, req, res) {
 
   // If request with previous_response_id failed due to invalid ID format, retry with full history
   if (!upstream.ok && requestBody.previous_response_id) {
-    const upstreamBody = await readUpstreamError(upstream);
+    upstreamErrorBody = await readUpstreamErrorBody(upstream);
     const isInvalidResponseIdError = upstream.status === 400
-      && upstreamBody?.error?.param === 'previous_response_id'
-      && upstreamBody?.error?.code === 'invalid_value';
+      && upstreamErrorBody?.error?.param === 'previous_response_id'
+      && upstreamErrorBody?.error?.code === 'invalid_value';
 
     if (isInvalidResponseIdError) {
       logger.warn({
         msg: 'invalid_previous_response_id',
         previous_response_id: requestBody.previous_response_id,
-        error: upstreamBody?.error?.message,
+        error: upstreamErrorBody?.error?.message,
         retrying: 'with full history'
       });
 
@@ -502,6 +448,7 @@ async function handleRequest(context, req, res) {
 
       try {
         upstream = await createOpenAIRequest(config, retryBodyWithCaching, { providerId, signal: abortContext?.signal });
+        upstreamErrorBody = undefined;
       } catch (error) {
         if (abortContext?.requestId) {
           unregisterStreamAbort(abortContext.requestId);
@@ -512,7 +459,7 @@ async function handleRequest(context, req, res) {
   }
 
   if (!upstream.ok) {
-    const { status, payload } = await handleUpstreamError(upstream, persistence);
+    const { status, payload } = await handleUpstreamError(upstream, persistence, upstreamErrorBody);
     return res.status(status).json(payload);
   }
 

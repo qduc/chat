@@ -80,7 +80,7 @@ export async function createOpenAIRequest(config, requestBody, options = {}) {
   let response = upstream;
   let translatedForStreaming = false;
 
-  if (needsTranslation && wantsStream) {
+  if (needsTranslation && wantsStream && upstream?.ok !== false) {
     try {
       const translated = await provider.translateResponse(upstream, context);
       if (translated) {

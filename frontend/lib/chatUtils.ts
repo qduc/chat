@@ -7,6 +7,24 @@ import type {
 } from './types';
 import { APIError } from './streaming';
 
+function extractNestedErrorMessage(value: unknown): string {
+  if (!value || typeof value !== 'object') return '';
+
+  const record = value as Record<string, unknown>;
+  if (typeof record.message === 'string' && record.message.trim()) {
+    return record.message.trim();
+  }
+
+  if (record.error && typeof record.error === 'object' && record.error !== null) {
+    const nested = record.error as Record<string, unknown>;
+    if (typeof nested.message === 'string' && nested.message.trim()) {
+      return nested.message.trim();
+    }
+  }
+
+  return '';
+}
+
 /**
  * Helper function to convert ConversationMeta to a simpler Conversation format
  */
@@ -309,9 +327,14 @@ export function formatUpstreamError(error: APIError): string {
     body && typeof body.upstream === 'object' && body.upstream !== null
       ? (body.upstream as Record<string, unknown>)
       : null;
+  const upstreamBody =
+    upstream && typeof upstream.body === 'object' && upstream.body !== null
+      ? (upstream.body as Record<string, unknown>)
+      : null;
 
   const upstreamMessage = typeof upstream?.message === 'string' ? upstream.message.trim() : '';
   const bodyMessage = typeof body?.message === 'string' ? body.message.trim() : '';
+  const nestedUpstreamMessage = extractNestedErrorMessage(upstreamBody);
   const statusValue =
     upstream && upstream.status !== undefined && upstream.status !== null
       ? upstream.status
@@ -324,6 +347,10 @@ export function formatUpstreamError(error: APIError): string {
 
   if (bodyMessage) {
     return `Upstream provider error${statusPart}: ${bodyMessage}`;
+  }
+
+  if (nestedUpstreamMessage) {
+    return `Upstream provider error${statusPart}: ${nestedUpstreamMessage}`;
   }
 
   return error.message;
