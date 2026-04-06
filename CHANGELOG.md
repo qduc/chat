@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.16.3] - 2026-04-06
+
+### Added
+- Reasoning effort support and thought processing for Gemini 3 and 2.5 models
+
+
 ## [0.16.2] - 2026-04-03
 
 ### Added
