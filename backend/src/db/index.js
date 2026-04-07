@@ -65,3 +65,10 @@ export {
   getEvaluationByPair,
   createEvaluation,
 } from './evaluations.js';
+
+export {
+  saveMessageRevision,
+  getMessageRevisions,
+  getRevisionCountsForConversation,
+  getMessageRevisionCount,
+} from './revisions.js';

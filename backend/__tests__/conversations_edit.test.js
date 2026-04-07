@@ -1,4 +1,4 @@
-// Behavior tests for message edit + fork conversation flow
+// Behavior tests for message edit + timeline rewrite flow
 import assert from 'node:assert/strict';
 import express from 'express';
 import { conversationsRouter } from '../src/routes/conversations.js';
@@ -85,7 +85,7 @@ afterAll(() => {
 });
 
 describe('PUT /v1/conversations/:id/messages/:messageId/edit', () => {
-  test('edits message, forks new conversation, and prunes original tail', async () => {
+  test('edits message in place and prunes the active timeline tail', async () => {
     // Seed a conversation with two messages
     const convId = 'conv-edit-1';
     createConversation({ id: convId, sessionId, userId, title: 'T', model: 'm1' });
@@ -106,10 +106,9 @@ describe('PUT /v1/conversations/:id/messages/:messageId/edit', () => {
       assert.equal(res.status, 200);
       const body = await res.json();
       assert.equal(body.message.content, 'Hello world');
-      assert.ok(body.new_conversation_id);
-      const newConvId = body.new_conversation_id;
+      assert.equal(body.new_conversation_id, convId);
 
-      // Original conversation should have pruned messages after the edited one
+      // Conversation should have pruned messages after the edited one
       const resOrig = await fetch(
         `http://127.0.0.1:${port}/v1/conversations/${convId}`,
         { headers: makeAuthHeaders() }
@@ -118,17 +117,7 @@ describe('PUT /v1/conversations/:id/messages/:messageId/edit', () => {
       const origSeqs = origBody.messages.map((m) => m.seq);
       assert.equal(origSeqs.length, 1);
       assert.equal(origSeqs[0], 1);
-
-      // New conversation should have copied messages up to the edited one
-      const resNew = await fetch(
-        `http://127.0.0.1:${port}/v1/conversations/${newConvId}`,
-        { headers: makeAuthHeaders() }
-      );
-      const newBody = await resNew.json();
-      const newSeqs = newBody.messages.map((m) => m.seq);
-      assert.equal(newSeqs.length, 1);
-      assert.equal(newSeqs[0], 1);
-      assert.equal(newBody.messages[0].content, 'Hello world');
+      assert.equal(origBody.messages[0].content, 'Hello world');
     });
   });
 
@@ -170,19 +159,16 @@ describe('PUT /v1/conversations/:id/messages/:messageId/edit', () => {
       assert.equal(body.message.content[0].text, 'Check out this image:');
       assert.equal(body.message.content[1].type, 'image_url');
       assert.equal(body.message.content[1].image_url.url, 'http://localhost:3001/v1/images/test-img-123');
-      assert.ok(body.new_conversation_id);
+      assert.equal(body.new_conversation_id, convId);
 
-      const newConvId = body.new_conversation_id;
-
-      // Verify new conversation has the updated content with preserved image
-      const resNew = await fetch(
-        `http://127.0.0.1:${port}/v1/conversations/${newConvId}`,
+      const resCurrent = await fetch(
+        `http://127.0.0.1:${port}/v1/conversations/${convId}`,
         { headers: makeAuthHeaders() }
       );
-      const newBody = await resNew.json();
-      assert.equal(newBody.messages.length, 1);
+      const currentBody = await resCurrent.json();
+      assert.equal(currentBody.messages.length, 1);
 
-      const editedMessage = newBody.messages[0];
+      const editedMessage = currentBody.messages[0];
       assert.ok(Array.isArray(editedMessage.content), 'Edited message content should be an array');
       assert.equal(editedMessage.content.length, 2);
       assert.equal(editedMessage.content[0].type, 'text');
@@ -230,10 +216,9 @@ describe('PUT /v1/conversations/:id/messages/:messageId/edit', () => {
       assert.equal(body.message.content[1].input_audio.format, 'wav');
       assert.equal(body.message.content[1].input_audio.data, 'AAAA');
 
-      const newConvId = body.new_conversation_id;
-      assert.ok(newConvId);
+      assert.equal(body.new_conversation_id, convId);
 
-      const resNew = await fetch(`http://127.0.0.1:${port}/v1/conversations/${newConvId}`, {
+      const resNew = await fetch(`http://127.0.0.1:${port}/v1/conversations/${convId}`, {
         headers: makeAuthHeaders(),
       });
       const newBody = await resNew.json();

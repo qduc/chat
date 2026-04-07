@@ -282,6 +282,16 @@ export interface ChatMessage {
   };
   reasoning_details?: any[];
   reasoning_tokens?: number | null;
+  /** Number of edit revisions for this message (user messages only) */
+  edit_revision_count?: number;
+  /** Number of regenerate revisions for this assistant message (derived from preceding user message) */
+  regenerate_revision_count?: number;
+  /** User message id that anchors assistant regenerate revisions */
+  anchor_user_message_id?: string;
+  /** Frontend-only: marks a message as historical/synthetic timeline state */
+  _historical?: boolean;
+  /** Frontend-only: branch-specific anchor content for revision-scoped assistant history */
+  _timeline_anchor_content?: MessageContent | null;
   comparisonResults?: Record<
     string,
     {
@@ -414,6 +424,8 @@ export interface ConversationMeta {
   seq?: number | null;
   user_message_id?: string | number | null;
   assistant_message_id?: string | number | null;
+  regenerate_anchor_message_id?: string | null;
+  regenerate_revision_count?: number | null;
 }
 
 export interface ConversationsList {
@@ -479,6 +491,11 @@ export interface ConversationWithMessages {
   }[];
   next_after_seq: number | null;
   evaluations?: Evaluation[];
+  /** Split revision counts: edit and regenerate counts per user message anchor ID */
+  revision_counts?: {
+    edit: Record<string, number>;
+    regenerate: Record<string, number>;
+  };
   // Linked comparison conversations (included when include_linked=messages)
   linked_conversations?: Array<{
     id: string;
@@ -489,6 +506,27 @@ export interface ConversationWithMessages {
     updated_at?: string;
     messages: ConversationWithMessages['messages'];
   }>;
+}
+
+export interface MessageRevision {
+  id: string;
+  operation_type: 'edit' | 'regenerate';
+  /** User message content snapshot for the branch this revision belongs to */
+  anchor_content: MessageContent | null;
+  /** Old follow-up messages (assistant/tool responses after the user message) */
+  follow_ups: Array<{
+    role: Role;
+    content: MessageContent | null;
+    tool_calls?: any[] | null;
+    tool_outputs?: Array<{
+      tool_call_id?: string;
+      output: any;
+      status?: string;
+    }> | null;
+    reasoning_details?: any[] | null;
+    usage?: any | null;
+  }>;
+  created_at: string;
 }
 
 export interface ToolSpec {
@@ -610,6 +648,7 @@ export interface EditMessageResult {
     content: string;
   };
   new_conversation_id: string;
+  edit_revision_count: number;
 }
 
 // ============================================================================

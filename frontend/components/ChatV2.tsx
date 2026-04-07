@@ -14,6 +14,7 @@ import { RightSidebar } from './RightSidebar';
 import SettingsModal from './SettingsModal';
 import { AuthModal, AuthMode } from './auth/AuthModal';
 import type { MessageContent } from '../lib';
+import { conversations as conversationsApi } from '../lib/api';
 
 export function ChatV2() {
   const chat = useChat();
@@ -216,20 +217,21 @@ export function ChatV2() {
   }, []);
 
   const handleRetryMessage = useCallback(
-    async (messageId: string) => {
+    async (messageId: string, timelineMessages?: typeof chat.messages) => {
       if (!canSend) return;
       if (chat.status === 'streaming') return;
-      if (chat.messages.length === 0) return;
+      const sourceMessages = timelineMessages ?? chat.messages;
+      if (sourceMessages.length === 0) return;
 
       // Find the message index
-      const idx = chat.messages.findIndex((m) => m.id === messageId);
+      const idx = sourceMessages.findIndex((m) => m.id === messageId);
       if (idx === -1) return;
 
-      const message = chat.messages[idx];
+      const message = sourceMessages[idx];
       if (message.role !== 'assistant') return;
 
       // Keep only messages up to (but not including) the message being retried
-      const base = chat.messages.slice(0, idx);
+      const base = sourceMessages.slice(0, idx);
       chat.regenerate(base);
     },
     [canSend, chat]
@@ -254,11 +256,31 @@ export function ChatV2() {
       const idx = chat.messages.findIndex((m) => m.id === messageId);
       if (idx === -1) return;
 
+      // Save revision on the backend before regenerating so the current
+      // conversation timeline can be rewritten in place.
+      let editRevisionCount: number | undefined;
+      if (chat.conversationId) {
+        try {
+          const result = await conversationsApi.editMessage(
+            chat.conversationId,
+            messageId,
+            updatedContent
+          );
+          editRevisionCount = result.edit_revision_count;
+        } catch {
+          return;
+        }
+      }
+
+      const editedMsg = chat.messages[idx];
       const baseMessages = [
         ...chat.messages.slice(0, idx),
-        { ...chat.messages[idx], content: updatedContent },
+        {
+          ...editedMsg,
+          content: updatedContent,
+          edit_revision_count: editRevisionCount ?? editedMsg.edit_revision_count,
+        },
       ];
-
       chat.setMessages(baseMessages);
       chat.cancelEdit();
 
@@ -270,12 +292,13 @@ export function ChatV2() {
   );
 
   const handleFork = useCallback(
-    (messageId: string, modelId: string) => {
-      const idx = chat.messages.findIndex((m) => m.id === messageId);
+    (messageId: string, modelId: string, timelineMessages?: typeof chat.messages) => {
+      const sourceMessages = timelineMessages ?? chat.messages;
+      const idx = sourceMessages.findIndex((m) => m.id === messageId);
       if (idx === -1) return;
 
       const forkModelId = modelId === 'primary' ? chat.model : modelId;
-      const newMessages = chat.messages.slice(0, idx + 1).map((message) => {
+      const newMessages = sourceMessages.slice(0, idx + 1).map((message) => {
         if (message.role !== 'assistant') {
           return message.comparisonResults ? { ...message, comparisonResults: undefined } : message;
         }

@@ -91,6 +91,12 @@ export function processNonStreamingData(
         ...(json._conversation.assistant_message_id !== undefined
           ? { assistant_message_id: json._conversation.assistant_message_id }
           : {}),
+        ...(json._conversation.regenerate_anchor_message_id !== undefined
+          ? { regenerate_anchor_message_id: json._conversation.regenerate_anchor_message_id }
+          : {}),
+        ...(json._conversation.regenerate_revision_count !== undefined
+          ? { regenerate_revision_count: json._conversation.regenerate_revision_count }
+          : {}),
       }
     : undefined;
 
@@ -249,6 +255,12 @@ export function processStreamChunk(
         : {}),
       ...(data._conversation.assistant_message_id !== undefined
         ? { assistant_message_id: data._conversation.assistant_message_id }
+        : {}),
+      ...(data._conversation.regenerate_anchor_message_id !== undefined
+        ? { regenerate_anchor_message_id: data._conversation.regenerate_anchor_message_id }
+        : {}),
+      ...(data._conversation.regenerate_revision_count !== undefined
+        ? { regenerate_revision_count: data._conversation.regenerate_revision_count }
         : {}),
     };
     onEvent?.({ type: 'conversation', value: conversation });

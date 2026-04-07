@@ -14,6 +14,7 @@ import type {
   GetConversationParams,
   EditMessageResult,
   MessageContent,
+  MessageRevision,
 } from '../types';
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -146,6 +147,18 @@ export const conversations = {
         `/v1/conversations/${parentId}/linked`
       );
       return response.data;
+    } catch (error) {
+      throw error instanceof HttpError ? new Error(error.message) : error;
+    }
+  },
+
+  async getMessageRevisions(conversationId: string, messageId: string): Promise<MessageRevision[]> {
+    await waitForAuthReady();
+    try {
+      const response = await httpClient.get<{ revisions: MessageRevision[] }>(
+        `/v1/conversations/${conversationId}/messages/${messageId}/revisions`
+      );
+      return response.data.revisions;
     } catch (error) {
       throw error instanceof HttpError ? new Error(error.message) : error;
     }

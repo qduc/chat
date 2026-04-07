@@ -446,7 +446,7 @@ export function useChat() {
   // regenerate wraps the pipeline's regenerate with current compareModels snapshot
   const regenerate = useCallback(
     async (msgs: Message[]) => {
-      await pipelineRegenerate(msgs, compareModels);
+      return pipelineRegenerate(msgs, compareModels);
     },
     [pipelineRegenerate, compareModels]
   );
@@ -458,26 +458,31 @@ export function useChat() {
       editingMessageId,
       editingContent
     );
-    setMessages((prev) =>
-      prev.map((m) => (m.id === editingMessageId ? { ...m, content: editingContent } : m))
-    );
-    if (result.new_conversation_id !== conversationIdRef.current) {
-      setConversationId(result.new_conversation_id);
-      setLinkedConversations({});
-      setCompareModels([]);
-      setMessages((prev) =>
-        prev.map((m) => (m.comparisonResults ? { ...m, comparisonResults: undefined } : m))
+    // Editing rewrites the current conversation timeline in place.
+    setMessages((prev) => {
+      const idx = prev.findIndex((m) => m.id === editingMessageId);
+      if (idx === -1) return prev;
+      return prev.slice(0, idx + 1).map((m, index) =>
+        index === idx
+          ? {
+              ...m,
+              content: editingContent,
+              edit_revision_count: result.edit_revision_count,
+              comparisonResults: undefined,
+            }
+          : m.comparisonResults
+            ? { ...m, comparisonResults: undefined }
+            : m
       );
-    }
+    });
+    setLinkedConversations({});
     cancelEdit();
   }, [
     editingMessageId,
     conversationIdRef,
     editingContent,
     setMessages,
-    setConversationId,
     setLinkedConversations,
-    setCompareModels,
     cancelEdit,
   ]);
 
@@ -632,6 +637,7 @@ export function useChat() {
     cancelEdit,
     updateEditContent,
     saveEdit,
+    setConversationId,
     loadProvidersAndModels: loadModels,
     forceRefreshModels: forceRefresh,
     setInlineSystemPromptOverride: (p: string | null) => {

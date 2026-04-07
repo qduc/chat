@@ -71,7 +71,15 @@ export interface ConversationHydrationDeps {
  * Convert raw API messages into hydrated `Message[]`, merging reasoning details
  * and tool outputs.
  */
-export function hydrateMessages(rawApiMessages: any[]): Message[] {
+export function hydrateMessages(
+  rawApiMessages: any[],
+  revisionCounts?: { edit?: Record<string, number>; regenerate?: Record<string, number> }
+): Message[] {
+  const editCounts = revisionCounts?.edit ?? {};
+  const regenerateCounts = revisionCounts?.regenerate ?? {};
+
+  let lastUserMsgId: string | null = null;
+
   const rawMessages: Message[] = rawApiMessages.map((msg: any) => {
     const baseContent = (msg.content ?? '') as MessageContent;
     const reasoningText =
@@ -87,8 +95,28 @@ export function hydrateMessages(rawApiMessages: any[]): Message[] {
         ? prependReasoningToContent(baseContent, reasoningText)
         : baseContent;
 
-    return {
-      id: String(msg.id),
+    const msgId = String(msg.id);
+
+    if (msg.role === 'user') {
+      lastUserMsgId = msgId;
+      return {
+        id: msgId,
+        role: msg.role,
+        content,
+        timestamp: new Date(msg.created_at).getTime(),
+        tool_calls: msg.tool_calls,
+        message_events: msg.message_events,
+        tool_outputs: msg.tool_outputs,
+        reasoning_details: msg.reasoning_details ?? undefined,
+        reasoning_tokens: msg.reasoning_tokens ?? undefined,
+        usage: msg.usage ?? undefined,
+        provider: msg.provider ?? msg.usage?.provider ?? undefined,
+        edit_revision_count: editCounts[msgId] ?? undefined,
+      };
+    }
+
+    const hydrated: Message = {
+      id: msgId,
       role: msg.role,
       content,
       timestamp: new Date(msg.created_at).getTime(),
@@ -100,6 +128,16 @@ export function hydrateMessages(rawApiMessages: any[]): Message[] {
       usage: msg.usage ?? undefined,
       provider: msg.provider ?? msg.usage?.provider ?? undefined,
     };
+
+    if (msg.role === 'assistant' && lastUserMsgId) {
+      const regenCount = regenerateCounts[lastUserMsgId];
+      if (regenCount) {
+        hydrated.regenerate_revision_count = regenCount;
+        hydrated.anchor_user_message_id = lastUserMsgId;
+      }
+    }
+
+    return hydrated;
   });
 
   return mergeToolOutputsToAssistantMessages(rawMessages);
@@ -250,7 +288,7 @@ export function useConversationHydration(deps: ConversationHydrationDeps) {
         const data = await conversationsApi.get(id, { limit: 200, include_linked: 'messages' });
 
         // --- Messages ---
-        const convertedMessages = hydrateMessages(data.messages);
+        const convertedMessages = hydrateMessages(data.messages, (data as any).revision_counts);
         setMessages(convertedMessages);
         setEvaluations(Array.isArray((data as any).evaluations) ? (data as any).evaluations : []);
         setEvaluationDrafts([]);

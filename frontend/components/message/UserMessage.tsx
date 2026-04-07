@@ -6,7 +6,9 @@
 import React from 'react';
 import { MessageContentRenderer } from '../ui/MessageContentRenderer';
 import { MessageToolbar } from './MessageToolbar';
+import { RevisionNavigation } from './RevisionNavigation';
 import { hasAudio, extractTextFromContent, type MessageContent } from '../../lib';
+import type { RevisionNavProps } from './types';
 
 interface UserMessageProps {
   messageId: string;
@@ -17,6 +19,7 @@ interface UserMessageProps {
   onFork?: (messageId: string, modelId: string) => void;
   onEditMessage?: (messageId: string, content: string) => void;
   toolbarRef?: React.RefObject<HTMLDivElement | null>;
+  editRevision?: RevisionNavProps;
 }
 
 export function UserMessage({
@@ -28,6 +31,7 @@ export function UserMessage({
   onFork,
   onEditMessage,
   toolbarRef,
+  editRevision,
 }: UserMessageProps) {
   const messageHasAudio = hasAudio(content);
   const textContent = extractTextFromContent(content);
@@ -39,6 +43,18 @@ export function UserMessage({
       >
         <MessageContentRenderer content={content} isStreaming={false} role="user" />
       </div>
+      {/* Revision navigation appears directly below the bubble */}
+      {editRevision && (
+        <div className="mt-1 flex justify-end">
+          <RevisionNavigation
+            current={editRevision.slot}
+            total={editRevision.total}
+            onPrev={editRevision.onPrev}
+            onNext={editRevision.onNext}
+            loading={editRevision.loading}
+          />
+        </div>
+      )}
       {content && (
         <MessageToolbar
           messageId={messageId}

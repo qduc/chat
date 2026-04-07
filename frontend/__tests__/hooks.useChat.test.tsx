@@ -844,7 +844,7 @@ describe('useChat hook', () => {
     expect(result.current.files).toEqual([]);
   });
 
-  test('regenerate reuses the original user message id without duplication', async () => {
+  test('regenerate sends the truncated timeline and reuses the original user message id', async () => {
     const now = new Date().toISOString();
     mockChat.sendMessage.mockResolvedValue({
       content: 'regenerated',
@@ -857,19 +857,25 @@ describe('useChat hook', () => {
       result.current.setModel('openai::gpt-4o');
     });
 
-    const baseMessages = [
+    const fullMessages = [
       { id: 'user-1', role: 'user', content: 'Original question' },
       { id: 'assistant-1', role: 'assistant', content: 'Old answer' },
     ];
 
-    await act(async () => {
-      await result.current.regenerate(baseMessages as any);
+    act(() => {
+      result.current.setMessages(fullMessages as any);
     });
 
-    expect(result.current.messages).toHaveLength(3);
+    await act(async () => {
+      await result.current.regenerate([fullMessages[0]] as any);
+    });
+
+    expect(result.current.messages).toHaveLength(2);
     const payload = mockChat.sendMessage.mock.calls[0][0];
     const userMessageIds = payload.messages.filter((msg: any) => msg.id === 'user-1');
+    const assistantMessageIds = payload.messages.filter((msg: any) => msg.id === 'assistant-1');
     expect(userMessageIds).toHaveLength(1);
+    expect(assistantMessageIds).toHaveLength(0);
   });
 
   test('judgeComparison streams draft content, stores evaluation, and deleteJudgeResponse removes it', async () => {
@@ -1032,7 +1038,8 @@ describe('useChat hook', () => {
         seq: 3,
         content: 'Edited message',
       },
-      new_conversation_id: 'conv-edit-forked',
+      new_conversation_id: 'conv-edit',
+      edit_revision_count: 2,
     });
 
     const { result } = renderUseChat();
@@ -1062,11 +1069,11 @@ describe('useChat hook', () => {
       'msg-1',
       'Updated text'
     );
-    expect(result.current.conversationId).toBe('conv-edit-forked');
-    expect(result.current.compareModels).toEqual([]);
+    expect(result.current.conversationId).toBe('conv-edit');
+    expect(result.current.compareModels).toEqual(['openai::gpt-4o-mini']);
     expect(result.current.linkedConversations).toEqual({});
     expect(result.current.messages[0].content).toBe('Updated text');
-    expect(result.current.messages[1].comparisonResults).toBeUndefined();
+    expect(result.current.messages).toHaveLength(1);
     expect(result.current.editingMessageId).toBeNull();
     expect(result.current.editingContent).toBe('');
   });

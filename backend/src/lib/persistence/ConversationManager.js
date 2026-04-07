@@ -32,6 +32,7 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { computeMessageDiff, diffAssistantArtifacts, messagesEqual } from '../utils/messageDiff.js';
 import { getDb } from '../../db/client.js';
+import { getMessageRevisionCount, saveMessageRevision } from '../../db/revisions.js';
 
 /**
  * Handles core conversation persistence operations
@@ -212,6 +213,7 @@ export class ConversationManager {
     const insertedMessages = [];
     const updatedMessages = [];
     const deletedMessages = [];
+    let regenerateRevision = null;
 
     const transaction = db.transaction(() => {
       for (const msg of diff.toUpdate) {
@@ -252,6 +254,51 @@ export class ConversationManager {
 
       if (diff.toDelete.length > 0) {
         const firstDeleteSeq = diff.toDelete[0].seq;
+
+        // Save revision if we're deleting non-user messages (i.e. a regeneration).
+        // Only save when ALL messages to delete are assistant/tool roles, so we don't
+        // accidentally create revisions from unrelated sync operations.
+        const allNonUser = diff.toDelete.every(m => m.role !== 'user');
+        if (allNonUser) {
+          // Find the user message just before the first deleted message
+          const allExisting = getAllMessagesForSync({ conversationId });
+          const anchorMsg = allExisting
+            .filter(m => m.seq < firstDeleteSeq && m.role === 'user')
+            .slice(-1)[0];
+
+          if (anchorMsg) {
+            const anchorMessageId = String(anchorMsg.id);
+            const followUps = diff.toDelete.map(m => ({
+              role: m.role,
+              content: m.content,
+              tool_calls: m.tool_calls || null,
+              tool_outputs: m.tool_outputs || null,
+              reasoning_details: m.reasoning_details || null,
+              usage: m.usage || null,
+            }));
+
+            saveMessageRevision({
+              conversationId,
+              userId,
+              anchorMessageId,
+              operationType: 'regenerate',
+              anchorContentSnapshot: anchorMsg.content,
+              followUpsSnapshot: followUps,
+            });
+
+            regenerateRevision = {
+              anchorMessageId,
+              count: getMessageRevisionCount({
+                conversationId,
+                anchorMessageId,
+                userId,
+                operationType: 'regenerate',
+                anchorContentSnapshot: anchorMsg.content,
+              }),
+            };
+          }
+        }
+
         deleteMessagesAfterSeq({
           conversationId,
           userId,
@@ -350,7 +397,15 @@ export class ConversationManager {
 
     transaction();
 
-    return { idMappings, insertedMessages, updatedMessages, deletedMessages, anchorSeq };
+    return {
+      idMappings,
+      insertedMessages,
+      updatedMessages,
+      deletedMessages,
+      anchorSeq,
+      conversationId,
+      regenerateRevision,
+    };
   }
 
   /**

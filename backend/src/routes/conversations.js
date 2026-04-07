@@ -12,15 +12,22 @@ import {
   searchConversations,
   softDeleteConversation,
   listConversationsIncludingDeleted,
-  forkConversationFromMessage,
   getLinkedConversations,
 } from '../db/conversations.js';
 import {
   getMessagesPage,
   updateMessageContent,
   deleteMessagesAfterSeq,
+  getMessageContentByClientId,
+  getAllMessagesForSync,
 } from '../db/messages.js';
 import { listEvaluationsForConversation } from '../db/evaluations.js';
+import {
+  saveMessageRevision,
+  getMessageRevisions,
+  getRevisionCountsForConversation,
+  getMessageRevisionCount,
+} from '../db/revisions.js';
 import {
   migrateSessionConversationsToUser,
   countMigratableConversations
@@ -218,6 +225,7 @@ conversationsRouter.get('/v1/conversations/:id', (req, res) => {
       custom_request_params_id: customRequestParamsId,
       messages: page.messages,
       evaluations: listEvaluationsForConversation({ conversationId: req.params.id, userId }),
+      revision_counts: getRevisionCountsForConversation({ conversationId: req.params.id, userId }),
       next_after_seq: page.next_after_seq,
     };
 
@@ -326,9 +334,33 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
 
     getDb();
 
-    // Update the message content (supports both string and mixed content array)
+    // Look up the message using client_message_id or integer id (handles UUID from frontend)
+    const existingMessage = getMessageContentByClientId({
+      conversationId: req.params.id,
+      clientMessageId: req.params.messageId,
+      userId,
+    });
+
+    if (!existingMessage) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+
+    // Capture follow-up messages (those after the edited message) for the revision snapshot
+    const allMessages = getAllMessagesForSync({ conversationId: req.params.id });
+    const followUps = allMessages
+      .filter(m => m.seq > existingMessage.seq)
+      .map(m => ({
+        role: m.role,
+        content: m.content,
+        tool_calls: m.tool_calls || null,
+        tool_outputs: m.tool_outputs || null,
+        reasoning_details: m.reasoning_details || null,
+        usage: m.usage || null,
+      }));
+
+    // Update the message content (use integer id for updateMessageContent)
     const message = updateMessageContent({
-      messageId: req.params.messageId,
+      messageId: existingMessage.id,
       conversationId: req.params.id,
       userId,
       content: validatedContent,
@@ -338,21 +370,22 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
       return res.status(404).json({ error: 'not_found' });
     }
 
-    // Get conversation details for forking
-    const conversation = getConversationById({ id: req.params.id, userId });
-    if (!conversation) {
-      return res.status(404).json({ error: 'not_found' });
-    }
-
-    // Fork conversation from the edited message
-    const newConversationId = forkConversationFromMessage({
-      originalConversationId: req.params.id,
-      sessionId,
+    // Save revision in the same conversation. Editing rewrites the active
+    // timeline instead of forking a separate conversation record.
+    const anchorMessageId = existingMessage.client_message_id || String(existingMessage.id);
+    saveMessageRevision({
+      conversationId: req.params.id,
       userId,
-      messageSeq: message.seq,
-      title: conversation.title,
-      provider_id: conversation.provider_id,
-      model: conversation.model,
+      anchorMessageId,
+      operationType: 'edit',
+      anchorContentSnapshot: existingMessage.content,
+      followUpsSnapshot: followUps,
+    });
+    const editRevisionCount = getMessageRevisionCount({
+      conversationId: req.params.id,
+      anchorMessageId,
+      userId,
+      operationType: 'edit',
     });
 
     // Delete messages after the edited message in the original conversation
@@ -364,14 +397,35 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
 
     return res.json({
       message: {
-        id: message.id,
+        id: anchorMessageId,
         seq: message.seq,
         content: validatedContent,
       },
-      new_conversation_id: newConversationId,
+      new_conversation_id: req.params.id,
+      edit_revision_count: editRevisionCount,
     });
   } catch (e) {
     logger.error('[conversations] edit message error', e);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+// GET /v1/conversations/:id/messages/:messageId/revisions
+conversationsRouter.get('/v1/conversations/:id/messages/:messageId/revisions', (req, res) => {
+  if (!config.persistence.enabled) return notImplemented(res);
+  try {
+    const userId = req.user.id;
+    getDb();
+
+    const revisions = getMessageRevisions({
+      conversationId: req.params.id,
+      anchorMessageId: req.params.messageId,
+      userId,
+    });
+
+    return res.json({ revisions });
+  } catch (e) {
+    logger.error('[conversations] get revisions error', e);
     return res.status(500).json({ error: 'internal_error' });
   }
 });

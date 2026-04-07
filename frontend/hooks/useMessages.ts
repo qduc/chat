@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
+import type { SetStateAction } from 'react';
 import type { Message, MessageContent } from '../lib';
 import { conversations as conversationsApi } from '../lib';
 
@@ -17,7 +18,7 @@ import { conversations as conversationsApi } from '../lib';
  * affecting conversationId and compareMode state.
  */
 export function useMessages() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessagesState] = useState<Message[]>([]);
   const messagesRef = useRef<Message[]>([]);
 
   useEffect(() => {
@@ -51,6 +52,15 @@ export function useMessages() {
 
   const updateEditContent = useCallback((content: string) => {
     setEditingContent(content);
+  }, []);
+
+  const setMessages = useCallback((value: SetStateAction<Message[]>) => {
+    const nextMessages =
+      typeof value === 'function'
+        ? (value as (prev: Message[]) => Message[])(messagesRef.current)
+        : value;
+    messagesRef.current = nextMessages;
+    setMessagesState(nextMessages);
   }, []);
 
   // Note: saveEdit is orchestrated in useChat because it has complex side effects

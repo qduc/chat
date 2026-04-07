@@ -48,11 +48,9 @@ export function MessageToolbar({
 
   if (variant === 'user') {
     return (
-      <div
-        className="mt-1 flex items-center justify-end opacity-0 group-hover:opacity-100 transition-opacity text-xs pointer-events-none group-hover:pointer-events-auto"
-        ref={toolbarRef}
-      >
-        <div className="flex items-center gap-2">
+      <div className="mt-1 flex items-center justify-end gap-2 text-xs" ref={toolbarRef}>
+        {/* Action buttons are hover-only */}
+        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
           {hasContent && (
             <div className="relative">
               <button

@@ -308,7 +308,15 @@ export function listConversationsIncludingDeleted({
   return { items, next_cursor };
 }
 
-export function forkConversationFromMessage({ originalConversationId, sessionId, userId, messageSeq, title, provider_id, model }) {
+export function forkConversationFromMessage({
+  originalConversationId,
+  sessionId,
+  userId,
+  messageSeq,
+  title,
+  provider_id,
+  model
+}) {
   if (!userId) {
     throw new Error('userId is required');
   }
@@ -331,11 +339,11 @@ export function forkConversationFromMessage({ originalConversationId, sessionId,
      VALUES (@id, @session_id, @user_id, @title, @provider_id, @model, @metadata, @streaming_enabled, @tools_enabled, @reasoning_effort, @verbosity, @now, @now)`
   ).run({
     id: newConversationId,
-    session_id: sessionId,
+    session_id: sessionId || originalConvo.session_id,
     user_id: userId,
-    title: title || null,
-    provider_id: provider_id || null,
-    model: model || null,
+    title: title || originalConvo.title || null,
+    provider_id: provider_id || originalConvo.provider_id || null,
+    model: model || originalConvo.model || null,
     metadata: originalConvo.metadata || '{}',
     streaming_enabled: originalConvo.streaming_enabled || 0,
     tools_enabled: originalConvo.tools_enabled || 0,
@@ -345,12 +353,49 @@ export function forkConversationFromMessage({ originalConversationId, sessionId,
   });
 
   db.prepare(
-   `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, metadata_json, created_at, updated_at)
-    SELECT @newConversationId, role, status, content, content_json, seq, metadata_json, @now, @now
+   `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, metadata_json, client_message_id, created_at, updated_at)
+    SELECT @newConversationId, role, status, content, content_json, seq, metadata_json, client_message_id, @now, @now
      FROM messages
      WHERE conversation_id = @originalConversationId AND seq <= @messageSeq
      ORDER BY seq`
   ).run({ newConversationId, originalConversationId, messageSeq, now });
+
+  db.prepare(
+    `INSERT INTO message_revisions (
+       id,
+       conversation_id,
+       user_id,
+       anchor_message_id,
+       operation_type,
+       anchor_content_snapshot,
+       follow_ups_snapshot,
+       created_at
+     )
+     SELECT
+       lower(hex(randomblob(4))) || '-' ||
+       lower(hex(randomblob(2))) || '-' ||
+       '4' || substr(lower(hex(randomblob(2))), 2) || '-' ||
+       substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' ||
+       lower(hex(randomblob(6))),
+       @newConversationId,
+       user_id,
+       anchor_message_id,
+       operation_type,
+       anchor_content_snapshot,
+       follow_ups_snapshot,
+       created_at
+     FROM message_revisions
+     WHERE conversation_id = @originalConversationId
+       AND user_id = @userId
+       AND anchor_message_id IN (
+         SELECT client_message_id
+         FROM messages
+         WHERE conversation_id = @originalConversationId
+           AND seq <= @messageSeq
+           AND role = 'user'
+           AND client_message_id IS NOT NULL
+       )`
+  ).run({ newConversationId, originalConversationId, userId, messageSeq });
 
   return newConversationId;
 }

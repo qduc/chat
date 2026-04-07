@@ -25,6 +25,13 @@ import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import { MessageList } from '../components/MessageList';
 import type { ChatMessage, Role } from '../lib/types';
+import { conversations } from '../lib/api';
+
+jest.mock('../lib/api', () => ({
+  conversations: {
+    getMessageRevisions: jest.fn(),
+  },
+}));
 
 // Mock Toast context
 jest.mock('../components/ui/Toast', () => ({
@@ -35,11 +42,41 @@ jest.mock('../components/ui/Toast', () => ({
 
 // Mock Message component
 jest.mock('../components/message', () => ({
-  Message: ({ message, isStreaming }: any) => (
+  Message: ({ message, isStreaming, editRevision, regenRevision, onRetryMessage, onFork }: any) => (
     <div data-testid={`message-${message.id}`} data-role={message.role}>
       <span data-testid={`content-${message.id}`}>
         {typeof message.content === 'string' ? message.content : JSON.stringify(message.content)}
       </span>
+      {onRetryMessage && (
+        <button data-testid={`retry-${message.id}`} onClick={() => onRetryMessage(message.id)}>
+          Retry
+        </button>
+      )}
+      {onFork && (
+        <button data-testid={`fork-${message.id}`} onClick={() => onFork(message.id, 'primary')}>
+          Fork
+        </button>
+      )}
+      {editRevision && (
+        <>
+          <button data-testid={`edit-prev-${message.id}`} onClick={editRevision.onPrev}>
+            Prev edit
+          </button>
+          <span data-testid={`edit-nav-${message.id}`}>
+            {editRevision.slot}/{editRevision.total}
+          </span>
+        </>
+      )}
+      {regenRevision && (
+        <>
+          <button data-testid={`regen-prev-${message.id}`} onClick={regenRevision.onPrev}>
+            Prev regen
+          </button>
+          <span data-testid={`regen-nav-${message.id}`}>
+            {regenRevision.slot}/{regenRevision.total}
+          </span>
+        </>
+      )}
       {isStreaming && <span data-testid="streaming-indicator">Streaming...</span>}
     </div>
   ),
@@ -93,6 +130,7 @@ jest.mock('../lib', () => ({
   },
   createMixedContent: jest.fn((text, images) => (images?.length ? { text, images } : text)),
   extractImagesFromContent: jest.fn(() => []),
+  mergeToolOutputsToAssistantMessages: jest.fn((messages) => messages),
 }));
 
 // Helper to create test messages
@@ -127,6 +165,8 @@ const defaultProps = {
   onRetryMessage: jest.fn(),
   onDeleteJudgeResponse: jest.fn(),
 };
+
+const mockConversations = conversations as jest.Mocked<typeof conversations>;
 
 describe('MessageList', () => {
   beforeEach(() => {
@@ -165,6 +205,179 @@ describe('MessageList', () => {
       render(<MessageList {...defaultProps} messages={messages} />);
 
       expect(screen.getByTestId('content-msg-1')).toHaveTextContent('Test content here');
+    });
+  });
+
+  describe('Revision scoping', () => {
+    it('keeps regenerate history scoped to the selected edit timeline', async () => {
+      mockConversations.getMessageRevisions.mockResolvedValue([
+        {
+          id: 'edit-a1',
+          operation_type: 'edit',
+          anchor_content: 'A1',
+          follow_ups: [{ role: 'assistant', content: 'B3' }],
+          created_at: '2024-01-01T00:00:00Z',
+        },
+        {
+          id: 'regen-a1-1',
+          operation_type: 'regenerate',
+          anchor_content: 'A1',
+          follow_ups: [{ role: 'assistant', content: 'B1' }],
+          created_at: '2024-01-01T00:01:00Z',
+        },
+        {
+          id: 'regen-a1-2',
+          operation_type: 'regenerate',
+          anchor_content: 'A1',
+          follow_ups: [{ role: 'assistant', content: 'B2' }],
+          created_at: '2024-01-01T00:02:00Z',
+        },
+      ] as any);
+
+      const messages = [
+        createMessage({
+          id: 'user-1',
+          role: 'user',
+          content: 'A2',
+          edit_revision_count: 1,
+        }),
+        createMessage({
+          id: 'assistant-current',
+          role: 'assistant',
+          content: 'C',
+          anchor_user_message_id: 'user-1',
+          regenerate_revision_count: 0,
+        }),
+      ];
+
+      render(<MessageList {...defaultProps} conversationId="conv-1" messages={messages} />);
+
+      expect(screen.getByTestId('content-assistant-current')).toHaveTextContent('C');
+      expect(screen.queryByTestId('regen-nav-assistant-current')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('edit-prev-user-1'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('content-user-1')).toHaveTextContent('A1');
+      });
+      expect(screen.queryByTestId('message-assistant-current')).not.toBeInTheDocument();
+      expect(screen.getByTestId('content-synthetic-edit-a1-0')).toHaveTextContent('B3');
+      expect(screen.getByTestId('regen-nav-synthetic-edit-a1-0')).toHaveTextContent('3/3');
+
+      fireEvent.click(screen.getByTestId('regen-prev-synthetic-edit-a1-0'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('content-synthetic-edit-a1-0')).toHaveTextContent('B2');
+      });
+      expect(screen.queryByText('C')).not.toBeInTheDocument();
+    });
+
+    it('uses the same x/y label for the latest revision', async () => {
+      mockConversations.getMessageRevisions.mockResolvedValue([
+        {
+          id: 'edit-a1',
+          operation_type: 'edit',
+          anchor_content: 'A1',
+          follow_ups: [{ role: 'assistant', content: 'B1' }],
+          created_at: '2024-01-01T00:00:00Z',
+        },
+      ] as any);
+
+      const messages = [
+        createMessage({
+          id: 'user-1',
+          role: 'user',
+          content: 'A2',
+          edit_revision_count: 1,
+        }),
+      ];
+
+      render(<MessageList {...defaultProps} conversationId="conv-1" messages={messages} />);
+
+      expect(screen.getByTestId('edit-nav-user-1')).toHaveTextContent('2/2');
+      expect(screen.queryByText('current')).not.toBeInTheDocument();
+    });
+
+    it('drops cached revision data when the same conversation timeline changes', async () => {
+      mockConversations.getMessageRevisions.mockResolvedValueOnce([
+        {
+          id: 'edit-a1',
+          operation_type: 'edit',
+          anchor_content: 'A1',
+          follow_ups: [{ role: 'assistant', content: 'B1' }],
+          created_at: '2024-01-01T00:00:00Z',
+        },
+      ] as any);
+
+      const initialMessages = [
+        createMessage({
+          id: 'user-1',
+          role: 'user',
+          content: 'A2',
+          edit_revision_count: 1,
+        }),
+        createMessage({
+          id: 'assistant-1',
+          role: 'assistant',
+          content: 'C1',
+          anchor_user_message_id: 'user-1',
+        }),
+      ];
+
+      const { rerender } = render(
+        <MessageList {...defaultProps} conversationId="conv-1" messages={initialMessages} />
+      );
+
+      fireEvent.click(screen.getByTestId('edit-prev-user-1'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('content-synthetic-edit-a1-0')).toHaveTextContent('B1');
+      });
+      expect(screen.queryByTestId('regen-nav-synthetic-edit-a1-0')).not.toBeInTheDocument();
+
+      mockConversations.getMessageRevisions.mockResolvedValueOnce([
+        {
+          id: 'edit-a1',
+          operation_type: 'edit',
+          anchor_content: 'A1',
+          follow_ups: [{ role: 'assistant', content: 'B2' }],
+          created_at: '2024-01-01T00:00:00Z',
+        },
+        {
+          id: 'regen-a1-1',
+          operation_type: 'regenerate',
+          anchor_content: 'A1',
+          follow_ups: [{ role: 'assistant', content: 'B1' }],
+          created_at: '2024-01-01T00:01:00Z',
+        },
+      ] as any);
+
+      const updatedMessages = [
+        createMessage({
+          id: 'user-1',
+          role: 'user',
+          content: 'A2 updated',
+          edit_revision_count: 1,
+        }),
+        createMessage({
+          id: 'assistant-2',
+          role: 'assistant',
+          content: 'C2',
+          anchor_user_message_id: 'user-1',
+        }),
+      ];
+
+      rerender(
+        <MessageList {...defaultProps} conversationId="conv-1" messages={updatedMessages} />
+      );
+
+      fireEvent.click(screen.getByTestId('edit-prev-user-1'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('content-synthetic-edit-a1-0')).toHaveTextContent('B2');
+      });
+      expect(screen.getByTestId('regen-nav-synthetic-edit-a1-0')).toHaveTextContent('2/2');
+      expect(mockConversations.getMessageRevisions).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -358,6 +571,56 @@ describe('MessageList', () => {
 
       expect(screen.getByTestId('message-msg-1')).toBeInTheDocument();
     });
+
+    it('retries using the visible historical timeline', async () => {
+      const onRetryMessage = jest.fn();
+      mockConversations.getMessageRevisions.mockResolvedValue([
+        {
+          id: 'edit-a1',
+          operation_type: 'edit',
+          anchor_content: 'A1',
+          follow_ups: [{ role: 'assistant', content: 'B1' }],
+          created_at: '2024-01-01T00:00:00Z',
+        },
+        {
+          id: 'regen-a1-1',
+          operation_type: 'regenerate',
+          anchor_content: 'A1',
+          follow_ups: [{ role: 'assistant', content: 'B0' }],
+          created_at: '2024-01-01T00:01:00Z',
+        },
+      ] as any);
+
+      const messages = [
+        createMessage({ id: 'user-1', role: 'user', content: 'A2', edit_revision_count: 1 }),
+        createMessage({
+          id: 'assistant-current',
+          role: 'assistant',
+          content: 'C',
+          anchor_user_message_id: 'user-1',
+        }),
+      ];
+
+      render(
+        <MessageList
+          {...defaultProps}
+          conversationId="conv-1"
+          messages={messages}
+          onRetryMessage={onRetryMessage}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId('edit-prev-user-1'));
+      await waitFor(() => {
+        expect(screen.getByTestId('content-synthetic-edit-a1-0')).toHaveTextContent('B1');
+      });
+      fireEvent.click(screen.getByTestId('retry-synthetic-edit-a1-0'));
+
+      expect(onRetryMessage).toHaveBeenCalledWith('synthetic-edit-a1-0', [
+        expect.objectContaining({ id: 'user-1', content: 'A1' }),
+        expect.objectContaining({ id: 'synthetic-edit-a1-0', content: 'B1' }),
+      ]);
+    });
   });
 
   describe('Editing state', () => {
@@ -435,6 +698,49 @@ describe('MessageList', () => {
       render(<MessageList {...defaultProps} messages={messages} onFork={onFork} />);
 
       expect(screen.getByTestId('message-msg-1')).toBeInTheDocument();
+    });
+
+    it('forks from the visible historical timeline', async () => {
+      const onFork = jest.fn();
+      mockConversations.getMessageRevisions.mockResolvedValue([
+        {
+          id: 'edit-a1',
+          operation_type: 'edit',
+          anchor_content: 'A1',
+          follow_ups: [{ role: 'assistant', content: 'B1' }],
+          created_at: '2024-01-01T00:00:00Z',
+        },
+      ] as any);
+
+      const messages = [
+        createMessage({ id: 'user-1', role: 'user', content: 'A2', edit_revision_count: 1 }),
+        createMessage({
+          id: 'assistant-current',
+          role: 'assistant',
+          content: 'C',
+          anchor_user_message_id: 'user-1',
+        }),
+      ];
+
+      render(
+        <MessageList
+          {...defaultProps}
+          conversationId="conv-1"
+          messages={messages}
+          onFork={onFork}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId('edit-prev-user-1'));
+      await waitFor(() => {
+        expect(screen.getByTestId('content-synthetic-edit-a1-0')).toHaveTextContent('B1');
+      });
+      fireEvent.click(screen.getByTestId('fork-synthetic-edit-a1-0'));
+
+      expect(onFork).toHaveBeenCalledWith('synthetic-edit-a1-0', 'primary', [
+        expect.objectContaining({ id: 'user-1', content: 'A1' }),
+        expect.objectContaining({ id: 'synthetic-edit-a1-0', content: 'B1' }),
+      ]);
     });
   });
 

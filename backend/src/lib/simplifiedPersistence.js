@@ -56,6 +56,8 @@ export class SimplifiedPersistence {
     this.completionMs = null; // Completion timing metadata
     this.userMessageId = null; // Persisted user message ID from latest sync
     this.assistantMessageId = null; // Persisted assistant message ID for the current turn
+    this.regenerateAnchorMessageId = null;
+    this.regenerateRevisionCount = null;
     this.messageEventsEnabled = this.persistenceConfig?.isMessageEventsEnabled?.() ?? true;
     this.messageEvents = []; // Ordered assistant events for rendering
     this.nextEventSeq = 0;
@@ -86,6 +88,8 @@ export class SimplifiedPersistence {
     this.userId = userId;
     this.userMessageId = null;
     this.assistantMessageId = null;
+    this.regenerateAnchorMessageId = null;
+    this.regenerateRevisionCount = null;
     this._latestSyncMappings = [];
 
     // Check if persistence is enabled
@@ -215,6 +219,13 @@ export class SimplifiedPersistence {
       // Sync message history using diff-based approach with automatic fallback
       const syncResult = this.conversationManager.syncMessageHistoryDiff(this.conversationId, userId, messages, seq);
       this._latestSyncMappings = Array.isArray(syncResult?.idMappings) ? syncResult.idMappings : [];
+      this.regenerateAnchorMessageId = syncResult?.regenerateRevision?.anchorMessageId ?? null;
+      this.regenerateRevisionCount = syncResult?.regenerateRevision?.count ?? null;
+
+      if (syncResult?.conversationId && syncResult.conversationId !== this.conversationId) {
+        this.conversationId = syncResult.conversationId;
+        this.conversationMeta = this.conversationManager.getConversation(this.conversationId, userId);
+      }
 
       // Track the most recent persisted user message ID for response metadata
       const latestUserMapping = [...this._latestSyncMappings].reverse().find(mapping => mapping.role === 'user');

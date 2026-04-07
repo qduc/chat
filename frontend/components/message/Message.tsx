@@ -48,7 +48,10 @@ export const Message = React.memo<MessageProps>(
   function Message({
     message,
     isStreaming,
+    conversationId: _conversationId,
     compareModels,
+    editRevision,
+    regenRevision,
     primaryModelLabel,
     linkedConversations,
     evaluations,
@@ -98,7 +101,6 @@ export const Message = React.memo<MessageProps>(
     const comparisonModels = showStreamingTabs
       ? Array.from(new Set([...baseComparisonModels, ...compareModels]))
       : baseComparisonModels;
-    const allModels = ['primary', ...comparisonModels];
     const resolvedSelectedModels = selectedComparisonModels.filter(
       (m) => m === 'primary' || comparisonModels.includes(m)
     );
@@ -148,14 +150,16 @@ export const Message = React.memo<MessageProps>(
               actionsDisabled={actionsDisabled}
               onCopy={handleCopy}
               onFork={onFork}
-              onEditMessage={onEditMessage}
+              onEditMessage={message._historical ? undefined : onEditMessage}
               toolbarRef={toolbarRef}
+              editRevision={editRevision}
             />
           ) : (
             <AssistantMessage
               message={message}
               isStreaming={isStreaming}
               compareModels={compareModels}
+              regenRevision={regenRevision}
               primaryModelLabel={primaryModelLabel}
               linkedConversations={linkedConversations}
               evaluations={evaluations}
@@ -172,10 +176,10 @@ export const Message = React.memo<MessageProps>(
               onCopy={handleCopy}
               onFork={onFork}
               onRetryMessage={onRetryMessage}
-              onRetryComparisonModel={onRetryComparisonModel}
+              onRetryComparisonModel={message._historical ? undefined : onRetryComparisonModel}
               onToggleComparisonModel={onToggleComparisonModel}
               onSelectAllComparisonModels={onSelectAllComparisonModels}
-              onOpenJudgeModal={onOpenJudgeModal}
+              onOpenJudgeModal={message._historical ? undefined : onOpenJudgeModal}
               onDeleteJudgeResponse={onDeleteJudgeResponse}
               isEditing={isEditing}
             />
@@ -193,8 +197,12 @@ export const Message = React.memo<MessageProps>(
       // Deep compare comparisonResults to detect changes from linked conversations
       deepEqualComparisonResults(prev.message.comparisonResults, next.message.comparisonResults) &&
       prev.message.usage === next.message.usage &&
+      prev.message.edit_revision_count === next.message.edit_revision_count &&
+      prev.message.regenerate_revision_count === next.message.regenerate_revision_count &&
       prev.isStreaming === next.isStreaming &&
       prev.compareModels === next.compareModels &&
+      prev.editRevision === next.editRevision &&
+      prev.regenRevision === next.regenRevision &&
       prev.primaryModelLabel === next.primaryModelLabel &&
       prev.linkedConversations === next.linkedConversations &&
       prev.evaluations === next.evaluations &&

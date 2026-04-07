@@ -22,8 +22,10 @@ export function addConversationMetadata(responseBody, persistence) {
       active_system_prompt_id: persistence.conversationMeta.metadata?.active_system_prompt_id || null,
       custom_request_params_id: persistence.conversationMeta.metadata?.custom_request_params_id ?? null,
       seq: persistence.assistantSeq || null,
-  user_message_id: persistence.userMessageId ?? null,
-  assistant_message_id: persistence.assistantMessageId ?? (persistence.currentMessageId != null ? String(persistence.currentMessageId) : null),
+      user_message_id: persistence.userMessageId ?? null,
+      assistant_message_id: persistence.assistantMessageId ?? (persistence.currentMessageId != null ? String(persistence.currentMessageId) : null),
+      regenerate_anchor_message_id: persistence.regenerateAnchorMessageId ?? null,
+      regenerate_revision_count: persistence.regenerateRevisionCount ?? null,
     };
   }
   return responseBody;
@@ -49,8 +51,10 @@ export function getConversationMetadata(persistence) {
         active_system_prompt_id: persistence.conversationMeta.metadata?.active_system_prompt_id || null,
         custom_request_params_id: persistence.conversationMeta.metadata?.custom_request_params_id ?? null,
         seq: persistence.assistantSeq || null,
-    user_message_id: persistence.userMessageId ?? null,
-    assistant_message_id: persistence.assistantMessageId ?? (persistence.currentMessageId != null ? String(persistence.currentMessageId) : null),
+        user_message_id: persistence.userMessageId ?? null,
+        assistant_message_id: persistence.assistantMessageId ?? (persistence.currentMessageId != null ? String(persistence.currentMessageId) : null),
+        regenerate_anchor_message_id: persistence.regenerateAnchorMessageId ?? null,
+        regenerate_revision_count: persistence.regenerateRevisionCount ?? null,
       }
     };
   }

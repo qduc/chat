@@ -382,6 +382,12 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
               id: isPrimary
                 ? response.conversation?.assistant_message_id?.toString() || messageId
                 : undefined,
+              regenerate_revision_count: isPrimary
+                ? (response.conversation?.regenerate_revision_count ?? undefined)
+                : undefined,
+              anchor_user_message_id: isPrimary
+                ? (response.conversation?.regenerate_anchor_message_id ?? undefined)
+                : undefined,
               messageId: isPrimary
                 ? undefined
                 : response.conversation?.assistant_message_id?.toString() ||
@@ -595,6 +601,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
 
       setStatus('idle');
       setPending((prev) => ({ ...prev, streaming: false, abort: null }));
+      return primaryResponse;
     },
     [
       buildMessageContent,
@@ -630,7 +637,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         .reverse()
         .find((m) => m.role === 'user');
       if (lastUser)
-        await sendMessage(
+        return sendMessage(
           typeof lastUser.content === 'string' ? lastUser.content : '',
           {
             clientMessageId: lastUser.id,
@@ -641,6 +648,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           compareModels,
           lastUser.content
         );
+      return undefined;
     },
     [setMessages, sendMessage]
   );
