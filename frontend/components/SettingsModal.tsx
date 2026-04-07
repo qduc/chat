@@ -5,6 +5,7 @@ import Modal from './ui/Modal';
 import ProvidersTab from './settings/ProvidersTab';
 import SearchTab from './settings/SearchTab';
 import AdvancedTab from './settings/AdvancedTab';
+import { version } from '../package.json';
 
 interface SettingsModalProps {
   open: boolean;
@@ -102,6 +103,9 @@ export default function SettingsModal({
             modelOptions={modelOptions}
             onSettingsChanged={onSettingsChanged}
           />
+          <p className="text-[10px] text-zinc-400 dark:text-zinc-600 uppercase tracking-widest opacity-50 text-center pt-2">
+            v{version}
+          </p>
         </div>
       </Modal>
     </>
