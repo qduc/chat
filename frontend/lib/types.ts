@@ -380,7 +380,14 @@ export interface ModelGroup {
 }
 
 export type Status = 'idle' | 'streaming';
-export type ReasoningEffortLevel = 'unset' | 'minimal' | 'low' | 'medium' | 'high';
+export type ReasoningEffortLevel =
+  | 'unset'
+  | 'none'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh';
 /** @deprecated Use ReasoningEffortLevel instead */
 export type QualityLevel = ReasoningEffortLevel;
 

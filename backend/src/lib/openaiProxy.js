@@ -136,7 +136,7 @@ function resolveCustomRequestParams({ userId, customRequestParamsIds }) {
 function validateAndNormalizeReasoningControls(body) {
   // Validate and handle reasoning_effort
   if (body.reasoning_effort) {
-    const allowedEfforts = ['minimal', 'low', 'medium', 'high'];
+    const allowedEfforts = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'];
     if (!allowedEfforts.includes(body.reasoning_effort)) {
       return {
         ok: false,
