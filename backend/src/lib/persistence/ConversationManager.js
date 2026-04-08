@@ -109,11 +109,17 @@ export class ConversationManager {
       operationType,
       headMessageId: branchPointMessageId ?? null,
     });
-    setConversationActiveBranch({
+    const ok = setConversationActiveBranch({
       conversationId,
       branchId,
       userId,
     });
+    if (!ok) {
+      logger.error('[ConversationManager] _activateForkBranch: setConversationActiveBranch returned false', {
+        conversationId,
+        branchId,
+      });
+    }
     return branchId;
   }
 
@@ -181,7 +187,7 @@ export class ConversationManager {
           clientMessageId: incomingTail[0]?.id || null,
         });
         const diff = computeMessageDiff([], incomingTail);
-        return this._applyMessageDiff(conversationId, userId, diff, anchorCandidate);
+        return this._applyMessageDiff(conversationId, userId, diff, anchorCandidate, allExisting);
       }
 
       const structuralDiff = computeMessageDiff(allExisting, normalized);
@@ -191,7 +197,7 @@ export class ConversationManager {
           existingCount: allExisting.length,
           incomingCount: normalized.length,
         });
-        return this._applyMessageDiff(conversationId, userId, structuralDiff, 0);
+        return this._applyMessageDiff(conversationId, userId, structuralDiff, 0, allExisting);
       }
 
       logger.debug('[MessageSync] No alignment on client IDs; falling back to clear-and-rewrite', {
@@ -236,7 +242,7 @@ export class ConversationManager {
     };
     logger.debug(`[MessageSync] Diff-based sync for conversation ${conversationId}:`, stats);
 
-    return this._applyMessageDiff(conversationId, userId, diff, anchorSeq);
+    return this._applyMessageDiff(conversationId, userId, diff, anchorSeq, allExisting);
   }
 
   /**
@@ -246,7 +252,7 @@ export class ConversationManager {
    * @param {Object} diff - Diff result from computeMessageDiff
    * @private
    */
-  _applyMessageDiff(conversationId, userId, diff, anchorSeq = 0) {
+  _applyMessageDiff(conversationId, userId, diff, anchorSeq = 0, existingMessages = null) {
     const db = getDb();
     const idMappings = [];
     const insertedMessages = [];
@@ -294,7 +300,8 @@ export class ConversationManager {
 
       if (diff.toDelete.length > 0) {
         const firstDeleteSeq = diff.toDelete[0].seq;
-        const allExisting = getAllMessagesForSync({ conversationId });
+        // Reuse allExisting from outer scope — no deletions have occurred yet at this point
+        const allExisting = existingMessages ?? getAllMessagesForSync({ conversationId });
         const branchPointMessage = allExisting
           .filter(m => m.seq < firstDeleteSeq)
           .slice(-1)[0] || null;
@@ -638,9 +645,11 @@ export class ConversationManager {
     const deletedMessages = [];
     let targetBranchId = getActiveBranchId({ conversationId, userId });
 
+    // Fetch all existing messages once; derive existingToDelete and branchPointMessage from this
+    const allExistingMessages = getAllMessagesForSync({ conversationId });
     const existingToDelete = afterSeq > 0
-      ? getAllMessagesForSync({ conversationId }).filter(msg => msg.seq > afterSeq)
-      : getAllMessagesForSync({ conversationId });
+      ? allExistingMessages.filter(msg => msg.seq > afterSeq)
+      : allExistingMessages;
 
     for (const msg of existingToDelete) {
       deletedMessages.push({ role: msg.role, id: msg.id, seq: msg.seq });
@@ -649,7 +658,7 @@ export class ConversationManager {
     const transaction = db.transaction(() => {
       if (existingToDelete.length > 0) {
         const branchPointMessage = afterSeq > 0
-          ? getAllMessagesForSync({ conversationId }).filter(msg => msg.seq <= afterSeq).slice(-1)[0] || null
+          ? allExistingMessages.filter(msg => msg.seq <= afterSeq).slice(-1)[0] || null
           : null;
         targetBranchId = this._activateForkBranch({
           conversationId,

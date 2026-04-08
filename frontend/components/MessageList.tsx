@@ -243,8 +243,11 @@ export function MessageList({
       operationType: ConversationBranch['operation_type'],
       branchPointMessageId: number | null
     ) => {
+      const visited = new Set<string>();
       let branch = branchById.get(currentBranchId) ?? null;
       while (branch) {
+        if (visited.has(branch.id)) break; // cycle guard
+        visited.add(branch.id);
         const parent = branch.parent_branch_id
           ? (branchById.get(branch.parent_branch_id) ?? null)
           : null;

@@ -234,7 +234,7 @@ conversationsRouter.get('/v1/conversations/:id', (req, res) => {
       active_branch_id: branchId || convo.active_branch_id || null,
       messages: page.messages,
       evaluations: listEvaluationsForConversation({ conversationId: req.params.id, userId }),
-      revision_counts: getRevisionCountsForConversation({ conversationId: req.params.id, userId }),
+      revision_counts: getRevisionCountsForConversation({ conversationId: req.params.id, userId, branchId: branchId || null }),
       branches: getConversationBranches({ conversationId: req.params.id, userId }),
       next_after_seq: page.next_after_seq,
     };
@@ -385,43 +385,53 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
 
     getDb();
 
+    // Look up the active branch first so we can scope the message lookup to the correct branch
+    const activeBranchId = getActiveBranchId({ conversationId: req.params.id, userId });
+
     // Look up the message using client_message_id or integer id (handles UUID from frontend)
+    // Scope the search to the active branch to prevent editing messages from archived branches
     const existingMessage = getMessageContentByClientId({
       conversationId: req.params.id,
       clientMessageId: req.params.messageId,
       userId,
+      branchId: activeBranchId,
     });
 
     if (!existingMessage) {
       return res.status(404).json({ error: 'not_found' });
     }
-    const activeBranchId = getActiveBranchId({ conversationId: req.params.id, userId });
-    const newBranchId = createConversationBranch({
-      conversationId: req.params.id,
-      userId,
-      parentBranchId: activeBranchId,
-      branchPointMessageId: existingMessage.parent_message_id ?? null,
-      sourceMessageId: existingMessage.id,
-      operationType: 'edit',
-      label: null,
-      headMessageId: existingMessage.parent_message_id ?? null,
-    });
-    setConversationActiveBranch({
-      conversationId: req.params.id,
-      branchId: newBranchId,
-      userId,
-    });
 
-    const nextSeq = getNextSeq(req.params.id);
-    const clientMessageId = uuidv4();
-    const message = insertUserMessage({
-      conversationId: req.params.id,
-      content: validatedContent,
-      seq: nextSeq,
-      clientMessageId,
-      branchId: newBranchId,
-      parentMessageId: existingMessage.parent_message_id ?? null,
-    });
+    let newBranchId, clientMessageId, message;
+    const db = getDb();
+    db.transaction(() => {
+      newBranchId = createConversationBranch({
+        conversationId: req.params.id,
+        userId,
+        parentBranchId: activeBranchId,
+        branchPointMessageId: existingMessage.parent_message_id ?? null,
+        sourceMessageId: existingMessage.id,
+        operationType: 'edit',
+        label: null,
+        headMessageId: existingMessage.parent_message_id ?? null,
+      });
+      const ok = setConversationActiveBranch({
+        conversationId: req.params.id,
+        branchId: newBranchId,
+        userId,
+      });
+      if (!ok) throw new Error(`Failed to activate new branch ${newBranchId}`);
+
+      const nextSeq = getNextSeq(req.params.id);
+      clientMessageId = uuidv4();
+      message = insertUserMessage({
+        conversationId: req.params.id,
+        content: validatedContent,
+        seq: nextSeq,
+        clientMessageId,
+        branchId: newBranchId,
+        parentMessageId: existingMessage.parent_message_id ?? null,
+      });
+    })();
 
     const anchorMessageId = existingMessage.client_message_id || String(existingMessage.id);
     const editRevisionCount = getMessageRevisionCount({

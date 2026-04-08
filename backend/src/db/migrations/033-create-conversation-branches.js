@@ -85,6 +85,13 @@ export default {
 
     DROP TABLE IF EXISTS message_revisions;
   `,
+  // NOTE: This down migration is intentionally incomplete and non-reversible.
+  // SQLite (older versions) does not support DROP COLUMN, so we cannot remove:
+  //   - conversations.active_branch_id
+  //   - messages.branch_id / messages.parent_message_id
+  //   - the three indexes added in the up script
+  // Rolling back this migration will leave the schema in a partially-migrated state.
+  // If a full rollback is needed, restore from a database backup taken before migration 033.
   down: `
     DROP TABLE IF EXISTS conversation_branches;
     DROP TABLE IF EXISTS message_revisions;

@@ -109,10 +109,10 @@ export function getMessageRevisions({ conversationId, anchorMessageId, userId })
   });
 }
 
-export function getRevisionCountsForConversation({ conversationId, userId }) {
+export function getRevisionCountsForConversation({ conversationId, userId, branchId = null }) {
   if (!userId) throw new Error('userId is required');
 
-  const visibleMessages = getAllMessagesForSync({ conversationId });
+  const visibleMessages = getAllMessagesForSync({ conversationId, branchId });
   const visibleSourceIds = new Set(visibleMessages.map((message) => message._dbId).filter(Boolean));
   const clientIdsByDbId = getClientIdsByDbId({ conversationId, userId });
   const branches = getConversationBranches({ conversationId, userId });

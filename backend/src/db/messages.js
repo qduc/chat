@@ -206,6 +206,7 @@ function getActiveTimelineQuery() {
       SELECT parent.id, parent.parent_message_id, timeline.depth + 1
       FROM messages parent
       JOIN timeline ON timeline.parent_message_id = parent.id
+      WHERE timeline.depth < 5000
     )
   `;
 }
@@ -298,7 +299,7 @@ export function insertUserMessage({
       clientMessageId,
       now
     });
-  updateConversationBranchHead({ branchId: branchContext.branchId, headMessageId: info.lastInsertRowid });
+  updateConversationBranchHead({ branchId: branchContext.branchId, headMessageId: info.lastInsertRowid, conversationId });
   return { id: info.lastInsertRowid, seq, clientMessageId };
 }
 
@@ -347,7 +348,7 @@ export function createAssistantDraft({
       clientMessageId,
       now,
     });
-  updateConversationBranchHead({ branchId: branchContext.branchId, headMessageId: info.lastInsertRowid });
+  updateConversationBranchHead({ branchId: branchContext.branchId, headMessageId: info.lastInsertRowid, conversationId });
   return { id: info.lastInsertRowid, seq };
 }
 
@@ -475,7 +476,7 @@ export function insertAssistantFinal({
       clientMessageId,
       now,
     });
-  updateConversationBranchHead({ branchId: branchContext.branchId, headMessageId: info.lastInsertRowid });
+  updateConversationBranchHead({ branchId: branchContext.branchId, headMessageId: info.lastInsertRowid, conversationId });
   return { id: info.lastInsertRowid, seq, clientMessageId };
 }
 
@@ -529,7 +530,7 @@ export function insertToolMessage({
       now
     });
 
-  updateConversationBranchHead({ branchId: branchContext.branchId, headMessageId: info.lastInsertRowid });
+  updateConversationBranchHead({ branchId: branchContext.branchId, headMessageId: info.lastInsertRowid, conversationId });
   return { id: info.lastInsertRowid, seq, clientMessageId };
 }
 
@@ -578,7 +579,7 @@ export function markAssistantErrorBySeq({
       metadataJson,
       now,
     });
-  updateConversationBranchHead({ branchId: branchContext.branchId, headMessageId: info.lastInsertRowid });
+  updateConversationBranchHead({ branchId: branchContext.branchId, headMessageId: info.lastInsertRowid, conversationId });
   return { id: info.lastInsertRowid, seq };
 }
 
@@ -1008,12 +1009,29 @@ function hydrateMessageContentRow(row) {
   return row;
 }
 
-export function getMessageContentByClientId({ conversationId, clientMessageId, userId }) {
+export function getMessageContentByClientId({ conversationId, clientMessageId, userId, branchId = null }) {
   if (!userId) {
     throw new Error('userId is required');
   }
 
   const db = getDb();
+
+  if (branchId) {
+    // Restrict lookup to messages visible on the specified branch timeline only
+    const query = `${getActiveTimelineQuery()}
+       SELECT m.id, m.conversation_id, m.branch_id, m.parent_message_id, m.role, m.seq, m.content, m.content_json, m.client_message_id
+       FROM timeline t
+       JOIN messages m ON m.id = t.id
+       JOIN conversations c ON m.conversation_id = c.id
+       WHERE (m.client_message_id = @clientMessageId OR CAST(m.id AS TEXT) = @clientMessageId)
+         AND c.id = @conversationId
+         AND c.deleted_at IS NULL
+         AND c.user_id = @userId
+       LIMIT 1`;
+    const row = db.prepare(query).get({ conversationId, branchId, clientMessageId, userId });
+    return hydrateMessageContentRow(row);
+  }
+
   const query = `SELECT m.id, m.conversation_id, m.branch_id, m.parent_message_id, m.role, m.seq, m.content, m.content_json, m.client_message_id
      FROM messages m
      JOIN conversations c ON m.conversation_id = c.id
@@ -1169,12 +1187,12 @@ export function clearAllMessages({ conversationId, userId }) {
   return result.changes > 0;
 }
 
-export function getAllMessagesForSync({ conversationId }) {
+export function getAllMessagesForSync({ conversationId, branchId = null }) {
   const allMessages = [];
   let afterSeq = 0;
 
   while (true) {
-    const page = getMessagesPage({ conversationId, afterSeq, limit: 200 });
+    const page = getMessagesPage({ conversationId, branchId, afterSeq, limit: 200 });
     const pageMessages = page?.messages || [];
 
     allMessages.push(...pageMessages);

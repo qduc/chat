@@ -227,7 +227,7 @@ export function setConversationActiveBranch({ conversationId, branchId, userId }
   return info.changes > 0;
 }
 
-export function updateConversationBranchHead({ branchId, headMessageId }) {
+export function updateConversationBranchHead({ branchId, headMessageId, conversationId = null }) {
   if (!branchId) throw new Error('branchId is required');
 
   const db = getDb();
@@ -236,9 +236,11 @@ export function updateConversationBranchHead({ branchId, headMessageId }) {
     UPDATE conversation_branches
     SET head_message_id = @headMessageId, updated_at = @now
     WHERE id = @branchId
+      ${conversationId ? 'AND conversation_id = @conversationId' : ''}
   `).run({
     branchId,
     headMessageId,
     now,
+    ...(conversationId ? { conversationId } : {}),
   });
 }
