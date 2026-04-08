@@ -988,7 +988,7 @@ export function getMessageByClientId({ conversationId, clientMessageId, userId }
   const query = `SELECT m.id, m.conversation_id, m.branch_id, m.parent_message_id, m.role, m.seq, m.client_message_id
      FROM messages m
      JOIN conversations c ON m.conversation_id = c.id
-     WHERE (m.client_message_id = @clientMessageId OR m.id = @clientMessageId)
+     WHERE (m.client_message_id = @clientMessageId OR CAST(m.id AS TEXT) = @clientMessageId)
        AND c.id = @conversationId
        AND c.deleted_at IS NULL
        AND c.user_id = @userId`;
@@ -1017,7 +1017,7 @@ export function getMessageContentByClientId({ conversationId, clientMessageId, u
   const query = `SELECT m.id, m.conversation_id, m.branch_id, m.parent_message_id, m.role, m.seq, m.content, m.content_json, m.client_message_id
      FROM messages m
      JOIN conversations c ON m.conversation_id = c.id
-     WHERE (m.client_message_id = @clientMessageId OR m.id = @clientMessageId)
+     WHERE (m.client_message_id = @clientMessageId OR CAST(m.id AS TEXT) = @clientMessageId)
        AND c.id = @conversationId
        AND c.deleted_at IS NULL
        AND c.user_id = @userId`;
