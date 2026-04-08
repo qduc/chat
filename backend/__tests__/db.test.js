@@ -7,6 +7,8 @@ import {
   createConversation,
   listConversations,
   getMessagesPage,
+  insertUserMessage,
+  insertAssistantFinal,
   retentionSweep,
   resetDbCache,
 } from '../src/db/index.js';
@@ -99,13 +101,9 @@ describe('DB helpers', () => {
   describe('getMessagesPage', () => {
     test('returns messages after after_seq with ascending seq ordering', () => {
       createConversation({ id: 'conv', sessionId, userId: testUser.id });
-      const db = getDb();
-      const stmt = db.prepare(
-        `INSERT INTO messages (conversation_id, role, content, seq) VALUES (@cid, 'user', @c, @s)`
-      );
-      stmt.run({ cid: 'conv', c: 'm1', s: 1 });
-      stmt.run({ cid: 'conv', c: 'm2', s: 2 });
-      stmt.run({ cid: 'conv', c: 'm3', s: 3 });
+      insertUserMessage({ conversationId: 'conv', content: 'm1', seq: 1 });
+      insertUserMessage({ conversationId: 'conv', content: 'm2', seq: 2 });
+      insertUserMessage({ conversationId: 'conv', content: 'm3', seq: 3 });
 
       const page = getMessagesPage({ conversationId: 'conv', afterSeq: 1, limit: 5 });
       const seqs = page.messages.map((m) => m.seq);
@@ -116,13 +114,9 @@ describe('DB helpers', () => {
 
     test('sets next_after_seq when page is full, null otherwise', () => {
       createConversation({ id: 'conv', sessionId, userId: testUser.id });
-      const db = getDb();
-      const stmt = db.prepare(
-        `INSERT INTO messages (conversation_id, role, content, seq) VALUES (@cid, 'user', @c, @s)`
-      );
-      stmt.run({ cid: 'conv', c: 'm1', s: 1 });
-      stmt.run({ cid: 'conv', c: 'm2', s: 2 });
-      stmt.run({ cid: 'conv', c: 'm3', s: 3 });
+      insertUserMessage({ conversationId: 'conv', content: 'm1', seq: 1 });
+      insertUserMessage({ conversationId: 'conv', content: 'm2', seq: 2 });
+      insertUserMessage({ conversationId: 'conv', content: 'm3', seq: 3 });
 
       const full = getMessagesPage({ conversationId: 'conv', afterSeq: 0, limit: 2 });
       assert.equal(full.next_after_seq, 2);
@@ -133,14 +127,10 @@ describe('DB helpers', () => {
 
     test('includes message_events when present', () => {
       createConversation({ id: 'conv', sessionId, userId: testUser.id });
-      const db = getDb();
-      const info = db.prepare(
-        `INSERT INTO messages (conversation_id, role, status, content, seq)
-         VALUES (@cid, 'assistant', 'final', @content, @seq)`
-      ).run({ cid: 'conv', content: 'Hello world', seq: 1 });
+      const info = insertAssistantFinal({ conversationId: 'conv', content: 'Hello world', seq: 1 });
 
       insertMessageEvents({
-        messageId: info.lastInsertRowid,
+        messageId: info.id,
         conversationId: 'conv',
         events: [
           { seq: 0, type: 'content', payload: { text: 'Hello ' } },
@@ -159,22 +149,14 @@ describe('DB helpers', () => {
 
     test('hydrates usage from stored metadata_json', () => {
       createConversation({ id: 'conv', sessionId, userId: testUser.id });
-      const db = getDb();
-      db.prepare(
-        `INSERT INTO messages (conversation_id, role, content, seq, metadata_json)
-         VALUES (@cid, 'assistant', @c, @s, @metadata)`
-      ).run({
-        cid: 'conv',
-        c: 'hello',
-        s: 1,
-        metadata: JSON.stringify({
-          usage: {
-            prompt_tokens: 3,
-            completion_tokens: 4,
-            total_tokens: 7,
-            reasoning_tokens: 2,
-          },
-        }),
+      insertAssistantFinal({
+        conversationId: 'conv',
+        content: 'hello',
+        seq: 1,
+        tokensIn: 3,
+        tokensOut: 4,
+        totalTokens: 7,
+        reasoningTokens: 2,
       });
 
       const page = getMessagesPage({ conversationId: 'conv', afterSeq: 0, limit: 10 });
@@ -196,12 +178,12 @@ describe('DB helpers', () => {
         `UPDATE conversations SET created_at=datetime('now', '-2 days') WHERE id='old'`
       ).run();
       const stmt = db.prepare(
-        `INSERT INTO messages (conversation_id, role, content, seq) VALUES (@cid, 'user', 'hi', 1)`
+        `INSERT INTO messages (conversation_id, branch_id, role, content, seq) VALUES (@cid, @bid, 'user', 'hi', 1)`
       );
-      stmt.run({ cid: 'old' });
+      stmt.run({ cid: 'old', bid: 'old:root' });
 
       createConversation({ id: 'recent', sessionId, userId: testUser.id });
-      stmt.run({ cid: 'recent' });
+      stmt.run({ cid: 'recent', bid: 'recent:root' });
 
       const result = retentionSweep({ days: 1 });
       assert.equal(result.deleted, 1);

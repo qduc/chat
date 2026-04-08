@@ -59,10 +59,11 @@ function createTestMessage(conversationId, role = 'assistant') {
   const db = getDb();
   messageSeq++;
   const result = db.prepare(`
-    INSERT INTO messages (conversation_id, role, content, seq, created_at)
-    VALUES (@conversationId, @role, @content, @seq, CURRENT_TIMESTAMP)
+    INSERT INTO messages (conversation_id, branch_id, role, content, seq, created_at)
+    VALUES (@conversationId, @branchId, @role, @content, @seq, CURRENT_TIMESTAMP)
   `).run({
     conversationId,
+    branchId: conversationId + ':root',
     role,
     content: 'Test message content',
     seq: messageSeq
