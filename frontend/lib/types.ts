@@ -509,6 +509,7 @@ export interface ConversationWithMessages {
     title?: string | null;
     provider_id?: string | null;
     model?: string | null;
+    active_branch_id?: string | null;
     created_at: string;
     updated_at?: string;
     messages: ConversationWithMessages['messages'];
@@ -607,6 +608,7 @@ export interface ChatOptions {
 export interface ChatOptionsExtended extends ChatOptions {
   conversationId?: string;
   parentConversationId?: string;
+  branchId?: string | null;
   // Accept either full ToolSpec objects or simple tool name strings
   tools?: Array<ToolSpec | string>;
   toolChoice?: any;

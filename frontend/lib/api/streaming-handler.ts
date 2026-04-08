@@ -256,6 +256,9 @@ export function processStreamChunk(
       ...(data._conversation.assistant_message_id !== undefined
         ? { assistant_message_id: data._conversation.assistant_message_id }
         : {}),
+      ...(data._conversation.active_branch_id !== undefined
+        ? { active_branch_id: data._conversation.active_branch_id }
+        : {}),
       ...(data._conversation.regenerate_anchor_message_id !== undefined
         ? { regenerate_anchor_message_id: data._conversation.regenerate_anchor_message_id }
         : {}),

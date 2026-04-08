@@ -1,5 +1,5 @@
 export default {
-  version: 33,
+  version: 32,
   up: `
     ALTER TABLE conversations ADD COLUMN active_branch_id TEXT DEFAULT NULL;
 
@@ -82,8 +82,6 @@ export default {
     UPDATE conversations
     SET active_branch_id = id || ':root'
     WHERE active_branch_id IS NULL;
-
-    DROP TABLE IF EXISTS message_revisions;
   `,
   // NOTE: This down migration is intentionally incomplete and non-reversible.
   // SQLite (older versions) does not support DROP COLUMN, so we cannot remove:
@@ -91,9 +89,8 @@ export default {
   //   - messages.branch_id / messages.parent_message_id
   //   - the three indexes added in the up script
   // Rolling back this migration will leave the schema in a partially-migrated state.
-  // If a full rollback is needed, restore from a database backup taken before migration 033.
+  // If a full rollback is needed, restore from a database backup taken before migration 032.
   down: `
     DROP TABLE IF EXISTS conversation_branches;
-    DROP TABLE IF EXISTS message_revisions;
   `
 };

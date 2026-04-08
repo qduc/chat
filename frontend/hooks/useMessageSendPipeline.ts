@@ -66,6 +66,7 @@ export interface SendPipelineDeps {
   setCurrentConversationTitle: (title: string | null) => void;
   setConversations: Dispatch<SetStateAction<Conversation[]>>;
   setActiveBranchId: Dispatch<SetStateAction<string | null>>;
+  activeBranchIdRef: MutableRefObject<string | null>;
   setBranches: Dispatch<SetStateAction<ConversationBranch[]>>;
 
   // -- Attachments --
@@ -117,6 +118,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
     setCurrentConversationTitle,
     setConversations,
     setActiveBranchId,
+    activeBranchIdRef,
     setBranches,
     buildMessageContent,
     clearAttachments,
@@ -293,7 +295,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         // Ignore branch refresh errors and keep the message update path responsive.
       }
     },
-    [setActiveBranchId, setBranches, setMessages]
+    [activeBranchIdRef, setActiveBranchId, setBranches, setMessages]
   );
 
   // ---------------------------------------------------------------------------
@@ -326,6 +328,10 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
 
       const reasoning =
         reasoningEffortRef.current !== 'unset' ? { effort: reasoningEffortRef.current } : undefined;
+      const branchId =
+        targetConversationId && targetConversationId === conversationIdRef.current
+          ? activeBranchIdRef.current || undefined
+          : undefined;
       const historySource = isPrimary
         ? messagesRef.current
         : messagesRef.current.filter((m) => {
@@ -370,6 +376,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           requestId: isPrimary ? messageId : `${messageId}-${targetModel}`,
           signal: options?.signal || abortControllerRef.current?.signal || undefined,
           conversationId: targetConversationId,
+          branchId,
           parentConversationId,
           streamingEnabled: shouldStreamRef.current,
           toolsEnabled: useToolsRef.current,
@@ -411,6 +418,9 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                     setConversationId(c.id);
                   }
                   setCurrentConversationTitle(c.title || null);
+                  if (typeof c.active_branch_id === 'string' && c.active_branch_id) {
+                    setActiveBranchId(c.active_branch_id);
+                  }
                   setConversations((prev) => {
                     if (prev.some((curr) => curr.id === c.id)) {
                       return prev.map((curr) =>

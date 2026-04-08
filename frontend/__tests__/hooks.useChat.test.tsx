@@ -289,11 +289,17 @@ describe('useChat hook', () => {
           id: 'conv-stream',
           title: 'Streaming Conversation',
           created_at: new Date().toISOString(),
+          active_branch_id: 'branch-stream',
         },
       };
     });
 
     const { result } = renderUseChat();
+
+    mockConversations.getBranches.mockResolvedValue({
+      active_branch_id: 'branch-stream',
+      branches: [],
+    } as any);
 
     await act(async () => {
       result.current.setInput('What time is it?');
@@ -315,6 +321,7 @@ describe('useChat hook', () => {
     });
     expect(assistantMessage.usage).toEqual({ total_tokens: 42 });
     expect(result.current.conversationId).toBe('conv-stream');
+    await waitFor(() => expect(result.current.activeBranchId).toBe('branch-stream'));
     expect(result.current.status).toBe('idle');
     expect(result.current.error).toBeNull();
   });
@@ -407,6 +414,46 @@ describe('useChat hook', () => {
     );
 
     expect(conv2Calls).toBe(2);
+  });
+
+  test('sendMessage includes the active branch id for the selected conversation', async () => {
+    const now = new Date().toISOString();
+    mockConversations.get.mockResolvedValue({
+      id: 'conv-branch',
+      title: 'Branchy',
+      model: 'gpt-4o',
+      provider: 'openai',
+      created_at: now,
+      active_branch_id: 'branch-123',
+      messages: [],
+      next_after_seq: null,
+    } as any);
+
+    mockChat.sendMessage.mockResolvedValue({
+      content: 'branch-aware',
+      conversation: {
+        id: 'conv-branch',
+        title: 'Branchy',
+        created_at: now,
+      },
+    });
+
+    const { result } = renderUseChat();
+
+    await act(async () => {
+      await result.current.selectConversation('conv-branch');
+    });
+
+    await act(async () => {
+      await result.current.sendMessage('Branch-aware send');
+    });
+
+    expect(mockChat.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 'conv-branch',
+        branchId: 'branch-123',
+      })
+    );
   });
 
   test('stopStreaming aborts in-flight request and records cancellation error', async () => {

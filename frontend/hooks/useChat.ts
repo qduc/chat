@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSystemPrompts } from './useSystemPrompts';
 import { useDraftPersistence } from './useDraftPersistence';
 import type {
@@ -141,8 +141,17 @@ export function useChat() {
   const [input, setInputState] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<{ id: string } | null>(null);
-  const [activeBranchId, setActiveBranchId] = useState<string | null>(null);
+  const [activeBranchId, setActiveBranchIdState] = useState<string | null>(null);
+  const activeBranchIdRef = useRef<string | null>(null);
+  const setActiveBranchId = useCallback((id: string | null) => {
+    activeBranchIdRef.current = id;
+    setActiveBranchIdState(id);
+  }, []);
   const [branches, setBranches] = useState<ConversationBranch[]>([]);
+
+  useEffect(() => {
+    activeBranchIdRef.current = activeBranchId;
+  }, [activeBranchId]);
 
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
@@ -233,6 +242,7 @@ export function useChat() {
     setCurrentConversationTitle,
     setConversations,
     setActiveBranchId,
+    activeBranchIdRef,
     setBranches,
     buildMessageContent,
     clearAttachments,

@@ -828,12 +828,9 @@ describe('MessageList', () => {
       await waitFor(() => {
         expect(screen.getByTestId('content-synthetic-edit-a1-0')).toHaveTextContent('B1');
       });
-      fireEvent.click(screen.getByTestId('retry-synthetic-edit-a1-0'));
 
-      expect(onRetryMessage).toHaveBeenCalledWith('synthetic-edit-a1-0', [
-        expect.objectContaining({ id: 'user-1', content: 'A1' }),
-        expect.objectContaining({ id: 'synthetic-edit-a1-0', content: 'B1' }),
-      ]);
+      expect(screen.queryByTestId('retry-synthetic-edit-a1-0')).not.toBeInTheDocument();
+      expect(onRetryMessage).not.toHaveBeenCalled();
     });
   });
 
@@ -949,12 +946,9 @@ describe('MessageList', () => {
       await waitFor(() => {
         expect(screen.getByTestId('content-synthetic-edit-a1-0')).toHaveTextContent('B1');
       });
-      fireEvent.click(screen.getByTestId('fork-synthetic-edit-a1-0'));
 
-      expect(onFork).toHaveBeenCalledWith('synthetic-edit-a1-0', 'primary', [
-        expect.objectContaining({ id: 'user-1', content: 'A1' }),
-        expect.objectContaining({ id: 'synthetic-edit-a1-0', content: 'B1' }),
-      ]);
+      expect(screen.queryByTestId('fork-synthetic-edit-a1-0')).not.toBeInTheDocument();
+      expect(onFork).not.toHaveBeenCalled();
     });
   });
 

@@ -951,6 +951,15 @@ export function MessageList({
     return rest;
   }, []);
 
+  const buildOperationTimeline = useCallback(
+    (timeline: ChatMessage[]) => {
+      return timeline
+        .filter((message) => !message._historical)
+        .map((message) => sanitizeTimelineMessage(message));
+    },
+    [sanitizeTimelineMessage]
+  );
+
   const resizeEditingTextarea = useCallback(() => {
     const ta = editingTextareaRef.current;
     if (!ta) return;
@@ -1032,9 +1041,9 @@ export function MessageList({
             const isUser = m.role === 'user';
             const isStreaming = pending.streaming && idx === displayMessages.length - 1;
             const isLastAssistantMessage = !isUser && idx === displayMessages.length - 1;
-            const visibleTimeline = displayMessages
-              .slice(0, idx + 1)
-              .map(({ msg }) => sanitizeTimelineMessage(msg));
+            const visibleTimeline = buildOperationTimeline(
+              displayMessages.slice(0, idx + 1).map(({ msg }) => msg)
+            );
             const isRecentUserMessage =
               isUser &&
               !m._historical &&
@@ -1063,7 +1072,9 @@ export function MessageList({
                 onCancelEdit={onCancelEdit}
                 onApplyLocalEdit={handleApplyLocalEdit}
                 onEditingContentChange={onEditingContentChange}
-                onRetryMessage={() => handleRetryMessage(m.id, visibleTimeline)}
+                onRetryMessage={
+                  m._historical ? undefined : () => handleRetryMessage(m.id, visibleTimeline)
+                }
                 onRetryComparisonModel={onRetryComparisonModel}
                 editingTextareaRef={editingTextareaRef}
                 lastUserMessageRef={isRecentUserMessage ? lastUserMessageRef : null}
@@ -1082,7 +1093,7 @@ export function MessageList({
                 onEditingImageUploadClick={handleEditingImageUploadClick}
                 fileInputRef={fileInputRef}
                 onFork={
-                  onFork
+                  onFork && !m._historical
                     ? (_messageId, modelId) => onFork(m.id, modelId, visibleTimeline)
                     : undefined
                 }

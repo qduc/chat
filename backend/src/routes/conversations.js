@@ -246,6 +246,7 @@ conversationsRouter.get('/v1/conversations/:id', (req, res) => {
       response.linked_conversations = linkedConvos.map((linked) => {
         const linkedPage = getMessagesPage({
           conversationId: linked.id,
+          branchId: linked.active_branch_id || null,
           afterSeq: 0,
           limit: 200, // Get all messages for linked conversations
         });

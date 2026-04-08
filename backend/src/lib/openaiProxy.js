@@ -15,6 +15,7 @@ import { isAbortError } from './abortUtils.js';
 import { extractUpstreamMessage, readUpstreamErrorBody } from './upstreamErrors.js';
 import { getUserSetting } from '../db/userSettings.js';
 import { normalizeCustomRequestParamsIds } from './customRequestParams.js';
+import { setConversationActiveBranch } from '../db/branches.js';
 
 // --- Helpers: sanitize, validate, selection, and error shaping ---
 
@@ -52,6 +53,7 @@ async function sanitizeIncomingBody(bodyIn, helpers = {}) {
   }
   // Strip non-upstream fields
   delete body.conversation_id;
+  delete body.branch_id;
   delete body.provider_id; // frontend-selected provider (handled server-side only)
   delete body.provider; // internal provider selection field
   delete body.streamingEnabled;
@@ -194,6 +196,9 @@ async function buildRequestContext(req) {
   }) || [];
 
   const conversationId = bodyIn.conversation_id || req.header('x-conversation-id');
+  const branchId = typeof bodyIn.branch_id === 'string' && bodyIn.branch_id.trim()
+    ? bodyIn.branch_id.trim()
+    : null;
   const userId = req.user.id; // Guaranteed by authenticateToken middleware
   const sessionId = req.sessionId || null;
   const clientRequestId = req.header('x-client-request-id') || bodyIn.client_request_id || null;
@@ -228,6 +233,7 @@ async function buildRequestContext(req) {
     body,
     provider,
     providerId,
+    branchId,
     conversationId,
     userId,
     flags,
@@ -682,6 +688,17 @@ async function executeRequestHandler(context, req, res) {
       }
     }
   };
+
+  if (context.branchId && context.conversationId) {
+    const ok = setConversationActiveBranch({
+      conversationId: context.conversationId,
+      branchId: context.branchId,
+      userId,
+    });
+    if (!ok) {
+      return res.status(404).json({ error: 'not_found', message: 'Branch not found' });
+    }
+  }
 
   const initResult = await persistence.initialize({
     conversationId: context.conversationId,

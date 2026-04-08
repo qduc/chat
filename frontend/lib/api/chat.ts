@@ -69,6 +69,7 @@ function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: bo
     provider_id: providerId,
     ...(responseId && { previous_response_id: responseId }),
     ...(extendedOptions.conversationId && { conversation_id: extendedOptions.conversationId }),
+    ...(extendedOptions.branchId && { branch_id: extendedOptions.branchId }),
     ...((extendedOptions as any).parentConversationId && {
       parent_conversation_id: (extendedOptions as any).parentConversationId,
     }),

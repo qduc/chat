@@ -250,7 +250,7 @@ export function getLinkedConversations({ parentId, userId }) {
   }
 
   const db = getDb();
-  const query = `SELECT id, title, provider_id, model, created_at, updated_at FROM conversations
+  const query = `SELECT id, title, provider_id, model, active_branch_id, created_at, updated_at FROM conversations
          WHERE parent_conversation_id=@parentId AND user_id=@userId AND deleted_at IS NULL
          ORDER BY datetime(created_at) ASC`;
 
