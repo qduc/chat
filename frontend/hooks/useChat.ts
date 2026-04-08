@@ -146,7 +146,16 @@ export function useChat() {
     const saved = window.localStorage.getItem('sidebarCollapsed');
     return saved !== 'true';
   });
-  const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const saved = window.localStorage.getItem('rightSidebarCollapsed');
+    return saved !== 'true';
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('rightSidebarCollapsed', rightSidebarOpen ? 'false' : 'true');
+  }, [rightSidebarOpen]);
 
   // --- Helpers ---
   const generateClientId = useCallback(() => {

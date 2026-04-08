@@ -1128,6 +1128,20 @@ describe('useChat hook', () => {
     expect(result.current.sidebarCollapsed).toBe(false);
     expect(window.localStorage.getItem('sidebarCollapsed')).toBe('false');
   });
+
+  test('right sidebar restores its last collapsed state from localStorage', async () => {
+    window.localStorage.setItem('rightSidebarCollapsed', 'false');
+    const { result } = renderUseChat();
+
+    expect(result.current.rightSidebarCollapsed).toBe(false);
+
+    act(() => {
+      result.current.toggleRightSidebar();
+    });
+
+    expect(result.current.rightSidebarCollapsed).toBe(true);
+    expect(window.localStorage.getItem('rightSidebarCollapsed')).toBe('true');
+  });
 });
 
 /**
