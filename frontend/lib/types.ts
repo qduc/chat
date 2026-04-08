@@ -259,6 +259,9 @@ export interface ChatMessage {
   role: Role;
   content: MessageContent;
   seq?: number; // Message sequence number from backend
+  branch_id?: string;
+  _dbId?: number;
+  _parentMessageId?: number | null;
   responseId?: string; // Response ID for assistant messages to maintain conversation context
   provider?: string; // Provider used for this message
   // Local image attachments (used during composition, converted to content format for API)
@@ -426,6 +429,7 @@ export interface ConversationMeta {
   assistant_message_id?: string | number | null;
   regenerate_anchor_message_id?: string | null;
   regenerate_revision_count?: number | null;
+  active_branch_id?: string | null;
 }
 
 export interface ConversationsList {
@@ -448,6 +452,7 @@ export interface ConversationWithMessages {
   verbosity?: string | null;
   system_prompt?: string | null;
   active_system_prompt_id?: string | null;
+  active_branch_id?: string | null;
   messages: {
     id: string | number;
     seq: number;
@@ -455,6 +460,7 @@ export interface ConversationWithMessages {
     status: string;
     content: MessageContent | null;
     created_at: string;
+    branch_id?: string | null;
     provider?: string;
     // Image references stored in database (after upload)
     images?: Array<{
@@ -496,6 +502,7 @@ export interface ConversationWithMessages {
     edit: Record<string, number>;
     regenerate: Record<string, number>;
   };
+  branches?: ConversationBranch[];
   // Linked comparison conversations (included when include_linked=messages)
   linked_conversations?: Array<{
     id: string;
@@ -527,6 +534,21 @@ export interface MessageRevision {
     usage?: any | null;
   }>;
   created_at: string;
+}
+
+export interface ConversationBranch {
+  id: string;
+  conversation_id: string;
+  parent_branch_id: string | null;
+  branch_point_message_id: number | null;
+  source_message_id: number | null;
+  operation_type: 'root' | 'edit' | 'regenerate' | 'fork';
+  label?: string | null;
+  head_message_id: number | null;
+  created_at: string;
+  updated_at?: string | null;
+  archived_at?: string | null;
+  is_active: boolean;
 }
 
 export interface ToolSpec {
@@ -639,16 +661,19 @@ export interface GetConversationParams {
   after_seq?: number;
   limit?: number;
   include_linked?: 'messages';
+  branch_id?: string;
 }
 
 export interface EditMessageResult {
   message: {
     id: string;
     seq: number;
-    content: string;
+    content: MessageContent;
   };
   new_conversation_id: string;
   edit_revision_count: number;
+  branch_id?: string;
+  active_branch_id?: string;
 }
 
 // ============================================================================

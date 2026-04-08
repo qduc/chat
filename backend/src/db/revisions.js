@@ -1,131 +1,141 @@
-import { v4 as uuidv4 } from 'uuid';
 import { getDb } from './client.js';
-import { getAllMessagesForSync } from './messages.js';
+import { getConversationBranches } from './branches.js';
+import { getAllMessagesForSync, getMessagesPage } from './messages.js';
 
-function serializeContentSnapshot(content) {
-  return content != null ? JSON.stringify(content) : null;
+function toRevisionEntry(message) {
+  return {
+    role: message.role,
+    content: message.content ?? null,
+    tool_calls: message.tool_calls ?? null,
+    tool_outputs: message.tool_outputs ?? null,
+    reasoning_details: message.reasoning_details ?? null,
+    usage: message.usage ?? null,
+  };
 }
 
-/**
- * Save a revision snapshot before an edit or regenerate operation discards old messages.
- *
- * @param {object} params
- * @param {string} params.conversationId
- * @param {string} params.userId
- * @param {string} params.anchorMessageId - client_message_id (UUID) of the user message
- * @param {'edit'|'regenerate'} params.operationType
- * @param {*} params.anchorContentSnapshot - user message content for the revision branch
- * @param {Array} params.followUpsSnapshot - array of follow-up message snapshots
- */
-export function saveMessageRevision({
-  conversationId,
-  userId,
-  anchorMessageId,
-  operationType,
-  anchorContentSnapshot,
-  followUpsSnapshot,
-}) {
-  if (!userId) throw new Error('userId is required');
-  if (!conversationId) throw new Error('conversationId is required');
-  if (!anchorMessageId) throw new Error('anchorMessageId is required');
-
+function getMessageRowByClientId({ conversationId, clientMessageId, userId }) {
   const db = getDb();
-  const id = uuidv4();
-  const now = new Date().toISOString();
+  const row = db.prepare(`
+    SELECT m.id, m.client_message_id, m.content, m.content_json, m.role, m.branch_id, m.parent_message_id
+    FROM messages m
+    JOIN conversations c ON c.id = m.conversation_id
+    WHERE m.conversation_id = @conversationId
+      AND (m.client_message_id = @clientMessageId OR CAST(m.id AS TEXT) = @clientMessageId)
+      AND c.user_id = @userId
+      AND c.deleted_at IS NULL
+    LIMIT 1
+  `).get({ conversationId, clientMessageId, userId });
 
-  db.prepare(`
-    INSERT INTO message_revisions
-      (id, conversation_id, user_id, anchor_message_id, operation_type, anchor_content_snapshot, follow_ups_snapshot, created_at)
-    VALUES
-      (@id, @conversationId, @userId, @anchorMessageId, @operationType, @anchorContentSnapshot, @followUpsSnapshot, @now)
-  `).run({
-    id,
-    conversationId,
-    userId,
-    anchorMessageId,
-    operationType,
-    anchorContentSnapshot: serializeContentSnapshot(anchorContentSnapshot),
-    followUpsSnapshot: JSON.stringify(followUpsSnapshot || []),
-    now,
-  });
-
-  return id;
+  if (!row) return null;
+  if (row.content_json) {
+    try {
+      row.content = JSON.parse(row.content_json);
+    } catch {
+      // Keep plain-text fallback from content column
+    }
+  }
+  delete row.content_json;
+  return row;
 }
 
-/**
- * Retrieve all revisions for a given user message, oldest first.
- */
+function getClientIdsByDbId({ conversationId, userId }) {
+  const db = getDb();
+  const rows = db.prepare(`
+    SELECT m.id, m.client_message_id
+    FROM messages m
+    JOIN conversations c ON c.id = m.conversation_id
+    WHERE m.conversation_id = @conversationId
+      AND c.user_id = @userId
+      AND c.deleted_at IS NULL
+  `).all({ conversationId, userId });
+
+  return new Map(rows.map((row) => [row.id, row.client_message_id || String(row.id)]));
+}
+
+export function saveMessageRevision() {
+  throw new Error('saveMessageRevision is no longer supported; use branches instead');
+}
+
 export function getMessageRevisions({ conversationId, anchorMessageId, userId }) {
   if (!userId) throw new Error('userId is required');
 
-  const db = getDb();
-  const rows = db.prepare(`
-    SELECT id, operation_type, anchor_content_snapshot, follow_ups_snapshot, created_at
-    FROM message_revisions
-    WHERE conversation_id = @conversationId
-      AND anchor_message_id = @anchorMessageId
-      AND user_id = @userId
-    ORDER BY created_at ASC
-  `).all({ conversationId, anchorMessageId, userId });
+  const sourceMessage = getMessageRowByClientId({ conversationId, clientMessageId: anchorMessageId, userId });
+  if (!sourceMessage) return [];
 
-  return rows.map(row => ({
-    id: row.id,
-    operation_type: row.operation_type,
-    anchor_content: row.anchor_content_snapshot != null
-      ? JSON.parse(row.anchor_content_snapshot)
-      : null,
-    follow_ups: JSON.parse(row.follow_ups_snapshot || '[]'),
-    created_at: row.created_at,
-  }));
+  const branches = getConversationBranches({ conversationId, userId })
+    .filter((branch) => branch.source_message_id === sourceMessage.id)
+    .filter((branch) => branch.operation_type === 'edit' || branch.operation_type === 'regenerate');
+
+  return branches.map((branch) => {
+    const timeline = getMessagesPage({
+      conversationId,
+      branchId: branch.id,
+      afterSeq: 0,
+      limit: 200,
+    }).messages;
+
+    const firstBranchMessage = timeline.find((message) => message.branch_id === branch.id) || null;
+    let anchorContent = sourceMessage.content ?? null;
+    let followUps = [];
+
+    if (branch.operation_type === 'edit') {
+      anchorContent = firstBranchMessage?.content ?? sourceMessage.content ?? null;
+      if (firstBranchMessage) {
+        const firstIndex = timeline.findIndex((message) => message._dbId === firstBranchMessage._dbId);
+        followUps = firstIndex >= 0 ? timeline.slice(firstIndex + 1).map(toRevisionEntry) : [];
+      }
+    } else {
+      const parentTimeline = branch.parent_branch_id
+        ? getMessagesPage({
+            conversationId,
+            branchId: branch.parent_branch_id,
+            afterSeq: 0,
+            limit: 200,
+          }).messages
+        : timeline;
+      const sourceIndex = parentTimeline.findIndex((message) => String(message.id) === anchorMessageId);
+      followUps = sourceIndex >= 0
+        ? parentTimeline.slice(sourceIndex + 1).map(toRevisionEntry)
+        : [];
+    }
+
+    return {
+      id: branch.id,
+      operation_type: branch.operation_type,
+      anchor_content: anchorContent,
+      follow_ups: followUps,
+      created_at: branch.created_at,
+    };
+  });
 }
 
-/**
- * Return split revision counts per anchor message for a conversation.
- * Returns { edit: { [anchorMessageId]: count }, regenerate: { [anchorMessageId]: count } }
- */
 export function getRevisionCountsForConversation({ conversationId, userId }) {
   if (!userId) throw new Error('userId is required');
 
-  const db = getDb();
-  const editRows = db.prepare(`
-    SELECT anchor_message_id, operation_type, COUNT(*) as count
-    FROM message_revisions
-    WHERE conversation_id = @conversationId
-      AND user_id = @userId
-      AND operation_type = 'edit'
-    GROUP BY anchor_message_id, operation_type
-  `).all({ conversationId, userId });
-  const regenerateRows = db.prepare(`
-    SELECT anchor_message_id, anchor_content_snapshot
-    FROM message_revisions
-    WHERE conversation_id = @conversationId
-      AND user_id = @userId
-      AND operation_type = 'regenerate'
-    ORDER BY created_at ASC
-  `).all({ conversationId, userId });
+  const visibleMessages = getAllMessagesForSync({ conversationId });
+  const visibleSourceIds = new Set(visibleMessages.map((message) => message._dbId).filter(Boolean));
+  const clientIdsByDbId = getClientIdsByDbId({ conversationId, userId });
+  const branches = getConversationBranches({ conversationId, userId });
+  const counts = {
+    edit: {},
+    regenerate: {},
+  };
 
-  const currentAnchorSnapshots = new Map(
-    getAllMessagesForSync({ conversationId })
-      .filter((message) => message.role === 'user')
-      .map((message) => [String(message.id), serializeContentSnapshot(message.content)])
-  );
-
-  const edit = {};
-  const regenerate = {};
-
-  for (const row of editRows) {
-    edit[row.anchor_message_id] = row.count;
-  }
-
-  for (const row of regenerateRows) {
-    const currentSnapshot = currentAnchorSnapshots.get(row.anchor_message_id);
-    if (currentSnapshot == null || row.anchor_content_snapshot !== currentSnapshot) {
+  for (const branch of branches) {
+    if (!branch.source_message_id || !visibleSourceIds.has(branch.source_message_id)) {
       continue;
     }
-    regenerate[row.anchor_message_id] = (regenerate[row.anchor_message_id] || 0) + 1;
+    if (branch.operation_type !== 'edit' && branch.operation_type !== 'regenerate') {
+      continue;
+    }
+
+    const anchorMessageId = clientIdsByDbId.get(branch.source_message_id);
+    if (!anchorMessageId) continue;
+    counts[branch.operation_type][anchorMessageId] =
+      (counts[branch.operation_type][anchorMessageId] || 0) + 1;
   }
 
-  return { edit, regenerate };
+  return counts;
 }
 
 export function getMessageRevisionCount({
@@ -133,30 +143,14 @@ export function getMessageRevisionCount({
   anchorMessageId,
   userId,
   operationType,
-  anchorContentSnapshot,
 }) {
   if (!userId) throw new Error('userId is required');
 
-  const db = getDb();
-  const params = {
-    conversationId,
-    anchorMessageId,
-    userId,
-    operationType,
-    anchorContentSnapshot: serializeContentSnapshot(anchorContentSnapshot),
-  };
-  const row = db.prepare(`
-    SELECT COUNT(*) AS count
-    FROM message_revisions
-    WHERE conversation_id = @conversationId
-      AND anchor_message_id = @anchorMessageId
-      AND user_id = @userId
-      AND operation_type = @operationType
-      AND (
-        @anchorContentSnapshot IS NULL
-        OR anchor_content_snapshot = @anchorContentSnapshot
-      )
-  `).get(params);
+  const sourceMessage = getMessageRowByClientId({ conversationId, clientMessageId: anchorMessageId, userId });
+  if (!sourceMessage) return 0;
 
-  return Number(row?.count || 0);
+  return getConversationBranches({ conversationId, userId }).filter((branch) => (
+    branch.source_message_id === sourceMessage.id &&
+    branch.operation_type === operationType
+  )).length;
 }

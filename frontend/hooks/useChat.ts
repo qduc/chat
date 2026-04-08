@@ -3,6 +3,7 @@ import { useSystemPrompts } from './useSystemPrompts';
 import { useDraftPersistence } from './useDraftPersistence';
 import type {
   ChatMessage as Message,
+  ConversationBranch,
   MessageContent,
   AudioAttachment,
   PendingState,
@@ -140,6 +141,8 @@ export function useChat() {
   const [input, setInputState] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<{ id: string } | null>(null);
+  const [activeBranchId, setActiveBranchId] = useState<string | null>(null);
+  const [branches, setBranches] = useState<ConversationBranch[]>([]);
 
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
@@ -272,6 +275,8 @@ export function useChat() {
     setEvaluationDrafts,
     setConversationId,
     setCurrentConversationTitle,
+    setActiveBranchId,
+    setBranches,
     modelToProviderRef,
     setModelState,
     modelRef,
@@ -423,6 +428,8 @@ export function useChat() {
   const newChat = useCallback(() => {
     setMessages([]);
     setConversationId(null);
+    setActiveBranchId(null);
+    setBranches([]);
     setInput('');
     setError(null);
     resetStreaming();
@@ -435,6 +442,8 @@ export function useChat() {
   }, [
     setMessages,
     setConversationId,
+    setActiveBranchId,
+    setBranches,
     setInput,
     resetStreaming,
     cancelEdit,
@@ -467,24 +476,34 @@ export function useChat() {
       editingMessageId,
       editingContent
     );
-    // Editing rewrites the current conversation timeline in place.
-    setMessages((prev) => {
-      const idx = prev.findIndex((m) => m.id === editingMessageId);
-      if (idx === -1) return prev;
-      return prev.slice(0, idx + 1).map((m, index) =>
-        index === idx
-          ? {
-              ...m,
-              content: editingContent,
-              edit_revision_count: result.edit_revision_count,
-              comparisonResults: undefined,
-            }
-          : m.comparisonResults
-            ? { ...m, comparisonResults: undefined }
-            : m
-      );
-    });
-    setLinkedConversations({});
+    const selection = await selectConversation(conversationIdRef.current);
+    const hasReloadedEditedMessage = selection?.messages.some(
+      (message) =>
+        (message.id === result.message.id || message.id === editingMessageId) &&
+        JSON.stringify(message.content ?? null) ===
+          JSON.stringify(result.message.content ?? null) &&
+        message.edit_revision_count === result.edit_revision_count
+    );
+    if (!hasReloadedEditedMessage) {
+      setMessages((prev) => {
+        const idx = prev.findIndex((message) => message.id === editingMessageId);
+        if (idx === -1) return prev;
+        return prev.slice(0, idx + 1).map((message, index) =>
+          index === idx
+            ? {
+                ...message,
+                id: result.message.id,
+                content: editingContent,
+                edit_revision_count: result.edit_revision_count,
+                comparisonResults: undefined,
+              }
+            : message.comparisonResults
+              ? { ...message, comparisonResults: undefined }
+              : message
+        );
+      });
+      setLinkedConversations({});
+    }
     cancelEdit();
   }, [
     editingMessageId,
@@ -492,8 +511,19 @@ export function useChat() {
     editingContent,
     setMessages,
     setLinkedConversations,
+    selectConversation,
     cancelEdit,
   ]);
+
+  const switchBranch = useCallback(
+    async (branchId: string) => {
+      const currentConversationId = conversationIdRef.current;
+      if (!currentConversationId || !branchId || branchId === activeBranchId) return null;
+      await conversationsApi.switchBranch(currentConversationId, branchId);
+      return selectConversation(currentConversationId);
+    },
+    [conversationIdRef, activeBranchId, selectConversation]
+  );
 
   // Effects
   useEffect(() => {
@@ -515,7 +545,9 @@ export function useChat() {
     loadModels();
   }, [loadModels]);
 
-  useDraftPersistence(user?.id, conversationId, input, setInput);
+  const draftScopeId =
+    conversationId && activeBranchId ? `${conversationId}:${activeBranchId}` : conversationId;
+  useDraftPersistence(user?.id, draftScopeId, input, setInput);
 
   // Use system prompts hook
   const { prompts: systemPrompts, loading: systemPromptsLoading } = useSystemPrompts(user?.id);
@@ -528,6 +560,8 @@ export function useChat() {
     input,
     error,
     pending,
+    activeBranchId,
+    branches,
     model,
     providerId,
     user,
@@ -631,6 +665,7 @@ export function useChat() {
     toggleSidebar,
     toggleRightSidebar,
     selectConversation,
+    switchBranch,
     deleteConversation,
     loadMoreConversations: loadMore,
     refreshConversations: refresh,

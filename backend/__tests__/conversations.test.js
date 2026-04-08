@@ -11,6 +11,7 @@ import {
   getDb,
   upsertSession,
   createConversation,
+  insertUserMessage,
   softDeleteConversation,
   resetDbCache,
 } from '../src/db/index.js';
@@ -221,13 +222,9 @@ describe('GET /v1/conversations/:id', () => {
     provider_id: 'p1',
       metadata: { custom_request_params_id: ['thinking-on'] },
   });
-    const db = getDb();
-    const stmt = db.prepare(
-      `INSERT INTO messages (conversation_id, role, content, seq) VALUES (@cid, 'user', @c, @s)`
-    );
-    stmt.run({ cid: 'c1', c: 'm1', s: 1 });
-    stmt.run({ cid: 'c1', c: 'm2', s: 2 });
-    stmt.run({ cid: 'c1', c: 'm3', s: 3 });
+    insertUserMessage({ conversationId: 'c1', content: 'm1', seq: 1 });
+    insertUserMessage({ conversationId: 'c1', content: 'm2', seq: 2 });
+    insertUserMessage({ conversationId: 'c1', content: 'm3', seq: 3 });
     const app = makeApp();
     const res = await request(app).get('/v1/conversations/c1?limit=2').set('x-session-id', sessionId);
     const body = res.body;
@@ -241,13 +238,9 @@ describe('GET /v1/conversations/:id', () => {
 
   test('supports after_seq and limit query params', async () => {
   createConversation({ id: 'c1', sessionId, userId: testUser.id, title: 'hi', provider_id: 'p1' });
-    const db = getDb();
-    const stmt = db.prepare(
-      `INSERT INTO messages (conversation_id, role, content, seq) VALUES (@cid, 'user', @c, @s)`
-    );
-    stmt.run({ cid: 'c1', c: 'm1', s: 1 });
-    stmt.run({ cid: 'c1', c: 'm2', s: 2 });
-    stmt.run({ cid: 'c1', c: 'm3', s: 3 });
+    insertUserMessage({ conversationId: 'c1', content: 'm1', seq: 1 });
+    insertUserMessage({ conversationId: 'c1', content: 'm2', seq: 2 });
+    insertUserMessage({ conversationId: 'c1', content: 'm3', seq: 3 });
     const app = makeApp();
     const res = await request(app)
       .get('/v1/conversations/c1?after_seq=2&limit=2')

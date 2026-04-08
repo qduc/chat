@@ -183,16 +183,6 @@ export function ModelResponseColumn({
             )}
           </div>
           <div className="flex items-center gap-2">
-            {/* Regenerate revision navigation — always visible so it works on touch */}
-            {regenRevision && (
-              <RevisionNavigation
-                current={regenRevision.slot}
-                total={regenRevision.total}
-                onPrev={regenRevision.onPrev}
-                onNext={regenRevision.onNext}
-                loading={regenRevision.loading}
-              />
-            )}
             <MessageToolbar
               messageId={messageId}
               modelId={modelId}
@@ -207,6 +197,17 @@ export function ModelResponseColumn({
               onRetry={onRetryMessage}
               onRetryModel={onRetryComparisonModel}
               contentText={extractTextFromContent(dm.content)}
+              revisionNavigation={
+                regenRevision ? (
+                  <RevisionNavigation
+                    current={regenRevision.slot}
+                    total={regenRevision.total}
+                    onPrev={regenRevision.onPrev}
+                    onNext={regenRevision.onNext}
+                    loading={regenRevision.loading}
+                  />
+                ) : undefined
+              }
             />
           </div>
         </div>

@@ -256,32 +256,27 @@ export function ChatV2() {
       const idx = chat.messages.findIndex((m) => m.id === messageId);
       if (idx === -1) return;
 
-      // Save revision on the backend before regenerating so the current
-      // conversation timeline can be rewritten in place.
-      let editRevisionCount: number | undefined;
       if (chat.conversationId) {
         try {
-          const result = await conversationsApi.editMessage(
-            chat.conversationId,
-            messageId,
-            updatedContent
-          );
-          editRevisionCount = result.edit_revision_count;
+          await conversationsApi.editMessage(chat.conversationId, messageId, updatedContent);
         } catch {
           return;
         }
       }
 
-      const editedMsg = chat.messages[idx];
-      const baseMessages = [
+      const selection = chat.conversationId
+        ? await chat.selectConversation(chat.conversationId)
+        : null;
+      const baseMessages = selection?.messages ?? [
         ...chat.messages.slice(0, idx),
         {
-          ...editedMsg,
+          ...chat.messages[idx],
           content: updatedContent,
-          edit_revision_count: editRevisionCount ?? editedMsg.edit_revision_count,
         },
       ];
-      chat.setMessages(baseMessages);
+      if (!selection) {
+        chat.setMessages(baseMessages);
+      }
       chat.cancelEdit();
 
       if (baseMessages.length && baseMessages[baseMessages.length - 1].role === 'user') {
@@ -289,6 +284,15 @@ export function ChatV2() {
       }
     },
     [canSend, chat]
+  );
+
+  const handleSwitchBranch = useCallback(
+    async (branchId: string) => {
+      if (!chat.conversationId || !branchId || branchId === chat.activeBranchId) return;
+      chat.cancelEdit();
+      await chat.switchBranch(branchId);
+    },
+    [chat]
   );
 
   const handleFork = useCallback(
@@ -538,6 +542,10 @@ export function ChatV2() {
               containerRef={messageListRef}
               onSuggestionClick={handleSuggestionClick}
               onFork={handleFork}
+              activeBranchId={chat.activeBranchId}
+              branches={chat.branches}
+              onSwitchBranch={handleSwitchBranch}
+              branchModeEnabled={!!chat.conversationId}
             />
 
             {/* Scroll Buttons - centered but visually minimal */}

@@ -2,6 +2,7 @@ import { useCallback, type MutableRefObject, type Dispatch, type SetStateAction 
 import { mergeToolOutputsToAssistantMessages, prependReasoningToContent } from '../lib';
 import type {
   ChatMessage as Message,
+  ConversationBranch,
   MessageContent,
   ReasoningEffortLevel,
   Status,
@@ -31,6 +32,8 @@ export interface ConversationHydrationDeps {
   // -- Conversation metadata --
   setConversationId: (id: string | null) => void;
   setCurrentConversationTitle: (title: string | null) => void;
+  setActiveBranchId: (id: string | null) => void;
+  setBranches: Dispatch<SetStateAction<ConversationBranch[]>>;
 
   // -- Model / provider --
   modelToProviderRef: MutableRefObject<Record<string, string>>;
@@ -103,6 +106,12 @@ export function hydrateMessages(
         id: msgId,
         role: msg.role,
         content,
+        branch_id: typeof msg.branch_id === 'string' ? msg.branch_id : undefined,
+        _dbId: typeof msg._dbId === 'number' ? msg._dbId : undefined,
+        _parentMessageId:
+          typeof msg._parentMessageId === 'number' || msg._parentMessageId === null
+            ? msg._parentMessageId
+            : undefined,
         timestamp: new Date(msg.created_at).getTime(),
         tool_calls: msg.tool_calls,
         message_events: msg.message_events,
@@ -119,6 +128,12 @@ export function hydrateMessages(
       id: msgId,
       role: msg.role,
       content,
+      branch_id: typeof msg.branch_id === 'string' ? msg.branch_id : undefined,
+      _dbId: typeof msg._dbId === 'number' ? msg._dbId : undefined,
+      _parentMessageId:
+        typeof msg._parentMessageId === 'number' || msg._parentMessageId === null
+          ? msg._parentMessageId
+          : undefined,
       timestamp: new Date(msg.created_at).getTime(),
       tool_calls: msg.tool_calls,
       message_events: msg.message_events,
@@ -253,6 +268,8 @@ export function useConversationHydration(deps: ConversationHydrationDeps) {
     setEvaluationDrafts,
     setConversationId,
     setCurrentConversationTitle,
+    setActiveBranchId,
+    setBranches,
     modelToProviderRef,
     setModelState,
     modelRef,
@@ -280,12 +297,16 @@ export function useConversationHydration(deps: ConversationHydrationDeps) {
   } = deps;
 
   const selectConversation = useCallback(
-    async (id: string) => {
+    async (id: string, options?: { branchId?: string }) => {
       try {
         setStatus('idle');
         clearError();
 
-        const data = await conversationsApi.get(id, { limit: 200, include_linked: 'messages' });
+        const data = await conversationsApi.get(id, {
+          limit: 200,
+          include_linked: 'messages',
+          branch_id: options?.branchId,
+        });
 
         // --- Messages ---
         const convertedMessages = hydrateMessages(data.messages, (data as any).revision_counts);
@@ -294,6 +315,8 @@ export function useConversationHydration(deps: ConversationHydrationDeps) {
         setEvaluationDrafts([]);
         setConversationId(id);
         setCurrentConversationTitle(data.title || null);
+        setActiveBranchId(data.active_branch_id ?? null);
+        setBranches(Array.isArray(data.branches) ? data.branches : []);
 
         // --- Model / Provider ---
         const rawModel = typeof data.model === 'string' ? data.model.trim() : null;
@@ -394,8 +417,10 @@ export function useConversationHydration(deps: ConversationHydrationDeps) {
           linkedConversationsRef.current = {};
           setCompareModels([]);
         }
+        return { data, messages: convertedMessages };
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to select conversation');
+        return null;
       }
     },
     [
@@ -407,6 +432,8 @@ export function useConversationHydration(deps: ConversationHydrationDeps) {
       setEvaluationDrafts,
       setConversationId,
       setCurrentConversationTitle,
+      setActiveBranchId,
+      setBranches,
       modelToProviderRef,
       setModelState,
       modelRef,

@@ -8,6 +8,7 @@ import { Cache } from '../cache';
 import type {
   ConversationMeta,
   ConversationsList,
+  ConversationBranch,
   ConversationWithMessages,
   ConversationCreateOptions,
   ListConversationsParams,
@@ -68,6 +69,7 @@ export const conversations = {
     if (params.after_seq) searchParams.set('after_seq', String(params.after_seq));
     if (params.limit) searchParams.set('limit', String(params.limit));
     if (params.include_linked) searchParams.set('include_linked', params.include_linked);
+    if (params.branch_id) searchParams.set('branch_id', params.branch_id);
 
     const cacheKey = `get:${id}:${searchParams.toString()}`;
     const cached = conversationDetailCache.get(cacheKey);
@@ -118,6 +120,35 @@ export const conversations = {
       conversationDetailCache.clear();
       conversationListCache.clear();
       return response.data;
+    } catch (error) {
+      throw error instanceof HttpError ? new Error(error.message) : error;
+    }
+  },
+
+  async switchBranch(
+    conversationId: string,
+    branchId: string
+  ): Promise<{ active_branch_id: string }> {
+    await waitForAuthReady();
+    try {
+      const response = await httpClient.post<{ active_branch_id: string }>(
+        `/v1/conversations/${conversationId}/branches/${branchId}/switch`
+      );
+      conversationDetailCache.deleteByPrefix(`get:${conversationId}:`);
+      conversationListCache.clear();
+      return response.data;
+    } catch (error) {
+      throw error instanceof HttpError ? new Error(error.message) : error;
+    }
+  },
+
+  async getBranches(conversationId: string): Promise<ConversationBranch[]> {
+    await waitForAuthReady();
+    try {
+      const response = await httpClient.get<{ branches: ConversationBranch[] }>(
+        `/v1/conversations/${conversationId}/branches`
+      );
+      return response.data.branches;
     } catch (error) {
       throw error instanceof HttpError ? new Error(error.message) : error;
     }

@@ -24,7 +24,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import { MessageList } from '../components/MessageList';
-import type { ChatMessage, Role } from '../lib/types';
+import type { ChatMessage, ConversationBranch, Role } from '../lib/types';
 import { conversations } from '../lib/api';
 
 jest.mock('../lib/api', () => ({
@@ -141,6 +141,22 @@ const createMessage = (overrides: Partial<ChatMessage> = {}): ChatMessage => ({
   ...overrides,
 });
 
+const createBranch = (overrides: Partial<ConversationBranch> = {}): ConversationBranch => ({
+  id: `branch-${Date.now()}-${Math.random()}`,
+  conversation_id: 'conv-1',
+  parent_branch_id: null,
+  branch_point_message_id: null,
+  source_message_id: null,
+  operation_type: 'root',
+  label: null,
+  head_message_id: null,
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+  archived_at: null,
+  is_active: false,
+  ...overrides,
+});
+
 // Default props
 const defaultProps = {
   messages: [] as ChatMessage[],
@@ -205,6 +221,119 @@ describe('MessageList', () => {
       render(<MessageList {...defaultProps} messages={messages} />);
 
       expect(screen.getByTestId('content-msg-1')).toHaveTextContent('Test content here');
+    });
+  });
+
+  describe('Inline branch navigation', () => {
+    it('shows edit branch navigation for user messages and switches to the previous branch', async () => {
+      const onSwitchBranch = jest.fn().mockResolvedValue(undefined);
+      const branches = [
+        createBranch({ id: 'root', operation_type: 'root', created_at: '2024-01-01T00:00:00Z' }),
+        createBranch({
+          id: 'edit-1',
+          operation_type: 'edit',
+          parent_branch_id: 'root',
+          branch_point_message_id: null,
+          created_at: '2024-01-01T00:01:00Z',
+        }),
+        createBranch({
+          id: 'edit-2',
+          operation_type: 'edit',
+          parent_branch_id: 'edit-1',
+          branch_point_message_id: null,
+          created_at: '2024-01-01T00:02:00Z',
+          is_active: true,
+        }),
+      ];
+      const messages = [
+        createMessage({
+          id: 'user-a3',
+          role: 'user',
+          content: 'A3',
+          branch_id: 'edit-2',
+          _parentMessageId: null,
+        }),
+      ];
+
+      render(
+        <MessageList
+          {...defaultProps}
+          conversationId="conv-1"
+          branchModeEnabled={true}
+          branches={branches}
+          activeBranchId="edit-2"
+          onSwitchBranch={onSwitchBranch}
+          messages={messages}
+        />
+      );
+
+      expect(screen.getByTestId('edit-nav-user-a3')).toHaveTextContent('3/3');
+
+      fireEvent.click(screen.getByTestId('edit-prev-user-a3'));
+
+      await waitFor(() => {
+        expect(onSwitchBranch).toHaveBeenCalledWith('edit-1');
+      });
+    });
+
+    it('shows regenerate branch navigation for assistant messages and switches versions', async () => {
+      const onSwitchBranch = jest.fn().mockResolvedValue(undefined);
+      const branches = [
+        createBranch({ id: 'edit-2', operation_type: 'edit', created_at: '2024-01-01T00:00:00Z' }),
+        createBranch({
+          id: 'regen-1',
+          operation_type: 'regenerate',
+          parent_branch_id: 'edit-2',
+          branch_point_message_id: 42,
+          source_message_id: 42,
+          created_at: '2024-01-01T00:01:00Z',
+        }),
+        createBranch({
+          id: 'regen-2',
+          operation_type: 'regenerate',
+          parent_branch_id: 'regen-1',
+          branch_point_message_id: 42,
+          source_message_id: 42,
+          created_at: '2024-01-01T00:02:00Z',
+          is_active: true,
+        }),
+      ];
+      const messages = [
+        createMessage({
+          id: 'user-a3',
+          role: 'user',
+          content: 'A3',
+          branch_id: 'edit-2',
+          _dbId: 42,
+        }),
+        createMessage({
+          id: 'assistant-r3',
+          role: 'assistant',
+          content: 'Answer v3',
+          branch_id: 'regen-2',
+          _parentMessageId: 42,
+        }),
+      ];
+
+      render(
+        <MessageList
+          {...defaultProps}
+          conversationId="conv-1"
+          branchModeEnabled={true}
+          branches={branches}
+          activeBranchId="regen-2"
+          onSwitchBranch={onSwitchBranch}
+          messages={messages}
+        />
+      );
+
+      expect(screen.getByTestId('regen-nav-assistant-r3')).toHaveTextContent('3/3');
+
+      fireEvent.click(screen.getByTestId('regen-prev-assistant-r3'));
+
+      await waitFor(() => {
+        expect(onSwitchBranch).toHaveBeenCalledWith('regen-1');
+      });
     });
   });
 

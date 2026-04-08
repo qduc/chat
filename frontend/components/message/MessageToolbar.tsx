@@ -23,6 +23,7 @@ interface MessageToolbarProps {
   contentText: string;
   variant?: 'user' | 'assistant';
   toolbarRef?: React.RefObject<HTMLDivElement | null>;
+  revisionNavigation?: React.ReactNode;
 }
 
 export function MessageToolbar({
@@ -42,6 +43,7 @@ export function MessageToolbar({
   contentText,
   variant = 'assistant',
   toolbarRef,
+  revisionNavigation,
 }: MessageToolbarProps) {
   const copyId = variant === 'user' ? messageId : `${messageId}-${modelId}`;
   const isCopied = copiedMessageId === copyId;
@@ -49,51 +51,54 @@ export function MessageToolbar({
   if (variant === 'user') {
     return (
       <div className="mt-1 flex items-center justify-end gap-2 text-xs" ref={toolbarRef}>
-        {/* Action buttons are hover-only */}
-        <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
-          {hasContent && (
-            <div className="relative">
+        <div className="flex items-center gap-2">
+          {/* Action buttons are hover-only */}
+          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
+            {hasContent && (
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => onCopy(messageId, contentText)}
+                  title="Copy"
+                  className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+                >
+                  <Copy className="w-3 h-3" aria-hidden="true" />
+                  <span className="sr-only">Copy</span>
+                </button>
+                {isCopied && (
+                  <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-white text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap z-10 animate-fade-in shadow-lg">
+                    Copied
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[3px] border-r-[3px] border-t-[4px] border-transparent border-t-slate-800 dark:border-t-slate-700"></div>
+                  </div>
+                )}
+              </div>
+            )}
+            {onFork && (
               <button
                 type="button"
-                onClick={() => onCopy(messageId, contentText)}
-                title="Copy"
-                className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
+                onClick={() => onFork(messageId, 'primary')}
+                title="Fork"
+                disabled={actionsDisabled}
+                className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                <Copy className="w-3 h-3" aria-hidden="true" />
-                <span className="sr-only">Copy</span>
+                <GitFork className="w-3 h-3" aria-hidden="true" />
+                <span className="sr-only">Fork</span>
               </button>
-              {isCopied && (
-                <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-white text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap z-10 animate-fade-in shadow-lg">
-                  Copied
-                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[3px] border-r-[3px] border-t-[4px] border-transparent border-t-slate-800 dark:border-t-slate-700"></div>
-                </div>
-              )}
-            </div>
-          )}
-          {onFork && (
-            <button
-              type="button"
-              onClick={() => onFork(messageId, 'primary')}
-              title="Fork"
-              disabled={actionsDisabled}
-              className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <GitFork className="w-3 h-3" aria-hidden="true" />
-              <span className="sr-only">Fork</span>
-            </button>
-          )}
-          {onEdit && (
-            <button
-              type="button"
-              onClick={() => onEdit(messageId, contentText)}
-              title="Edit"
-              disabled={actionsDisabled}
-              className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <Edit2 className="w-3 h-3" aria-hidden="true" />
-              <span className="sr-only">Edit</span>
-            </button>
-          )}
+            )}
+            {onEdit && (
+              <button
+                type="button"
+                onClick={() => onEdit(messageId, contentText)}
+                title="Edit"
+                disabled={actionsDisabled}
+                className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Edit2 className="w-3 h-3" aria-hidden="true" />
+                <span className="sr-only">Edit</span>
+              </button>
+            )}
+          </div>
+          {revisionNavigation}
         </div>
       </div>
     );
@@ -156,6 +161,7 @@ export function MessageToolbar({
           <span className="sr-only">Regenerate</span>
         </button>
       )}
+      {revisionNavigation}
     </div>
   );
 }

@@ -4,13 +4,13 @@ import { safeTestSetup } from '../test_support/databaseSafety.js';
 import {
   createConversation,
   getDb,
+  getConversationBranches,
   getRevisionCountsForConversation,
   getMessageRevisions,
   getMessagesPage,
   insertAssistantFinal,
   insertUserMessage,
   resetDbCache,
-  saveMessageRevision,
   upsertSession,
 } from '../src/db/index.js';
 import { ConversationManager } from '../src/lib/persistence/ConversationManager.js';
@@ -28,7 +28,7 @@ beforeEach(() => {
   config.persistence.dbUrl = 'file::memory:';
   resetDbCache();
   const db = getDb();
-  db.exec('DELETE FROM message_revisions; DELETE FROM messages; DELETE FROM conversations; DELETE FROM sessions; DELETE FROM users;');
+  db.exec('DELETE FROM messages; DELETE FROM conversation_branches; DELETE FROM conversations; DELETE FROM sessions; DELETE FROM users;');
   upsertSession(sessionId, { userId });
 
   const now = new Date().toISOString();
@@ -52,8 +52,8 @@ afterAll(() => {
   resetDbCache();
 });
 
-describe('ConversationManager regenerate revisions', () => {
-  test('keeps regenerate revisions in the same conversation timeline', () => {
+describe('ConversationManager regenerate branches', () => {
+  test('creates a regenerate branch without deleting the original messages', () => {
     const convId = 'conv-regenerate';
     createConversation({
       id: convId,
@@ -96,6 +96,10 @@ describe('ConversationManager regenerate revisions', () => {
     assert.strictEqual(conversation.messages.length, 1);
     assert.strictEqual(conversation.messages[0].id, 'user-1');
 
+    const branches = getConversationBranches({ conversationId: convId, userId });
+    assert.strictEqual(branches.length, 2);
+    assert.strictEqual(branches.filter((branch) => branch.operation_type === 'regenerate').length, 1);
+
     const revisions = getMessageRevisions({
       conversationId: convId,
       anchorMessageId: 'user-1',
@@ -104,62 +108,46 @@ describe('ConversationManager regenerate revisions', () => {
     assert.strictEqual(revisions.length, 1);
     assert.strictEqual(revisions[0].operation_type, 'regenerate');
     assert.strictEqual(revisions[0].anchor_content, 'Original question');
-    assert.deepStrictEqual(revisions[0].follow_ups.map((entry) => entry.content), ['Original answer']);
+    assert.strictEqual(revisions[0].follow_ups.length, 1);
+    assert.strictEqual(String(revisions[0].follow_ups[0].content), 'Original answer');
   });
 
-  test('scopes regenerate counts to the current user-message revision', () => {
-    const convId = 'conv-scoped-regenerate';
+  test('surfaces regenerate counts from visible branch history', () => {
+    const convId = 'conv-regenerate-counts';
     createConversation({
       id: convId,
       sessionId,
       userId,
-      title: 'Scoped regen',
+      title: 'Visible regen',
       model: 'gpt-4o',
       provider_id: 'openai',
     });
 
     insertUserMessage({
       conversationId: convId,
-      content: 'A2',
+      content: 'A1',
       seq: 1,
       clientMessageId: 'user-1',
     });
     insertAssistantFinal({
       conversationId: convId,
-      content: 'C',
+      content: 'B1',
       seq: 2,
       finishReason: 'stop',
-      clientMessageId: 'assistant-current',
+      clientMessageId: 'assistant-1',
     });
 
-    saveMessageRevision({
-      conversationId: convId,
+    const manager = new ConversationManager();
+    manager.syncMessageHistoryDiff(
+      convId,
       userId,
-      anchorMessageId: 'user-1',
-      operationType: 'edit',
-      anchorContentSnapshot: 'A1',
-      followUpsSnapshot: [{ role: 'assistant', content: 'B3' }],
-    });
-    saveMessageRevision({
-      conversationId: convId,
-      userId,
-      anchorMessageId: 'user-1',
-      operationType: 'regenerate',
-      anchorContentSnapshot: 'A1',
-      followUpsSnapshot: [{ role: 'assistant', content: 'B1' }],
-    });
-    saveMessageRevision({
-      conversationId: convId,
-      userId,
-      anchorMessageId: 'user-1',
-      operationType: 'regenerate',
-      anchorContentSnapshot: 'A1',
-      followUpsSnapshot: [{ role: 'assistant', content: 'B2' }],
-    });
+      [{ id: 'user-1', role: 'user', content: 'A1', seq: 1 }],
+      0
+    );
 
     assert.deepStrictEqual(getRevisionCountsForConversation({ conversationId: convId, userId }), {
-      edit: { 'user-1': 1 },
-      regenerate: {},
+      edit: {},
+      regenerate: { 'user-1': 1 },
     });
   });
 });

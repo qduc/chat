@@ -12,6 +12,7 @@ import {
 } from '../db/toolCalls.js';
 import { insertMessageEvents } from '../db/messageEvents.js';
 import {
+  createAssistantDraft,
   insertToolMessage,
   getNextSeq,
   updateMessageContent,
@@ -1089,19 +1090,13 @@ export class SimplifiedPersistence {
   createDraftMessage() {
     if (!this.persist || !this.conversationId || this.assistantSeq === null) return null;
     try {
-      const db = getDb();
-      const now = new Date().toISOString();
-      const info = db.prepare(
-        `INSERT INTO messages (conversation_id, role, status, content, seq, client_message_id, created_at, updated_at)
-         VALUES (@conversationId, 'assistant', 'draft', '', @seq, @clientMessageId, @now, @now)`
-      ).run({
+      const result = createAssistantDraft({
         conversationId: this.conversationId,
         seq: this.assistantSeq,
         clientMessageId: this.assistantMessageId,
-        now
       });
 
-      this.currentMessageId = info.lastInsertRowid;
+      this.currentMessageId = result?.id ?? null;
       this.lastCheckpoint = Date.now();
       this.lastCheckpointLength = 0;
 
@@ -1110,7 +1105,7 @@ export class SimplifiedPersistence {
         messageId: this.currentMessageId,
         seq: this.assistantSeq,
       });
-      return { id: this.currentMessageId, seq: this.assistantSeq };
+      return result;
     } catch (error) {
       logger.error('[SimplifiedPersistence] Failed to create draft message:', error);
       this.currentMessageId = null;

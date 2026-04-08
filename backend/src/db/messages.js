@@ -1,6 +1,7 @@
 import { getDb } from './client.js';
 import { logger } from '../logger.js';
 import { getMessageEventsByMessageIds } from './messageEvents.js';
+import { getBranchHeadMessageId, updateConversationBranchHead } from './branches.js';
 
 function extractTextFromMixedContent(content) {
   if (!Array.isArray(content)) return '';
@@ -166,6 +167,49 @@ function buildMetadataJson({
   }
 }
 
+function resolveConversationBranchId(conversationId, branchId = null) {
+  if (branchId) return branchId;
+  const db = getDb();
+  const row = db.prepare(`
+    SELECT active_branch_id
+    FROM conversations
+    WHERE id = @conversationId
+      AND deleted_at IS NULL
+  `).get({ conversationId });
+  return row?.active_branch_id || null;
+}
+
+function resolveInsertBranchContext({ conversationId, branchId = null, parentMessageId = undefined }) {
+  const resolvedBranchId = resolveConversationBranchId(conversationId, branchId);
+  const resolvedParentMessageId = parentMessageId === undefined
+    ? getBranchHeadMessageId({ branchId: resolvedBranchId })
+    : parentMessageId;
+
+  return {
+    branchId: resolvedBranchId,
+    parentMessageId: resolvedParentMessageId ?? null,
+  };
+}
+
+function getActiveTimelineQuery() {
+  return `
+    WITH RECURSIVE timeline(id, parent_message_id, depth) AS (
+      SELECT m.id, m.parent_message_id, 0
+      FROM conversation_branches b
+      JOIN messages m ON m.id = b.head_message_id
+      WHERE b.conversation_id = @conversationId
+        AND b.id = @branchId
+        AND b.archived_at IS NULL
+
+      UNION ALL
+
+      SELECT parent.id, parent.parent_message_id, timeline.depth + 1
+      FROM messages parent
+      JOIN timeline ON timeline.parent_message_id = parent.id
+    )
+  `;
+}
+
 export function getNextSeq(conversationId) {
   const db = getDb();
   const row = db
@@ -186,9 +230,17 @@ export function countMessagesByConversation(conversationId) {
   return row?.c || 0;
 }
 
-export function insertUserMessage({ conversationId, content, seq, clientMessageId = null }) {
+export function insertUserMessage({
+  conversationId,
+  content,
+  seq,
+  clientMessageId = null,
+  branchId = null,
+  parentMessageId = undefined,
+}) {
   const db = getDb();
   const now = new Date().toISOString();
+  const branchContext = resolveInsertBranchContext({ conversationId, branchId, parentMessageId });
 
   // Handle mixed content (array) or plain text (string)
   let textContent = '';
@@ -209,29 +261,93 @@ export function insertUserMessage({ conversationId, content, seq, clientMessageI
 
   const info = db
     .prepare(
-      `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, client_message_id, created_at, updated_at)
-     VALUES (@conversationId, 'user', 'final', @content, @contentJson, @seq, @clientMessageId, @now, @now)`
+      `INSERT INTO messages (
+        conversation_id,
+        branch_id,
+        role,
+        status,
+        content,
+        content_json,
+        seq,
+        parent_message_id,
+        client_message_id,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        @conversationId,
+        @branchId,
+        'user',
+        'final',
+        @content,
+        @contentJson,
+        @seq,
+        @parentMessageId,
+        @clientMessageId,
+        @now,
+        @now
+      )`
     )
     .run({
       conversationId,
+      branchId: branchContext.branchId,
       content: textContent,
       contentJson: jsonContent,
       seq,
+      parentMessageId: branchContext.parentMessageId,
       clientMessageId,
       now
     });
+  updateConversationBranchHead({ branchId: branchContext.branchId, headMessageId: info.lastInsertRowid });
   return { id: info.lastInsertRowid, seq, clientMessageId };
 }
 
-export function createAssistantDraft({ conversationId, seq }) {
+export function createAssistantDraft({
+  conversationId,
+  seq,
+  clientMessageId = null,
+  branchId = null,
+  parentMessageId = undefined,
+}) {
   const db = getDb();
   const now = new Date().toISOString();
+  const branchContext = resolveInsertBranchContext({ conversationId, branchId, parentMessageId });
   const info = db
     .prepare(
-      `INSERT INTO messages (conversation_id, role, status, content, seq, created_at, updated_at)
-     VALUES (@conversationId, 'assistant', 'streaming', '', @seq, @now, @now)`
+      `INSERT INTO messages (
+        conversation_id,
+        branch_id,
+        role,
+        status,
+        content,
+        seq,
+        parent_message_id,
+        client_message_id,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        @conversationId,
+        @branchId,
+        'assistant',
+        'streaming',
+        '',
+        @seq,
+        @parentMessageId,
+        @clientMessageId,
+        @now,
+        @now
+      )`
     )
-    .run({ conversationId, seq, now });
+    .run({
+      conversationId,
+      branchId: branchContext.branchId,
+      seq,
+      parentMessageId: branchContext.parentMessageId,
+      clientMessageId,
+      now,
+    });
+  updateConversationBranchHead({ branchId: branchContext.branchId, headMessageId: info.lastInsertRowid });
   return { id: info.lastInsertRowid, seq };
 }
 
@@ -289,9 +405,12 @@ export function insertAssistantFinal({
 
   provider = undefined,
   clientMessageId = null,
+  branchId = null,
+  parentMessageId = undefined,
 }) {
   const db = getDb();
   const now = new Date().toISOString();
+  const branchContext = resolveInsertBranchContext({ conversationId, branchId, parentMessageId });
 
   const { textContent, jsonContent } = normalizeMessageContent(content);
   const normalizedReasoning = normalizeReasoningDetails(reasoningDetails);
@@ -316,52 +435,150 @@ export function insertAssistantFinal({
 
   const info = db
     .prepare(
-      `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, metadata_json, client_message_id, created_at, updated_at)
-     VALUES (@conversationId, 'assistant', 'final', @content, @contentJson, @seq, @metadataJson, @clientMessageId, @now, @now)`
-
+      `INSERT INTO messages (
+        conversation_id,
+        branch_id,
+        role,
+        status,
+        content,
+        content_json,
+        seq,
+        parent_message_id,
+        metadata_json,
+        client_message_id,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        @conversationId,
+        @branchId,
+        'assistant',
+        'final',
+        @content,
+        @contentJson,
+        @seq,
+        @parentMessageId,
+        @metadataJson,
+        @clientMessageId,
+        @now,
+        @now
+      )`
     )
     .run({
       conversationId,
+      branchId: branchContext.branchId,
       content: textContent || '',
       contentJson: jsonContent,
       seq,
+      parentMessageId: branchContext.parentMessageId,
       metadataJson,
       clientMessageId,
       now,
     });
+  updateConversationBranchHead({ branchId: branchContext.branchId, headMessageId: info.lastInsertRowid });
   return { id: info.lastInsertRowid, seq, clientMessageId };
 }
 
-export function insertToolMessage({ conversationId, content, seq, status = 'success', clientMessageId = null }) {
+export function insertToolMessage({
+  conversationId,
+  content,
+  seq,
+  status = 'success',
+  clientMessageId = null,
+  branchId = null,
+  parentMessageId = undefined,
+}) {
   const db = getDb();
   const now = new Date().toISOString();
+  const branchContext = resolveInsertBranchContext({ conversationId, branchId, parentMessageId });
   const info = db
     .prepare(
-      `INSERT INTO messages (conversation_id, role, status, content, seq, client_message_id, created_at, updated_at)
-     VALUES (@conversationId, 'tool', @status, @content, @seq, @clientMessageId, @now, @now)`
+      `INSERT INTO messages (
+        conversation_id,
+        branch_id,
+        role,
+        status,
+        content,
+        seq,
+        parent_message_id,
+        client_message_id,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        @conversationId,
+        @branchId,
+        'tool',
+        @status,
+        @content,
+        @seq,
+        @parentMessageId,
+        @clientMessageId,
+        @now,
+        @now
+      )`
     )
     .run({
       conversationId,
+      branchId: branchContext.branchId,
       status,
       content: typeof content === 'string' ? content : JSON.stringify(content ?? ''),
       seq,
+      parentMessageId: branchContext.parentMessageId,
       clientMessageId,
       now
     });
 
+  updateConversationBranchHead({ branchId: branchContext.branchId, headMessageId: info.lastInsertRowid });
   return { id: info.lastInsertRowid, seq, clientMessageId };
 }
 
-export function markAssistantErrorBySeq({ conversationId, seq }) {
+export function markAssistantErrorBySeq({
+  conversationId,
+  seq,
+  branchId = null,
+  parentMessageId = undefined,
+}) {
   const db = getDb();
   const now = new Date().toISOString();
   const metadataJson = buildMetadataJson({ finishReason: 'error' });
+  const branchContext = resolveInsertBranchContext({ conversationId, branchId, parentMessageId });
   const info = db
     .prepare(
-      `INSERT INTO messages (conversation_id, role, status, content, seq, metadata_json, created_at, updated_at)
-     VALUES (@conversationId, 'assistant', 'error', '', @seq, @metadataJson, @now, @now)`
+      `INSERT INTO messages (
+        conversation_id,
+        branch_id,
+        role,
+        status,
+        content,
+        seq,
+        parent_message_id,
+        metadata_json,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        @conversationId,
+        @branchId,
+        'assistant',
+        'error',
+        '',
+        @seq,
+        @parentMessageId,
+        @metadataJson,
+        @now,
+        @now
+      )`
     )
-    .run({ conversationId, seq, metadataJson, now });
+    .run({
+      conversationId,
+      branchId: branchContext.branchId,
+      seq,
+      parentMessageId: branchContext.parentMessageId,
+      metadataJson,
+      now,
+    });
+  updateConversationBranchHead({ branchId: branchContext.branchId, headMessageId: info.lastInsertRowid });
   return { id: info.lastInsertRowid, seq };
 }
 
@@ -377,16 +594,35 @@ export function markAssistantErrorBySeq({ conversationId, seq }) {
  * @return {Array<Object>} return.messages - The list of messages retrieved, each containing various attributes and related metadata.
  * @return {number|null} return.next_after_seq - The sequence number for fetching further messages, or null if no further messages are available.
  */
-export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
+export function getMessagesPage({ conversationId, branchId: requestedBranchId = null, afterSeq = 0, limit = 50 }) {
   const db = getDb();
   const sanitizedLimit = Math.min(Math.max(Number(limit) || 50, 1), 200);
+  const branchId = resolveConversationBranchId(conversationId, requestedBranchId);
+  if (!branchId) {
+    return { messages: [], next_after_seq: null };
+  }
   const messages = db
     .prepare(
-      `SELECT id, seq, role, status, content, content_json, metadata_json, client_message_id, created_at
-     FROM messages WHERE conversation_id=@conversationId AND seq > @afterSeq
-     ORDER BY seq ASC LIMIT @limit`
+      `${getActiveTimelineQuery()}
+       SELECT
+         m.id,
+         m.branch_id,
+         m.parent_message_id,
+         m.seq,
+         m.role,
+         m.status,
+         m.content,
+         m.content_json,
+         m.metadata_json,
+         m.client_message_id,
+         m.created_at
+      FROM timeline t
+      JOIN messages m ON m.id = t.id
+      WHERE m.seq > @afterSeq
+      ORDER BY t.depth DESC
+      LIMIT @limit`
     )
-    .all({ conversationId, afterSeq, limit: sanitizedLimit });
+    .all({ conversationId, branchId, afterSeq, limit: sanitizedLimit });
 
   // Build mapping of integer id to client_message_id before transformation
   const integerIdToClientId = new Map();
@@ -547,9 +783,11 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
   // Store integer ID as _dbId for internal use (like updates/deletes)
   for (const message of messages) {
     message._dbId = message.id; // Store integer ID for database operations
+    message._parentMessageId = message.parent_message_id;
     if (message.client_message_id) {
       message.id = message.client_message_id;
     }
+    delete message.parent_message_id;
     delete message.client_message_id;
   }
 
@@ -558,15 +796,35 @@ export function getMessagesPage({ conversationId, afterSeq = 0, limit = 50 }) {
   return { messages, next_after_seq };
 }
 
+export function getActiveBranchMessages({ conversationId, afterSeq = 0, limit = 200 }) {
+  return getMessagesPage({ conversationId, afterSeq, limit });
+}
+
 export function getLastMessage({ conversationId }) {
   const db = getDb();
+  const branchId = resolveConversationBranchId(conversationId);
+  if (!branchId) return null;
   const message = db
     .prepare(
-      `SELECT id, seq, role, status, content, content_json, metadata_json, client_message_id, created_at
-     FROM messages WHERE conversation_id=@conversationId
-     ORDER BY seq DESC LIMIT 1`
+      `${getActiveTimelineQuery()}
+       SELECT
+         m.id,
+         m.branch_id,
+         m.parent_message_id,
+         m.seq,
+         m.role,
+         m.status,
+         m.content,
+         m.content_json,
+         m.metadata_json,
+         m.client_message_id,
+         m.created_at
+      FROM timeline t
+      JOIN messages m ON m.id = t.id
+      ORDER BY t.depth ASC
+      LIMIT 1`
     )
-    .get({ conversationId });
+    .get({ conversationId, branchId });
 
   if (!message) return null;
 
@@ -684,9 +942,11 @@ export function getLastMessage({ conversationId }) {
   // Finally, transform integer ID to client_message_id for API response
   // Store integer ID as _dbId for internal use (like updates/deletes)
   message._dbId = message.id; // Store integer ID for database operations
+  message._parentMessageId = message.parent_message_id;
   if (message.client_message_id) {
     message.id = message.client_message_id;
   }
+  delete message.parent_message_id;
   delete message.client_message_id;
 
   return message;
@@ -694,17 +954,20 @@ export function getLastMessage({ conversationId }) {
 
 export function getLastAssistantResponseId({ conversationId }) {
   const db = getDb();
+  const branchId = resolveConversationBranchId(conversationId);
+  if (!branchId) return null;
   const rows = db
     .prepare(
-      `SELECT metadata_json, id
-       FROM messages
-       WHERE conversation_id=@conversationId
-         AND role='assistant'
-         AND metadata_json IS NOT NULL
-       ORDER BY seq DESC
+      `${getActiveTimelineQuery()}
+       SELECT m.metadata_json, m.id
+       FROM timeline t
+       JOIN messages m ON m.id = t.id
+       WHERE m.role = 'assistant'
+         AND m.metadata_json IS NOT NULL
+       ORDER BY t.depth ASC
        LIMIT 25`
     )
-    .all({ conversationId });
+    .all({ conversationId, branchId });
 
   for (const row of rows) {
     const metadata = parseMetadataJson(row.metadata_json, row.id);
@@ -722,7 +985,7 @@ export function getMessageByClientId({ conversationId, clientMessageId, userId }
   }
 
   const db = getDb();
-  const query = `SELECT m.id, m.conversation_id, m.role, m.seq, m.client_message_id
+  const query = `SELECT m.id, m.conversation_id, m.branch_id, m.parent_message_id, m.role, m.seq, m.client_message_id
      FROM messages m
      JOIN conversations c ON m.conversation_id = c.id
      WHERE (m.client_message_id = @clientMessageId OR m.id = @clientMessageId)
@@ -751,7 +1014,7 @@ export function getMessageContentByClientId({ conversationId, clientMessageId, u
   }
 
   const db = getDb();
-  const query = `SELECT m.id, m.conversation_id, m.role, m.seq, m.content, m.content_json, m.client_message_id
+  const query = `SELECT m.id, m.conversation_id, m.branch_id, m.parent_message_id, m.role, m.seq, m.content, m.content_json, m.client_message_id
      FROM messages m
      JOIN conversations c ON m.conversation_id = c.id
      WHERE (m.client_message_id = @clientMessageId OR m.id = @clientMessageId)
@@ -769,18 +1032,21 @@ export function getPreviousUserMessage({ conversationId, beforeSeq, userId }) {
   }
 
   const db = getDb();
-  const query = `SELECT m.id, m.conversation_id, m.role, m.seq, m.content, m.content_json
-     FROM messages m
+  const branchId = resolveConversationBranchId(conversationId);
+  if (!branchId) return null;
+  const query = `${getActiveTimelineQuery()}
+     SELECT m.id, m.conversation_id, m.branch_id, m.parent_message_id, m.role, m.seq, m.content, m.content_json
+     FROM timeline t
+     JOIN messages m ON m.id = t.id
      JOIN conversations c ON m.conversation_id = c.id
-     WHERE m.conversation_id = @conversationId
-       AND m.role = 'user'
+     WHERE m.role = 'user'
        AND m.seq < @beforeSeq
        AND c.deleted_at IS NULL
        AND c.user_id = @userId
-     ORDER BY m.seq DESC
+     ORDER BY t.depth ASC
      LIMIT 1`;
 
-  const row = db.prepare(query).get({ conversationId, beforeSeq, userId });
+  const row = db.prepare(query).get({ conversationId, branchId, beforeSeq, userId });
   return hydrateMessageContentRow(row);
 }
 

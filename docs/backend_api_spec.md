@@ -232,8 +232,8 @@ Body (all optional except may desire model/provider):
 Errors: 500 db_error/internal_error.
 
 ### GET /v1/conversations/{id}
-Query params: `after_seq?=N` (default 0), `limit?=50`, `include_linked?=messages`.
-Returns conversation metadata plus paginated messages.
+Query params: `after_seq?=N` (default 0), `limit?=50`, `include_linked?=messages`, `branch_id?=<branch-id>`.
+Returns conversation metadata plus the visible message timeline for the active branch, or for the requested `branch_id`.
 When `include_linked=messages` is specified, linked comparison conversation messages are included in the response.
 200 Response shape:
 ```
@@ -245,10 +245,45 @@ When `include_linked=messages` is specified, linked comparison conversation mess
   "system_prompt": "..." | null,
   "active_system_prompt_id": "uuid" | null,
   "custom_request_params_id": "uuid" | null,
-  "messages": [ { id, seq, role, content, created_at, ... } ],
+  "active_branch_id": "branch-id" | null,
+  "branches": [
+    {
+      "id": "branch-id",
+      "parent_branch_id": "branch-id" | null,
+      "branch_point_message_id": 123 | null,
+      "source_message_id": 123 | null,
+      "operation_type": "root|edit|regenerate|fork",
+      "label": "Main" | null,
+      "head_message_id": 456 | null,
+      "created_at": "...",
+      "updated_at": "...",
+      "is_active": true
+    }
+  ],
+  "messages": [ { id, seq, role, content, created_at, branch_id, ... } ],
   "evaluations": [ { id, user_id, conversation_id, model_a_conversation_id, model_a_message_id, model_b_conversation_id, model_b_message_id, judge_model_id, criteria, score_a, score_b, winner, reasoning, created_at } ],
   "next_after_seq": <next seq or null>,
   "linked_conversations": [ { id, title, model, provider_id, messages: [...] }, ... ] // Only if include_linked=messages
+}
+```
+Errors: 404 not_found, 500 internal_error.
+
+### GET /v1/conversations/{id}/branches
+Returns branch metadata for a conversation.
+200:
+```
+{
+  "branches": [ { id, parent_branch_id, source_message_id, operation_type, label, head_message_id, created_at, updated_at, is_active } ]
+}
+```
+Errors: 404 not_found, 500 internal_error.
+
+### POST /v1/conversations/{id}/branches/{branchId}/switch
+Sets `active_branch_id` for the conversation without rewriting messages.
+200:
+```
+{
+  "active_branch_id": "branch-id"
 }
 ```
 Errors: 404 not_found, 500 internal_error.
@@ -271,7 +306,7 @@ Success 200:
 Errors: 404 not_found, 500 internal_error.
 
 ### PUT /v1/conversations/{id}/messages/{messageId}/edit
-Edits message content then forks conversation starting from that message; deletes subsequent messages in original.
+Edits a message by creating a new branch from that point inside the same conversation.
 Body:
 - `content`: string OR mixed-content array (objects with type `text`, `image_url`, or `input_audio`)
 Validation: must not be empty (at least one text, image, or audio element).
@@ -279,7 +314,9 @@ Validation: must not be empty (at least one text, image, or audio element).
 ```
 {
   "message": { id, seq, content },
-  "new_conversation_id": "uuid"
+  "new_conversation_id": "uuid",
+  "branch_id": "branch-id",
+  "active_branch_id": "branch-id"
 }
 ```
 Errors: 400 bad_request, 404 not_found, 500 internal_error.

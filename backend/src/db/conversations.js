@@ -1,6 +1,7 @@
 import { v4 as uuidv4 } from 'uuid';
 import { getDb } from './client.js';
 import { clampLimit, parseCreatedAtCursor, appendCreatedAtCursor } from './pagination.js';
+import { getRootBranchId, initializeConversationRootBranch } from './branches.js';
 
 export function createConversation({
   id,
@@ -18,24 +19,30 @@ export function createConversation({
 }) {
   const db = getDb();
   const now = new Date().toISOString();
-  db.prepare(
-    `INSERT INTO conversations (id, session_id, user_id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, reasoning_effort, verbosity, parent_conversation_id, created_at, updated_at)
-     VALUES (@id, @session_id, @user_id, @title, @provider_id, @model, @metadata, @streaming_enabled, @tools_enabled, @reasoning_effort, @verbosity, @parent_conversation_id, @now, @now)`
-  ).run({
-    id,
-    session_id: sessionId,
-    user_id: userId,
-    title: title || null,
-    provider_id: provider_id || null,
-    model: model || null,
-    metadata: JSON.stringify(metadata || {}),
-    streaming_enabled: streamingEnabled ? 1 : 0,
-    tools_enabled: toolsEnabled ? 1 : 0,
-    reasoning_effort: reasoningEffort,
-    verbosity,
-    parent_conversation_id: parentConversationId || null,
-    now,
+  const transaction = db.transaction(() => {
+    db.prepare(
+      `INSERT INTO conversations (id, session_id, user_id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, reasoning_effort, verbosity, parent_conversation_id, created_at, updated_at)
+       VALUES (@id, @session_id, @user_id, @title, @provider_id, @model, @metadata, @streaming_enabled, @tools_enabled, @reasoning_effort, @verbosity, @parent_conversation_id, @now, @now)`
+    ).run({
+      id,
+      session_id: sessionId,
+      user_id: userId,
+      title: title || null,
+      provider_id: provider_id || null,
+      model: model || null,
+      metadata: JSON.stringify(metadata || {}),
+      streaming_enabled: streamingEnabled ? 1 : 0,
+      tools_enabled: toolsEnabled ? 1 : 0,
+      reasoning_effort: reasoningEffort,
+      verbosity,
+      parent_conversation_id: parentConversationId || null,
+      now,
+    });
+
+    initializeConversationRootBranch({ conversationId: id, userId });
   });
+
+  transaction();
 }
 
 export function getConversationById({ id, userId }) {
@@ -44,7 +51,7 @@ export function getConversationById({ id, userId }) {
   }
 
   const db = getDb();
-  const query = `SELECT id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, reasoning_effort, verbosity, parent_conversation_id, created_at FROM conversations
+  const query = `SELECT id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, reasoning_effort, verbosity, parent_conversation_id, active_branch_id, created_at FROM conversations
            WHERE id=@id AND user_id=@user_id AND deleted_at IS NULL`;
   const result = db.prepare(query).get({ id, user_id: userId });
 
@@ -333,69 +340,96 @@ export function forkConversationFromMessage({
     throw new Error('Original conversation not found');
   }
 
+  let originalMetadata = {};
+  try {
+    originalMetadata = originalConvo.metadata ? JSON.parse(originalConvo.metadata) : {};
+  } catch {
+    originalMetadata = {};
+  }
+
   const newConversationId = uuidv4();
-  db.prepare(
-    `INSERT INTO conversations (id, session_id, user_id, title, provider_id, model, metadata, streaming_enabled, tools_enabled, reasoning_effort, verbosity, created_at, updated_at)
-     VALUES (@id, @session_id, @user_id, @title, @provider_id, @model, @metadata, @streaming_enabled, @tools_enabled, @reasoning_effort, @verbosity, @now, @now)`
-  ).run({
+  createConversation({
     id: newConversationId,
-    session_id: sessionId || originalConvo.session_id,
-    user_id: userId,
+    sessionId: sessionId || originalConvo.session_id,
+    userId,
     title: title || originalConvo.title || null,
     provider_id: provider_id || originalConvo.provider_id || null,
     model: model || originalConvo.model || null,
-    metadata: originalConvo.metadata || '{}',
-    streaming_enabled: originalConvo.streaming_enabled || 0,
-    tools_enabled: originalConvo.tools_enabled || 0,
-    reasoning_effort: originalConvo.reasoning_effort || null,
+    streamingEnabled: Boolean(originalConvo.streaming_enabled),
+    toolsEnabled: Boolean(originalConvo.tools_enabled),
+    reasoningEffort: originalConvo.reasoning_effort || null,
     verbosity: originalConvo.verbosity || null,
-    now,
+    metadata: originalMetadata,
   });
 
-  db.prepare(
-   `INSERT INTO messages (conversation_id, role, status, content, content_json, seq, metadata_json, client_message_id, created_at, updated_at)
-    SELECT @newConversationId, role, status, content, content_json, seq, metadata_json, client_message_id, @now, @now
-     FROM messages
-     WHERE conversation_id = @originalConversationId AND seq <= @messageSeq
-     ORDER BY seq`
-  ).run({ newConversationId, originalConversationId, messageSeq, now });
+  const rootBranchId = getRootBranchId(newConversationId);
+  const sourceMessages = db.prepare(`
+    SELECT id, parent_message_id, role, status, content, content_json, seq, metadata_json, client_message_id
+    FROM messages
+    WHERE conversation_id = @originalConversationId
+      AND seq <= @messageSeq
+    ORDER BY seq ASC, id ASC
+  `).all({ originalConversationId, messageSeq });
 
-  db.prepare(
-    `INSERT INTO message_revisions (
-       id,
-       conversation_id,
-       user_id,
-       anchor_message_id,
-       operation_type,
-       anchor_content_snapshot,
-       follow_ups_snapshot,
-       created_at
-     )
-     SELECT
-       lower(hex(randomblob(4))) || '-' ||
-       lower(hex(randomblob(2))) || '-' ||
-       '4' || substr(lower(hex(randomblob(2))), 2) || '-' ||
-       substr('89ab', abs(random()) % 4 + 1, 1) || substr(lower(hex(randomblob(2))), 2) || '-' ||
-       lower(hex(randomblob(6))),
-       @newConversationId,
-       user_id,
-       anchor_message_id,
-       operation_type,
-       anchor_content_snapshot,
-       follow_ups_snapshot,
-       created_at
-     FROM message_revisions
-     WHERE conversation_id = @originalConversationId
-       AND user_id = @userId
-       AND anchor_message_id IN (
-         SELECT client_message_id
-         FROM messages
-         WHERE conversation_id = @originalConversationId
-           AND seq <= @messageSeq
-           AND role = 'user'
-           AND client_message_id IS NOT NULL
-       )`
-  ).run({ newConversationId, originalConversationId, userId, messageSeq });
+  const idMap = new Map();
+  for (const sourceMessage of sourceMessages) {
+    const info = db.prepare(`
+      INSERT INTO messages (
+        conversation_id,
+        branch_id,
+        role,
+        status,
+        content,
+        content_json,
+        seq,
+        parent_message_id,
+        metadata_json,
+        client_message_id,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        @conversationId,
+        @branchId,
+        @role,
+        @status,
+        @content,
+        @contentJson,
+        @seq,
+        @parentMessageId,
+        @metadataJson,
+        @clientMessageId,
+        @now,
+        @now
+      )
+    `).run({
+      conversationId: newConversationId,
+      branchId: rootBranchId,
+      role: sourceMessage.role,
+      status: sourceMessage.status,
+      content: sourceMessage.content,
+      contentJson: sourceMessage.content_json,
+      seq: sourceMessage.seq,
+      parentMessageId: sourceMessage.parent_message_id ? idMap.get(sourceMessage.parent_message_id) || null : null,
+      metadataJson: sourceMessage.metadata_json,
+      clientMessageId: sourceMessage.client_message_id,
+      now,
+    });
+    idMap.set(sourceMessage.id, info.lastInsertRowid);
+  }
+
+  const newHeadMessageId = sourceMessages.length > 0
+    ? idMap.get(sourceMessages[sourceMessages.length - 1].id) || null
+    : null;
+  db.prepare(`
+    UPDATE conversation_branches
+    SET head_message_id = @headMessageId, updated_at = @now
+    WHERE id = @branchId
+  `).run({
+    branchId: rootBranchId,
+    headMessageId: newHeadMessageId,
+    now,
+  });
 
   return newConversationId;
 }

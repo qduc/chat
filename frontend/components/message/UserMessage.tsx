@@ -43,18 +43,6 @@ export function UserMessage({
       >
         <MessageContentRenderer content={content} isStreaming={false} role="user" />
       </div>
-      {/* Revision navigation appears directly below the bubble */}
-      {editRevision && (
-        <div className="mt-1 flex justify-end">
-          <RevisionNavigation
-            current={editRevision.slot}
-            total={editRevision.total}
-            onPrev={editRevision.onPrev}
-            onNext={editRevision.onNext}
-            loading={editRevision.loading}
-          />
-        </div>
-      )}
       {content && (
         <MessageToolbar
           messageId={messageId}
@@ -71,6 +59,17 @@ export function UserMessage({
           contentText={textContent}
           variant="user"
           toolbarRef={toolbarRef}
+          revisionNavigation={
+            editRevision ? (
+              <RevisionNavigation
+                current={editRevision.slot}
+                total={editRevision.total}
+                onPrev={editRevision.onPrev}
+                onNext={editRevision.onNext}
+                loading={editRevision.loading}
+              />
+            ) : undefined
+          }
         />
       )}
     </>

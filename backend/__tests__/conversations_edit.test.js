@@ -85,7 +85,7 @@ afterAll(() => {
 });
 
 describe('PUT /v1/conversations/:id/messages/:messageId/edit', () => {
-  test('edits message in place and prunes the active timeline tail', async () => {
+  test('creates a new active branch for the edited message', async () => {
     // Seed a conversation with two messages
     const convId = 'conv-edit-1';
     createConversation({ id: convId, sessionId, userId, title: 'T', model: 'm1' });
@@ -107,16 +107,18 @@ describe('PUT /v1/conversations/:id/messages/:messageId/edit', () => {
       const body = await res.json();
       assert.equal(body.message.content, 'Hello world');
       assert.equal(body.new_conversation_id, convId);
+      assert.ok(body.branch_id);
+      assert.equal(body.active_branch_id, body.branch_id);
+      assert.equal(body.edit_revision_count, 1);
 
-      // Conversation should have pruned messages after the edited one
+      // Active branch should now show the edited message as the only visible message
       const resOrig = await fetch(
         `http://127.0.0.1:${port}/v1/conversations/${convId}`,
         { headers: makeAuthHeaders() }
       );
       const origBody = await resOrig.json();
-      const origSeqs = origBody.messages.map((m) => m.seq);
-      assert.equal(origSeqs.length, 1);
-      assert.equal(origSeqs[0], 1);
+      assert.equal(origBody.active_branch_id, body.branch_id);
+      assert.equal(origBody.messages.length, 1);
       assert.equal(origBody.messages[0].content, 'Hello world');
     });
   });
@@ -160,6 +162,7 @@ describe('PUT /v1/conversations/:id/messages/:messageId/edit', () => {
       assert.equal(body.message.content[1].type, 'image_url');
       assert.equal(body.message.content[1].image_url.url, 'http://localhost:3001/v1/images/test-img-123');
       assert.equal(body.new_conversation_id, convId);
+      assert.ok(body.branch_id);
 
       const resCurrent = await fetch(
         `http://127.0.0.1:${port}/v1/conversations/${convId}`,
@@ -217,6 +220,7 @@ describe('PUT /v1/conversations/:id/messages/:messageId/edit', () => {
       assert.equal(body.message.content[1].input_audio.data, 'AAAA');
 
       assert.equal(body.new_conversation_id, convId);
+      assert.ok(body.branch_id);
 
       const resNew = await fetch(`http://127.0.0.1:${port}/v1/conversations/${convId}`, {
         headers: makeAuthHeaders(),

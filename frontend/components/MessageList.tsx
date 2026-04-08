@@ -14,6 +14,7 @@ import {
   extractImagesFromContent,
   mergeToolOutputsToAssistantMessages,
   type ChatMessage,
+  type ConversationBranch,
   type MessageContent,
   type ImageAttachment,
   type ImageContent,
@@ -56,6 +57,10 @@ interface MessageListProps {
   containerRef?: React.RefObject<HTMLDivElement>;
   onSuggestionClick?: (text: string) => void;
   onFork?: (messageId: string, modelId: string, timelineMessages?: ChatMessage[]) => void;
+  activeBranchId?: string | null;
+  branches?: ConversationBranch[];
+  onSwitchBranch?: (branchId: string) => Promise<unknown> | void;
+  branchModeEnabled?: boolean;
   onJudge?: (options: {
     messageId: string;
     selectedModelIds: string[];
@@ -90,6 +95,10 @@ export function MessageList({
   containerRef: externalContainerRef,
   onSuggestionClick,
   onFork,
+  activeBranchId = null,
+  branches = [],
+  onSwitchBranch,
+  branchModeEnabled = false,
   onJudge,
   onDeleteJudgeResponse,
 }: MessageListProps) {
@@ -110,6 +119,7 @@ export function MessageList({
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [selectedComparisonModels, setSelectedComparisonModels] = useState<string[]>(['primary']);
   const [editingImages, setEditingImages] = useState<ImageAttachment[]>([]);
+  const [switchingVersionKey, setSwitchingVersionKey] = useState<string | null>(null);
   const [streamingStats, setStreamingStats] = useState<{
     tokensPerSecond: number;
     isEstimate?: boolean;
@@ -208,6 +218,120 @@ export function MessageList({
     messages,
     pending,
     containerRef
+  );
+  const branchById = useMemo(
+    () => new Map(branches.map((branch) => [branch.id, branch])),
+    [branches]
+  );
+
+  const switchBranchVersion = useCallback(
+    async (branchId: string, versionKey: string) => {
+      if (!onSwitchBranch || !branchId) return;
+      setSwitchingVersionKey(versionKey);
+      try {
+        await onSwitchBranch(branchId);
+      } finally {
+        setSwitchingVersionKey(null);
+      }
+    },
+    [onSwitchBranch]
+  );
+
+  const getBaseVersionBranchId = useCallback(
+    (
+      currentBranchId: string,
+      operationType: ConversationBranch['operation_type'],
+      branchPointMessageId: number | null
+    ) => {
+      let branch = branchById.get(currentBranchId) ?? null;
+      while (branch) {
+        const parent = branch.parent_branch_id
+          ? (branchById.get(branch.parent_branch_id) ?? null)
+          : null;
+        if (
+          branch.operation_type === operationType &&
+          branch.branch_point_message_id === branchPointMessageId &&
+          parent
+        ) {
+          if (
+            parent.operation_type === operationType &&
+            parent.branch_point_message_id === branchPointMessageId
+          ) {
+            branch = parent;
+            continue;
+          }
+          return parent.id;
+        }
+        return branch.id;
+      }
+      return currentBranchId;
+    },
+    [branchById]
+  );
+
+  const buildBranchRevisionNav = useCallback(
+    (message: ChatMessage, operationType: 'edit' | 'regenerate'): RevisionNavProps | undefined => {
+      const currentBranchId = message.branch_id ?? activeBranchId;
+      if (!onSwitchBranch || !currentBranchId || branchById.size === 0) {
+        return undefined;
+      }
+
+      const branchPointMessageId = message._parentMessageId ?? null;
+      const baseBranchId = getBaseVersionBranchId(
+        currentBranchId,
+        operationType,
+        branchPointMessageId
+      );
+      const versionBranchIds = Array.from(
+        new Set([
+          baseBranchId,
+          ...branches
+            .filter(
+              (branch) =>
+                branch.operation_type === operationType &&
+                branch.branch_point_message_id === branchPointMessageId
+            )
+            .sort((a, b) => {
+              const timeDiff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+              return timeDiff !== 0 ? timeDiff : a.id.localeCompare(b.id);
+            })
+            .map((branch) => branch.id),
+        ])
+      );
+
+      if (versionBranchIds.length <= 1) {
+        return undefined;
+      }
+
+      const currentIndex = versionBranchIds.indexOf(currentBranchId);
+      if (currentIndex === -1) {
+        return undefined;
+      }
+
+      const versionKey = `${operationType}:${branchPointMessageId ?? 'root'}`;
+      return {
+        slot: currentIndex + 1,
+        total: versionBranchIds.length,
+        onPrev: () => {
+          const target = versionBranchIds[currentIndex - 1];
+          if (target) void switchBranchVersion(target, versionKey);
+        },
+        onNext: () => {
+          const target = versionBranchIds[currentIndex + 1];
+          if (target) void switchBranchVersion(target, versionKey);
+        },
+        loading: switchingVersionKey === versionKey,
+      };
+    },
+    [
+      activeBranchId,
+      branches,
+      branchById.size,
+      getBaseVersionBranchId,
+      onSwitchBranch,
+      switchBranchVersion,
+      switchingVersionKey,
+    ]
   );
 
   // Available models for judging
@@ -491,6 +615,14 @@ export function MessageList({
       regenRev?: RevisionNavProps;
     };
 
+    if (branchModeEnabled) {
+      return messages.map((msg) => ({
+        msg,
+        editRev: msg.role === 'user' ? buildBranchRevisionNav(msg, 'edit') : undefined,
+        regenRev: msg.role === 'assistant' ? buildBranchRevisionNav(msg, 'regenerate') : undefined,
+      }));
+    }
+
     const result: DisplayEntry[] = [];
     let skipUntilNextUser = false;
     let pendingSynthetics: DisplayEntry[] = [];
@@ -669,6 +801,8 @@ export function MessageList({
     handleNextEditRevision,
     handlePrevRegenRevision,
     handleNextRegenRevision,
+    branchModeEnabled,
+    buildBranchRevisionNav,
   ]);
 
   // Handlers
