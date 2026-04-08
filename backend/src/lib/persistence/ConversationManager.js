@@ -305,12 +305,14 @@ export class ConversationManager {
         const branchPointMessage = allExisting
           .filter(m => m.seq < firstDeleteSeq)
           .slice(-1)[0] || null;
+        const firstDeleted = diff.toDelete[0];
+        const isAssistantTurnRegen = firstDeleted.role === 'assistant' || firstDeleted.role === 'tool';
         const allNonUser = diff.toDelete.every(m => m.role !== 'user');
         targetBranchId = this._activateForkBranch({
           conversationId,
           userId,
-          operationType: allNonUser ? 'regenerate' : 'fork',
-          sourceMessage: allNonUser ? branchPointMessage : null,
+          operationType: isAssistantTurnRegen ? 'regenerate' : (allNonUser ? 'regenerate' : 'fork'),
+          sourceMessage: (isAssistantTurnRegen || allNonUser) ? branchPointMessage : null,
           branchPointMessageId: branchPointMessage?._dbId ?? null,
         });
 
@@ -657,14 +659,18 @@ export class ConversationManager {
 
     const transaction = db.transaction(() => {
       if (existingToDelete.length > 0) {
+        const firstDeleted = existingToDelete[0];
+        const isAssistantTurnRegen = firstDeleted.role === 'assistant' || firstDeleted.role === 'tool';
+        const allNonUser = existingToDelete.every(m => m.role !== 'user');
+
         const branchPointMessage = afterSeq > 0
           ? allExistingMessages.filter(msg => msg.seq <= afterSeq).slice(-1)[0] || null
           : null;
         targetBranchId = this._activateForkBranch({
           conversationId,
           userId,
-          operationType: 'fork',
-          sourceMessage: null,
+          operationType: isAssistantTurnRegen ? 'regenerate' : (allNonUser ? 'regenerate' : 'fork'),
+          sourceMessage: (isAssistantTurnRegen || allNonUser) ? branchPointMessage : null,
           branchPointMessageId: branchPointMessage?._dbId ?? null,
         });
       }
