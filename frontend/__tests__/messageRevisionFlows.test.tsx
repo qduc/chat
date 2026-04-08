@@ -22,6 +22,7 @@ jest.mock('../lib/api', () => ({
   conversations: {
     list: jest.fn(),
     get: jest.fn(),
+    getBranches: jest.fn(),
     delete: jest.fn(),
     editMessage: jest.fn(),
     create: jest.fn(),
@@ -71,6 +72,7 @@ function createHttpResponse<T>(data: T): HttpResponse<T> {
 
 function renderUseChat() {
   mockConversations.list.mockResolvedValue({ items: [], next_cursor: null });
+  mockConversations.getBranches.mockResolvedValue({ active_branch_id: null, branches: [] } as any);
   mockHttpClient.get.mockImplementation((url: string) => {
     if (url.startsWith('/v1/models')) {
       return Promise.resolve(
@@ -120,13 +122,47 @@ describe('message revision flows', () => {
         id: 'conv-regenerate',
         title: 'Regenerated',
         created_at: now,
+        user_message_id: 1,
         assistant_message_id: 'assistant-2',
         regenerate_anchor_message_id: 'user-1',
         regenerate_revision_count: 3,
       },
     });
-
     const { result } = renderUseChat();
+
+    mockConversations.getBranches.mockResolvedValue({
+      active_branch_id: 'regen-branch-1',
+      branches: [
+        {
+          id: 'root',
+          conversation_id: 'conv-regenerate',
+          parent_branch_id: null,
+          branch_point_message_id: null,
+          source_message_id: null,
+          operation_type: 'root',
+          label: 'Main',
+          head_message_id: 1,
+          created_at: now,
+          updated_at: now,
+          archived_at: null,
+          is_active: false,
+        },
+        {
+          id: 'regen-branch-1',
+          conversation_id: 'conv-regenerate',
+          parent_branch_id: 'root',
+          branch_point_message_id: 1,
+          source_message_id: 1,
+          operation_type: 'regenerate',
+          label: null,
+          head_message_id: 2,
+          created_at: now,
+          updated_at: now,
+          archived_at: null,
+          is_active: true,
+        },
+      ],
+    } as any);
 
     await waitFor(() => expect(result.current.modelOptions.length).toBeGreaterThan(0));
 
@@ -144,10 +180,20 @@ describe('message revision flows', () => {
     });
 
     expect(result.current.messages).toHaveLength(3);
+    expect(result.current.messages[0]).toMatchObject({
+      id: 'user-1',
+      _dbId: 1,
+    });
     expect(result.current.messages[2]).toMatchObject({
       id: 'assistant-2',
+      _parentMessageId: 1,
+      branch_id: 'regen-branch-1',
       regenerate_revision_count: 3,
       anchor_user_message_id: 'user-1',
+    });
+    await waitFor(() => {
+      expect(result.current.activeBranchId).toBe('regen-branch-1');
+      expect(result.current.branches).toHaveLength(2);
     });
   });
 

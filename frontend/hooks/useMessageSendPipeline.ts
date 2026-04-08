@@ -9,6 +9,7 @@ import {
 import type {
   ChatMessage as Message,
   Conversation,
+  ConversationBranch,
   MessageContent,
   ChatOptionsExtended,
   ChatResponse,
@@ -64,6 +65,8 @@ export interface SendPipelineDeps {
   setConversationId: (id: string | null) => void;
   setCurrentConversationTitle: (title: string | null) => void;
   setConversations: Dispatch<SetStateAction<Conversation[]>>;
+  setActiveBranchId: Dispatch<SetStateAction<string | null>>;
+  setBranches: Dispatch<SetStateAction<ConversationBranch[]>>;
 
   // -- Attachments --
   buildMessageContent: (text: string) => Promise<MessageContent>;
@@ -113,6 +116,8 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
     setConversationId,
     setCurrentConversationTitle,
     setConversations,
+    setActiveBranchId,
+    setBranches,
     buildMessageContent,
     clearAttachments,
     linkedConversationsRef,
@@ -178,6 +183,117 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       });
     },
     [setMessages]
+  );
+
+  const refreshBranchState = useCallback(
+    async (
+      conversationId: string,
+      options?: {
+        userMessageClientId?: string;
+        userMessageDbId?: string | number | null;
+        assistantMessageId?: string;
+      }
+    ) => {
+      if (typeof conversationsApi.getBranches !== 'function') return;
+      try {
+        const branchData = await conversationsApi.getBranches(conversationId);
+        const activeBranch = branchData.active_branch_id ?? null;
+        setActiveBranchId(activeBranch);
+        setBranches(Array.isArray(branchData.branches) ? branchData.branches : []);
+
+        const resolvedUserMessageDbId =
+          typeof options?.userMessageDbId === 'number'
+            ? options.userMessageDbId
+            : typeof options?.userMessageDbId === 'string' && /^\d+$/.test(options.userMessageDbId)
+              ? Number(options.userMessageDbId)
+              : null;
+
+        // Stamp branch_id and _parentMessageId on messages that are missing them
+        // so the branch switcher can render without a full page reload.
+        if (activeBranch) {
+          setMessages((prev) => {
+            const needsUpdate = prev.some(
+              (m) =>
+                !m.branch_id ||
+                (m.role === 'user' &&
+                  m.id === options?.userMessageClientId &&
+                  resolvedUserMessageDbId != null &&
+                  m._dbId !== resolvedUserMessageDbId) ||
+                (m.role === 'assistant' &&
+                  m.id === options?.assistantMessageId &&
+                  (m._parentMessageId == null ||
+                    !Object.prototype.hasOwnProperty.call(m, '_parentMessageId')))
+            );
+            if (!needsUpdate) return prev;
+            let lastUserDbId: number | null = null;
+            let changed = false;
+
+            const nextMessages = prev.map((m) => {
+              let nextMessage = m;
+
+              if (m.role === 'user') {
+                const patchedDbId =
+                  m.id === options?.userMessageClientId && resolvedUserMessageDbId != null
+                    ? resolvedUserMessageDbId
+                    : typeof m._dbId === 'number'
+                      ? m._dbId
+                      : null;
+
+                if (
+                  m.id === options?.userMessageClientId &&
+                  resolvedUserMessageDbId != null &&
+                  m._dbId !== resolvedUserMessageDbId
+                ) {
+                  nextMessage = { ...nextMessage, _dbId: resolvedUserMessageDbId };
+                  changed = true;
+                }
+
+                lastUserDbId = patchedDbId;
+              }
+
+              const needsBranchId = !nextMessage.branch_id;
+              const hasParentMessageId = Object.prototype.hasOwnProperty.call(
+                nextMessage,
+                '_parentMessageId'
+              );
+              const needsAssistantParentBackfill =
+                nextMessage.role === 'assistant' &&
+                nextMessage.id === options?.assistantMessageId &&
+                nextMessage._parentMessageId == null &&
+                lastUserDbId != null;
+
+              if (!needsBranchId && hasParentMessageId && !needsAssistantParentBackfill) {
+                return nextMessage;
+              }
+
+              const parentId =
+                nextMessage.role === 'user'
+                  ? typeof nextMessage._parentMessageId === 'number' ||
+                    nextMessage._parentMessageId === null
+                    ? nextMessage._parentMessageId
+                    : null
+                  : lastUserDbId;
+
+              changed = true;
+              nextMessage = {
+                ...nextMessage,
+                ...(needsBranchId ? { branch_id: activeBranch } : {}),
+                ...(!hasParentMessageId || needsAssistantParentBackfill
+                  ? { _parentMessageId: parentId }
+                  : {}),
+              };
+
+              return nextMessage;
+            });
+
+            return changed ? nextMessages : prev;
+          });
+        }
+      } catch {
+        // Ignore branch refresh errors and keep the message update path responsive.
+      }
+    },
+    [setActiveBranchId, setBranches, setMessages]
   );
 
   // ---------------------------------------------------------------------------
@@ -359,6 +475,11 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
             const isNew = conversationIdRef.current !== response.conversation.id;
             setConversationId(response.conversation.id);
             setCurrentConversationTitle(response.conversation.title || null);
+            await refreshBranchState(response.conversation.id, {
+              userMessageClientId: userMessageId,
+              userMessageDbId: response.conversation.user_message_id,
+              assistantMessageId: messageId,
+            });
             if (isNew)
               setConversations((prev) => {
                 if (prev.some((c) => c.id === response.conversation!.id)) return prev;
@@ -444,6 +565,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       setError,
       setPending,
       abortControllerRef,
+      refreshBranchState,
     ]
   );
 

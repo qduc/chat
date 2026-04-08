@@ -335,6 +335,91 @@ describe('MessageList', () => {
         expect(onSwitchBranch).toHaveBeenCalledWith('regen-1');
       });
     });
+
+    it('does not leak edit navigation onto later user messages without branch metadata', () => {
+      const branches = [
+        createBranch({ id: 'root', operation_type: 'root', created_at: '2024-01-01T00:00:00Z' }),
+        createBranch({
+          id: 'edit-1',
+          operation_type: 'edit',
+          parent_branch_id: 'root',
+          branch_point_message_id: null,
+          created_at: '2024-01-01T00:01:00Z',
+        }),
+      ];
+      const messages = [
+        createMessage({
+          id: 'user-a2',
+          role: 'user',
+          content: 'A2',
+          branch_id: 'edit-1',
+          _parentMessageId: null,
+        }),
+        createMessage({
+          id: 'user-b',
+          role: 'user',
+          content: 'B',
+        }),
+      ];
+
+      render(
+        <MessageList
+          {...defaultProps}
+          conversationId="conv-1"
+          branchModeEnabled={true}
+          branches={branches}
+          activeBranchId="edit-1"
+          onSwitchBranch={jest.fn()}
+          messages={messages}
+        />
+      );
+
+      expect(screen.getByTestId('edit-nav-user-a2')).toHaveTextContent('2/2');
+      expect(screen.queryByTestId('edit-nav-user-b')).not.toBeInTheDocument();
+    });
+
+    it('does not leak regenerate navigation onto later assistant messages without branch metadata', () => {
+      const branches = [
+        createBranch({ id: 'edit-1', operation_type: 'edit', created_at: '2024-01-01T00:00:00Z' }),
+        createBranch({
+          id: 'regen-1',
+          operation_type: 'regenerate',
+          parent_branch_id: 'edit-1',
+          branch_point_message_id: 42,
+          source_message_id: 42,
+          created_at: '2024-01-01T00:01:00Z',
+        }),
+      ];
+      const messages = [
+        createMessage({
+          id: 'assistant-r2',
+          role: 'assistant',
+          content: 'Answer v2',
+          branch_id: 'regen-1',
+          _parentMessageId: 42,
+        }),
+        createMessage({
+          id: 'assistant-c',
+          role: 'assistant',
+          content: 'Later answer',
+        }),
+      ];
+
+      render(
+        <MessageList
+          {...defaultProps}
+          conversationId="conv-1"
+          branchModeEnabled={true}
+          branches={branches}
+          activeBranchId="regen-1"
+          onSwitchBranch={jest.fn()}
+          messages={messages}
+        />
+      );
+
+      expect(screen.getByTestId('regen-nav-assistant-r2')).toHaveTextContent('2/2');
+      expect(screen.queryByTestId('regen-nav-assistant-c')).not.toBeInTheDocument();
+    });
   });
 
   describe('Revision scoping', () => {

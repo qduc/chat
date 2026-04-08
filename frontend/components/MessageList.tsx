@@ -271,8 +271,12 @@ export function MessageList({
 
   const buildBranchRevisionNav = useCallback(
     (message: ChatMessage, operationType: 'edit' | 'regenerate'): RevisionNavProps | undefined => {
-      const currentBranchId = message.branch_id ?? activeBranchId;
+      const currentBranchId = message.branch_id;
       if (!onSwitchBranch || !currentBranchId || branchById.size === 0) {
+        return undefined;
+      }
+
+      if (!Object.prototype.hasOwnProperty.call(message, '_parentMessageId')) {
         return undefined;
       }
 
@@ -324,7 +328,6 @@ export function MessageList({
       };
     },
     [
-      activeBranchId,
       branches,
       branchById.size,
       getBaseVersionBranchId,

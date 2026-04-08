@@ -142,13 +142,16 @@ export const conversations = {
     }
   },
 
-  async getBranches(conversationId: string): Promise<ConversationBranch[]> {
+  async getBranches(
+    conversationId: string
+  ): Promise<{ active_branch_id: string | null; branches: ConversationBranch[] }> {
     await waitForAuthReady();
     try {
-      const response = await httpClient.get<{ branches: ConversationBranch[] }>(
-        `/v1/conversations/${conversationId}/branches`
-      );
-      return response.data.branches;
+      const response = await httpClient.get<{
+        active_branch_id: string | null;
+        branches: ConversationBranch[];
+      }>(`/v1/conversations/${conversationId}/branches`);
+      return response.data;
     } catch (error) {
       throw error instanceof HttpError ? new Error(error.message) : error;
     }

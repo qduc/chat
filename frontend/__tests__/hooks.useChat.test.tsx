@@ -23,6 +23,7 @@ jest.mock('../lib/api', () => ({
   conversations: {
     list: jest.fn(),
     get: jest.fn(),
+    getBranches: jest.fn(),
     delete: jest.fn(),
     editMessage: jest.fn(),
     create: jest.fn(),
@@ -73,6 +74,7 @@ function createHttpResponse<T>(data: T): HttpResponse<T> {
 
 function arrangeHttpMocks() {
   mockConversations.list.mockResolvedValue({ items: [], next_cursor: null });
+  mockConversations.getBranches.mockResolvedValue({ active_branch_id: null, branches: [] } as any);
   mockHttpClient.get.mockImplementation((url: string) => {
     if (url.startsWith('/v1/models')) {
       return Promise.resolve(

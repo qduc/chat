@@ -232,6 +232,8 @@ export function useChat() {
     setConversationId,
     setCurrentConversationTitle,
     setConversations,
+    setActiveBranchId,
+    setBranches,
     buildMessageContent,
     clearAttachments,
     linkedConversationsRef,
