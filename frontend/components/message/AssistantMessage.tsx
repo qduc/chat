@@ -214,6 +214,7 @@ export function AssistantMessage({
               onRetryMessage={onRetryMessage}
               onRetryComparisonModel={onRetryComparisonModel}
               getModelDisplayName={getModelDisplayName}
+              regenRevision={data.modelId === 'primary' ? regenRevision : undefined}
             />
           ))}
         </div>

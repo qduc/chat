@@ -307,12 +307,14 @@ export class ConversationManager {
           .slice(-1)[0] || null;
         const firstDeleted = diff.toDelete[0];
         const isAssistantTurnRegen = firstDeleted.role === 'assistant' || firstDeleted.role === 'tool';
+        const isUserEdit = firstDeleted.role === 'user';
         const allNonUser = diff.toDelete.every(m => m.role !== 'user');
+
         targetBranchId = this._activateForkBranch({
           conversationId,
           userId,
-          operationType: isAssistantTurnRegen ? 'regenerate' : (allNonUser ? 'regenerate' : 'fork'),
-          sourceMessage: (isAssistantTurnRegen || allNonUser) ? branchPointMessage : null,
+          operationType: isAssistantTurnRegen ? 'regenerate' : (isUserEdit ? 'edit' : (allNonUser ? 'regenerate' : 'fork')),
+          sourceMessage: (isAssistantTurnRegen || allNonUser) ? branchPointMessage : (isUserEdit ? firstDeleted : null),
           branchPointMessageId: branchPointMessage?._dbId ?? null,
         });
 
@@ -661,6 +663,7 @@ export class ConversationManager {
       if (existingToDelete.length > 0) {
         const firstDeleted = existingToDelete[0];
         const isAssistantTurnRegen = firstDeleted.role === 'assistant' || firstDeleted.role === 'tool';
+        const isUserEdit = firstDeleted.role === 'user';
         const allNonUser = existingToDelete.every(m => m.role !== 'user');
 
         const branchPointMessage = afterSeq > 0
@@ -669,8 +672,8 @@ export class ConversationManager {
         targetBranchId = this._activateForkBranch({
           conversationId,
           userId,
-          operationType: isAssistantTurnRegen ? 'regenerate' : (allNonUser ? 'regenerate' : 'fork'),
-          sourceMessage: (isAssistantTurnRegen || allNonUser) ? branchPointMessage : null,
+          operationType: isAssistantTurnRegen ? 'regenerate' : (isUserEdit ? 'edit' : (allNonUser ? 'regenerate' : 'fork')),
+          sourceMessage: (isAssistantTurnRegen || allNonUser) ? branchPointMessage : (isUserEdit ? firstDeleted : null),
           branchPointMessageId: branchPointMessage?._dbId ?? null,
         });
       }
