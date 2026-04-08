@@ -39,7 +39,7 @@ export function UserMessage({
   return (
     <>
       <div
-        className={`rounded-2xl px-5 py-3.5 text-base leading-relaxed bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100 ${messageHasAudio ? 'min-w-[280px] sm:min-w-[400px]' : ''}`}
+        className={`w-fit ml-auto rounded-2xl px-5 py-3.5 text-base leading-relaxed bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100 ${messageHasAudio ? 'min-w-[280px] sm:min-w-[400px]' : ''}`}
       >
         <MessageContentRenderer content={content} isStreaming={false} role="user" />
       </div>
