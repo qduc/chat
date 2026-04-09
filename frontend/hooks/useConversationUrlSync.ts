@@ -1,9 +1,13 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import type { ChatMessage, ConversationWithMessages } from '../lib/types';
 
 interface UseConversationUrlSyncOptions {
   conversationId: string | null;
-  selectConversation: (id: string) => Promise<void>;
+  selectConversation: (
+    id: string,
+    options?: { branchId?: string }
+  ) => Promise<{ data: ConversationWithMessages; messages: ChatMessage[] } | null>;
   newChat: () => void;
   refreshConversations: () => void;
 }
