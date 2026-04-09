@@ -320,6 +320,31 @@ export function formatUsageLabel(usage?: ChatMessage['usage']): string | null {
 }
 
 /**
+ * Extract text for copying from assistant segments, excluding thinking and tool calls.
+ */
+export function extractAssistantCopyText(segments: AssistantSegment[]): string {
+  return segments
+    .filter((s) => s.kind === 'text')
+    .map((s) => {
+      const text = (s as any).text || '';
+      if (!text) return '';
+
+      // Strip <thinking>...</thinking>, <think>...</think>, and <reasoning_summary>...</reasoning_summary>
+      // We handle both complete and incomplete blocks (for streaming/partial view)
+      // Note: We use non-greedy matching and handle end-of-string for streaming
+      return text
+        .replace(/<thinking>[\s\S]*?(<\/thinking>|$)/g, '')
+        .replace(/<think>[\s\S]*?(<\/think>|$)/g, '')
+        .replace(/<thought>[\s\S]*?(<\/thought>|$)/g, '')
+        .replace(/<reasoning_summary>[\s\S]*?(<\/reasoning_summary>|$)/g, '')
+        .trim();
+    })
+    .filter((text) => text.length > 0)
+    .join('\n\n')
+    .trim();
+}
+
+/**
  * Build assistant message segments for rendering
  * Handles interleaved text, tool calls, reasoning, and images
  */

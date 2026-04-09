@@ -11,7 +11,7 @@ import { ToolSegment } from './ToolSegment';
 import { MessageToolbar } from './MessageToolbar';
 import { RevisionNavigation } from './RevisionNavigation';
 import { formatUsageLabel } from '../../lib';
-import { extractTextFromContent } from '../../lib/contentUtils';
+import { extractTextFromContent, extractAssistantCopyText } from '../../lib/contentUtils';
 import type { ModelDisplayData, ToolOutput, RevisionNavProps } from './types';
 import type { PendingState } from '../../hooks/useChat';
 
@@ -196,7 +196,9 @@ export function ModelResponseColumn({
               onFork={onFork}
               onRetry={onRetryMessage}
               onRetryModel={onRetryComparisonModel}
-              contentText={extractTextFromContent(dm.content)}
+              contentText={
+                isUser ? extractTextFromContent(dm.content) : extractAssistantCopyText(segments)
+              }
               revisionNavigation={
                 regenRevision ? (
                   <RevisionNavigation
