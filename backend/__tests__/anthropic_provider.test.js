@@ -332,6 +332,23 @@ describe('AnthropicProvider', () => {
       expect(typeof body.on).toBe('function'); // Should be a Node Readable
     });
 
+    test('preserves streaming error body for downstream handlers', async () => {
+      mockFetch.mockResolvedValue(
+        new Response(
+          'event: error\ndata: {"error":{"type":"invalid_request_error","message":"Streaming reasoning not supported."}}\n\n',
+          {
+            status: 400,
+            headers: { 'Content-Type': 'text/event-stream' },
+          }
+        )
+      );
+
+      const response = await provider.makeHttpRequest({ stream: true, model: 'claude-3-5-sonnet-20241022' });
+
+      expect(response.ok).toBe(false);
+      await expect(response.text()).resolves.toContain('Streaming reasoning not supported.');
+    });
+
     test('throws on network error', async () => {
       mockFetch.mockRejectedValue(new Error('Network error'));
 

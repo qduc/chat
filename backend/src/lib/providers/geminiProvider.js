@@ -162,6 +162,20 @@ export class GeminiProvider extends BaseProvider {
           : {};
 
       if (stream) {
+        if (!response.ok) {
+          if (response.clone) {
+            const clone = response.clone();
+            const text = await clone.text().catch(() => '');
+            logUpstreamResponse({
+              url,
+              status: response.status,
+              headers: responseHeaders,
+              body: text,
+            });
+          }
+          return response;
+        }
+
         const wrappedResponse = wrapStreamingResponse(response);
         const { previewPromise, stream: loggedStream } = teeStreamWithPreview(wrappedResponse.body, {
           maxBytes: 128 * 1024,

@@ -230,13 +230,14 @@ export class GeminiAdapter extends BaseAdapter {
     };
 
     if (internalRequest.reasoning_effort && internalRequest.reasoning_effort !== 'unset') {
+      const effort = internalRequest.reasoning_effort;
       if (isGemini3 || isGemma4) {
-        // Gemini 3 uses thinkingLevel
-        geminiRequest.generationConfig.thinkingConfig.thinkingLevel = internalRequest.reasoning_effort;
+        // Gemini 3 uses thinkingLevel; map 'none' -> 'none', 'xhigh' -> 'high' (max supported)
+        geminiRequest.generationConfig.thinkingConfig.thinkingLevel = effort === 'xhigh' ? 'high' : effort;
       } else {
         // Gemini 2.x and others use thinkingBudget (mapping our levels to budgets or -1 for dynamic)
-        // Based on doc, -1 is dynamic. We use -1 for everything other than 'minimal'.
-        if (internalRequest.reasoning_effort === 'minimal') {
+        // Based on doc, -1 is dynamic. We use 0 for 'none'/'minimal' to disable thinking.
+        if (effort === 'none' || effort === 'minimal') {
           geminiRequest.generationConfig.thinkingConfig.thinkingBudget = 0;
         } else {
           geminiRequest.generationConfig.thinkingConfig.thinkingBudget = -1;

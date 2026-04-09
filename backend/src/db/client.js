@@ -19,8 +19,9 @@ function getDatabaseConstructor() {
 import fs from 'fs';
 import path from 'path';
 import { config } from '../env.js';
-import { runMigrations } from './migrations.js';
+import { getCurrentVersion, migrations, runMigrations } from './migrations.js';
 import { runSeeders } from './seeders/index.js';
+import { logger } from '../logger.js';
 
 let db = null;
 let currentDbPath = null; // Actual file path opened by better-sqlite3
@@ -44,6 +45,47 @@ function configurePragmas(database) {
     database.pragma('busy_timeout = 5000');
   } catch (_) {
     // Best effort: ignore pragma errors on unsupported environments
+  }
+}
+
+const MAX_MIGRATION_SNAPSHOTS = 10;
+
+function createMigrationSnapshot(database, dbPath) {
+  if (!dbPath || !fs.existsSync(dbPath)) return;
+
+  const currentVersion = getCurrentVersion(database);
+  const latestVersion = migrations[migrations.length - 1]?.version ?? 0;
+  if (currentVersion >= latestVersion) return;
+
+  const dir = path.join(path.dirname(dbPath), 'migration_snapshots');
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const baseName = path.basename(dbPath, path.extname(dbPath));
+  const snapshotName = `${baseName}_v${currentVersion}_${timestamp}.db`;
+  const snapshotDest = path.join(dir, snapshotName);
+
+  try {
+    fs.copyFileSync(dbPath, snapshotDest);
+    logger.info(`[db] Pre-migration snapshot saved: ${snapshotName}`);
+  } catch (err) {
+    logger.warn(`[db] Failed to create migration snapshot: ${err.message}`);
+    return;
+  }
+
+  // Prune old snapshots, keep latest MAX_MIGRATION_SNAPSHOTS
+  try {
+    const snapshots = fs.readdirSync(dir)
+      .filter(f => f.endsWith('.db'))
+      .map(f => ({ name: f, mtime: fs.statSync(path.join(dir, f)).mtimeMs }))
+      .sort((a, b) => b.mtime - a.mtime);
+
+    for (const old of snapshots.slice(MAX_MIGRATION_SNAPSHOTS)) {
+      fs.unlinkSync(path.join(dir, old.name));
+      logger.info(`[db] Pruned old snapshot: ${old.name}`);
+    }
+  } catch (err) {
+    logger.warn(`[db] Failed to prune old snapshots: ${err.message}`);
   }
 }
 
@@ -160,6 +202,7 @@ export function getDb() {
       const DatabaseCtor = getDatabaseConstructor();
       db = new DatabaseCtor(filePath);
       configurePragmas(db);
+      createMigrationSnapshot(db, filePath);
       applyMigrations(db);
       runSeeders(db);
       currentDbPath = filePath;

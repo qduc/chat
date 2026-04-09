@@ -126,6 +126,7 @@ export type {
   ChatResponse,
   Conversation,
   ConversationMeta,
+  ConversationBranch,
   ConversationsList,
   ConversationWithMessages,
   Evaluation,

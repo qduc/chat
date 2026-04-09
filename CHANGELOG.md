@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.17.0] - 2026-04-09
+
+### Added
+- Conversation branching system with active branch management and navigation
+- User message editing with revision tracking and regeneration support
+- Message revision viewing to see and restore previous message versions
+- Message revision snapshot creation and pruning logic
+- Right sidebar state management with localStorage persistence
+- Version display in UI
+- Two new reasoning effort levels: "none" and "xhigh"
+
+### Changed
+- Enhanced type definitions and error handling in chat hooks
+- Improved selectConversation type to include branchId support
+- Chat persistence now pinned to request branches
+- Prevented branch switches during active streaming to maintain consistency
+- Bound revision snapshots to single turns for better management
+
+### Fixed
+- 11 bugs in conversation branches system
+- SQLite integer coercion when finding messages by client ID UUID
+- Duplicate in-flight request IDs now properly rejected
+- Message edits now preserved on branch switch failures
+- Upstream error content now displays correctly
+- Enforced user-only message edits
+
+
 ## [0.16.3] - 2026-04-06
 
 ### Added

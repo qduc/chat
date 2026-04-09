@@ -1,6 +1,13 @@
 import React from 'react';
 
-export type ReasoningEffortLevel = 'unset' | 'minimal' | 'low' | 'medium' | 'high';
+export type ReasoningEffortLevel =
+  | 'unset'
+  | 'none'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh';
 /** @deprecated Use ReasoningEffortLevel instead */
 export type QualityLevel = ReasoningEffortLevel;
 
@@ -43,10 +50,12 @@ export function QualitySlider({
                    disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <option value="unset">Unset</option>
+        <option value="none">None</option>
         <option value="minimal">Minimal</option>
         <option value="low">Low</option>
         <option value="medium">Medium</option>
         <option value="high">High</option>
+        <option value="xhigh">X-High</option>
       </select>
     </div>
   );

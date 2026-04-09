@@ -1,8 +1,9 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useSystemPrompts } from './useSystemPrompts';
 import { useDraftPersistence } from './useDraftPersistence';
 import type {
   ChatMessage as Message,
+  ConversationBranch,
   MessageContent,
   AudioAttachment,
   PendingState,
@@ -140,13 +141,33 @@ export function useChat() {
   const [input, setInputState] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<{ id: string } | null>(null);
+  const [activeBranchId, setActiveBranchIdState] = useState<string | null>(null);
+  const activeBranchIdRef = useRef<string | null>(null);
+  const setActiveBranchId = useCallback((id: string | null) => {
+    activeBranchIdRef.current = id;
+    setActiveBranchIdState(id);
+  }, []);
+  const [branches, setBranches] = useState<ConversationBranch[]>([]);
+
+  useEffect(() => {
+    activeBranchIdRef.current = activeBranchId;
+  }, [activeBranchId]);
 
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
     const saved = window.localStorage.getItem('sidebarCollapsed');
     return saved !== 'true';
   });
-  const [rightSidebarOpen, setRightSidebarOpen] = useState(false);
+  const [rightSidebarOpen, setRightSidebarOpen] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    const saved = window.localStorage.getItem('rightSidebarCollapsed');
+    return saved !== 'true';
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem('rightSidebarCollapsed', rightSidebarOpen ? 'false' : 'true');
+  }, [rightSidebarOpen]);
 
   // --- Helpers ---
   const generateClientId = useCallback(() => {
@@ -220,6 +241,9 @@ export function useChat() {
     setConversationId,
     setCurrentConversationTitle,
     setConversations,
+    setActiveBranchId,
+    activeBranchIdRef,
+    setBranches,
     buildMessageContent,
     clearAttachments,
     linkedConversationsRef,
@@ -263,6 +287,8 @@ export function useChat() {
     setEvaluationDrafts,
     setConversationId,
     setCurrentConversationTitle,
+    setActiveBranchId,
+    setBranches,
     modelToProviderRef,
     setModelState,
     modelRef,
@@ -414,6 +440,8 @@ export function useChat() {
   const newChat = useCallback(() => {
     setMessages([]);
     setConversationId(null);
+    setActiveBranchId(null);
+    setBranches([]);
     setInput('');
     setError(null);
     resetStreaming();
@@ -426,6 +454,8 @@ export function useChat() {
   }, [
     setMessages,
     setConversationId,
+    setActiveBranchId,
+    setBranches,
     setInput,
     resetStreaming,
     cancelEdit,
@@ -446,7 +476,7 @@ export function useChat() {
   // regenerate wraps the pipeline's regenerate with current compareModels snapshot
   const regenerate = useCallback(
     async (msgs: Message[]) => {
-      await pipelineRegenerate(msgs, compareModels);
+      return pipelineRegenerate(msgs, compareModels);
     },
     [pipelineRegenerate, compareModels]
   );
@@ -458,16 +488,33 @@ export function useChat() {
       editingMessageId,
       editingContent
     );
-    setMessages((prev) =>
-      prev.map((m) => (m.id === editingMessageId ? { ...m, content: editingContent } : m))
+    const selection = await selectConversation(conversationIdRef.current);
+    const hasReloadedEditedMessage = selection?.messages.some(
+      (message) =>
+        (message.id === result.message.id || message.id === editingMessageId) &&
+        JSON.stringify(message.content ?? null) ===
+          JSON.stringify(result.message.content ?? null) &&
+        message.edit_revision_count === result.edit_revision_count
     );
-    if (result.new_conversation_id !== conversationIdRef.current) {
-      setConversationId(result.new_conversation_id);
+    if (!hasReloadedEditedMessage) {
+      setMessages((prev) => {
+        const idx = prev.findIndex((message) => message.id === editingMessageId);
+        if (idx === -1) return prev;
+        return prev.slice(0, idx + 1).map((message, index) =>
+          index === idx
+            ? {
+                ...message,
+                id: result.message.id,
+                content: editingContent,
+                edit_revision_count: result.edit_revision_count,
+                comparisonResults: undefined,
+              }
+            : message.comparisonResults
+              ? { ...message, comparisonResults: undefined }
+              : message
+        );
+      });
       setLinkedConversations({});
-      setCompareModels([]);
-      setMessages((prev) =>
-        prev.map((m) => (m.comparisonResults ? { ...m, comparisonResults: undefined } : m))
-      );
     }
     cancelEdit();
   }, [
@@ -475,11 +522,27 @@ export function useChat() {
     conversationIdRef,
     editingContent,
     setMessages,
-    setConversationId,
     setLinkedConversations,
-    setCompareModels,
+    selectConversation,
     cancelEdit,
   ]);
+
+  const switchBranch = useCallback(
+    async (branchId: string) => {
+      const currentConversationId = conversationIdRef.current;
+      if (!currentConversationId || !branchId || branchId === activeBranchId) return null;
+      if (pending.streaming || status === 'streaming') {
+        throw new Error('Stop streaming before switching branches');
+      }
+      await conversationsApi.switchBranch(currentConversationId, branchId);
+      const selection = await selectConversation(currentConversationId);
+      if (!selection) {
+        throw new Error('Failed to load selected branch');
+      }
+      return selection;
+    },
+    [conversationIdRef, activeBranchId, pending.streaming, status, selectConversation]
+  );
 
   // Effects
   useEffect(() => {
@@ -501,7 +564,9 @@ export function useChat() {
     loadModels();
   }, [loadModels]);
 
-  useDraftPersistence(user?.id, conversationId, input, setInput);
+  const draftScopeId =
+    conversationId && activeBranchId ? `${conversationId}:${activeBranchId}` : conversationId;
+  useDraftPersistence(user?.id, draftScopeId, input, setInput);
 
   // Use system prompts hook
   const { prompts: systemPrompts, loading: systemPromptsLoading } = useSystemPrompts(user?.id);
@@ -514,6 +579,8 @@ export function useChat() {
     input,
     error,
     pending,
+    activeBranchId,
+    branches,
     model,
     providerId,
     user,
@@ -617,6 +684,7 @@ export function useChat() {
     toggleSidebar,
     toggleRightSidebar,
     selectConversation,
+    switchBranch,
     deleteConversation,
     loadMoreConversations: loadMore,
     refreshConversations: refresh,
@@ -632,6 +700,7 @@ export function useChat() {
     cancelEdit,
     updateEditContent,
     saveEdit,
+    setConversationId,
     loadProvidersAndModels: loadModels,
     forceRefreshModels: forceRefresh,
     setInlineSystemPromptOverride: (p: string | null) => {

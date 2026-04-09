@@ -16,7 +16,6 @@ import {
   getNextSeq,
   getAllMessagesForSync,
   updateMessageContent,
-  deleteMessagesAfterSeq,
   insertToolMessage,
 } from '../../db/messages.js';
 import {
@@ -32,6 +31,12 @@ import {
 import { v4 as uuidv4 } from 'uuid';
 import { computeMessageDiff, diffAssistantArtifacts, messagesEqual } from '../utils/messageDiff.js';
 import { getDb } from '../../db/client.js';
+import { getMessageRevisionCount } from '../../db/revisions.js';
+import {
+  createConversationBranch,
+  getActiveBranchId,
+  setConversationActiveBranch,
+} from '../../db/branches.js';
 
 /**
  * Handles core conversation persistence operations
@@ -87,6 +92,38 @@ export class ConversationManager {
     return conversationId;
   }
 
+  _activateForkBranch({
+    conversationId,
+    userId,
+    parentBranchId = null,
+    operationType,
+    sourceMessage = null,
+    branchPointMessageId = null,
+  }) {
+    const resolvedParentBranchId = parentBranchId || getActiveBranchId({ conversationId, userId });
+    const branchId = createConversationBranch({
+      conversationId,
+      userId,
+      parentBranchId: resolvedParentBranchId,
+      branchPointMessageId,
+      sourceMessageId: sourceMessage?._dbId ?? sourceMessage?.id ?? null,
+      operationType,
+      headMessageId: branchPointMessageId ?? null,
+    });
+    const ok = setConversationActiveBranch({
+      conversationId,
+      branchId,
+      userId,
+    });
+    if (!ok) {
+      logger.error('[ConversationManager] _activateForkBranch: setConversationActiveBranch returned false', {
+        conversationId,
+        branchId,
+      });
+    }
+    return branchId;
+  }
+
   /**
    * Sync message history using diff-based approach
    * Falls back to clear-and-rewrite if alignment is unsafe
@@ -95,12 +132,13 @@ export class ConversationManager {
    * @param {Array} messages - Array of messages to insert
    * @param {number} afterSeq - Only sync messages after this sequence number (0 = all messages)
    */
-  syncMessageHistoryDiff(conversationId, userId, messages, afterSeq = 0) {
+  syncMessageHistoryDiff(conversationId, userId, messages, afterSeq = 0, options = {}) {
     const normalized = Array.isArray(messages)
       ? messages.map(message => this._normalizeIncomingMessage(message))
       : [];
+    const requestedBranchId = options?.branchId || null;
 
-    const allExisting = getAllMessagesForSync({ conversationId });
+    const allExisting = getAllMessagesForSync({ conversationId, branchId: requestedBranchId });
     // Note: getAllMessagesForSync returns messages with id already transformed to client_message_id
     const existingByClientId = new Map();
     for (const message of allExisting) {
@@ -151,7 +189,31 @@ export class ConversationManager {
           clientMessageId: incomingTail[0]?.id || null,
         });
         const diff = computeMessageDiff([], incomingTail);
-        return this._applyMessageDiff(conversationId, userId, diff, anchorCandidate);
+        return this._applyMessageDiff(
+          conversationId,
+          userId,
+          diff,
+          anchorCandidate,
+          allExisting,
+          requestedBranchId
+        );
+      }
+
+      const structuralDiff = computeMessageDiff(allExisting, normalized);
+      if (!structuralDiff.fallback) {
+        logger.debug('[MessageSync] Recovered alignment without client IDs using structural diff', {
+          conversationId,
+          existingCount: allExisting.length,
+          incomingCount: normalized.length,
+        });
+        return this._applyMessageDiff(
+          conversationId,
+          userId,
+          structuralDiff,
+          0,
+          allExisting,
+          requestedBranchId
+        );
       }
 
       logger.debug('[MessageSync] No alignment on client IDs; falling back to clear-and-rewrite', {
@@ -182,7 +244,13 @@ export class ConversationManager {
 
     if (diff.fallback) {
       logger.warn(`[MessageSync] Fallback to clear-and-rewrite for conversation ${conversationId}: ${diff.reason}`);
-      return this._fallbackClearAndRewrite(conversationId, userId, normalized, anchorSeq);
+      return this._fallbackClearAndRewrite(
+        conversationId,
+        userId,
+        normalized,
+        anchorSeq,
+        requestedBranchId
+      );
     }
 
     const stats = {
@@ -196,7 +264,14 @@ export class ConversationManager {
     };
     logger.debug(`[MessageSync] Diff-based sync for conversation ${conversationId}:`, stats);
 
-    return this._applyMessageDiff(conversationId, userId, diff, anchorSeq);
+    return this._applyMessageDiff(
+      conversationId,
+      userId,
+      diff,
+      anchorSeq,
+      allExisting,
+      requestedBranchId
+    );
   }
 
   /**
@@ -206,12 +281,21 @@ export class ConversationManager {
    * @param {Object} diff - Diff result from computeMessageDiff
    * @private
    */
-  _applyMessageDiff(conversationId, userId, diff, anchorSeq = 0) {
+  _applyMessageDiff(
+    conversationId,
+    userId,
+    diff,
+    anchorSeq = 0,
+    existingMessages = null,
+    requestedBranchId = null
+  ) {
     const db = getDb();
     const idMappings = [];
     const insertedMessages = [];
     const updatedMessages = [];
     const deletedMessages = [];
+    let regenerateRevision = null;
+    let targetBranchId = requestedBranchId || getActiveBranchId({ conversationId, userId });
 
     const transaction = db.transaction(() => {
       for (const msg of diff.toUpdate) {
@@ -252,11 +336,38 @@ export class ConversationManager {
 
       if (diff.toDelete.length > 0) {
         const firstDeleteSeq = diff.toDelete[0].seq;
-        deleteMessagesAfterSeq({
+        // Reuse allExisting from outer scope — no deletions have occurred yet at this point
+        const allExisting =
+          existingMessages ?? getAllMessagesForSync({ conversationId, branchId: targetBranchId });
+        const branchPointMessage = allExisting
+          .filter(m => m.seq < firstDeleteSeq)
+          .slice(-1)[0] || null;
+        const firstDeleted = diff.toDelete[0];
+        const isAssistantTurnRegen = firstDeleted.role === 'assistant' || firstDeleted.role === 'tool';
+        const isUserEdit = firstDeleted.role === 'user';
+        const allNonUser = diff.toDelete.every(m => m.role !== 'user');
+
+        targetBranchId = this._activateForkBranch({
           conversationId,
           userId,
-          afterSeq: Math.max(0, firstDeleteSeq - 1)
+          parentBranchId: targetBranchId,
+          operationType: isAssistantTurnRegen ? 'regenerate' : (isUserEdit ? 'edit' : (allNonUser ? 'regenerate' : 'fork')),
+          sourceMessage: (isAssistantTurnRegen || allNonUser) ? branchPointMessage : (isUserEdit ? firstDeleted : null),
+          branchPointMessageId: branchPointMessage?._dbId ?? null,
         });
+
+        if (allNonUser && branchPointMessage) {
+          const anchorMessageId = String(branchPointMessage.id);
+          regenerateRevision = {
+            anchorMessageId,
+            count: getMessageRevisionCount({
+              conversationId,
+              anchorMessageId,
+              userId,
+              operationType: 'regenerate',
+            }),
+          };
+        }
 
         for (const msg of diff.toDelete) {
           deletedMessages.push({ role: msg.role, id: msg.id, seq: msg.seq });
@@ -275,6 +386,7 @@ export class ConversationManager {
             content: msg.content,
             seq: nextSeq++,
             clientMessageId,
+            branchId: targetBranchId,
           });
           if (result?.id) {
             insertedMessages.push({ role: 'user', id: result.id, seq: result.seq });
@@ -303,6 +415,7 @@ export class ConversationManager {
             promptMs: msg.usage?.prompt_ms,
             completionMs: msg.usage?.completion_ms,
             clientMessageId,
+            branchId: targetBranchId,
           });
 
           if (result?.id) {
@@ -328,6 +441,7 @@ export class ConversationManager {
             seq: nextSeq++,
             status: toolStatus,
             clientMessageId,
+            branchId: targetBranchId,
           });
 
           if (result?.id) {
@@ -350,7 +464,16 @@ export class ConversationManager {
 
     transaction();
 
-    return { idMappings, insertedMessages, updatedMessages, deletedMessages, anchorSeq };
+    return {
+      idMappings,
+      insertedMessages,
+      updatedMessages,
+      deletedMessages,
+      anchorSeq,
+      conversationId,
+      regenerateRevision,
+      branchId: targetBranchId,
+    };
   }
 
   /**
@@ -558,25 +681,51 @@ export class ConversationManager {
    * @param {number} afterSeq - Only delete and rewrite messages after this sequence number
    * @private
    */
-  _fallbackClearAndRewrite(conversationId, userId, messages, afterSeq = 0) {
+  _fallbackClearAndRewrite(conversationId, userId, messages, afterSeq = 0, requestedBranchId = null) {
     const db = getDb();
     const idMappings = [];
     const insertedMessages = [];
     const deletedMessages = [];
+    let targetBranchId = requestedBranchId || getActiveBranchId({ conversationId, userId });
 
+    // Fetch all existing messages once; derive existingToDelete and branchPointMessage from this
+    const allExistingMessages = getAllMessagesForSync({ conversationId, branchId: targetBranchId });
     const existingToDelete = afterSeq > 0
-      ? getAllMessagesForSync({ conversationId }).filter(msg => msg.seq > afterSeq)
-      : getAllMessagesForSync({ conversationId });
+      ? allExistingMessages.filter(msg => msg.seq > afterSeq)
+      : allExistingMessages;
 
     for (const msg of existingToDelete) {
       deletedMessages.push({ role: msg.role, id: msg.id, seq: msg.seq });
     }
 
     const transaction = db.transaction(() => {
-      deleteMessagesAfterSeq({ conversationId, userId, afterSeq });
+      if (existingToDelete.length > 0) {
+        const firstDeleted = existingToDelete[0];
+        const isAssistantTurnRegen = firstDeleted.role === 'assistant' || firstDeleted.role === 'tool';
+        const isUserEdit = firstDeleted.role === 'user';
+        const allNonUser = existingToDelete.every(m => m.role !== 'user');
 
-      let seq = afterSeq + 1;
-      for (const message of messages) {
+        const branchPointMessage = afterSeq > 0
+          ? allExistingMessages.filter(msg => msg.seq <= afterSeq).slice(-1)[0] || null
+          : null;
+        targetBranchId = this._activateForkBranch({
+          conversationId,
+          userId,
+          parentBranchId: targetBranchId,
+          operationType: isAssistantTurnRegen ? 'regenerate' : (isUserEdit ? 'edit' : (allNonUser ? 'regenerate' : 'fork')),
+          sourceMessage: (isAssistantTurnRegen || allNonUser) ? branchPointMessage : (isUserEdit ? firstDeleted : null),
+          branchPointMessageId: branchPointMessage?._dbId ?? null,
+        });
+      }
+
+      let seq = getNextSeq(conversationId);
+      const messagesToInsert = afterSeq > 0
+        ? messages.filter((message) => {
+            const messageSeq = typeof message.seq === 'number' ? message.seq : null;
+            return messageSeq == null || messageSeq > afterSeq;
+          })
+        : messages;
+      for (const message of messagesToInsert) {
         const hasUserContent = typeof message.content === 'string' || Array.isArray(message.content);
         const hasAssistantContent = message.content !== undefined && message.content !== null;
         const clientMessageId = message.id != null ? String(message.id) : null;
@@ -587,6 +736,7 @@ export class ConversationManager {
             content: message.content,
             seq: seq++,
             clientMessageId,
+            branchId: targetBranchId,
           });
           if (result?.id) {
             insertedMessages.push({ role: 'user', id: result.id, seq: result.seq });
@@ -615,6 +765,7 @@ export class ConversationManager {
             promptMs: message.usage?.prompt_ms,
             completionMs: message.usage?.completion_ms,
             clientMessageId,
+            branchId: targetBranchId,
           });
 
           if (result?.id) {
@@ -640,6 +791,7 @@ export class ConversationManager {
             seq: seq++,
             status: toolStatus,
             clientMessageId,
+            branchId: targetBranchId,
           });
 
           if (result?.id) {
@@ -661,7 +813,15 @@ export class ConversationManager {
     });
 
     transaction();
-    return { idMappings, insertedMessages, deletedMessages, updatedMessages: [], anchorSeq: afterSeq };
+    return {
+      idMappings,
+      insertedMessages,
+      deletedMessages,
+      updatedMessages: [],
+      anchorSeq: afterSeq,
+      conversationId,
+      branchId: targetBranchId,
+    };
   }
 
   _normalizeIncomingMessage(message) {
@@ -706,6 +866,7 @@ export class ConversationManager {
       completionMs: params.completionMs,
       provider: params.provider,
       clientMessageId: params.clientMessageId,
+      branchId: params.branchId,
     });
   }
 
@@ -714,10 +875,11 @@ export class ConversationManager {
    * @param {string} conversationId - Conversation ID
    * @param {number} seq - Message sequence number
    */
-  markAssistantError(conversationId, seq) {
+  markAssistantError(conversationId, seq, branchId = null) {
     markAssistantErrorBySeq({
       conversationId,
       seq,
+      branchId,
     });
   }
 

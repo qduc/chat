@@ -1,6 +1,17 @@
 export { getDb, resetDbCache } from './client.js';
 export { upsertSession } from './sessions.js';
 export {
+  createConversationBranch,
+  getRootBranchId,
+  initializeConversationRootBranch,
+  getConversationBranch,
+  getConversationBranches,
+  getActiveBranchId,
+  getBranchHeadMessageId,
+  setConversationActiveBranch,
+  updateConversationBranchHead,
+} from './branches.js';
+export {
   createConversation,
   getConversationById,
   updateConversationMetadata,
@@ -29,6 +40,7 @@ export {
   getMessagesPage,
   getLastMessage,
   getLastAssistantResponseId,
+  getActiveBranchMessages,
   getMessageContentByClientId,
   getPreviousUserMessage,
   updateMessageContent,
@@ -65,3 +77,10 @@ export {
   getEvaluationByPair,
   createEvaluation,
 } from './evaluations.js';
+
+export {
+  saveMessageRevision,
+  getMessageRevisions,
+  getRevisionCountsForConversation,
+  getMessageRevisionCount,
+} from './revisions.js';

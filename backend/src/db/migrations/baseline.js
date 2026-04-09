@@ -47,11 +47,39 @@ export default {
         reasoning_effort TEXT NULL,
         verbosity TEXT NULL,
         provider_id TEXT NULL,
-        parent_conversation_id TEXT DEFAULT NULL
+        parent_conversation_id TEXT DEFAULT NULL,
+        active_branch_id TEXT DEFAULT NULL
       );
 
       CREATE INDEX IF NOT EXISTS idx_conversations_session_created ON conversations(session_id, created_at DESC);
       CREATE INDEX IF NOT EXISTS idx_conversations_parent_id ON conversations(parent_conversation_id);
+
+      CREATE TABLE IF NOT EXISTS conversation_branches (
+        id TEXT PRIMARY KEY,
+        conversation_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        parent_branch_id TEXT NULL,
+        branch_point_message_id INTEGER NULL,
+        source_message_id INTEGER NULL,
+        operation_type TEXT NOT NULL CHECK(operation_type IN ('root', 'edit', 'regenerate', 'fork')),
+        label TEXT NULL,
+        head_message_id INTEGER NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        archived_at DATETIME NULL,
+        FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+        FOREIGN KEY(parent_branch_id) REFERENCES conversation_branches(id),
+        FOREIGN KEY(branch_point_message_id) REFERENCES messages(id) ON DELETE SET NULL,
+        FOREIGN KEY(source_message_id) REFERENCES messages(id) ON DELETE SET NULL,
+        FOREIGN KEY(head_message_id) REFERENCES messages(id) ON DELETE SET NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_conversation_branches_conversation
+        ON conversation_branches(conversation_id, created_at ASC);
+      CREATE INDEX IF NOT EXISTS idx_conversation_branches_parent
+        ON conversation_branches(parent_branch_id);
+      CREATE INDEX IF NOT EXISTS idx_conversation_branches_source_message
+        ON conversation_branches(conversation_id, source_message_id);
 
       CREATE TABLE IF NOT EXISTS providers (
         id TEXT NOT NULL,
@@ -100,6 +128,7 @@ export default {
       CREATE TABLE IF NOT EXISTS messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         conversation_id TEXT NOT NULL,
+        branch_id TEXT NOT NULL,
         role TEXT NOT NULL,
         status TEXT NOT NULL DEFAULT 'final',
         content TEXT NOT NULL DEFAULT '',
@@ -122,10 +151,13 @@ export default {
         metadata_json TEXT NULL,
         UNIQUE(conversation_id, seq),
         FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
-        FOREIGN KEY(parent_message_id) REFERENCES messages(id)
+        FOREIGN KEY(parent_message_id) REFERENCES messages(id),
+        FOREIGN KEY(branch_id) REFERENCES conversation_branches(id) ON DELETE CASCADE
       );
 
       CREATE INDEX IF NOT EXISTS idx_messages_conv_id ON messages(conversation_id, id);
+      CREATE INDEX IF NOT EXISTS idx_messages_branch_seq ON messages(branch_id, seq ASC);
+      CREATE INDEX IF NOT EXISTS idx_messages_parent_message_id ON messages(parent_message_id);
       CREATE INDEX IF NOT EXISTS idx_messages_response_id ON messages(response_id) WHERE response_id IS NOT NULL;
       CREATE INDEX IF NOT EXISTS idx_messages_conversation_role_seq
         ON messages(conversation_id, role, seq DESC)
@@ -310,6 +342,7 @@ export default {
 
       CREATE INDEX IF NOT EXISTS idx_message_events_message_id ON message_events(message_id, seq);
       CREATE INDEX IF NOT EXISTS idx_message_events_conversation_id ON message_events(conversation_id, seq);
+
     `,
   down: `
       -- Baseline migration is non-reversible; leave as-is

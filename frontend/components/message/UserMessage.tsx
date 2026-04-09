@@ -6,7 +6,9 @@
 import React from 'react';
 import { MessageContentRenderer } from '../ui/MessageContentRenderer';
 import { MessageToolbar } from './MessageToolbar';
+import { RevisionNavigation } from './RevisionNavigation';
 import { hasAudio, extractTextFromContent, type MessageContent } from '../../lib';
+import type { RevisionNavProps } from './types';
 
 interface UserMessageProps {
   messageId: string;
@@ -17,6 +19,7 @@ interface UserMessageProps {
   onFork?: (messageId: string, modelId: string) => void;
   onEditMessage?: (messageId: string, content: string) => void;
   toolbarRef?: React.RefObject<HTMLDivElement | null>;
+  editRevision?: RevisionNavProps;
 }
 
 export function UserMessage({
@@ -28,6 +31,7 @@ export function UserMessage({
   onFork,
   onEditMessage,
   toolbarRef,
+  editRevision,
 }: UserMessageProps) {
   const messageHasAudio = hasAudio(content);
   const textContent = extractTextFromContent(content);
@@ -35,7 +39,7 @@ export function UserMessage({
   return (
     <>
       <div
-        className={`rounded-2xl px-5 py-3.5 text-base leading-relaxed bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100 ${messageHasAudio ? 'min-w-[280px] sm:min-w-[400px]' : ''}`}
+        className={`w-fit ml-auto rounded-2xl px-5 py-3.5 text-base leading-relaxed bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100 ${messageHasAudio ? 'min-w-[280px] sm:min-w-[400px]' : ''}`}
       >
         <MessageContentRenderer content={content} isStreaming={false} role="user" />
       </div>
@@ -55,6 +59,18 @@ export function UserMessage({
           contentText={textContent}
           variant="user"
           toolbarRef={toolbarRef}
+          revisionNavigation={
+            editRevision ? (
+              <RevisionNavigation
+                current={editRevision.slot}
+                total={editRevision.total}
+                onPrev={editRevision.onPrev}
+                onNext={editRevision.onNext}
+                loading={editRevision.loading}
+                disabled={editRevision.disabled}
+              />
+            ) : undefined
+          }
         />
       )}
     </>

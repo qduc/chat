@@ -12,15 +12,26 @@ import {
   searchConversations,
   softDeleteConversation,
   listConversationsIncludingDeleted,
-  forkConversationFromMessage,
   getLinkedConversations,
 } from '../db/conversations.js';
 import {
   getMessagesPage,
-  updateMessageContent,
-  deleteMessagesAfterSeq,
+  getNextSeq,
+  insertUserMessage,
+  getMessageContentByClientId,
 } from '../db/messages.js';
 import { listEvaluationsForConversation } from '../db/evaluations.js';
+import {
+  getMessageRevisions,
+  getRevisionCountsForConversation,
+  getMessageRevisionCount,
+} from '../db/revisions.js';
+import {
+  createConversationBranch,
+  getActiveBranchId,
+  getConversationBranches,
+  setConversationActiveBranch,
+} from '../db/branches.js';
 import {
   migrateSessionConversationsToUser,
   countMigratableConversations
@@ -199,8 +210,12 @@ conversationsRouter.get('/v1/conversations/:id', (req, res) => {
 
     const after_seq = req.query.after_seq ? Number(req.query.after_seq) : 0;
     const limit = req.query.limit ? Number(req.query.limit) : 50;
+    const branchId = typeof req.query.branch_id === 'string' && req.query.branch_id.trim()
+      ? req.query.branch_id.trim()
+      : null;
     const page = getMessagesPage({
       conversationId: req.params.id,
+      branchId,
       afterSeq: after_seq,
       limit,
     });
@@ -216,8 +231,11 @@ conversationsRouter.get('/v1/conversations/:id', (req, res) => {
       system_prompt: sysPrompt,
       active_system_prompt_id: activePromptId,
       custom_request_params_id: customRequestParamsId,
+      active_branch_id: branchId || convo.active_branch_id || null,
       messages: page.messages,
       evaluations: listEvaluationsForConversation({ conversationId: req.params.id, userId }),
+      revision_counts: getRevisionCountsForConversation({ conversationId: req.params.id, userId, branchId: branchId || null }),
+      branches: getConversationBranches({ conversationId: req.params.id, userId }),
       next_after_seq: page.next_after_seq,
     };
 
@@ -228,6 +246,7 @@ conversationsRouter.get('/v1/conversations/:id', (req, res) => {
       response.linked_conversations = linkedConvos.map((linked) => {
         const linkedPage = getMessagesPage({
           conversationId: linked.id,
+          branchId: linked.active_branch_id || null,
           afterSeq: 0,
           limit: 200, // Get all messages for linked conversations
         });
@@ -280,11 +299,52 @@ conversationsRouter.get('/v1/conversations/:id/linked', (req, res) => {
   }
 });
 
-// PUT /v1/conversations/:id/messages/:messageId/edit (edit message and fork conversation)
+conversationsRouter.get('/v1/conversations/:id/branches', (req, res) => {
+  if (!config.persistence.enabled) return notImplemented(res);
+  try {
+    const userId = req.user.id;
+    getDb();
+
+    const convo = getConversationById({ id: req.params.id, userId });
+    if (!convo) return res.status(404).json({ error: 'not_found' });
+
+    return res.json({
+      active_branch_id: convo.active_branch_id || null,
+      branches: getConversationBranches({ conversationId: req.params.id, userId }),
+    });
+  } catch (e) {
+    logger.error('[conversations] get branches error', e);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+conversationsRouter.post('/v1/conversations/:id/branches/:branchId/switch', (req, res) => {
+  if (!config.persistence.enabled) return notImplemented(res);
+  try {
+    const userId = req.user.id;
+    getDb();
+
+    const ok = setConversationActiveBranch({
+      conversationId: req.params.id,
+      branchId: req.params.branchId,
+      userId,
+    });
+    if (!ok) return res.status(404).json({ error: 'not_found' });
+
+    return res.json({
+      conversation_id: req.params.id,
+      active_branch_id: req.params.branchId,
+    });
+  } catch (e) {
+    logger.error('[conversations] switch branch error', e);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+// PUT /v1/conversations/:id/messages/:messageId/edit (edit message and create a new branch)
 conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, res) => {
   if (!config.persistence.enabled) return notImplemented(res);
   try {
-    const sessionId = req.sessionId;
     const userId = req.user.id; // Guaranteed by authenticateToken middleware
 
     const { content } = req.body || {};
@@ -326,52 +386,101 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
 
     getDb();
 
-    // Update the message content (supports both string and mixed content array)
-    const message = updateMessageContent({
-      messageId: req.params.messageId,
+    // Look up the active branch first so we can scope the message lookup to the correct branch
+    const activeBranchId = getActiveBranchId({ conversationId: req.params.id, userId });
+
+    // Look up the message using client_message_id or integer id (handles UUID from frontend)
+    // Scope the search to the active branch to prevent editing messages from archived branches
+    const existingMessage = getMessageContentByClientId({
       conversationId: req.params.id,
+      clientMessageId: req.params.messageId,
       userId,
-      content: validatedContent,
+      branchId: activeBranchId,
     });
 
-    if (!message) {
+    if (!existingMessage) {
       return res.status(404).json({ error: 'not_found' });
     }
 
-    // Get conversation details for forking
-    const conversation = getConversationById({ id: req.params.id, userId });
-    if (!conversation) {
-      return res.status(404).json({ error: 'not_found' });
+    if (existingMessage.role !== 'user') {
+      return res
+        .status(400)
+        .json({ error: 'bad_request', message: 'Only user messages can be edited' });
     }
 
-    // Fork conversation from the edited message
-    const newConversationId = forkConversationFromMessage({
-      originalConversationId: req.params.id,
-      sessionId,
-      userId,
-      messageSeq: message.seq,
-      title: conversation.title,
-      provider_id: conversation.provider_id,
-      model: conversation.model,
-    });
+    let newBranchId, clientMessageId, message;
+    const db = getDb();
+    db.transaction(() => {
+      newBranchId = createConversationBranch({
+        conversationId: req.params.id,
+        userId,
+        parentBranchId: activeBranchId,
+        branchPointMessageId: existingMessage.parent_message_id ?? null,
+        sourceMessageId: existingMessage.id,
+        operationType: 'edit',
+        label: null,
+        headMessageId: existingMessage.parent_message_id ?? null,
+      });
+      const ok = setConversationActiveBranch({
+        conversationId: req.params.id,
+        branchId: newBranchId,
+        userId,
+      });
+      if (!ok) throw new Error(`Failed to activate new branch ${newBranchId}`);
 
-    // Delete messages after the edited message in the original conversation
-    deleteMessagesAfterSeq({
+      const nextSeq = getNextSeq(req.params.id);
+      clientMessageId = uuidv4();
+      message = insertUserMessage({
+        conversationId: req.params.id,
+        content: validatedContent,
+        seq: nextSeq,
+        clientMessageId,
+        branchId: newBranchId,
+        parentMessageId: existingMessage.parent_message_id ?? null,
+      });
+    })();
+
+    const anchorMessageId = existingMessage.client_message_id || String(existingMessage.id);
+    const editRevisionCount = getMessageRevisionCount({
       conversationId: req.params.id,
+      anchorMessageId,
       userId,
-      afterSeq: message.seq,
+      operationType: 'edit',
     });
 
     return res.json({
       message: {
-        id: message.id,
+        id: clientMessageId,
         seq: message.seq,
         content: validatedContent,
       },
-      new_conversation_id: newConversationId,
+      new_conversation_id: req.params.id,
+      branch_id: newBranchId,
+      active_branch_id: newBranchId,
+      edit_revision_count: editRevisionCount,
     });
   } catch (e) {
     logger.error('[conversations] edit message error', e);
+    return res.status(500).json({ error: 'internal_error' });
+  }
+});
+
+// GET /v1/conversations/:id/messages/:messageId/revisions
+conversationsRouter.get('/v1/conversations/:id/messages/:messageId/revisions', (req, res) => {
+  if (!config.persistence.enabled) return notImplemented(res);
+  try {
+    const userId = req.user.id;
+    getDb();
+
+    const revisions = getMessageRevisions({
+      conversationId: req.params.id,
+      anchorMessageId: req.params.messageId,
+      userId,
+    });
+
+    return res.json({ revisions });
+  } catch (e) {
+    logger.error('[conversations] get revisions error', e);
     return res.status(500).json({ error: 'internal_error' });
   }
 });

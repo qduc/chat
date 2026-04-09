@@ -2,10 +2,19 @@
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { createChatProxyTestContext } from '../test_utils/chatProxyTestUtils.js';
-import { getDb, upsertSession, createConversation } from '../src/db/index.js';
+import {
+  getDb,
+  upsertSession,
+  createConversation,
+  createConversationBranch,
+  getRootBranchId,
+  initializeConversationRootBranch,
+  getConversationById,
+  getMessagesPage,
+} from '../src/db/index.js';
 import { config } from '../src/env.js';
 
-const { makeApp, withServer } = createChatProxyTestContext();
+const { makeApp, withServer, upstream } = createChatProxyTestContext();
 
 const mockUser = {
   id: 'user-limit-test',
@@ -57,5 +66,51 @@ describe('Chat proxy persistence', () => {
       assert.ok(assistantMessage, 'Should persist assistant response');
       assert.ok(assistantMessage.content, 'Assistant message should have content');
     }
+  });
+
+  test('branch_id targets the requested branch during chat persistence', async () => {
+    const sessionId = 'test-session-branch';
+    const userId = mockUser.id;
+    const app = makeApp({ mockUser });
+    upsertSession(sessionId, { userId });
+
+    const conversationId = 'conv-branch-target';
+    createConversation({ id: conversationId, sessionId, userId, title: 'Branch Target' });
+    initializeConversationRootBranch({ conversationId, userId });
+    const rootBranchId = getRootBranchId(conversationId);
+    const targetBranchId = createConversationBranch({
+      conversationId,
+      userId,
+      parentBranchId: rootBranchId,
+      operationType: 'fork',
+      label: 'Alt',
+      headMessageId: null,
+    });
+
+    const chatRes = await request(app)
+      .post('/v1/chat/completions')
+      .set('x-session-id', sessionId)
+      .send({
+        messages: [{ role: 'user', content: 'Hello branch' }],
+        conversation_id: conversationId,
+        branch_id: targetBranchId,
+        stream: false,
+      });
+
+    assert.equal(chatRes.status, 200);
+    assert.ok(chatRes.body.choices[0].message.content);
+    assert.equal(upstream.lastChatRequestBody.branch_id, undefined);
+
+    const convo = getConversationById({ id: conversationId, userId });
+    assert.ok(convo);
+    assert.equal(convo.active_branch_id, rootBranchId);
+    assert.equal(chatRes.body._conversation?.active_branch_id, targetBranchId);
+
+    const page = getMessagesPage({ conversationId, branchId: targetBranchId, limit: 10 });
+    assert.ok(page.messages.length >= 2);
+    assert.equal(page.messages[0].branch_id, targetBranchId);
+
+    const rootPage = getMessagesPage({ conversationId, branchId: rootBranchId, limit: 10 });
+    assert.equal(rootPage.messages.length, 0);
   });
 });

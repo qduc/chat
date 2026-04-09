@@ -126,6 +126,22 @@ export class AnthropicProvider extends BaseProvider {
       const isActuallyStreaming = contentType.includes('text/event-stream') || contentType.includes('text/plain');
 
       if (translatedRequest?.stream && isActuallyStreaming) {
+        if (!response.ok) {
+          if (response.clone) {
+            const responseClone = response.clone();
+            const responseBody = typeof responseClone.text === 'function'
+              ? await responseClone.text().catch(() => '')
+              : '';
+            logUpstreamResponse({
+              url,
+              status: response.status,
+              headers: responseHeaders,
+              body: responseBody,
+            });
+          }
+          return response;
+        }
+
         // For streaming responses, tee the stream to capture SSE data
         const wrappedResponse = wrapStreamingResponse(response);
         const { previewPromise, stream: loggedStream } = teeStreamWithPreview(wrappedResponse.body, {

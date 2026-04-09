@@ -43,7 +43,7 @@ describe('Checkpoint persistence', () => {
       .prepare('SELECT role, status, content, seq FROM messages WHERE id = ?')
       .get(persistence.currentMessageId);
 
-    expect(draft).toMatchObject({ role: 'assistant', status: 'draft', content: '' });
+    expect(draft).toMatchObject({ role: 'assistant', status: 'streaming', content: '' });
     expect(draft.seq).toBe(persistence.assistantSeq);
   });
 

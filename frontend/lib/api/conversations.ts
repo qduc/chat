@@ -8,12 +8,14 @@ import { Cache } from '../cache';
 import type {
   ConversationMeta,
   ConversationsList,
+  ConversationBranch,
   ConversationWithMessages,
   ConversationCreateOptions,
   ListConversationsParams,
   GetConversationParams,
   EditMessageResult,
   MessageContent,
+  MessageRevision,
 } from '../types';
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
@@ -67,6 +69,7 @@ export const conversations = {
     if (params.after_seq) searchParams.set('after_seq', String(params.after_seq));
     if (params.limit) searchParams.set('limit', String(params.limit));
     if (params.include_linked) searchParams.set('include_linked', params.include_linked);
+    if (params.branch_id) searchParams.set('branch_id', params.branch_id);
 
     const cacheKey = `get:${id}:${searchParams.toString()}`;
     const cached = conversationDetailCache.get(cacheKey);
@@ -122,6 +125,38 @@ export const conversations = {
     }
   },
 
+  async switchBranch(
+    conversationId: string,
+    branchId: string
+  ): Promise<{ active_branch_id: string }> {
+    await waitForAuthReady();
+    try {
+      const response = await httpClient.post<{ active_branch_id: string }>(
+        `/v1/conversations/${conversationId}/branches/${branchId}/switch`
+      );
+      conversationDetailCache.deleteByPrefix(`get:${conversationId}:`);
+      conversationListCache.clear();
+      return response.data;
+    } catch (error) {
+      throw error instanceof HttpError ? new Error(error.message) : error;
+    }
+  },
+
+  async getBranches(
+    conversationId: string
+  ): Promise<{ active_branch_id: string | null; branches: ConversationBranch[] }> {
+    await waitForAuthReady();
+    try {
+      const response = await httpClient.get<{
+        active_branch_id: string | null;
+        branches: ConversationBranch[];
+      }>(`/v1/conversations/${conversationId}/branches`);
+      return response.data;
+    } catch (error) {
+      throw error instanceof HttpError ? new Error(error.message) : error;
+    }
+  },
+
   async migrateFromSession(): Promise<{ migrated: number; message: string }> {
     await waitForAuthReady();
     try {
@@ -146,6 +181,18 @@ export const conversations = {
         `/v1/conversations/${parentId}/linked`
       );
       return response.data;
+    } catch (error) {
+      throw error instanceof HttpError ? new Error(error.message) : error;
+    }
+  },
+
+  async getMessageRevisions(conversationId: string, messageId: string): Promise<MessageRevision[]> {
+    await waitForAuthReady();
+    try {
+      const response = await httpClient.get<{ revisions: MessageRevision[] }>(
+        `/v1/conversations/${conversationId}/messages/${messageId}/revisions`
+      );
+      return response.data.revisions;
     } catch (error) {
       throw error instanceof HttpError ? new Error(error.message) : error;
     }

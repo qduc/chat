@@ -9,9 +9,10 @@ import Markdown from '../Markdown';
 import { MessageContentRenderer } from '../ui/MessageContentRenderer';
 import { ToolSegment } from './ToolSegment';
 import { MessageToolbar } from './MessageToolbar';
+import { RevisionNavigation } from './RevisionNavigation';
 import { formatUsageLabel } from '../../lib';
 import { extractTextFromContent } from '../../lib/contentUtils';
-import type { ModelDisplayData, ToolOutput } from './types';
+import type { ModelDisplayData, ToolOutput, RevisionNavProps } from './types';
 import type { PendingState } from '../../hooks/useChat';
 
 interface ModelResponseColumnProps {
@@ -32,6 +33,7 @@ interface ModelResponseColumnProps {
   onRetryMessage?: (messageId: string) => void;
   onRetryComparisonModel?: (messageId: string, modelId: string) => void;
   getModelDisplayName: (modelId: string) => string;
+  regenRevision?: RevisionNavProps;
 }
 
 export function ModelResponseColumn({
@@ -51,6 +53,7 @@ export function ModelResponseColumn({
   onFork,
   onRetryMessage,
   onRetryComparisonModel,
+  regenRevision,
 }: ModelResponseColumnProps) {
   const {
     modelId,
@@ -179,21 +182,35 @@ export function ModelResponseColumn({
               </div>
             )}
           </div>
-          <MessageToolbar
-            messageId={messageId}
-            modelId={modelId}
-            hasContent={!!dm.content}
-            copiedMessageId={copiedMessageId}
-            actionsDisabled={actionsDisabled}
-            isStreaming={pending.streaming}
-            hasComparison={hasComparison}
-            isUser={isUser}
-            onCopy={onCopy}
-            onFork={onFork}
-            onRetry={onRetryMessage}
-            onRetryModel={onRetryComparisonModel}
-            contentText={extractTextFromContent(dm.content)}
-          />
+          <div className="flex items-center gap-2">
+            <MessageToolbar
+              messageId={messageId}
+              modelId={modelId}
+              hasContent={!!dm.content}
+              copiedMessageId={copiedMessageId}
+              actionsDisabled={actionsDisabled}
+              isStreaming={pending.streaming}
+              hasComparison={hasComparison}
+              isUser={isUser}
+              onCopy={onCopy}
+              onFork={onFork}
+              onRetry={onRetryMessage}
+              onRetryModel={onRetryComparisonModel}
+              contentText={extractTextFromContent(dm.content)}
+              revisionNavigation={
+                regenRevision ? (
+                  <RevisionNavigation
+                    current={regenRevision.slot}
+                    total={regenRevision.total}
+                    onPrev={regenRevision.onPrev}
+                    onNext={regenRevision.onNext}
+                    loading={regenRevision.loading}
+                    disabled={regenRevision.disabled}
+                  />
+                ) : undefined
+              }
+            />
+          </div>
         </div>
       )}
     </div>

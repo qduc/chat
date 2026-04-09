@@ -285,6 +285,31 @@ describe('GeminiProvider', () => {
       expect(url).toContain('alt=sse');
     });
 
+    test('preserves streaming error body for downstream handlers', async () => {
+      mockFetch.mockResolvedValue(
+        new Response(
+          'data: {"error":{"message":"Thinking level is not supported for this model."}}\n\n',
+          {
+            status: 400,
+            headers: { 'Content-Type': 'text/event-stream' },
+          }
+        )
+      );
+
+      const translatedRequest = {
+        contents: [{ parts: [{ text: 'test' }] }],
+        __model: 'gemini-1.5-pro',
+        __stream: true,
+      };
+
+      const response = await provider.makeHttpRequest(translatedRequest);
+
+      expect(response.ok).toBe(false);
+      await expect(response.text()).resolves.toContain(
+        'Thinking level is not supported for this model.'
+      );
+    });
+
     test('merges defaultHeaders from settings', async () => {
       const customProvider = new GeminiProvider({
         config: {},

@@ -120,24 +120,46 @@ describe('streamAbortRegistry', () => {
       expect(getStreamAbortEntry(requestId)).toBeNull();
     });
 
-    test('should overwrite existing registration', () => {
-      const requestId = 'req-overwrite';
+    test('should reject duplicate in-flight request ID', () => {
+      const requestId = 'req-dup';
       const firstController = { abort: jest.fn() };
       const secondController = { abort: jest.fn() };
 
-      registerStreamAbort(requestId, {
+      const first = registerStreamAbort(requestId, {
         controller: firstController,
         userId: 'user-old'
       });
+      expect(first).toBe(true);
 
-      registerStreamAbort(requestId, {
+      const second = registerStreamAbort(requestId, {
         controller: secondController,
         userId: 'user-new'
       });
+      expect(second).toBe(false);
+
+      // Original registration is preserved
+      const entry = getStreamAbortEntry(requestId);
+      expect(entry.controller).toBe(firstController);
+      expect(entry.userId).toBe('user-old');
+
+      // Cleanup
+      unregisterStreamAbort(requestId);
+    });
+
+    test('should allow re-registration after unregister', () => {
+      const requestId = 'req-reuse';
+      const firstController = { abort: jest.fn() };
+      const secondController = { abort: jest.fn() };
+
+      registerStreamAbort(requestId, { controller: firstController, userId: 'user-1' });
+      unregisterStreamAbort(requestId);
+
+      const result = registerStreamAbort(requestId, { controller: secondController, userId: 'user-2' });
+      expect(result).toBe(true);
 
       const entry = getStreamAbortEntry(requestId);
       expect(entry.controller).toBe(secondController);
-      expect(entry.userId).toBe('user-new');
+      expect(entry.userId).toBe('user-2');
 
       // Cleanup
       unregisterStreamAbort(requestId);

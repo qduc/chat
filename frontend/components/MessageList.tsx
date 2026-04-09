@@ -12,20 +12,25 @@ import {
   images,
   createMixedContent,
   extractImagesFromContent,
+  mergeToolOutputsToAssistantMessages,
   type ChatMessage,
+  type ConversationBranch,
   type MessageContent,
   type ImageAttachment,
   type ImageContent,
 } from '../lib';
-import type { Evaluation } from '../lib/types';
+import type { Evaluation, MessageRevision } from '../lib/types';
 import { useStreamingScroll } from '../hooks/useStreamingScroll';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { WelcomeMessage } from './WelcomeMessage';
 import { useAuth } from '../contexts/AuthContext';
+import { conversations as conversationsApi } from '../lib/api';
+import type { RevisionNavProps } from './message/types';
 
 interface MessageListProps {
   messages: ChatMessage[];
   pending: PendingState;
+  error?: string | null;
   conversationId: string | null;
   compareModels: string[];
   primaryModelLabel: string | null;
@@ -47,12 +52,16 @@ interface MessageListProps {
   onSaveEdit: () => void;
   onApplyLocalEdit: (messageId: string, content: MessageContent) => void;
   onEditingContentChange: (content: string) => void;
-  onRetryMessage: (messageId: string) => void;
+  onRetryMessage: (messageId: string, timelineMessages?: ChatMessage[]) => void;
   onRetryComparisonModel?: (messageId: string, modelId: string) => void;
   onScrollStateChange?: (state: { showTop: boolean; showBottom: boolean }) => void;
   containerRef?: React.RefObject<HTMLDivElement>;
   onSuggestionClick?: (text: string) => void;
-  onFork?: (messageId: string, modelId: string) => void;
+  onFork?: (messageId: string, modelId: string, timelineMessages?: ChatMessage[]) => void;
+  activeBranchId?: string | null;
+  branches?: ConversationBranch[];
+  onSwitchBranch?: (branchId: string) => Promise<unknown> | void;
+  branchModeEnabled?: boolean;
   onJudge?: (options: {
     messageId: string;
     selectedModelIds: string[];
@@ -65,6 +74,7 @@ interface MessageListProps {
 export function MessageList({
   messages,
   pending,
+  error = null,
   conversationId,
   compareModels,
   primaryModelLabel,
@@ -87,6 +97,10 @@ export function MessageList({
   containerRef: externalContainerRef,
   onSuggestionClick,
   onFork,
+  activeBranchId = null,
+  branches = [],
+  onSwitchBranch,
+  branchModeEnabled = false,
   onJudge,
   onDeleteJudgeResponse,
 }: MessageListProps) {
@@ -107,10 +121,40 @@ export function MessageList({
   const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [selectedComparisonModels, setSelectedComparisonModels] = useState<string[]>(['primary']);
   const [editingImages, setEditingImages] = useState<ImageAttachment[]>([]);
+  const [switchingVersionKey, setSwitchingVersionKey] = useState<string | null>(null);
   const [streamingStats, setStreamingStats] = useState<{
     tokensPerSecond: number;
     isEstimate?: boolean;
   } | null>(null);
+
+  // Revision state - keyed by message ID, reset on conversation change
+  type RevEntry = {
+    slot: number;
+    revisions: MessageRevision[] | null;
+    loading: boolean;
+    allRevisions?: MessageRevision[] | null;
+  };
+  const [editRevState, setEditRevState] = useState<Record<string, RevEntry>>({});
+  const [regenRevState, setRegenRevState] = useState<Record<string, RevEntry>>({});
+
+  const contentKey = useCallback((content: MessageContent | null | undefined) => {
+    return JSON.stringify(content ?? null);
+  }, []);
+
+  const filterRevisions = useCallback(
+    (
+      revisions: MessageRevision[],
+      operationType: MessageRevision['operation_type'],
+      anchorContent?: MessageContent | null
+    ) =>
+      revisions.filter(
+        (revision) =>
+          revision.operation_type === operationType &&
+          (anchorContent === undefined ||
+            contentKey(revision.anchor_content) === contentKey(anchorContent))
+      ),
+    [contentKey]
+  );
 
   // Judge modal state
   const [isJudgeModalOpen, setIsJudgeModalOpen] = useState(false);
@@ -128,7 +172,43 @@ export function MessageList({
   // Refs for tracking
   const initializedComparisonRef = useRef<string | null>(null);
   const prevConversationIdRef = useRef<string | null>(null);
+  const prevTimelineSignatureRef = useRef<string | null>(null);
   const lastTokenStatsMessageIdRef = useRef<string | null>(null);
+
+  // Reset revision state on conversation change
+  useEffect(() => {
+    if (prevConversationIdRef.current !== conversationId) {
+      setEditRevState({});
+      setRegenRevState({});
+      prevTimelineSignatureRef.current = null;
+    }
+  }, [conversationId]);
+
+  const timelineSignature = useMemo(
+    () =>
+      messages
+        .map((message) =>
+          [
+            message.id,
+            message.role,
+            message.edit_revision_count ?? 0,
+            message.regenerate_revision_count ?? 0,
+            message.anchor_user_message_id ?? '',
+            message.role === 'user' ? contentKey(message.content) : '',
+          ].join(':')
+        )
+        .join('|'),
+    [messages, contentKey]
+  );
+
+  useEffect(() => {
+    const prevSignature = prevTimelineSignatureRef.current;
+    if (prevSignature != null && prevSignature !== timelineSignature) {
+      setEditRevState({});
+      setRegenRevState({});
+    }
+    prevTimelineSignatureRef.current = timelineSignature;
+  }, [timelineSignature]);
 
   const isMobile = useIsMobile();
   const effectiveSelectedModels = isMobile
@@ -140,6 +220,134 @@ export function MessageList({
     messages,
     pending,
     containerRef
+  );
+  const branchById = useMemo(
+    () => new Map(branches.map((branch) => [branch.id, branch])),
+    [branches]
+  );
+
+  const switchBranchVersion = useCallback(
+    async (branchId: string, versionKey: string) => {
+      if (!onSwitchBranch || !branchId) return;
+      setSwitchingVersionKey(versionKey);
+      try {
+        await onSwitchBranch(branchId);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to switch branches';
+        showToast({ message, variant: 'error' });
+      } finally {
+        setSwitchingVersionKey(null);
+      }
+    },
+    [onSwitchBranch, showToast]
+  );
+
+  const getBaseVersionBranchId = useCallback(
+    (
+      currentBranchId: string,
+      operationType: ConversationBranch['operation_type'],
+      branchPointMessageId: number | null
+    ) => {
+      const visited = new Set<string>();
+      let branch = branchById.get(currentBranchId) ?? null;
+      while (branch) {
+        if (visited.has(branch.id)) break; // cycle guard
+        visited.add(branch.id);
+        const parent = branch.parent_branch_id
+          ? (branchById.get(branch.parent_branch_id) ?? null)
+          : null;
+        if (
+          branch.operation_type === operationType &&
+          branch.branch_point_message_id === branchPointMessageId &&
+          parent
+        ) {
+          if (
+            parent.operation_type === operationType &&
+            parent.branch_point_message_id === branchPointMessageId
+          ) {
+            branch = parent;
+            continue;
+          }
+          return parent.id;
+        }
+        return branch.id;
+      }
+      return currentBranchId;
+    },
+    [branchById]
+  );
+
+  const buildBranchRevisionNav = useCallback(
+    (message: ChatMessage, operationType: 'edit' | 'regenerate'): RevisionNavProps | undefined => {
+      const currentBranchId = message.branch_id;
+      const isSwitchBlocked = pending.streaming;
+      if (!onSwitchBranch || !currentBranchId || branchById.size === 0) {
+        return undefined;
+      }
+
+      if (!Object.prototype.hasOwnProperty.call(message, '_parentMessageId')) {
+        return undefined;
+      }
+
+      const branchPointMessageId = message._parentMessageId ?? null;
+      const baseBranchId = getBaseVersionBranchId(
+        currentBranchId,
+        operationType,
+        branchPointMessageId
+      );
+      const versionBranchIds = Array.from(
+        new Set([
+          baseBranchId,
+          ...branches
+            .filter(
+              (branch) =>
+                branch.operation_type === operationType &&
+                branch.branch_point_message_id === branchPointMessageId
+            )
+            .sort((a, b) => {
+              const timeDiff = new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+              return timeDiff !== 0 ? timeDiff : a.id.localeCompare(b.id);
+            })
+            .map((branch) => branch.id),
+        ])
+      );
+
+      if (versionBranchIds.length <= 1) {
+        return undefined;
+      }
+
+      const currentIndex = versionBranchIds.indexOf(currentBranchId);
+      if (currentIndex === -1) {
+        return undefined;
+      }
+
+      const versionKey = `${operationType}:${branchPointMessageId ?? 'root'}`;
+      return {
+        slot: currentIndex + 1,
+        total: versionBranchIds.length,
+        onPrev: () => {
+          if (isSwitchBlocked) return;
+          const target = versionBranchIds[currentIndex - 1];
+          if (target) void switchBranchVersion(target, versionKey);
+        },
+        onNext: () => {
+          if (isSwitchBlocked) return;
+          const target = versionBranchIds[currentIndex + 1];
+          if (target) void switchBranchVersion(target, versionKey);
+        },
+        loading: switchingVersionKey === versionKey,
+        disabled: isSwitchBlocked,
+      };
+    },
+    [
+      branches,
+      branchById.size,
+      getBaseVersionBranchId,
+      onSwitchBranch,
+      pending.streaming,
+      switchBranchVersion,
+      switchingVersionKey,
+    ]
   );
 
   // Available models for judging
@@ -280,6 +488,339 @@ export function MessageList({
     return () => container.removeEventListener('scroll', handleScroll);
   }, [messages.length, onScrollStateChange, containerRef]);
 
+  // ---------------------------------------------------------------------------
+  // Revision state helpers
+  // ---------------------------------------------------------------------------
+
+  /** Navigate to previous edit revision for a user message */
+  const handlePrevEditRevision = useCallback(
+    async (msgId: string) => {
+      const msg = messages.find((m) => m.id === msgId);
+      if (!msg) return;
+      const totalSlots = (msg.edit_revision_count ?? 0) + 1;
+      const currentSlot = editRevState[msgId]?.slot ?? totalSlots;
+      if (currentSlot <= 1) return;
+      const nextSlot = currentSlot - 1;
+
+      if (!editRevState[msgId]?.revisions && conversationId) {
+        setEditRevState((prev) => ({
+          ...prev,
+          [msgId]: { slot: nextSlot, revisions: null, loading: true },
+        }));
+        try {
+          const all = await conversationsApi.getMessageRevisions(conversationId, msgId);
+          const editRevisions = filterRevisions(all, 'edit');
+          setEditRevState((prev) => ({
+            ...prev,
+            [msgId]: {
+              slot: nextSlot,
+              revisions: editRevisions,
+              allRevisions: all,
+              loading: false,
+            },
+          }));
+        } catch {
+          setEditRevState((prev) => ({
+            ...prev,
+            [msgId]: { slot: nextSlot, revisions: [], allRevisions: [], loading: false },
+          }));
+        }
+      } else {
+        setEditRevState((prev) => ({
+          ...prev,
+          [msgId]: { ...(prev[msgId] ?? { revisions: null, loading: false }), slot: nextSlot },
+        }));
+      }
+    },
+    [messages, editRevState, conversationId, filterRevisions]
+  );
+
+  /** Navigate to next edit revision (toward current) for a user message */
+  const handleNextEditRevision = useCallback(
+    (msgId: string) => {
+      const msg = messages.find((m) => m.id === msgId);
+      if (!msg) return;
+      const totalSlots = (msg.edit_revision_count ?? 0) + 1;
+      const currentSlot = editRevState[msgId]?.slot ?? totalSlots;
+      if (currentSlot >= totalSlots) return;
+      setEditRevState((prev) => ({
+        ...prev,
+        [msgId]: { ...(prev[msgId] ?? { revisions: null, loading: false }), slot: currentSlot + 1 },
+      }));
+    },
+    [messages, editRevState]
+  );
+
+  /** Navigate to previous regen revision for an assistant message */
+  const handlePrevRegenRevision = useCallback(
+    async (msg: ChatMessage) => {
+      const assistantMsgId = msg.id;
+      const totalSlots = (msg.regenerate_revision_count ?? 0) + 1;
+      const currentSlot = regenRevState[assistantMsgId]?.slot ?? totalSlots;
+      if (currentSlot <= 1) return;
+      const nextSlot = currentSlot - 1;
+
+      if (!regenRevState[assistantMsgId]?.revisions && conversationId) {
+        const anchorUserId = msg.anchor_user_message_id;
+        if (!anchorUserId) return;
+        const branchContent =
+          msg._timeline_anchor_content ??
+          messages.find((message) => message.id === anchorUserId)?.content ??
+          null;
+
+        setRegenRevState((prev) => ({
+          ...prev,
+          [assistantMsgId]: { slot: nextSlot, revisions: null, loading: true },
+        }));
+        try {
+          const all = await conversationsApi.getMessageRevisions(conversationId, anchorUserId);
+          const regenRevisions = filterRevisions(all, 'regenerate', branchContent);
+          setRegenRevState((prev) => ({
+            ...prev,
+            [assistantMsgId]: {
+              slot: nextSlot,
+              revisions: regenRevisions,
+              allRevisions: all,
+              loading: false,
+            },
+          }));
+        } catch {
+          setRegenRevState((prev) => ({
+            ...prev,
+            [assistantMsgId]: { slot: nextSlot, revisions: [], allRevisions: [], loading: false },
+          }));
+        }
+      } else {
+        setRegenRevState((prev) => ({
+          ...prev,
+          [assistantMsgId]: {
+            ...(prev[assistantMsgId] ?? { revisions: null, loading: false }),
+            slot: nextSlot,
+          },
+        }));
+      }
+    },
+    [messages, regenRevState, conversationId, filterRevisions]
+  );
+
+  /** Navigate to next regen revision (toward current) for an assistant message */
+  const handleNextRegenRevision = useCallback(
+    (msg: ChatMessage) => {
+      const assistantMsgId = msg.id;
+      const totalSlots = (msg.regenerate_revision_count ?? 0) + 1;
+      const currentSlot = regenRevState[assistantMsgId]?.slot ?? totalSlots;
+      if (currentSlot >= totalSlots) return;
+      setRegenRevState((prev) => ({
+        ...prev,
+        [assistantMsgId]: {
+          ...(prev[assistantMsgId] ?? { revisions: null, loading: false }),
+          slot: currentSlot + 1,
+        },
+      }));
+    },
+    [regenRevState]
+  );
+
+  // ---------------------------------------------------------------------------
+  // Display messages - applies revision overrides and injects synthetic follow-ups
+  // ---------------------------------------------------------------------------
+  const displayMessages = useMemo(() => {
+    type DisplayEntry = {
+      msg: ChatMessage;
+      editRev?: RevisionNavProps;
+      regenRev?: RevisionNavProps;
+    };
+
+    if (branchModeEnabled) {
+      return messages.map((msg) => ({
+        msg,
+        editRev: msg.role === 'user' ? buildBranchRevisionNav(msg, 'edit') : undefined,
+        regenRev: msg.role === 'assistant' ? buildBranchRevisionNav(msg, 'regenerate') : undefined,
+      }));
+    }
+
+    const result: DisplayEntry[] = [];
+    let skipUntilNextUser = false;
+    let pendingSynthetics: DisplayEntry[] = [];
+
+    for (const msg of messages) {
+      if (msg.role === 'user') {
+        // Before starting a new user block, flush any pending synthetic messages
+        result.push(...pendingSynthetics);
+        pendingSynthetics = [];
+        skipUntilNextUser = false;
+
+        const editCount = msg.edit_revision_count ?? 0;
+        const totalEditSlots = editCount + 1;
+        const editEntry = editRevState[msg.id];
+        const editSlot = editEntry?.slot ?? totalEditSlots;
+        const isInPastEditSlot = editCount > 0 && editSlot < totalEditSlots;
+
+        let displayMsg = msg;
+        if (isInPastEditSlot) {
+          const revision = editEntry?.revisions?.[editSlot - 1] ?? null;
+          if (revision?.anchor_content != null) {
+            displayMsg = { ...msg, content: revision.anchor_content };
+          }
+          if (revision) {
+            // Normalize follow-ups (merges tool outputs, removes tool messages)
+            const normalized = mergeToolOutputsToAssistantMessages(revision.follow_ups);
+            const branchRegenRevisions = filterRevisions(
+              editEntry?.allRevisions ?? [],
+              'regenerate',
+              revision.anchor_content
+            );
+            pendingSynthetics = normalized
+              .filter((fu: any) => fu.role === 'assistant')
+              .map((fu: any, idx: number) => {
+                const syntheticMessage: ChatMessage = {
+                  id: `synthetic-${revision.id}-${idx}`,
+                  role: 'assistant' as const,
+                  content: fu.content ?? '',
+                  tool_calls: fu.tool_calls ?? undefined,
+                  tool_outputs: fu.tool_outputs ?? undefined,
+                  reasoning_details: fu.reasoning_details ?? undefined,
+                  usage: fu.usage ?? undefined,
+                  anchor_user_message_id: msg.id,
+                  regenerate_revision_count: branchRegenRevisions.length,
+                  _timeline_anchor_content: revision.anchor_content,
+                  _historical: true,
+                };
+                const regenEntry = regenRevState[syntheticMessage.id];
+                const totalRegenSlots = branchRegenRevisions.length + 1;
+                const regenSlot = regenEntry?.slot ?? totalRegenSlots;
+                const isInPastRegenSlot =
+                  branchRegenRevisions.length > 0 && regenSlot < totalRegenSlots;
+                let displaySynthetic = syntheticMessage;
+
+                if (isInPastRegenSlot && regenEntry?.revisions) {
+                  const regenRevision = regenEntry.revisions[regenSlot - 1] ?? null;
+                  if (regenRevision) {
+                    const historical = mergeToolOutputsToAssistantMessages(
+                      regenRevision.follow_ups
+                    ).find((entry: any) => entry.role === 'assistant');
+                    if (historical) {
+                      displaySynthetic = {
+                        ...syntheticMessage,
+                        content: historical.content ?? '',
+                        tool_calls: historical.tool_calls ?? undefined,
+                        tool_outputs: historical.tool_outputs ?? undefined,
+                        reasoning_details: historical.reasoning_details ?? undefined,
+                        usage: historical.usage ?? undefined,
+                      };
+                    }
+                  }
+                }
+
+                return {
+                  msg: displaySynthetic,
+                  regenRev:
+                    branchRegenRevisions.length > 0
+                      ? {
+                          slot: regenSlot,
+                          total: totalRegenSlots,
+                          onPrev: () => handlePrevRegenRevision(syntheticMessage),
+                          onNext: () => handleNextRegenRevision(syntheticMessage),
+                          loading: regenEntry?.loading ?? false,
+                        }
+                      : undefined,
+                };
+              });
+            skipUntilNextUser = true;
+          } else if (editEntry?.loading) {
+            // Revisions loading: show a placeholder synthetic message
+            pendingSynthetics = [
+              {
+                msg: {
+                  id: `synthetic-loading-${msg.id}`,
+                  role: 'assistant' as const,
+                  content: '',
+                  _historical: true,
+                },
+              },
+            ];
+            skipUntilNextUser = true;
+          }
+        }
+
+        const editRev: RevisionNavProps | undefined =
+          editCount > 0
+            ? {
+                slot: editSlot,
+                total: totalEditSlots,
+                onPrev: () => handlePrevEditRevision(msg.id),
+                onNext: () => handleNextEditRevision(msg.id),
+                loading: editEntry?.loading ?? false,
+              }
+            : undefined;
+
+        result.push({ msg: displayMsg, editRev });
+      } else if (msg.role === 'assistant') {
+        if (skipUntilNextUser) {
+          // Real follow-up messages are hidden when showing a past edit revision
+          continue;
+        }
+
+        const regenCount = msg.regenerate_revision_count ?? 0;
+        const totalRegenSlots = regenCount + 1;
+        const regenEntry = regenRevState[msg.id];
+        const regenSlot = regenEntry?.slot ?? totalRegenSlots;
+        const isInPastRegenSlot = regenCount > 0 && regenSlot < totalRegenSlots;
+
+        let displayMsg = msg;
+        if (isInPastRegenSlot && regenEntry?.revisions) {
+          const revision = regenEntry.revisions[regenSlot - 1] ?? null;
+          if (revision) {
+            const normalized = mergeToolOutputsToAssistantMessages(revision.follow_ups);
+            const firstAssistant = normalized.find((fu: any) => fu.role === 'assistant');
+            if (firstAssistant) {
+              displayMsg = {
+                ...msg,
+                content: firstAssistant.content ?? '',
+                tool_calls: firstAssistant.tool_calls ?? undefined,
+                tool_outputs: firstAssistant.tool_outputs ?? undefined,
+                reasoning_details: firstAssistant.reasoning_details ?? undefined,
+                usage: firstAssistant.usage ?? undefined,
+                _historical: true,
+              };
+            }
+          }
+        }
+
+        const regenRev: RevisionNavProps | undefined =
+          regenCount > 0
+            ? {
+                slot: regenSlot,
+                total: totalRegenSlots,
+                onPrev: () => handlePrevRegenRevision(msg),
+                onNext: () => handleNextRegenRevision(msg),
+                loading: regenEntry?.loading ?? false,
+              }
+            : undefined;
+
+        result.push({ msg: displayMsg, regenRev });
+      } else if (!skipUntilNextUser) {
+        result.push({ msg });
+      }
+    }
+
+    // Flush synthetic follow-ups at the end of the list
+    result.push(...pendingSynthetics);
+
+    return result;
+  }, [
+    messages,
+    editRevState,
+    regenRevState,
+    filterRevisions,
+    handlePrevEditRevision,
+    handleNextEditRevision,
+    handlePrevRegenRevision,
+    handleNextRegenRevision,
+    branchModeEnabled,
+    buildBranchRevisionNav,
+  ]);
+
   // Handlers
   const handleToggleComparisonModel = useCallback(
     (modelId: string, event?: React.MouseEvent) => {
@@ -368,10 +909,10 @@ export function MessageList({
   }, [canSend]);
 
   const handleRetryMessage = useCallback(
-    (messageId: string) => {
+    (messageId: string, timelineMessages?: ChatMessage[]) => {
       if (!canSend) return;
       setStreamingStats(null);
-      onRetryMessage(messageId);
+      onRetryMessage(messageId, timelineMessages);
     },
     [canSend, onRetryMessage]
   );
@@ -407,6 +948,26 @@ export function MessageList({
       setTimeout(() => setCopiedMessageId(null), 2000);
     },
     [onCopy]
+  );
+
+  const sanitizeTimelineMessage = useCallback((message: ChatMessage): ChatMessage => {
+    const {
+      _historical: _ignoredHistorical,
+      _timeline_anchor_content: _ignoredTimelineAnchorContent,
+      ...rest
+    } = message;
+    void _ignoredHistorical;
+    void _ignoredTimelineAnchorContent;
+    return rest;
+  }, []);
+
+  const buildOperationTimeline = useCallback(
+    (timeline: ChatMessage[]) => {
+      return timeline
+        .filter((message) => !message._historical)
+        .map((message) => sanitizeTimelineMessage(message));
+    },
+    [sanitizeTimelineMessage]
   );
 
   const resizeEditingTextarea = useCallback(() => {
@@ -463,6 +1024,8 @@ export function MessageList({
     [judgeMessageId, judgeModelStorageKey, onJudge, showToast]
   );
 
+  const displayedError = pending.error ?? error;
+
   return (
     <>
       <JudgeModal
@@ -486,15 +1049,19 @@ export function MessageList({
           style={{ paddingBottom: dynamicBottomPadding }}
         >
           {messages.length === 0 && <WelcomeMessage onSuggestionClick={onSuggestionClick} />}
-          {messages.map((m, idx) => {
+          {displayMessages.map(({ msg: m, editRev, regenRev }, idx) => {
             const isUser = m.role === 'user';
-            const isStreaming = pending.streaming && idx === messages.length - 1;
-            const isLastAssistantMessage = !isUser && idx === messages.length - 1;
+            const isStreaming = pending.streaming && idx === displayMessages.length - 1;
+            const isLastAssistantMessage = !isUser && idx === displayMessages.length - 1;
+            const visibleTimeline = buildOperationTimeline(
+              displayMessages.slice(0, idx + 1).map(({ msg }) => msg)
+            );
             const isRecentUserMessage =
               isUser &&
-              (idx === messages.length - 1 ||
-                (idx === messages.length - 2 &&
-                  messages[messages.length - 1]?.role === 'assistant'));
+              !m._historical &&
+              (idx === displayMessages.length - 1 ||
+                (idx === displayMessages.length - 2 &&
+                  displayMessages[displayMessages.length - 1]?.msg.role === 'assistant'));
 
             return (
               <Message
@@ -503,6 +1070,8 @@ export function MessageList({
                 isStreaming={isStreaming}
                 conversationId={conversationId}
                 compareModels={compareModels}
+                editRevision={editRev}
+                regenRevision={regenRev}
                 primaryModelLabel={primaryModelLabel}
                 linkedConversations={linkedConversations}
                 evaluations={evaluations}
@@ -515,7 +1084,9 @@ export function MessageList({
                 onCancelEdit={onCancelEdit}
                 onApplyLocalEdit={handleApplyLocalEdit}
                 onEditingContentChange={onEditingContentChange}
-                onRetryMessage={handleRetryMessage}
+                onRetryMessage={
+                  m._historical ? undefined : () => handleRetryMessage(m.id, visibleTimeline)
+                }
                 onRetryComparisonModel={onRetryComparisonModel}
                 editingTextareaRef={editingTextareaRef}
                 lastUserMessageRef={isRecentUserMessage ? lastUserMessageRef : null}
@@ -533,7 +1104,11 @@ export function MessageList({
                 onEditingPaste={handleEditingPaste}
                 onEditingImageUploadClick={handleEditingImageUploadClick}
                 fileInputRef={fileInputRef}
-                onFork={onFork}
+                onFork={
+                  onFork && !m._historical
+                    ? (_messageId, modelId) => onFork(m.id, modelId, visibleTimeline)
+                    : undefined
+                }
                 selectedComparisonModels={effectiveSelectedModels}
                 onToggleComparisonModel={handleToggleComparisonModel}
                 onSelectAllComparisonModels={handleSelectAllComparisonModels}
@@ -544,12 +1119,12 @@ export function MessageList({
               />
             );
           })}
-          {pending.error && (
+          {displayedError && (
             <div className="flex items-start gap-3 text-base text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-xl px-4 py-3 shadow-sm">
               <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
               <div>
                 <div className="font-medium mb-1">Error occurred</div>
-                <div className="text-red-600 dark:text-red-400">{pending.error}</div>
+                <div className="text-red-600 dark:text-red-400">{displayedError}</div>
               </div>
             </div>
           )}

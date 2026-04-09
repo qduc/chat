@@ -13,11 +13,13 @@ import { MAX_COMPARISON_COLUMNS } from './types';
 import type { ChatMessage } from '../../lib/types';
 import type { PendingState, EvaluationDraft } from '../../hooks/useChat';
 import type { Evaluation } from '../../lib/types';
+import type { RevisionNavProps } from './types';
 
 interface AssistantMessageProps {
   message: ChatMessage;
   isStreaming: boolean;
   compareModels: string[];
+  regenRevision?: RevisionNavProps;
   primaryModelLabel: string | null;
   linkedConversations: Record<string, string>;
   evaluations: Evaluation[];
@@ -46,6 +48,7 @@ export function AssistantMessage({
   message,
   isStreaming,
   compareModels,
+  regenRevision,
   primaryModelLabel,
   linkedConversations,
   evaluations,
@@ -211,6 +214,7 @@ export function AssistantMessage({
               onRetryMessage={onRetryMessage}
               onRetryComparisonModel={onRetryComparisonModel}
               getModelDisplayName={getModelDisplayName}
+              regenRevision={data.modelId === 'primary' ? regenRevision : undefined}
             />
           ))}
         </div>
@@ -236,6 +240,7 @@ export function AssistantMessage({
             onRetryMessage={onRetryMessage}
             onRetryComparisonModel={onRetryComparisonModel}
             getModelDisplayName={getModelDisplayName}
+            regenRevision={data.modelId === 'primary' ? regenRevision : undefined}
           />
         ))
       )}

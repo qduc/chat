@@ -8,6 +8,7 @@ import {
   Search,
   X,
 } from 'lucide-react';
+import { version } from '../package.json';
 import type { ConversationMeta } from '../lib';
 
 interface ChatSidebarProps {
@@ -269,6 +270,9 @@ export function ChatSidebar({
               </button>
             )}
           </div>
+          <p className="mt-2 text-[10px] text-zinc-400 dark:text-zinc-600 uppercase tracking-widest opacity-50 text-center">
+            v{version}
+          </p>
         </>
       )}
     </aside>

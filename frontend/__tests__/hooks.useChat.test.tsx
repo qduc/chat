@@ -15,7 +15,7 @@ jest.mock('../contexts/AuthContext', () => {
 });
 
 import { renderHook, act, waitFor } from '@testing-library/react';
-import type { ChatOptionsExtended } from '../lib/types';
+import type { ChatOptionsExtended, ChatResponse } from '../lib/types';
 import { useChat } from '../hooks/useChat';
 import { APIError, StreamingNotSupportedError } from '../lib/streaming';
 
@@ -23,6 +23,8 @@ jest.mock('../lib/api', () => ({
   conversations: {
     list: jest.fn(),
     get: jest.fn(),
+    getBranches: jest.fn(),
+    switchBranch: jest.fn(),
     delete: jest.fn(),
     editMessage: jest.fn(),
     create: jest.fn(),
@@ -73,6 +75,8 @@ function createHttpResponse<T>(data: T): HttpResponse<T> {
 
 function arrangeHttpMocks() {
   mockConversations.list.mockResolvedValue({ items: [], next_cursor: null });
+  mockConversations.getBranches.mockResolvedValue({ active_branch_id: null, branches: [] } as any);
+  mockConversations.switchBranch.mockResolvedValue({ active_branch_id: 'branch-2' } as any);
   mockHttpClient.get.mockImplementation((url: string) => {
     if (url.startsWith('/v1/models')) {
       return Promise.resolve(
@@ -287,11 +291,17 @@ describe('useChat hook', () => {
           id: 'conv-stream',
           title: 'Streaming Conversation',
           created_at: new Date().toISOString(),
+          active_branch_id: 'branch-stream',
         },
       };
     });
 
     const { result } = renderUseChat();
+
+    mockConversations.getBranches.mockResolvedValue({
+      active_branch_id: 'branch-stream',
+      branches: [],
+    } as any);
 
     await act(async () => {
       result.current.setInput('What time is it?');
@@ -313,6 +323,7 @@ describe('useChat hook', () => {
     });
     expect(assistantMessage.usage).toEqual({ total_tokens: 42 });
     expect(result.current.conversationId).toBe('conv-stream');
+    await waitFor(() => expect(result.current.activeBranchId).toBe('branch-stream'));
     expect(result.current.status).toBe('idle');
     expect(result.current.error).toBeNull();
   });
@@ -405,6 +416,96 @@ describe('useChat hook', () => {
     );
 
     expect(conv2Calls).toBe(2);
+  });
+
+  test('switchBranch preserves edit state when branch hydration fails', async () => {
+    const now = new Date().toISOString();
+    mockConversations.get
+      .mockResolvedValueOnce({
+        id: 'conv-edit',
+        title: 'Editable',
+        model: 'gpt-4o',
+        created_at: now,
+        active_branch_id: 'branch-1',
+        messages: [
+          {
+            id: 'msg-1',
+            seq: 1,
+            role: 'user',
+            content: 'Original',
+            created_at: now,
+            status: 'completed',
+          },
+        ],
+        next_after_seq: null,
+      } as any)
+      .mockRejectedValueOnce(new Error('Branch hydration failed'));
+
+    const { result } = renderUseChat();
+
+    await act(async () => {
+      await result.current.selectConversation('conv-edit');
+    });
+
+    act(() => {
+      result.current.startEdit('msg-1', 'Original');
+      result.current.updateEditContent('Unsaved draft');
+    });
+
+    let thrown: Error | null = null;
+    await act(async () => {
+      try {
+        await result.current.switchBranch('branch-2');
+      } catch (error) {
+        thrown = error as Error;
+      }
+    });
+
+    expect(mockConversations.switchBranch).toHaveBeenCalledWith('conv-edit', 'branch-2');
+    expect((thrown as Error | null)?.message).toBe('Failed to load selected branch');
+    expect(result.current.editingMessageId).toBe('msg-1');
+    expect(result.current.editingContent).toBe('Unsaved draft');
+    expect(result.current.error).toBe('Branch hydration failed');
+  });
+
+  test('sendMessage includes the active branch id for the selected conversation', async () => {
+    const now = new Date().toISOString();
+    mockConversations.get.mockResolvedValue({
+      id: 'conv-branch',
+      title: 'Branchy',
+      model: 'gpt-4o',
+      provider: 'openai',
+      created_at: now,
+      active_branch_id: 'branch-123',
+      messages: [],
+      next_after_seq: null,
+    } as any);
+
+    mockChat.sendMessage.mockResolvedValue({
+      content: 'branch-aware',
+      conversation: {
+        id: 'conv-branch',
+        title: 'Branchy',
+        created_at: now,
+      },
+    });
+
+    const { result } = renderUseChat();
+
+    await act(async () => {
+      await result.current.selectConversation('conv-branch');
+    });
+
+    await act(async () => {
+      await result.current.sendMessage('Branch-aware send');
+    });
+
+    expect(mockChat.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 'conv-branch',
+        branchId: 'branch-123',
+      })
+    );
   });
 
   test('stopStreaming aborts in-flight request and records cancellation error', async () => {
@@ -844,7 +945,7 @@ describe('useChat hook', () => {
     expect(result.current.files).toEqual([]);
   });
 
-  test('regenerate reuses the original user message id without duplication', async () => {
+  test('regenerate sends the truncated timeline and reuses the original user message id', async () => {
     const now = new Date().toISOString();
     mockChat.sendMessage.mockResolvedValue({
       content: 'regenerated',
@@ -857,19 +958,25 @@ describe('useChat hook', () => {
       result.current.setModel('openai::gpt-4o');
     });
 
-    const baseMessages = [
+    const fullMessages = [
       { id: 'user-1', role: 'user', content: 'Original question' },
       { id: 'assistant-1', role: 'assistant', content: 'Old answer' },
     ];
 
-    await act(async () => {
-      await result.current.regenerate(baseMessages as any);
+    act(() => {
+      result.current.setMessages(fullMessages as any);
     });
 
-    expect(result.current.messages).toHaveLength(3);
+    await act(async () => {
+      await result.current.regenerate([fullMessages[0]] as any);
+    });
+
+    expect(result.current.messages).toHaveLength(2);
     const payload = mockChat.sendMessage.mock.calls[0][0];
     const userMessageIds = payload.messages.filter((msg: any) => msg.id === 'user-1');
+    const assistantMessageIds = payload.messages.filter((msg: any) => msg.id === 'assistant-1');
     expect(userMessageIds).toHaveLength(1);
+    expect(assistantMessageIds).toHaveLength(0);
   });
 
   test('judgeComparison streams draft content, stores evaluation, and deleteJudgeResponse removes it', async () => {
@@ -1032,7 +1139,8 @@ describe('useChat hook', () => {
         seq: 3,
         content: 'Edited message',
       },
-      new_conversation_id: 'conv-edit-forked',
+      new_conversation_id: 'conv-edit',
+      edit_revision_count: 2,
     });
 
     const { result } = renderUseChat();
@@ -1062,11 +1170,11 @@ describe('useChat hook', () => {
       'msg-1',
       'Updated text'
     );
-    expect(result.current.conversationId).toBe('conv-edit-forked');
-    expect(result.current.compareModels).toEqual([]);
+    expect(result.current.conversationId).toBe('conv-edit');
+    expect(result.current.compareModels).toEqual(['openai::gpt-4o-mini']);
     expect(result.current.linkedConversations).toEqual({});
     expect(result.current.messages[0].content).toBe('Updated text');
-    expect(result.current.messages[1].comparisonResults).toBeUndefined();
+    expect(result.current.messages).toHaveLength(1);
     expect(result.current.editingMessageId).toBeNull();
     expect(result.current.editingContent).toBe('');
   });
@@ -1120,6 +1228,20 @@ describe('useChat hook', () => {
 
     expect(result.current.sidebarCollapsed).toBe(false);
     expect(window.localStorage.getItem('sidebarCollapsed')).toBe('false');
+  });
+
+  test('right sidebar restores its last collapsed state from localStorage', async () => {
+    window.localStorage.setItem('rightSidebarCollapsed', 'false');
+    const { result } = renderUseChat();
+
+    expect(result.current.rightSidebarCollapsed).toBe(false);
+
+    act(() => {
+      result.current.toggleRightSidebar();
+    });
+
+    expect(result.current.rightSidebarCollapsed).toBe(true);
+    expect(window.localStorage.getItem('rightSidebarCollapsed')).toBe('true');
   });
 });
 
@@ -1300,7 +1422,9 @@ describe('Phase 0 Characterization Tests', () => {
             id: 'audio-1',
             url: 'blob:audio',
             name: 'recording.mp3',
-            mimeType: 'audio/mp3',
+            type: 'audio/mp3',
+            format: 'mp3',
+            size: audioFile.size,
             file: audioFile,
           },
         ]);
@@ -1312,7 +1436,7 @@ describe('Phase 0 Characterization Tests', () => {
 
       expect(mockChat.sendMessage).toHaveBeenCalledTimes(1);
       const payload = mockChat.sendMessage.mock.calls[0][0];
-      const userContent = payload.messages[0].content;
+      const userContent = payload.messages[0].content as Array<any>;
       expect(Array.isArray(userContent)).toBe(true);
       expect(userContent.some((c: any) => c.type === 'input_audio')).toBe(true);
     });
@@ -1472,8 +1596,8 @@ describe('Phase 0 Characterization Tests', () => {
         updatedAt: new Date().toISOString(),
       });
 
-      let resolvePromise: (value: any) => void;
-      const pendingPromise = new Promise((resolve) => {
+      let resolvePromise: (value: ChatResponse) => void;
+      const pendingPromise = new Promise<ChatResponse>((resolve) => {
         resolvePromise = resolve;
       });
       mockChat.sendMessage.mockReturnValue(pendingPromise);
@@ -1511,8 +1635,8 @@ describe('Phase 0 Characterization Tests', () => {
         updatedAt: new Date().toISOString(),
       });
 
-      let resolvePromise: (value: any) => void;
-      const pendingPromise = new Promise((resolve) => {
+      let resolvePromise: (value: ChatResponse) => void;
+      const pendingPromise = new Promise<ChatResponse>((resolve) => {
         resolvePromise = resolve;
       });
       mockChat.sendMessage.mockReturnValue(pendingPromise);
@@ -1602,12 +1726,13 @@ describe('Phase 0 Characterization Tests', () => {
 
       const callOrder: string[] = [];
       mockChat.sendMessage.mockImplementation(async (options: ChatOptionsExtended) => {
-        callOrder.push(options.model);
+        const modelId = options.model ?? '';
+        callOrder.push(modelId);
         return {
-          content: `reply-${options.model}`,
+          content: `reply-${modelId}`,
           conversation: {
-            id: `conv-${options.model}`,
-            title: `Title ${options.model}`,
+            id: `conv-${modelId}`,
+            title: `Title ${modelId}`,
             created_at: now,
           },
         };
@@ -2095,7 +2220,12 @@ describe('Phase 0 Characterization Tests', () => {
             status: 'completed',
             usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
             tool_calls: [
-              { id: 'tc-1', type: 'function', function: { name: 'search', arguments: '{}' } },
+              {
+                id: 'tc-1',
+                type: 'function',
+                index: 0,
+                function: { name: 'search', arguments: '{}' },
+              },
             ],
           },
         ],
@@ -2362,11 +2492,18 @@ describe('Phase 0 Characterization Tests', () => {
         evaluations: [
           {
             id: 'eval-1',
+            user_id: 'user-123',
+            conversation_id: 'conv-eval',
+            model_a_conversation_id: 'conv-eval',
+            model_a_message_id: 'msg-a',
+            model_b_conversation_id: 'conv-eval',
+            model_b_message_id: 'msg-b',
             judge_model_id: 'gpt-4o',
             score_a: 8,
             score_b: 6,
             winner: 'model_a',
             reasoning: 'Model A was better',
+            created_at: now,
           },
         ],
         next_after_seq: null,

@@ -14,6 +14,7 @@ import { RightSidebar } from './RightSidebar';
 import SettingsModal from './SettingsModal';
 import { AuthModal, AuthMode } from './auth/AuthModal';
 import type { MessageContent } from '../lib';
+import { conversations as conversationsApi } from '../lib/api';
 
 export function ChatV2() {
   const chat = useChat();
@@ -216,20 +217,21 @@ export function ChatV2() {
   }, []);
 
   const handleRetryMessage = useCallback(
-    async (messageId: string) => {
+    async (messageId: string, timelineMessages?: typeof chat.messages) => {
       if (!canSend) return;
       if (chat.status === 'streaming') return;
-      if (chat.messages.length === 0) return;
+      const sourceMessages = timelineMessages ?? chat.messages;
+      if (sourceMessages.length === 0) return;
 
       // Find the message index
-      const idx = chat.messages.findIndex((m) => m.id === messageId);
+      const idx = sourceMessages.findIndex((m) => m.id === messageId);
       if (idx === -1) return;
 
-      const message = chat.messages[idx];
+      const message = sourceMessages[idx];
       if (message.role !== 'assistant') return;
 
       // Keep only messages up to (but not including) the message being retried
-      const base = chat.messages.slice(0, idx);
+      const base = sourceMessages.slice(0, idx);
       chat.regenerate(base);
     },
     [canSend, chat]
@@ -254,12 +256,27 @@ export function ChatV2() {
       const idx = chat.messages.findIndex((m) => m.id === messageId);
       if (idx === -1) return;
 
-      const baseMessages = [
-        ...chat.messages.slice(0, idx),
-        { ...chat.messages[idx], content: updatedContent },
-      ];
+      if (chat.conversationId) {
+        try {
+          await conversationsApi.editMessage(chat.conversationId, messageId, updatedContent);
+        } catch {
+          return;
+        }
+      }
 
-      chat.setMessages(baseMessages);
+      const selection = chat.conversationId
+        ? await chat.selectConversation(chat.conversationId)
+        : null;
+      const baseMessages = selection?.messages ?? [
+        ...chat.messages.slice(0, idx),
+        {
+          ...chat.messages[idx],
+          content: updatedContent,
+        },
+      ];
+      if (!selection) {
+        chat.setMessages(baseMessages);
+      }
       chat.cancelEdit();
 
       if (baseMessages.length && baseMessages[baseMessages.length - 1].role === 'user') {
@@ -269,13 +286,33 @@ export function ChatV2() {
     [canSend, chat]
   );
 
+  const handleSwitchBranch = useCallback(
+    async (branchId: string) => {
+      if (!chat.conversationId || !branchId || branchId === chat.activeBranchId) return;
+      if (chat.pending.streaming || chat.status === 'streaming') return;
+      if (
+        chat.editingMessageId &&
+        typeof window !== 'undefined' &&
+        !window.confirm('Discard your unsaved edit and switch branches?')
+      ) {
+        return;
+      }
+      await chat.switchBranch(branchId);
+      if (chat.editingMessageId) {
+        chat.cancelEdit();
+      }
+    },
+    [chat]
+  );
+
   const handleFork = useCallback(
-    (messageId: string, modelId: string) => {
-      const idx = chat.messages.findIndex((m) => m.id === messageId);
+    (messageId: string, modelId: string, timelineMessages?: typeof chat.messages) => {
+      const sourceMessages = timelineMessages ?? chat.messages;
+      const idx = sourceMessages.findIndex((m) => m.id === messageId);
       if (idx === -1) return;
 
       const forkModelId = modelId === 'primary' ? chat.model : modelId;
-      const newMessages = chat.messages.slice(0, idx + 1).map((message) => {
+      const newMessages = sourceMessages.slice(0, idx + 1).map((message) => {
         if (message.role !== 'assistant') {
           return message.comparisonResults ? { ...message, comparisonResults: undefined } : message;
         }
@@ -490,6 +527,7 @@ export function ChatV2() {
             <MessageList
               messages={chat.messages}
               pending={chat.pending}
+              error={chat.error}
               conversationId={chat.conversationId}
               compareModels={chat.compareModels}
               primaryModelLabel={chat.model}
@@ -515,6 +553,10 @@ export function ChatV2() {
               containerRef={messageListRef}
               onSuggestionClick={handleSuggestionClick}
               onFork={handleFork}
+              activeBranchId={chat.activeBranchId}
+              branches={chat.branches}
+              onSwitchBranch={handleSwitchBranch}
+              branchModeEnabled={!!chat.conversationId}
             />
 
             {/* Scroll Buttons - centered but visually minimal */}

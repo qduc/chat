@@ -511,7 +511,8 @@ describe('<Chat />', () => {
         seq: 3,
         content: 'Edited response',
       },
-      new_conversation_id: 'new-conv',
+      new_conversation_id: 'conv-1',
+      edit_revision_count: 1,
     });
 
     renderWithProviders(<Chat />);

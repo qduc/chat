@@ -2,6 +2,7 @@ import express from 'express';
 import { test, expect } from '@jest/globals';
 import jwt from 'jsonwebtoken';
 import { getDb } from '../../src/db/index.js';
+import { initializeConversationRootBranch } from '../../src/db/branches.js';
 import { config } from '../../src/env.js';
 
 export const TEST_USER_ID = 'test-user';
@@ -77,6 +78,7 @@ export function ensureTestConversation(conversationId = 'test-conversation') {
     model: 'gpt-4.1-mini',
     metadata: '{}'
   });
+  initializeConversationRootBranch({ conversationId, userId: TEST_USER_ID });
 }
 
 export function seedCustomPrompt({ id, name, body, userId = TEST_USER_ID }) {

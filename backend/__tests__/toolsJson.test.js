@@ -126,6 +126,7 @@ describe('toolsJson', () => {
       };
 
       createOpenAIRequest.mockResolvedValue({
+        ok: true,
         json: jest.fn().mockResolvedValue(mockLLMResponse)
       });
 
@@ -169,6 +170,7 @@ describe('toolsJson', () => {
       };
 
       createOpenAIRequest.mockResolvedValue({
+        ok: true,
         json: jest.fn().mockResolvedValue(mockLLMResponse)
       });
 
@@ -214,8 +216,8 @@ describe('toolsJson', () => {
       };
 
       createOpenAIRequest
-        .mockResolvedValueOnce({ json: jest.fn().mockResolvedValue(invalidResponse) })
-        .mockResolvedValueOnce({ json: jest.fn().mockResolvedValue(validResponse) });
+        .mockResolvedValueOnce({ ok: true, json: jest.fn().mockResolvedValue(invalidResponse) })
+        .mockResolvedValueOnce({ ok: true, json: jest.fn().mockResolvedValue(validResponse) });
 
       await handleToolsJson({
         body,
@@ -259,7 +261,7 @@ describe('toolsJson', () => {
       };
 
       createOpenAIRequest.mockImplementation(() => (
-        Promise.resolve({ json: jest.fn().mockResolvedValue(invalidResponse) })
+        Promise.resolve({ ok: true, json: jest.fn().mockResolvedValue(invalidResponse) })
       ));
 
       await handleToolsJson({
@@ -319,9 +321,11 @@ describe('toolsJson', () => {
 
       createOpenAIRequest
         .mockResolvedValueOnce({
+          ok: true,
           json: jest.fn().mockResolvedValue(mockLLMResponseWithTools)
         })
         .mockResolvedValueOnce({
+          ok: true,
           json: jest.fn().mockResolvedValue(mockFinalResponse)
         });
 
@@ -400,8 +404,8 @@ describe('toolsJson', () => {
       };
 
       createOpenAIRequest
-        .mockResolvedValueOnce({ json: jest.fn().mockResolvedValue(initialResponse) })
-        .mockResolvedValueOnce({ json: jest.fn().mockResolvedValue(finalResponse) });
+        .mockResolvedValueOnce({ ok: true, json: jest.fn().mockResolvedValue(initialResponse) })
+        .mockResolvedValueOnce({ ok: true, json: jest.fn().mockResolvedValue(finalResponse) });
 
       executeToolCall
         .mockResolvedValueOnce({ name: 'tool_one', output: 'first result' })
@@ -460,9 +464,11 @@ describe('toolsJson', () => {
 
       createOpenAIRequest
         .mockResolvedValueOnce({
+          ok: true,
           json: jest.fn().mockResolvedValue(mockLLMResponseWithTools)
         })
         .mockResolvedValueOnce({
+          ok: true,
           json: jest.fn().mockResolvedValue(mockFinalResponse)
         });
 
@@ -527,6 +533,7 @@ describe('toolsJson', () => {
       let callCount = 0;
       createOpenAIRequest.mockImplementation(() => {
         const response = {
+          ok: true,
           json: jest.fn().mockImplementation(() => {
             callCount += 1;
             if (callCount > 10) return Promise.resolve(mockFinalResponse);
@@ -645,6 +652,7 @@ describe('toolsJson', () => {
       };
 
       createOpenAIRequest.mockResolvedValue({
+        ok: true,
         json: jest.fn().mockResolvedValue(responseWithoutContent)
       });
 
@@ -727,6 +735,7 @@ describe('toolsJson', () => {
       };
 
       createOpenAIRequest.mockResolvedValue({
+        ok: true,
         json: jest.fn().mockResolvedValue(mockLLMResponse)
       });
 
@@ -771,6 +780,7 @@ describe('toolsJson', () => {
       };
 
       createOpenAIRequest.mockResolvedValue({
+        ok: true,
         json: jest.fn().mockResolvedValue(mockLLMResponse)
       });
 
@@ -821,6 +831,7 @@ describe('toolsJson', () => {
       };
 
       createOpenAIRequest.mockResolvedValue({
+        ok: true,
         json: jest.fn().mockResolvedValue(mockLLMResponse)
       });
 

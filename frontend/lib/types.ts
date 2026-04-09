@@ -258,7 +258,11 @@ export interface ChatMessage {
   id: string;
   role: Role;
   content: MessageContent;
+  timestamp?: number;
   seq?: number; // Message sequence number from backend
+  branch_id?: string;
+  _dbId?: number;
+  _parentMessageId?: number | null;
   responseId?: string; // Response ID for assistant messages to maintain conversation context
   provider?: string; // Provider used for this message
   // Local image attachments (used during composition, converted to content format for API)
@@ -282,6 +286,16 @@ export interface ChatMessage {
   };
   reasoning_details?: any[];
   reasoning_tokens?: number | null;
+  /** Number of edit revisions for this message (user messages only) */
+  edit_revision_count?: number;
+  /** Number of regenerate revisions for this assistant message (derived from preceding user message) */
+  regenerate_revision_count?: number;
+  /** User message id that anchors assistant regenerate revisions */
+  anchor_user_message_id?: string;
+  /** Frontend-only: marks a message as historical/synthetic timeline state */
+  _historical?: boolean;
+  /** Frontend-only: branch-specific anchor content for revision-scoped assistant history */
+  _timeline_anchor_content?: MessageContent | null;
   comparisonResults?: Record<
     string,
     {
@@ -380,7 +394,14 @@ export interface ModelGroup {
 }
 
 export type Status = 'idle' | 'streaming';
-export type ReasoningEffortLevel = 'unset' | 'minimal' | 'low' | 'medium' | 'high';
+export type ReasoningEffortLevel =
+  | 'unset'
+  | 'none'
+  | 'minimal'
+  | 'low'
+  | 'medium'
+  | 'high'
+  | 'xhigh';
 /** @deprecated Use ReasoningEffortLevel instead */
 export type QualityLevel = ReasoningEffortLevel;
 
@@ -407,6 +428,9 @@ export interface ConversationMeta {
   seq?: number | null;
   user_message_id?: string | number | null;
   assistant_message_id?: string | number | null;
+  regenerate_anchor_message_id?: string | null;
+  regenerate_revision_count?: number | null;
+  active_branch_id?: string | null;
 }
 
 export interface ConversationsList {
@@ -429,6 +453,7 @@ export interface ConversationWithMessages {
   verbosity?: string | null;
   system_prompt?: string | null;
   active_system_prompt_id?: string | null;
+  active_branch_id?: string | null;
   messages: {
     id: string | number;
     seq: number;
@@ -436,6 +461,7 @@ export interface ConversationWithMessages {
     status: string;
     content: MessageContent | null;
     created_at: string;
+    branch_id?: string | null;
     provider?: string;
     // Image references stored in database (after upload)
     images?: Array<{
@@ -472,16 +498,59 @@ export interface ConversationWithMessages {
   }[];
   next_after_seq: number | null;
   evaluations?: Evaluation[];
+  /** Split revision counts: edit and regenerate counts per user message anchor ID */
+  revision_counts?: {
+    edit: Record<string, number>;
+    regenerate: Record<string, number>;
+  };
+  branches?: ConversationBranch[];
   // Linked comparison conversations (included when include_linked=messages)
   linked_conversations?: Array<{
     id: string;
     title?: string | null;
     provider_id?: string | null;
     model?: string | null;
+    active_branch_id?: string | null;
     created_at: string;
     updated_at?: string;
     messages: ConversationWithMessages['messages'];
   }>;
+}
+
+export interface MessageRevision {
+  id: string;
+  operation_type: 'edit' | 'regenerate';
+  /** User message content snapshot for the branch this revision belongs to */
+  anchor_content: MessageContent | null;
+  /** Old follow-up messages (assistant/tool responses after the user message) */
+  follow_ups: Array<{
+    role: Role;
+    content: MessageContent | null;
+    tool_calls?: any[] | null;
+    tool_outputs?: Array<{
+      tool_call_id?: string;
+      output: any;
+      status?: string;
+    }> | null;
+    reasoning_details?: any[] | null;
+    usage?: any | null;
+  }>;
+  created_at: string;
+}
+
+export interface ConversationBranch {
+  id: string;
+  conversation_id: string;
+  parent_branch_id: string | null;
+  branch_point_message_id: number | null;
+  source_message_id: number | null;
+  operation_type: 'root' | 'edit' | 'regenerate' | 'fork';
+  label?: string | null;
+  head_message_id: number | null;
+  created_at: string;
+  updated_at?: string | null;
+  archived_at?: string | null;
+  is_active: boolean;
 }
 
 export interface ToolSpec {
@@ -540,6 +609,7 @@ export interface ChatOptions {
 export interface ChatOptionsExtended extends ChatOptions {
   conversationId?: string;
   parentConversationId?: string;
+  branchId?: string | null;
   // Accept either full ToolSpec objects or simple tool name strings
   tools?: Array<ToolSpec | string>;
   toolChoice?: any;
@@ -594,15 +664,19 @@ export interface GetConversationParams {
   after_seq?: number;
   limit?: number;
   include_linked?: 'messages';
+  branch_id?: string;
 }
 
 export interface EditMessageResult {
   message: {
     id: string;
     seq: number;
-    content: string;
+    content: MessageContent;
   };
   new_conversation_id: string;
+  edit_revision_count: number;
+  branch_id?: string;
+  active_branch_id?: string;
 }
 
 // ============================================================================

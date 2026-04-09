@@ -39,6 +39,7 @@ import { logger } from '../logger.js';
 import { addPromptCaching } from './promptCaching.js';
 import { extractUsage, normalizeUsage } from './utils/usage.js';
 import { createAbortError } from './abortUtils.js';
+import { extractUpstreamMessage, readUpstreamErrorBody } from './upstreamErrors.js';
 import {
   buildConversationMessagesOptimized,
   executeToolCall,
@@ -133,31 +134,22 @@ export async function handleToolsStreaming({
       });
 
       let upstream = await createOpenAIRequest(config, requestBody, { providerId, signal: abortSignal });
+      let upstreamErrorBody;
 
       // If request with previous_response_id failed due to invalid ID format, retry with full history
       if (!upstream.ok && requestBody.previous_response_id) {
-        let upstreamBody;
-        try {
-          upstreamBody = await upstream.json();
-        } catch {
-          try {
-            const text = await upstream.text();
-            upstreamBody = { error: 'upstream_error', message: text };
-          } catch {
-            upstreamBody = { error: 'upstream_error', message: 'Unknown error' };
-          }
-        }
+        upstreamErrorBody = await readUpstreamErrorBody(upstream);
 
         const isInvalidResponseIdError =
           upstream.status === 400 &&
-          upstreamBody?.error?.param === 'previous_response_id' &&
-          upstreamBody?.error?.code === 'invalid_value';
+          upstreamErrorBody?.error?.param === 'previous_response_id' &&
+          upstreamErrorBody?.error?.code === 'invalid_value';
 
         if (isInvalidResponseIdError) {
           logger.warn({
             msg: 'invalid_previous_response_id',
             previous_response_id: requestBody.previous_response_id,
-            error: upstreamBody?.error?.message,
+            error: upstreamErrorBody?.error?.message,
             retrying: 'with full history',
           });
 
@@ -184,6 +176,7 @@ export async function handleToolsStreaming({
           });
 
           upstream = await createOpenAIRequest(config, retryBodyWithCaching, { providerId, signal: abortSignal });
+          upstreamErrorBody = undefined;
           currentPreviousResponseId = null; // Reset for subsequent iterations
         }
       }
@@ -198,13 +191,10 @@ export async function handleToolsStreaming({
 
       // Check upstream response status
       if (!upstream.ok) {
-        let errorBody;
-        try {
-          errorBody = await upstream.text();
-        } catch (e) {
-          errorBody = `Could not read error body: ${e.message}`;
-        }
-        throw new Error(`Upstream API error (${upstream.status}): ${errorBody}`);
+        const errorBody = upstreamErrorBody ?? await readUpstreamErrorBody(upstream);
+        const upstreamMessage = extractUpstreamMessage(errorBody);
+        const detail = upstreamMessage || JSON.stringify(errorBody);
+        throw new Error(`Upstream API error (${upstream.status}): ${detail}`);
       }
 
       if (!isStreamResponse) {

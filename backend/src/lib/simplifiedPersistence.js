@@ -12,6 +12,7 @@ import {
 } from '../db/toolCalls.js';
 import { insertMessageEvents } from '../db/messageEvents.js';
 import {
+  createAssistantDraft,
   insertToolMessage,
   getNextSeq,
   updateMessageContent,
@@ -56,6 +57,10 @@ export class SimplifiedPersistence {
     this.completionMs = null; // Completion timing metadata
     this.userMessageId = null; // Persisted user message ID from latest sync
     this.assistantMessageId = null; // Persisted assistant message ID for the current turn
+    this.regenerateAnchorMessageId = null;
+    this.regenerateRevisionCount = null;
+    this.requestBranchId = null;
+    this.activeBranchId = null;
     this.messageEventsEnabled = this.persistenceConfig?.isMessageEventsEnabled?.() ?? true;
     this.messageEvents = []; // Ordered assistant events for rendering
     this.nextEventSeq = 0;
@@ -81,11 +86,23 @@ export class SimplifiedPersistence {
    * @param {Object} params.bodyIn - Original request body
    * @returns {Promise<{error?: Object}>} Error object if validation fails
    */
-  async initialize({ conversationId, sessionId, userId = null, req, bodyIn, onTitleGenerated }) {
+  async initialize({
+    conversationId,
+    branchId = null,
+    sessionId,
+    userId = null,
+    req,
+    bodyIn,
+    onTitleGenerated,
+  }) {
     // Store user context for later use
     this.userId = userId;
     this.userMessageId = null;
     this.assistantMessageId = null;
+    this.regenerateAnchorMessageId = null;
+    this.regenerateRevisionCount = null;
+    this.requestBranchId = branchId;
+    this.activeBranchId = branchId;
     this._latestSyncMappings = [];
 
     // Check if persistence is enabled
@@ -118,6 +135,8 @@ export class SimplifiedPersistence {
       return result;
     }
     const isNewConversation = result.isNewConversation;
+    this.requestBranchId = this.requestBranchId || this.conversationMeta?.active_branch_id || null;
+    this.activeBranchId = this.requestBranchId;
 
     // Process message history and generate title if needed
     await this._processMessageHistory(sessionId, userId, bodyIn, isNewConversation, onTitleGenerated);
@@ -213,8 +232,25 @@ export class SimplifiedPersistence {
 
     if (messages.length > 0) {
       // Sync message history using diff-based approach with automatic fallback
-      const syncResult = this.conversationManager.syncMessageHistoryDiff(this.conversationId, userId, messages, seq);
+      const syncResult = this.conversationManager.syncMessageHistoryDiff(
+        this.conversationId,
+        userId,
+        messages,
+        seq,
+        { branchId: this.requestBranchId }
+      );
       this._latestSyncMappings = Array.isArray(syncResult?.idMappings) ? syncResult.idMappings : [];
+      this.regenerateAnchorMessageId = syncResult?.regenerateRevision?.anchorMessageId ?? null;
+      this.regenerateRevisionCount = syncResult?.regenerateRevision?.count ?? null;
+      if (syncResult?.branchId) {
+        this.requestBranchId = syncResult.branchId;
+        this.activeBranchId = syncResult.branchId;
+      }
+
+      if (syncResult?.conversationId && syncResult.conversationId !== this.conversationId) {
+        this.conversationId = syncResult.conversationId;
+        this.conversationMeta = this.conversationManager.getConversation(this.conversationId, userId);
+      }
 
       // Track the most recent persisted user message ID for response metadata
       const latestUserMapping = [...this._latestSyncMappings].reverse().find(mapping => mapping.role === 'user');
@@ -777,6 +813,7 @@ export class SimplifiedPersistence {
               completionMs: this.completionMs,
               provider: this.upstreamProvider,
               clientMessageId: this.assistantMessageId,
+              branchId: this.activeBranchId,
             });
             if (result && result.id) {
               this.currentMessageId = result.id;
@@ -800,6 +837,7 @@ export class SimplifiedPersistence {
             completionMs: this.completionMs,
             provider: this.upstreamProvider,
             clientMessageId: this.assistantMessageId,
+            branchId: this.activeBranchId,
           });
           if (result && result.id) {
             this.currentMessageId = result.id;
@@ -938,7 +976,8 @@ export class SimplifiedPersistence {
             content: toolContent,
             seq,
             status: toolOutput.status || 'success',
-            clientMessageId: null
+            clientMessageId: null,
+            branchId: this.activeBranchId,
           });
 
           if (result?.id) {
@@ -1059,10 +1098,18 @@ export class SimplifiedPersistence {
           });
         } catch (err) {
           logger.warn('[SimplifiedPersistence] markError update failed, falling back to seq-based error:', err?.message || err);
-          this.conversationManager.markAssistantError(this.conversationId, this.assistantSeq);
+          this.conversationManager.markAssistantError(
+            this.conversationId,
+            this.assistantSeq,
+            this.activeBranchId
+          );
         }
       } else {
-        this.conversationManager.markAssistantError(this.conversationId, this.assistantSeq);
+        this.conversationManager.markAssistantError(
+          this.conversationId,
+          this.assistantSeq,
+          this.activeBranchId
+        );
       }
       this.errored = true;
     } catch (error) {
@@ -1078,19 +1125,14 @@ export class SimplifiedPersistence {
   createDraftMessage() {
     if (!this.persist || !this.conversationId || this.assistantSeq === null) return null;
     try {
-      const db = getDb();
-      const now = new Date().toISOString();
-      const info = db.prepare(
-        `INSERT INTO messages (conversation_id, role, status, content, seq, client_message_id, created_at, updated_at)
-         VALUES (@conversationId, 'assistant', 'draft', '', @seq, @clientMessageId, @now, @now)`
-      ).run({
+      const result = createAssistantDraft({
         conversationId: this.conversationId,
         seq: this.assistantSeq,
         clientMessageId: this.assistantMessageId,
-        now
+        branchId: this.activeBranchId,
       });
 
-      this.currentMessageId = info.lastInsertRowid;
+      this.currentMessageId = result?.id ?? null;
       this.lastCheckpoint = Date.now();
       this.lastCheckpointLength = 0;
 
@@ -1099,7 +1141,7 @@ export class SimplifiedPersistence {
         messageId: this.currentMessageId,
         seq: this.assistantSeq,
       });
-      return { id: this.currentMessageId, seq: this.assistantSeq };
+      return result;
     } catch (error) {
       logger.error('[SimplifiedPersistence] Failed to create draft message:', error);
       this.currentMessageId = null;

@@ -43,12 +43,26 @@ export interface MessageContextValue {
   onDeleteJudgeResponse: (id: string) => Promise<void>;
 }
 
+/** Revision navigation props passed to user/assistant bubbles */
+export interface RevisionNavProps {
+  slot: number;
+  total: number;
+  onPrev: () => void;
+  onNext: () => void;
+  loading: boolean;
+  disabled?: boolean;
+}
+
 // Props for individual message component
 export interface MessageProps {
   message: ChatMessage;
   isStreaming: boolean;
   conversationId: string | null;
   compareModels: string[];
+  /** Edit revision navigation for user messages */
+  editRevision?: RevisionNavProps;
+  /** Regenerate revision navigation for assistant messages */
+  regenRevision?: RevisionNavProps;
   primaryModelLabel: string | null;
   linkedConversations: Record<string, string>;
   evaluations: Evaluation[];

@@ -17,6 +17,7 @@ import {
 import { extractUsage } from './utils/usage.js';
 import { logger } from '../logger.js';
 import { getUserMaxToolIterations } from '../db/users.js';
+import { extractUpstreamMessage, readUpstreamErrorBody } from './upstreamErrors.js';
 
 const INVALID_REASONING_RESPONSE_RETRY_LIMIT = 2;
 const INVALID_REASONING_RESPONSE_WARNING =
@@ -353,30 +354,21 @@ async function callLLM({ messages, config, bodyParams, providerId, providerHttp,
   });
 
   let response = await createOpenAIRequest(config, requestBody, { providerId, http: providerHttp, signal: abortSignal });
+  let upstreamErrorBody;
 
   // If request with previous_response_id failed due to invalid ID format, retry with full history
   if (!response.ok && requestBody.previous_response_id) {
-    let upstreamBody;
-    try {
-      upstreamBody = await response.json();
-    } catch {
-      try {
-        const text = await response.text();
-        upstreamBody = { error: 'upstream_error', message: text };
-      } catch {
-        upstreamBody = { error: 'upstream_error', message: 'Unknown error' };
-      }
-    }
+    upstreamErrorBody = await readUpstreamErrorBody(response);
 
     const isInvalidResponseIdError = response.status === 400
-      && upstreamBody?.error?.param === 'previous_response_id'
-      && upstreamBody?.error?.code === 'invalid_value';
+      && upstreamErrorBody?.error?.param === 'previous_response_id'
+      && upstreamErrorBody?.error?.code === 'invalid_value';
 
     if (isInvalidResponseIdError) {
       logger.warn({
         msg: 'invalid_previous_response_id',
         previous_response_id: requestBody.previous_response_id,
-        error: upstreamBody?.error?.message,
+        error: upstreamErrorBody?.error?.message,
         retrying: 'with full history'
       });
 
@@ -397,7 +389,19 @@ async function callLLM({ messages, config, bodyParams, providerId, providerHttp,
       });
 
       response = await createOpenAIRequest(config, retryBodyWithCaching, { providerId, http: providerHttp, signal: abortSignal });
+      upstreamErrorBody = undefined;
     }
+  }
+
+  if (!response.ok) {
+    const errorBody = upstreamErrorBody ?? await readUpstreamErrorBody(response);
+    const upstreamMessage = extractUpstreamMessage(errorBody);
+    const error = new Error(
+      `Upstream API error (${response.status}): ${upstreamMessage || JSON.stringify(errorBody)}`
+    );
+    error.status = response.status;
+    error.body = errorBody;
+    throw error;
   }
 
   if (upstreamStreamEnabled) {

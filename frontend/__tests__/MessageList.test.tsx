@@ -24,22 +24,60 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import { MessageList } from '../components/MessageList';
-import type { ChatMessage, Role } from '../lib/types';
+import type { ChatMessage, ConversationBranch, Role } from '../lib/types';
+import { conversations } from '../lib/api';
+
+jest.mock('../lib/api', () => ({
+  conversations: {
+    getMessageRevisions: jest.fn(),
+  },
+}));
 
 // Mock Toast context
+const mockShowToast = jest.fn();
 jest.mock('../components/ui/Toast', () => ({
   useToast: () => ({
-    showToast: jest.fn(),
+    showToast: mockShowToast,
   }),
 }));
 
 // Mock Message component
 jest.mock('../components/message', () => ({
-  Message: ({ message, isStreaming }: any) => (
+  Message: ({ message, isStreaming, editRevision, regenRevision, onRetryMessage, onFork }: any) => (
     <div data-testid={`message-${message.id}`} data-role={message.role}>
       <span data-testid={`content-${message.id}`}>
         {typeof message.content === 'string' ? message.content : JSON.stringify(message.content)}
       </span>
+      {onRetryMessage && (
+        <button data-testid={`retry-${message.id}`} onClick={() => onRetryMessage(message.id)}>
+          Retry
+        </button>
+      )}
+      {onFork && (
+        <button data-testid={`fork-${message.id}`} onClick={() => onFork(message.id, 'primary')}>
+          Fork
+        </button>
+      )}
+      {editRevision && (
+        <>
+          <button data-testid={`edit-prev-${message.id}`} onClick={editRevision.onPrev}>
+            Prev edit
+          </button>
+          <span data-testid={`edit-nav-${message.id}`}>
+            {editRevision.slot}/{editRevision.total}
+          </span>
+        </>
+      )}
+      {regenRevision && (
+        <>
+          <button data-testid={`regen-prev-${message.id}`} onClick={regenRevision.onPrev}>
+            Prev regen
+          </button>
+          <span data-testid={`regen-nav-${message.id}`}>
+            {regenRevision.slot}/{regenRevision.total}
+          </span>
+        </>
+      )}
       {isStreaming && <span data-testid="streaming-indicator">Streaming...</span>}
     </div>
   ),
@@ -93,6 +131,7 @@ jest.mock('../lib', () => ({
   },
   createMixedContent: jest.fn((text, images) => (images?.length ? { text, images } : text)),
   extractImagesFromContent: jest.fn(() => []),
+  mergeToolOutputsToAssistantMessages: jest.fn((messages) => messages),
 }));
 
 // Helper to create test messages
@@ -100,6 +139,22 @@ const createMessage = (overrides: Partial<ChatMessage> = {}): ChatMessage => ({
   id: `msg-${Date.now()}-${Math.random()}`,
   role: 'user' as Role,
   content: 'Test message',
+  ...overrides,
+});
+
+const createBranch = (overrides: Partial<ConversationBranch> = {}): ConversationBranch => ({
+  id: `branch-${Date.now()}-${Math.random()}`,
+  conversation_id: 'conv-1',
+  parent_branch_id: null,
+  branch_point_message_id: null,
+  source_message_id: null,
+  operation_type: 'root',
+  label: null,
+  head_message_id: null,
+  created_at: '2024-01-01T00:00:00Z',
+  updated_at: '2024-01-01T00:00:00Z',
+  archived_at: null,
+  is_active: false,
   ...overrides,
 });
 
@@ -127,6 +182,8 @@ const defaultProps = {
   onRetryMessage: jest.fn(),
   onDeleteJudgeResponse: jest.fn(),
 };
+
+const mockConversations = conversations as jest.Mocked<typeof conversations>;
 
 describe('MessageList', () => {
   beforeEach(() => {
@@ -165,6 +222,503 @@ describe('MessageList', () => {
       render(<MessageList {...defaultProps} messages={messages} />);
 
       expect(screen.getByTestId('content-msg-1')).toHaveTextContent('Test content here');
+    });
+
+    it('renders general chat errors when pending.error is empty', () => {
+      render(<MessageList {...defaultProps} error="Branch hydration failed" />);
+
+      expect(screen.getByText('Branch hydration failed')).toBeInTheDocument();
+    });
+  });
+
+  describe('Inline branch navigation', () => {
+    it('shows edit branch navigation for user messages and switches to the previous branch', async () => {
+      const onSwitchBranch = jest.fn().mockResolvedValue(undefined);
+      const branches = [
+        createBranch({ id: 'root', operation_type: 'root', created_at: '2024-01-01T00:00:00Z' }),
+        createBranch({
+          id: 'edit-1',
+          operation_type: 'edit',
+          parent_branch_id: 'root',
+          branch_point_message_id: null,
+          created_at: '2024-01-01T00:01:00Z',
+        }),
+        createBranch({
+          id: 'edit-2',
+          operation_type: 'edit',
+          parent_branch_id: 'edit-1',
+          branch_point_message_id: null,
+          created_at: '2024-01-01T00:02:00Z',
+          is_active: true,
+        }),
+      ];
+      const messages = [
+        createMessage({
+          id: 'user-a3',
+          role: 'user',
+          content: 'A3',
+          branch_id: 'edit-2',
+          _parentMessageId: null,
+        }),
+      ];
+
+      render(
+        <MessageList
+          {...defaultProps}
+          conversationId="conv-1"
+          branchModeEnabled={true}
+          branches={branches}
+          activeBranchId="edit-2"
+          onSwitchBranch={onSwitchBranch}
+          messages={messages}
+        />
+      );
+
+      expect(screen.getByTestId('edit-nav-user-a3')).toHaveTextContent('3/3');
+
+      fireEvent.click(screen.getByTestId('edit-prev-user-a3'));
+
+      await waitFor(() => {
+        expect(onSwitchBranch).toHaveBeenCalledWith('edit-1');
+      });
+    });
+
+    it('shows regenerate branch navigation for assistant messages and switches versions', async () => {
+      const onSwitchBranch = jest.fn().mockResolvedValue(undefined);
+      const branches = [
+        createBranch({ id: 'edit-2', operation_type: 'edit', created_at: '2024-01-01T00:00:00Z' }),
+        createBranch({
+          id: 'regen-1',
+          operation_type: 'regenerate',
+          parent_branch_id: 'edit-2',
+          branch_point_message_id: 42,
+          source_message_id: 42,
+          created_at: '2024-01-01T00:01:00Z',
+        }),
+        createBranch({
+          id: 'regen-2',
+          operation_type: 'regenerate',
+          parent_branch_id: 'regen-1',
+          branch_point_message_id: 42,
+          source_message_id: 42,
+          created_at: '2024-01-01T00:02:00Z',
+          is_active: true,
+        }),
+      ];
+      const messages = [
+        createMessage({
+          id: 'user-a3',
+          role: 'user',
+          content: 'A3',
+          branch_id: 'edit-2',
+          _dbId: 42,
+        }),
+        createMessage({
+          id: 'assistant-r3',
+          role: 'assistant',
+          content: 'Answer v3',
+          branch_id: 'regen-2',
+          _parentMessageId: 42,
+        }),
+      ];
+
+      render(
+        <MessageList
+          {...defaultProps}
+          conversationId="conv-1"
+          branchModeEnabled={true}
+          branches={branches}
+          activeBranchId="regen-2"
+          onSwitchBranch={onSwitchBranch}
+          messages={messages}
+        />
+      );
+
+      expect(screen.getByTestId('regen-nav-assistant-r3')).toHaveTextContent('3/3');
+
+      fireEvent.click(screen.getByTestId('regen-prev-assistant-r3'));
+
+      await waitFor(() => {
+        expect(onSwitchBranch).toHaveBeenCalledWith('regen-1');
+      });
+    });
+
+    it('shows a toast when branch switching fails', async () => {
+      const onSwitchBranch = jest.fn().mockRejectedValue(new Error('Branch hydration failed'));
+      const branches = [
+        createBranch({ id: 'edit-2', operation_type: 'edit', created_at: '2024-01-01T00:00:00Z' }),
+        createBranch({
+          id: 'regen-1',
+          operation_type: 'regenerate',
+          parent_branch_id: 'edit-2',
+          branch_point_message_id: 42,
+          source_message_id: 42,
+          created_at: '2024-01-01T00:01:00Z',
+        }),
+        createBranch({
+          id: 'regen-2',
+          operation_type: 'regenerate',
+          parent_branch_id: 'regen-1',
+          branch_point_message_id: 42,
+          source_message_id: 42,
+          created_at: '2024-01-01T00:02:00Z',
+          is_active: true,
+        }),
+      ];
+      const messages = [
+        createMessage({
+          id: 'user-a3',
+          role: 'user',
+          content: 'A3',
+          branch_id: 'edit-2',
+          _dbId: 42,
+        }),
+        createMessage({
+          id: 'assistant-r3',
+          role: 'assistant',
+          content: 'Answer v3',
+          branch_id: 'regen-2',
+          _parentMessageId: 42,
+        }),
+      ];
+
+      render(
+        <MessageList
+          {...defaultProps}
+          conversationId="conv-1"
+          branchModeEnabled={true}
+          branches={branches}
+          activeBranchId="regen-2"
+          onSwitchBranch={onSwitchBranch}
+          messages={messages}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId('regen-prev-assistant-r3'));
+
+      await waitFor(() => {
+        expect(mockShowToast).toHaveBeenCalledWith({
+          message: 'Branch hydration failed',
+          variant: 'error',
+        });
+      });
+    });
+
+    it('blocks branch version switching while streaming', async () => {
+      const onSwitchBranch = jest.fn().mockResolvedValue(undefined);
+      const branches = [
+        createBranch({ id: 'edit-2', operation_type: 'edit', created_at: '2024-01-01T00:00:00Z' }),
+        createBranch({
+          id: 'regen-1',
+          operation_type: 'regenerate',
+          parent_branch_id: 'edit-2',
+          branch_point_message_id: 42,
+          source_message_id: 42,
+          created_at: '2024-01-01T00:01:00Z',
+        }),
+        createBranch({
+          id: 'regen-2',
+          operation_type: 'regenerate',
+          parent_branch_id: 'regen-1',
+          branch_point_message_id: 42,
+          source_message_id: 42,
+          created_at: '2024-01-01T00:02:00Z',
+          is_active: true,
+        }),
+      ];
+      const messages = [
+        createMessage({
+          id: 'user-a3',
+          role: 'user',
+          content: 'A3',
+          branch_id: 'edit-2',
+          _dbId: 42,
+        }),
+        createMessage({
+          id: 'assistant-r3',
+          role: 'assistant',
+          content: 'Answer v3',
+          branch_id: 'regen-2',
+          _parentMessageId: 42,
+        }),
+      ];
+
+      render(
+        <MessageList
+          {...defaultProps}
+          conversationId="conv-1"
+          branchModeEnabled={true}
+          branches={branches}
+          activeBranchId="regen-2"
+          onSwitchBranch={onSwitchBranch}
+          messages={messages}
+          pending={{ streaming: true, abort: null }}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId('regen-prev-assistant-r3'));
+
+      await waitFor(() => {
+        expect(onSwitchBranch).not.toHaveBeenCalled();
+      });
+    });
+
+    it('does not leak edit navigation onto later user messages without branch metadata', () => {
+      const branches = [
+        createBranch({ id: 'root', operation_type: 'root', created_at: '2024-01-01T00:00:00Z' }),
+        createBranch({
+          id: 'edit-1',
+          operation_type: 'edit',
+          parent_branch_id: 'root',
+          branch_point_message_id: null,
+          created_at: '2024-01-01T00:01:00Z',
+        }),
+      ];
+      const messages = [
+        createMessage({
+          id: 'user-a2',
+          role: 'user',
+          content: 'A2',
+          branch_id: 'edit-1',
+          _parentMessageId: null,
+        }),
+        createMessage({
+          id: 'user-b',
+          role: 'user',
+          content: 'B',
+        }),
+      ];
+
+      render(
+        <MessageList
+          {...defaultProps}
+          conversationId="conv-1"
+          branchModeEnabled={true}
+          branches={branches}
+          activeBranchId="edit-1"
+          onSwitchBranch={jest.fn()}
+          messages={messages}
+        />
+      );
+
+      expect(screen.getByTestId('edit-nav-user-a2')).toHaveTextContent('2/2');
+      expect(screen.queryByTestId('edit-nav-user-b')).not.toBeInTheDocument();
+    });
+
+    it('does not leak regenerate navigation onto later assistant messages without branch metadata', () => {
+      const branches = [
+        createBranch({ id: 'edit-1', operation_type: 'edit', created_at: '2024-01-01T00:00:00Z' }),
+        createBranch({
+          id: 'regen-1',
+          operation_type: 'regenerate',
+          parent_branch_id: 'edit-1',
+          branch_point_message_id: 42,
+          source_message_id: 42,
+          created_at: '2024-01-01T00:01:00Z',
+        }),
+      ];
+      const messages = [
+        createMessage({
+          id: 'assistant-r2',
+          role: 'assistant',
+          content: 'Answer v2',
+          branch_id: 'regen-1',
+          _parentMessageId: 42,
+        }),
+        createMessage({
+          id: 'assistant-c',
+          role: 'assistant',
+          content: 'Later answer',
+        }),
+      ];
+
+      render(
+        <MessageList
+          {...defaultProps}
+          conversationId="conv-1"
+          branchModeEnabled={true}
+          branches={branches}
+          activeBranchId="regen-1"
+          onSwitchBranch={jest.fn()}
+          messages={messages}
+        />
+      );
+
+      expect(screen.getByTestId('regen-nav-assistant-r2')).toHaveTextContent('2/2');
+      expect(screen.queryByTestId('regen-nav-assistant-c')).not.toBeInTheDocument();
+    });
+  });
+
+  describe('Revision scoping', () => {
+    it('keeps regenerate history scoped to the selected edit timeline', async () => {
+      mockConversations.getMessageRevisions.mockResolvedValue([
+        {
+          id: 'edit-a1',
+          operation_type: 'edit',
+          anchor_content: 'A1',
+          follow_ups: [{ role: 'assistant', content: 'B3' }],
+          created_at: '2024-01-01T00:00:00Z',
+        },
+        {
+          id: 'regen-a1-1',
+          operation_type: 'regenerate',
+          anchor_content: 'A1',
+          follow_ups: [{ role: 'assistant', content: 'B1' }],
+          created_at: '2024-01-01T00:01:00Z',
+        },
+        {
+          id: 'regen-a1-2',
+          operation_type: 'regenerate',
+          anchor_content: 'A1',
+          follow_ups: [{ role: 'assistant', content: 'B2' }],
+          created_at: '2024-01-01T00:02:00Z',
+        },
+      ] as any);
+
+      const messages = [
+        createMessage({
+          id: 'user-1',
+          role: 'user',
+          content: 'A2',
+          edit_revision_count: 1,
+        }),
+        createMessage({
+          id: 'assistant-current',
+          role: 'assistant',
+          content: 'C',
+          anchor_user_message_id: 'user-1',
+          regenerate_revision_count: 0,
+        }),
+      ];
+
+      render(<MessageList {...defaultProps} conversationId="conv-1" messages={messages} />);
+
+      expect(screen.getByTestId('content-assistant-current')).toHaveTextContent('C');
+      expect(screen.queryByTestId('regen-nav-assistant-current')).not.toBeInTheDocument();
+
+      fireEvent.click(screen.getByTestId('edit-prev-user-1'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('content-user-1')).toHaveTextContent('A1');
+      });
+      expect(screen.queryByTestId('message-assistant-current')).not.toBeInTheDocument();
+      expect(screen.getByTestId('content-synthetic-edit-a1-0')).toHaveTextContent('B3');
+      expect(screen.getByTestId('regen-nav-synthetic-edit-a1-0')).toHaveTextContent('3/3');
+
+      fireEvent.click(screen.getByTestId('regen-prev-synthetic-edit-a1-0'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('content-synthetic-edit-a1-0')).toHaveTextContent('B2');
+      });
+      expect(screen.queryByText('C')).not.toBeInTheDocument();
+    });
+
+    it('uses the same x/y label for the latest revision', async () => {
+      mockConversations.getMessageRevisions.mockResolvedValue([
+        {
+          id: 'edit-a1',
+          operation_type: 'edit',
+          anchor_content: 'A1',
+          follow_ups: [{ role: 'assistant', content: 'B1' }],
+          created_at: '2024-01-01T00:00:00Z',
+        },
+      ] as any);
+
+      const messages = [
+        createMessage({
+          id: 'user-1',
+          role: 'user',
+          content: 'A2',
+          edit_revision_count: 1,
+        }),
+      ];
+
+      render(<MessageList {...defaultProps} conversationId="conv-1" messages={messages} />);
+
+      expect(screen.getByTestId('edit-nav-user-1')).toHaveTextContent('2/2');
+      expect(screen.queryByText('current')).not.toBeInTheDocument();
+    });
+
+    it('drops cached revision data when the same conversation timeline changes', async () => {
+      mockConversations.getMessageRevisions.mockResolvedValueOnce([
+        {
+          id: 'edit-a1',
+          operation_type: 'edit',
+          anchor_content: 'A1',
+          follow_ups: [{ role: 'assistant', content: 'B1' }],
+          created_at: '2024-01-01T00:00:00Z',
+        },
+      ] as any);
+
+      const initialMessages = [
+        createMessage({
+          id: 'user-1',
+          role: 'user',
+          content: 'A2',
+          edit_revision_count: 1,
+        }),
+        createMessage({
+          id: 'assistant-1',
+          role: 'assistant',
+          content: 'C1',
+          anchor_user_message_id: 'user-1',
+        }),
+      ];
+
+      const { rerender } = render(
+        <MessageList {...defaultProps} conversationId="conv-1" messages={initialMessages} />
+      );
+
+      fireEvent.click(screen.getByTestId('edit-prev-user-1'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('content-synthetic-edit-a1-0')).toHaveTextContent('B1');
+      });
+      expect(screen.queryByTestId('regen-nav-synthetic-edit-a1-0')).not.toBeInTheDocument();
+
+      mockConversations.getMessageRevisions.mockResolvedValueOnce([
+        {
+          id: 'edit-a1',
+          operation_type: 'edit',
+          anchor_content: 'A1',
+          follow_ups: [{ role: 'assistant', content: 'B2' }],
+          created_at: '2024-01-01T00:00:00Z',
+        },
+        {
+          id: 'regen-a1-1',
+          operation_type: 'regenerate',
+          anchor_content: 'A1',
+          follow_ups: [{ role: 'assistant', content: 'B1' }],
+          created_at: '2024-01-01T00:01:00Z',
+        },
+      ] as any);
+
+      const updatedMessages = [
+        createMessage({
+          id: 'user-1',
+          role: 'user',
+          content: 'A2 updated',
+          edit_revision_count: 1,
+        }),
+        createMessage({
+          id: 'assistant-2',
+          role: 'assistant',
+          content: 'C2',
+          anchor_user_message_id: 'user-1',
+        }),
+      ];
+
+      rerender(
+        <MessageList {...defaultProps} conversationId="conv-1" messages={updatedMessages} />
+      );
+
+      fireEvent.click(screen.getByTestId('edit-prev-user-1'));
+
+      await waitFor(() => {
+        expect(screen.getByTestId('content-synthetic-edit-a1-0')).toHaveTextContent('B2');
+      });
+      expect(screen.getByTestId('regen-nav-synthetic-edit-a1-0')).toHaveTextContent('2/2');
+      expect(mockConversations.getMessageRevisions).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -358,6 +912,53 @@ describe('MessageList', () => {
 
       expect(screen.getByTestId('message-msg-1')).toBeInTheDocument();
     });
+
+    it('retries using the visible historical timeline', async () => {
+      const onRetryMessage = jest.fn();
+      mockConversations.getMessageRevisions.mockResolvedValue([
+        {
+          id: 'edit-a1',
+          operation_type: 'edit',
+          anchor_content: 'A1',
+          follow_ups: [{ role: 'assistant', content: 'B1' }],
+          created_at: '2024-01-01T00:00:00Z',
+        },
+        {
+          id: 'regen-a1-1',
+          operation_type: 'regenerate',
+          anchor_content: 'A1',
+          follow_ups: [{ role: 'assistant', content: 'B0' }],
+          created_at: '2024-01-01T00:01:00Z',
+        },
+      ] as any);
+
+      const messages = [
+        createMessage({ id: 'user-1', role: 'user', content: 'A2', edit_revision_count: 1 }),
+        createMessage({
+          id: 'assistant-current',
+          role: 'assistant',
+          content: 'C',
+          anchor_user_message_id: 'user-1',
+        }),
+      ];
+
+      render(
+        <MessageList
+          {...defaultProps}
+          conversationId="conv-1"
+          messages={messages}
+          onRetryMessage={onRetryMessage}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId('edit-prev-user-1'));
+      await waitFor(() => {
+        expect(screen.getByTestId('content-synthetic-edit-a1-0')).toHaveTextContent('B1');
+      });
+
+      expect(screen.queryByTestId('retry-synthetic-edit-a1-0')).not.toBeInTheDocument();
+      expect(onRetryMessage).not.toHaveBeenCalled();
+    });
   });
 
   describe('Editing state', () => {
@@ -435,6 +1036,46 @@ describe('MessageList', () => {
       render(<MessageList {...defaultProps} messages={messages} onFork={onFork} />);
 
       expect(screen.getByTestId('message-msg-1')).toBeInTheDocument();
+    });
+
+    it('forks from the visible historical timeline', async () => {
+      const onFork = jest.fn();
+      mockConversations.getMessageRevisions.mockResolvedValue([
+        {
+          id: 'edit-a1',
+          operation_type: 'edit',
+          anchor_content: 'A1',
+          follow_ups: [{ role: 'assistant', content: 'B1' }],
+          created_at: '2024-01-01T00:00:00Z',
+        },
+      ] as any);
+
+      const messages = [
+        createMessage({ id: 'user-1', role: 'user', content: 'A2', edit_revision_count: 1 }),
+        createMessage({
+          id: 'assistant-current',
+          role: 'assistant',
+          content: 'C',
+          anchor_user_message_id: 'user-1',
+        }),
+      ];
+
+      render(
+        <MessageList
+          {...defaultProps}
+          conversationId="conv-1"
+          messages={messages}
+          onFork={onFork}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId('edit-prev-user-1'));
+      await waitFor(() => {
+        expect(screen.getByTestId('content-synthetic-edit-a1-0')).toHaveTextContent('B1');
+      });
+
+      expect(screen.queryByTestId('fork-synthetic-edit-a1-0')).not.toBeInTheDocument();
+      expect(onFork).not.toHaveBeenCalled();
     });
   });
 

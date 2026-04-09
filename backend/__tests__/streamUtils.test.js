@@ -3,10 +3,17 @@ import { PassThrough } from 'node:stream';
 
 import {
   createChatCompletionChunk,
+  createOpenAIRequest,
   writeAndFlush,
   setupStreamingHeaders,
   teeStreamWithPreview,
 } from '../src/lib/streamUtils.js';
+
+jest.unstable_mockModule('../src/lib/providers/index.js', () => ({
+  createProvider: jest.fn(),
+}));
+
+const { createProvider } = await import('../src/lib/providers/index.js');
 
 describe('streamUtils', () => {
   describe('createChatCompletionChunk', () => {
@@ -298,6 +305,43 @@ describe('streamUtils', () => {
 
       const preview = await previewPromise;
       expect(preview).toBe('chunk0 chunk1 chunk2 chunk3 chunk4 ');
+    });
+  });
+
+  describe('createOpenAIRequest', () => {
+    beforeEach(() => {
+      createProvider.mockReset();
+    });
+
+    test('should not translate non-ok streaming responses', async () => {
+      const response = new Response(
+        'data: {"error":{"message":"Thinking level is not supported for this model."}}\n\n',
+        {
+          status: 400,
+          headers: { 'Content-Type': 'text/event-stream' },
+        }
+      );
+
+      const provider = {
+        providerId: 'gemini',
+        needsStreamingTranslation: jest.fn(() => true),
+        translateResponse: jest.fn(async () => {
+          throw new Error('should not translate errors');
+        }),
+        sendRawRequest: jest.fn(async () => response),
+      };
+
+      createProvider.mockResolvedValue(provider);
+
+      const result = await createOpenAIRequest(
+        { defaultModel: 'test-model' },
+        { model: 'test-model', messages: [], stream: true },
+        { providerId: 'gemini' }
+      );
+
+      expect(provider.translateResponse).not.toHaveBeenCalled();
+      expect(result).toBe(response);
+      await expect(result.text()).resolves.toContain('Thinking level is not supported for this model.');
     });
   });
 });

@@ -183,6 +183,16 @@ fi
 # Start release process
 info "Starting release process..."
 
+# Update package.json versions
+info "Updating package.json files to version ${NEW_VERSION}..."
+npm version "${NEW_VERSION}" --no-git-tag-version --allow-same-version > /dev/null
+npm --prefix frontend version "${NEW_VERSION}" --no-git-tag-version --allow-same-version > /dev/null
+npm --prefix backend version "${NEW_VERSION}" --no-git-tag-version --allow-same-version > /dev/null
+git add package.json frontend/package.json backend/package.json
+git commit -m "chore: bump version to ${NEW_VERSION}"
+git push origin "${CURRENT_BRANCH}"
+success "Version bumped to ${NEW_VERSION} in all package.json files"
+
 # Update CHANGELOG.md with Claude
 info "Generating changelog entry with Claude..."
 
