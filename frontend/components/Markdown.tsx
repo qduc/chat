@@ -119,7 +119,11 @@ function shouldEscapeCurrencySequence(remainder: string): boolean {
     }
 
     if (char === '$') {
-      return false;
+      return false; // Mathematical block closed, DO NOT escape
+    }
+
+    if ('+-=<>\\^*/_'.includes(char)) {
+      return false; // Mathematical operator found!
     }
 
     if (char === ' ' || char === '\t') {
@@ -131,6 +135,11 @@ function shouldEscapeCurrencySequence(remainder: string): boolean {
 
       if (trimmed[0] === '\n') {
         return hasDigit;
+      }
+
+      // Check for math operator after space
+      if (/^[-+/*=<>^\\_]/.test(trimmed)) {
+        return false;
       }
 
       const lowerTrimmed = trimmed.toLowerCase();
@@ -761,14 +770,18 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
   // Transform thinking blocks and reasoning summaries into collapsible sections
   // First, handle incomplete thinking blocks by temporarily adding closing tags
   const processedText = useMemo(() => {
-    let textToProcess = escapeCurrencyDollarSigns(normalizeLatexDelimiters(throttledText));
+    let textToProcess = normalizeLatexDelimiters(escapeCurrencyDollarSigns(throttledText));
 
     // Convert single newlines to hard breaks for better text formatting
     // Split by code blocks and inline code to avoid affecting them
-    const parts = textToProcess.split(/(```[\s\S]*?```|`[^`]*`)/g);
+    const parts = textToProcess.split(CODE_FENCE_PATTERN);
     textToProcess = parts
       .map((part) => {
-        if (part.startsWith('```') || (part.startsWith('`') && part.endsWith('`'))) {
+        if (
+          part.startsWith('```') ||
+          part.startsWith('~~~') ||
+          (part.startsWith('`') && part.endsWith('`'))
+        ) {
           // This is a code block or inline code, leave as-is
           return part;
         } else {
