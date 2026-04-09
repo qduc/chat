@@ -40,9 +40,9 @@ export default function SettingsModal({
           ) as any
         }
       >
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-4 min-h-[400px]">
           {/* Tab Navigation */}
-          <div>
+          <div className="flex-shrink-0">
             <nav
               className="flex items-center gap-2 bg-zinc-100 dark:bg-zinc-800/50 rounded-xl p-1"
               aria-label="Settings tabs"
@@ -89,23 +89,29 @@ export default function SettingsModal({
             </nav>
           </div>
 
-          {/* Tab Content */}
-          <ProvidersTab
-            isVisible={activeTab === 'providers'}
-            isOpen={open}
-            onProvidersChanged={onProvidersChanged}
-          />
-          <SearchTab isVisible={activeTab === 'search'} isOpen={open} />
-          <AdvancedTab
-            isVisible={activeTab === 'advanced'}
-            isOpen={open}
-            modelGroups={modelGroups}
-            modelOptions={modelOptions}
-            onSettingsChanged={onSettingsChanged}
-          />
-          <p className="text-[10px] text-zinc-400 dark:text-zinc-600 uppercase tracking-widest opacity-50 text-center pt-2">
-            v{version}
-          </p>
+          {/* Tab Content Area */}
+          <div className="flex-1 overflow-y-auto min-h-0">
+            <ProvidersTab
+              isVisible={activeTab === 'providers'}
+              isOpen={open}
+              onProvidersChanged={onProvidersChanged}
+            />
+            <SearchTab isVisible={activeTab === 'search'} isOpen={open} />
+            <AdvancedTab
+              isVisible={activeTab === 'advanced'}
+              isOpen={open}
+              modelGroups={modelGroups}
+              modelOptions={modelOptions}
+              onSettingsChanged={onSettingsChanged}
+            />
+          </div>
+
+          {/* Footer with version */}
+          <div className="flex-shrink-0 pt-4 mt-2 border-t border-zinc-100 dark:border-zinc-800/50">
+            <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-widest text-center">
+              v{version}
+            </p>
+          </div>
         </div>
       </Modal>
     </>

@@ -437,7 +437,7 @@ export default function ProvidersTab({ isVisible, isOpen, onProvidersChanged }: 
         </div>
 
         {/* Provider Configuration Section */}
-        <div className="lg:col-span-2 bg-zinc-50/60 dark:bg-zinc-900/30 rounded-xl p-3 lg:p-4 border border-zinc-200/30 dark:border-zinc-800/30 lg:overflow-y-auto lg:pr-2">
+        <div className="lg:col-span-2 bg-zinc-50/60 dark:bg-zinc-900/30 rounded-xl p-3 lg:p-4 border border-zinc-200/30 dark:border-zinc-800/30 lg:overflow-y-auto lg:pr-2 pb-8 sm:pb-10 lg:pb-4">
           {form.id && (
             <>
               {/* Add New button moved above the form */}
