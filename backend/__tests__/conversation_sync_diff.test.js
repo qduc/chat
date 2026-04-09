@@ -6,6 +6,11 @@ import { ConversationManager } from '../src/lib/persistence/ConversationManager.
 import {
   getAllMessagesForSync
 } from '../src/db/messages.js';
+import {
+  createConversationBranch,
+  getRootBranchId,
+  initializeConversationRootBranch,
+} from '../src/db/branches.js';
 import { safeTestSetup } from '../test_support/databaseSafety.js';
 import { getDb, resetDbCache } from '../src/db/index.js';
 
@@ -105,6 +110,31 @@ describe('Diff-Based Conversation Sync', () => {
       expect(synced[0].content).toBe('Hello');
       expect(synced[1].content).toBe('Hi there!');
       expect(synced[2].content).toBe('What is my name?');
+    });
+
+    it('uses the explicit target branch instead of the active branch', () => {
+      initializeConversationRootBranch({ conversationId, userId });
+      const rootBranchId = getRootBranchId(conversationId);
+      const targetBranchId = createConversationBranch({
+        conversationId,
+        userId,
+        parentBranchId: rootBranchId,
+        operationType: 'fork',
+        label: 'Alt',
+        headMessageId: null,
+      });
+
+      const result = manager.syncMessageHistoryDiff(
+        conversationId,
+        userId,
+        [{ id: 'user-alt', role: 'user', content: 'Hello alt' }],
+        0,
+        { branchId: targetBranchId }
+      );
+
+      expect(result.branchId).toBe(targetBranchId);
+      expect(getAllMessagesForSync({ conversationId, branchId: targetBranchId })).toHaveLength(1);
+      expect(getAllMessagesForSync({ conversationId, branchId: rootBranchId })).toHaveLength(0);
     });
 
     it('should update message content (edit in middle)', () => {

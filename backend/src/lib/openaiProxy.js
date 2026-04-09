@@ -15,7 +15,7 @@ import { isAbortError } from './abortUtils.js';
 import { extractUpstreamMessage, readUpstreamErrorBody } from './upstreamErrors.js';
 import { getUserSetting } from '../db/userSettings.js';
 import { normalizeCustomRequestParamsIds } from './customRequestParams.js';
-import { setConversationActiveBranch } from '../db/branches.js';
+import { getConversationBranch } from '../db/branches.js';
 
 // --- Helpers: sanitize, validate, selection, and error shaping ---
 
@@ -690,18 +690,19 @@ async function executeRequestHandler(context, req, res) {
   };
 
   if (context.branchId && context.conversationId) {
-    const ok = setConversationActiveBranch({
+    const branch = getConversationBranch({
       conversationId: context.conversationId,
       branchId: context.branchId,
       userId,
     });
-    if (!ok) {
+    if (!branch) {
       return res.status(404).json({ error: 'not_found', message: 'Branch not found' });
     }
   }
 
   const initResult = await persistence.initialize({
     conversationId: context.conversationId,
+    branchId: context.branchId,
     sessionId,
     userId, // Pass user context to persistence
     req,

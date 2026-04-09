@@ -10,6 +10,8 @@
  */
 export function addConversationMetadata(responseBody, persistence) {
   if (persistence?.persist && persistence.conversationMeta) {
+    const activeBranchId =
+      (persistence.activeBranchId ?? persistence.conversationMeta.active_branch_id) || null;
     responseBody._conversation = {
       id: persistence.conversationId,
       title: persistence.conversationMeta.title,
@@ -21,7 +23,7 @@ export function addConversationMetadata(responseBody, persistence) {
         : [],
       active_system_prompt_id: persistence.conversationMeta.metadata?.active_system_prompt_id || null,
       custom_request_params_id: persistence.conversationMeta.metadata?.custom_request_params_id ?? null,
-      active_branch_id: persistence.conversationMeta.active_branch_id || null,
+      active_branch_id: activeBranchId,
       seq: persistence.assistantSeq || null,
       user_message_id: persistence.userMessageId ?? null,
       assistant_message_id: persistence.assistantMessageId ?? (persistence.currentMessageId != null ? String(persistence.currentMessageId) : null),
@@ -39,6 +41,8 @@ export function addConversationMetadata(responseBody, persistence) {
  */
 export function getConversationMetadata(persistence) {
   if (persistence?.persist && persistence.conversationMeta) {
+    const activeBranchId =
+      (persistence.activeBranchId ?? persistence.conversationMeta.active_branch_id) || null;
     return {
       _conversation: {
         id: persistence.conversationId,
@@ -51,7 +55,7 @@ export function getConversationMetadata(persistence) {
           : [],
         active_system_prompt_id: persistence.conversationMeta.metadata?.active_system_prompt_id || null,
         custom_request_params_id: persistence.conversationMeta.metadata?.custom_request_params_id ?? null,
-        active_branch_id: persistence.conversationMeta.active_branch_id || null,
+        active_branch_id: activeBranchId,
         seq: persistence.assistantSeq || null,
         user_message_id: persistence.userMessageId ?? null,
         assistant_message_id: persistence.assistantMessageId ?? (persistence.currentMessageId != null ? String(persistence.currentMessageId) : null),

@@ -95,15 +95,16 @@ export class ConversationManager {
   _activateForkBranch({
     conversationId,
     userId,
+    parentBranchId = null,
     operationType,
     sourceMessage = null,
     branchPointMessageId = null,
   }) {
-    const parentBranchId = getActiveBranchId({ conversationId, userId });
+    const resolvedParentBranchId = parentBranchId || getActiveBranchId({ conversationId, userId });
     const branchId = createConversationBranch({
       conversationId,
       userId,
-      parentBranchId,
+      parentBranchId: resolvedParentBranchId,
       branchPointMessageId,
       sourceMessageId: sourceMessage?._dbId ?? sourceMessage?.id ?? null,
       operationType,
@@ -131,12 +132,13 @@ export class ConversationManager {
    * @param {Array} messages - Array of messages to insert
    * @param {number} afterSeq - Only sync messages after this sequence number (0 = all messages)
    */
-  syncMessageHistoryDiff(conversationId, userId, messages, afterSeq = 0) {
+  syncMessageHistoryDiff(conversationId, userId, messages, afterSeq = 0, options = {}) {
     const normalized = Array.isArray(messages)
       ? messages.map(message => this._normalizeIncomingMessage(message))
       : [];
+    const requestedBranchId = options?.branchId || null;
 
-    const allExisting = getAllMessagesForSync({ conversationId });
+    const allExisting = getAllMessagesForSync({ conversationId, branchId: requestedBranchId });
     // Note: getAllMessagesForSync returns messages with id already transformed to client_message_id
     const existingByClientId = new Map();
     for (const message of allExisting) {
@@ -187,7 +189,14 @@ export class ConversationManager {
           clientMessageId: incomingTail[0]?.id || null,
         });
         const diff = computeMessageDiff([], incomingTail);
-        return this._applyMessageDiff(conversationId, userId, diff, anchorCandidate, allExisting);
+        return this._applyMessageDiff(
+          conversationId,
+          userId,
+          diff,
+          anchorCandidate,
+          allExisting,
+          requestedBranchId
+        );
       }
 
       const structuralDiff = computeMessageDiff(allExisting, normalized);
@@ -197,7 +206,14 @@ export class ConversationManager {
           existingCount: allExisting.length,
           incomingCount: normalized.length,
         });
-        return this._applyMessageDiff(conversationId, userId, structuralDiff, 0, allExisting);
+        return this._applyMessageDiff(
+          conversationId,
+          userId,
+          structuralDiff,
+          0,
+          allExisting,
+          requestedBranchId
+        );
       }
 
       logger.debug('[MessageSync] No alignment on client IDs; falling back to clear-and-rewrite', {
@@ -228,7 +244,13 @@ export class ConversationManager {
 
     if (diff.fallback) {
       logger.warn(`[MessageSync] Fallback to clear-and-rewrite for conversation ${conversationId}: ${diff.reason}`);
-      return this._fallbackClearAndRewrite(conversationId, userId, normalized, anchorSeq);
+      return this._fallbackClearAndRewrite(
+        conversationId,
+        userId,
+        normalized,
+        anchorSeq,
+        requestedBranchId
+      );
     }
 
     const stats = {
@@ -242,7 +264,14 @@ export class ConversationManager {
     };
     logger.debug(`[MessageSync] Diff-based sync for conversation ${conversationId}:`, stats);
 
-    return this._applyMessageDiff(conversationId, userId, diff, anchorSeq, allExisting);
+    return this._applyMessageDiff(
+      conversationId,
+      userId,
+      diff,
+      anchorSeq,
+      allExisting,
+      requestedBranchId
+    );
   }
 
   /**
@@ -252,14 +281,21 @@ export class ConversationManager {
    * @param {Object} diff - Diff result from computeMessageDiff
    * @private
    */
-  _applyMessageDiff(conversationId, userId, diff, anchorSeq = 0, existingMessages = null) {
+  _applyMessageDiff(
+    conversationId,
+    userId,
+    diff,
+    anchorSeq = 0,
+    existingMessages = null,
+    requestedBranchId = null
+  ) {
     const db = getDb();
     const idMappings = [];
     const insertedMessages = [];
     const updatedMessages = [];
     const deletedMessages = [];
     let regenerateRevision = null;
-    let targetBranchId = getActiveBranchId({ conversationId, userId });
+    let targetBranchId = requestedBranchId || getActiveBranchId({ conversationId, userId });
 
     const transaction = db.transaction(() => {
       for (const msg of diff.toUpdate) {
@@ -301,7 +337,8 @@ export class ConversationManager {
       if (diff.toDelete.length > 0) {
         const firstDeleteSeq = diff.toDelete[0].seq;
         // Reuse allExisting from outer scope — no deletions have occurred yet at this point
-        const allExisting = existingMessages ?? getAllMessagesForSync({ conversationId });
+        const allExisting =
+          existingMessages ?? getAllMessagesForSync({ conversationId, branchId: targetBranchId });
         const branchPointMessage = allExisting
           .filter(m => m.seq < firstDeleteSeq)
           .slice(-1)[0] || null;
@@ -313,6 +350,7 @@ export class ConversationManager {
         targetBranchId = this._activateForkBranch({
           conversationId,
           userId,
+          parentBranchId: targetBranchId,
           operationType: isAssistantTurnRegen ? 'regenerate' : (isUserEdit ? 'edit' : (allNonUser ? 'regenerate' : 'fork')),
           sourceMessage: (isAssistantTurnRegen || allNonUser) ? branchPointMessage : (isUserEdit ? firstDeleted : null),
           branchPointMessageId: branchPointMessage?._dbId ?? null,
@@ -434,6 +472,7 @@ export class ConversationManager {
       anchorSeq,
       conversationId,
       regenerateRevision,
+      branchId: targetBranchId,
     };
   }
 
@@ -642,15 +681,15 @@ export class ConversationManager {
    * @param {number} afterSeq - Only delete and rewrite messages after this sequence number
    * @private
    */
-  _fallbackClearAndRewrite(conversationId, userId, messages, afterSeq = 0) {
+  _fallbackClearAndRewrite(conversationId, userId, messages, afterSeq = 0, requestedBranchId = null) {
     const db = getDb();
     const idMappings = [];
     const insertedMessages = [];
     const deletedMessages = [];
-    let targetBranchId = getActiveBranchId({ conversationId, userId });
+    let targetBranchId = requestedBranchId || getActiveBranchId({ conversationId, userId });
 
     // Fetch all existing messages once; derive existingToDelete and branchPointMessage from this
-    const allExistingMessages = getAllMessagesForSync({ conversationId });
+    const allExistingMessages = getAllMessagesForSync({ conversationId, branchId: targetBranchId });
     const existingToDelete = afterSeq > 0
       ? allExistingMessages.filter(msg => msg.seq > afterSeq)
       : allExistingMessages;
@@ -672,6 +711,7 @@ export class ConversationManager {
         targetBranchId = this._activateForkBranch({
           conversationId,
           userId,
+          parentBranchId: targetBranchId,
           operationType: isAssistantTurnRegen ? 'regenerate' : (isUserEdit ? 'edit' : (allNonUser ? 'regenerate' : 'fork')),
           sourceMessage: (isAssistantTurnRegen || allNonUser) ? branchPointMessage : (isUserEdit ? firstDeleted : null),
           branchPointMessageId: branchPointMessage?._dbId ?? null,
@@ -780,6 +820,7 @@ export class ConversationManager {
       updatedMessages: [],
       anchorSeq: afterSeq,
       conversationId,
+      branchId: targetBranchId,
     };
   }
 
@@ -825,6 +866,7 @@ export class ConversationManager {
       completionMs: params.completionMs,
       provider: params.provider,
       clientMessageId: params.clientMessageId,
+      branchId: params.branchId,
     });
   }
 
@@ -833,10 +875,11 @@ export class ConversationManager {
    * @param {string} conversationId - Conversation ID
    * @param {number} seq - Message sequence number
    */
-  markAssistantError(conversationId, seq) {
+  markAssistantError(conversationId, seq, branchId = null) {
     markAssistantErrorBySeq({
       conversationId,
       seq,
+      branchId,
     });
   }
 

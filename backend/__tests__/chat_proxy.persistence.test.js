@@ -103,10 +103,14 @@ describe('Chat proxy persistence', () => {
 
     const convo = getConversationById({ id: conversationId, userId });
     assert.ok(convo);
-    assert.equal(convo.active_branch_id, targetBranchId);
+    assert.equal(convo.active_branch_id, rootBranchId);
+    assert.equal(chatRes.body._conversation?.active_branch_id, targetBranchId);
 
     const page = getMessagesPage({ conversationId, branchId: targetBranchId, limit: 10 });
     assert.ok(page.messages.length >= 2);
     assert.equal(page.messages[0].branch_id, targetBranchId);
+
+    const rootPage = getMessagesPage({ conversationId, branchId: rootBranchId, limit: 10 });
+    assert.equal(rootPage.messages.length, 0);
   });
 });
