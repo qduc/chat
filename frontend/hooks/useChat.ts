@@ -535,7 +535,11 @@ export function useChat() {
         throw new Error('Stop streaming before switching branches');
       }
       await conversationsApi.switchBranch(currentConversationId, branchId);
-      return selectConversation(currentConversationId);
+      const selection = await selectConversation(currentConversationId);
+      if (!selection) {
+        throw new Error('Failed to load selected branch');
+      }
+      return selection;
     },
     [conversationIdRef, activeBranchId, pending.streaming, status, selectConversation]
   );

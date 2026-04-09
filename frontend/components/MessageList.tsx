@@ -30,6 +30,7 @@ import type { RevisionNavProps } from './message/types';
 interface MessageListProps {
   messages: ChatMessage[];
   pending: PendingState;
+  error?: string | null;
   conversationId: string | null;
   compareModels: string[];
   primaryModelLabel: string | null;
@@ -73,6 +74,7 @@ interface MessageListProps {
 export function MessageList({
   messages,
   pending,
+  error = null,
   conversationId,
   compareModels,
   primaryModelLabel,
@@ -230,11 +232,14 @@ export function MessageList({
       setSwitchingVersionKey(versionKey);
       try {
         await onSwitchBranch(branchId);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to switch branches';
+        showToast({ message, variant: 'error' });
       } finally {
         setSwitchingVersionKey(null);
       }
     },
-    [onSwitchBranch]
+    [onSwitchBranch, showToast]
   );
 
   const getBaseVersionBranchId = useCallback(
@@ -1019,6 +1024,8 @@ export function MessageList({
     [judgeMessageId, judgeModelStorageKey, onJudge, showToast]
   );
 
+  const displayedError = pending.error ?? error;
+
   return (
     <>
       <JudgeModal
@@ -1112,12 +1119,12 @@ export function MessageList({
               />
             );
           })}
-          {pending.error && (
+          {displayedError && (
             <div className="flex items-start gap-3 text-base text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-xl px-4 py-3 shadow-sm">
               <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
               <div>
                 <div className="font-medium mb-1">Error occurred</div>
-                <div className="text-red-600 dark:text-red-400">{pending.error}</div>
+                <div className="text-red-600 dark:text-red-400">{displayedError}</div>
               </div>
             </div>
           )}

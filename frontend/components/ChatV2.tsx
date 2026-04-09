@@ -290,8 +290,17 @@ export function ChatV2() {
     async (branchId: string) => {
       if (!chat.conversationId || !branchId || branchId === chat.activeBranchId) return;
       if (chat.pending.streaming || chat.status === 'streaming') return;
-      chat.cancelEdit();
+      if (
+        chat.editingMessageId &&
+        typeof window !== 'undefined' &&
+        !window.confirm('Discard your unsaved edit and switch branches?')
+      ) {
+        return;
+      }
       await chat.switchBranch(branchId);
+      if (chat.editingMessageId) {
+        chat.cancelEdit();
+      }
     },
     [chat]
   );
@@ -518,6 +527,7 @@ export function ChatV2() {
             <MessageList
               messages={chat.messages}
               pending={chat.pending}
+              error={chat.error}
               conversationId={chat.conversationId}
               compareModels={chat.compareModels}
               primaryModelLabel={chat.model}

@@ -24,6 +24,7 @@ jest.mock('../lib/api', () => ({
     list: jest.fn(),
     get: jest.fn(),
     getBranches: jest.fn(),
+    switchBranch: jest.fn(),
     delete: jest.fn(),
     editMessage: jest.fn(),
     create: jest.fn(),
@@ -75,6 +76,7 @@ function createHttpResponse<T>(data: T): HttpResponse<T> {
 function arrangeHttpMocks() {
   mockConversations.list.mockResolvedValue({ items: [], next_cursor: null });
   mockConversations.getBranches.mockResolvedValue({ active_branch_id: null, branches: [] } as any);
+  mockConversations.switchBranch.mockResolvedValue({ active_branch_id: 'branch-2' } as any);
   mockHttpClient.get.mockImplementation((url: string) => {
     if (url.startsWith('/v1/models')) {
       return Promise.resolve(
@@ -414,6 +416,56 @@ describe('useChat hook', () => {
     );
 
     expect(conv2Calls).toBe(2);
+  });
+
+  test('switchBranch preserves edit state when branch hydration fails', async () => {
+    const now = new Date().toISOString();
+    mockConversations.get
+      .mockResolvedValueOnce({
+        id: 'conv-edit',
+        title: 'Editable',
+        model: 'gpt-4o',
+        created_at: now,
+        active_branch_id: 'branch-1',
+        messages: [
+          {
+            id: 'msg-1',
+            seq: 1,
+            role: 'user',
+            content: 'Original',
+            created_at: now,
+            status: 'completed',
+          },
+        ],
+        next_after_seq: null,
+      } as any)
+      .mockRejectedValueOnce(new Error('Branch hydration failed'));
+
+    const { result } = renderUseChat();
+
+    await act(async () => {
+      await result.current.selectConversation('conv-edit');
+    });
+
+    act(() => {
+      result.current.startEdit('msg-1', 'Original');
+      result.current.updateEditContent('Unsaved draft');
+    });
+
+    let thrown: Error | null = null;
+    await act(async () => {
+      try {
+        await result.current.switchBranch('branch-2');
+      } catch (error) {
+        thrown = error as Error;
+      }
+    });
+
+    expect(mockConversations.switchBranch).toHaveBeenCalledWith('conv-edit', 'branch-2');
+    expect(thrown?.message).toBe('Failed to load selected branch');
+    expect(result.current.editingMessageId).toBe('msg-1');
+    expect(result.current.editingContent).toBe('Unsaved draft');
+    expect(result.current.error).toBe('Branch hydration failed');
   });
 
   test('sendMessage includes the active branch id for the selected conversation', async () => {

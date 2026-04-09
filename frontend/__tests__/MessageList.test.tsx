@@ -34,9 +34,10 @@ jest.mock('../lib/api', () => ({
 }));
 
 // Mock Toast context
+const mockShowToast = jest.fn();
 jest.mock('../components/ui/Toast', () => ({
   useToast: () => ({
-    showToast: jest.fn(),
+    showToast: mockShowToast,
   }),
 }));
 
@@ -222,6 +223,12 @@ describe('MessageList', () => {
 
       expect(screen.getByTestId('content-msg-1')).toHaveTextContent('Test content here');
     });
+
+    it('renders general chat errors when pending.error is empty', () => {
+      render(<MessageList {...defaultProps} error="Branch hydration failed" />);
+
+      expect(screen.getByText('Branch hydration failed')).toBeInTheDocument();
+    });
   });
 
   describe('Inline branch navigation', () => {
@@ -333,6 +340,67 @@ describe('MessageList', () => {
 
       await waitFor(() => {
         expect(onSwitchBranch).toHaveBeenCalledWith('regen-1');
+      });
+    });
+
+    it('shows a toast when branch switching fails', async () => {
+      const onSwitchBranch = jest.fn().mockRejectedValue(new Error('Branch hydration failed'));
+      const branches = [
+        createBranch({ id: 'edit-2', operation_type: 'edit', created_at: '2024-01-01T00:00:00Z' }),
+        createBranch({
+          id: 'regen-1',
+          operation_type: 'regenerate',
+          parent_branch_id: 'edit-2',
+          branch_point_message_id: 42,
+          source_message_id: 42,
+          created_at: '2024-01-01T00:01:00Z',
+        }),
+        createBranch({
+          id: 'regen-2',
+          operation_type: 'regenerate',
+          parent_branch_id: 'regen-1',
+          branch_point_message_id: 42,
+          source_message_id: 42,
+          created_at: '2024-01-01T00:02:00Z',
+          is_active: true,
+        }),
+      ];
+      const messages = [
+        createMessage({
+          id: 'user-a3',
+          role: 'user',
+          content: 'A3',
+          branch_id: 'edit-2',
+          _dbId: 42,
+        }),
+        createMessage({
+          id: 'assistant-r3',
+          role: 'assistant',
+          content: 'Answer v3',
+          branch_id: 'regen-2',
+          _parentMessageId: 42,
+        }),
+      ];
+
+      render(
+        <MessageList
+          {...defaultProps}
+          conversationId="conv-1"
+          branchModeEnabled={true}
+          branches={branches}
+          activeBranchId="regen-2"
+          onSwitchBranch={onSwitchBranch}
+          messages={messages}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId('regen-prev-assistant-r3'));
+
+      await waitFor(() => {
+        expect(mockShowToast).toHaveBeenCalledWith({
+          message: 'Branch hydration failed',
+          variant: 'error',
+        });
       });
     });
 
