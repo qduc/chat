@@ -258,6 +258,7 @@ export interface ChatMessage {
   id: string;
   role: Role;
   content: MessageContent;
+  timestamp?: number;
   seq?: number; // Message sequence number from backend
   branch_id?: string;
   _dbId?: number;

@@ -65,7 +65,7 @@ export interface SendPipelineDeps {
   setConversationId: (id: string | null) => void;
   setCurrentConversationTitle: (title: string | null) => void;
   setConversations: Dispatch<SetStateAction<Conversation[]>>;
-  setActiveBranchId: Dispatch<SetStateAction<string | null>>;
+  setActiveBranchId: (id: string | null) => void;
   activeBranchIdRef: MutableRefObject<string | null>;
   setBranches: Dispatch<SetStateAction<ConversationBranch[]>>;
 

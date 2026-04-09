@@ -15,7 +15,7 @@ jest.mock('../contexts/AuthContext', () => {
 });
 
 import { renderHook, act, waitFor } from '@testing-library/react';
-import type { ChatOptionsExtended } from '../lib/types';
+import type { ChatOptionsExtended, ChatResponse } from '../lib/types';
 import { useChat } from '../hooks/useChat';
 import { APIError, StreamingNotSupportedError } from '../lib/streaming';
 
@@ -462,7 +462,7 @@ describe('useChat hook', () => {
     });
 
     expect(mockConversations.switchBranch).toHaveBeenCalledWith('conv-edit', 'branch-2');
-    expect(thrown?.message).toBe('Failed to load selected branch');
+    expect((thrown as Error | null)?.message).toBe('Failed to load selected branch');
     expect(result.current.editingMessageId).toBe('msg-1');
     expect(result.current.editingContent).toBe('Unsaved draft');
     expect(result.current.error).toBe('Branch hydration failed');
@@ -1422,7 +1422,9 @@ describe('Phase 0 Characterization Tests', () => {
             id: 'audio-1',
             url: 'blob:audio',
             name: 'recording.mp3',
-            mimeType: 'audio/mp3',
+            type: 'audio/mp3',
+            format: 'mp3',
+            size: audioFile.size,
             file: audioFile,
           },
         ]);
@@ -1434,7 +1436,7 @@ describe('Phase 0 Characterization Tests', () => {
 
       expect(mockChat.sendMessage).toHaveBeenCalledTimes(1);
       const payload = mockChat.sendMessage.mock.calls[0][0];
-      const userContent = payload.messages[0].content;
+      const userContent = payload.messages[0].content as Array<any>;
       expect(Array.isArray(userContent)).toBe(true);
       expect(userContent.some((c: any) => c.type === 'input_audio')).toBe(true);
     });
@@ -1594,8 +1596,8 @@ describe('Phase 0 Characterization Tests', () => {
         updatedAt: new Date().toISOString(),
       });
 
-      let resolvePromise: (value: any) => void;
-      const pendingPromise = new Promise((resolve) => {
+      let resolvePromise: (value: ChatResponse) => void;
+      const pendingPromise = new Promise<ChatResponse>((resolve) => {
         resolvePromise = resolve;
       });
       mockChat.sendMessage.mockReturnValue(pendingPromise);
@@ -1633,8 +1635,8 @@ describe('Phase 0 Characterization Tests', () => {
         updatedAt: new Date().toISOString(),
       });
 
-      let resolvePromise: (value: any) => void;
-      const pendingPromise = new Promise((resolve) => {
+      let resolvePromise: (value: ChatResponse) => void;
+      const pendingPromise = new Promise<ChatResponse>((resolve) => {
         resolvePromise = resolve;
       });
       mockChat.sendMessage.mockReturnValue(pendingPromise);
@@ -1724,12 +1726,13 @@ describe('Phase 0 Characterization Tests', () => {
 
       const callOrder: string[] = [];
       mockChat.sendMessage.mockImplementation(async (options: ChatOptionsExtended) => {
-        callOrder.push(options.model);
+        const modelId = options.model ?? '';
+        callOrder.push(modelId);
         return {
-          content: `reply-${options.model}`,
+          content: `reply-${modelId}`,
           conversation: {
-            id: `conv-${options.model}`,
-            title: `Title ${options.model}`,
+            id: `conv-${modelId}`,
+            title: `Title ${modelId}`,
             created_at: now,
           },
         };
@@ -2217,7 +2220,12 @@ describe('Phase 0 Characterization Tests', () => {
             status: 'completed',
             usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
             tool_calls: [
-              { id: 'tc-1', type: 'function', function: { name: 'search', arguments: '{}' } },
+              {
+                id: 'tc-1',
+                type: 'function',
+                index: 0,
+                function: { name: 'search', arguments: '{}' },
+              },
             ],
           },
         ],
@@ -2484,11 +2492,18 @@ describe('Phase 0 Characterization Tests', () => {
         evaluations: [
           {
             id: 'eval-1',
+            user_id: 'user-123',
+            conversation_id: 'conv-eval',
+            model_a_conversation_id: 'conv-eval',
+            model_a_message_id: 'msg-a',
+            model_b_conversation_id: 'conv-eval',
+            model_b_message_id: 'msg-b',
             judge_model_id: 'gpt-4o',
             score_a: 8,
             score_b: 6,
             winner: 'model_a',
             reasoning: 'Model A was better',
+            created_at: now,
           },
         ],
         next_after_seq: null,
