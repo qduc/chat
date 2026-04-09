@@ -724,11 +724,17 @@ async function executeRequestHandler(context, req, res) {
   if (context.clientRequestId && context.flags.streamToFrontend) {
     const controller = new AbortController();
     const cancelState = { cancelled: false };
-    registerStreamAbort(context.clientRequestId, {
+    const registered = registerStreamAbort(context.clientRequestId, {
       controller,
       cancelState,
       userId,
     });
+    if (!registered) {
+      return res.status(409).json({
+        error: 'conflict',
+        message: 'A request with this client_request_id is already in progress',
+      });
+    }
     abortContext = {
       requestId: context.clientRequestId,
       signal: controller.signal,

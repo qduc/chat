@@ -234,6 +234,29 @@ describe('PUT /v1/conversations/:id/messages/:messageId/edit', () => {
     });
   });
 
+  test('rejects edit of assistant message', async () => {
+    const convId = 'conv-edit-role-asst';
+    createConversation({ id: convId, sessionId, userId, title: 'Role check', model: 'm1' });
+    insertUserMessage({ conversationId: convId, content: 'Hello', seq: 1 });
+    const a1 = insertAssistantFinal({ conversationId: convId, content: 'Hi!', seq: 2, finishReason: 'stop' });
+
+    const app = makeApp();
+    await withServer(app, async (port) => {
+      const res = await fetch(
+        `http://127.0.0.1:${port}/v1/conversations/${convId}/messages/${a1.id}/edit`,
+        {
+          method: 'PUT',
+          headers: makeAuthHeaders(true),
+          body: JSON.stringify({ content: 'Nope' }),
+        }
+      );
+      assert.equal(res.status, 400);
+      const body = await res.json();
+      assert.equal(body.error, 'bad_request');
+      assert.match(body.message, /only user messages/i);
+    });
+  });
+
   test('rejects edit with empty content', async () => {
     const convId = 'conv-edit-empty';
     createConversation({ id: convId, sessionId, userId, title: 'Empty', model: 'm1' });

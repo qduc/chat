@@ -1,12 +1,19 @@
 const activeStreams = new Map();
 
+/**
+ * Register a stream for abort handling.
+ * Returns false (without registering) if a stream with the same requestId
+ * is already in-flight, preventing duplicate/overlapping requests.
+ */
 export function registerStreamAbort(requestId, { controller, cancelState, userId } = {}) {
-  if (!requestId || !controller) return;
+  if (!requestId || !controller) return false;
+  if (activeStreams.has(requestId)) return false;
   activeStreams.set(requestId, {
     controller,
     cancelState: cancelState || { cancelled: false },
     userId: userId || null,
   });
+  return true;
 }
 
 export function unregisterStreamAbort(requestId) {

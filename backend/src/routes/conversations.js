@@ -402,6 +402,12 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
       return res.status(404).json({ error: 'not_found' });
     }
 
+    if (existingMessage.role !== 'user') {
+      return res
+        .status(400)
+        .json({ error: 'bad_request', message: 'Only user messages can be edited' });
+    }
+
     let newBranchId, clientMessageId, message;
     const db = getDb();
     db.transaction(() => {
