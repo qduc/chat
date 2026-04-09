@@ -275,6 +275,7 @@ export function MessageList({
   const buildBranchRevisionNav = useCallback(
     (message: ChatMessage, operationType: 'edit' | 'regenerate'): RevisionNavProps | undefined => {
       const currentBranchId = message.branch_id;
+      const isSwitchBlocked = pending.streaming;
       if (!onSwitchBranch || !currentBranchId || branchById.size === 0) {
         return undefined;
       }
@@ -320,14 +321,17 @@ export function MessageList({
         slot: currentIndex + 1,
         total: versionBranchIds.length,
         onPrev: () => {
+          if (isSwitchBlocked) return;
           const target = versionBranchIds[currentIndex - 1];
           if (target) void switchBranchVersion(target, versionKey);
         },
         onNext: () => {
+          if (isSwitchBlocked) return;
           const target = versionBranchIds[currentIndex + 1];
           if (target) void switchBranchVersion(target, versionKey);
         },
         loading: switchingVersionKey === versionKey,
+        disabled: isSwitchBlocked,
       };
     },
     [
@@ -335,6 +339,7 @@ export function MessageList({
       branchById.size,
       getBaseVersionBranchId,
       onSwitchBranch,
+      pending.streaming,
       switchBranchVersion,
       switchingVersionKey,
     ]

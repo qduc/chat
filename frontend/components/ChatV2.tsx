@@ -289,6 +289,7 @@ export function ChatV2() {
   const handleSwitchBranch = useCallback(
     async (branchId: string) => {
       if (!chat.conversationId || !branchId || branchId === chat.activeBranchId) return;
+      if (chat.pending.streaming || chat.status === 'streaming') return;
       chat.cancelEdit();
       await chat.switchBranch(branchId);
     },

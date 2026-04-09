@@ -531,10 +531,13 @@ export function useChat() {
     async (branchId: string) => {
       const currentConversationId = conversationIdRef.current;
       if (!currentConversationId || !branchId || branchId === activeBranchId) return null;
+      if (pending.streaming || status === 'streaming') {
+        throw new Error('Stop streaming before switching branches');
+      }
       await conversationsApi.switchBranch(currentConversationId, branchId);
       return selectConversation(currentConversationId);
     },
-    [conversationIdRef, activeBranchId, selectConversation]
+    [conversationIdRef, activeBranchId, pending.streaming, status, selectConversation]
   );
 
   // Effects

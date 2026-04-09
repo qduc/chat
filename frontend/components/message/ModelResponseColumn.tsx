@@ -205,6 +205,7 @@ export function ModelResponseColumn({
                     onPrev={regenRevision.onPrev}
                     onNext={regenRevision.onNext}
                     loading={regenRevision.loading}
+                    disabled={regenRevision.disabled}
                   />
                 ) : undefined
               }

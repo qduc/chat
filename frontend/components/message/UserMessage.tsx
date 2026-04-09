@@ -67,6 +67,7 @@ export function UserMessage({
                 onPrev={editRevision.onPrev}
                 onNext={editRevision.onNext}
                 loading={editRevision.loading}
+                disabled={editRevision.disabled}
               />
             ) : undefined
           }

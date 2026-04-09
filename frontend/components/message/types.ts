@@ -50,6 +50,7 @@ export interface RevisionNavProps {
   onPrev: () => void;
   onNext: () => void;
   loading: boolean;
+  disabled?: boolean;
 }
 
 // Props for individual message component

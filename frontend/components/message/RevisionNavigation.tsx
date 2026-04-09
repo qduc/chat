@@ -14,6 +14,7 @@ interface RevisionNavigationProps {
   onPrev: () => void;
   onNext: () => void;
   loading?: boolean;
+  disabled?: boolean;
 }
 
 export function RevisionNavigation({
@@ -22,12 +23,13 @@ export function RevisionNavigation({
   onPrev,
   onNext,
   loading,
+  disabled,
 }: RevisionNavigationProps) {
   return (
     <div className="flex items-center gap-1 select-none">
       <button
         onClick={onPrev}
-        disabled={current <= 1 || loading}
+        disabled={current <= 1 || loading || disabled}
         className="p-0.5 rounded text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         aria-label="Previous version"
       >
@@ -48,7 +50,7 @@ export function RevisionNavigation({
 
       <button
         onClick={onNext}
-        disabled={current >= total || loading}
+        disabled={current >= total || loading || disabled}
         className="p-0.5 rounded text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
         aria-label="Next version"
       >

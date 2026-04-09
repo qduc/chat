@@ -336,6 +336,65 @@ describe('MessageList', () => {
       });
     });
 
+    it('blocks branch version switching while streaming', async () => {
+      const onSwitchBranch = jest.fn().mockResolvedValue(undefined);
+      const branches = [
+        createBranch({ id: 'edit-2', operation_type: 'edit', created_at: '2024-01-01T00:00:00Z' }),
+        createBranch({
+          id: 'regen-1',
+          operation_type: 'regenerate',
+          parent_branch_id: 'edit-2',
+          branch_point_message_id: 42,
+          source_message_id: 42,
+          created_at: '2024-01-01T00:01:00Z',
+        }),
+        createBranch({
+          id: 'regen-2',
+          operation_type: 'regenerate',
+          parent_branch_id: 'regen-1',
+          branch_point_message_id: 42,
+          source_message_id: 42,
+          created_at: '2024-01-01T00:02:00Z',
+          is_active: true,
+        }),
+      ];
+      const messages = [
+        createMessage({
+          id: 'user-a3',
+          role: 'user',
+          content: 'A3',
+          branch_id: 'edit-2',
+          _dbId: 42,
+        }),
+        createMessage({
+          id: 'assistant-r3',
+          role: 'assistant',
+          content: 'Answer v3',
+          branch_id: 'regen-2',
+          _parentMessageId: 42,
+        }),
+      ];
+
+      render(
+        <MessageList
+          {...defaultProps}
+          conversationId="conv-1"
+          branchModeEnabled={true}
+          branches={branches}
+          activeBranchId="regen-2"
+          onSwitchBranch={onSwitchBranch}
+          messages={messages}
+          pending={{ streaming: true, abort: null }}
+        />
+      );
+
+      fireEvent.click(screen.getByTestId('regen-prev-assistant-r3'));
+
+      await waitFor(() => {
+        expect(onSwitchBranch).not.toHaveBeenCalled();
+      });
+    });
+
     it('does not leak edit navigation onto later user messages without branch metadata', () => {
       const branches = [
         createBranch({ id: 'root', operation_type: 'root', created_at: '2024-01-01T00:00:00Z' }),
