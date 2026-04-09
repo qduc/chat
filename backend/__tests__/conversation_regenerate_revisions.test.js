@@ -2,9 +2,11 @@ import assert from 'node:assert/strict';
 import { config } from '../src/env.js';
 import { safeTestSetup } from '../test_support/databaseSafety.js';
 import {
+  createConversationBranch,
   createConversation,
   getDb,
   getConversationBranches,
+  getRootBranchId,
   getRevisionCountsForConversation,
   getMessageRevisions,
   getMessagesPage,
@@ -108,8 +110,7 @@ describe('ConversationManager regenerate branches', () => {
     assert.strictEqual(revisions.length, 1);
     assert.strictEqual(revisions[0].operation_type, 'regenerate');
     assert.strictEqual(revisions[0].anchor_content, 'Original question');
-    assert.strictEqual(revisions[0].follow_ups.length, 1);
-    assert.strictEqual(String(revisions[0].follow_ups[0].content), 'Original answer');
+    assert.strictEqual(revisions[0].follow_ups.length, 0);
   });
 
   test('surfaces regenerate counts from visible branch history', () => {
@@ -149,5 +150,106 @@ describe('ConversationManager regenerate branches', () => {
       edit: {},
       regenerate: { 'user-1': 1 },
     });
+  });
+
+  test('revision follow-ups stop before later turns for regenerate and edit branches', () => {
+    const convId = 'conv-revision-bounds';
+    createConversation({
+      id: convId,
+      sessionId,
+      userId,
+      title: 'Revision bounds',
+      model: 'gpt-4o',
+      provider_id: 'openai',
+    });
+
+    const user1 = insertUserMessage({
+      conversationId: convId,
+      content: 'Q1',
+      seq: 1,
+      clientMessageId: 'user-1',
+    });
+    insertAssistantFinal({
+      conversationId: convId,
+      content: 'A1',
+      seq: 2,
+      finishReason: 'stop',
+      clientMessageId: 'assistant-1',
+    });
+    insertUserMessage({
+      conversationId: convId,
+      content: 'Q2',
+      seq: 3,
+      clientMessageId: 'user-2',
+    });
+    insertAssistantFinal({
+      conversationId: convId,
+      content: 'A2',
+      seq: 4,
+      finishReason: 'stop',
+      clientMessageId: 'assistant-2',
+    });
+
+    const rootBranchId = getRootBranchId(convId);
+    const regenerateBranchId = createConversationBranch({
+      conversationId: convId,
+      userId,
+      parentBranchId: rootBranchId,
+      branchPointMessageId: user1.id,
+      sourceMessageId: user1.id,
+      operationType: 'regenerate',
+      headMessageId: user1.id,
+    });
+    insertAssistantFinal({
+      conversationId: convId,
+      content: 'A1-alt',
+      seq: 5,
+      finishReason: 'stop',
+      clientMessageId: 'assistant-1-alt',
+      branchId: regenerateBranchId,
+      parentMessageId: user1.id,
+    });
+
+    const editBranchId = createConversationBranch({
+      conversationId: convId,
+      userId,
+      parentBranchId: rootBranchId,
+      branchPointMessageId: null,
+      sourceMessageId: user1.id,
+      operationType: 'edit',
+      headMessageId: null,
+    });
+    const editedUser = insertUserMessage({
+      conversationId: convId,
+      content: 'Q1 edited',
+      seq: 6,
+      clientMessageId: 'user-1-edit',
+      branchId: editBranchId,
+      parentMessageId: null,
+    });
+    insertAssistantFinal({
+      conversationId: convId,
+      content: 'A1 edited',
+      seq: 7,
+      finishReason: 'stop',
+      clientMessageId: 'assistant-1-edit',
+      branchId: editBranchId,
+      parentMessageId: editedUser.id,
+    });
+
+    const revisions = getMessageRevisions({
+      conversationId: convId,
+      anchorMessageId: 'user-1',
+      userId,
+    });
+
+    const regenerateRevision = revisions.find((revision) => revision.operation_type === 'regenerate');
+    assert.ok(regenerateRevision);
+    assert.deepStrictEqual(regenerateRevision.follow_ups.map((message) => message.content), ['A1-alt']);
+
+    const editRevision = revisions.find((revision) => revision.operation_type === 'edit');
+    assert.ok(editRevision);
+    assert.equal(editRevision.anchor_content, 'Q1 edited');
+    assert.deepStrictEqual(editRevision.follow_ups.map((message) => message.content), ['A1 edited']);
   });
 });

@@ -52,6 +52,19 @@ function getClientIdsByDbId({ conversationId, userId }) {
   return new Map(rows.map((row) => [row.id, row.client_message_id || String(row.id)]));
 }
 
+function getContiguousFollowUps(timeline, anchorIndex) {
+  if (anchorIndex < 0) return [];
+
+  const followUps = [];
+  for (let index = anchorIndex + 1; index < timeline.length; index += 1) {
+    const message = timeline[index];
+    if (!message || message.role === 'user') break;
+    followUps.push(toRevisionEntry(message));
+  }
+
+  return followUps;
+}
+
 export function saveMessageRevision() {
   throw new Error('saveMessageRevision is no longer supported; use branches instead');
 }
@@ -82,21 +95,11 @@ export function getMessageRevisions({ conversationId, anchorMessageId, userId })
       anchorContent = firstBranchMessage?.content ?? sourceMessage.content ?? null;
       if (firstBranchMessage) {
         const firstIndex = timeline.findIndex((message) => message._dbId === firstBranchMessage._dbId);
-        followUps = firstIndex >= 0 ? timeline.slice(firstIndex + 1).map(toRevisionEntry) : [];
+        followUps = getContiguousFollowUps(timeline, firstIndex);
       }
     } else {
-      const parentTimeline = branch.parent_branch_id
-        ? getMessagesPage({
-            conversationId,
-            branchId: branch.parent_branch_id,
-            afterSeq: 0,
-            limit: 200,
-          }).messages
-        : timeline;
-      const sourceIndex = parentTimeline.findIndex((message) => String(message.id) === anchorMessageId);
-      followUps = sourceIndex >= 0
-        ? parentTimeline.slice(sourceIndex + 1).map(toRevisionEntry)
-        : [];
+      const sourceIndex = timeline.findIndex((message) => String(message.id) === anchorMessageId);
+      followUps = getContiguousFollowUps(timeline, sourceIndex);
     }
 
     return {
