@@ -122,8 +122,16 @@ function shouldEscapeCurrencySequence(remainder: string): boolean {
       return false; // Mathematical block closed, DO NOT escape
     }
 
-    if ('+-=<>\\^*/_'.includes(char)) {
+    if ('+=<>\\^/'.includes(char)) {
       return false; // Mathematical operator found!
+    }
+
+    if (char === '-' || char === '–' || char === '—' || char === '*' || char === '_') {
+      const nextChar = remainder[index + 1] || '';
+      if (nextChar === char) return true; // --, **, __
+      if (/[0-9]/.test(nextChar) || nextChar === '$') return true; // Range like $10-20 or $10-$20
+      if (!nextChar || ' \t,.;:!?)]'.includes(nextChar)) return true; // End of string or punctuation
+      return false; // Likely math (e.g. $2-x, $2*x)
     }
 
     if (char === ' ' || char === '\t') {
@@ -139,6 +147,12 @@ function shouldEscapeCurrencySequence(remainder: string): boolean {
 
       // Check for math operator after space
       if (/^[-+/*=<>^\\_]/.test(trimmed)) {
+        // If it's * or _, check if it's potentially markdown (e.g. $20 *word*)
+        if (/^[*_]{1,2}[a-zA-Z0-9]/.test(trimmed)) {
+          // Check if there's a matching closing tag later in the string
+          // This is a heuristic, but often reliable for markdown vs math
+          return true;
+        }
         return false;
       }
 

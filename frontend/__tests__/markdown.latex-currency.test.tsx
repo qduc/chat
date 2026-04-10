@@ -147,4 +147,44 @@ describe('Markdown LaTeX and Currency Interaction', () => {
     expect(rendered).toContain('$2.5 \\times 10^3$');
     expect(rendered).not.toContain('\\$2.5');
   });
+
+  it('handles currency range with en-dash and bold formatting correctly', () => {
+    const content = '**$539–$640** because **RAM prices are volatile**';
+    render(
+      <ThemeProvider>
+        <Markdown text={content} />
+      </ThemeProvider>
+    );
+
+    const rendered = getRenderedText();
+    // Both dollar signs should be escaped to prevent them from forming a math block
+    expect(rendered).toContain('\\$539');
+    expect(rendered).toContain('\\$640');
+  });
+
+  it('handles currency with trailing bold formatting and range correctly', () => {
+    const content =
+      'So a realistic bottom-line is **closer to $550–$600** when everything is factored in.';
+    render(
+      <ThemeProvider>
+        <Markdown text={content} />
+      </ThemeProvider>
+    );
+
+    const rendered = getRenderedText();
+    expect(rendered).toContain('\\$550');
+    expect(rendered).toContain('\\$600');
+  });
+
+  it('handles currency with preceding tilde correctly', () => {
+    const content = '(~$97 for 16GB DDR4)';
+    render(
+      <ThemeProvider>
+        <Markdown text={content} />
+      </ThemeProvider>
+    );
+
+    const rendered = getRenderedText();
+    expect(rendered).toContain('\\$97');
+  });
 });
