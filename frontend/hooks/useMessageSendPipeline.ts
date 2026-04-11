@@ -1,4 +1,5 @@
 import { useCallback, type MutableRefObject, type Dispatch, type SetStateAction } from 'react';
+import { flushSync } from 'react-dom';
 import {
   clearDraft,
   convertConversationMeta,
@@ -186,6 +187,17 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
     },
     [setMessages]
   );
+
+  const applyStreamingMessageUpdate = useCallback((update: () => void) => {
+    const shouldFlushSync = process.env.NODE_ENV === 'development' && typeof window !== 'undefined';
+
+    if (shouldFlushSync) {
+      flushSync(update);
+      return;
+    }
+
+    update();
+  }, []);
 
   const refreshBranchState = useCallback(
     async (
@@ -400,16 +412,21 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 tokenStatsRef.current.count = tokenStatsRef.current.charCount / 4;
               tokenStatsRef.current.lastUpdated = Date.now();
             }
-            updateMessageState(isPrimary, messageId, targetModel, (current) => {
-              const prev = typeof current.content === 'string' ? current.content : '';
-              return { content: prev + token, provider: tokenStatsRef.current?.provider };
+            applyStreamingMessageUpdate(() => {
+              updateMessageState(isPrimary, messageId, targetModel, (current) => {
+                const prev = typeof current.content === 'string' ? current.content : '';
+                return { content: prev + token, provider: tokenStatsRef.current?.provider };
+              });
             });
           },
           onEvent: (event: any) => {
             if (event.type === 'text') {
-              updateMessageState(isPrimary, messageId, targetModel, (current) => ({
-                content: (typeof current.content === 'string' ? current.content : '') + event.value,
-              }));
+              applyStreamingMessageUpdate(() => {
+                updateMessageState(isPrimary, messageId, targetModel, (current) => ({
+                  content:
+                    (typeof current.content === 'string' ? current.content : '') + event.value,
+                }));
+              });
             } else if (event.type === 'conversation') {
               if (isPrimary && event.value) {
                 const c = event.value;
@@ -508,7 +525,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           targetModel,
           (current) =>
             ({
-              content: response.content || current.content,
+              content: current.content,
               status: isPrimary ? undefined : 'complete',
               id: isPrimary
                 ? response.conversation?.assistant_message_id?.toString() || messageId
@@ -565,6 +582,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       modelCapabilities,
       tokenStatsRef,
       updateMessageState,
+      applyStreamingMessageUpdate,
       conversationIdRef,
       setConversationId,
       setCurrentConversationTitle,
