@@ -805,53 +805,7 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
       })
       .join('');
 
-    // Check for incomplete thinking blocks (both <thinking> and <think> variants)
-    // Count opening and closing tags to ensure they match
-    const openingThinkingTags = (textToProcess.match(/<thinking>/g) || []).length;
-    const closingThinkingTags = (textToProcess.match(/<\/thinking>/g) || []).length;
-    const openingThinkTags = (textToProcess.match(/<think>/g) || []).length;
-    const closingThinkTags = (textToProcess.match(/<\/think>/g) || []).length;
-    const hasIncompleteThinking = openingThinkingTags > closingThinkingTags;
-    const hasIncompleteThink = openingThinkTags > closingThinkTags;
-
-    if (hasIncompleteThinking) {
-      // Only add closing tag if we have unmatched opening tags
-      // Find the last <thinking> without a matching </thinking>
-      textToProcess = textToProcess.replace(
-        /<thinking>(?![\s\S]*<\/thinking>)([\s\S]*)$/,
-        '<thinking>$1</thinking>'
-      );
-    }
-
-    if (hasIncompleteThink) {
-      // Only add closing tag if we have unmatched opening tags
-      // Find the last <think> without a matching </think>
-      textToProcess = textToProcess.replace(
-        /<think>(?![\s\S]*<\/think>)([\s\S]*)$/,
-        '<think>$1</think>'
-      );
-    }
-
-    return textToProcess
-      .replace(/<thinking>([\s\S]*?)<\/thinking>/g, (match, content) => {
-        // Convert to a custom code block that we can detect.
-        // Use a safe fence length to avoid premature closure when content includes ``` or ~~~.
-        const trimmed = content.trim();
-        const fence = buildThinkingFence(trimmed);
-        return `\n${fence.opening}\n${trimmed}\n${fence.closing}\n`;
-      })
-      .replace(/<think>([\s\S]*?)<\/think>/g, (match, content) => {
-        // Convert to a custom code block that we can detect (same as thinking)
-        const trimmed = content.trim();
-        const fence = buildThinkingFence(trimmed);
-        return `\n${fence.opening}\n${trimmed}\n${fence.closing}\n`;
-      })
-      .replace(/<reasoning_summary>([\s\S]*?)<\/reasoning_summary>/g, (match, content) => {
-        // Convert reasoning summary to thinking block (reuse same rendering logic)
-        const trimmed = content.trim();
-        const fence = buildThinkingFence(trimmed);
-        return `\n${fence.opening}\n${trimmed}\n${fence.closing}\n`;
-      });
+    return textToProcess;
   }, [throttledText]);
 
   // Split text into blocks to prevent re-rendering of stable content

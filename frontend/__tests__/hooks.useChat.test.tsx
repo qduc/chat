@@ -256,7 +256,12 @@ describe('useChat hook', () => {
   test('sendMessage streams tokens, tool events, and finalizes assistant message', async () => {
     // chat.sendMessage receives unqualified model IDs (without provider prefix)
     mockChat.sendMessage.mockImplementation(async (options: ChatOptionsExtended) => {
+      // Direct call since the real implementation would call handleStreamingResponse
       options.onToken?.('Hello');
+      options.onEvent?.({
+        type: 'message_event',
+        value: { seq: 1, type: 'content', payload: { text: 'Hello' } },
+      });
       options.onEvent?.({
         type: 'tool_call',
         value: {
@@ -264,6 +269,14 @@ describe('useChat hook', () => {
           id: 'call-1',
           type: 'function',
           function: { name: 'clock', arguments: '{' },
+        },
+      });
+      options.onEvent?.({
+        type: 'message_event',
+        value: {
+          seq: 2,
+          type: 'tool_call',
+          payload: { tool_call_id: 'call-1', tool_call_index: 0 },
         },
       });
       options.onEvent?.({
@@ -285,8 +298,14 @@ describe('useChat hook', () => {
         type: 'usage',
         value: { total_tokens: 42 },
       });
+
       return {
         content: 'Final answer',
+        message_events: [
+          { seq: 1, type: 'content', payload: { text: 'Hello' } },
+          { seq: 2, type: 'tool_call', payload: { tool_call_id: 'call-1', tool_call_index: 0 } },
+          { seq: 3, type: 'content', payload: { text: 'Final answer' } },
+        ],
         conversation: {
           id: 'conv-stream',
           title: 'Streaming Conversation',

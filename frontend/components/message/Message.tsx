@@ -33,6 +33,9 @@ function deepEqualComparisonResults(
     // Compare content - stringify for deep comparison
     if (JSON.stringify(objA.content) !== JSON.stringify(objB.content)) return false;
 
+    // Compare message_events
+    if (JSON.stringify(objA.message_events) !== JSON.stringify(objB.message_events)) return false;
+
     // Compare usage
     if (JSON.stringify(objA.usage) !== JSON.stringify(objB.usage)) return false;
 
@@ -192,6 +195,7 @@ export const Message = React.memo<MessageProps>(
     // Only re-render if content changed or streaming state changed
     return (
       prev.message.content === next.message.content &&
+      prev.message.message_events === next.message.message_events &&
       prev.message.tool_calls === next.message.tool_calls &&
       prev.message.tool_outputs === next.message.tool_outputs &&
       // Deep compare comparisonResults to detect changes from linked conversations

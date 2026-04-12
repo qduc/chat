@@ -54,6 +54,7 @@ export {
 
 // Streaming utilities
 export { SSEParser, APIError, StreamingNotSupportedError, type SSEEvent } from './streaming';
+export { MessageEventAccumulator } from './eventAccumulator';
 
 // Content utilities
 export {

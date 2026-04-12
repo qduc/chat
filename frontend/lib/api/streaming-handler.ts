@@ -4,7 +4,8 @@
 
 import { SSEParser, StreamingNotSupportedError, APIError } from '../streaming';
 import type { StreamChunk } from '../streamingTypes';
-import type { ConversationMeta, Evaluation } from '../types';
+import type { ConversationMeta, Evaluation, MessageEvent } from '../types';
+import { MessageEventAccumulator } from '../eventAccumulator';
 
 /**
  * Check if a value is a streaming Response object
@@ -55,14 +56,21 @@ export function processNonStreamingData(
     throw new APIError(status, errorMessage, json.error);
   }
 
+  const accumulator = new MessageEventAccumulator();
+
   if (json.tool_events && Array.isArray(json.tool_events)) {
     for (const event of json.tool_events) {
       if (event.type === 'text') {
         // Non-stream tool text is already merged via onEvent; calling onToken too duplicates it in the UI.
         onEvent?.({ type: 'text', value: event.value });
+        accumulator.addEvent('content', { text: event.value });
         hasTextEvents = true;
       } else if (event.type === 'tool_call') {
         onEvent?.({ type: 'tool_call', value: event.value });
+        accumulator.addEvent('tool_call', {
+          tool_call_id: event.value.id,
+          tool_call_index: event.value.index,
+        });
       } else if (event.type === 'tool_output') {
         onEvent?.({ type: 'tool_output', value: event.value });
       }
@@ -112,7 +120,11 @@ export function processNonStreamingData(
       content = message?.content ?? '';
 
       if (message?.reasoning) {
-        content = `<thinking>${message.reasoning}</thinking>\n\n${content}`;
+        accumulator.addEvent('reasoning', { text: message.reasoning });
+      }
+
+      if (content) {
+        accumulator.addEvent('content', { text: message?.content ?? '' });
       }
 
       if (Array.isArray(message?.reasoning_details)) {
@@ -120,10 +132,18 @@ export function processNonStreamingData(
       }
     } else {
       content = json?.content ?? json?.message?.content ?? '';
+      if (content) {
+        accumulator.addEvent('content', { text: content });
+      }
       if (Array.isArray(json?.reasoning_details)) {
         reasoningDetails = json.reasoning_details;
       }
     }
+  }
+
+  const message_events = accumulator.getEvents();
+  if (message_events.length > 0) {
+    onEvent?.({ type: 'message_event', value: message_events });
   }
 
   const usage: any = {};
@@ -146,6 +166,7 @@ export function processNonStreamingData(
 
   return {
     content,
+    message_events: message_events.length > 0 ? message_events : undefined,
     responseId: json?.id,
     conversation,
     reasoning_summary: json?.reasoning_summary,
@@ -174,6 +195,7 @@ export function processStreamChunk(
   usageSent?: boolean;
   reasoningDetails?: any[];
   reasoningTokens?: number;
+  message_event?: MessageEvent;
 } {
   const usageFromTimings = (timings?: any): any | undefined => {
     if (!timings || typeof timings !== 'object') return undefined;
@@ -349,36 +371,39 @@ export function processStreamChunk(
   const delta = chunk.choices?.[0]?.delta;
 
   if (reasoningStarted && delta?.content) {
-    const closingTag = '</thinking>';
-    onToken?.(closingTag);
     onToken?.(delta.content);
+    onEvent?.({
+      type: 'message_event',
+      value: { type: 'content', payload: { text: delta.content } },
+    });
 
     return {
       ...result,
-      content: closingTag + delta.content,
+      content: delta.content,
       reasoningStarted: false,
+      message_event: { seq: 0, type: 'content', payload: { text: delta.content } },
     };
   }
 
   const currentReasoning = delta?.reasoning_content ?? delta?.reasoning;
 
   if (currentReasoning) {
-    let contentToAdd = '';
-
     if (!reasoningStarted) {
-      contentToAdd = '<thinking>' + currentReasoning;
       reasoningStarted = true;
-    } else {
-      contentToAdd = currentReasoning;
     }
 
-    onToken?.(contentToAdd);
+    onToken?.(currentReasoning);
     onEvent?.({ type: 'reasoning', value: currentReasoning });
+    onEvent?.({
+      type: 'message_event',
+      value: { type: 'reasoning', payload: { text: currentReasoning } },
+    });
 
     return {
       ...result,
-      content: contentToAdd,
+      content: currentReasoning,
       reasoningStarted,
+      message_event: { seq: 0, type: 'reasoning', payload: { text: currentReasoning } },
     };
   }
 
@@ -392,7 +417,16 @@ export function processStreamChunk(
     }
 
     onToken?.(delta.content);
-    return { ...result, content: delta.content };
+    onEvent?.({
+      type: 'message_event',
+      value: { type: 'content', payload: { text: delta.content } },
+    });
+
+    return {
+      ...result,
+      content: delta.content,
+      message_event: { seq: 0, type: 'content', payload: { text: delta.content } },
+    };
   }
 
   if (delta?.images && Array.isArray(delta.images) && delta.images.length > 0) {
@@ -405,23 +439,35 @@ export function processStreamChunk(
   }
 
   if (delta?.tool_calls) {
-    let closingContent = '';
-
     if (reasoningStarted) {
-      const closingTag = '</thinking>';
-      onToken?.(closingTag);
-      closingContent = closingTag;
       reasoningStarted = false;
     }
 
     for (const toolCall of delta.tool_calls) {
       onEvent?.({ type: 'tool_call', value: toolCall });
+      onEvent?.({
+        type: 'message_event',
+        value: {
+          type: 'tool_call',
+          payload: {
+            tool_call_id: toolCall.id,
+            tool_call_index: toolCall.index,
+          },
+        },
+      });
     }
 
     return {
       ...result,
-      ...(closingContent ? { content: closingContent } : {}),
       reasoningStarted,
+      message_event: {
+        seq: 0,
+        type: 'tool_call',
+        payload: {
+          tool_call_id: delta.tool_calls[0].id,
+          tool_call_index: delta.tool_calls[0].index,
+        },
+      },
     };
   }
 
@@ -446,6 +492,7 @@ export async function handleStreamingResponse(
   reasoning_summary?: string;
   reasoning_details?: any[];
   reasoning_tokens?: number;
+  message_events?: MessageEvent[];
   usage?: any;
 }> {
   const decoder = new TextDecoder('utf-8');
@@ -461,11 +508,14 @@ export async function handleStreamingResponse(
   let reasoning_tokens: number | undefined;
   let lastSentUsage: any | undefined; // Track last sent usage to prevent duplicate events
 
+  const eventAccumulator = new MessageEventAccumulator();
+
   const finalizeResponse = () => ({
     content,
     responseId,
     conversation,
     reasoning_summary,
+    message_events: eventAccumulator.getEvents(),
     ...(reasoning_details ? { reasoning_details } : {}),
     ...(reasoning_tokens !== undefined ? { reasoning_tokens } : {}),
     ...(usage ? { usage } : {}),
@@ -476,12 +526,7 @@ export async function handleStreamingResponse(
 
     for (const event of events) {
       if (event.type === 'done') {
-        if (reasoningStarted) {
-          const closingTag = '</thinking>';
-          onToken?.(closingTag);
-          content += closingTag;
-          reasoningStarted = false;
-        }
+        reasoningStarted = false;
 
         return finalizeResponse();
       }
@@ -495,6 +540,9 @@ export async function handleStreamingResponse(
           lastSentUsage
         );
         if (result.content) content += result.content;
+        if (result.message_event) {
+          eventAccumulator.addEvent(result.message_event.type, result.message_event.payload);
+        }
         if (result.responseId) responseId = result.responseId;
         if (result.conversation) conversation = result.conversation;
         if (result.reasoningStarted !== undefined) reasoningStarted = result.reasoningStarted;

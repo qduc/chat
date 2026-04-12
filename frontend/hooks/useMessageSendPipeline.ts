@@ -12,6 +12,7 @@ import {
   mergeToolCallDelta,
   buildHistoryForModel,
   formatUpstreamError,
+  MessageEventAccumulator,
 } from '../lib';
 import type {
   ChatMessage as Message,
@@ -147,6 +148,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         isPrimary: boolean;
         targetModel: string;
         text: string;
+        message_events: any[];
         timeoutId: ReturnType<typeof setTimeout> | null;
       }
     >
@@ -232,19 +234,33 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       entry.timeoutId = null;
 
       const pendingText = entry.text;
-      entry.text = '';
+      const pendingEvents = [...entry.message_events];
 
-      if (!pendingText) {
+      if (!pendingText && pendingEvents.length === 0) {
         delete bufferedStreamingTextRef.current[bufferKey];
         return;
       }
 
       updateMessageState(isPrimary, assistantMessageId, targetModel, (current) => {
         const prev = typeof current.content === 'string' ? current.content : '';
-        return { content: prev + pendingText, provider: tokenStatsRef.current?.provider };
+        const prevEvents = (current as any).message_events || [];
+        // Use a new accumulator to merge the pending events into existing ones
+        const accumulator = new MessageEventAccumulator({ initialEvents: prevEvents });
+        for (const ev of pendingEvents) {
+          accumulator.addEvent(ev.type, ev.payload);
+        }
+
+        return {
+          content: prev + pendingText,
+          message_events: accumulator.getEvents(),
+          provider: tokenStatsRef.current?.provider,
+        };
       });
 
-      if (!entry.text && entry.timeoutId == null) {
+      entry.text = '';
+      entry.message_events = [];
+
+      if (!entry.text && entry.message_events.length === 0 && entry.timeoutId == null) {
         delete bufferedStreamingTextRef.current[bufferKey];
       }
     },
@@ -252,8 +268,14 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
   );
 
   const queueBufferedStreamingText = useCallback(
-    (isPrimary: boolean, assistantMessageId: string, targetModel: string, text: string) => {
-      if (!text) return;
+    (
+      isPrimary: boolean,
+      assistantMessageId: string,
+      targetModel: string,
+      text: string,
+      event?: any
+    ) => {
+      if (!text && !event) return;
 
       const bufferKey = getBufferedStreamKey(assistantMessageId, targetModel, isPrimary);
       const existing = bufferedStreamingTextRef.current[bufferKey];
@@ -264,10 +286,12 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           isPrimary,
           targetModel,
           text: '',
+          message_events: [],
           timeoutId: null,
         });
 
-      entry.text += text;
+      if (text) entry.text += text;
+      if (event) entry.message_events.push(event);
 
       if (entry.timeoutId != null) {
         return;
@@ -437,10 +461,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
 
       const reasoning =
         reasoningEffortRef.current !== 'unset' ? { effort: reasoningEffortRef.current } : undefined;
-      const branchId =
-        targetConversationId && targetConversationId === conversationIdRef.current
-          ? activeBranchIdRef.current || undefined
-          : undefined;
+      const accumulator = new MessageEventAccumulator();
       const historySource = isPrimary
         ? messagesRef.current
         : messagesRef.current.filter((m) => {
@@ -485,7 +506,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           requestId: isPrimary ? messageId : `${messageId}-${targetModel}`,
           signal: options?.signal || abortControllerRef.current?.signal || undefined,
           conversationId: targetConversationId,
-          branchId,
+          branchId: activeBranchIdRef.current,
           parentConversationId,
           streamingEnabled: shouldStreamRef.current,
           toolsEnabled: useToolsRef.current,
@@ -514,6 +535,9 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           onEvent: (event: any) => {
             if (event.type === 'text') {
               queueBufferedStreamingText(isPrimary, messageId, targetModel, event.value);
+            } else if (event.type === 'message_event') {
+              // Accumulate structured message events
+              queueBufferedStreamingText(isPrimary, messageId, targetModel, '', event.value);
             } else if (event.type === 'conversation') {
               flushBufferedStreamingText(messageId, targetModel, isPrimary);
               if (isPrimary && event.value) {
@@ -617,9 +641,13 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           isPrimary,
           messageId,
           targetModel,
-          (current) =>
+          (current: any) =>
             ({
-              content: current.content,
+              content: response.content || current.content,
+              message_events:
+                (response as any).message_events ||
+                (current as any).message_events ||
+                accumulator.getEvents(),
               status: isPrimary ? undefined : 'complete',
               id: isPrimary
                 ? response.conversation?.assistant_message_id?.toString() || messageId

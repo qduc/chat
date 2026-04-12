@@ -8,6 +8,7 @@ import { AlertCircle } from 'lucide-react';
 import Markdown from '../Markdown';
 import { MessageContentRenderer } from '../ui/MessageContentRenderer';
 import { ToolSegment } from './ToolSegment';
+import { ReasoningBlock } from './ReasoningBlock';
 import { MessageToolbar } from './MessageToolbar';
 import { RevisionNavigation } from './RevisionNavigation';
 import { formatUsageLabel } from '../../lib';
@@ -136,6 +137,16 @@ export function ModelResponseColumn({
               >
                 <Markdown text={segment.text} isStreaming={isModelStreaming} />
               </div>
+            );
+          }
+          if (segment.kind === 'reasoning') {
+            if (!segment.text) return null;
+            return (
+              <ReasoningBlock
+                key={`reasoning-${modelId}-${segmentIndex}`}
+                text={segment.text}
+                isStreaming={isModelStreaming && segmentIndex === segments.length - 1}
+              />
             );
           }
           if (segment.kind === 'images') {

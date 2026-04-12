@@ -175,14 +175,21 @@ describe('chat API', () => {
       tools: [],
       providerId: 'default-provider',
       onToken: (token) => tokens.push(token),
-      onEvent: (event) => events.push(event),
+      onEvent: (event) => {
+        events.push(event);
+      },
     });
 
-    const joinedTokens = tokens.join('');
-    expect(joinedTokens).toContain('</thinking><thinking>');
-    expect(result.content).toContain('</thinking><thinking>');
+    const reasoningEvents = events.filter((e) => e.type === 'reasoning');
+    expect(reasoningEvents.length).toBeGreaterThanOrEqual(2);
+    expect(reasoningEvents[0].value).toBe('I need to check current time');
+    expect(reasoningEvents[1].value).toBe('Now that I know the time');
+
     const toolCallEvent = events.find((event) => event.type === 'tool_call');
     expect(toolCallEvent).toBeDefined();
+    expect(toolCallEvent.value.function.name).toBe('get_time');
+
+    expect(result.content).toContain('Then current time is 00:00');
   });
 });
 
