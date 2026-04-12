@@ -1,6 +1,6 @@
 # ChatForge Backend API Specification
 
-Version: 2026-01-24
+Version: 2026-04-12
 Status: Draft (authoritative for current code on branch `refactor/frontend_rewrite`)
 Base URL: `https://<host>` (all endpoints are prefixed with `/v1` except health which also supports `/health`/`/healthz`)
 Authentication: JSON Web Tokens (JWT) via `Authorization: Bearer <accessToken>` unless explicitly marked Public.
@@ -202,8 +202,8 @@ Success 200: `{ migrated: <int>, message: "..." }`.
 Errors: 400 bad_request (no session), 500 internal_error.
 
 ### GET /v1/conversations
-Query params: `cursor?`, `limit?`, `include_deleted?=true|false`.
-Returns cursor-paginated list.
+Query params: `cursor?`, `limit?`, `include_deleted?=true|false`, `search?`.
+Returns cursor-paginated list or search results.
 Success 200: shape:
 ```
 {
@@ -223,7 +223,7 @@ Body (all optional except may desire model/provider):
   "model?": "model-id",
   "streamingEnabled?": true,
   "toolsEnabled?": true,
-  "reasoningEffort?": "low|medium|high",
+  "reasoningEffort?": "none|minimal|low|medium|high|xhigh",
   "verbosity?": "...",
   "system_prompt?": "string"  // or legacy systemPrompt
 }
@@ -261,7 +261,9 @@ When `include_linked=messages` is specified, linked comparison conversation mess
     }
   ],
   "messages": [ { id, seq, role, content, created_at, branch_id, ... } ],
-  "evaluations": [ { id, user_id, conversation_id, model_a_conversation_id, model_a_message_id, model_b_conversation_id, model_b_message_id, judge_model_id, criteria, score_a, score_b, winner, reasoning, created_at } ],
+  "evaluations": [ { id, user_id, conversation_id, ... } ],
+  "revision_counts": { "edit": { "msg_uuid": count }, "regenerate": { "msg_uuid": count } },
+  "branches": [ { id, operation_type, ... } ],
   "next_after_seq": <next seq or null>,
   "linked_conversations": [ { id, title, model, provider_id, messages: [...] }, ... ] // Only if include_linked=messages
 }
@@ -316,10 +318,29 @@ Validation: must not be empty (at least one text, image, or audio element).
   "message": { id, seq, content },
   "new_conversation_id": "uuid",
   "branch_id": "branch-id",
-  "active_branch_id": "branch-id"
+  "active_branch_id": "branch-id",
+  "edit_revision_count": 1
 }
 ```
 Errors: 400 bad_request, 404 not_found, 500 internal_error.
+
+### GET /v1/conversations/{id}/messages/{messageId}/revisions
+Returns a list of branches that are revisions (edits or regenerations) of the specified message.
+200:
+```
+{
+  "revisions": [
+    {
+      "id": "branch-id",
+      "operation_type": "edit|regenerate",
+      "anchor_content": "...",
+      "follow_ups": [ { role, content, tool_calls, tool_outputs } ],
+      "created_at": "..."
+    }
+  ]
+}
+```
+Errors: 404 not_found, 500 internal_error.
 
 ## Chat (Proxy Completions & Tools)
 All endpoints require auth.

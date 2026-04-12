@@ -36,11 +36,14 @@ Required (Bearer token). Request is rejected with 401 if missing/invalid.
   ],
   "tool_choice": "auto" | "none" | { "type":"function", "function":{"name":"..."} },
   "conversation_id": "uuid",              // Existing conversation; if absent a new one may be auto-created (persisted)
+  "branch_id": "uuid",                    // Optional; branch to use for message history resolution
   "provider_id": "uuid",                  // Chooses a stored provider (header `x-provider-id` alternative)
   "system_prompt": "<string>",            // Convenience field; converted into/updates first system message server-side
+  "active_system_prompt_id": "uuid",      // Optional; persistent system prompt ID reference
   "client_request_id": "req_abc123?",     // Optional; used for abort registration (see /stop endpoint)
   "previous_response_id": "resp_123?",    // Optional; used when provider supports Responses API chaining (OpenRouter/OpenAI)
-  "reasoning_effort": "minimal|low|medium|high",
+  "custom_request_params_id": "id|list",  // Optional; ID or array of IDs of custom request parameter presets
+  "reasoning_effort": "none|minimal|low|medium|high|xhigh",
   "verbosity": "low|medium|high",
   "streamingEnabled": true|false,         // Client hint for persistence metadata
   "toolsEnabled": true|false,             // Client hint for persistence metadata
@@ -92,6 +95,12 @@ Additional event payload shapes:
 
 // Tool output event (server-emitted wrapper)
 { "id": "...", "object": "chat.completion.chunk", "choices": [ { "delta": { "tool_output": { "tool_call_id": "tc_x", "name": "search", "output": "<stringified output>" } } } ] }
+
+// Token usage update (emitted once per turn or iteration)
+{ "type": "usage", "value": { "prompt_tokens": 12, "completion_tokens": 7, "total_tokens": 19, "provider": "...", "model": "..." } }
+
+// Backend retry status indicator (emitted during transient failures/rate-limits)
+{ "type": "retry_status", "value": { "attempt": 2, "max_attempts": 3, "delay_ms": 1000, "message": "Retrying due to rate limit..." } }
 
 // Final empty delta signaling completion (finish_reason may appear earlier or here)
 { "id": "...", "object": "chat.completion.chunk", "choices": [ { "delta": {}, "finish_reason":"stop" } ] }
@@ -224,7 +233,7 @@ Endpoint is not strictly idempotent (new conversation creation, title generation
 - Streaming order: plain proxy => `_conversation` (if any) -> content deltas -> final empty delta -> `[DONE]`; tool streaming => content deltas -> buffered `tool_calls` -> `tool_output` events -> final empty delta -> `_conversation` -> `[DONE]`.
 
 #### Field Removal / Stripping Summary
-Before the upstream call the server removes: `conversation_id`, `provider_id`, `provider`, `system_prompt`, `streamingEnabled`, `toolsEnabled`, `researchMode`, `providerStream`, `provider_stream`, `client_request_id`, `enable_parallel_tool_calls`, `parallel_tool_concurrency`, and (for Chat Completions) `previous_response_id`. When the Responses API adapter is active, `previous_response_id` is forwarded.
+Before the upstream call the server removes: `conversation_id`, `branch_id`, `provider_id`, `provider`, `system_prompt`, `active_system_prompt_id`, `streamingEnabled`, `toolsEnabled`, `researchMode`, `providerStream`, `provider_stream`, `client_request_id`, `custom_request_params_id`, `custom_request_params`, and (for Chat Completions) `previous_response_id`. When the Responses API adapter is active, `previous_response_id` is forwarded.
 
 #### Backwards Compatibility Notes
 Legacy clients that send their own leading `system` message continue to work; supplying `system_prompt` overwrites it.
