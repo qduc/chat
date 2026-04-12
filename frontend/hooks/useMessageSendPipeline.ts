@@ -1,5 +1,11 @@
-import { useCallback, type MutableRefObject, type Dispatch, type SetStateAction } from 'react';
-import { flushSync } from 'react-dom';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  type MutableRefObject,
+  type Dispatch,
+  type SetStateAction,
+} from 'react';
 import {
   clearDraft,
   convertConversationMeta,
@@ -19,6 +25,8 @@ import type {
 } from '../lib';
 import { conversations as conversationsApi, chat } from '../lib/api';
 import { APIError, StreamingNotSupportedError } from '../lib/streaming';
+
+const STREAMING_TEXT_FLUSH_INTERVAL_MS = 40;
 
 // ---------------------------------------------------------------------------
 // Types
@@ -131,6 +139,19 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
     setInput,
   } = deps;
 
+  const bufferedStreamingTextRef = useRef<
+    Record<
+      string,
+      {
+        assistantMessageId: string;
+        isPrimary: boolean;
+        targetModel: string;
+        text: string;
+        timeoutId: ReturnType<typeof setTimeout> | null;
+      }
+    >
+  >({});
+
   // ---------------------------------------------------------------------------
   // updateMessageState – thin helper to update the last assistant message
   // ---------------------------------------------------------------------------
@@ -188,15 +209,91 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
     [setMessages]
   );
 
-  const applyStreamingMessageUpdate = useCallback((update: () => void) => {
-    const shouldFlushSync = process.env.NODE_ENV === 'development' && typeof window !== 'undefined';
+  const getBufferedStreamKey = useCallback(
+    (assistantMessageId: string, targetModel: string, isPrimary: boolean) =>
+      `${assistantMessageId}::${isPrimary ? '__primary__' : targetModel}`,
+    []
+  );
 
-    if (shouldFlushSync) {
-      flushSync(update);
-      return;
-    }
+  const flushBufferedStreamingText = useCallback(
+    (
+      assistantMessageId: string,
+      targetModel: string,
+      isPrimary: boolean,
+      options?: { cancelScheduledTimeout?: boolean }
+    ) => {
+      const bufferKey = getBufferedStreamKey(assistantMessageId, targetModel, isPrimary);
+      const entry = bufferedStreamingTextRef.current[bufferKey];
+      if (!entry) return;
 
-    update();
+      if (options?.cancelScheduledTimeout !== false && entry.timeoutId != null) {
+        clearTimeout(entry.timeoutId);
+      }
+      entry.timeoutId = null;
+
+      const pendingText = entry.text;
+      entry.text = '';
+
+      if (!pendingText) {
+        delete bufferedStreamingTextRef.current[bufferKey];
+        return;
+      }
+
+      updateMessageState(isPrimary, assistantMessageId, targetModel, (current) => {
+        const prev = typeof current.content === 'string' ? current.content : '';
+        return { content: prev + pendingText, provider: tokenStatsRef.current?.provider };
+      });
+
+      if (!entry.text && entry.timeoutId == null) {
+        delete bufferedStreamingTextRef.current[bufferKey];
+      }
+    },
+    [getBufferedStreamKey, tokenStatsRef, updateMessageState]
+  );
+
+  const queueBufferedStreamingText = useCallback(
+    (isPrimary: boolean, assistantMessageId: string, targetModel: string, text: string) => {
+      if (!text) return;
+
+      const bufferKey = getBufferedStreamKey(assistantMessageId, targetModel, isPrimary);
+      const existing = bufferedStreamingTextRef.current[bufferKey];
+      const entry =
+        existing ||
+        (bufferedStreamingTextRef.current[bufferKey] = {
+          assistantMessageId,
+          isPrimary,
+          targetModel,
+          text: '',
+          timeoutId: null,
+        });
+
+      entry.text += text;
+
+      if (entry.timeoutId != null) {
+        return;
+      }
+
+      entry.timeoutId = setTimeout(() => {
+        const scheduledEntry = bufferedStreamingTextRef.current[bufferKey];
+        if (!scheduledEntry) return;
+        scheduledEntry.timeoutId = null;
+        flushBufferedStreamingText(assistantMessageId, targetModel, isPrimary, {
+          cancelScheduledTimeout: false,
+        });
+      }, STREAMING_TEXT_FLUSH_INTERVAL_MS);
+    },
+    [flushBufferedStreamingText, getBufferedStreamKey]
+  );
+
+  useEffect(() => {
+    return () => {
+      Object.values(bufferedStreamingTextRef.current).forEach((entry) => {
+        if (entry.timeoutId != null) {
+          clearTimeout(entry.timeoutId);
+        }
+      });
+      bufferedStreamingTextRef.current = {};
+    };
   }, []);
 
   const refreshBranchState = useCallback(
@@ -307,7 +404,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         // Ignore branch refresh errors and keep the message update path responsive.
       }
     },
-    [activeBranchIdRef, setActiveBranchId, setBranches, setMessages]
+    [setActiveBranchId, setBranches, setMessages]
   );
 
   // ---------------------------------------------------------------------------
@@ -412,22 +509,13 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 tokenStatsRef.current.count = tokenStatsRef.current.charCount / 4;
               tokenStatsRef.current.lastUpdated = Date.now();
             }
-            applyStreamingMessageUpdate(() => {
-              updateMessageState(isPrimary, messageId, targetModel, (current) => {
-                const prev = typeof current.content === 'string' ? current.content : '';
-                return { content: prev + token, provider: tokenStatsRef.current?.provider };
-              });
-            });
+            queueBufferedStreamingText(isPrimary, messageId, targetModel, token);
           },
           onEvent: (event: any) => {
             if (event.type === 'text') {
-              applyStreamingMessageUpdate(() => {
-                updateMessageState(isPrimary, messageId, targetModel, (current) => ({
-                  content:
-                    (typeof current.content === 'string' ? current.content : '') + event.value,
-                }));
-              });
+              queueBufferedStreamingText(isPrimary, messageId, targetModel, event.value);
             } else if (event.type === 'conversation') {
+              flushBufferedStreamingText(messageId, targetModel, isPrimary);
               if (isPrimary && event.value) {
                 const c = event.value;
                 if (!conversationIdRef.current || conversationIdRef.current === c.id) {
@@ -457,6 +545,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 }
               }
             } else if (event.type === 'tool_call') {
+              flushBufferedStreamingText(messageId, targetModel, isPrimary);
               updateMessageState(isPrimary, messageId, targetModel, (current) => ({
                 tool_calls: mergeToolCallDelta(
                   current.tool_calls || [],
@@ -465,6 +554,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 ),
               }));
             } else if (event.type === 'usage') {
+              flushBufferedStreamingText(messageId, targetModel, isPrimary);
               if (
                 isPrimary &&
                 tokenStatsRef.current &&
@@ -479,6 +569,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 provider: event.value.provider,
               }));
             } else if (event.type === 'tool_output') {
+              flushBufferedStreamingText(messageId, targetModel, isPrimary);
               updateMessageState(isPrimary, messageId, targetModel, (current) => ({
                 tool_outputs: [...(current.tool_outputs || []), event.value],
               }));
@@ -491,11 +582,14 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           response = await chat.sendMessage(payload);
         } catch (err: any) {
           if (err instanceof StreamingNotSupportedError && !options?.retried && isPrimary) {
+            flushBufferedStreamingText(messageId, targetModel, isPrimary);
             response = await chat.sendMessage({ ...payload, providerStream: false });
           } else {
             throw err;
           }
         }
+
+        flushBufferedStreamingText(messageId, targetModel, isPrimary);
 
         if (isPrimary) {
           if (response.conversation) {
@@ -545,6 +639,8 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
 
         return response;
       } catch (err: any) {
+        flushBufferedStreamingText(messageId, targetModel, isPrimary);
+
         let msg =
           err instanceof StreamingNotSupportedError
             ? 'Streaming not supported'
@@ -582,11 +678,14 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       modelCapabilities,
       tokenStatsRef,
       updateMessageState,
-      applyStreamingMessageUpdate,
+      queueBufferedStreamingText,
+      flushBufferedStreamingText,
+      activeBranchIdRef,
       conversationIdRef,
       setConversationId,
       setCurrentConversationTitle,
       setConversations,
+      setActiveBranchId,
       user,
       setLinkedConversations,
       setStatus,

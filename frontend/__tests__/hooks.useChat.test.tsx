@@ -328,6 +328,41 @@ describe('useChat hook', () => {
     expect(result.current.error).toBeNull();
   });
 
+  test('sendMessage preserves buffered token bursts even before the next flush interval', async () => {
+    jest.useFakeTimers();
+    const now = new Date().toISOString();
+
+    mockChat.sendMessage.mockImplementation(async (options: ChatOptionsExtended) => {
+      options.onToken?.('Hel');
+      options.onToken?.('lo');
+
+      return {
+        content: '',
+        conversation: {
+          id: 'conv-buffered-stream',
+          title: 'Buffered Stream',
+          created_at: now,
+        },
+      };
+    });
+
+    try {
+      const { result } = renderUseChat();
+
+      await act(async () => {
+        result.current.setInput('Stream quickly');
+      });
+
+      await act(async () => {
+        await result.current.sendMessage();
+      });
+
+      expect(result.current.messages[1].content).toBe('Hello');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   test('sendMessage continues to use the updated provider after switching conversations', async () => {
     const now = new Date().toISOString();
     let conv2Calls = 0;
