@@ -933,6 +933,134 @@ describe('useChat hook', () => {
     jest.useRealTimers();
   });
 
+  test('sendMessage surfaces retry status while waiting for a provider retry', async () => {
+    arrangeHttpMocks();
+    mockAuth.getProfile.mockResolvedValue({
+      id: 'user-123',
+      email: 'user@example.com',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    let resolveResponse: ((value: ChatResponse) => void) | null = null;
+    mockChat.sendMessage.mockImplementation(async (options: ChatOptionsExtended) => {
+      options.onEvent?.({
+        type: 'retry_status',
+        value: {
+          source: 'provider',
+          modelId: 'primary',
+          status: 429,
+          attempt: 1,
+          maxRetries: 3,
+          retryAfterMs: 2500,
+        },
+      });
+      return await new Promise<ChatResponse>((resolve) => {
+        resolveResponse = resolve;
+      });
+    });
+
+    const { result } = renderHook(() => useChat());
+
+    await act(async () => {
+      result.current.setInput('Hello');
+    });
+
+    let sendPromise: Promise<void> | undefined;
+    act(() => {
+      sendPromise = result.current.sendMessage();
+    });
+
+    await waitFor(() => {
+      expect(result.current.pending.retryStatus).toMatchObject({
+        source: 'provider',
+        status: 429,
+        attempt: 1,
+        maxRetries: 3,
+      });
+    });
+
+    await act(async () => {
+      resolveResponse?.({
+        content: 'Recovered response',
+        conversation: {
+          id: 'conv-retry-status',
+          title: 'Retry status',
+          created_at: new Date().toISOString(),
+        },
+      });
+      await sendPromise!;
+    });
+
+    await waitFor(() => expect(result.current.pending.retryStatus).toBeUndefined());
+    expect(result.current.status).toBe('idle');
+  });
+
+  test('sendMessage normalizes provider retry status modelId for primary stream', async () => {
+    arrangeHttpMocks();
+    mockAuth.getProfile.mockResolvedValue({
+      id: 'user-123',
+      email: 'user@example.com',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    let resolveResponse: ((value: ChatResponse) => void) | null = null;
+    mockChat.sendMessage.mockImplementation(async (options: ChatOptionsExtended) => {
+      options.onEvent?.({
+        type: 'retry_status',
+        value: {
+          source: 'provider',
+          modelId: 'gemini-3.1-pro-preview',
+          providerId: 'gemini',
+          status: 429,
+          attempt: 1,
+          maxRetries: 3,
+          retryAfterMs: 55000,
+          errorMessage: 'Gemini API rate limit exceeded',
+        },
+      });
+      return await new Promise<ChatResponse>((resolve) => {
+        resolveResponse = resolve;
+      });
+    });
+
+    const { result } = renderHook(() => useChat());
+
+    await act(async () => {
+      result.current.setInput('Hello');
+    });
+
+    let sendPromise: Promise<void> | undefined;
+    act(() => {
+      sendPromise = result.current.sendMessage();
+    });
+
+    await waitFor(() => {
+      expect(result.current.pending.retryStatus).toMatchObject({
+        source: 'provider',
+        providerId: 'gemini',
+        status: 429,
+        modelId: 'primary',
+      });
+    });
+
+    await act(async () => {
+      resolveResponse?.({
+        content: 'Recovered response',
+        conversation: {
+          id: 'conv-retry-status-normalized',
+          title: 'Retry status normalized',
+          created_at: new Date().toISOString(),
+        },
+      });
+      await sendPromise!;
+    });
+
+    await waitFor(() => expect(result.current.pending.retryStatus).toBeUndefined());
+    expect(result.current.status).toBe('idle');
+  });
+
   test('sendMessage includes files and images in the outgoing payload', async () => {
     const now = new Date().toISOString();
     mockChat.sendMessage.mockResolvedValue({

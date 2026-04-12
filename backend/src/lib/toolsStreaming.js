@@ -49,6 +49,7 @@ import {
   streamDeltaEvent,
   streamDone,
 } from './toolOrchestrationUtils.js';
+import { writeSseEvent } from './streamUtils.js';
 import { getUserMaxToolIterations } from '../db/users.js';
 
 /**
@@ -79,6 +80,23 @@ export async function handleToolsStreaming({
   try {
     // Setup streaming headers
     setupStreamingHeaders(res);
+    const emitRetryStatus = (retryInfo = {}) => {
+      if (!res || res.writableEnded) return;
+      writeSseEvent(res, {
+        type: 'retry_status',
+        value: {
+          source: retryInfo.source || 'provider',
+          modelId: body.model || null,
+          providerId: providerId || null,
+          status: retryInfo.status ?? null,
+          attempt: retryInfo.attempt ?? null,
+          maxRetries: retryInfo.maxRetries ?? null,
+          retryAfterMs: retryInfo.retryAfterMs ?? null,
+          errorMessage: retryInfo.errorMessage || null,
+          errorPreview: retryInfo.errorPreview || null,
+        },
+      });
+    };
     // Build conversation history including the active system prompt
     // Use optimized version to leverage previous_response_id when available
     const { messages: conversationHistory, previousResponseId } = await buildConversationMessagesOptimized({
@@ -133,7 +151,11 @@ export async function handleToolsStreaming({
         hasTools: Boolean(toolsToSend),
       });
 
-      let upstream = await createOpenAIRequest(config, requestBody, { providerId, signal: abortSignal });
+      let upstream = await createOpenAIRequest(config, requestBody, {
+        providerId,
+        signal: abortSignal,
+        onRetry: emitRetryStatus,
+      });
       let upstreamErrorBody;
 
       // If request with previous_response_id failed due to invalid ID format, retry with full history
@@ -146,6 +168,15 @@ export async function handleToolsStreaming({
           upstreamErrorBody?.error?.code === 'invalid_value';
 
         if (isInvalidResponseIdError) {
+          emitRetryStatus({
+            source: 'previous_response_id',
+            status: upstream.status,
+            attempt: 1,
+            maxRetries: 1,
+            retryAfterMs: 0,
+            errorMessage: upstreamErrorBody?.error?.message || 'Provider rejected cached conversation state',
+            errorPreview: upstreamErrorBody?.error?.message || null,
+          });
           logger.warn({
             msg: 'invalid_previous_response_id',
             previous_response_id: requestBody.previous_response_id,
@@ -175,7 +206,11 @@ export async function handleToolsStreaming({
             hasTools: Boolean(toolsToSend),
           });
 
-          upstream = await createOpenAIRequest(config, retryBodyWithCaching, { providerId, signal: abortSignal });
+          upstream = await createOpenAIRequest(config, retryBodyWithCaching, {
+            providerId,
+            signal: abortSignal,
+            onRetry: emitRetryStatus,
+          });
           upstreamErrorBody = undefined;
           currentPreviousResponseId = null; // Reset for subsequent iterations
         }

@@ -55,6 +55,38 @@ describe('retryUtils', () => {
       expect(mockFn).toHaveBeenCalledTimes(3);
     });
 
+    test('should notify retry callback before backing off', async () => {
+      const onRetry = jest.fn();
+      const mockFn = jest
+        .fn()
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 429,
+          clone: () => ({ text: () => Promise.resolve('Rate limited') }),
+        })
+        .mockResolvedValueOnce({ ok: true, status: 200 });
+
+      const promise = retryWithBackoff(mockFn, {
+        maxRetries: 2,
+        initialDelayMs: 1000,
+        jitterFactor: 0,
+        onRetry,
+      });
+
+      await jest.runAllTimersAsync();
+      const result = await promise;
+
+      expect(result).toEqual({ ok: true, status: 200 });
+      expect(onRetry).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 429,
+          attempt: 1,
+          maxRetries: 2,
+          retryAfterMs: 1000,
+        })
+      );
+    });
+
     test('should retry on 500 error and eventually succeed', async () => {
       const mockFn = jest
         .fn()
@@ -276,17 +308,17 @@ describe('retryUtils', () => {
       const spySleep = jest.spyOn(global, 'setTimeout');
 
       const promise = retryWithBackoff(mockFn, { maxRetries: 2, initialDelayMs: 100 });
-      
+
       // Advance timers by less than 5000ms and check status
       jest.advanceTimersByTime(4000);
       // At this point, the promise should still be pending if it's waiting for 5000ms
-      
+
       await jest.runAllTimersAsync();
       const result = await promise;
 
       expect(result).toEqual({ ok: true, status: 200 });
       expect(mockFn).toHaveBeenCalledTimes(2);
-      
+
       // Check that the delay was approximately 5000ms
       // We can check the arguments to setTimeout
       // The first call to setTimeout (retry wait) should have 5000

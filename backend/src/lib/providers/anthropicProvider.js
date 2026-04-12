@@ -111,7 +111,10 @@ export class AnthropicProvider extends BaseProvider {
         body: JSON.stringify(translatedRequest),
         ...(context.signal ? { signal: context.signal } : {}),
       }),
-      config.providerConfig.retry
+      {
+        ...config.providerConfig.retry,
+        onRetry: context.onRetry,
+      }
     );
 
     // Log the upstream response for debugging

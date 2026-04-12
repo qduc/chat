@@ -204,6 +204,7 @@ export const Message = React.memo<MessageProps>(
       prev.message.edit_revision_count === next.message.edit_revision_count &&
       prev.message.regenerate_revision_count === next.message.regenerate_revision_count &&
       prev.isStreaming === next.isStreaming &&
+      prev.pending.retryStatus === next.pending.retryStatus &&
       prev.compareModels === next.compareModels &&
       prev.editRevision === next.editRevision &&
       prev.regenRevision === next.regenRevision &&

@@ -20,6 +20,7 @@ const DEFAULT_RETRY_CONFIG = {
   maxDelayMs: 60000,
   backoffMultiplier: 2,
   jitterFactor: 0.1,
+  onRetry: null,
   shouldRetry: (error, _attempt) => {
     // Only retry on 429 (rate limit) and 5xx server errors
     if (error?.status === 429) return true;
@@ -88,6 +89,18 @@ export async function retryWithBackoff(fn, userConfig = {}) {
   const config = { ...DEFAULT_RETRY_CONFIG, ...userConfig };
   let lastError = null;
 
+  const notifyRetry = (info) => {
+    if (typeof config.onRetry !== 'function') return;
+    try {
+      config.onRetry(info);
+    } catch (error) {
+      logger.warn({
+        msg: '[retry] Retry notification callback failed',
+        error: error?.message || error,
+      });
+    }
+  };
+
   for (let attempt = 0; attempt <= config.maxRetries; attempt++) {
     try {
       const result = await fn();
@@ -110,6 +123,14 @@ export async function retryWithBackoff(fn, userConfig = {}) {
         // Check if we should retry using custom shouldRetry function
         if (attempt < config.maxRetries && config.shouldRetry(error, attempt)) {
           const delay = error.retryAfterMs || calculateDelay(attempt, config);
+          notifyRetry({
+            status: result.status,
+            attempt: attempt + 1,
+            maxRetries: config.maxRetries,
+            retryAfterMs: delay,
+            errorMessage: error.message,
+            errorPreview: errorBody.slice(0, 200),
+          });
           logger.warn({
             msg: '[retry] Retryable error encountered',
             status: result.status,
@@ -151,6 +172,13 @@ export async function retryWithBackoff(fn, userConfig = {}) {
       // Check if we should retry
       if (attempt < config.maxRetries && config.shouldRetry(error, attempt)) {
         const delay = error.retryAfterMs || calculateDelay(attempt, config);
+        notifyRetry({
+          status,
+          attempt: attempt + 1,
+          maxRetries: config.maxRetries,
+          retryAfterMs: delay,
+          errorMessage: error.message,
+        });
         logger.warn({
           msg: '[retry] Retryable error encountered',
           error: error.message,

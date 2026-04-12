@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, Loader2 } from 'lucide-react';
 import Markdown from '../Markdown';
 import { MessageContentRenderer } from '../ui/MessageContentRenderer';
 import { ToolSegment } from './ToolSegment';
@@ -72,6 +72,34 @@ export function ModelResponseColumn({
     return id.includes('::') ? id.split('::')[1] : id;
   };
 
+  const retryStatus = pending.retryStatus;
+  const isRetryingThisModel =
+    !!retryStatus && (retryStatus.modelId ?? 'primary') === modelId && !isModelError;
+
+  const retryStatusLabel = (() => {
+    if (!isRetryingThisModel || !retryStatus) return null;
+    const reason =
+      retryStatus.source === 'previous_response_id'
+        ? 'Retrying with full history after provider rejected cached conversation state'
+        : retryStatus.status === 429
+          ? 'Retrying after provider rate limit'
+          : retryStatus.status && retryStatus.status >= 500
+            ? 'Retrying after provider error'
+            : 'Retrying after provider error';
+    const attempt =
+      retryStatus.attempt && retryStatus.maxRetries
+        ? `attempt ${retryStatus.attempt}/${retryStatus.maxRetries}`
+        : retryStatus.attempt
+          ? `attempt ${retryStatus.attempt}`
+          : '';
+    const wait =
+      typeof retryStatus.retryAfterMs === 'number' && retryStatus.retryAfterMs > 0
+        ? `waiting ~${Math.max(1, Math.round(retryStatus.retryAfterMs / 1000))}s`
+        : '';
+    const details = [attempt, wait].filter(Boolean).join(', ');
+    return details ? `${reason} (${details})` : reason;
+  })();
+
   const renderToolSegment = (
     segment: { kind: 'tool_call'; toolCall: any; outputs: ToolOutput[] },
     segmentIndex: number
@@ -102,7 +130,12 @@ export function ModelResponseColumn({
       )}
       {segments.length === 0 ? (
         <div className="text-base leading-relaxed text-zinc-800 dark:text-zinc-200">
-          {(isModelStreaming || pending.abort) && !isModelError && !pending.error ? (
+          {retryStatusLabel ? (
+            <span className="inline-flex items-center gap-2 text-amber-700 dark:text-amber-300 text-sm">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>{retryStatusLabel}</span>
+            </span>
+          ) : (isModelStreaming || pending.abort) && !isModelError && !pending.error ? (
             <span className="inline-flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
               <span
                 className="w-1.5 h-1.5 rounded-full bg-current animate-bounce"
@@ -127,42 +160,50 @@ export function ModelResponseColumn({
           )}
         </div>
       ) : (
-        segments.map((segment, segmentIndex) => {
-          if (segment.kind === 'text') {
-            if (!segment.text) return null;
-            return (
-              <div
-                key={`text-${modelId}-${segmentIndex}`}
-                className="text-base leading-relaxed text-zinc-900 dark:text-zinc-200"
-              >
-                <Markdown text={segment.text} isStreaming={isModelStreaming} />
-              </div>
-            );
-          }
-          if (segment.kind === 'reasoning') {
-            if (!segment.text) return null;
-            return (
-              <ReasoningBlock
-                key={`reasoning-${modelId}-${segmentIndex}`}
-                text={segment.text}
-                isStreaming={isModelStreaming && segmentIndex === segments.length - 1}
-              />
-            );
-          }
-          if (segment.kind === 'images') {
-            if (!segment.images || segment.images.length === 0) return null;
-            return (
-              <div key={`images-${modelId}-${segmentIndex}`} className="mt-3">
-                <MessageContentRenderer
-                  content={segment.images}
-                  isStreaming={false}
-                  role="assistant"
+        <>
+          {retryStatusLabel && (
+            <div className="mb-2 inline-flex items-center gap-2 text-amber-700 dark:text-amber-300 text-sm">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>{retryStatusLabel}</span>
+            </div>
+          )}
+          {segments.map((segment, segmentIndex) => {
+            if (segment.kind === 'text') {
+              if (!segment.text) return null;
+              return (
+                <div
+                  key={`text-${modelId}-${segmentIndex}`}
+                  className="text-base leading-relaxed text-zinc-900 dark:text-zinc-200"
+                >
+                  <Markdown text={segment.text} isStreaming={isModelStreaming} />
+                </div>
+              );
+            }
+            if (segment.kind === 'reasoning') {
+              if (!segment.text) return null;
+              return (
+                <ReasoningBlock
+                  key={`reasoning-${modelId}-${segmentIndex}`}
+                  text={segment.text}
+                  isStreaming={isModelStreaming && segmentIndex === segments.length - 1}
                 />
-              </div>
-            );
-          }
-          return renderToolSegment(segment, segmentIndex);
-        })
+              );
+            }
+            if (segment.kind === 'images') {
+              if (!segment.images || segment.images.length === 0) return null;
+              return (
+                <div key={`images-${modelId}-${segmentIndex}`} className="mt-3">
+                  <MessageContentRenderer
+                    content={segment.images}
+                    isStreaming={false}
+                    role="assistant"
+                  />
+                </div>
+              );
+            }
+            return renderToolSegment(segment, segmentIndex);
+          })}
+        </>
       )}
 
       {/* Stats row for this model */}

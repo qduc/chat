@@ -295,6 +295,11 @@ export function processStreamChunk(
     return { conversation };
   }
 
+  if (data?.type === 'retry_status') {
+    onEvent?.({ type: 'retry_status', value: data.value });
+    return {};
+  }
+
   if (data.reasoning_summary) {
     return {
       reasoning_summary: data.reasoning_summary,

@@ -533,8 +533,21 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
             queueBufferedStreamingText(isPrimary, messageId, targetModel, token);
           },
           onEvent: (event: any) => {
+            const clearRetryStatusIfCurrentModel = () => {
+              setPending((prev) => {
+                if (!prev.retryStatus) return prev;
+                if (
+                  (prev.retryStatus.modelId ?? 'primary') !== (isPrimary ? 'primary' : targetModel)
+                ) {
+                  return prev;
+                }
+                return { ...prev, retryStatus: undefined };
+              });
+            };
+
             if (event.type === 'text') {
               queueBufferedStreamingText(isPrimary, messageId, targetModel, event.value);
+              clearRetryStatusIfCurrentModel();
             } else if (event.type === 'message_event') {
               // Accumulate structured message events (defensively handle legacy batched payloads)
               const messageEvents = Array.isArray(event.value) ? event.value : [event.value];
@@ -542,8 +555,23 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 if (!messageEvent) continue;
                 queueBufferedStreamingText(isPrimary, messageId, targetModel, '', messageEvent);
               }
+              clearRetryStatusIfCurrentModel();
+            } else if (event.type === 'retry_status') {
+              setPending((prev) => ({
+                ...prev,
+                streaming: true,
+                retryStatus: {
+                  ...(event.value || {}),
+                  // Normalize to frontend slot ids so retry UI can bind reliably.
+                  // Providers may emit raw model ids (e.g. "gemini-3.1-pro-preview")
+                  // while the primary column is keyed as "primary" and comparison
+                  // columns are keyed by `targetModel` (often provider-prefixed).
+                  modelId: isPrimary ? 'primary' : targetModel,
+                },
+              }));
             } else if (event.type === 'conversation') {
               flushBufferedStreamingText(messageId, targetModel, isPrimary);
+              clearRetryStatusIfCurrentModel();
               if (isPrimary && event.value) {
                 const c = event.value;
                 if (!conversationIdRef.current || conversationIdRef.current === c.id) {
@@ -574,6 +602,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
               }
             } else if (event.type === 'tool_call') {
               flushBufferedStreamingText(messageId, targetModel, isPrimary);
+              clearRetryStatusIfCurrentModel();
               updateMessageState(isPrimary, messageId, targetModel, (current) => ({
                 tool_calls: mergeToolCallDelta(
                   current.tool_calls || [],
@@ -583,6 +612,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
               }));
             } else if (event.type === 'usage') {
               flushBufferedStreamingText(messageId, targetModel, isPrimary);
+              clearRetryStatusIfCurrentModel();
               if (
                 isPrimary &&
                 tokenStatsRef.current &&
@@ -598,6 +628,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
               }));
             } else if (event.type === 'tool_output') {
               flushBufferedStreamingText(messageId, targetModel, isPrimary);
+              clearRetryStatusIfCurrentModel();
               updateMessageState(isPrimary, messageId, targetModel, (current) => ({
                 tool_outputs: [...(current.tool_outputs || []), event.value],
               }));
@@ -684,7 +715,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         if (isPrimary) {
           setError(msg);
           setStatus('idle');
-          setPending((prev) => ({ ...prev, error: msg, streaming: false }));
+          setPending((prev) => ({ ...prev, error: msg, streaming: false, retryStatus: undefined }));
         } else
           updateMessageState(
             false,
@@ -782,6 +813,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         streaming: true,
         abort: abortControllerRef.current,
         tokenStats: tokenStatsRef.current,
+        retryStatus: undefined,
       });
 
       const userMsgId = opts?.clientMessageId ?? generateClientId();
@@ -881,7 +913,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       }
 
       setStatus('idle');
-      setPending((prev) => ({ ...prev, streaming: false, abort: null }));
+      setPending((prev) => ({ ...prev, streaming: false, abort: null, retryStatus: undefined }));
       return primaryResponse;
     },
     [
