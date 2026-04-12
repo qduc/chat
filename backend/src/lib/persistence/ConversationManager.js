@@ -36,6 +36,7 @@ import {
   createConversationBranch,
   getActiveBranchId,
   setConversationActiveBranch,
+  deleteConversationBranch,
 } from '../../db/branches.js';
 
 /**
@@ -122,6 +123,16 @@ export class ConversationManager {
       });
     }
     return branchId;
+  }
+
+  revertActiveBranch(conversationId, userId, branchId) {
+    if (!conversationId || !userId || !branchId) return false;
+    return setConversationActiveBranch({ conversationId, branchId, userId });
+  }
+
+  deleteBranch(conversationId, userId, branchId) {
+    if (!conversationId || !userId || !branchId) return false;
+    return deleteConversationBranch({ conversationId, branchId, userId });
   }
 
   /**
@@ -275,6 +286,26 @@ export class ConversationManager {
   }
 
   /**
+   * Helper to normalize output from _applyMessageDiff and _fallbackClearAndRewrite
+   * @private
+   */
+  _buildSyncResult(params) {
+    return {
+      idMappings: params.idMappings || [],
+      insertedMessages: params.insertedMessages || [],
+      updatedMessages: params.updatedMessages || [],
+      deletedMessages: params.deletedMessages || [],
+      anchorSeq: params.anchorSeq,
+      conversationId: params.conversationId,
+      regenerateRevision: params.regenerateRevision || null,
+      branchId: params.branchId,
+      branchOperationType: params.branchOperationType || null,
+      parentBranchId: params.parentBranchId || null,
+      isNewBranch: Boolean(params.isNewBranch),
+    };
+  }
+
+  /**
    * Apply message diff transactionally
    * @param {string} conversationId - Conversation ID
    * @param {string} userId - User ID
@@ -296,6 +327,9 @@ export class ConversationManager {
     const deletedMessages = [];
     let regenerateRevision = null;
     let targetBranchId = requestedBranchId || getActiveBranchId({ conversationId, userId });
+    let parentBranchId = null;
+    let branchOperationType = null;
+    let isNewBranch = false;
 
     const transaction = db.transaction(() => {
       for (const msg of diff.toUpdate) {
@@ -334,27 +368,39 @@ export class ConversationManager {
         }
       }
 
-      if (diff.toDelete.length > 0) {
-        const firstDeleteSeq = diff.toDelete[0].seq;
+      const firstUpdateSeq = diff.toUpdate.length > 0 ? Math.min(...diff.toUpdate.map(m => m.seq)) : Infinity;
+      const firstDeleteSeq = diff.toDelete.length > 0 ? diff.toDelete[0].seq : Infinity;
+      const forkSeq = Math.min(firstUpdateSeq, firstDeleteSeq);
+
+      if (forkSeq !== Infinity) {
         // Reuse allExisting from outer scope — no deletions have occurred yet at this point
         const allExisting =
           existingMessages ?? getAllMessagesForSync({ conversationId, branchId: targetBranchId });
         const branchPointMessage = allExisting
-          .filter(m => m.seq < firstDeleteSeq)
+          .filter(m => m.seq < forkSeq)
           .slice(-1)[0] || null;
+
+        const hasUserUpdate = diff.toUpdate.some(m => m.role === 'user');
+        const hasUserDelete = diff.toDelete.some(m => m.role === 'user');
+        const isUserEdit = hasUserUpdate || hasUserDelete;
+        
         const firstDeleted = diff.toDelete[0];
-        const isAssistantTurnRegen = firstDeleted.role === 'assistant' || firstDeleted.role === 'tool';
-        const isUserEdit = firstDeleted.role === 'user';
-        const allNonUser = diff.toDelete.every(m => m.role !== 'user');
+        const isAssistantTurnRegen = !isUserEdit && firstDeleted && (firstDeleted.role === 'assistant' || firstDeleted.role === 'tool');
+        
+        const allNonUser = !isUserEdit && diff.toDelete.every(m => m.role !== 'user');
+
+        branchOperationType = isUserEdit ? 'edit' : (isAssistantTurnRegen ? 'regenerate' : (allNonUser ? 'regenerate' : 'fork'));
 
         targetBranchId = this._activateForkBranch({
           conversationId,
           userId,
           parentBranchId: targetBranchId,
-          operationType: isAssistantTurnRegen ? 'regenerate' : (isUserEdit ? 'edit' : (allNonUser ? 'regenerate' : 'fork')),
-          sourceMessage: (isAssistantTurnRegen || allNonUser) ? branchPointMessage : (isUserEdit ? firstDeleted : null),
+          operationType: branchOperationType,
+          sourceMessage: (isAssistantTurnRegen || allNonUser) ? branchPointMessage : (isUserEdit ? (diff.toUpdate.find(m => m.role === 'user') || diff.toDelete.find(m => m.role === 'user')) : null),
           branchPointMessageId: branchPointMessage?._dbId ?? null,
         });
+        parentBranchId = requestedBranchId || getActiveBranchId({ conversationId, userId });
+        isNewBranch = true;
 
         if (allNonUser && branchPointMessage) {
           const anchorMessageId = String(branchPointMessage.id);
@@ -473,6 +519,9 @@ export class ConversationManager {
       conversationId,
       regenerateRevision,
       branchId: targetBranchId,
+      branchOperationType,
+      parentBranchId,
+      isNewBranch,
     };
   }
 
@@ -687,6 +736,9 @@ export class ConversationManager {
     const insertedMessages = [];
     const deletedMessages = [];
     let targetBranchId = requestedBranchId || getActiveBranchId({ conversationId, userId });
+    let parentBranchId = null;
+    let branchOperationType = null;
+    let isNewBranch = false;
 
     // Fetch all existing messages once; derive existingToDelete and branchPointMessage from this
     const allExistingMessages = getAllMessagesForSync({ conversationId, branchId: targetBranchId });
@@ -699,6 +751,11 @@ export class ConversationManager {
     }
 
     const transaction = db.transaction(() => {
+      const firstDeletedSeq = existingToDelete.length > 0 ? existingToDelete[0].seq : Infinity;
+      // In clear-and-rewrite, we don't easily know if a message was "updated" vs "inserted" from the raw array,
+      // but usually this fallback is used for major changes. 
+      // We'll rely on the existing logic or the fact that if we are here, we are rewriting from afterSeq.
+      
       if (existingToDelete.length > 0) {
         const firstDeleted = existingToDelete[0];
         const isAssistantTurnRegen = firstDeleted.role === 'assistant' || firstDeleted.role === 'tool';
@@ -708,14 +765,19 @@ export class ConversationManager {
         const branchPointMessage = afterSeq > 0
           ? allExistingMessages.filter(msg => msg.seq <= afterSeq).slice(-1)[0] || null
           : null;
+        
+        branchOperationType = isAssistantTurnRegen ? 'regenerate' : (isUserEdit ? 'edit' : (allNonUser ? 'regenerate' : 'fork'));
+
         targetBranchId = this._activateForkBranch({
           conversationId,
           userId,
           parentBranchId: targetBranchId,
-          operationType: isAssistantTurnRegen ? 'regenerate' : (isUserEdit ? 'edit' : (allNonUser ? 'regenerate' : 'fork')),
+          operationType: branchOperationType,
           sourceMessage: (isAssistantTurnRegen || allNonUser) ? branchPointMessage : (isUserEdit ? firstDeleted : null),
           branchPointMessageId: branchPointMessage?._dbId ?? null,
         });
+        parentBranchId = requestedBranchId || getActiveBranchId({ conversationId, userId });
+        isNewBranch = true;
       }
 
       let seq = getNextSeq(conversationId);
@@ -725,6 +787,7 @@ export class ConversationManager {
             return messageSeq == null || messageSeq > afterSeq;
           })
         : messages;
+
       for (const message of messagesToInsert) {
         const hasUserContent = typeof message.content === 'string' || Array.isArray(message.content);
         const hasAssistantContent = message.content !== undefined && message.content !== null;
@@ -810,18 +873,22 @@ export class ConversationManager {
           }
         }
       }
+
+      return this._buildSyncResult({
+        idMappings,
+        insertedMessages,
+        updatedMessages: [],
+        deletedMessages: [],
+        anchorSeq: afterSeq,
+        conversationId,
+        branchId: targetBranchId,
+        branchOperationType,
+        parentBranchId,
+        isNewBranch,
+      });
     });
 
-    transaction();
-    return {
-      idMappings,
-      insertedMessages,
-      deletedMessages,
-      updatedMessages: [],
-      anchorSeq: afterSeq,
-      conversationId,
-      branchId: targetBranchId,
-    };
+    return transaction();
   }
 
   _normalizeIncomingMessage(message) {
