@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Brain, ChevronDown } from 'lucide-react';
 
 interface ReasoningBlockProps {
@@ -7,7 +7,28 @@ interface ReasoningBlockProps {
 }
 
 export const ReasoningBlock: React.FC<ReasoningBlockProps> = ({ text, isStreaming = false }) => {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(isStreaming);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const prevIsStreamingRef = useRef(isStreaming);
+
+  useEffect(() => {
+    if (!prevIsStreamingRef.current && isStreaming) {
+      setIsExpanded(true);
+    } else if (prevIsStreamingRef.current && !isStreaming) {
+      setIsExpanded(false);
+    }
+
+    prevIsStreamingRef.current = isStreaming;
+  }, [isStreaming]);
+
+  useEffect(() => {
+    if (!isStreaming || !isExpanded) return;
+
+    const contentEl = contentRef.current;
+    if (!contentEl) return;
+
+    contentEl.scrollTop = contentEl.scrollHeight;
+  }, [text, isExpanded, isStreaming]);
 
   if (!text) return null;
 
@@ -15,6 +36,7 @@ export const ReasoningBlock: React.FC<ReasoningBlockProps> = ({ text, isStreamin
     <div className="my-3 rounded-xl border border-zinc-200/60 dark:border-zinc-800/60 bg-white dark:bg-zinc-900/40 overflow-hidden shadow-sm">
       <button
         onClick={() => setIsExpanded(!isExpanded)}
+        aria-expanded={isExpanded}
         className="w-full flex items-center gap-2.5 px-4 py-3 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors select-none group/think-btn"
       >
         <Brain
@@ -39,7 +61,13 @@ export const ReasoningBlock: React.FC<ReasoningBlockProps> = ({ text, isStreamin
 
       {isExpanded && (
         <div className="border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/30 dark:bg-[#0a0a0a]/20">
-          <div className="px-3 py-3 text-[13px] leading-relaxed text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap">
+          <div
+            ref={contentRef}
+            data-testid="reasoning-block-content"
+            className={`px-3 py-3 text-[13px] leading-relaxed text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap ${
+              isStreaming ? 'max-h-32 overflow-y-auto' : ''
+            }`}
+          >
             {text}
           </div>
         </div>

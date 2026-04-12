@@ -587,6 +587,22 @@ const MarkdownComponents: any = {
 
     // State for thinking blocks - must be called unconditionally
     const [isExpanded, setIsExpanded] = useState(!shouldHighlight);
+    const prevShouldHighlightRef = React.useRef(shouldHighlight);
+
+    useEffect(() => {
+      if (!isThinkingBlock) {
+        prevShouldHighlightRef.current = shouldHighlight;
+        return;
+      }
+
+      const wasStreaming = !prevShouldHighlightRef.current && shouldHighlight;
+
+      if (wasStreaming) {
+        setIsExpanded(false);
+      }
+
+      prevShouldHighlightRef.current = shouldHighlight;
+    }, [isThinkingBlock, shouldHighlight]);
 
     // Handle thinking/reasoning blocks
     if (isThinkingBlock) {
