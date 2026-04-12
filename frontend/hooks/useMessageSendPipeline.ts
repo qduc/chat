@@ -536,8 +536,12 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
             if (event.type === 'text') {
               queueBufferedStreamingText(isPrimary, messageId, targetModel, event.value);
             } else if (event.type === 'message_event') {
-              // Accumulate structured message events
-              queueBufferedStreamingText(isPrimary, messageId, targetModel, '', event.value);
+              // Accumulate structured message events (defensively handle legacy batched payloads)
+              const messageEvents = Array.isArray(event.value) ? event.value : [event.value];
+              for (const messageEvent of messageEvents) {
+                if (!messageEvent) continue;
+                queueBufferedStreamingText(isPrimary, messageId, targetModel, '', messageEvent);
+              }
             } else if (event.type === 'conversation') {
               flushBufferedStreamingText(messageId, targetModel, isPrimary);
               if (isPrimary && event.value) {

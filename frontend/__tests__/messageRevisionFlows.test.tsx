@@ -282,4 +282,39 @@ describe('message revision flows', () => {
       regenerate_revision_count: 2,
     });
   });
+
+  test('non-streaming normalization emits singular message_event callbacks and returns message_events', () => {
+    const events: any[] = [];
+
+    const nonStreaming = processNonStreamingData(
+      {
+        choices: [
+          {
+            message: {
+              content: 'Final answer',
+              reasoning: 'Need to reason first',
+            },
+          },
+        ],
+      },
+      undefined,
+      (event) => events.push(event)
+    );
+
+    expect(nonStreaming.content).toBe('Final answer');
+    expect(nonStreaming.message_events).toEqual([
+      { seq: 1, type: 'reasoning', payload: { text: 'Need to reason first' } },
+      { seq: 2, type: 'content', payload: { text: 'Final answer' } },
+    ]);
+    expect(events.filter((event) => event.type === 'message_event')).toEqual([
+      {
+        type: 'message_event',
+        value: { seq: 1, type: 'reasoning', payload: { text: 'Need to reason first' } },
+      },
+      {
+        type: 'message_event',
+        value: { seq: 2, type: 'content', payload: { text: 'Final answer' } },
+      },
+    ]);
+  });
 });

@@ -33,6 +33,7 @@ export function processNonStreamingData(
   reasoning_summary?: string;
   reasoning_details?: any[];
   reasoning_tokens?: number;
+  message_events?: MessageEvent[];
   usage?: any;
 } {
   // Track if we processed text events (to avoid duplication with choices[0].message.content)
@@ -143,7 +144,9 @@ export function processNonStreamingData(
 
   const message_events = accumulator.getEvents();
   if (message_events.length > 0) {
-    onEvent?.({ type: 'message_event', value: message_events });
+    for (const messageEvent of message_events) {
+      onEvent?.({ type: 'message_event', value: messageEvent });
+    }
   }
 
   const usage: any = {};
@@ -195,7 +198,7 @@ export function processStreamChunk(
   usageSent?: boolean;
   reasoningDetails?: any[];
   reasoningTokens?: number;
-  message_event?: MessageEvent;
+  message_events?: MessageEvent[];
 } {
   const usageFromTimings = (timings?: any): any | undefined => {
     if (!timings || typeof timings !== 'object') return undefined;
@@ -372,16 +375,21 @@ export function processStreamChunk(
 
   if (reasoningStarted && delta?.content) {
     onToken?.(delta.content);
+    const messageEvent: MessageEvent = {
+      seq: 0,
+      type: 'content',
+      payload: { text: delta.content },
+    };
     onEvent?.({
       type: 'message_event',
-      value: { type: 'content', payload: { text: delta.content } },
+      value: messageEvent,
     });
 
     return {
       ...result,
       content: delta.content,
       reasoningStarted: false,
-      message_event: { seq: 0, type: 'content', payload: { text: delta.content } },
+      message_events: [messageEvent],
     };
   }
 
@@ -392,18 +400,21 @@ export function processStreamChunk(
       reasoningStarted = true;
     }
 
-    onToken?.(currentReasoning);
+    const messageEvent: MessageEvent = {
+      seq: 0,
+      type: 'reasoning',
+      payload: { text: currentReasoning },
+    };
     onEvent?.({ type: 'reasoning', value: currentReasoning });
     onEvent?.({
       type: 'message_event',
-      value: { type: 'reasoning', payload: { text: currentReasoning } },
+      value: messageEvent,
     });
 
     return {
       ...result,
-      content: currentReasoning,
       reasoningStarted,
-      message_event: { seq: 0, type: 'reasoning', payload: { text: currentReasoning } },
+      message_events: [messageEvent],
     };
   }
 
@@ -417,15 +428,20 @@ export function processStreamChunk(
     }
 
     onToken?.(delta.content);
+    const messageEvent: MessageEvent = {
+      seq: 0,
+      type: 'content',
+      payload: { text: delta.content },
+    };
     onEvent?.({
       type: 'message_event',
-      value: { type: 'content', payload: { text: delta.content } },
+      value: messageEvent,
     });
 
     return {
       ...result,
       content: delta.content,
-      message_event: { seq: 0, type: 'content', payload: { text: delta.content } },
+      message_events: [messageEvent],
     };
   }
 
@@ -443,31 +459,29 @@ export function processStreamChunk(
       reasoningStarted = false;
     }
 
+    const messageEvents: MessageEvent[] = [];
     for (const toolCall of delta.tool_calls) {
+      const messageEvent: MessageEvent = {
+        seq: 0,
+        type: 'tool_call',
+        payload: {
+          tool_call_id: toolCall.id,
+          tool_call_index: toolCall.index,
+        },
+      };
+
       onEvent?.({ type: 'tool_call', value: toolCall });
       onEvent?.({
         type: 'message_event',
-        value: {
-          type: 'tool_call',
-          payload: {
-            tool_call_id: toolCall.id,
-            tool_call_index: toolCall.index,
-          },
-        },
+        value: messageEvent,
       });
+      messageEvents.push(messageEvent);
     }
 
     return {
       ...result,
       reasoningStarted,
-      message_event: {
-        seq: 0,
-        type: 'tool_call',
-        payload: {
-          tool_call_id: delta.tool_calls[0].id,
-          tool_call_index: delta.tool_calls[0].index,
-        },
-      },
+      ...(messageEvents.length > 0 ? { message_events: messageEvents } : {}),
     };
   }
 
@@ -540,8 +554,10 @@ export async function handleStreamingResponse(
           lastSentUsage
         );
         if (result.content) content += result.content;
-        if (result.message_event) {
-          eventAccumulator.addEvent(result.message_event.type, result.message_event.payload);
+        if (Array.isArray(result.message_events) && result.message_events.length > 0) {
+          for (const messageEvent of result.message_events) {
+            eventAccumulator.addEvent(messageEvent.type, messageEvent.payload);
+          }
         }
         if (result.responseId) responseId = result.responseId;
         if (result.conversation) conversation = result.conversation;

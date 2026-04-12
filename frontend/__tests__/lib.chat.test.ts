@@ -191,6 +191,33 @@ describe('chat API', () => {
 
     expect(result.content).toContain('Then current time is 00:00');
   });
+
+  test('returns structured message_events for reasoning and preserves all tool calls in a chunk', async () => {
+    const lines = [
+      'data: {"choices":[{"delta":{"reasoning_content":"Let me inspect"}}]}\n\n',
+      'data: {"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"search","arguments":"{}"}},{"index":1,"id":"call_2","function":{"name":"lookup","arguments":"{}"}}]}}]}\n\n',
+      'data: {"choices":[{"delta":{"content":"Done"}}]}\n\n',
+      'data: [DONE]\n\n',
+    ];
+
+    jest.spyOn(global, 'fetch').mockResolvedValue(new Response(sseStream(lines), { status: 200 }));
+
+    const tokens: string[] = [];
+    const result = await chat.sendMessage({
+      messages: [{ role: 'user' as Role, content: 'hi' }],
+      providerId: 'default-provider',
+      onToken: (token) => tokens.push(token),
+    });
+
+    expect(tokens).toEqual(['Done']);
+    expect(result.content).toBe('Done');
+    expect(result.message_events).toEqual([
+      { seq: 1, type: 'reasoning', payload: { text: 'Let me inspect' } },
+      { seq: 2, type: 'tool_call', payload: { tool_call_id: 'call_1', tool_call_index: 0 } },
+      { seq: 3, type: 'tool_call', payload: { tool_call_id: 'call_2', tool_call_index: 1 } },
+      { seq: 4, type: 'content', payload: { text: 'Done' } },
+    ]);
+  });
 });
 
 describe('conversations API', () => {

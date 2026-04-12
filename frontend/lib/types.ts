@@ -354,7 +354,16 @@ export interface MessageEvent {
 }
 
 export interface ChatEvent {
-  type: 'text' | 'reasoning' | 'tool_call' | 'tool_output' | 'usage' | 'final' | 'generated_image';
+  type:
+    | 'text'
+    | 'reasoning'
+    | 'tool_call'
+    | 'tool_output'
+    | 'usage'
+    | 'final'
+    | 'generated_image'
+    | 'conversation'
+    | 'message_event';
   value: any;
 }
 
@@ -363,6 +372,7 @@ export interface ChatResponse {
   responseId?: string;
   conversation?: ConversationMeta;
   reasoning_summary?: string;
+  message_events?: MessageEvent[];
   usage?: {
     provider?: string;
     model?: string;
