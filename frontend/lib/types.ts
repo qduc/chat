@@ -113,6 +113,10 @@ export interface PendingState {
     lastUpdated: number;
     provider?: string;
     isEstimate: boolean;
+    activeGenerationMs?: number;
+    lastActivityStartedAt?: number | null;
+    activeToolCalls?: number;
+    durationMsOverride?: number;
   };
   retryStatus?: RetryStatus | null;
 }
