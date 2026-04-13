@@ -26,6 +26,7 @@ export function useChatStreaming() {
     streaming: false,
     error: undefined,
     abort: null,
+    retryStatus: null,
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -61,6 +62,7 @@ export function useChatStreaming() {
       streaming: false,
       error: undefined,
       abort: null,
+      retryStatus: null,
     });
     abortControllerRef.current = null;
     currentRequestIdRef.current = null;

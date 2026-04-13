@@ -9,12 +9,13 @@ import { UserMessage } from './UserMessage';
 import { AssistantMessage } from './AssistantMessage';
 import { MessageEditForm } from './MessageEditForm';
 import { hasAudio, extractTextFromContent } from '../../lib';
-import type { MessageProps } from './types';
+import type { MessageProps, ToolOutput } from './types';
+import type { ChatMessage } from '../../lib/types';
 
 // Deep comparison for comparisonResults objects to detect changes from linked conversations
 function deepEqualComparisonResults(
-  a: Record<string, { content: any; usage?: any; status: string; error?: string }> | undefined,
-  b: Record<string, { content: any; usage?: any; status: string; error?: string }> | undefined
+  a: ChatMessage['comparisonResults'],
+  b: ChatMessage['comparisonResults']
 ): boolean {
   if (a === b) return true;
   if (a === undefined || b === undefined) return false;
@@ -32,6 +33,9 @@ function deepEqualComparisonResults(
 
     // Compare content - stringify for deep comparison
     if (JSON.stringify(objA.content) !== JSON.stringify(objB.content)) return false;
+
+    // Compare message_events
+    if (JSON.stringify(objA.message_events) !== JSON.stringify(objB.message_events)) return false;
 
     // Compare usage
     if (JSON.stringify(objA.usage) !== JSON.stringify(objB.usage)) return false;
@@ -192,6 +196,7 @@ export const Message = React.memo<MessageProps>(
     // Only re-render if content changed or streaming state changed
     return (
       prev.message.content === next.message.content &&
+      prev.message.message_events === next.message.message_events &&
       prev.message.tool_calls === next.message.tool_calls &&
       prev.message.tool_outputs === next.message.tool_outputs &&
       // Deep compare comparisonResults to detect changes from linked conversations
@@ -200,6 +205,7 @@ export const Message = React.memo<MessageProps>(
       prev.message.edit_revision_count === next.message.edit_revision_count &&
       prev.message.regenerate_revision_count === next.message.regenerate_revision_count &&
       prev.isStreaming === next.isStreaming &&
+      prev.pending.retryStatus === next.pending.retryStatus &&
       prev.compareModels === next.compareModels &&
       prev.editRevision === next.editRevision &&
       prev.regenRevision === next.regenRevision &&

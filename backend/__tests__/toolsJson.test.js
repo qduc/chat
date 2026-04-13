@@ -95,7 +95,15 @@ describe('toolsJson', () => {
     // Mock persistence
     mockPersistence = {
       persist: true,
-      markError: jest.fn()
+      markError: jest.fn(),
+      appendReasoningText: jest.fn(),
+      addToolCalls: jest.fn(),
+      addToolOutputs: jest.fn(),
+      addMessageEvent: jest.fn(),
+      getContentLength: jest.fn(() => 0),
+      setUsage: jest.fn(),
+      setReasoningTokens: jest.fn(),
+      appendContent: jest.fn(),
     };
 
     // Mock config
@@ -110,6 +118,48 @@ describe('toolsJson', () => {
   });
 
   describe('handleToolsJson - main integration tests', () => {
+    test('persists reasoning content in non-streaming responses', async () => {
+      const body = {
+        messages: [{ role: 'user', content: 'Hello' }],
+        stream: false
+      };
+      const bodyIn = {};
+
+      // Mock LLM response with reasoning
+      const mockLLMResponse = {
+        id: 'msg_123',
+        model: 'gpt-4o',
+        choices: [{
+          message: {
+            role: 'assistant',
+            content: 'Here is the result.',
+            reasoning_content: 'I need to think carefully.'
+          },
+          finish_reason: 'stop'
+        }],
+        usage: { total_tokens: 10 }
+      };
+
+      createOpenAIRequest.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => mockLLMResponse
+      });
+
+      await handleToolsJson({
+        req: mockReq,
+        res: mockRes,
+        body,
+        bodyIn,
+        persistence: mockPersistence,
+        config: mockConfig
+      });
+
+      expect(mockPersistence.appendReasoningText).toHaveBeenCalledWith('I need to think carefully.');
+      // Also should check res.json was called
+      expect(mockRes.json).toHaveBeenCalled();
+    });
+
     test('handles simple non-streaming request without tools', async () => {
       const body = {
         messages: [{ role: 'user', content: 'Hello' }],

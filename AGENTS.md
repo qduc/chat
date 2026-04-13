@@ -4,7 +4,7 @@ This document provides essential knowledge for AI agents to be immediately produ
 
 ## Project Overview
 
-**ChatForge** is a modern chat application with a Next.js frontend and Node.js backend, designed as an OpenAI API proxy with enhanced features like conversation persistence, tool orchestration, multi-provider support, JWT authentication, user-scoped multi-tenancy, image/audio/file uploads, advanced reasoning controls, prompt caching optimization, persistent memory via journal tool, model comparison mode, conversation forking, and Electron desktop app support.
+**ChatForge** is a modern chat application with a Next.js frontend and Node.js backend, designed as an OpenAI API proxy with enhanced features like conversation branching, tool orchestration, multi-provider support, JWT authentication, user-scoped multi-tenancy, image/audio/file uploads, advanced reasoning controls, prompt caching optimization, persistent memory via journal tool, model comparison mode, n-way judge evaluation, conversation search, and Electron desktop app support.
 
 ## Architecture Overview
 
@@ -61,6 +61,10 @@ chat/
 18. **Judge/Evaluation System**: Automated model response comparison with judge models providing scores and reasoning
 19. **Custom Request Parameters**: User-defined API parameters with multi-select support for advanced configuration
 20. **Usage Tracking**: Comprehensive timing metrics and token usage tracking for performance insights
+21. **Conversation Branching**: Support for editing messages and managing multiple conversation paths with revision history
+22. **Conversation Search**: Full-text search for finding specific messages and conversations
+23. **Deep Reasoning Support**: Specialized handling for "thought" blocks and reasoning effort controls
+24. **Right Sidebar State**: Persistent workspace management via localized sidebar state
 
 ## Development Workflow
 
@@ -108,6 +112,18 @@ chat/
 ./dev.sh migrate fresh    # Reset database and reapply all migrations
 ```
 
+### Database Access
+```bash
+# Access SQLite database via CLI
+./dev.sh exec backend sqlite3 /data/dev.db
+
+# Run a specific query
+./dev.sh exec backend sqlite3 /data/dev.db "SELECT * FROM users;"
+
+# List tables
+./dev.sh exec backend sqlite3 /data/dev.db ".tables"
+```
+
 ### Additional Services
 ```bash
 # Adminer database management (available at http://localhost:3080)
@@ -129,6 +145,7 @@ chat/
 ./prod.sh exec <service> <command>  # Execute command in container
 ```
 > In production there is a single `app` service. Most `prod.sh exec` commands therefore look like `./prod.sh exec app <command>`.
+> The production database is located at `/data/prod.db`. You can access it via CLI using: `./prod.sh exec app sqlite3 /data/prod.db`.
 
 ### Release Management
 ```bash
@@ -167,14 +184,17 @@ chat/
 - Evaluation system for judge-based model comparison with scores and reasoning
 - Custom request parameters stored per user for advanced API configuration
 - Message IDs use UUID format consistently across frontend and backend
+- Conversation branching with revision history pinned to request branches
+- Periodic background cleanup of upstream logs to prevent disk bloat
 
 ### Frontend Patterns
 
 **State Management Philosophy**:
-- Simplified state management with `useChat` hook using React `useState`
+- Modular state management: `useChat` hook refactored into specialized controller hooks (`useMessageSendPipeline`, `useDraftPersistence`, `useConversationHydration`)
 - Direct state manipulation without complex reducer patterns
 - Encapsulated state and actions in a single custom hook
 - URL state synchronization for navigation
+- Reasoning block filtering: `extractAssistantCopyText` utility for clean copy-paste without thinking blocks
 
 **API Integration Philosophy**:
 - Centralized HTTP client (`lib/http.ts`) for consistent error handling
@@ -256,6 +276,9 @@ chat/
 - **Custom Request Parameters**: User-configurable API parameters with multi-select support stored in user settings
 - **Usage Tracking**: Comprehensive timing metrics including prompt tokens (with cached token accounting) and performance insights
 - **Message ID Protocol**: Consistent UUID-based message IDs for assistant responses across all components
+- **Conversation Branching**: Messages are pinned to specific branches; edits create new revisions while preserving the original path
+- **Provider Types**: Explicit choice between `openai-responses` (Responses API) and `openai-completions` (Legacy/OpenRouter/Local)
+- **Reasoning Effort**: Standardized control of model reasoning depth via `reasoning_effort` parameter (none to xhigh)
 
 ## Finding Your Way Around
 
@@ -265,6 +288,10 @@ chat/
 **Other hooks**:
   - `frontend/hooks/useSystemPrompts.ts` - System prompt management
   - `frontend/hooks/useSecureImageUrl.ts` - Secure image URL handling
+  - `frontend/hooks/useMessageSendPipeline.ts` - Message transmission and tool orchestration logic
+  - `frontend/hooks/useDraftPersistence.ts` - LocalStorage-backed draft management
+  - `frontend/hooks/useConversationHydration.ts` - Logic for loading and preparing conversation state
+  - `frontend/hooks/useChatV2Controller.ts` - Main controller orchestrating UI-hook interactions
 **Core utilities**: Check `frontend/lib/` for shared functionality:
   - `http.ts` - Centralized HTTP client
   - `streaming.ts` - Streaming utilities
@@ -281,6 +308,7 @@ chat/
   - Settings: `SettingsModal.tsx`
   - Model selection: `ModelSelector.tsx`, `CompareSelector.tsx` (unified base component pattern)
   - UI primitives: `components/ui/`
+  - Search: `ConversationSearch.tsx`
   - Toast notifications: Check toast integration in relevant components
 **Image handling**: Check `frontend/components/ui/ImagePreview.tsx` (exports both `ImagePreview` and `ImageUploadZone`)
 **Audio handling**: Check `frontend/components/ui/AudioPreview.tsx` (exports `AudioPreview`) and `frontend/lib/audioUtils.ts`
@@ -292,8 +320,15 @@ chat/
 **Electron app**: Check `electron/` directory for desktop app packaging and configuration
 **Model comparison**: Check `frontend/hooks/useChat.ts` for comparison mode state management
 **Conversation forking**: Check conversation forking logic in `frontend/components/` message toolbar components
-**Documentation**: Check `docs/` for ADRs and detailed specs
-**Backend API Specification**: Check `docs/backend_api_spec.md` for the complete backend API specification
+**Documentation Map**: Comprehensive guides in the `docs/` folder:
+  - [ARCHITECTURE.md](file:///Users/qduc/src/chat/docs/ARCHITECTURE.md): High-level tech stack, design principles, and database schema.
+  - [backend_api_spec.md](file:///Users/qduc/src/chat/docs/backend_api_spec.md): Complete backend REST API specification.
+  - [backend_api_chat_completions_spec.md](file:///Users/qduc/src/chat/docs/backend_api_chat_completions_spec.md): Deep dive into the OpenAI-compatible chat endpoint.
+  - [tool_orchestration_deep_dive.md](file:///Users/qduc/src/chat/docs/tool_orchestration_deep_dive.md): Details on tool execution, streaming, and multi-turn loops.
+  - [ENVIRONMENT_VARIABLES.md](file:///Users/qduc/src/chat/docs/ENVIRONMENT_VARIABLES.md): Full reference for backend and frontend configuration.
+  - [DEVELOPMENT.md](file:///Users/qduc/src/chat/docs/DEVELOPMENT.md): Advanced setup, contribution workflows, and testing guide.
+  - [frontend_code_flow.md](file:///Users/qduc/src/chat/docs/frontend_code_flow.md) & [backend_code_flow.md](file:///Users/qduc/src/chat/docs/backend_code_flow.md): Execution paths and service-specific logic.
+  - [TOOLS.md](file:///Users/qduc/src/chat/docs/TOOLS.md): Technical guide for implementing and registering new tools.
 **Linting**: ESLint configs in both `frontend/` and `backend/` directories, Husky hooks in `.husky/`
 **Upstream Logging**: Request and response of upstream API are in `backend/logs/` folder. These files are very long, only read a dozen of lines from the bottom. You can read them without executing in docker container, they have been mounted to this project directory.
 

@@ -493,8 +493,8 @@ Thanks!`;
 
       expect(segments).toHaveLength(2);
       expect(segments[0]).toEqual({
-        kind: 'text',
-        text: '<thinking>Let me think...</thinking>',
+        kind: 'reasoning',
+        text: 'Let me think...',
       });
       expect(segments[1]).toEqual({ kind: 'text', text: 'Final answer' });
     });

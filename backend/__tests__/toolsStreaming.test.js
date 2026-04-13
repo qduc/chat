@@ -36,6 +36,7 @@ await jest.unstable_mockModule(streamUtilsPath, () => ({
   createOpenAIRequest: jest.fn(),
   writeAndFlush: jest.fn(),
   createChatCompletionChunk: jest.fn(),
+  writeSseEvent: jest.fn(),
 }));
 
 const providersIndexPath = new URL('../src/lib/providers/index.js', import.meta.url).href;
@@ -65,7 +66,7 @@ const { handleToolsStreaming } = await import('../src/lib/toolsStreaming.js');
 
 // Import the mocked functions for setup
 const { parseSSEStream } = await import('../src/lib/sseParser.js');
-const { createOpenAIRequest, writeAndFlush, createChatCompletionChunk } = await import('../src/lib/streamUtils.js');
+const { createOpenAIRequest, writeAndFlush, createChatCompletionChunk, writeSseEvent } = await import('../src/lib/streamUtils.js');
 const { setupStreamingHeaders } = await import('../src/lib/streamingHandler.js');
 const {
   buildConversationMessagesAsync,
@@ -121,6 +122,14 @@ describe('toolsStreaming', () => {
     mockPersistence = {
       persist: true,
       markError: jest.fn(),
+      appendReasoningText: jest.fn(),
+      addToolCalls: jest.fn(),
+      addToolOutputs: jest.fn(),
+      addMessageEvent: jest.fn(),
+      getContentLength: jest.fn(() => 0),
+      setUsage: jest.fn(),
+      setReasoningTokens: jest.fn(),
+      appendContent: jest.fn(),
     };
 
     // Mock config
@@ -1079,6 +1088,81 @@ describe('toolsStreaming', () => {
   });
 
   describe('Iterative Orchestration', () => {
+    test('persists reasoning and tools during JSON fallback loop iterations', async () => {
+      const body = {
+        messages: [{ role: 'user', content: 'Do task' }],
+        stream: true, // We requested stream...
+        tools: [{ type: 'function', function: { name: 'get_time' } }],
+      };
+      const bodyIn = {};
+
+      const toolCallId = 'call_abc';
+      // First iteration returns a complete JSON object (not a stream)
+      createOpenAIRequest.mockImplementationOnce(() => Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: async () => ({
+          id: 'res_1',
+          choices: [{
+            finish_reason: 'tool_calls',
+            message: {
+              role: 'assistant',
+              reasoning_content: 'Let me think.',
+              content: 'calling tool',
+              tool_calls: [{
+                id: toolCallId,
+                type: 'function',
+                function: { name: 'get_time', arguments: '{}' }
+              }]
+            }
+          }]
+        })
+      }));
+
+      // Mock the execution of the tool call
+      executeToolCall.mockResolvedValueOnce('{"time":"12:00"}');
+
+      // Second iteration returns final JSON response
+      createOpenAIRequest.mockImplementationOnce(() => Promise.resolve({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: async () => ({
+          id: 'res_2',
+          choices: [{
+            finish_reason: 'stop',
+            message: {
+              role: 'assistant',
+              content: 'The time is 12:00'
+            }
+          }]
+        })
+      }));
+
+      await handleToolsStreaming({
+        req: mockReq,
+        res: mockRes,
+        body,
+        bodyIn,
+        persistence: mockPersistence,
+        config: mockConfig
+      });
+
+      // Verify reasoning is extracted and persisted
+      expect(mockPersistence.appendReasoningText).toHaveBeenCalledWith('Let me think.');
+
+      // Verify tool call was buffered down to persistence
+      expect(mockPersistence.addToolCalls).toHaveBeenCalledWith(expect.arrayContaining([
+        expect.objectContaining({ id: toolCallId })
+      ]));
+
+      // Verify tool outputs were buffered
+      expect(mockPersistence.addToolOutputs).toHaveBeenCalledWith(expect.arrayContaining([
+        expect.objectContaining({ tool_call_id: toolCallId, output: '{"time":"12:00"}' })
+      ]));
+    });
+
     test('executes multiple iterations with tool calls', async () => {
       const body = {
         messages: [{ role: 'user', content: 'Get time then calculate' }],

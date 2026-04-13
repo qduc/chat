@@ -32,6 +32,19 @@ function setupStreamEventHandlers({
   let completed = false;
 
   let abortHandler = null;
+  const markDisconnectedError = () => {
+    if (completed) return;
+    try {
+      if (abortContext?.cancelState?.cancelled) {
+        return;
+      }
+      if (persistence && persistence.persist) {
+        persistence.markError();
+      }
+    } catch {
+      // Ignore errors
+    }
+  };
   const finalize = (overrideFinishReason = null) => {
     if (completed) return;
     completed = true;
@@ -96,32 +109,18 @@ function setupStreamEventHandlers({
   });
 
   req.on('close', () => {
-    if (res.writableEnded) return;
-    try {
-      if (abortContext?.cancelState?.cancelled) {
-        return;
-      }
-      if (persistence && persistence.persist) {
-        persistence.markError();
-      }
-    } catch {
-      // Ignore errors
-    }
+    markDisconnectedError();
   });
   // Also handle response socket close to catch client aborts in all environments
   res.on('close', () => {
-    if (res.writableEnded) return;
-    try {
-      if (abortContext?.cancelState?.cancelled) {
-        return;
-      }
-      if (persistence && persistence.persist) {
-        persistence.markError();
-      }
-    } catch {
-      // Ignore errors
-    }
+    markDisconnectedError();
   });
+  const responseSocket = res.socket || req.socket || null;
+  if (responseSocket && typeof responseSocket.on === 'function') {
+    responseSocket.on('close', () => {
+      markDisconnectedError();
+    });
+  }
 
   if (abortContext?.signal) {
     abortHandler = () => {
@@ -266,6 +265,18 @@ function processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason
   if (Array.isArray(message?.tool_calls) && message.tool_calls.length > 0) {
     for (const toolCall of message.tool_calls) {
       const idx = toolCall.index ?? toolCallMap.size;
+      const isNewToolCall = !toolCallMap.has(idx);
+
+      if (isNewToolCall && persistence) {
+        // Find existing index in original tool calls if possible, or use currentIndex
+        if (typeof persistence.addMessageEvent === 'function') {
+          persistence.addMessageEvent('tool_call', {
+            tool_call_id: toolCall.id ?? null,
+            tool_call_index: idx,
+          });
+        }
+      }
+
       toolCallMap.set(idx, toolCall);
     }
   }
@@ -294,6 +305,18 @@ export async function handleRegularStreaming({
   let toolCallMap = new Map(); // Accumulate streamed tool calls
   let generatedImagesBuffer = []; // Accumulate generated images during streaming
   let seenImageUrls = new Set(); // Track seen image URLs for O(1) duplicate detection
+
+  setupStreamEventHandlers({
+    upstream,
+    req,
+    res,
+    persistence,
+    lastFinishReason,
+    toolCallMap,
+    generatedImagesBuffer,
+    abortContext,
+    onComplete,
+  });
 
   // Emit conversation metadata upfront if available so clients receive
   // the conversation id before any model chunks or [DONE]
@@ -366,17 +389,5 @@ export async function handleRegularStreaming({
     } catch (e) {
       logger.error('[stream data] error', e);
     }
-  });
-
-  setupStreamEventHandlers({
-    upstream,
-    req,
-    res,
-    persistence,
-    lastFinishReason,
-    toolCallMap,
-    generatedImagesBuffer,
-    abortContext,
-    onComplete,
   });
 }

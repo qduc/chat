@@ -12,6 +12,7 @@ export type ToolOutput = NonNullable<ChatMessage['tool_outputs']>[number];
 // Segment types for rendering assistant messages
 export type AssistantSegment =
   | { kind: 'text'; text: string }
+  | { kind: 'reasoning'; text: string }
   | { kind: 'tool_call'; toolCall: any; outputs: ToolOutput[] }
   | { kind: 'images'; images: ImageContent[] };
 

@@ -71,6 +71,7 @@ export type StreamEventType =
   | 'tool_output'
   | 'conversation'
   | 'usage'
+  | 'message_event'
   | 'generated_image';
 
 /**

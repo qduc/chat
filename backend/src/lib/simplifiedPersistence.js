@@ -74,6 +74,12 @@ export class SimplifiedPersistence {
       enabled: config?.persistence?.checkpoint?.enabled ?? true,
     };
     this.upstreamProvider = null;
+
+    // Branch revert state
+    this.initialActiveBranchId = null;
+    this.branchOperationType = null;
+    this.parentBranchId = null;
+    this.isNewBranchCreated = false;
   }
 
   /**
@@ -103,6 +109,7 @@ export class SimplifiedPersistence {
     this.regenerateRevisionCount = null;
     this.requestBranchId = branchId;
     this.activeBranchId = branchId;
+    this.initialActiveBranchId = null; // Will be set after _handleConversation
     this._latestSyncMappings = [];
 
     // Check if persistence is enabled
@@ -135,7 +142,8 @@ export class SimplifiedPersistence {
       return result;
     }
     const isNewConversation = result.isNewConversation;
-    this.requestBranchId = this.requestBranchId || this.conversationMeta?.active_branch_id || null;
+    this.initialActiveBranchId = this.conversationMeta?.active_branch_id || null;
+    this.requestBranchId = this.requestBranchId || this.initialActiveBranchId;
     this.activeBranchId = this.requestBranchId;
 
     // Process message history and generate title if needed
@@ -245,6 +253,9 @@ export class SimplifiedPersistence {
       if (syncResult?.branchId) {
         this.requestBranchId = syncResult.branchId;
         this.activeBranchId = syncResult.branchId;
+        this.branchOperationType = syncResult.branchOperationType;
+        this.parentBranchId = syncResult.parentBranchId;
+        this.isNewBranchCreated = syncResult.isNewBranch;
       }
 
       if (syncResult?.conversationId && syncResult.conversationId !== this.conversationId) {
@@ -741,6 +752,12 @@ export class SimplifiedPersistence {
    */
   recordAssistantFinal({ finishReason = 'stop', responseId = null } = {}) {
     if (!this.persist || !this.conversationId || this.assistantSeq === null) return;
+    if (this.finalized) return;
+    this.finalized = true;
+    
+    // Check if we should revert an empty regeneration branch
+    this.revertIfEmpty();
+
     const finalContent = this._finalizeContentWithImages();
       if (this.currentMessageId) {
         // Update existing draft to final
@@ -1066,6 +1083,9 @@ export class SimplifiedPersistence {
     if (!this.persist || !this.conversationId || this.assistantSeq === null) return;
     if (this.finalized || this.errored) return;
 
+    // Check if we should revert an empty regeneration branch
+    this.revertIfEmpty();
+
     try {
       // Prefer to update the existing assistant message row (by cached id or lookup) to preserve partial content
       let targetId = this.currentMessageId;
@@ -1202,6 +1222,56 @@ export class SimplifiedPersistence {
     } catch (error) {
       logger.error('[SimplifiedPersistence] Failed to save checkpoint:', error);
       // Don't throw - streaming must continue
+    }
+  }
+
+  /**
+   * Revert to the initial branch if the assistant response is empty and it was a regeneration
+   * @private
+   */
+  revertIfEmpty() {
+    if (!this.persist || !this.isNewBranchCreated || !this.initialActiveBranchId) return;
+    if (this.branchOperationType !== 'regenerate') return;
+
+    const isEmpty =
+      (!this.assistantBuffer || this.assistantBuffer.trim().length === 0) &&
+      (!this.assistantContentJson || (Array.isArray(this.assistantContentJson) && this.assistantContentJson.length === 0)) &&
+      (!this.toolCalls || this.toolCalls.length === 0) &&
+      (!this.toolOutputs || this.toolOutputs.length === 0) &&
+      (!this.generatedImages || this.generatedImages.length === 0) &&
+      (!this.reasoningTextBuffer || this.reasoningTextBuffer.trim().length === 0) &&
+      (!this.reasoningDetails || (Array.isArray(this.reasoningDetails) && this.reasoningDetails.length === 0));
+
+    if (isEmpty) {
+      const branchToDelete = this.activeBranchId;
+      logger.info('[SimplifiedPersistence] Reverting and deleting empty regeneration branch', {
+        conversationId: this.conversationId,
+        revertingTo: this.initialActiveBranchId,
+        emptyBranchId: branchToDelete,
+      });
+
+      try {
+        // Switch conversation's active branch back to parent
+        this.conversationManager.revertActiveBranch(
+          this.conversationId,
+          this.userId,
+          this.initialActiveBranchId
+        );
+
+        // Update in-memory state before deletion
+        this.activeBranchId = this.initialActiveBranchId;
+        this.requestBranchId = this.initialActiveBranchId;
+        this.isNewBranchCreated = false;
+
+        // Clean up the unused branch and its drafted messages
+        this.conversationManager.deleteBranch(
+          this.conversationId,
+          this.userId,
+          branchToDelete
+        );
+      } catch (error) {
+        logger.error('[SimplifiedPersistence] Failed to revert empty branch:', error);
+      }
     }
   }
 

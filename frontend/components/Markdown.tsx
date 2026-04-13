@@ -119,7 +119,48 @@ function shouldEscapeCurrencySequence(remainder: string): boolean {
     }
 
     if (char === '$') {
-      return false;
+      return false; // Mathematical block closed, DO NOT escape
+    }
+
+    if ('+=<>\\^'.includes(char)) {
+      return false; // Mathematical operator found!
+    }
+
+    if (char === '/') {
+      const match = remainder.slice(index + 1).match(/^[a-zA-Z]+/);
+      if (match) {
+        const word = match[0].toLowerCase();
+        const currencyUnits = [
+          'month',
+          'mo',
+          'year',
+          'yr',
+          'week',
+          'wk',
+          'day',
+          'hr',
+          'user',
+          'person',
+          'token',
+          'tokens',
+          'gb',
+          'mb',
+          'tb',
+          's',
+        ];
+        if (currencyUnits.includes(word)) {
+          return true;
+        }
+      }
+      return false; // Likely math division
+    }
+
+    if (char === '-' || char === '–' || char === '—' || char === '*' || char === '_') {
+      const nextChar = remainder[index + 1] || '';
+      if (nextChar === char) return true; // --, **, __
+      if (/[0-9]/.test(nextChar) || nextChar === '$') return true; // Range like $10-20 or $10-$20
+      if (!nextChar || ' \t,.;:!?)]'.includes(nextChar)) return true; // End of string or punctuation
+      return false; // Likely math (e.g. $2-x, $2*x)
     }
 
     if (char === ' ' || char === '\t') {
@@ -131,6 +172,48 @@ function shouldEscapeCurrencySequence(remainder: string): boolean {
 
       if (trimmed[0] === '\n') {
         return hasDigit;
+      }
+
+      // Check for math operator after space
+      if (/^[-+/*=<>^\\_]/.test(trimmed)) {
+        // If it's * or _, check if it's potentially markdown (e.g. $20 *word*)
+        if (/^[*_]{1,2}[a-zA-Z0-9]/.test(trimmed)) {
+          // Check if there's a matching closing tag later in the string
+          // This is a heuristic, but often reliable for markdown vs math
+          return true;
+        }
+
+        if (trimmed.startsWith('/')) {
+          const match = trimmed
+            .slice(1)
+            .trimStart()
+            .match(/^[a-zA-Z]+/);
+          if (match) {
+            const word = match[0].toLowerCase();
+            const currencyUnits = [
+              'month',
+              'mo',
+              'year',
+              'yr',
+              'week',
+              'wk',
+              'day',
+              'hr',
+              'user',
+              'person',
+              'token',
+              'tokens',
+              'gb',
+              'mb',
+              'tb',
+              's',
+            ];
+            if (currencyUnits.includes(word)) {
+              return true;
+            }
+          }
+        }
+        return false;
       }
 
       const lowerTrimmed = trimmed.toLowerCase();
@@ -564,6 +647,22 @@ const MarkdownComponents: any = {
 
     // State for thinking blocks - must be called unconditionally
     const [isExpanded, setIsExpanded] = useState(!shouldHighlight);
+    const prevShouldHighlightRef = React.useRef(shouldHighlight);
+
+    useEffect(() => {
+      if (!isThinkingBlock) {
+        prevShouldHighlightRef.current = shouldHighlight;
+        return;
+      }
+
+      const wasStreaming = !prevShouldHighlightRef.current && shouldHighlight;
+
+      if (wasStreaming) {
+        setIsExpanded(false);
+      }
+
+      prevShouldHighlightRef.current = shouldHighlight;
+    }, [isThinkingBlock, shouldHighlight]);
 
     // Handle thinking/reasoning blocks
     if (isThinkingBlock) {
@@ -761,14 +860,18 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
   // Transform thinking blocks and reasoning summaries into collapsible sections
   // First, handle incomplete thinking blocks by temporarily adding closing tags
   const processedText = useMemo(() => {
-    let textToProcess = escapeCurrencyDollarSigns(normalizeLatexDelimiters(throttledText));
+    let textToProcess = normalizeLatexDelimiters(escapeCurrencyDollarSigns(throttledText));
 
     // Convert single newlines to hard breaks for better text formatting
     // Split by code blocks and inline code to avoid affecting them
-    const parts = textToProcess.split(/(```[\s\S]*?```|`[^`]*`)/g);
+    const parts = textToProcess.split(CODE_FENCE_PATTERN);
     textToProcess = parts
       .map((part) => {
-        if (part.startsWith('```') || (part.startsWith('`') && part.endsWith('`'))) {
+        if (
+          part.startsWith('```') ||
+          part.startsWith('~~~') ||
+          (part.startsWith('`') && part.endsWith('`'))
+        ) {
           // This is a code block or inline code, leave as-is
           return part;
         } else {
@@ -778,53 +881,7 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
       })
       .join('');
 
-    // Check for incomplete thinking blocks (both <thinking> and <think> variants)
-    // Count opening and closing tags to ensure they match
-    const openingThinkingTags = (textToProcess.match(/<thinking>/g) || []).length;
-    const closingThinkingTags = (textToProcess.match(/<\/thinking>/g) || []).length;
-    const openingThinkTags = (textToProcess.match(/<think>/g) || []).length;
-    const closingThinkTags = (textToProcess.match(/<\/think>/g) || []).length;
-    const hasIncompleteThinking = openingThinkingTags > closingThinkingTags;
-    const hasIncompleteThink = openingThinkTags > closingThinkTags;
-
-    if (hasIncompleteThinking) {
-      // Only add closing tag if we have unmatched opening tags
-      // Find the last <thinking> without a matching </thinking>
-      textToProcess = textToProcess.replace(
-        /<thinking>(?![\s\S]*<\/thinking>)([\s\S]*)$/,
-        '<thinking>$1</thinking>'
-      );
-    }
-
-    if (hasIncompleteThink) {
-      // Only add closing tag if we have unmatched opening tags
-      // Find the last <think> without a matching </think>
-      textToProcess = textToProcess.replace(
-        /<think>(?![\s\S]*<\/think>)([\s\S]*)$/,
-        '<think>$1</think>'
-      );
-    }
-
-    return textToProcess
-      .replace(/<thinking>([\s\S]*?)<\/thinking>/g, (match, content) => {
-        // Convert to a custom code block that we can detect.
-        // Use a safe fence length to avoid premature closure when content includes ``` or ~~~.
-        const trimmed = content.trim();
-        const fence = buildThinkingFence(trimmed);
-        return `\n${fence.opening}\n${trimmed}\n${fence.closing}\n`;
-      })
-      .replace(/<think>([\s\S]*?)<\/think>/g, (match, content) => {
-        // Convert to a custom code block that we can detect (same as thinking)
-        const trimmed = content.trim();
-        const fence = buildThinkingFence(trimmed);
-        return `\n${fence.opening}\n${trimmed}\n${fence.closing}\n`;
-      })
-      .replace(/<reasoning_summary>([\s\S]*?)<\/reasoning_summary>/g, (match, content) => {
-        // Convert reasoning summary to thinking block (reuse same rendering logic)
-        const trimmed = content.trim();
-        const fence = buildThinkingFence(trimmed);
-        return `\n${fence.opening}\n${trimmed}\n${fence.closing}\n`;
-      });
+    return textToProcess;
   }, [throttledText]);
 
   // Split text into blocks to prevent re-rendering of stable content

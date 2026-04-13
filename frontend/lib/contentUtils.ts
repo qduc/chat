@@ -288,6 +288,7 @@ type ToolOutput = NonNullable<ChatMessage['tool_outputs']>[number];
 // Segment types for rendering assistant messages
 export type AssistantSegment =
   | { kind: 'text'; text: string }
+  | { kind: 'reasoning'; text: string }
   | { kind: 'tool_call'; toolCall: any; outputs: ToolOutput[] }
   | { kind: 'images'; images: ImageContent[] };
 
@@ -317,6 +318,21 @@ export function formatUsageLabel(usage?: ChatMessage['usage']): string | null {
   }
 
   return `⇅ ${total}`;
+}
+
+/**
+ * Extract text for copying from assistant segments, excluding thinking and tool calls.
+ */
+export function extractAssistantCopyText(segments: AssistantSegment[]): string {
+  return segments
+    .filter((s) => s.kind === 'text')
+    .map((s) => {
+      const text = (s as any).text || '';
+      return text.trim();
+    })
+    .filter((text) => text.length > 0)
+    .join('\n\n')
+    .trim();
 }
 
 /**
@@ -389,7 +405,7 @@ export function buildAssistantSegments(message: ChatMessage): AssistantSegment[]
       if (event.type === 'reasoning') {
         const text = typeof event.payload?.text === 'string' ? event.payload.text : '';
         if (text) {
-          segments.push({ kind: 'text', text: `<thinking>${text}</thinking>` });
+          segments.push({ kind: 'reasoning', text });
         }
         continue;
       }

@@ -36,10 +36,10 @@ describe('POST /v1/chat/completions (proxy)', () => {
     const res = await request(app)
       .post('/v1/chat/completions')
       .send({ messages: [{ role: 'user', content: 'Hello' }], stream: false });
-    // With retry logic, 500 errors are retried and eventually returned as 500 (not translated to 502)
-    assert.equal(res.status, 500);
-    // The error message includes "Upstream API error" from retry mechanism
-    assert.ok(res.body.message.includes('Upstream API error'));
+    // The proxy normalizes exhausted upstream failures into a structured 502 response.
+    assert.equal(res.status, 502);
+    assert.equal(res.body.error, 'upstream_error');
+    assert.equal(res.body.upstream?.status, 500);
   });
 
   test('delivers streaming response progressively when stream=true', async () => {
@@ -73,7 +73,9 @@ describe('POST /v1/chat/completions (proxy)', () => {
       .post('/v1/chat/completions')
       .set('x-session-id', sessionId)
       .send({ messages: [{ role: 'user', content: 'Hello' }], conversation_id: 'conv1', stream: true });
-    assert.ok(res.status >= 400, 'Should return error status when upstream fails');
-    assert.ok(res.body.error, 'Should provide error information to user');
+    assert.equal(res.status, 200, 'Should keep SSE protocol when upstream fails');
+    assert.match(res.headers['content-type'] || '', /text\/event-stream/);
+    assert.ok(res.text.includes('[Error:'), 'Should stream an error chunk to the user');
+    assert.ok(res.text.includes('[DONE]'), 'Should terminate the SSE stream');
   });
 });

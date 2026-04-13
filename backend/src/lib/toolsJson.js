@@ -280,6 +280,17 @@ class JsonResponseHandler extends ResponseHandler {
       persistence.setUsage(normalizedUsage);
     }
 
+    const reasoning = message?.reasoning_content || message?.reasoning;
+    if (reasoning) {
+      if (persistence && typeof persistence.appendReasoningText === 'function') {
+        persistence.appendReasoningText(reasoning);
+      }
+      this.collectedEvents.push({
+        type: 'reasoning',
+        value: reasoning
+      });
+    }
+
     if (message?.content) {
       this.collectedEvents.push({
         type: 'text',
@@ -502,6 +513,20 @@ async function streamResponse(llmResponse, res, persistence, model) {
 
     // Non-streaming response, convert to streaming format
     const message = llmResponse?.choices?.[0]?.message;
+
+    const reasoningDelta = message?.reasoning_content || message?.reasoning;
+    if (reasoningDelta) {
+      streamDeltaEvent({
+        res,
+        model: llmResponse.model || model,
+        event: { reasoning_content: reasoningDelta },
+        prefix: 'unified',
+      });
+      if (persistence && typeof persistence.appendReasoningText === 'function') {
+        persistence.appendReasoningText(reasoningDelta);
+      }
+    }
+
     if (message?.content) {
       streamDeltaEvent({
         res,

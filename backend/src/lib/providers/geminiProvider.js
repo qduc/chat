@@ -151,7 +151,10 @@ export class GeminiProvider extends BaseProvider {
 
         return res;
       },
-      config.providerConfig.retry
+      {
+        ...config.providerConfig.retry,
+        onRetry: context.onRetry,
+      }
     );
 
     // Log upstream response

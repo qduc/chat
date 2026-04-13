@@ -144,6 +144,7 @@ export async function providerChatCompletions(config, requestBody, options = {})
   const provider = await createProvider(config, options);
   const context = {
     providerId: options.providerId || provider.providerId,
+    ...(typeof options.onRetry === 'function' ? { onRetry: options.onRetry } : {}),
     ...options.context,
   };
   return provider.sendRawRequest(requestBody, context);

@@ -114,8 +114,20 @@ export interface PendingState {
     provider?: string;
     isEstimate: boolean;
   };
+  retryStatus?: RetryStatus | null;
 }
 
+export interface RetryStatus {
+  source?: 'provider' | 'previous_response_id';
+  modelId?: string | null;
+  providerId?: string | null;
+  status?: number | null;
+  attempt?: number | null;
+  maxRetries?: number | null;
+  retryAfterMs?: number | null;
+  errorMessage?: string | null;
+  errorPreview?: string | null;
+}
 export interface EvaluationDraft {
   id: string;
   messageId: string;
@@ -354,7 +366,17 @@ export interface MessageEvent {
 }
 
 export interface ChatEvent {
-  type: 'text' | 'reasoning' | 'tool_call' | 'tool_output' | 'usage' | 'final' | 'generated_image';
+  type:
+    | 'text'
+    | 'reasoning'
+    | 'tool_call'
+    | 'tool_output'
+    | 'usage'
+    | 'final'
+    | 'generated_image'
+    | 'conversation'
+    | 'message_event'
+    | 'retry_status';
   value: any;
 }
 
@@ -363,6 +385,7 @@ export interface ChatResponse {
   responseId?: string;
   conversation?: ConversationMeta;
   reasoning_summary?: string;
+  message_events?: MessageEvent[];
   usage?: {
     provider?: string;
     model?: string;

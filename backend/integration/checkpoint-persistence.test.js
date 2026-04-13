@@ -81,7 +81,11 @@ describe('Checkpoint persistence integration', () => {
             },
           },
           (res) => {
-            res.once('data', () => {
+            res.on('data', (chunk) => {
+              const text = String(chunk);
+              if (!text.includes('"choices"')) {
+                return;
+              }
               req.destroy();
               res.destroy();
               done();
@@ -96,7 +100,7 @@ describe('Checkpoint persistence integration', () => {
       });
     });
 
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await new Promise((resolve) => setTimeout(resolve, 300));
 
     const conversation = fetchLatestConversation(userId);
     expect(conversation).toBeDefined();

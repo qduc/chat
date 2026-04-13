@@ -233,7 +233,7 @@ export default function AdvancedTab({
   };
 
   return (
-    <div className={isVisible ? 'space-y-4' : 'hidden'}>
+    <div className={isVisible ? 'space-y-4 pb-8' : 'hidden'}>
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">

@@ -1,4 +1,6 @@
 
+import { PassThrough } from 'node:stream';
+
 /**
  * Create a standardized chat completion chunk object
  * @param {string} id - Completion ID
@@ -68,6 +70,7 @@ export async function createOpenAIRequest(config, requestBody, options = {}) {
   const provider = await createProvider(config, options);
   const context = {
     providerId: options.providerId || provider.providerId,
+    ...(typeof options.onRetry === 'function' ? { onRetry: options.onRetry } : {}),
     ...(options.signal ? { signal: options.signal } : {}),
     ...(options.context || {}),
   };
@@ -112,10 +115,23 @@ export function writeAndFlush(res, data) {
 }
 
 /**
+ * Write a structured SSE event payload.
+ * @param {Object} res - Express response object
+ * @param {Object} event - Structured payload to emit
+ */
+export function writeSseEvent(res, event) {
+  writeAndFlush(res, `data: ${JSON.stringify(event)}\n\n`);
+}
+
+/**
  * Set up streaming response headers
  * @param {Object} res - Express response object
  */
 export function setupStreamingHeaders(res) {
+  if (!res || res.writableEnded || res.headersSent) {
+    return;
+  }
+
   res.status(200);
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -128,8 +144,6 @@ export function setupStreamingHeaders(res) {
     res.flushHeaders();
   }
 }
-
-import { PassThrough } from 'node:stream';
 
 /**
  * Tee a Node Readable stream so callers can consume the original stream

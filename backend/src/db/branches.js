@@ -244,3 +244,52 @@ export function updateConversationBranchHead({ branchId, headMessageId, conversa
     ...(conversationId ? { conversationId } : {}),
   });
 }
+
+export function deleteConversationBranch({ conversationId, branchId, userId }) {
+  if (!conversationId) throw new Error('conversationId is required');
+  if (!branchId) throw new Error('branchId is required');
+  if (!userId) throw new Error('userId is required');
+
+  const db = getDb();
+  
+  // We don't delete the root branch
+  if (branchId === getRootBranchId(conversationId)) {
+    return false;
+  }
+
+  // Use a transaction to ensure atomic cleanup
+  const transaction = db.transaction(() => {
+    // 1. Delete message events
+    const me = db.prepare(`
+      DELETE FROM message_events 
+      WHERE message_id IN (SELECT id FROM messages WHERE conversation_id = @conversationId AND branch_id = @branchId)
+    `).run({ conversationId, branchId });
+
+    // 2. Delete tool calls/outputs
+    const tc = db.prepare(`
+      DELETE FROM tool_calls
+      WHERE conversation_id = @conversationId AND message_id IN (SELECT id FROM messages WHERE branch_id = @branchId)
+    `).run({ conversationId, branchId });
+
+    const to = db.prepare(`
+      DELETE FROM tool_outputs
+      WHERE conversation_id = @conversationId AND message_id IN (SELECT id FROM messages WHERE branch_id = @branchId)
+    `).run({ conversationId, branchId });
+
+    // 3. Delete messages
+    const ms = db.prepare(`
+      DELETE FROM messages 
+      WHERE conversation_id = @conversationId AND branch_id = @branchId
+    `).run({ conversationId, branchId });
+
+    // 4. Delete the branch itself
+    const info = db.prepare(`
+      DELETE FROM conversation_branches
+      WHERE id = @branchId AND conversation_id = @conversationId AND user_id = @userId
+    `).run({ branchId, conversationId, userId });
+
+    return info.changes > 0;
+  });
+
+  return transaction();
+}

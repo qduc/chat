@@ -67,7 +67,7 @@ chat/
 - **ChatV2.tsx** - Main chat container managing layout and sidebar
 - **MessageList.tsx** - Message rendering with streaming support
 - **MessageInput.tsx** - User input with multi-modal upload (image, audio, files)
-- **useChat Hook** - Centralized state management for chat functionality, including model comparison mode
+- **useChat Hook** - Centralized state management for chat functionality, refactored into modular controller hooks (send pipeline, hydration, draft persistence)
 - **Markdown.tsx** - Advanced markdown rendering with HTML preview and code wrapping
 
 ### Backend
@@ -146,6 +146,8 @@ ChatForge uses SQLite with migration-based schema evolution. Key tables:
 - **settings** - User preferences
 - **journal_entries** - Persistent AI memory
 - **evaluations** - Judge-based model comparison results with scores and reasoning
+- **conversation_branches** - Management of alternative conversation paths and revisions
+- **message_events** - Sequential historical record of message-related events for reconstruction
 
 All tables enforce user-based data isolation with NOT NULL `user_id` constraints.
 

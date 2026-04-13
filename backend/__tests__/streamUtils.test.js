@@ -169,6 +169,36 @@ describe('streamUtils', () => {
       expect(() => setupStreamingHeaders(mockRes)).not.toThrow();
       expect(mockRes.setHeader).toHaveBeenCalledWith('Content-Type', 'text/event-stream');
     });
+
+    test('should be a no-op when headers are already sent', () => {
+      const mockRes = {
+        headersSent: true,
+        writableEnded: false,
+        status: jest.fn(),
+        setHeader: jest.fn(),
+        flushHeaders: jest.fn(),
+      };
+
+      expect(() => setupStreamingHeaders(mockRes)).not.toThrow();
+      expect(mockRes.status).not.toHaveBeenCalled();
+      expect(mockRes.setHeader).not.toHaveBeenCalled();
+      expect(mockRes.flushHeaders).not.toHaveBeenCalled();
+    });
+
+    test('should be a no-op when response is already ended', () => {
+      const mockRes = {
+        headersSent: false,
+        writableEnded: true,
+        status: jest.fn(),
+        setHeader: jest.fn(),
+        flushHeaders: jest.fn(),
+      };
+
+      expect(() => setupStreamingHeaders(mockRes)).not.toThrow();
+      expect(mockRes.status).not.toHaveBeenCalled();
+      expect(mockRes.setHeader).not.toHaveBeenCalled();
+      expect(mockRes.flushHeaders).not.toHaveBeenCalled();
+    });
   });
 
   describe('teeStreamWithPreview', () => {

@@ -16,6 +16,7 @@ import { extractUpstreamMessage, readUpstreamErrorBody } from './upstreamErrors.
 import { getUserSetting } from '../db/userSettings.js';
 import { normalizeCustomRequestParamsIds } from './customRequestParams.js';
 import { getConversationBranch } from '../db/branches.js';
+import { writeSseEvent } from './streamUtils.js';
 
 // --- Helpers: sanitize, validate, selection, and error shaping ---
 
@@ -309,6 +310,14 @@ async function handleUpstreamError(upstream, persistence, cachedUpstreamBody) {
   return { status: 502, payload };
 }
 
+async function handleRetriedUpstreamFailure(error, persistence) {
+  if (!error?.response || typeof error.response.ok === 'undefined') {
+    return null;
+  }
+
+  return handleUpstreamError(error.response, persistence);
+}
+
 function handleProxyError(error, req, res, persistence) {
   logger.error({
     msg: 'proxy_error',
@@ -365,6 +374,46 @@ async function handleRequest(context, req, res) {
 
   // Plain proxy path
 
+  const emitRetryStatus = (retryInfo = {}) => {
+    if (!flags.streamToFrontend || !res || res.writableEnded) return;
+    const payload = {
+      type: 'retry_status',
+      value: {
+        source: retryInfo.source || 'provider',
+        modelId: body.model || null,
+        providerId: providerId || null,
+        status: retryInfo.status ?? null,
+        attempt: retryInfo.attempt ?? null,
+        maxRetries: retryInfo.maxRetries ?? null,
+        retryAfterMs: retryInfo.retryAfterMs ?? null,
+        errorMessage: retryInfo.errorMessage || null,
+        errorPreview: retryInfo.errorPreview || null,
+      },
+    };
+    writeSseEvent(res, payload);
+  };
+
+  if (flags.streamToFrontend) {
+    setupStreamingHeaders(res);
+  }
+
+  const emitStreamingError = (message) => {
+    const errorChunk = {
+      id: 'error',
+      object: 'chat.completion.chunk',
+      created: Math.floor(Date.now() / 1000),
+      model: body.model,
+      choices: [{
+        index: 0,
+        delta: { content: `[Error: ${message}]` },
+        finish_reason: 'error',
+      }],
+    };
+    writeAndFlush(res, `data: ${JSON.stringify(errorChunk)}\n\n`);
+    writeAndFlush(res, 'data: [DONE]\n\n');
+    return res.end();
+  };
+
   // Try to use previous_response_id optimization for existing conversations
   let requestBody = { ...body };
   requestBody.stream = flags.providerStream;
@@ -398,7 +447,11 @@ async function handleRequest(context, req, res) {
   let upstream;
   let upstreamErrorBody;
   try {
-    upstream = await createOpenAIRequest(config, requestBody, { providerId, signal: abortContext?.signal });
+    upstream = await createOpenAIRequest(config, requestBody, {
+      providerId,
+      signal: abortContext?.signal,
+      onRetry: emitRetryStatus,
+    });
   } catch (error) {
     if (abortContext?.requestId) {
       unregisterStreamAbort(abortContext.requestId);
@@ -409,6 +462,21 @@ async function handleRequest(context, req, res) {
       }
       if (!res.writableEnded) res.end();
       return;
+    }
+    if (flags.streamToFrontend) {
+      logger.error({
+        msg: 'stream_request_error',
+        error: {
+          message: error.message,
+          stack: error.stack,
+          name: error.name,
+        },
+      });
+      return emitStreamingError(error.message || 'Upstream request failed');
+    }
+    const upstreamFailure = await handleRetriedUpstreamFailure(error, persistence);
+    if (upstreamFailure) {
+      return res.status(upstreamFailure.status).json(upstreamFailure.payload);
     }
     throw error;
   }
@@ -421,6 +489,15 @@ async function handleRequest(context, req, res) {
       && upstreamErrorBody?.error?.code === 'invalid_value';
 
     if (isInvalidResponseIdError) {
+      emitRetryStatus({
+        source: 'previous_response_id',
+        status: upstream.status,
+        attempt: 1,
+        maxRetries: 1,
+        retryAfterMs: 0,
+        errorMessage: upstreamErrorBody?.error?.message || 'Provider rejected cached conversation state',
+        errorPreview: upstreamErrorBody?.error?.message || null,
+      });
       logger.warn({
         msg: 'invalid_previous_response_id',
         previous_response_id: requestBody.previous_response_id,
@@ -453,11 +530,30 @@ async function handleRequest(context, req, res) {
       });
 
       try {
-        upstream = await createOpenAIRequest(config, retryBodyWithCaching, { providerId, signal: abortContext?.signal });
+        upstream = await createOpenAIRequest(config, retryBodyWithCaching, {
+          providerId,
+          signal: abortContext?.signal,
+          onRetry: emitRetryStatus,
+        });
         upstreamErrorBody = undefined;
       } catch (error) {
         if (abortContext?.requestId) {
           unregisterStreamAbort(abortContext.requestId);
+        }
+        if (flags.streamToFrontend) {
+          logger.error({
+            msg: 'stream_request_retry_error',
+            error: {
+              message: error.message,
+              stack: error.stack,
+              name: error.name,
+            },
+          });
+          return emitStreamingError(error.message || 'Upstream request failed');
+        }
+        const upstreamFailure = await handleRetriedUpstreamFailure(error, persistence);
+        if (upstreamFailure) {
+          return res.status(upstreamFailure.status).json(upstreamFailure.payload);
         }
         throw error;
       }
@@ -465,6 +561,10 @@ async function handleRequest(context, req, res) {
   }
 
   if (!upstream.ok) {
+    if (flags.streamToFrontend) {
+      const { status, payload } = await handleUpstreamError(upstream, persistence, upstreamErrorBody);
+      return emitStreamingError(payload?.message || `Upstream API error (${status})`);
+    }
     const { status, payload } = await handleUpstreamError(upstream, persistence, upstreamErrorBody);
     return res.status(status).json(payload);
   }
@@ -526,6 +626,11 @@ async function handleRequest(context, req, res) {
               }
             }
           }
+
+          const reasoningContent = message.reasoning_content || message.reasoning;
+          if (reasoningContent) {
+            persistence.appendReasoningText(reasoningContent);
+          }
           if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
             const safeContent = sanitizeContent(message.content);
             const contentLength = safeContent ?
@@ -561,7 +666,6 @@ async function handleRequest(context, req, res) {
         }
 
         // Convert JSON response to streaming format for client
-        setupStreamingHeaders(res);
         const { writeAndFlush } = await import('./streamUtils.js');
 
         // Emit conversation metadata if available
@@ -587,18 +691,19 @@ async function handleRequest(context, req, res) {
             writeAndFlush(res, `data: ${JSON.stringify(chunk)}\n\n`);
           }
 
-          // Send tool calls as chunks if present
-          if (Array.isArray(message.tool_calls)) {
-            for (const toolCall of message.tool_calls) {
-              const chunk = createChatCompletionChunk(
-                upstreamJson.id || 'fallback',
-                upstreamJson.model || body.model,
-                { tool_calls: [toolCall] },
-                null
-              );
-              writeAndFlush(res, `data: ${JSON.stringify(chunk)}\n\n`);
-            }
+          // Send reasoning as chunk if present
+          const reasoningDelta = message.reasoning_content || message.reasoning;
+          if (reasoningDelta) {
+            const chunk = createChatCompletionChunk(
+              upstreamJson.id || 'fallback',
+              upstreamJson.model || body.model,
+              { reasoning_content: reasoningDelta },
+              null
+            );
+            writeAndFlush(res, `data: ${JSON.stringify(chunk)}\n\n`);
           }
+
+          // Send tool calls as chunks if present
 
           // Send final chunk with finish_reason
           const finalChunk = createChatCompletionChunk(

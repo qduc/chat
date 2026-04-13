@@ -4,7 +4,7 @@
     "name": "Duc Nguyen",
     "email": "chatforge@qduc.me"
   },
-  "version": "1.0.0",
+  "version": "0.17.1",
   "main": "main.js",
   "type": "module",
   "repository": {
@@ -55,7 +55,12 @@
       {
         "from": "../backend",
         "to": "backend",
-        "filter": ["!node_modules", "!**/*.test.js", "!coverage", "!__tests__"]
+        "filter": [
+          "!node_modules",
+          "!**/*.test.js",
+          "!coverage",
+          "!__tests__"
+        ]
       },
       {
         "from": "../frontend/out",
