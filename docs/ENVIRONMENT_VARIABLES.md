@@ -50,7 +50,6 @@ UPSTREAM_LOG_DIR=./logs                    # Upstream log directory
 ```env
 PERSIST_TRANSCRIPTS=true                   # Enable conversation persistence
 DB_URL=                                    # Database URL (defaults to SQLite)
-RETENTION_DAYS=30                          # Days to retain conversations
 MAX_CONVERSATIONS_PER_SESSION=100          # Conversation limit per session
 MAX_MESSAGES_PER_CONVERSATION=1000         # Message limit per conversation
 HISTORY_BATCH_FLUSH_MS=250                 # Batch flush interval (ms)

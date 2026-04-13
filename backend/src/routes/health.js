@@ -11,7 +11,6 @@ healthRouter.get(['/health', '/healthz'], (req, res) => {
     model: config.defaultModel,
     persistence: {
       enabled: !!config.persistence.enabled,
-      retentionDays: config.persistence.retentionDays,
     },
   });
 });

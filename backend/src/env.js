@@ -78,7 +78,6 @@ export const config = {
     maxConversationsPerSession: Number(process.env.MAX_CONVERSATIONS_PER_SESSION) || 100,
     maxMessagesPerConversation: Number(process.env.MAX_MESSAGES_PER_CONVERSATION) || 1000,
     historyBatchFlushMs: Number(process.env.HISTORY_BATCH_FLUSH_MS) || 250,
-    retentionDays: Number(process.env.RETENTION_DAYS) || 30,
     checkpoint: {
       enabled: bool(process.env.CHECKPOINT_ENABLED, true),
       intervalMs: parsePositiveNumber(process.env.CHECKPOINT_INTERVAL_MS, 3000),
