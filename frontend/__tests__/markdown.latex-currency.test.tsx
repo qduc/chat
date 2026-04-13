@@ -187,4 +187,31 @@ describe('Markdown LaTeX and Currency Interaction', () => {
     const rendered = getRenderedText();
     expect(rendered).toContain('\\$97');
   });
+
+  it('handles currency per month with formatting correctly', () => {
+    const content =
+      '- OpenAI introduced a new **ChatGPT Pro tier at $100/month** (previously Pro was only $200/month).';
+    render(
+      <ThemeProvider>
+        <Markdown text={content} />
+      </ThemeProvider>
+    );
+
+    const rendered = getRenderedText();
+    expect(rendered).toContain('\\$100');
+    expect(rendered).toContain('\\$200');
+  });
+
+  it('handles currency per month with space correctly', () => {
+    const content = 'The cost is $100 / month or $1200 / year.';
+    render(
+      <ThemeProvider>
+        <Markdown text={content} />
+      </ThemeProvider>
+    );
+
+    const rendered = getRenderedText();
+    expect(rendered).toContain('\\$100');
+    expect(rendered).toContain('\\$1200');
+  });
 });

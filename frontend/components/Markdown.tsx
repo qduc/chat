@@ -122,8 +122,37 @@ function shouldEscapeCurrencySequence(remainder: string): boolean {
       return false; // Mathematical block closed, DO NOT escape
     }
 
-    if ('+=<>\\^/'.includes(char)) {
+    if ('+=<>\\^'.includes(char)) {
       return false; // Mathematical operator found!
+    }
+
+    if (char === '/') {
+      const match = remainder.slice(index + 1).match(/^[a-zA-Z]+/);
+      if (match) {
+        const word = match[0].toLowerCase();
+        const currencyUnits = [
+          'month',
+          'mo',
+          'year',
+          'yr',
+          'week',
+          'wk',
+          'day',
+          'hr',
+          'user',
+          'person',
+          'token',
+          'tokens',
+          'gb',
+          'mb',
+          'tb',
+          's',
+        ];
+        if (currencyUnits.includes(word)) {
+          return true;
+        }
+      }
+      return false; // Likely math division
     }
 
     if (char === '-' || char === '–' || char === '—' || char === '*' || char === '_') {
@@ -152,6 +181,37 @@ function shouldEscapeCurrencySequence(remainder: string): boolean {
           // Check if there's a matching closing tag later in the string
           // This is a heuristic, but often reliable for markdown vs math
           return true;
+        }
+
+        if (trimmed.startsWith('/')) {
+          const match = trimmed
+            .slice(1)
+            .trimStart()
+            .match(/^[a-zA-Z]+/);
+          if (match) {
+            const word = match[0].toLowerCase();
+            const currencyUnits = [
+              'month',
+              'mo',
+              'year',
+              'yr',
+              'week',
+              'wk',
+              'day',
+              'hr',
+              'user',
+              'person',
+              'token',
+              'tokens',
+              'gb',
+              'mb',
+              'tb',
+              's',
+            ];
+            if (currencyUnits.includes(word)) {
+              return true;
+            }
+          }
         }
         return false;
       }
