@@ -9,12 +9,13 @@ import { UserMessage } from './UserMessage';
 import { AssistantMessage } from './AssistantMessage';
 import { MessageEditForm } from './MessageEditForm';
 import { hasAudio, extractTextFromContent } from '../../lib';
-import type { MessageProps } from './types';
+import type { MessageProps, ToolOutput } from './types';
+import type { ChatMessage } from '../../lib/types';
 
 // Deep comparison for comparisonResults objects to detect changes from linked conversations
 function deepEqualComparisonResults(
-  a: Record<string, { content: any; usage?: any; status: string; error?: string }> | undefined,
-  b: Record<string, { content: any; usage?: any; status: string; error?: string }> | undefined
+  a: ChatMessage['comparisonResults'],
+  b: ChatMessage['comparisonResults']
 ): boolean {
   if (a === b) return true;
   if (a === undefined || b === undefined) return false;
