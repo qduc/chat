@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.17.1] - 2026-04-13
+
+### Added
+- Branch deletion functionality for conversation branching operations
+- Retry status handling across providers with improved error management and user feedback
+- Structured message_events support for consistent non-streaming data processing
+- extractAssistantCopyText utility to filter reasoning blocks from assistant messages during copy operations
+
+### Changed
+- Enhanced ReasoningBlock and Markdown components with improved state management for streaming behavior
+- Improved sync metadata handling for conversation branching operations
+- Buffered streaming text handling in message delivery pipeline
+- Normalized streaming responses into structured message_events format for consistency
+
+### Fixed
+- Incorrect LaTeX escaping of currency units following forward slashes in Markdown
+- Upstream error handling and provider compatibility
+- Persistence branch management during streaming operations
+- Streaming disconnection reliability issues
+- Reasoning content and tool call persistence in non-streaming mode
+- Development-only streaming updates causing skipped tokens (React flushSync)
+- Currency detection logic preventing incorrect math block escaping
+- Escaping of LaTeX math expressions containing operators
+
+
 ## [0.17.0] - 2026-04-09
 
 ### Added
