@@ -36,6 +36,7 @@ await jest.unstable_mockModule(streamUtilsPath, () => ({
   createOpenAIRequest: jest.fn(),
   writeAndFlush: jest.fn(),
   createChatCompletionChunk: jest.fn(),
+  writeSseEvent: jest.fn(),
 }));
 
 const providersIndexPath = new URL('../src/lib/providers/index.js', import.meta.url).href;
@@ -65,7 +66,7 @@ const { handleToolsStreaming } = await import('../src/lib/toolsStreaming.js');
 
 // Import the mocked functions for setup
 const { parseSSEStream } = await import('../src/lib/sseParser.js');
-const { createOpenAIRequest, writeAndFlush, createChatCompletionChunk } = await import('../src/lib/streamUtils.js');
+const { createOpenAIRequest, writeAndFlush, createChatCompletionChunk, writeSseEvent } = await import('../src/lib/streamUtils.js');
 const { setupStreamingHeaders } = await import('../src/lib/streamingHandler.js');
 const {
   buildConversationMessagesAsync,

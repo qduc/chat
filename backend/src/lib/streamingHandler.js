@@ -32,6 +32,19 @@ function setupStreamEventHandlers({
   let completed = false;
 
   let abortHandler = null;
+  const markDisconnectedError = () => {
+    if (completed) return;
+    try {
+      if (abortContext?.cancelState?.cancelled) {
+        return;
+      }
+      if (persistence && persistence.persist) {
+        persistence.markError();
+      }
+    } catch {
+      // Ignore errors
+    }
+  };
   const finalize = (overrideFinishReason = null) => {
     if (completed) return;
     completed = true;
@@ -96,32 +109,18 @@ function setupStreamEventHandlers({
   });
 
   req.on('close', () => {
-    if (res.writableEnded) return;
-    try {
-      if (abortContext?.cancelState?.cancelled) {
-        return;
-      }
-      if (persistence && persistence.persist) {
-        persistence.markError();
-      }
-    } catch {
-      // Ignore errors
-    }
+    markDisconnectedError();
   });
   // Also handle response socket close to catch client aborts in all environments
   res.on('close', () => {
-    if (res.writableEnded) return;
-    try {
-      if (abortContext?.cancelState?.cancelled) {
-        return;
-      }
-      if (persistence && persistence.persist) {
-        persistence.markError();
-      }
-    } catch {
-      // Ignore errors
-    }
+    markDisconnectedError();
   });
+  const responseSocket = res.socket || req.socket || null;
+  if (responseSocket && typeof responseSocket.on === 'function') {
+    responseSocket.on('close', () => {
+      markDisconnectedError();
+    });
+  }
 
   if (abortContext?.signal) {
     abortHandler = () => {
@@ -307,6 +306,18 @@ export async function handleRegularStreaming({
   let generatedImagesBuffer = []; // Accumulate generated images during streaming
   let seenImageUrls = new Set(); // Track seen image URLs for O(1) duplicate detection
 
+  setupStreamEventHandlers({
+    upstream,
+    req,
+    res,
+    persistence,
+    lastFinishReason,
+    toolCallMap,
+    generatedImagesBuffer,
+    abortContext,
+    onComplete,
+  });
+
   // Emit conversation metadata upfront if available so clients receive
   // the conversation id before any model chunks or [DONE]
   try {
@@ -378,17 +389,5 @@ export async function handleRegularStreaming({
     } catch (e) {
       logger.error('[stream data] error', e);
     }
-  });
-
-  setupStreamEventHandlers({
-    upstream,
-    req,
-    res,
-    persistence,
-    lastFinishReason,
-    toolCallMap,
-    generatedImagesBuffer,
-    abortContext,
-    onComplete,
   });
 }

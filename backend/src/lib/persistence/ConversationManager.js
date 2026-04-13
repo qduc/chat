@@ -37,6 +37,7 @@ import {
   getActiveBranchId,
   setConversationActiveBranch,
   deleteConversationBranch,
+  updateConversationBranchHead,
 } from '../../db/branches.js';
 
 /**
@@ -417,6 +418,28 @@ export class ConversationManager {
 
         for (const msg of diff.toDelete) {
           deletedMessages.push({ role: msg.role, id: msg.id, seq: msg.seq });
+        }
+
+        if (diff.toInsert.length === 0) {
+          const visibleMessages = allExisting.filter((message) => {
+            if ((message?.seq || 0) < forkSeq) {
+              return true;
+            }
+
+            return !diff.toDelete.some((deleted) =>
+              deleted?._dbId === message?._dbId
+              || deleted?.id === message?.id
+              || deleted?.seq === message?.seq
+            );
+          });
+          const visibleHead = visibleMessages[visibleMessages.length - 1] || null;
+          if (visibleHead?._dbId != null) {
+            updateConversationBranchHead({
+              branchId: targetBranchId,
+              headMessageId: visibleHead._dbId,
+              conversationId,
+            });
+          }
         }
       }
 

@@ -263,8 +263,10 @@ describe('openaiProxy.js - Unit Tests', () => {
           stream: true,
         });
 
-      assert.ok(res.status >= 400);
-      assert.ok(res.body.error);
+      assert.equal(res.status, 200);
+      assert.match(res.headers['content-type'] || '', /text\/event-stream/);
+      assert.ok(res.text.includes('[Error:'));
+      assert.ok(res.text.includes('[DONE]'));
     });
 
     test('marks persistence as error when upstream fails', async () => {

@@ -310,6 +310,14 @@ async function handleUpstreamError(upstream, persistence, cachedUpstreamBody) {
   return { status: 502, payload };
 }
 
+async function handleRetriedUpstreamFailure(error, persistence) {
+  if (!error?.response || typeof error.response.ok === 'undefined') {
+    return null;
+  }
+
+  return handleUpstreamError(error.response, persistence);
+}
+
 function handleProxyError(error, req, res, persistence) {
   logger.error({
     msg: 'proxy_error',
@@ -367,7 +375,7 @@ async function handleRequest(context, req, res) {
   // Plain proxy path
 
   const emitRetryStatus = (retryInfo = {}) => {
-    if (!res || res.writableEnded) return;
+    if (!flags.streamToFrontend || !res || res.writableEnded) return;
     const payload = {
       type: 'retry_status',
       value: {
@@ -466,6 +474,10 @@ async function handleRequest(context, req, res) {
       });
       return emitStreamingError(error.message || 'Upstream request failed');
     }
+    const upstreamFailure = await handleRetriedUpstreamFailure(error, persistence);
+    if (upstreamFailure) {
+      return res.status(upstreamFailure.status).json(upstreamFailure.payload);
+    }
     throw error;
   }
 
@@ -538,6 +550,10 @@ async function handleRequest(context, req, res) {
             },
           });
           return emitStreamingError(error.message || 'Upstream request failed');
+        }
+        const upstreamFailure = await handleRetriedUpstreamFailure(error, persistence);
+        if (upstreamFailure) {
+          return res.status(upstreamFailure.status).json(upstreamFailure.payload);
         }
         throw error;
       }
