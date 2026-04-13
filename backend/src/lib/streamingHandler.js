@@ -266,6 +266,18 @@ function processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason
   if (Array.isArray(message?.tool_calls) && message.tool_calls.length > 0) {
     for (const toolCall of message.tool_calls) {
       const idx = toolCall.index ?? toolCallMap.size;
+      const isNewToolCall = !toolCallMap.has(idx);
+
+      if (isNewToolCall && persistence) {
+        // Find existing index in original tool calls if possible, or use currentIndex
+        if (typeof persistence.addMessageEvent === 'function') {
+          persistence.addMessageEvent('tool_call', {
+            tool_call_id: toolCall.id ?? null,
+            tool_call_index: idx,
+          });
+        }
+      }
+
       toolCallMap.set(idx, toolCall);
     }
   }

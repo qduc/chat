@@ -610,6 +610,11 @@ async function handleRequest(context, req, res) {
               }
             }
           }
+
+          const reasoningContent = message.reasoning_content || message.reasoning;
+          if (reasoningContent) {
+            persistence.appendReasoningText(reasoningContent);
+          }
           if (Array.isArray(message.tool_calls) && message.tool_calls.length > 0) {
             const safeContent = sanitizeContent(message.content);
             const contentLength = safeContent ?
@@ -670,18 +675,19 @@ async function handleRequest(context, req, res) {
             writeAndFlush(res, `data: ${JSON.stringify(chunk)}\n\n`);
           }
 
-          // Send tool calls as chunks if present
-          if (Array.isArray(message.tool_calls)) {
-            for (const toolCall of message.tool_calls) {
-              const chunk = createChatCompletionChunk(
-                upstreamJson.id || 'fallback',
-                upstreamJson.model || body.model,
-                { tool_calls: [toolCall] },
-                null
-              );
-              writeAndFlush(res, `data: ${JSON.stringify(chunk)}\n\n`);
-            }
+          // Send reasoning as chunk if present
+          const reasoningDelta = message.reasoning_content || message.reasoning;
+          if (reasoningDelta) {
+            const chunk = createChatCompletionChunk(
+              upstreamJson.id || 'fallback',
+              upstreamJson.model || body.model,
+              { reasoning_content: reasoningDelta },
+              null
+            );
+            writeAndFlush(res, `data: ${JSON.stringify(chunk)}\n\n`);
           }
+
+          // Send tool calls as chunks if present
 
           // Send final chunk with finish_reason
           const finalChunk = createChatCompletionChunk(

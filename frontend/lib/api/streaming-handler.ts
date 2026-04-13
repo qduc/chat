@@ -120,10 +120,10 @@ export function processNonStreamingData(
       const message = json.choices[0]?.message;
       content = message?.content ?? '';
 
-      if (message?.reasoning) {
-        accumulator.addEvent('reasoning', { text: message.reasoning });
+      const reasoning = message?.reasoning_content || message?.reasoning;
+      if (reasoning) {
+        accumulator.addEvent('reasoning', { text: reasoning });
       }
-
       if (content) {
         accumulator.addEvent('content', { text: message?.content ?? '' });
       }

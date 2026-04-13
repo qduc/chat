@@ -112,6 +112,18 @@ chat/
 ./dev.sh migrate fresh    # Reset database and reapply all migrations
 ```
 
+### Database Access
+```bash
+# Access SQLite database via CLI
+./dev.sh exec backend sqlite3 /data/dev.db
+
+# Run a specific query
+./dev.sh exec backend sqlite3 /data/dev.db "SELECT * FROM users;"
+
+# List tables
+./dev.sh exec backend sqlite3 /data/dev.db ".tables"
+```
+
 ### Additional Services
 ```bash
 # Adminer database management (available at http://localhost:3080)
@@ -133,6 +145,7 @@ chat/
 ./prod.sh exec <service> <command>  # Execute command in container
 ```
 > In production there is a single `app` service. Most `prod.sh exec` commands therefore look like `./prod.sh exec app <command>`.
+> The production database is located at `/data/prod.db`. You can access it via CLI using: `./prod.sh exec app sqlite3 /data/prod.db`.
 
 ### Release Management
 ```bash

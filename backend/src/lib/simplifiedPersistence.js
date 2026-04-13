@@ -752,6 +752,8 @@ export class SimplifiedPersistence {
    */
   recordAssistantFinal({ finishReason = 'stop', responseId = null } = {}) {
     if (!this.persist || !this.conversationId || this.assistantSeq === null) return;
+    if (this.finalized) return;
+    this.finalized = true;
     
     // Check if we should revert an empty regeneration branch
     this.revertIfEmpty();

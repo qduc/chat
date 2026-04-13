@@ -114,6 +114,7 @@ export async function handleToolsStreaming({
     let isComplete = false;
     let consecutiveInvalidReasoningResponses = 0;
     let currentPreviousResponseId = previousResponseId; // Track response_id across iterations
+    let finalFinishReason = 'stop';
 
     while (!isComplete && iteration < MAX_ITERATIONS) {
       if (abortSignal?.aborted) {
@@ -310,6 +311,21 @@ export async function handleToolsStreaming({
             persistence.setReasoningTokens(reasoningTokens);
           }
 
+          // Handle reasoning - stream it to client
+          const reasoningDelta = message.reasoning_content || message.reasoning;
+          if (reasoningDelta) {
+            const chunk = createChatCompletionChunk(
+              upstreamJson.id || 'fallback',
+              upstreamJson.model || requestBody.model,
+              { reasoning_content: reasoningDelta },
+              null
+            );
+            writeAndFlush(res, `data: ${JSON.stringify(chunk)}\n\n`);
+            if (persistence && typeof persistence.appendReasoningText === 'function') {
+              persistence.appendReasoningText(reasoningDelta);
+            }
+          }
+
           // Handle content - stream it to client
           if (message.content !== undefined) {
             const safeContent = sanitizeContent(message.content);
@@ -349,6 +365,30 @@ export async function handleToolsStreaming({
             }
             conversationHistory.push(assistantMessage);
 
+            // Buffer tool calls for persistence
+            if (persistence && persistence.persist && typeof persistence.addToolCalls === 'function') {
+              const safeContent = sanitizeContent(message.content);
+              const contentLength = safeContent ?
+                (typeof safeContent === 'string' ? safeContent.length : 0) : 0;
+
+              const toolCallsWithOffset = message.tool_calls.map((tc, idx) => ({
+                ...tc,
+                index: tc.index ?? idx,
+                textOffset: contentLength
+              }));
+
+              persistence.addToolCalls(toolCallsWithOffset);
+
+              if (typeof persistence.addMessageEvent === 'function') {
+                for (const tc of toolCallsWithOffset) {
+                  persistence.addMessageEvent('tool_call', {
+                    tool_call_id: tc.id ?? null,
+                    tool_call_index: tc.index ?? null,
+                  });
+                }
+              }
+            }
+
             // Execute each tool call and add results to conversation
             for (const toolCall of message.tool_calls) {
               // Stream tool call to client
@@ -376,6 +416,15 @@ export async function handleToolsStreaming({
                 content: serializedToolResult,
               });
 
+              // Add tool result to persistence
+              if (persistence && persistence.persist && typeof persistence.addToolOutputs === 'function') {
+                persistence.addToolOutputs([{
+                  tool_call_id: toolCall.id,
+                  output: serializedToolResult,
+                  status: 'success' // Default to success for now, as executeToolCall catches errors
+                }]);
+              }
+
               // Stream tool result to client
               streamDeltaEvent({
                 res,
@@ -396,19 +445,18 @@ export async function handleToolsStreaming({
           }
 
           // No tool calls - this is the final response
-          const finishReason = upstreamJson.choices[0].finish_reason || 'stop';
+          finalFinishReason = upstreamJson.choices[0].finish_reason || 'stop';
           const finalChunk = createChatCompletionChunk(
             upstreamJson.id || 'fallback',
             upstreamJson.model || requestBody.model,
             {},
-            finishReason
+            finalFinishReason
           );
           if (normalizedUsage) {
             finalChunk.usage = normalizedUsage;
           }
           writeAndFlush(res, `data: ${JSON.stringify(finalChunk)}\n\n`);
 
-          recordFinalToPersistence(persistence, finishReason, responseId);
           isComplete = true;
           continue;
         }
@@ -621,6 +669,9 @@ export async function handleToolsStreaming({
                   sawCompletionContent = true;
                 }
                 appendToPersistence(persistence, delta.content);
+                if (choice?.finish_reason) {
+                  finalFinishReason = choice.finish_reason;
+                }
               },
               () => {
                 logger.debug('[toolsStreaming] Stream parser completed for chunk');
@@ -899,7 +950,7 @@ export async function handleToolsStreaming({
     emitConversationMetadata(res, persistence);
     streamDone(res);
 
-    recordFinalToPersistence(persistence, 'stop');
+    recordFinalToPersistence(persistence, finalFinishReason);
 
     res.end();
   } catch (error) {
