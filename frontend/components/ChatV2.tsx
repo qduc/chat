@@ -13,8 +13,58 @@ import { MessageInput, type MessageInputRef } from './MessageInput';
 import { RightSidebar } from './RightSidebar';
 import SettingsModal from './SettingsModal';
 import { AuthModal, AuthMode } from './auth/AuthModal';
-import type { MessageContent } from '../lib';
+import type { ChatMessage, MessageContent } from '../lib';
 import { conversations as conversationsApi } from '../lib/api';
+
+export function buildBaseMessagesAfterLocalEdit({
+  currentMessages,
+  reloadedMessages,
+  messageId,
+  updatedContent,
+  compareMode,
+}: {
+  currentMessages: ChatMessage[];
+  reloadedMessages?: ChatMessage[] | null;
+  messageId: string;
+  updatedContent: MessageContent;
+  compareMode: boolean;
+}): ChatMessage[] {
+  const currentIndex = currentMessages.findIndex((message) => message.id === messageId);
+  const fallbackMessages =
+    currentIndex >= 0
+      ? [
+          ...currentMessages.slice(0, currentIndex),
+          {
+            ...currentMessages[currentIndex],
+            content: updatedContent,
+            comparisonResults: undefined,
+          },
+        ]
+      : currentMessages;
+
+  const sourceMessages = reloadedMessages ?? fallbackMessages;
+
+  if (!compareMode) {
+    return sourceMessages;
+  }
+
+  const reloadedIndex = sourceMessages.findIndex((message) => message.id === messageId);
+  if (reloadedIndex === -1) {
+    return fallbackMessages;
+  }
+
+  return sourceMessages.slice(0, reloadedIndex + 1).map((message, index) => {
+    if (index === reloadedIndex) {
+      return {
+        ...message,
+        content: updatedContent,
+        comparisonResults: undefined,
+      };
+    }
+
+    return message.comparisonResults ? { ...message, comparisonResults: undefined } : message;
+  });
+}
 
 export function ChatV2() {
   const chat = useChat();
@@ -258,7 +308,12 @@ export function ChatV2() {
 
       if (chat.conversationId) {
         try {
-          await conversationsApi.editMessage(chat.conversationId, messageId, updatedContent);
+          await conversationsApi.editMessage(
+            chat.conversationId,
+            messageId,
+            updatedContent,
+            chat.compareMode
+          );
         } catch {
           return;
         }
@@ -267,13 +322,13 @@ export function ChatV2() {
       const selection = chat.conversationId
         ? await chat.selectConversation(chat.conversationId)
         : null;
-      const baseMessages = selection?.messages ?? [
-        ...chat.messages.slice(0, idx),
-        {
-          ...chat.messages[idx],
-          content: updatedContent,
-        },
-      ];
+      const baseMessages = buildBaseMessagesAfterLocalEdit({
+        currentMessages: chat.messages,
+        reloadedMessages: selection?.messages,
+        messageId,
+        updatedContent,
+        compareMode: chat.compareMode,
+      });
       if (!selection) {
         chat.setMessages(baseMessages);
       }

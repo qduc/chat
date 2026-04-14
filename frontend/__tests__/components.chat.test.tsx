@@ -88,7 +88,7 @@ const mockHttpClient = jest.requireMock('../lib/http').httpClient;
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { ChatV2 as Chat } from '../components/ChatV2';
+import { buildBaseMessagesAfterLocalEdit, ChatV2 as Chat } from '../components/ChatV2';
 import { ThemeProvider } from '../contexts/ThemeContext';
 
 // Mock the Markdown component to avoid ES module issues
@@ -530,6 +530,68 @@ describe('<Chat />', () => {
     // The message editing functionality exists in the component but is complex to test
     // due to hover states and dynamic button rendering. For now, verify the API is mocked
     expect(mockConversations.editMessage).toBeDefined();
+  });
+
+  test('compare-mode local edit trims stale assistant messages before regenerate', () => {
+    const baseMessages = buildBaseMessagesAfterLocalEdit({
+      currentMessages: [
+        {
+          id: 'user-1',
+          role: 'user',
+          content: 'Original prompt',
+          comparisonResults: {
+            'openai::gpt-4o-mini': {
+              messageId: 'assistant-mini-1',
+              content: 'Mini answer',
+              status: 'complete',
+            },
+          },
+        },
+        {
+          id: 'assistant-1',
+          role: 'assistant',
+          content: 'Primary answer',
+          comparisonResults: {
+            'openai::gpt-4o-mini': {
+              messageId: 'assistant-mini-1',
+              content: 'Mini answer',
+              status: 'complete',
+            },
+          },
+        },
+      ] as any,
+      reloadedMessages: [
+        {
+          id: 'user-1',
+          role: 'user',
+          content: 'Edited prompt',
+        },
+        {
+          id: 'assistant-1',
+          role: 'assistant',
+          content: 'Stale answer',
+          comparisonResults: {
+            'openai::gpt-4o-mini': {
+              messageId: 'assistant-mini-1',
+              content: 'Stale mini answer',
+              status: 'complete',
+            },
+          },
+        },
+      ] as any,
+      messageId: 'user-1',
+      updatedContent: 'Edited prompt',
+      compareMode: true,
+    });
+
+    expect(baseMessages).toEqual([
+      {
+        id: 'user-1',
+        role: 'user',
+        content: 'Edited prompt',
+        comparisonResults: undefined,
+      },
+    ]);
   });
 
   test('clears system prompt and active prompt ID when loading conversation with null values', async () => {

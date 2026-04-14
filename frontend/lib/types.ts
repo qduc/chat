@@ -653,6 +653,7 @@ export interface ChatOptionsExtended extends ChatOptions {
   systemPrompt?: string;
   activeSystemPromptId?: string | null;
   modelCapabilities?: any;
+  noRevisionBranch?: boolean;
 }
 
 // Legacy interface for backward compatibility

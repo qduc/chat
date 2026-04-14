@@ -85,6 +85,10 @@ function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: bo
     }),
   };
 
+  if (extendedOptions.noRevisionBranch) {
+    bodyObj.no_revision_branch = true;
+  }
+
   if (Object.hasOwn(extendedOptions as any, 'customRequestParamsId')) {
     const customParamsId = (extendedOptions as any).customRequestParamsId;
     bodyObj.custom_request_params_id = Array.isArray(customParamsId)

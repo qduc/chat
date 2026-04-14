@@ -1105,8 +1105,8 @@ export function MessageList({
                 isStreaming={isStreaming}
                 conversationId={conversationId}
                 compareModels={compareModels}
-                editRevision={editRev}
-                regenRevision={regenRev}
+                editRevision={compareModels.length === 0 ? editRev : undefined}
+                regenRevision={compareModels.length === 0 ? regenRev : undefined}
                 primaryModelLabel={primaryModelLabel}
                 linkedConversations={linkedConversations}
                 evaluations={evaluations}

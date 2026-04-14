@@ -109,13 +109,14 @@ export const conversations = {
   async editMessage(
     conversationId: string,
     messageId: string,
-    content: MessageContent
+    content: MessageContent,
+    noBranch = false
   ): Promise<EditMessageResult> {
     await waitForAuthReady();
     try {
       const response = await httpClient.put<EditMessageResult>(
         `/v1/conversations/${conversationId}/messages/${messageId}/edit`,
-        { content }
+        noBranch ? { content, no_branch: true } : { content }
       );
       conversationDetailCache.clear();
       conversationListCache.clear();

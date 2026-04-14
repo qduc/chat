@@ -516,7 +516,9 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         ? history.map((m) => (m.id === userMessageId ? { ...m, content: messageContent } : m))
         : [...history, { id: userMessageId, role: 'user', content: messageContent }];
 
-      if (!isPrimary) {
+      if (isPrimary) {
+        setPending((prev) => ({ ...prev, streaming: true }));
+      } else {
         setMessages((prev) => {
           const targetIdx = prev.findIndex((m) => m.id === messageId);
           if (targetIdx < 0) return prev;
@@ -546,7 +548,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           requestId: isPrimary ? messageId : `${messageId}-${targetModel}`,
           signal: options?.signal || abortControllerRef.current?.signal || undefined,
           conversationId: targetConversationId,
-          branchId: activeBranchIdRef.current,
+          branchId: isPrimary ? activeBranchIdRef.current : null,
           parentConversationId,
           streamingEnabled: shouldStreamRef.current,
           toolsEnabled: useToolsRef.current,
@@ -557,6 +559,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           systemPrompt: systemPromptRef.current || undefined,
           activeSystemPromptId: activeSystemPromptIdRef.current || undefined,
           modelCapabilities,
+          noRevisionBranch: options?.noRevisionBranch === true || undefined,
           onToken: (token: string) => {
             if (
               isPrimary &&
@@ -772,6 +775,9 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                   (current as any).messageId,
             }) as any
         );
+        if (isPrimary) {
+          setPending((prev) => ({ ...prev, streaming: false }));
+        }
 
         return response;
       } catch (err: any) {
@@ -939,6 +945,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         const p1 = executeRequest(primaryModel, true, messageId, userMsgId, msgContent, {
           conversationId: effId,
           signal,
+          noRevisionBranch: true,
           ...opts,
         });
         const p2 = activeCompares.map((m: string) =>
@@ -946,6 +953,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
             conversationId: linkedConversationsRef.current[m],
             parentConversationId: linkedConversationsRef.current[m] ? undefined : effId,
             signal,
+            noRevisionBranch: true,
             ...opts,
           })
         );
@@ -1063,6 +1071,22 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       if (!userMsg) return;
       const isPrimary = modelId === 'primary';
       const modelKey = isPrimary ? modelRef.current : modelId;
+      if (isPrimary) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? {
+                  ...m,
+                  content: '',
+                  tool_calls: undefined,
+                  tool_outputs: undefined,
+                  message_events: undefined,
+                  usage: undefined,
+                }
+              : m
+          )
+        );
+      }
       setStatus('streaming');
       await executeRequest(modelKey, isPrimary, messageId, userMsg.id, userMsg.content, {
         conversationId: isPrimary
@@ -1076,6 +1100,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       messagesRef,
       modelRef,
       setStatus,
+      setMessages,
       executeRequest,
       conversationIdRef,
       linkedConversationsRef,

@@ -19,6 +19,7 @@ import {
   getNextSeq,
   insertUserMessage,
   getMessageContentByClientId,
+  updateMessageContent,
 } from '../db/messages.js';
 import { listEvaluationsForConversation } from '../db/evaluations.js';
 import {
@@ -408,6 +409,37 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
         .json({ error: 'bad_request', message: 'Only user messages can be edited' });
     }
 
+    const noBranch = req.body.no_branch === true;
+    const anchorMessageId = existingMessage.client_message_id || String(existingMessage.id);
+
+    if (noBranch) {
+      // In-place update: overwrite the message content without creating a revision branch.
+      // Used in compare mode where revision history is intentionally suppressed.
+      updateMessageContent({
+        messageId: existingMessage.id,
+        conversationId: req.params.id,
+        userId,
+        content: validatedContent,
+      });
+
+      const editRevisionCount = getMessageRevisionCount({
+        conversationId: req.params.id,
+        anchorMessageId,
+        userId,
+        operationType: 'edit',
+      });
+
+      return res.json({
+        message: {
+          id: anchorMessageId,
+          seq: existingMessage.seq,
+          content: validatedContent,
+        },
+        new_conversation_id: req.params.id,
+        edit_revision_count: editRevisionCount,
+      });
+    }
+
     let newBranchId, clientMessageId, message;
     const db = getDb();
     db.transaction(() => {
@@ -440,7 +472,6 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
       });
     })();
 
-    const anchorMessageId = existingMessage.client_message_id || String(existingMessage.id);
     const editRevisionCount = getMessageRevisionCount({
       conversationId: req.params.id,
       anchorMessageId,

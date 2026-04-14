@@ -1149,6 +1149,22 @@ export function updateMessageContent({
   return message;
 }
 
+export function deleteMessagesByDbIds({ conversationId, dbIds }) {
+  if (!dbIds || dbIds.length === 0) return false;
+
+  const db = getDb();
+  const placeholders = dbIds.map(() => '?').join(',');
+
+  db.transaction(() => {
+    db.prepare(`DELETE FROM message_events WHERE message_id IN (${placeholders})`).run(dbIds);
+    db.prepare(`DELETE FROM tool_calls WHERE message_id IN (${placeholders})`).run(dbIds);
+    db.prepare(`DELETE FROM tool_outputs WHERE message_id IN (${placeholders})`).run(dbIds);
+    db.prepare(`DELETE FROM messages WHERE id IN (${placeholders}) AND conversation_id = ?`).run([...dbIds, conversationId]);
+  })();
+
+  return true;
+}
+
 export function deleteMessagesAfterSeq({ conversationId, userId, afterSeq }) {
   if (!userId) {
     throw new Error('userId is required');
