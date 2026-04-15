@@ -284,7 +284,6 @@ function handleValidationError(res, validation) {
 
 async function handleUpstreamError(upstream, persistence, cachedUpstreamBody) {
   const upstreamBody = cachedUpstreamBody ?? await readUpstreamErrorBody(upstream);
-  if (persistence.persist) persistence.markError();
 
   const upstreamMessage = extractUpstreamMessage(upstreamBody);
 
@@ -296,6 +295,10 @@ async function handleUpstreamError(upstream, persistence, cachedUpstreamBody) {
 
   // Use the extracted upstream message as the primary message if available
   const displayMessage = upstreamMessage || 'Upstream provider returned an error response.';
+
+  if (persistence?.persist) {
+    persistence.markError(`[Error: ${displayMessage}]`);
+  }
 
   const payload = {
     error: 'upstream_error',
@@ -397,7 +400,16 @@ async function handleRequest(context, req, res) {
     setupStreamingHeaders(res);
   }
 
+  const persistAssistantError = (message) => {
+    const errorMessage = `[Error: ${message}]`;
+    if (persistence?.persist) {
+      persistence.markError(errorMessage);
+    }
+    return errorMessage;
+  };
+
   const emitStreamingError = (message) => {
+    const errorMessage = persistAssistantError(message);
     const errorChunk = {
       id: 'error',
       object: 'chat.completion.chunk',
@@ -405,7 +417,7 @@ async function handleRequest(context, req, res) {
       model: body.model,
       choices: [{
         index: 0,
-        delta: { content: `[Error: ${message}]` },
+        delta: { content: errorMessage },
         finish_reason: 'error',
       }],
     };
@@ -464,6 +476,10 @@ async function handleRequest(context, req, res) {
       return;
     }
     if (flags.streamToFrontend) {
+      const upstreamFailure = await handleRetriedUpstreamFailure(error, persistence);
+      if (upstreamFailure) {
+        return emitStreamingError(upstreamFailure.payload?.message || 'Upstream request failed');
+      }
       logger.error({
         msg: 'stream_request_error',
         error: {
@@ -541,6 +557,10 @@ async function handleRequest(context, req, res) {
           unregisterStreamAbort(abortContext.requestId);
         }
         if (flags.streamToFrontend) {
+          const upstreamFailure = await handleRetriedUpstreamFailure(error, persistence);
+          if (upstreamFailure) {
+            return emitStreamingError(upstreamFailure.payload?.message || 'Upstream request failed');
+          }
           logger.error({
             msg: 'stream_request_retry_error',
             error: {
@@ -727,23 +747,7 @@ async function handleRequest(context, req, res) {
           },
         });
 
-        // Fall back to error chunk
-        setupStreamingHeaders(res);
-        const { writeAndFlush } = await import('./streamUtils.js');
-        const errorChunk = {
-          id: 'error',
-          object: 'chat.completion.chunk',
-          created: Math.floor(Date.now() / 1000),
-          model: body.model,
-          choices: [{
-            index: 0,
-            delta: { content: `[Error converting response: ${conversionError.message}]` },
-            finish_reason: 'error'
-          }]
-        };
-        writeAndFlush(res, `data: ${JSON.stringify(errorChunk)}\n\n`);
-        writeAndFlush(res, 'data: [DONE]\n\n');
-        return res.end();
+        return emitStreamingError(`Error converting response: ${conversionError.message}`);
       }
     }
 

@@ -142,7 +142,7 @@ export class SimplifiedPersistence {
     if (result.error) {
       return result;
     }
-    
+
     // Initialize model from request settings
     const { model } = this.persistenceConfig.extractRequestSettings(bodyIn);
     this.model = model;
@@ -771,7 +771,7 @@ export class SimplifiedPersistence {
     if (!this.persist || !this.conversationId || this.assistantSeq === null) return;
     if (this.finalized) return;
     this.finalized = true;
-    
+
     // Check if we should revert an empty regeneration branch
     this.revertIfEmpty();
 
@@ -1096,12 +1096,36 @@ export class SimplifiedPersistence {
     }
   }
 
+  _appendErrorContent(content) {
+    if (!this.persist || content === undefined || content === null) return;
+
+    const text = typeof content === 'string' ? content : String(content);
+    if (!text) return;
+
+    if (Array.isArray(this.assistantContentJson)) {
+      this.assistantContentJson = [
+        ...this.assistantContentJson,
+        { type: 'text', text },
+      ];
+    } else if (this.assistantContentJson && typeof this.assistantContentJson === 'object') {
+      this.assistantContentJson = [
+        this._clone(this.assistantContentJson),
+        { type: 'text', text },
+      ];
+    }
+
+    this.assistantBuffer += text;
+    this.addMessageEvent('content', { text });
+  }
+
   /**
    * Mark assistant message as error
    */
-  markError() {
+  markError(errorContent = undefined) {
     if (!this.persist || !this.conversationId || this.assistantSeq === null) return;
     if (this.finalized || this.errored) return;
+
+    this._appendErrorContent(errorContent);
 
     // Check if we should revert an empty regeneration branch
     this.revertIfEmpty();
@@ -1115,6 +1139,10 @@ export class SimplifiedPersistence {
         const found = db.prepare("SELECT id FROM messages WHERE conversation_id=@conversationId AND seq=@seq AND role = 'assistant'").get({ conversationId: this.conversationId, seq: this.assistantSeq });
         logger.debug('[SimplifiedPersistence] markError lookup result', { foundId: found?.id });
         if (found && found.id) targetId = found.id;
+      }
+
+      if (targetId) {
+        this.currentMessageId = targetId;
       }
 
       if (targetId) {

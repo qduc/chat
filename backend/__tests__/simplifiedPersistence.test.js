@@ -129,6 +129,22 @@ describe('Checkpoint persistence', () => {
     expect(metadata.finish_reason).toBe('error');
   });
 
+  test('stores explicit error message when markError receives one', async () => {
+    const persistence = await initPersistence();
+    const db = getDb();
+
+    persistence.markError('[Error: Provider rate limit exceeded]');
+
+    const updated = db
+      .prepare('SELECT status, content, metadata_json FROM messages WHERE id = ?')
+      .get(persistence.currentMessageId);
+
+    expect(updated.status).toBe('error');
+    expect(updated.content).toBe('[Error: Provider rate limit exceeded]');
+    const metadata = JSON.parse(updated.metadata_json);
+    expect(metadata.finish_reason).toBe('error');
+  });
+
   test('respects checkpoint.enabled=false configuration', async () => {
     const persistence = await initPersistence({ checkpointOverrides: { enabled: false } });
     const db = getDb();

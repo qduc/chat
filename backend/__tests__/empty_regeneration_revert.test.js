@@ -94,7 +94,7 @@ describe('Empty regeneration branch revert', () => {
     });
 
     const newBranchId = persistence.activeBranchId;
-    
+
     // Simulate error
     persistence.markError();
 
@@ -103,6 +103,45 @@ describe('Empty regeneration branch revert', () => {
     expect(currentBranchId).toBe(originalBranchId);
     const branchRow = db.prepare('SELECT id FROM conversation_branches WHERE id = ?').get(newBranchId);
     expect(branchRow).toBeUndefined();
+  });
+
+  test('Does NOT revert on error with explicit content during regeneration', async () => {
+    const db = getDb();
+    const conversationId = await createConversation();
+    const originalBranchId = getActiveBranchId({ conversationId, userId });
+
+    const persistence = new SimplifiedPersistence(createTestConfig());
+    await persistence.initialize({
+      conversationId,
+      sessionId,
+      userId,
+      req: createRequestStub(),
+      bodyIn: {
+        model: 'gpt-4',
+        messages: [{ role: 'user', content: 'First message', id: 'msg-1' }],
+      },
+    });
+
+    const newBranchId = persistence.activeBranchId;
+    const errorText = '[Error: Provider rate limit exceeded]';
+
+    persistence.markError(errorText);
+
+    const currentBranchId = getActiveBranchId({ conversationId, userId });
+    expect(currentBranchId).toBe(newBranchId);
+
+    const branchRow = db.prepare('SELECT id FROM conversation_branches WHERE id = ?').get(newBranchId);
+    expect(branchRow).toBeDefined();
+
+    const messageRow = db
+      .prepare('SELECT status, content FROM messages WHERE branch_id = ? AND role = ? ORDER BY seq DESC LIMIT 1')
+      .get(newBranchId, 'assistant');
+    expect(messageRow).toMatchObject({
+      status: 'error',
+      content: errorText,
+    });
+
+    expect(newBranchId).not.toBe(originalBranchId);
   });
 
   test('Does NOT revert if there is content', async () => {
@@ -123,7 +162,7 @@ describe('Empty regeneration branch revert', () => {
     });
 
     const newBranchId = persistence.activeBranchId;
-    
+
     persistence.appendContent('New content');
     persistence.recordAssistantFinal();
 
@@ -161,7 +200,7 @@ describe('Empty regeneration branch revert', () => {
     // Should NOT revert because it's an EDIT (the user message changed, so we need the branch)
     const currentBranchId = getActiveBranchId({ conversationId, userId });
     expect(currentBranchId).toBe(newBranchId);
-    
+
     const branchRow = db.prepare('SELECT id FROM conversation_branches WHERE id = ?').get(newBranchId);
     expect(branchRow).toBeDefined();
   });

@@ -98,7 +98,7 @@ function setupStreamEventHandlers({
     completed = true;
     try {
       if (persistence && persistence.persist) {
-        persistence.markError();
+        persistence.markError(`[Error: ${err?.message || 'Upstream stream error'}]`);
       }
     } catch {
       // Ignore errors

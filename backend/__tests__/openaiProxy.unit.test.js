@@ -269,6 +269,46 @@ describe('openaiProxy.js - Unit Tests', () => {
       assert.ok(res.text.includes('[DONE]'));
     });
 
+    test('persists streaming provider errors with error status and content', async () => {
+      const app = makeApp({ mockUser });
+      const sessionId = 'streaming-provider-error-session';
+      upsertSession(sessionId, { userId: mockUser.id });
+      createConversation({ id: 'conv-stream-provider-error', sessionId, userId: mockUser.id, title: 'Streaming Error' });
+
+      upstream.setChatErrorResponder((_req, res) => {
+        res.status(429).json({
+          error: {
+            message: 'Rate limit exceeded',
+          },
+        });
+      });
+
+      const res = await request(app)
+        .post('/v1/chat/completions')
+        .set('x-session-id', sessionId)
+        .send({
+          messages: [{ role: 'user', content: 'Trigger provider error' }],
+          conversation_id: 'conv-stream-provider-error',
+          stream: true,
+        });
+
+      assert.equal(res.status, 200);
+      assert.ok(res.text.includes('[Error: Rate limit exceeded]'));
+
+      const db = getDb();
+      const assistantMsg = db.prepare(
+        `SELECT status, content
+         FROM messages
+         WHERE conversation_id = ? AND role = 'assistant'
+         ORDER BY seq DESC
+         LIMIT 1`
+      ).get('conv-stream-provider-error');
+
+      assert.ok(assistantMsg);
+      assert.equal(assistantMsg.status, 'error');
+      assert.equal(assistantMsg.content, '[Error: Rate limit exceeded]');
+    });
+
     test('marks persistence as error when upstream fails', async () => {
       const app = makeApp({ mockUser });
       const sessionId = 'error-session';
