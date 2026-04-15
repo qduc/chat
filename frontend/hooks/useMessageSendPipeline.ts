@@ -688,6 +688,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
               updateMessageState(isPrimary, messageId, targetModel, () => ({
                 usage: event.value,
                 provider: event.value.provider,
+                model: event.value.model,
               }));
             } else if (event.type === 'tool_output') {
               flushBufferedStreamingText(messageId, targetModel, isPrimary);

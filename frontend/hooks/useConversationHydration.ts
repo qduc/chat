@@ -120,6 +120,7 @@ export function hydrateMessages(
         reasoning_tokens: msg.reasoning_tokens ?? undefined,
         usage: msg.usage ?? undefined,
         provider: msg.provider ?? msg.usage?.provider ?? undefined,
+        model: msg.model ?? msg.usage?.model ?? undefined,
         edit_revision_count: editCounts[msgId] ?? undefined,
       };
     }
@@ -142,6 +143,7 @@ export function hydrateMessages(
       reasoning_tokens: msg.reasoning_tokens ?? undefined,
       usage: msg.usage ?? undefined,
       provider: msg.provider ?? msg.usage?.provider ?? undefined,
+      model: msg.model ?? msg.usage?.model ?? undefined,
     };
 
     if (msg.role === 'assistant' && lastUserMsgId) {
@@ -400,6 +402,8 @@ export function useConversationHydration(deps: ConversationHydrationDeps) {
                         tool_calls: lMsg.tool_calls,
                         tool_outputs: lMsg.tool_outputs,
                         message_events: lMsg.message_events,
+                        model: (lMsg as any).model ?? (lMsg as any).usage?.model,
+                        provider: (lMsg as any).provider ?? (lMsg as any).usage?.provider,
                       },
                     },
                   };

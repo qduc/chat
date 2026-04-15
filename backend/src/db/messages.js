@@ -127,6 +127,7 @@ function buildMetadataJson({
   totalTokens,
   promptMs,
   completionMs,
+  model,
 }) {
   const metadata = existing && typeof existing === 'object' ? { ...existing } : {};
   const usage = metadata.usage && typeof metadata.usage === 'object' ? { ...metadata.usage } : {};
@@ -134,6 +135,7 @@ function buildMetadataJson({
   setOrDeleteField(metadata, 'finish_reason', finishReason);
   setOrDeleteField(metadata, 'response_id', responseId);
   setOrDeleteField(metadata, 'provider', provider);
+  setOrDeleteField(metadata, 'model', model);
 
   if (reasoningDetails !== undefined) {
     setOrDeleteField(metadata, 'reasoning_details', reasoningDetails);
@@ -405,6 +407,7 @@ export function insertAssistantFinal({
   completionMs = undefined,
 
   provider = undefined,
+  model = undefined,
   clientMessageId = null,
   branchId = null,
   parentMessageId = undefined,
@@ -432,6 +435,7 @@ export function insertAssistantFinal({
     totalTokens: normalizedTotalTokens,
     promptMs: normalizedPromptMs,
     completionMs: normalizedCompletionMs,
+    model,
   });
 
   const info = db
@@ -654,6 +658,14 @@ export function getMessagesPage({ conversationId, branchId: requestedBranchId = 
 
     if (metadata.provider != null) {
       message.provider = metadata.provider;
+    } else if (usage?.provider != null) {
+      message.provider = usage.provider;
+    }
+
+    if (metadata.model != null) {
+      message.model = metadata.model;
+    } else if (usage?.model != null) {
+      message.model = usage.model;
     }
 
     if (metadata.response_id != null) {
@@ -688,6 +700,8 @@ export function getMessagesPage({ conversationId, branchId: requestedBranchId = 
         ...(reasoningTokens != null ? { reasoning_tokens: reasoningTokens } : {}),
         ...(promptMs != null ? { prompt_ms: promptMs } : {}),
         ...(completionMs != null ? { completion_ms: completionMs } : {}),
+        ...(message.model ? { model: message.model } : {}),
+        ...(message.provider ? { provider: message.provider } : {}),
       };
     }
 
@@ -853,6 +867,14 @@ export function getLastMessage({ conversationId }) {
 
   if (metadata.provider != null) {
     message.provider = metadata.provider;
+  } else if (usage?.provider != null) {
+    message.provider = usage.provider;
+  }
+
+  if (metadata.model != null) {
+    message.model = metadata.model;
+  } else if (usage?.model != null) {
+    message.model = usage.model;
   }
 
   if (metadata.response_id != null) {
@@ -887,6 +909,8 @@ export function getLastMessage({ conversationId }) {
         ...(reasoningTokens != null ? { reasoning_tokens: reasoningTokens } : {}),
         ...(promptMs != null ? { prompt_ms: promptMs } : {}),
         ...(completionMs != null ? { completion_ms: completionMs } : {}),
+        ...(message.model ? { model: message.model } : {}),
+        ...(message.provider ? { provider: message.provider } : {}),
       };
     }
 
@@ -1084,6 +1108,7 @@ export function updateMessageContent({
   finishReason,
   responseId,
   provider,
+  model,
 }) {
   if (!userId) {
     throw new Error('userId is required');
@@ -1126,6 +1151,7 @@ export function updateMessageContent({
     totalTokens: normalizedTotalTokens,
     promptMs: normalizedPromptMs,
     completionMs: normalizedCompletionMs,
+    model,
   });
 
   const updates = ['content = @content', 'content_json = @contentJson', 'metadata_json = @metadataJson', 'updated_at = @now'];

@@ -101,6 +101,8 @@ export function normalizeUsage(usage) {
   if (reasoningTokens != null) mapped.reasoning_tokens = reasoningTokens;
   if (promptMs != null) mapped.prompt_ms = promptMs;
   if (completionMs != null) mapped.completion_ms = completionMs;
+  if (usage.model) mapped.model = String(usage.model);
+  if (usage.provider) mapped.provider = String(usage.provider);
 
   return Object.keys(mapped).length > 0 ? mapped : undefined;
 }
@@ -130,6 +132,10 @@ export function extractUsage(payload) {
   for (let i = results.length - 1; i >= 0; i--) {
     Object.assign(merged, results[i]);
   }
+
+  // If model or provider are at the top level (common in some streaming formats), include them
+  if (!merged.model && payload.model) merged.model = String(payload.model);
+  if (!merged.provider && payload.provider) merged.provider = String(payload.provider);
 
   return Object.keys(merged).length > 0 ? merged : undefined;
 }

@@ -367,6 +367,8 @@ export class ConversationManager {
             totalTokens: msg.usage?.total_tokens,
             promptMs: msg.usage?.prompt_ms,
             completionMs: msg.usage?.completion_ms,
+            provider: msg.provider,
+            model: msg.model,
           });
 
           if (msg.role === 'assistant') {
@@ -501,6 +503,7 @@ export class ConversationManager {
             totalTokens: msg.usage?.total_tokens,
             promptMs: msg.usage?.prompt_ms,
             completionMs: msg.usage?.completion_ms,
+            model: msg.model,
             clientMessageId,
             branchId: targetBranchId,
           });
@@ -868,6 +871,7 @@ export class ConversationManager {
             totalTokens: message.usage?.total_tokens,
             promptMs: message.usage?.prompt_ms,
             completionMs: message.usage?.completion_ms,
+            model: message.model,
             clientMessageId,
             branchId: targetBranchId,
           });
@@ -973,6 +977,7 @@ export class ConversationManager {
       promptMs: params.promptMs,
       completionMs: params.completionMs,
       provider: params.provider,
+      model: params.model,
       clientMessageId: params.clientMessageId,
       branchId: params.branchId,
     });

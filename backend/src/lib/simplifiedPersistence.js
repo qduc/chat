@@ -64,6 +64,7 @@ export class SimplifiedPersistence {
     this.messageEventsEnabled = this.persistenceConfig?.isMessageEventsEnabled?.() ?? true;
     this.messageEvents = []; // Ordered assistant events for rendering
     this.nextEventSeq = 0;
+    this.model = null; // Track which model is used for assistant messages
     this._latestSyncMappings = [];
     // Checkpoint state
     this.lastCheckpoint = 0; // timestamp
@@ -141,6 +142,11 @@ export class SimplifiedPersistence {
     if (result.error) {
       return result;
     }
+    
+    // Initialize model from request settings
+    const { model } = this.persistenceConfig.extractRequestSettings(bodyIn);
+    this.model = model;
+
     const isNewConversation = result.isNewConversation;
     this.initialActiveBranchId = this.conversationMeta?.active_branch_id || null;
     this.requestBranchId = this.requestBranchId || this.initialActiveBranchId;
@@ -601,11 +607,22 @@ export class SimplifiedPersistence {
     if (normalized.completion_ms != null) {
       this.completionMs = Number(normalized.completion_ms);
     }
+    if (normalized.model) {
+      this.setModel(normalized.model);
+    }
+    if (normalized.provider) {
+      this.setProvider(normalized.provider);
+    }
   }
 
   setProvider(provider) {
     if (!this.persist || !provider) return;
     this.upstreamProvider = String(provider);
+  }
+
+  setModel(model) {
+    if (!this.persist || !model) return;
+    this.model = String(model);
   }
 
   /**
@@ -777,6 +794,7 @@ export class SimplifiedPersistence {
           promptMs: this.promptMs,
           completionMs: this.completionMs,
           provider: this.upstreamProvider,
+          model: this.model,
         });
 
         // Maintain assistantMessageId as the UUID generated during setup
@@ -809,6 +827,7 @@ export class SimplifiedPersistence {
               promptMs: this.promptMs,
               completionMs: this.completionMs,
               provider: this.upstreamProvider,
+              model: this.model,
             });
             this.currentMessageId = found.id;
             this.assistantMessageId = this.assistantMessageId || uuidv4();
@@ -829,6 +848,7 @@ export class SimplifiedPersistence {
               promptMs: this.promptMs,
               completionMs: this.completionMs,
               provider: this.upstreamProvider,
+              model: this.model,
               clientMessageId: this.assistantMessageId,
               branchId: this.activeBranchId,
             });
@@ -1208,6 +1228,8 @@ export class SimplifiedPersistence {
         totalTokens: this.totalTokens,
         promptMs: this.promptMs,
         completionMs: this.completionMs,
+        provider: this.upstreamProvider,
+        model: this.model,
       });
 
       this.lastCheckpoint = Date.now();

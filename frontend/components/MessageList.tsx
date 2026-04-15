@@ -716,6 +716,8 @@ export function MessageList({
                   tool_outputs: fu.tool_outputs ?? undefined,
                   reasoning_details: fu.reasoning_details ?? undefined,
                   usage: fu.usage ?? undefined,
+                  model: fu.model ?? undefined,
+                  provider: fu.provider ?? undefined,
                   anchor_user_message_id: msg.id,
                   regenerate_revision_count: branchRegenRevisions.length,
                   _timeline_anchor_content: revision.anchor_content,
@@ -742,6 +744,8 @@ export function MessageList({
                         tool_outputs: historical.tool_outputs ?? undefined,
                         reasoning_details: historical.reasoning_details ?? undefined,
                         usage: historical.usage ?? undefined,
+                        model: historical.model ?? undefined,
+                        provider: historical.provider ?? undefined,
                       };
                     }
                   }
@@ -816,6 +820,8 @@ export function MessageList({
                 tool_outputs: firstAssistant.tool_outputs ?? undefined,
                 reasoning_details: firstAssistant.reasoning_details ?? undefined,
                 usage: firstAssistant.usage ?? undefined,
+                model: firstAssistant.model ?? undefined,
+                provider: firstAssistant.provider ?? undefined,
                 _historical: true,
               };
             }

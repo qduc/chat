@@ -156,6 +156,10 @@ function processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason
     persistence.setProvider(obj.provider);
   }
 
+  if (obj?.model && typeof persistence.setModel === 'function') {
+    persistence.setModel(obj.model);
+  }
+
   const choice = obj?.choices?.[0];
   const delta = choice?.delta;
 
