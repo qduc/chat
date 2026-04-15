@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.17.2] - 2026-04-15
+
+### Added
+- `noRevisionBranch` option to message send pipeline for streamlined message updates
+- Compare mode for message editing and deletion, enabling in-place updates without creating revision branches
+- Precise token generation duration tracking with tool-call aware clock pausing
+
+### Breaking Changes
+- Removed automatic database retention cleanup logic and associated configuration
+
+
 ## [0.17.1] - 2026-04-13
 
 ### Added
