@@ -1350,7 +1350,8 @@ describe('useChat hook', () => {
     expect(mockConversations.editMessage).toHaveBeenCalledWith(
       'conv-edit',
       'msg-1',
-      'Updated text'
+      'Updated text',
+      true
     );
     expect(result.current.conversationId).toBe('conv-edit');
     expect(result.current.compareModels).toEqual(['openai::gpt-4o-mini']);

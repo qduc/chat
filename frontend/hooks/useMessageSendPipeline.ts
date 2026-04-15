@@ -486,6 +486,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         parentConversationId?: string;
         retried?: boolean;
         signal?: AbortSignal;
+        noRevisionBranch?: boolean;
       }
     ) => {
       const targetConversationId = options?.conversationId;
