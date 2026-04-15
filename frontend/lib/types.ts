@@ -113,6 +113,10 @@ export interface PendingState {
     lastUpdated: number;
     provider?: string;
     isEstimate: boolean;
+    activeGenerationMs?: number;
+    lastActivityStartedAt?: number | null;
+    activeToolCalls?: number;
+    durationMsOverride?: number;
   };
   retryStatus?: RetryStatus | null;
 }
@@ -649,6 +653,7 @@ export interface ChatOptionsExtended extends ChatOptions {
   systemPrompt?: string;
   activeSystemPromptId?: string | null;
   modelCapabilities?: any;
+  noRevisionBranch?: boolean;
 }
 
 // Legacy interface for backward compatibility

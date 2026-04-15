@@ -435,13 +435,44 @@ export function MessageList({
       setStreamingStats(null);
     }
 
-    const { count, startTime, lastUpdated, isEstimate } = stats;
+    const {
+      count,
+      startTime,
+      lastUpdated,
+      isEstimate,
+      activeGenerationMs,
+      lastActivityStartedAt,
+      activeToolCalls,
+      durationMsOverride,
+    } = stats;
 
     if (!Number.isFinite(startTime) || count <= 0) return;
 
-    const endTimestamp =
+    const nowOrLastUpdated =
       pending.streaming || !Number.isFinite(lastUpdated) ? Date.now() : lastUpdated;
-    const elapsedSeconds = (endTimestamp - startTime) / 1000;
+    const trustedDurationMs =
+      typeof durationMsOverride === 'number' ? durationMsOverride : undefined;
+    const baseActiveGenerationMs = typeof activeGenerationMs === 'number' ? activeGenerationMs : 0;
+    const lastActivityMs =
+      typeof lastActivityStartedAt === 'number' ? lastActivityStartedAt : undefined;
+
+    let elapsedMs = 0;
+    if (!isEstimate && typeof trustedDurationMs === 'number' && trustedDurationMs > 0) {
+      elapsedMs = trustedDurationMs;
+    } else if (baseActiveGenerationMs > 0 || typeof lastActivityMs === 'number') {
+      elapsedMs = baseActiveGenerationMs;
+      if (
+        typeof lastActivityMs === 'number' &&
+        (activeToolCalls || 0) === 0 &&
+        Number.isFinite(nowOrLastUpdated)
+      ) {
+        elapsedMs += Math.max(0, nowOrLastUpdated - lastActivityMs);
+      }
+    } else {
+      elapsedMs = nowOrLastUpdated - startTime;
+    }
+
+    const elapsedSeconds = elapsedMs / 1000;
 
     if (elapsedSeconds <= 0.1) return;
 
@@ -458,6 +489,10 @@ export function MessageList({
     pending.tokenStats?.isEstimate,
     pending.tokenStats?.startTime,
     pending.tokenStats?.lastUpdated,
+    pending.tokenStats?.activeGenerationMs,
+    pending.tokenStats?.lastActivityStartedAt,
+    pending.tokenStats?.activeToolCalls,
+    pending.tokenStats?.durationMsOverride,
   ]);
 
   // Resize editing textarea
@@ -1070,8 +1105,8 @@ export function MessageList({
                 isStreaming={isStreaming}
                 conversationId={conversationId}
                 compareModels={compareModels}
-                editRevision={editRev}
-                regenRevision={regenRev}
+                editRevision={compareModels.length === 0 ? editRev : undefined}
+                regenRevision={compareModels.length === 0 ? regenRev : undefined}
                 primaryModelLabel={primaryModelLabel}
                 linkedConversations={linkedConversations}
                 evaluations={evaluations}

@@ -4,67 +4,37 @@ This document provides essential knowledge for AI agents to be immediately produ
 
 ## Project Overview
 
-**ChatForge** is a modern chat application with a Next.js frontend and Node.js backend, designed as an OpenAI API proxy with enhanced features like conversation branching, tool orchestration, multi-provider support, JWT authentication, user-scoped multi-tenancy, image/audio/file uploads, advanced reasoning controls, prompt caching optimization, persistent memory via journal tool, model comparison mode, n-way judge evaluation, conversation search, and Electron desktop app support.
+**ChatForge** is a modern chat application with a Next.js frontend and Node.js backend, acting as a feature-rich OpenAI API proxy. It supports conversation branching, server-side tool orchestration, multi-provider support, multimodal uploads, and advanced reasoning controls, all within a secure, user-scoped multi-tenant environment.
 
 ## Architecture Overview
-
-### High-Level Structure
-```
-chat/
-  frontend/             # Next.js 15 + React 19 + TypeScript
-  backend/              # Node.js + Express + SQLite
-  electron/             # Electron desktop app packaging
-  docs/                 # Architecture docs and ADRs
-  proxy/                # Dev-only Nginx reverse proxy config (compose.dev)
-  integration/          # Integration tests
-  requests/             # HTTP request examples
-  dev.sh                # Development orchestration script
-  prod.sh               # Production management script
-  release.sh            # Release management script
-  AGENTS.md             # This file - AI onboarding guide
-```
 
 ### Service Boundaries
 
 **Frontend**
-- Next.js App Router with real-time streaming UI
-- State management via React hooks/reducers
-- Direct API calls to backend
+- Next.js App Router with real-time streaming UI.
+- State management via specialized controller hooks.
+- Direct API calls to backend.
 
 **Backend**
-- Express API server acting as OpenAI-compatible proxy
-- SQLite for persistence
-- Server-side tool orchestration
-- User-based authentication and authorization
+- Express API server acting as OpenAI-compatible proxy.
+- SQLite for persistence with user-based data isolation.
+- Server-side tool orchestration (Playwright-based WebFetch, Journal, etc.).
 
-> **Production bundling:** The root multi-stage `Dockerfile` exports the Next.js app and copies it into the Express backend, so the `app` container (managed by `prod.sh` / `docker-compose.yml`) serves both `/api` and static assets. The standalone `frontend`, `backend`, and `proxy` containers only exist in the development compose stack for hot reload.
+> **Production bundling:** The root multi-stage `Dockerfile` exports the Next.js app and copies it into the Express backend. In production, the `app` container serves both `/api` and static assets. Standalone service containers only exist in the development compose stack.
 
-### Core Design Principles
+### Core Principles & Architectural Decisions
 
-1. **User-Based Data Isolation**: All data operations are scoped to authenticated users (enforced at database level with NOT NULL user_id constraints)
-2. **JWT Authentication**: Secure authentication with JWT access tokens and refresh tokens
-3. **Multi-Tenancy**: Per-user provider configurations, conversations, settings, and resources
-4. **Server-Side Tool Orchestration**: Tools execute on the backend, not client
-5. **OpenAI API Compatibility**: Backend presents OpenAI-compatible interface while adding features
-6. **Real-time Streaming**: SSE-based streaming for chat and tool execution
-7. **Conversation Settings Persistence**: Complete snapshots of conversation settings (model, provider, tools, reasoning controls) persist across edits and regenerations
-8. **Multimodal Support**: Full image, audio, and file handling with upload, paste, preview, and secure metadata storage
-9. **Reasoning Controls**: Support for reasoning effort levels and extended thinking modes
-10. **Prompt Caching**: Automatic prompt caching with cache breakpoints to reduce costs and latency
-11. **Persistent Memory**: Journal tool provides AI with cross-conversation memory storage
-12. **Model Comparison Mode**: Side-by-side comparison of responses from multiple models with isolated histories
-13. **Conversation Forking**: Fork conversations at any point to explore alternative paths
-14. **Parallel Tool Execution**: Configurable concurrent tool execution for improved performance
-15. **Streaming Control**: Ability to abort streaming responses and automatic checkpoint persistence
-16. **Desktop App**: Cross-platform Electron app with auto-login and native packaging
-17. **Enhanced WebFetch**: Playwright-based browser automation for SPA support with specialized content extractors
-18. **Judge/Evaluation System**: Automated model response comparison with judge models providing scores and reasoning
-19. **Custom Request Parameters**: User-defined API parameters with multi-select support for advanced configuration
-20. **Usage Tracking**: Comprehensive timing metrics and token usage tracking for performance insights
-21. **Conversation Branching**: Support for editing messages and managing multiple conversation paths with revision history
-22. **Conversation Search**: Full-text search for finding specific messages and conversations
-23. **Deep Reasoning Support**: Specialized handling for "thought" blocks and reasoning effort controls
-24. **Right Sidebar State**: Persistent workspace management via localized sidebar state
+1. **User-Based Data Isolation**: All data operations are strictly scoped to authenticated users (enforced via NOT NULL `user_id` constraints).
+2. **Server-Side Tool Orchestration**: Tools execute exclusively on the backend; simplified tool names are expanded to full specs before execution.
+3. **OpenAI API Compatibility**: The backend maintains an OpenAI-compatible interface while adding features like prompt caching and reasoning effort controls.
+4. **Conversation Snapshots**: Conversations maintain complete settings snapshots (model, provider, tools) for perfect reproducibility across edits.
+5. **Real-time Streaming**: SSE-based streaming for chat and tool execution with automatic checkpoint persistence for tool outputs.
+6. **Prompt Caching**: Automatic insertion of cache breakpoints (e.g., for Anthropic) to optimize costs and latency.
+7. **Multimodal Integrity**: Secure image/file metadata storage with path-based access control and strict size/count validation.
+8. **Conversation Branching**: Messages are pinned to specific branches; edits create new revisions while preserving original paths.
+9. **Parallel Tool Execution**: Configurable concurrent tool execution with user-defined max iterations.
+10. **Provider Adapters**: Automatic selection of API adapters (ChatCompletions vs Responses API) based on upstream provider URLs.
+11. **Message ID Protocol**: Consistent UUID-based message IDs used across all layers.
 
 ## Development Workflow
 
@@ -72,266 +42,66 @@ chat/
 
 ### Container Management
 ```bash
-./dev.sh up              # Start all services
-./dev.sh up --build      # Start and rebuild containers
-./dev.sh up -d           # Start in detached mode
-./dev.sh down            # Stop and remove containers
-./dev.sh restart         # Restart all services
-./dev.sh build           # Build container images
-./dev.sh ps              # Show running services
+./dev.sh up [-d] [--build]  # Start/Rebuild services
+./dev.sh down               # Stop and remove containers
+./dev.sh restart            # Restart all services
 ```
 
-### Logs
+### Logs & Execution
 ```bash
-./dev.sh logs         # logs from all services
-./dev.sh logs frontend # frontend logs only
-./dev.sh logs backend  # backend logs only
-./dev.sh logs --tail=100  # Show last 100 log lines
+./dev.sh logs [service]     # View logs (frontend/backend)
+./dev.sh exec backend <cmd> # Execute command in backend (e.g., npm test)
 ```
 
-### Running Commands in Containers
+### Testing & Database
 ```bash
-./dev.sh exec backend npm test    # Run backend tests
-./dev.sh exec frontend npm run build # Build frontend
-./dev.sh exec backend npm run lint # Run backend linter
-./dev.sh exec backend sh -c "ls -la" # Execute shell commands
-```
-
-### Testing
-```bash
-./dev.sh test                    # Run all tests (backend + frontend)
-./dev.sh test:backend            # Run backend tests only
-./dev.sh test:frontend           # Run frontend tests only
-./dev.sh test:backend __tests__/conversations.test.js # Run specific test file
-```
-
-### Database Migrations
-```bash
-./dev.sh migrate status   # Check migration status
-./dev.sh migrate up       # Apply pending migrations
-./dev.sh migrate fresh    # Reset database and reapply all migrations
-```
-
-### Database Access
-```bash
-# Access SQLite database via CLI
-./dev.sh exec backend sqlite3 /data/dev.db
-
-# Run a specific query
-./dev.sh exec backend sqlite3 /data/dev.db "SELECT * FROM users;"
-
-# List tables
-./dev.sh exec backend sqlite3 /data/dev.db ".tables"
-```
-
-### Additional Services
-```bash
-# Adminer database management (available at http://localhost:3080)
-# Provides password-less login for SQLite database inspection
+./dev.sh test[:backend|:frontend] # Run tests
+./dev.sh migrate [status|up|fresh] # Manage migrations
+./dev.sh exec backend sqlite3 /data/dev.db # Direct DB access
 ```
 
 ### Production Management
 ```bash
-./prod.sh up [--build]     # Start production services (detached)
-./prod.sh down             # Stop services (requires confirmation)
-./prod.sh restart          # Restart services
-./prod.sh ps               # Show service status
-./prod.sh logs [-f]        # View logs
-./prod.sh health           # Check health status
-./prod.sh migrate status   # Check migration status
-./prod.sh migrate up       # Apply migrations (with confirmation + auto-backup)
-./prod.sh migrate fresh    # Reset database (requires double confirmation)
-./prod.sh backup           # Create database backup
-./prod.sh exec <service> <command>  # Execute command in container
-```
-> In production there is a single `app` service. Most `prod.sh exec` commands therefore look like `./prod.sh exec app <command>`.
-> The production database is located at `/data/prod.db`. You can access it via CLI using: `./prod.sh exec app sqlite3 /data/prod.db`.
-
-### Release Management
-```bash
-./release.sh               # Interactive release process (merge develop to main, tag, create next develop)
-./release.sh --dry-run     # Validate without releasing (lint + build only)
+./prod.sh up                # Start production (single 'app' service)
+./prod.sh migrate up        # Apply migrations with auto-backup
+./prod.sh exec app sqlite3 /data/prod.db # Access production DB
 ```
 
 ## Key Architectural Patterns
 
 ### Backend Patterns
-
-**Request Flow Philosophy**:
-- Sanitize incoming requests
-- Select execution strategy based on request characteristics
-- Execute with appropriate orchestration
-- Persist results with user isolation
-- Return OpenAI-compatible responses
-
-**Tool System Philosophy**:
-- Tools are modular, independent units
-- Registry-based discovery and execution
-- Tools can execute in parallel with configurable concurrency (user-configurable max iterations)
-- Backend expands simplified tool names to full specifications
-- WebFetch tool supports Playwright-based browser automation for SPAs with specialized extractors for Reddit, StackOverflow, and other sites
-- Automatic checkpoint persistence ensures buffered tool calls/outputs survive client disconnects
-
-**Database Philosophy**:
-- User-based data isolation at query level (enforced with NOT NULL constraints on user_id)
-- Migration-driven schema evolution (20+ migrations applied)
-- Automatic cleanup for data retention (default 30 days)
-- In-memory caching with TTL support for performance optimization
-- Password security with bcrypt hashing (cost factor 10)
-- JWT secrets stored in environment (never in database)
-- Image and file metadata stored with user ownership validation
-- Journal entries scoped per user for persistent AI memory
-- Evaluation system for judge-based model comparison with scores and reasoning
-- Custom request parameters stored per user for advanced API configuration
-- Message IDs use UUID format consistently across frontend and backend
-- Conversation branching with revision history pinned to request branches
-- Periodic background cleanup of upstream logs to prevent disk bloat
+- **Request Flow**: Sanitize -> Strategy Selection -> Orchestrate -> Persist -> Respond.
+- **Tool System**: Modular, registry-based, supports Playwright automation for SPAs.
+- **Database**: Migration-driven, in-memory TTL caching, bcrypt (cost 10) for passwords, user-scoped Journal for memory.
 
 ### Frontend Patterns
-
-**State Management Philosophy**:
-- Modular state management: `useChat` hook refactored into specialized controller hooks (`useMessageSendPipeline`, `useDraftPersistence`, `useConversationHydration`)
-- Direct state manipulation without complex reducer patterns
-- Encapsulated state and actions in a single custom hook
-- URL state synchronization for navigation
-- Reasoning block filtering: `extractAssistantCopyText` utility for clean copy-paste without thinking blocks
-
-**API Integration Philosophy**:
-- Centralized HTTP client (`lib/http.ts`) for consistent error handling
-- Streaming utilities (`lib/streaming.ts`) for real-time data processing
-- Authentication state drives UI and API behavior
-- Type definitions centralized in `lib/types.ts`
-
-**Component Philosophy**:
-- Separation between container and presentational components
-- Tool visualization integrated into message rendering
-- Authentication-aware UI components with login/register flows
-- Image handling with drag-and-drop, paste support, and preview modals
-- File upload support with drag-and-drop for text files
-- Enhanced markdown rendering with language detection, syntax highlighting, copy functionality, code wrapping, and HTML preview
-- Model capabilities dynamically adjust UI based on selected model features
-- Reasoning controls (effort slider) shown conditionally based on model support
-- User settings UI for per-user API key management
-- Model comparison mode with multi-column layout for side-by-side responses
-- Conversation forking UI integrated into message toolbars
-- Toast notifications for user feedback
-- Draft message persistence with auto-save
-- Abort streaming button for canceling in-progress responses
-- Mobile-responsive design with auto-hide scroll buttons
+- **State Management**: Specialized controller hooks (`useMessageSendPipeline`, `useDraftPersistence`) orchestrated by `useChatV2Controller`.
+- **API Integration**: Centralized HTTP client (`lib/http.ts`) and streaming utilities (`lib/streaming.ts`).
+- **Components**: Separation of container/presentational logic; dynamic UI adjustment based on model capabilities.
 
 ## Core Conventions
 
-### Adding New Features
-
-**Backend Routes**: Create in routes directory, apply auth middleware where needed, register in main server file
-
-**Tools**: Follow modular tool pattern, register in tool system, ensure validation and error handling
-
-**Frontend Components**: Follow existing patterns, use centralized HTTP client, respect authentication boundaries
-
-**Database Schema**: Use migrations, maintain user isolation, follow existing table patterns
-
-**Testing**: Match existing test patterns, include authentication context, use provided test utilities
-
-### Universal Rules
-
-- **Authentication**: Always check user authentication for data operations (user_id is required and enforced)
-- **Error Handling**: Use structured error responses, sanitize upstream errors, exponential backoff retry logic for API calls
-- **Logging**: Structured logging for debugging and monitoring
-- **Type Safety**: TypeScript strict mode on frontend, JSDoc or validation on backend
-- **Testing**: Write tests before committing, both services must pass
-- **Code Quality**: ESLint configured for both frontend and backend with strict linting rules enforced by Husky pre-commit hooks
-
-## Important Architectural Decisions
-
-- **Provider Adapters**: System automatically selects appropriate API adapter based on upstream provider URL (ChatCompletions API vs Responses API)
-- **Tool Execution**: Always server-side, never client-side
-- **Data Isolation**: All queries filtered by authenticated user (enforced at database level with NOT NULL constraints)
-- **JWT Authentication**: Token-based authentication with bcrypt password hashing and refresh token support
-- **Streaming Protocol**: SSE for real-time updates with usage metadata tracking
-- **API Compatibility**: Maintains OpenAI API contract while extending functionality
-- **Dev Reverse Proxy**: Nginx proxy routes /api requests to backend in the Docker *development* stack (production bundles everything into one container)
-- **Image Storage**: Secure image metadata storage with path-based access control and validation (max 10MB, 5 images/message)
-- **File Storage**: Text file uploads with content extraction (max 5MB, 3 files/message, 30+ file types supported)
-- **Conversation Snapshots**: Each conversation maintains complete settings snapshot for reproducibility
-- **Reasoning Controls**: Advanced reasoning features (effort levels, extended thinking) available across compatible models
-- **Prompt Caching**: Automatic cache breakpoint insertion for Anthropic models to reduce token costs
-- **User Settings**: Per-user API keys for tools (Tavily, Exa, SearXNG) and configurable max tool iterations stored securely
-- **Journal Tool**: Persistent memory system allowing AI to store and retrieve notes across conversations
-- **Performance**: In-memory caching, model filtering by provider, optimized rendering, batch database operations, and model caching with background refresh
-- **Model Comparison**: Multi-model comparison mode with isolated conversation histories for side-by-side evaluation
-- **Conversation Forking**: Ability to fork conversations at any message to explore alternative paths
-- **Parallel Tool Execution**: Configurable concurrent tool execution with user-defined max iterations
-- **Streaming Abort**: Client-initiated abort of streaming responses with automatic checkpoint persistence
-- **WebFetch Enhancement**: Playwright-based browser automation with specialized content extractors for Reddit, StackOverflow, and SPA support
-- **Draft Persistence**: Automatic draft message saving across sessions
-- **HTML Preview**: In-modal HTML rendering for code blocks
-- **Electron App**: Cross-platform desktop app with auto-login and native packaging
-- **Linked Conversations**: Support for conversation linking and retrieval in conversation context
-- **Reasoning Format Support**: Support for reasoning_format parameter across compatible models
-- **Retry Logic**: Exponential backoff for API calls (particularly Gemini 429 errors) with configurable retry strategy
-- **Code Quality**: Husky pre-commit hooks enforce linting before commits
-- **Toast Notifications**: User-facing notifications for errors and success messages
-- **Judge/Evaluation System**: Automated comparison of model responses with configurable judge models, scoring, and reasoning persistence
-- **Custom Request Parameters**: User-configurable API parameters with multi-select support stored in user settings
-- **Usage Tracking**: Comprehensive timing metrics including prompt tokens (with cached token accounting) and performance insights
-- **Message ID Protocol**: Consistent UUID-based message IDs for assistant responses across all components
-- **Conversation Branching**: Messages are pinned to specific branches; edits create new revisions while preserving the original path
-- **Provider Types**: Explicit choice between `openai-responses` (Responses API) and `openai-completions` (Legacy/OpenRouter/Local)
-- **Reasoning Effort**: Standardized control of model reasoning depth via `reasoning_effort` parameter (none to xhigh)
+- **Adding Features**: Register backend routes, modularize tools, use centralized HTTP client on frontend, and always use migrations for schema changes.
+- **Testing**: Match existing patterns, include authentication context, and verify both services before committing.
+- **Gentle Reminders**: Always enforce `user_id` isolation in DB queries, use structured error responses with exponential backoff for APIs, maintain strict type safety, and ensure all services pass linting and tests.
 
 ## Finding Your Way Around
 
-**Route definitions**: Look in `backend/src/routes/`
-**Tool implementations**: Look in `backend/src/lib/tools/`
-**State management**: Check `frontend/hooks/useChat.ts` - single custom hook managing all chat state and actions
-**Other hooks**:
-  - `frontend/hooks/useSystemPrompts.ts` - System prompt management
-  - `frontend/hooks/useSecureImageUrl.ts` - Secure image URL handling
-  - `frontend/hooks/useMessageSendPipeline.ts` - Message transmission and tool orchestration logic
-  - `frontend/hooks/useDraftPersistence.ts` - LocalStorage-backed draft management
-  - `frontend/hooks/useConversationHydration.ts` - Logic for loading and preparing conversation state
-  - `frontend/hooks/useChatV2Controller.ts` - Main controller orchestrating UI-hook interactions
-**Core utilities**: Check `frontend/lib/` for shared functionality:
-  - `http.ts` - Centralized HTTP client
-  - `streaming.ts` - Streaming utilities
-  - `types.ts` - Type definitions
-  - `api.ts` - API integration
-  - `storage.ts` - Browser storage utilities
-  - `contentUtils.ts` - Content processing utilities
-  - `modelCapabilities.ts` - Model capability detection
-**Database schema**: Check migration files in `backend/scripts/`
-**UI components**: Check `frontend/components/` organized by feature:
-  - Main chat components: `ChatV2.tsx`, `MessageList.tsx`, `MessageInput.tsx`
-  - Layout: `ChatHeader.tsx`, `ChatSidebar.tsx`, `RightSidebar.tsx`
-  - Markdown rendering: `Markdown.tsx` (includes HTML preview, code wrapping, syntax highlighting)
-  - Settings: `SettingsModal.tsx`
-  - Model selection: `ModelSelector.tsx`, `CompareSelector.tsx` (unified base component pattern)
-  - UI primitives: `components/ui/`
-  - Search: `ConversationSearch.tsx`
-  - Toast notifications: Check toast integration in relevant components
-**Image handling**: Check `frontend/components/ui/ImagePreview.tsx` (exports both `ImagePreview` and `ImageUploadZone`)
-**Audio handling**: Check `frontend/components/ui/AudioPreview.tsx` (exports `AudioPreview`) and `frontend/lib/audioUtils.ts`
-**File handling**: Check `backend/src/routes/files.js` for file upload API and `frontend/lib/api.ts` for client integration
-**Authentication**: Check `backend/src/routes/auth.js` for auth routes and `frontend/contexts/AuthContext.tsx` for client-side auth state
-**User settings**: Check `backend/src/routes/userSettings.js` for settings API and `frontend/components/SettingsModal.tsx` for client integration
-**Journal tool**: Check `backend/src/lib/tools/journal.js` for persistent memory implementation
-**WebFetch tool**: Check `backend/src/lib/tools/webFetch.js` for Playwright-based browser automation and specialized content extractors
-**Electron app**: Check `electron/` directory for desktop app packaging and configuration
-**Model comparison**: Check `frontend/hooks/useChat.ts` for comparison mode state management
-**Conversation forking**: Check conversation forking logic in `frontend/components/` message toolbar components
-**Documentation Map**: Comprehensive guides in the `docs/` folder:
-  - [ARCHITECTURE.md](file:///Users/qduc/src/chat/docs/ARCHITECTURE.md): High-level tech stack, design principles, and database schema.
-  - [backend_api_spec.md](file:///Users/qduc/src/chat/docs/backend_api_spec.md): Complete backend REST API specification.
-  - [backend_api_chat_completions_spec.md](file:///Users/qduc/src/chat/docs/backend_api_chat_completions_spec.md): Deep dive into the OpenAI-compatible chat endpoint.
-  - [tool_orchestration_deep_dive.md](file:///Users/qduc/src/chat/docs/tool_orchestration_deep_dive.md): Details on tool execution, streaming, and multi-turn loops.
-  - [ENVIRONMENT_VARIABLES.md](file:///Users/qduc/src/chat/docs/ENVIRONMENT_VARIABLES.md): Full reference for backend and frontend configuration.
-  - [DEVELOPMENT.md](file:///Users/qduc/src/chat/docs/DEVELOPMENT.md): Advanced setup, contribution workflows, and testing guide.
-  - [frontend_code_flow.md](file:///Users/qduc/src/chat/docs/frontend_code_flow.md) & [backend_code_flow.md](file:///Users/qduc/src/chat/docs/backend_code_flow.md): Execution paths and service-specific logic.
-  - [TOOLS.md](file:///Users/qduc/src/chat/docs/TOOLS.md): Technical guide for implementing and registering new tools.
-**Linting**: ESLint configs in both `frontend/` and `backend/` directories, Husky hooks in `.husky/`
-**Upstream Logging**: Request and response of upstream API are in `backend/logs/` folder. These files are very long, only read a dozen of lines from the bottom. You can read them without executing in docker container, they have been mounted to this project directory.
+- **Routes & Tools**: `backend/src/routes/`, `backend/src/lib/tools/`
+- **Frontend Logic**: `frontend/hooks/` (controllers), `frontend/lib/` (utilities)
+- **UI Components**: `frontend/components/` (organized by feature)
+- **Database Schema**: `backend/scripts/` (migrations)
+- **Upstream Logs**: `backend/logs/` (read bottom lines for recent API activity)
+
+## Documentation Map
+
+- [ARCHITECTURE.md](docs/ARCHITECTURE.md): Tech stack, design principles, and schema.
+- [backend_api_spec.md](docs/backend_api_spec.md): Complete REST API specification.
+- [tool_orchestration_deep_dive.md](docs/tool_orchestration_deep_dive.md): Execution loops and streaming details.
+- [ENVIRONMENT_VARIABLES.md](docs/ENVIRONMENT_VARIABLES.md): Full config reference.
+- [DEVELOPMENT.md](docs/DEVELOPMENT.md): Contribution workflows and testing guide.
+- [TOOLS.md](docs/TOOLS.md): Implementing and registering new tools.
 
 ---
 
-This architecture prioritizes **separation of concerns**, **type safety**, and **user data isolation** while maintaining **OpenAI API compatibility** and **production reliability**.
+This architecture prioritizes **separation of concerns**, **type safety**, and **user data isolation**.

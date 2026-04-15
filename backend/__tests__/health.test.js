@@ -32,12 +32,11 @@ test('includes service metadata: provider, model, uptime', async () => {
   assert.ok(typeof body.uptime === 'number' && !Number.isNaN(body.uptime), 'uptime is a number');
 });
 
-test('includes persistence flags: enabled and retentionDays', async () => {
+test('includes persistence flags: enabled', async () => {
   const app = makeApp();
   const res = await request(app).get('/healthz');
   assert.equal(res.status, 200);
   const body = res.body;
   assert.ok(body.persistence, 'persistence object is present');
   assert.strictEqual(typeof body.persistence.enabled, 'boolean');
-  assert.strictEqual(typeof body.persistence.retentionDays, 'number');
 });

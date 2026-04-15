@@ -245,7 +245,7 @@ export class SimplifiedPersistence {
         userId,
         messages,
         seq,
-        { branchId: this.requestBranchId }
+        { branchId: this.requestBranchId, skipRevisionBranch: !!bodyIn.no_revision_branch }
       );
       this._latestSyncMappings = Array.isArray(syncResult?.idMappings) ? syncResult.idMappings : [];
       this.regenerateAnchorMessageId = syncResult?.regenerateRevision?.anchorMessageId ?? null;

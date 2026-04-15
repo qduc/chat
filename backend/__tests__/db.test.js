@@ -9,7 +9,6 @@ import {
   getMessagesPage,
   insertUserMessage,
   insertAssistantFinal,
-  retentionSweep,
   resetDbCache,
 } from '../src/db/index.js';
 import { insertMessageEvents } from '../src/db/messageEvents.js';
@@ -167,52 +166,6 @@ describe('DB helpers', () => {
         total_tokens: 7,
         reasoning_tokens: 2,
       });
-    });
-  });
-
-  describe('retentionSweep', () => {
-    test('deletes conversations older than cutoff (including messages)', () => {
-      createConversation({ id: 'old', sessionId, userId: testUser.id });
-      const db = getDb();
-      db.prepare(
-        `UPDATE conversations SET created_at=datetime('now', '-2 days') WHERE id='old'`
-      ).run();
-      const stmt = db.prepare(
-        `INSERT INTO messages (conversation_id, branch_id, role, content, seq) VALUES (@cid, @bid, 'user', 'hi', 1)`
-      );
-      stmt.run({ cid: 'old', bid: 'old:root' });
-
-      createConversation({ id: 'recent', sessionId, userId: testUser.id });
-      stmt.run({ cid: 'recent', bid: 'recent:root' });
-
-      const result = retentionSweep({ days: 1 });
-      assert.equal(result.deleted, 1);
-
-      const remaining = db
-        .prepare('SELECT id FROM conversations ORDER BY id')
-        .all()
-        .map((r) => r.id);
-      assert.equal(remaining.length, 1);
-      assert.equal(remaining[0], 'recent');
-      const msgCount = db
-        .prepare("SELECT COUNT(1) as c FROM messages WHERE conversation_id='old'")
-        .get().c;
-      assert.equal(msgCount, 0);
-    });
-
-    test('skips conversations with metadata.pinned=true', () => {
-      createConversation({ id: 'pinned', sessionId, userId: testUser.id });
-      const db = getDb();
-      db.prepare(
-        `UPDATE conversations SET created_at=datetime('now', '-2 days'), metadata='{"pinned":1}' WHERE id='pinned'`
-      ).run();
-
-      const result = retentionSweep({ days: 1 });
-      assert.equal(result.deleted, 0);
-      const row = db
-        .prepare("SELECT COUNT(1) as c FROM conversations WHERE id='pinned'")
-        .get();
-      assert.equal(row.c, 1);
     });
   });
 });

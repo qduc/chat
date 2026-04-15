@@ -83,9 +83,8 @@ if (fs.existsSync(buildPath)) {
   logger.warn({ msg: 'static:not_found', buildPath });
 }
 
-// Database initialization and retention worker (Sprint 3)
+// Database initialization and reset cache (Sprint 3)
 import { getDb } from './db/client.js';
-import { retentionSweep } from './db/retention.js';
 import { resetDbCache } from './db/client.js';
 
 // Initialize database and run seeders on server startup
@@ -94,29 +93,6 @@ if (config.persistence.enabled && process.env.NODE_ENV !== 'test') {
     // Initialize DB once - this will run migrations and seeders
     getDb();
     logger.info({ msg: 'database:initialized', seeders: 'completed' });
-
-    // Set up retention worker
-    const intervalMs = 60 * 60 * 1000; // hourly
-    const retentionInterval = setInterval(() => {
-      try {
-        const days = config.persistence.retentionDays;
-        const result = retentionSweep({ days });
-        if (result.deleted) {
-          logger.info({ msg: 'retention:deleted', deleted: result.deleted, days });
-        }
-      } catch (e) {
-        logger.error({ msg: 'retention:sweep_error', err: e });
-      }
-    }, intervalMs);
-    // Allow Node to exit during shutdown even if timer is still active
-    if (typeof retentionInterval.unref === 'function') {
-      retentionInterval.unref();
-    }
-    logger.info({
-      msg: 'retention:started',
-      intervalSec: Math.round(intervalMs / 1000),
-      days: config.persistence.retentionDays,
-    });
   } catch (e) {
     logger.error({ msg: 'database:init_error', err: e });
   }

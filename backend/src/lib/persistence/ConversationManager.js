@@ -17,6 +17,7 @@ import {
   getAllMessagesForSync,
   updateMessageContent,
   insertToolMessage,
+  deleteMessagesByDbIds,
 } from '../../db/messages.js';
 import {
   insertToolCalls,
@@ -149,6 +150,7 @@ export class ConversationManager {
       ? messages.map(message => this._normalizeIncomingMessage(message))
       : [];
     const requestedBranchId = options?.branchId || null;
+    const skipRevisionBranch = options?.skipRevisionBranch === true;
 
     const allExisting = getAllMessagesForSync({ conversationId, branchId: requestedBranchId });
     // Note: getAllMessagesForSync returns messages with id already transformed to client_message_id
@@ -207,7 +209,8 @@ export class ConversationManager {
           diff,
           anchorCandidate,
           allExisting,
-          requestedBranchId
+          requestedBranchId,
+          skipRevisionBranch
         );
       }
 
@@ -224,7 +227,8 @@ export class ConversationManager {
           structuralDiff,
           0,
           allExisting,
-          requestedBranchId
+          requestedBranchId,
+          skipRevisionBranch
         );
       }
 
@@ -282,7 +286,8 @@ export class ConversationManager {
       diff,
       anchorSeq,
       allExisting,
-      requestedBranchId
+      requestedBranchId,
+      skipRevisionBranch
     );
   }
 
@@ -319,7 +324,8 @@ export class ConversationManager {
     diff,
     anchorSeq = 0,
     existingMessages = null,
-    requestedBranchId = null
+    requestedBranchId = null,
+    skipRevisionBranch = false
   ) {
     const db = getDb();
     const idMappings = [];
@@ -392,32 +398,44 @@ export class ConversationManager {
 
         branchOperationType = isUserEdit ? 'edit' : (isAssistantTurnRegen ? 'regenerate' : (allNonUser ? 'regenerate' : 'fork'));
 
-        targetBranchId = this._activateForkBranch({
-          conversationId,
-          userId,
-          parentBranchId: targetBranchId,
-          operationType: branchOperationType,
-          sourceMessage: (isAssistantTurnRegen || allNonUser) ? branchPointMessage : (isUserEdit ? (diff.toUpdate.find(m => m.role === 'user') || diff.toDelete.find(m => m.role === 'user')) : null),
-          branchPointMessageId: branchPointMessage?._dbId ?? null,
-        });
-        parentBranchId = requestedBranchId || getActiveBranchId({ conversationId, userId });
-        isNewBranch = true;
+        if (skipRevisionBranch) {
+          // Compare mode: physically delete the diverging messages on the current branch
+          // instead of hiding them behind a new revision branch.
+          const dbIds = diff.toDelete.map(m => m._dbId ?? m.id).filter(id => id != null && typeof id === 'number');
+          if (dbIds.length > 0) {
+            deleteMessagesByDbIds({ conversationId, dbIds });
+          }
+          for (const msg of diff.toDelete) {
+            deletedMessages.push({ role: msg.role, id: msg.id, seq: msg.seq });
+          }
+        } else {
+          targetBranchId = this._activateForkBranch({
+            conversationId,
+            userId,
+            parentBranchId: targetBranchId,
+            operationType: branchOperationType,
+            sourceMessage: (isAssistantTurnRegen || allNonUser) ? branchPointMessage : (isUserEdit ? (diff.toUpdate.find(m => m.role === 'user') || diff.toDelete.find(m => m.role === 'user')) : null),
+            branchPointMessageId: branchPointMessage?._dbId ?? null,
+          });
+          parentBranchId = requestedBranchId || getActiveBranchId({ conversationId, userId });
+          isNewBranch = true;
 
-        if (allNonUser && branchPointMessage) {
-          const anchorMessageId = String(branchPointMessage.id);
-          regenerateRevision = {
-            anchorMessageId,
-            count: getMessageRevisionCount({
-              conversationId,
+          if (allNonUser && branchPointMessage) {
+            const anchorMessageId = String(branchPointMessage.id);
+            regenerateRevision = {
               anchorMessageId,
-              userId,
-              operationType: 'regenerate',
-            }),
-          };
-        }
+              count: getMessageRevisionCount({
+                conversationId,
+                anchorMessageId,
+                userId,
+                operationType: 'regenerate',
+              }),
+            };
+          }
 
-        for (const msg of diff.toDelete) {
-          deletedMessages.push({ role: msg.role, id: msg.id, seq: msg.seq });
+          for (const msg of diff.toDelete) {
+            deletedMessages.push({ role: msg.role, id: msg.id, seq: msg.seq });
+          }
         }
 
         if (diff.toInsert.length === 0) {

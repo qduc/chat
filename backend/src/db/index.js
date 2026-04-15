@@ -47,7 +47,6 @@ export {
   deleteMessagesAfterSeq,
   clearAllMessages,
 } from './messages.js';
-export { retentionSweep } from './retention.js';
 export {
   listProviders,
   getProviderById,

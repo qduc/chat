@@ -66,6 +66,10 @@ export interface SendPipelineDeps {
     lastUpdated: number;
     provider?: string;
     isEstimate: boolean;
+    activeGenerationMs?: number;
+    lastActivityStartedAt?: number | null;
+    activeToolCalls?: number;
+    durationMsOverride?: number;
   } | null>;
   setStatus: Dispatch<SetStateAction<Status>>;
   setPending: Dispatch<SetStateAction<PendingState>>;
@@ -320,6 +324,42 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
     };
   }, []);
 
+  const pauseTokenEstimateClock = useCallback(() => {
+    const stats = tokenStatsRef.current;
+    if (!stats) return;
+    const now = Date.now();
+    const startedAt = stats.lastActivityStartedAt;
+    if (typeof startedAt === 'number') {
+      stats.activeGenerationMs = (stats.activeGenerationMs || 0) + Math.max(0, now - startedAt);
+      stats.lastActivityStartedAt = null;
+      stats.lastUpdated = now;
+    }
+  }, [tokenStatsRef]);
+
+  const resumeTokenEstimateClock = useCallback(() => {
+    const stats = tokenStatsRef.current;
+    if (!stats) return;
+    if (typeof stats.lastActivityStartedAt === 'number') return;
+    const now = Date.now();
+    stats.lastActivityStartedAt = now;
+    stats.lastUpdated = now;
+  }, [tokenStatsRef]);
+
+  const addEstimatedOutputChars = useCallback(
+    (messageId: string, charDelta: number) => {
+      if (!Number.isFinite(charDelta) || charDelta <= 0) return;
+      const stats = tokenStatsRef.current;
+      if (!stats || stats.messageId !== messageId) return;
+
+      stats.charCount += charDelta;
+      if (stats.isEstimate) {
+        stats.count = stats.charCount / 4;
+      }
+      stats.lastUpdated = Date.now();
+    },
+    [tokenStatsRef]
+  );
+
   const refreshBranchState = useCallback(
     async (
       conversationId: string,
@@ -446,6 +486,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         parentConversationId?: string;
         retried?: boolean;
         signal?: AbortSignal;
+        noRevisionBranch?: boolean;
       }
     ) => {
       const targetConversationId = options?.conversationId;
@@ -476,7 +517,9 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         ? history.map((m) => (m.id === userMessageId ? { ...m, content: messageContent } : m))
         : [...history, { id: userMessageId, role: 'user', content: messageContent }];
 
-      if (!isPrimary) {
+      if (isPrimary) {
+        setPending((prev) => ({ ...prev, streaming: true }));
+      } else {
         setMessages((prev) => {
           const targetIdx = prev.findIndex((m) => m.id === messageId);
           if (targetIdx < 0) return prev;
@@ -506,7 +549,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           requestId: isPrimary ? messageId : `${messageId}-${targetModel}`,
           signal: options?.signal || abortControllerRef.current?.signal || undefined,
           conversationId: targetConversationId,
-          branchId: activeBranchIdRef.current,
+          branchId: isPrimary ? activeBranchIdRef.current : null,
           parentConversationId,
           streamingEnabled: shouldStreamRef.current,
           toolsEnabled: useToolsRef.current,
@@ -517,18 +560,15 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           systemPrompt: systemPromptRef.current || undefined,
           activeSystemPromptId: activeSystemPromptIdRef.current || undefined,
           modelCapabilities,
+          noRevisionBranch: options?.noRevisionBranch === true || undefined,
           onToken: (token: string) => {
             if (
               isPrimary &&
               tokenStatsRef.current &&
               tokenStatsRef.current.messageId === messageId
             ) {
-              if (tokenStatsRef.current.charCount === 0)
-                tokenStatsRef.current.startTime = Date.now();
-              tokenStatsRef.current.charCount += token.length;
-              if (tokenStatsRef.current.isEstimate)
-                tokenStatsRef.current.count = tokenStatsRef.current.charCount / 4;
-              tokenStatsRef.current.lastUpdated = Date.now();
+              resumeTokenEstimateClock();
+              addEstimatedOutputChars(messageId, token.length);
             }
             queueBufferedStreamingText(isPrimary, messageId, targetModel, token);
           },
@@ -546,7 +586,17 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
             };
 
             if (event.type === 'text') {
+              if (isPrimary && typeof event.value === 'string') {
+                resumeTokenEstimateClock();
+                addEstimatedOutputChars(messageId, event.value.length);
+              }
               queueBufferedStreamingText(isPrimary, messageId, targetModel, event.value);
+              clearRetryStatusIfCurrentModel();
+            } else if (event.type === 'reasoning') {
+              if (isPrimary && typeof event.value === 'string') {
+                resumeTokenEstimateClock();
+                addEstimatedOutputChars(messageId, event.value.length);
+              }
               clearRetryStatusIfCurrentModel();
             } else if (event.type === 'message_event') {
               // Accumulate structured message events (defensively handle legacy batched payloads)
@@ -603,6 +653,15 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
             } else if (event.type === 'tool_call') {
               flushBufferedStreamingText(messageId, targetModel, isPrimary);
               clearRetryStatusIfCurrentModel();
+              if (
+                isPrimary &&
+                tokenStatsRef.current &&
+                tokenStatsRef.current.messageId === messageId
+              ) {
+                tokenStatsRef.current.activeToolCalls =
+                  (tokenStatsRef.current.activeToolCalls || 0) + 1;
+                pauseTokenEstimateClock();
+              }
               updateMessageState(isPrimary, messageId, targetModel, (current) => ({
                 tool_calls: mergeToolCallDelta(
                   current.tool_calls || [],
@@ -617,10 +676,14 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 isPrimary &&
                 tokenStatsRef.current &&
                 tokenStatsRef.current.messageId === messageId &&
-                event.value.completion_tokens
+                Number.isFinite(event.value?.completion_tokens)
               ) {
                 tokenStatsRef.current.count = event.value.completion_tokens;
                 tokenStatsRef.current.isEstimate = false;
+                tokenStatsRef.current.lastUpdated = Date.now();
+                if (Number.isFinite(event.value?.completion_ms) && event.value.completion_ms > 0) {
+                  tokenStatsRef.current.durationMsOverride = event.value.completion_ms;
+                }
               }
               updateMessageState(isPrimary, messageId, targetModel, () => ({
                 usage: event.value,
@@ -629,6 +692,17 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
             } else if (event.type === 'tool_output') {
               flushBufferedStreamingText(messageId, targetModel, isPrimary);
               clearRetryStatusIfCurrentModel();
+              if (
+                isPrimary &&
+                tokenStatsRef.current &&
+                tokenStatsRef.current.messageId === messageId
+              ) {
+                const activeCalls = Math.max(0, (tokenStatsRef.current.activeToolCalls || 0) - 1);
+                tokenStatsRef.current.activeToolCalls = activeCalls;
+                if (activeCalls === 0) {
+                  resumeTokenEstimateClock();
+                }
+              }
               updateMessageState(isPrimary, messageId, targetModel, (current) => ({
                 tool_outputs: [...(current.tool_outputs || []), event.value],
               }));
@@ -649,6 +723,9 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         }
 
         flushBufferedStreamingText(messageId, targetModel, isPrimary);
+        if (isPrimary) {
+          pauseTokenEstimateClock();
+        }
 
         if (isPrimary) {
           if (response.conversation) {
@@ -699,10 +776,16 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                   (current as any).messageId,
             }) as any
         );
+        if (isPrimary) {
+          setPending((prev) => ({ ...prev, streaming: false }));
+        }
 
         return response;
       } catch (err: any) {
         flushBufferedStreamingText(messageId, targetModel, isPrimary);
+        if (isPrimary) {
+          pauseTokenEstimateClock();
+        }
 
         let msg =
           err instanceof StreamingNotSupportedError
@@ -740,6 +823,9 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       activeSystemPromptIdRef,
       modelCapabilities,
       tokenStatsRef,
+      addEstimatedOutputChars,
+      pauseTokenEstimateClock,
+      resumeTokenEstimateClock,
       updateMessageState,
       queueBufferedStreamingText,
       flushBufferedStreamingText,
@@ -808,6 +894,10 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         messageId,
         lastUpdated: Date.now(),
         isEstimate: true,
+        activeGenerationMs: 0,
+        lastActivityStartedAt: Date.now(),
+        activeToolCalls: 0,
+        durationMsOverride: undefined,
       };
       setPending({
         streaming: true,
@@ -856,6 +946,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         const p1 = executeRequest(primaryModel, true, messageId, userMsgId, msgContent, {
           conversationId: effId,
           signal,
+          noRevisionBranch: true,
           ...opts,
         });
         const p2 = activeCompares.map((m: string) =>
@@ -863,6 +954,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
             conversationId: linkedConversationsRef.current[m],
             parentConversationId: linkedConversationsRef.current[m] ? undefined : effId,
             signal,
+            noRevisionBranch: true,
             ...opts,
           })
         );
@@ -980,6 +1072,22 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       if (!userMsg) return;
       const isPrimary = modelId === 'primary';
       const modelKey = isPrimary ? modelRef.current : modelId;
+      if (isPrimary) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? {
+                  ...m,
+                  content: '',
+                  tool_calls: undefined,
+                  tool_outputs: undefined,
+                  message_events: undefined,
+                  usage: undefined,
+                }
+              : m
+          )
+        );
+      }
       setStatus('streaming');
       await executeRequest(modelKey, isPrimary, messageId, userMsg.id, userMsg.content, {
         conversationId: isPrimary
@@ -993,6 +1101,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       messagesRef,
       modelRef,
       setStatus,
+      setMessages,
       executeRequest,
       conversationIdRef,
       linkedConversationsRef,

@@ -486,7 +486,8 @@ export function useChat() {
     const result = await conversationsApi.editMessage(
       conversationIdRef.current,
       editingMessageId,
-      editingContent
+      editingContent,
+      compareModels.length > 0
     );
     const selection = await selectConversation(conversationIdRef.current);
     const hasReloadedEditedMessage = selection?.messages.some(
@@ -521,6 +522,7 @@ export function useChat() {
     editingMessageId,
     conversationIdRef,
     editingContent,
+    compareModels,
     setMessages,
     setLinkedConversations,
     selectConversation,
