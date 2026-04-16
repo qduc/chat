@@ -208,19 +208,22 @@ export default function CompareSelector({
 
   useEffect(() => {
     if (disabled && isOpen) {
-      setIsOpen(false);
+      const timer = setTimeout(() => setIsOpen(false), 0);
+      return () => clearTimeout(timer);
     }
   }, [disabled, isOpen]);
 
   useEffect(() => {
     if (!isOpen) {
-      setVisibleCount(50);
+      const timer = setTimeout(() => setVisibleCount(50), 0);
+      return () => clearTimeout(timer);
     }
   }, [isOpen]);
 
   // When filtered models change, reset highlighted index
   useEffect(() => {
-    setHighlightedIndex(null);
+    const timer = setTimeout(() => setHighlightedIndex(null), 0);
+    return () => clearTimeout(timer);
   }, [searchQuery, selectedTab, filteredModels.length]);
 
   const activeCount = selectedModels.length;

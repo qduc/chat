@@ -12,13 +12,16 @@ export const ReasoningBlock: React.FC<ReasoningBlockProps> = ({ text, isStreamin
   const prevIsStreamingRef = useRef(isStreaming);
 
   useEffect(() => {
-    if (!prevIsStreamingRef.current && isStreaming) {
-      setIsExpanded(true);
-    } else if (prevIsStreamingRef.current && !isStreaming) {
-      setIsExpanded(false);
-    }
-
+    const wasStreaming = prevIsStreamingRef.current;
     prevIsStreamingRef.current = isStreaming;
+
+    if (!wasStreaming && isStreaming) {
+      const timer = setTimeout(() => setIsExpanded(true), 0);
+      return () => clearTimeout(timer);
+    } else if (wasStreaming && !isStreaming) {
+      const timer = setTimeout(() => setIsExpanded(false), 0);
+      return () => clearTimeout(timer);
+    }
   }, [isStreaming]);
 
   useEffect(() => {

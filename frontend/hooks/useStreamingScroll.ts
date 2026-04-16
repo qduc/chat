@@ -85,6 +85,7 @@ export function useStreamingScroll(
         (container as any).scrollTo({ top: targetScrollTop, behavior: 'smooth' });
       } else {
         // Fallback for environments without scrollTo (JSDOM)
+        // eslint-disable-next-line react-hooks/immutability
         container.scrollTop = targetScrollTop;
       }
     },

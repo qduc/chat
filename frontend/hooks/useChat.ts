@@ -628,6 +628,7 @@ export function useChat() {
     },
     setUseTools: (v: boolean) => {
       setUseTools(v);
+      // eslint-disable-next-line react-hooks/immutability
       useToolsRef.current = v;
       clearError();
     },

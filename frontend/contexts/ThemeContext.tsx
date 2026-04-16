@@ -32,7 +32,8 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
     // Load theme from localStorage
     const savedTheme = localStorage.getItem('theme') as Theme | null;
     if (savedTheme && ['light', 'dark', 'system'].includes(savedTheme)) {
-      setTheme(savedTheme);
+      const timer = setTimeout(() => setTheme(savedTheme), 0);
+      return () => clearTimeout(timer);
     }
   }, []);
 
@@ -48,12 +49,14 @@ export function ThemeProvider({ children }: ThemeProviderProps) {
       resolved = theme;
     }
 
-    setResolvedTheme(resolved);
+    const timer = setTimeout(() => setResolvedTheme(resolved), 0);
 
     // Apply theme to document
     const root = window.document.documentElement;
     root.classList.remove('light', 'dark');
     root.classList.add(resolved);
+
+    return () => clearTimeout(timer);
   }, [theme]);
 
   useEffect(() => {

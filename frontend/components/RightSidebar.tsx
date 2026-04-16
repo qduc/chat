@@ -104,7 +104,13 @@ export function RightSidebar({
   useEffect(() => {
     if (conversationActivePromptId !== undefined) {
       setActivePromptId(conversationActivePromptId);
-      if (conversationId) {
+    }
+  }, [conversationActivePromptId, setActivePromptId]);
+
+  // Update selected prompt and content when conversation ID changes
+  useEffect(() => {
+    if (conversationActivePromptId !== undefined && conversationId) {
+      const timer = setTimeout(() => {
         setSelectedPromptId(conversationActivePromptId ?? null);
         if (conversationActivePromptId) {
           setNewPromptContent('');
@@ -113,9 +119,10 @@ export function RightSidebar({
         } else {
           setNewPromptContent('');
         }
-      }
+      }, 0);
+      return () => clearTimeout(timer);
     }
-  }, [conversationActivePromptId, conversationSystemPrompt, conversationId, setActivePromptId]);
+  }, [conversationActivePromptId, conversationSystemPrompt, conversationId]);
 
   const handleSelectPrompt = async (promptId: string) => {
     if (!conversationId) {

@@ -40,7 +40,8 @@ export function useResizableRightSidebar({
     if (Number.isFinite(parsed)) {
       const clamped = Math.min(Math.max(parsed, MIN_RIGHT_SIDEBAR_WIDTH), MAX_RIGHT_SIDEBAR_WIDTH);
       nextWidthRef.current = clamped;
-      setWidth(clamped);
+      const timer = setTimeout(() => setWidth(clamped), 0);
+      return () => clearTimeout(timer);
     }
   }, []);
 
@@ -133,7 +134,8 @@ export function useResizableRightSidebar({
   // Stop resizing when sidebar collapses
   useEffect(() => {
     if (!collapsed) return;
-    stopResizing();
+    const timer = setTimeout(() => stopResizing(), 0);
+    return () => clearTimeout(timer);
   }, [collapsed, stopResizing]);
 
   // Body cursor override while resizing
