@@ -1,7 +1,7 @@
 version: "3.9"
 services:
   workspace:
-    image: mcr.microsoft.com/devcontainers/javascript-node:22
+    image: mcr.microsoft.com/devcontainers/javascript-node:24
     container_name: chat-workspace
     volumes:
       - .:/workspace:cached

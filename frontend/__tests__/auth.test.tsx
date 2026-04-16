@@ -312,37 +312,37 @@ describe('Authentication System', () => {
   });
 
   describe('AuthModal', () => {
-    it('renders login form by default', () => {
+    it('renders login form by default', async () => {
       render(
         <AuthProvider>
           <AuthModal open={true} onClose={() => {}} />
         </AuthProvider>
       );
 
-      expect(screen.getByText('Sign in to ChatForge')).toBeInTheDocument();
+      expect(await screen.findByText('Sign in to ChatForge')).toBeInTheDocument();
       expect(screen.getByLabelText('Email')).toBeInTheDocument();
       expect(screen.getByLabelText('Password')).toBeInTheDocument();
     });
 
-    it('renders register form when initialMode is register', () => {
+    it('renders register form when initialMode is register', async () => {
       render(
         <AuthProvider>
           <AuthModal open={true} onClose={() => {}} initialMode="register" />
         </AuthProvider>
       );
 
-      expect(screen.getByText('Create your account')).toBeInTheDocument();
+      expect(await screen.findByText('Create your account')).toBeInTheDocument();
       expect(screen.getByLabelText('Display Name (optional)')).toBeInTheDocument();
     });
 
-    it('switches between login and register modes', () => {
+    it('switches between login and register modes', async () => {
       render(
         <AuthProvider>
           <AuthModal open={true} onClose={() => {}} />
         </AuthProvider>
       );
 
-      expect(screen.getByText('Sign in to ChatForge')).toBeInTheDocument();
+      expect(await screen.findByText('Sign in to ChatForge')).toBeInTheDocument();
 
       // Switch to register
       fireEvent.click(screen.getByText('Create account'));

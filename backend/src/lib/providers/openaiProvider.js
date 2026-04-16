@@ -23,14 +23,15 @@ function wrapStreamingResponse(response) {
 
   let nodeReadable;
   return new Proxy(response, {
-    get(target, prop, receiver) {
+    get(target, prop) {
       if (prop === 'body') {
         if (!nodeReadable) {
           nodeReadable = Readable.fromWeb(target.body);
         }
         return nodeReadable;
       }
-      return Reflect.get(target, prop, receiver);
+      const value = Reflect.get(target, prop);
+      return typeof value === 'function' ? value.bind(target) : value;
     },
   });
 }
@@ -208,11 +209,12 @@ export class OpenAIProvider extends BaseProvider {
 
         // Return response with the logged stream
         return new Proxy(wrappedResponse, {
-          get(target, prop, receiver) {
+          get(target, prop) {
             if (prop === 'body') {
               return loggedStream;
             }
-            return Reflect.get(target, prop, receiver);
+            const value = Reflect.get(target, prop);
+            return typeof value === 'function' ? value.bind(target) : value;
           },
         });
       } else {

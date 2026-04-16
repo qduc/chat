@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=node:22.22.0-bookworm-slim
+ARG NODE_IMAGE=node:24-bookworm-slim
 
 # --- Frontend Build Stage ---
 FROM ${NODE_IMAGE} AS frontend-builder
