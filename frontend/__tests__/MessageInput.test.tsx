@@ -611,6 +611,30 @@ describe('MessageInput', () => {
       const qualitySlider = screen.getByTestId('quality-slider');
       expect(qualitySlider).toBeDisabled();
     });
+
+    it('disables only text input and Send button when disableTextInput is true', () => {
+      render(<MessageInput {...defaultProps} disableTextInput={true} />);
+
+      const textarea = screen.getByPlaceholderText(
+        /Change settings below and click Generate Response/i
+      );
+      expect(textarea).toBeDisabled();
+      expect(textarea).toHaveAttribute(
+        'title',
+        'Consecutive user messages are not allowed. Use Generate Response instead.'
+      );
+
+      const sendButton = screen.getByRole('button', { name: /send/i });
+      expect(sendButton).toBeDisabled();
+
+      // Controls like quality slider should still be enabled
+      const qualitySlider = screen.getByTestId('quality-slider');
+      expect(qualitySlider).not.toBeDisabled();
+
+      // Tools button should still be enabled
+      const toolsButton = screen.getByLabelText('Tools');
+      expect(toolsButton).not.toBeDisabled();
+    });
   });
 
   describe('Custom request params', () => {

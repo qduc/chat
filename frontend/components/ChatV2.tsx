@@ -675,10 +675,10 @@ export function ChatV2() {
             </div>
             <div
               ref={messageInputContainerRef}
-              className="absolute bottom-2 sm:bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-3xl px-2 sm:px-4 md:px-6 z-30"
+              className="absolute bottom-2 sm:bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-3xl px-2 sm:px-4 md:px-6 z-30 flex flex-col gap-2"
             >
-              {showGenerateButton ? (
-                <div className="flex justify-center pb-4">
+              {showGenerateButton && (
+                <div className="flex justify-center mb-1">
                   <button
                     onClick={handleGenerate}
                     className="flex items-center gap-2 px-6 py-3 rounded-full bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-medium shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all active:scale-95"
@@ -687,37 +687,37 @@ export function ChatV2() {
                     Generate Response
                   </button>
                 </div>
-              ) : (
-                <MessageInput
-                  ref={messageInputRef}
-                  input={chat.input}
-                  pending={chat.pending}
-                  onInputChange={chat.setInput}
-                  onSend={handleSend}
-                  onStop={chat.stopStreaming}
-                  useTools={chat.useTools}
-                  shouldStream={chat.shouldStream}
-                  onUseToolsChange={chat.setUseTools}
-                  enabledTools={chat.enabledTools}
-                  onEnabledToolsChange={chat.setEnabledTools}
-                  customRequestParams={chat.customRequestParams}
-                  customRequestParamsId={chat.customRequestParamsId}
-                  onCustomRequestParamsIdChange={chat.setCustomRequestParamsId}
-                  onShouldStreamChange={chat.setShouldStream}
-                  model={chat.model}
-                  reasoningEffort={chat.reasoningEffort}
-                  onReasoningEffortChange={chat.setReasoningEffort}
-                  modelCapabilities={chat.modelCapabilities}
-                  images={chat.images}
-                  onImagesChange={chat.setImages}
-                  audios={chat.audios}
-                  onAudiosChange={chat.setAudios}
-                  files={chat.files}
-                  onFilesChange={chat.setFiles}
-                  disabled={!canSend}
-                  disabledReason={modelLockReason}
-                />
               )}
+              <MessageInput
+                ref={messageInputRef}
+                input={chat.input}
+                pending={chat.pending}
+                onInputChange={chat.setInput}
+                onSend={handleSend}
+                onStop={chat.stopStreaming}
+                useTools={chat.useTools}
+                shouldStream={chat.shouldStream}
+                onUseToolsChange={chat.setUseTools}
+                enabledTools={chat.enabledTools}
+                onEnabledToolsChange={chat.setEnabledTools}
+                customRequestParams={chat.customRequestParams}
+                customRequestParamsId={chat.customRequestParamsId}
+                onCustomRequestParamsIdChange={chat.setCustomRequestParamsId}
+                onShouldStreamChange={chat.setShouldStream}
+                model={chat.model}
+                reasoningEffort={chat.reasoningEffort}
+                onReasoningEffortChange={chat.setReasoningEffort}
+                modelCapabilities={chat.modelCapabilities}
+                images={chat.images}
+                onImagesChange={chat.setImages}
+                audios={chat.audios}
+                onAudiosChange={chat.setAudios}
+                files={chat.files}
+                onFilesChange={chat.setFiles}
+                disabled={!canSend}
+                disabledReason={modelLockReason}
+                disableTextInput={showGenerateButton}
+              />
             </div>
             <SettingsModal
               open={isSettingsOpen}
