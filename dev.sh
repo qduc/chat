@@ -31,6 +31,29 @@ Examples:
 EOF
 }
 
+is_frontend_build_command() {
+  if [ "$1" != "frontend" ]; then
+    return 1
+  fi
+  shift
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      npm)
+        if [ "$2" = "run" ] && [ "$3" = "build" ]; then
+          return 0
+        fi
+        ;;
+      next)
+        if [ "$2" = "build" ]; then
+          return 0
+        fi
+        ;;
+    esac
+    shift
+  done
+  return 1
+}
+
 test_backend() {
     echo "Running backend tests inside docker container..."
     backend_cid="$("${DC[@]}" ps -q backend)"
@@ -128,12 +151,20 @@ case "$cmd" in
     ;;
   exec)
     # Add -T flag to disable TTY allocation for non-interactive environments (CI, AI tools)
-    if [ -t 0 ] && [ -t 1 ]; then
-      # Interactive terminal detected
-      "${DC[@]}" exec "$@"
+    if is_frontend_build_command "$@"; then
+      if [ -t 0 ] && [ -t 1 ]; then
+        "${DC[@]}" exec frontend env NODE_ENV=production "${@:2}"
+      else
+        "${DC[@]}" exec -T frontend env NODE_ENV=production "${@:2}"
+      fi
     else
-      # Non-interactive environment (CI, AI tools, etc.)
-      "${DC[@]}" exec -T "$@"
+      if [ -t 0 ] && [ -t 1 ]; then
+        # Interactive terminal detected
+        "${DC[@]}" exec "$@"
+      else
+        # Non-interactive environment (CI, AI tools, etc.)
+        "${DC[@]}" exec -T "$@"
+      fi
     fi
     ;;
   ""|-h|--help)
