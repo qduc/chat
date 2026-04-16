@@ -4,7 +4,7 @@ This directory contains the configuration to package ChatForge as a standalone E
 
 ## Prerequisites
 
-- Node.js 20+
+- Node.js 24+
 - NPM
 
 ## Setup
