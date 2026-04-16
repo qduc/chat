@@ -3,6 +3,7 @@ import { logUpstreamRequest, logUpstreamResponse, teeStreamWithPreview } from '.
 import { BaseProvider, ProviderModelsError, createTimeoutSignal } from './baseProvider.js';
 import { ChatCompletionsAdapter } from '../adapters/chatCompletionsAdapter.js';
 import { ResponsesAPIAdapter } from '../adapters/responsesApiAdapter.js';
+import { createResponseFacade } from '../streamUtils.js';
 import { logger } from '../../logger.js';
 import { retryWithBackoff } from '../retryUtils.js';
 import { config } from '../../env.js';
@@ -22,17 +23,14 @@ function wrapStreamingResponse(response) {
   if (!canConvert) return response;
 
   let nodeReadable;
-  return new Proxy(response, {
-    get(target, prop) {
-      if (prop === 'body') {
-        if (!nodeReadable) {
-          nodeReadable = Readable.fromWeb(target.body);
-        }
-        return nodeReadable;
+  return createResponseFacade(response, {
+    body: () => {
+      if (!nodeReadable) {
+        nodeReadable = Readable.fromWeb(response.body);
       }
-      const value = Reflect.get(target, prop);
-      return typeof value === 'function' ? value.bind(target) : value;
+      return nodeReadable;
     },
+    clone: typeof response.clone === 'function' ? () => wrapStreamingResponse(response.clone()) : undefined,
   });
 }
 
@@ -208,14 +206,9 @@ export class OpenAIProvider extends BaseProvider {
           });
 
         // Return response with the logged stream
-        return new Proxy(wrappedResponse, {
-          get(target, prop) {
-            if (prop === 'body') {
-              return loggedStream;
-            }
-            const value = Reflect.get(target, prop);
-            return typeof value === 'function' ? value.bind(target) : value;
-          },
+        return createResponseFacade(wrappedResponse, {
+          body: loggedStream,
+          clone: typeof response.clone === 'function' ? () => wrapStreamingResponse(response.clone()) : undefined,
         });
       } else {
         // For non-streaming responses, capture the body

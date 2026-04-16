@@ -1,7 +1,7 @@
 import { PassThrough } from 'node:stream';
 import { maybeConvertLocalImageUrl } from '../localImageEncoder.js';
 import { BaseAdapter } from './baseAdapter.js';
-import { createChatCompletionChunk } from '../streamUtils.js';
+import { createChatCompletionChunk, createResponseFacade } from '../streamUtils.js';
 import { normalizeUsage } from '../utils/usage.js';
 
 const RESPONSES_ENDPOINT = '/v1/responses';
@@ -1085,16 +1085,9 @@ function transformStreamingResponse(response, context = {}) {
     downstream.destroy(err);
   });
 
-  return new Proxy(response, {
-    get(target, prop, receiver) {
-      if (prop === 'body') {
-        return downstream;
-      }
-      if (prop === 'clone' && typeof target.clone === 'function') {
-        return () => transformStreamingResponse(target.clone(), context);
-      }
-      return Reflect.get(target, prop, receiver);
-    },
+  return createResponseFacade(response, {
+    body: downstream,
+    clone: typeof response.clone === 'function' ? () => transformStreamingResponse(response.clone(), context) : undefined,
   });
 }
 
@@ -1103,22 +1096,15 @@ function wrapJsonResponse(response) {
     return response;
   }
 
-  return new Proxy(response, {
-    get(target, prop, receiver) {
-      if (prop === 'json') {
-        return async () => {
-          const payload = await target.json();
-          if (target.ok) {
-            return toChatCompletionResponse(payload);
-          }
-          return payload;
-        };
+  return createResponseFacade(response, {
+    json: async () => {
+      const payload = await response.json();
+      if (response.ok) {
+        return toChatCompletionResponse(payload);
       }
-      if (prop === 'clone' && typeof target.clone === 'function') {
-        return () => wrapJsonResponse(target.clone());
-      }
-      return Reflect.get(target, prop, receiver);
+      return payload;
     },
+    clone: typeof response.clone === 'function' ? () => wrapJsonResponse(response.clone()) : undefined,
   });
 }
 

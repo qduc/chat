@@ -1,6 +1,27 @@
 
 import { PassThrough } from 'node:stream';
 
+const RESPONSE_VALUE_PROPS = [
+  'body',
+  'bodyUsed',
+  'headers',
+  'ok',
+  'redirected',
+  'status',
+  'statusText',
+  'type',
+  'url',
+];
+
+const RESPONSE_METHOD_PROPS = [
+  'arrayBuffer',
+  'blob',
+  'bytes',
+  'formData',
+  'json',
+  'text',
+];
+
 /**
  * Create a standardized chat completion chunk object
  * @param {string} id - Completion ID
@@ -21,6 +42,74 @@ export function createChatCompletionChunk(id, model, delta, finishReason = null)
       finish_reason: finishReason,
     }],
   };
+}
+
+/**
+ * Create a Response-like facade that preserves native Response brand checks by
+ * always reading properties and invoking methods against the original object.
+ * This avoids Proxy receiver issues with Undici in newer Node.js releases.
+ *
+ * @param {Object} response - Original fetch Response-like object
+ * @param {Object} overrides - Property/method overrides for the facade
+ * @returns {Object} Response-like facade
+ */
+export function createResponseFacade(response, overrides = {}) {
+  if (!response || typeof response !== 'object') {
+    return response;
+  }
+
+  const facade = {};
+
+  for (const prop of RESPONSE_VALUE_PROPS) {
+    Object.defineProperty(facade, prop, {
+      enumerable: true,
+      configurable: true,
+      get: () => {
+        if (Object.hasOwn(overrides, prop)) {
+          const override = overrides[prop];
+          return typeof override === 'function' ? override() : override;
+        }
+        return response[prop];
+      },
+    });
+  }
+
+  for (const prop of RESPONSE_METHOD_PROPS) {
+    const override = overrides[prop];
+    if (typeof override === 'function') {
+      Object.defineProperty(facade, prop, {
+        enumerable: false,
+        configurable: true,
+        value: override,
+      });
+      continue;
+    }
+
+    if (typeof response[prop] === 'function') {
+      Object.defineProperty(facade, prop, {
+        enumerable: false,
+        configurable: true,
+        value: response[prop].bind(response),
+      });
+    }
+  }
+
+  const cloneOverride = overrides.clone;
+  if (typeof cloneOverride === 'function') {
+    Object.defineProperty(facade, 'clone', {
+      enumerable: false,
+      configurable: true,
+      value: cloneOverride,
+    });
+  } else if (typeof response.clone === 'function') {
+    Object.defineProperty(facade, 'clone', {
+      enumerable: false,
+      configurable: true,
+      value: response.clone.bind(response),
+    });
+  }
+
+  return facade;
 }
 
 /**
@@ -47,22 +136,27 @@ function wrapResponseJson(response, provider, context = {}) {
   const originalJson = response.json.bind(response);
   let translatedPromise = null;
 
-  response.json = async () => {
-    if (!translatedPromise) {
-      translatedPromise = (async () => {
-        const raw = await originalJson();
-        try {
-          return await provider.translateResponse(raw, context);
-        } catch {
-          return raw;
-        }
-      })();
-    }
-    return translatedPromise;
-  };
+  const wrapped = createResponseFacade(response, {
+    json: async () => {
+      if (!translatedPromise) {
+        translatedPromise = (async () => {
+          const raw = await originalJson();
+          try {
+            return await provider.translateResponse(raw, context);
+          } catch {
+            return raw;
+          }
+        })();
+      }
+      return translatedPromise;
+    },
+    clone: typeof response.clone === 'function'
+      ? () => wrapResponseJson(response.clone(), provider, context)
+      : undefined,
+  });
 
-  response[TRANSLATED_JSON] = true;
-  return response;
+  wrapped[TRANSLATED_JSON] = true;
+  return wrapped;
 }
 
 export async function createOpenAIRequest(config, requestBody, options = {}) {
