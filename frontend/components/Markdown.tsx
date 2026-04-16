@@ -825,15 +825,8 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
 
   // Throttling for streaming content to improve performance and selection stability
   const [throttledText, setThrottledText] = useState(text);
-  const lastUpdateRef = React.useRef<number | null>(null);
+  const lastUpdateRef = React.useRef<number>(0);
   const timeoutRef = React.useRef<NodeJS.Timeout | null>(null);
-
-  // Initialize timestamp in effect
-  useEffect(() => {
-    if (lastUpdateRef.current === null) {
-      lastUpdateRef.current = Date.now();
-    }
-  }, []);
 
   useEffect(() => {
     if (!isStreaming) {
@@ -850,7 +843,8 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
     }
 
     const now = Date.now();
-    const timeSinceLastUpdate = now - lastUpdateRef.current;
+    const lastUpdate = lastUpdateRef.current || now - 100; // Default to 100ms ago to trigger first update
+    const timeSinceLastUpdate = now - lastUpdate;
     const throttleMs = 50; // 50ms = 20fps, good balance between smoothness and performance
 
     if (timeSinceLastUpdate >= throttleMs) {
