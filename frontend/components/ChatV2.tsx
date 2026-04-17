@@ -92,6 +92,61 @@ export function ChatV2() {
     scrollToTop,
   } = useScrollControls();
 
+  // Track whether the pointer is currently within the scroll-controls area so
+  // we can keep the buttons visible while the user is hovering over them.
+  const [isHoveringScrollControls, setIsHoveringScrollControls] = useState(false);
+  const scrollControlsRef = useRef<HTMLDivElement | null>(null);
+  const hideTimeoutRef = useRef<number | null>(null);
+  const lastPosRef = useRef({ x: 0, y: 0 });
+
+  // Use pointerenter/pointerleave on the container to avoid a global mousemove
+  // handler. On leave we start a short timeout and then verify the cursor
+  // position with elementFromPoint before hiding (handles race conditions).
+  useEffect(() => {
+    const el = scrollControlsRef.current;
+    if (!el || typeof window === 'undefined') return;
+
+    const onEnter = () => {
+      if (hideTimeoutRef.current) {
+        window.clearTimeout(hideTimeoutRef.current);
+        hideTimeoutRef.current = null;
+      }
+      setIsHoveringScrollControls(true);
+    };
+
+    const onLeave = (ev: PointerEvent) => {
+      lastPosRef.current = { x: ev.clientX, y: ev.clientY };
+      hideTimeoutRef.current = window.setTimeout(() => {
+        const p = lastPosRef.current;
+        const hit = document.elementFromPoint(p.x, p.y) as Element | null;
+        if (!hit || !el.contains(hit)) {
+          setIsHoveringScrollControls(false);
+        } else {
+          setIsHoveringScrollControls(true);
+        }
+        hideTimeoutRef.current = null;
+      }, 200);
+    };
+
+    const onMove = (ev: PointerEvent) => {
+      lastPosRef.current = { x: ev.clientX, y: ev.clientY };
+    };
+
+    el.addEventListener('pointerenter', onEnter);
+    el.addEventListener('pointerleave', onLeave);
+    el.addEventListener('pointermove', onMove);
+
+    return () => {
+      el.removeEventListener('pointerenter', onEnter);
+      el.removeEventListener('pointerleave', onLeave);
+      el.removeEventListener('pointermove', onMove);
+      if (hideTimeoutRef.current) {
+        window.clearTimeout(hideTimeoutRef.current);
+        hideTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const searchKey = searchParams?.toString();
@@ -616,7 +671,8 @@ export function ChatV2() {
 
             {/* Scroll Buttons - centered but visually minimal */}
             <div
-              className="absolute left-1/2 transform -translate-x-1/2 flex flex-col gap-2 z-10 pointer-events-none transition-[bottom] duration-150"
+              ref={scrollControlsRef}
+              className="absolute left-1/2 transform -translate-x-1/2 flex flex-col gap-2 z-10 pointer-events-auto transition-[bottom] duration-150"
               style={{
                 bottom: `${messageInputHeight + 32}px`, // 32px gap above MessageInput
               }}
@@ -625,7 +681,7 @@ export function ChatV2() {
                 <button
                   onClick={scrollToTop}
                   className={`p-1.5 rounded-full bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-200 border border-zinc-200/70 dark:border-zinc-700/70 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all duration-200 aspect-square ${
-                    showScrollButtons
+                    showScrollButtons || isHoveringScrollControls
                       ? 'opacity-100 scale-100 pointer-events-auto'
                       : 'opacity-0 scale-95 pointer-events-none'
                   }`}
@@ -639,7 +695,7 @@ export function ChatV2() {
                 <button
                   onClick={() => scrollToBottom()}
                   className={`p-1.5 rounded-full bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-200 border border-zinc-200/70 dark:border-zinc-700/70 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all duration-200 aspect-square ${
-                    showScrollButtons
+                    showScrollButtons || isHoveringScrollControls
                       ? 'opacity-100 scale-100 pointer-events-auto'
                       : 'opacity-0 scale-95 pointer-events-none'
                   }`}
