@@ -43,7 +43,6 @@ export function useStreamingScroll(
   const lastUserMessageRef = useRef<HTMLDivElement | null>(null);
   const toolbarRef = useRef<HTMLDivElement | null>(null);
   const bottomRef = useRef<HTMLDivElement | null>(null);
-  const prevContentLength = useRef(0);
   const lastScrolledMessageId = useRef<string | null>(null);
   const [dynamicBottomPadding, setDynamicBottomPadding] = useState('8rem');
 
@@ -128,27 +127,16 @@ export function useStreamingScroll(
 
         // If the pattern is user message followed by assistant message
         if (secondLastMessage?.role === 'user' && lastMessage?.role === 'assistant') {
-          const currentLength = lastMessage.content ? lastMessage.content.length : 0;
-
           const isNewMessage = lastMessage.id !== lastScrolledMessageId.current;
           if (isNewMessage) {
             lastScrolledMessageId.current = lastMessage.id;
-          }
-
-          // Scroll if:
-          // 1. It's a brand new message (initial scroll)
-          // 2. OR text just started appearing (transition from 0 to >0)
-          // This avoids repeated scrolling when tool calls are appended while content is still empty
-          if (isNewMessage || (currentLength > 0 && prevContentLength.current === 0)) {
             // Small delay to ensure DOM is updated
             setTimeout(() => scrollUserMessageToTop(60), 50);
           }
-          prevContentLength.current = currentLength;
         }
       }
     } else {
       // Reset when not streaming
-      prevContentLength.current = 0;
       lastScrolledMessageId.current = null;
     }
   }, [messages.length, pending.streaming, pending.abort, messages, scrollUserMessageToTop]);
