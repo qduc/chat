@@ -115,7 +115,7 @@ export function useStreamingScroll(
     window.addEventListener('resize', updatePadding);
 
     return () => window.removeEventListener('resize', updatePadding);
-  }, [pending.streaming, messages.length, messages]);
+  }, [pending.streaming, messages]);
 
   // Auto-scroll user message to top when streaming starts
   useEffect(() => {

@@ -99,9 +99,9 @@ export function useResizableRightSidebar({
     [scheduleWidthUpdate]
   );
 
-  // Attach global pointer listeners
+  // Attach global pointer listeners only while actively resizing.
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (!isResizing || typeof window === 'undefined') return;
     const handlePointerMove = (event: PointerEvent) => handleResizeMove(event);
     const handlePointerUp = () => stopResizing();
     window.addEventListener('pointermove', handlePointerMove);
@@ -110,7 +110,7 @@ export function useResizableRightSidebar({
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
     };
-  }, [handleResizeMove, stopResizing]);
+  }, [isResizing, handleResizeMove, stopResizing]);
 
   const handleResizeStart = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {

@@ -236,7 +236,7 @@ export default function ModelSelectBase<T extends SelectOption>({
     };
 
     const element = listRef.current;
-    element.addEventListener('scroll', handleScroll);
+    element.addEventListener('scroll', handleScroll, { passive: true });
     return () => element.removeEventListener('scroll', handleScroll);
   }, [shouldRenderDropdown, onScrollNearEnd, scrollThreshold]);
 

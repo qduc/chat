@@ -504,24 +504,44 @@ export function MessageList({
   }, [editingContent, editingMessageId]);
 
   // Track scroll position
+  const recomputeScrollStateRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !onScrollStateChange) return;
+    if (!container || !onScrollStateChange) {
+      recomputeScrollStateRef.current = null;
+      return;
+    }
 
-    const handleScroll = () => {
+    let rafId: number | null = null;
+    const readAndNotify = () => {
+      rafId = null;
       const { scrollTop, scrollHeight, clientHeight } = container;
       const threshold = 100;
-
       onScrollStateChange({
         showTop: scrollTop > threshold,
         showBottom: scrollTop < scrollHeight - clientHeight - threshold,
       });
     };
 
-    handleScroll();
-    container.addEventListener('scroll', handleScroll);
-    return () => container.removeEventListener('scroll', handleScroll);
-  }, [messages.length, onScrollStateChange, containerRef]);
+    const handleScroll = () => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(readAndNotify);
+    };
+
+    recomputeScrollStateRef.current = handleScroll;
+    readAndNotify();
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+      recomputeScrollStateRef.current = null;
+    };
+  }, [onScrollStateChange, containerRef]);
+
+  // Content growth can change scroll geometry without firing a scroll event.
+  useEffect(() => {
+    recomputeScrollStateRef.current?.();
+  }, [messages.length]);
 
   // ---------------------------------------------------------------------------
   // Revision state helpers
