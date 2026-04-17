@@ -477,10 +477,16 @@ export async function handleToolsStreaming({
       let sawCompletionContent = false;
 
       await new Promise((resolve, reject) => {
-        // Add timeout to prevent hanging
-        const timeout = setTimeout(() => {
-          reject(new Error('Stream timeout - no response from upstream API'));
-        }, config.providerConfig.streamTimeoutMs);
+        // Idle timeout: fires only if no chunks arrive within streamTimeoutMs.
+        // Reset on every incoming chunk so long-but-active streams aren't killed.
+        let timeout;
+        const resetIdleTimeout = () => {
+          if (timeout) clearTimeout(timeout);
+          timeout = setTimeout(() => {
+            reject(new Error('Stream timeout - no response from upstream API'));
+          }, config.providerConfig.streamTimeoutMs);
+        };
+        resetIdleTimeout();
 
         const cleanup = () => {
           clearTimeout(timeout);
@@ -502,6 +508,7 @@ export async function handleToolsStreaming({
 
         upstream.body.on('data', (chunk) => {
           try {
+            resetIdleTimeout();
             // Debug the raw chunk from upstream in toolsStreaming
             const logId = Math.random().toString(36).substring(7);
             logger.debug(`[toolsStreaming] Upstream chunk ${logId}`, {

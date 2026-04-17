@@ -25,7 +25,7 @@ ALLOWED_ORIGIN=http://localhost:3000       # CORS allowed origin
 ```env
 PROVIDER_TIMEOUT_MS=10000                  # Provider operation timeout (ms)
 PROVIDER_MODEL_FETCH_TIMEOUT_MS=3000       # Model fetching timeout (ms)
-PROVIDER_STREAM_TIMEOUT_MS=300000          # Streaming timeout (ms)
+PROVIDER_STREAM_TIMEOUT_MS=30000           # Idle timeout between streaming chunks (ms)
 ```
 
 ### Optional - Logging
