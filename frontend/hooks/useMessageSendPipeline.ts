@@ -70,6 +70,8 @@ export interface SendPipelineDeps {
     lastActivityStartedAt?: number | null;
     activeToolCalls?: number;
     durationMsOverride?: number;
+    baseCompletionTokens?: number;
+    baseCompletionMs?: number;
   } | null>;
   setStatus: Dispatch<SetStateAction<Status>>;
   setPending: Dispatch<SetStateAction<PendingState>>;
@@ -353,7 +355,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
 
       stats.charCount += charDelta;
       if (stats.isEstimate) {
-        stats.count = stats.charCount / 4;
+        stats.count = (stats.baseCompletionTokens || 0) + stats.charCount / 4;
       }
       stats.lastUpdated = Date.now();
     },
@@ -678,11 +680,13 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 tokenStatsRef.current.messageId === messageId &&
                 Number.isFinite(event.value?.completion_tokens)
               ) {
-                tokenStatsRef.current.count = event.value.completion_tokens;
+                const base = tokenStatsRef.current.baseCompletionTokens || 0;
+                tokenStatsRef.current.count = base + event.value.completion_tokens;
                 tokenStatsRef.current.isEstimate = false;
                 tokenStatsRef.current.lastUpdated = Date.now();
                 if (Number.isFinite(event.value?.completion_ms) && event.value.completion_ms > 0) {
-                  tokenStatsRef.current.durationMsOverride = event.value.completion_ms;
+                  const baseMs = tokenStatsRef.current.baseCompletionMs || 0;
+                  tokenStatsRef.current.durationMsOverride = baseMs + event.value.completion_ms;
                 }
               }
               updateMessageState(isPrimary, messageId, targetModel, () => ({
@@ -698,9 +702,16 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 tokenStatsRef.current &&
                 tokenStatsRef.current.messageId === messageId
               ) {
-                const activeCalls = Math.max(0, (tokenStatsRef.current.activeToolCalls || 0) - 1);
+                const prevActiveCalls = tokenStatsRef.current.activeToolCalls || 0;
+                const activeCalls = Math.max(0, prevActiveCalls - 1);
                 tokenStatsRef.current.activeToolCalls = activeCalls;
-                if (activeCalls === 0) {
+                if (activeCalls === 0 && prevActiveCalls > 0) {
+                  const stats = tokenStatsRef.current;
+                  stats.baseCompletionTokens = stats.count || 0;
+                  stats.baseCompletionMs = stats.durationMsOverride || 0;
+                  stats.charCount = 0;
+                  stats.isEstimate = true;
+                  stats.durationMsOverride = undefined;
                   resumeTokenEstimateClock();
                 }
               }
@@ -899,6 +910,8 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         lastActivityStartedAt: Date.now(),
         activeToolCalls: 0,
         durationMsOverride: undefined,
+        baseCompletionTokens: 0,
+        baseCompletionMs: 0,
       };
       setPending({
         streaming: true,

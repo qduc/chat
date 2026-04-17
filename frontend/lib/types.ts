@@ -117,6 +117,8 @@ export interface PendingState {
     lastActivityStartedAt?: number | null;
     activeToolCalls?: number;
     durationMsOverride?: number;
+    baseCompletionTokens?: number;
+    baseCompletionMs?: number;
   };
   retryStatus?: RetryStatus | null;
 }
