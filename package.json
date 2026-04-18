@@ -1,6 +1,6 @@
 {
   "name": "chatforge",
-  "version": "0.17.2",
+  "version": "0.18.0",
   "private": true,
   "scripts": {
     "test": "npm run test:backend && npm run test:frontend",

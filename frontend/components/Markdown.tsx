@@ -778,7 +778,8 @@ const MemoizedMarkdownBlock = React.memo(
         return () => clearTimeout(timer);
       } else if (isStreaming && shouldHighlight) {
         // Started streaming again, disable highlighting
-        setShouldHighlight(false);
+        const timer = setTimeout(() => setShouldHighlight(false), 0);
+        return () => clearTimeout(timer);
       }
     }, [isStreaming, shouldHighlight]);
 
@@ -824,26 +825,34 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
 
   // Throttling for streaming content to improve performance and selection stability
   const [throttledText, setThrottledText] = useState(text);
-  const lastUpdateRef = React.useRef(Date.now());
+  const lastUpdateRef = React.useRef<number>(0);
   const timeoutRef = React.useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (!isStreaming) {
-      setThrottledText(text);
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
-      return;
+      const timer = setTimeout(() => {
+        setThrottledText(text);
+      }, 0);
+      return () => {
+        clearTimeout(timer);
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
+      };
     }
 
     const now = Date.now();
-    const timeSinceLastUpdate = now - lastUpdateRef.current;
+    const lastUpdate = lastUpdateRef.current || now - 100; // Default to 100ms ago to trigger first update
+    const timeSinceLastUpdate = now - lastUpdate;
     const throttleMs = 50; // 50ms = 20fps, good balance between smoothness and performance
 
     if (timeSinceLastUpdate >= throttleMs) {
-      setThrottledText(text);
+      const timer = setTimeout(() => {
+        setThrottledText(text);
+      }, 0);
       lastUpdateRef.current = now;
+      return () => clearTimeout(timer);
     } else {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
       timeoutRef.current = setTimeout(() => {

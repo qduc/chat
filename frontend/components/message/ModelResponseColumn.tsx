@@ -209,7 +209,7 @@ export function ModelResponseColumn({
       {/* Stats row for this model */}
       {!isEditing && (dm.content || !isUser) && (
         <div className="mt-2 flex items-center justify-between opacity-70 group-hover:opacity-100 transition-opacity text-xs border-t border-zinc-100 dark:border-zinc-800/50 pt-2">
-          <div className="flex items-center gap-2 overflow-hidden mr-2">
+          <div className="flex items-center gap-2 flex-wrap mr-2 min-w-0">
             {streamingStats &&
               streamingStats.tokensPerSecond > 0 &&
               modelId === 'primary' &&
@@ -231,6 +231,11 @@ export function ModelResponseColumn({
             {dm.provider && (
               <div className="px-1.5 py-0.5 rounded bg-zinc-50 dark:bg-zinc-800/50 text-slate-500 dark:text-slate-500 text-[10px] font-mono whitespace-nowrap">
                 {dm.provider}
+              </div>
+            )}
+            {dm.model && (
+              <div className="px-1.5 py-0.5 rounded bg-zinc-50 dark:bg-zinc-800/50 text-slate-500 dark:text-slate-500 text-[10px] font-mono whitespace-nowrap">
+                {dm.model}
               </div>
             )}
           </div>

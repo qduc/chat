@@ -504,24 +504,44 @@ export function MessageList({
   }, [editingContent, editingMessageId]);
 
   // Track scroll position
+  const recomputeScrollStateRef = useRef<(() => void) | null>(null);
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !onScrollStateChange) return;
+    if (!container || !onScrollStateChange) {
+      recomputeScrollStateRef.current = null;
+      return;
+    }
 
-    const handleScroll = () => {
+    let rafId: number | null = null;
+    const readAndNotify = () => {
+      rafId = null;
       const { scrollTop, scrollHeight, clientHeight } = container;
       const threshold = 100;
-
       onScrollStateChange({
         showTop: scrollTop > threshold,
         showBottom: scrollTop < scrollHeight - clientHeight - threshold,
       });
     };
 
-    handleScroll();
-    container.addEventListener('scroll', handleScroll);
-    return () => container.removeEventListener('scroll', handleScroll);
-  }, [messages.length, onScrollStateChange, containerRef]);
+    const handleScroll = () => {
+      if (rafId !== null) return;
+      rafId = window.requestAnimationFrame(readAndNotify);
+    };
+
+    recomputeScrollStateRef.current = handleScroll;
+    readAndNotify();
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => {
+      container.removeEventListener('scroll', handleScroll);
+      if (rafId !== null) window.cancelAnimationFrame(rafId);
+      recomputeScrollStateRef.current = null;
+    };
+  }, [onScrollStateChange, containerRef]);
+
+  // Content growth can change scroll geometry without firing a scroll event.
+  useEffect(() => {
+    recomputeScrollStateRef.current?.();
+  }, [messages.length]);
 
   // ---------------------------------------------------------------------------
   // Revision state helpers
@@ -716,6 +736,8 @@ export function MessageList({
                   tool_outputs: fu.tool_outputs ?? undefined,
                   reasoning_details: fu.reasoning_details ?? undefined,
                   usage: fu.usage ?? undefined,
+                  model: fu.model ?? undefined,
+                  provider: fu.provider ?? undefined,
                   anchor_user_message_id: msg.id,
                   regenerate_revision_count: branchRegenRevisions.length,
                   _timeline_anchor_content: revision.anchor_content,
@@ -742,6 +764,8 @@ export function MessageList({
                         tool_outputs: historical.tool_outputs ?? undefined,
                         reasoning_details: historical.reasoning_details ?? undefined,
                         usage: historical.usage ?? undefined,
+                        model: historical.model ?? undefined,
+                        provider: historical.provider ?? undefined,
                       };
                     }
                   }
@@ -816,6 +840,8 @@ export function MessageList({
                 tool_outputs: firstAssistant.tool_outputs ?? undefined,
                 reasoning_details: firstAssistant.reasoning_details ?? undefined,
                 usage: firstAssistant.usage ?? undefined,
+                model: firstAssistant.model ?? undefined,
+                provider: firstAssistant.provider ?? undefined,
                 _historical: true,
               };
             }

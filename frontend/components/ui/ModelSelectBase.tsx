@@ -236,17 +236,23 @@ export default function ModelSelectBase<T extends SelectOption>({
     };
 
     const element = listRef.current;
-    element.addEventListener('scroll', handleScroll);
+    element.addEventListener('scroll', handleScroll, { passive: true });
     return () => element.removeEventListener('scroll', handleScroll);
   }, [shouldRenderDropdown, onScrollNearEnd, scrollThreshold]);
 
   return (
-    <div className={`relative ${className}`} ref={refs.setReference} {...getReferenceProps()}>
+    <div
+      className={`relative ${className}`}
+      // eslint-disable-next-line react-hooks/refs
+      ref={refs.setReference}
+      {...getReferenceProps()}
+    >
       {trigger}
 
       {isOpen && (
         <FloatingPortal>
           <div
+            // eslint-disable-next-line react-hooks/refs
             ref={refs.setFloating}
             style={floatingStyles}
             className="z-[10001] outline-none"

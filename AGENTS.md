@@ -53,6 +53,8 @@ This document provides essential knowledge for AI agents to be immediately produ
 ./dev.sh exec backend <cmd> # Execute command in backend (e.g., npm test)
 ```
 
+> Warning: The `frontend` Compose dev service is configured for development and sets `NODE_ENV=development`. If you need to run a production frontend build inside the dev container, use `./dev.sh exec frontend npm run build`, which now forces `NODE_ENV=production` for the build command.
+
 ### Testing & Database
 ```bash
 ./dev.sh test[:backend|:frontend] # Run tests

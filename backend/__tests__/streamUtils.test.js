@@ -4,6 +4,7 @@ import { PassThrough } from 'node:stream';
 import {
   createChatCompletionChunk,
   createOpenAIRequest,
+  createResponseFacade,
   writeAndFlush,
   setupStreamingHeaders,
   teeStreamWithPreview,
@@ -338,9 +339,66 @@ describe('streamUtils', () => {
     });
   });
 
+  describe('createResponseFacade', () => {
+    test('preserves native-style getter receivers without a proxy', async () => {
+      const response = {
+        status: 200,
+        headers: new Headers({ 'content-type': 'text/plain' }),
+        text: jest.fn(async () => 'ok'),
+      };
+
+      Object.defineProperty(response, 'ok', {
+        configurable: true,
+        enumerable: true,
+        get() {
+          if (this !== response) {
+            throw new TypeError('bad receiver');
+          }
+          return true;
+        },
+      });
+
+      const body = new PassThrough();
+      const wrapped = createResponseFacade(response, { body });
+
+      expect(wrapped.ok).toBe(true);
+      expect(wrapped.status).toBe(200);
+      expect(wrapped.headers.get('content-type')).toBe('text/plain');
+      await expect(wrapped.text()).resolves.toBe('ok');
+      expect(wrapped.body).toBe(body);
+    });
+  });
+
   describe('createOpenAIRequest', () => {
     beforeEach(() => {
       createProvider.mockReset();
+    });
+
+    test('should translate non-streaming JSON without mutating read-only response methods', async () => {
+      const upstream = createResponseFacade({
+        ok: true,
+        status: 200,
+        headers: new Headers({ 'content-type': 'application/json' }),
+        json: async () => ({ raw: true }),
+      });
+
+      const provider = {
+        providerId: 'gemini',
+        needsStreamingTranslation: jest.fn(() => true),
+        translateResponse: jest.fn(async (payload) => ({ translated: payload.raw })),
+        sendRawRequest: jest.fn(async () => upstream),
+      };
+
+      createProvider.mockResolvedValue(provider);
+
+      const result = await createOpenAIRequest(
+        { defaultModel: 'test-model' },
+        { model: 'test-model', messages: [], stream: false },
+        { providerId: 'gemini' }
+      );
+
+      await expect(result.json()).resolves.toEqual({ translated: true });
+      expect(provider.translateResponse).toHaveBeenCalledWith({ raw: true }, expect.any(Object));
     });
 
     test('should not translate non-ok streaming responses', async () => {

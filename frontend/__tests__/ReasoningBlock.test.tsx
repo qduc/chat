@@ -33,13 +33,15 @@ describe('ReasoningBlock', () => {
     });
   });
 
-  it('collapses after streaming finishes', () => {
+  it('collapses after streaming finishes', async () => {
     const { rerender } = render(<ReasoningBlock text="Streaming thought" isStreaming />);
 
     expect(screen.getByText('Streaming thought')).toBeInTheDocument();
 
     rerender(<ReasoningBlock text="Streaming thought" isStreaming={false} />);
 
-    expect(screen.queryByText('Streaming thought')).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('Streaming thought')).not.toBeInTheDocument();
+    });
   });
 });

@@ -84,6 +84,7 @@ export default function TabbedSelect({
       {isOpen && (
         <FloatingFocusManager context={context} modal={false}>
           <div
+            // eslint-disable-next-line react-hooks/refs
             ref={refs.setFloating}
             style={{
               ...floatingStyles,

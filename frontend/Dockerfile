@@ -1,5 +1,5 @@
 # 1) Install deps as the node user
-ARG NODE_IMAGE=node:20.18.0-alpine3.20
+ARG NODE_IMAGE=node:24-alpine
 FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
 COPY package*.json ./

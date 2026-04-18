@@ -10,6 +10,8 @@ function toRevisionEntry(message) {
     tool_outputs: message.tool_outputs ?? null,
     reasoning_details: message.reasoning_details ?? null,
     usage: message.usage ?? null,
+    model: message.model ?? null,
+    provider: message.provider ?? null,
   };
 }
 

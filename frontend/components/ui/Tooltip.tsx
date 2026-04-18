@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FloatingPortal,
   arrow,
@@ -39,14 +39,18 @@ export default function Tooltip({
   const [open, setOpen] = useState(false);
 
   const middleware = useMemo(
+    // eslint-disable-next-line react-hooks/refs
     () => [offset(8), flip({ padding: 8 }), shift({ padding: 8 }), arrow({ element: arrowRef })],
     []
   );
 
   // Force close when disabled
-  if (disabled && open) {
-    setOpen(false);
-  }
+  useEffect(() => {
+    if (disabled && open) {
+      const timer = setTimeout(() => setOpen(false), 0);
+      return () => clearTimeout(timer);
+    }
+  }, [disabled, open]);
 
   const {
     refs,
@@ -95,6 +99,7 @@ export default function Tooltip({
       {isMounted && content && !disabled && (
         <FloatingPortal>
           <div
+            // eslint-disable-next-line react-hooks/refs
             ref={refs.setFloating}
             style={floatingStyles}
             className="z-[9999] outline-none"

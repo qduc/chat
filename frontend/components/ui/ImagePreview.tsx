@@ -224,8 +224,8 @@ export function ImageUploadZone({
     };
 
     const onWindowDragOver = (e: DragEvent) => {
+      // Fires continuously while dragging; dragenter already toggled state.
       e.preventDefault();
-      setDragOver(true);
     };
 
     const onWindowDragLeave = (e: DragEvent) => {

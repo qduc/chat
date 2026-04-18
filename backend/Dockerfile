@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=node:20.18.0-bookworm-slim
+ARG NODE_IMAGE=node:24-bookworm-slim
 FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
 COPY package*.json ./

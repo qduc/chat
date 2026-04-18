@@ -135,6 +135,7 @@ export function AssistantMessage({
         message_events: result.message_events,
         usage: result.usage,
         provider: (result as any).provider,
+        model: (result as any).model || modelId,
       };
       return {
         modelId,

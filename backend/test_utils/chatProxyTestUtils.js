@@ -256,5 +256,27 @@ export function createChatProxyTestContext() {
     }
   });
 
-  return { upstream, makeApp, withServer };
+  // Wrap makeApp so that each mock user automatically gets a provider pointing
+  // at the mock upstream.  The shared beforeEach only seeds for
+  // 'chat-format-user'; other test files use different user IDs.
+  const makeAppWithProvider = (options = {}) => {
+    const app = makeApp(options);
+    const opts = typeof options === 'boolean' ? { useSession: options } : options;
+    const { mockUser } = opts;
+    if (mockUser) {
+      try {
+        const db = getDb();
+        const now = new Date().toISOString();
+        db.prepare(`
+          INSERT OR IGNORE INTO providers (id, user_id, name, provider_type, api_key, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at)
+          VALUES (@id, @userId, 'Test OpenAI', 'openai', 'test-key', @baseUrl, 1, 1, '{}', '{}', @now, @now)
+        `).run({ id: `test-provider-${mockUser.id}`, userId: mockUser.id, baseUrl: upstream.getUrl(), now });
+      } catch (_) {
+        // ignore if DB not available
+      }
+    }
+    return app;
+  };
+
+  return { upstream, makeApp: makeAppWithProvider, withServer };
 }

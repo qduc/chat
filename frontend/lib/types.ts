@@ -117,6 +117,8 @@ export interface PendingState {
     lastActivityStartedAt?: number | null;
     activeToolCalls?: number;
     durationMsOverride?: number;
+    baseCompletionTokens?: number;
+    baseCompletionMs?: number;
   };
   retryStatus?: RetryStatus | null;
 }
@@ -281,6 +283,7 @@ export interface ChatMessage {
   _parentMessageId?: number | null;
   responseId?: string; // Response ID for assistant messages to maintain conversation context
   provider?: string; // Provider used for this message
+  model?: string; // Model used for this message
   // Local image attachments (used during composition, converted to content format for API)
   images?: ImageAttachment[];
   tool_calls?: any[];
@@ -490,6 +493,7 @@ export interface ConversationWithMessages {
     created_at: string;
     branch_id?: string | null;
     provider?: string;
+    model?: string;
     // Image references stored in database (after upload)
     images?: Array<{
       id: string;

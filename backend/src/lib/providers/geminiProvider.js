@@ -3,6 +3,7 @@ import { GeminiAdapter } from '../adapters/geminiAdapter.js';
 import { logger } from '../../logger.js';
 import { logUpstreamRequest, logUpstreamResponse, teeStreamWithPreview } from '../logging/upstreamLogger.js';
 import { Readable } from 'node:stream';
+import { createResponseFacade } from '../streamUtils.js';
 import { retryWithBackoff } from '../retryUtils.js';
 import { config } from '../../env.js';
 
@@ -14,16 +15,14 @@ function wrapStreamingResponse(response) {
   if (!canConvert) return response;
 
   let nodeReadable;
-  return new Proxy(response, {
-    get(target, prop, receiver) {
-      if (prop === 'body') {
-        if (!nodeReadable) {
-          nodeReadable = Readable.fromWeb(target.body);
-        }
-        return nodeReadable;
+  return createResponseFacade(response, {
+    body: () => {
+      if (!nodeReadable) {
+        nodeReadable = Readable.fromWeb(response.body);
       }
-      return Reflect.get(target, prop, receiver);
+      return nodeReadable;
     },
+    clone: typeof response.clone === 'function' ? () => wrapStreamingResponse(response.clone()) : undefined,
   });
 }
 
@@ -198,13 +197,9 @@ export class GeminiProvider extends BaseProvider {
             logger.error('Failed to capture streaming response preview:', err);
           });
 
-        return new Proxy(wrappedResponse, {
-          get(target, prop, receiver) {
-            if (prop === 'body') {
-              return loggedStream;
-            }
-            return Reflect.get(target, prop, receiver);
-          },
+        return createResponseFacade(wrappedResponse, {
+          body: loggedStream,
+          clone: typeof response.clone === 'function' ? () => wrapStreamingResponse(response.clone()) : undefined,
         });
       } else {
         if (response.clone) {

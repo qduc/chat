@@ -45,6 +45,8 @@ export function useChatStreaming() {
     lastActivityStartedAt?: number | null;
     activeToolCalls?: number;
     durationMsOverride?: number;
+    baseCompletionTokens?: number;
+    baseCompletionMs?: number;
   } | null>(null);
 
   const stopStreaming = useCallback(() => {

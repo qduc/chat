@@ -51,7 +51,7 @@ export const config = {
   providerConfig: {
     timeoutMs: Number(process.env.PROVIDER_TIMEOUT_MS) || 10000, // 10 second default for provider operations
     modelFetchTimeoutMs: Number(process.env.PROVIDER_MODEL_FETCH_TIMEOUT_MS) || 3000, // 3 second default for model fetching
-    streamTimeoutMs: Number(process.env.PROVIDER_STREAM_TIMEOUT_MS) || 300000, // 300 second default for streaming operations
+    streamTimeoutMs: Number(process.env.PROVIDER_STREAM_TIMEOUT_MS) || 30000, // 30s idle timeout between streaming chunks
     retry: {
       maxRetries: Number(process.env.RETRY_MAX_ATTEMPTS) || 3,
       initialDelayMs: isTest ? 10 : (Number(process.env.RETRY_INITIAL_DELAY_MS) || 1000),

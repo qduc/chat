@@ -68,6 +68,7 @@ interface MessageInputProps {
   onFilesChange?: (files: FileAttachment[]) => void;
   disabled?: boolean;
   disabledReason?: string;
+  disableTextInput?: boolean;
 }
 
 export interface MessageInputRef {
@@ -101,6 +102,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     onFilesChange,
     disabled = false,
     disabledReason = 'Selected models are unavailable. Refresh models to resume.',
+    disableTextInput = false,
   },
   ref
 ) {
@@ -175,7 +177,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   const canSend =
     input.trim().length > 0 || images.length > 0 || audios.length > 0 || files.length > 0;
   const inputLocked = disabled;
-  const canSubmit = canSend && !inputLocked;
+  const textareaLocked = disabled || disableTextInput;
+  const canSubmit = canSend && !textareaLocked;
   const controlsDisabled = inputLocked || pending.streaming;
 
   // Helper to check if a tool is disabled due to missing API key
@@ -273,11 +276,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   }, [attachOpen]);
 
   useEffect(() => {
-    if (!inputLocked) return;
+    if (!textareaLocked) return;
     setToolsOpen(false);
     setAttachOpen(false);
     setCustomParamsOpen(false);
-  }, [inputLocked]);
+  }, [textareaLocked]);
 
   // Load tool specs for the selector UI
   useEffect(() => {
@@ -342,7 +345,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   };
 
   const handlePaste = (event: React.ClipboardEvent<HTMLTextAreaElement>) => {
-    if (inputLocked) return;
+    if (textareaLocked) return;
     if (!onImagesChange) return;
 
     const items = Array.from(event.clipboardData?.items || []);
@@ -374,7 +377,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
   // Image handling
   const handleImageFiles = async (imageFiles: File[]) => {
-    if (inputLocked) return;
+    if (textareaLocked) return;
     if (!onImagesChange || !images) return;
 
     try {
@@ -398,12 +401,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   };
 
   const handleImageUploadClick = () => {
-    if (inputLocked) return;
+    if (textareaLocked) return;
     imageInputRef.current?.click();
   };
 
   const handleImageInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (inputLocked) return;
+    if (textareaLocked) return;
     const imageFiles = Array.from(e.target.files || []);
     if (imageFiles.length > 0) {
       handleImageFiles(imageFiles);
@@ -414,7 +417,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
   // File handling
   const handleFileFiles = async (textFiles: File[]) => {
-    if (inputLocked) return;
+    if (textareaLocked) return;
     if (!onFilesChange || !files) return;
 
     try {
@@ -432,12 +435,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   };
 
   const handleFileUploadClick = () => {
-    if (inputLocked) return;
+    if (textareaLocked) return;
     fileInputRef.current?.click();
   };
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (inputLocked) return;
+    if (textareaLocked) return;
     const textFiles = Array.from(e.target.files || []);
     if (textFiles.length > 0) {
       handleFileFiles(textFiles);
@@ -448,7 +451,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
   // Audio handling (client-side; encoded to base64 when sending)
   const handleAudioFiles = (audioFiles: File[]) => {
-    if (inputLocked) return;
+    if (textareaLocked) return;
     if (!onAudiosChange) return;
 
     const next = audioFiles
@@ -485,12 +488,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   };
 
   const handleAudioUploadClick = () => {
-    if (inputLocked) return;
+    if (textareaLocked) return;
     audioInputRef.current?.click();
   };
 
   const handleAudioInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (inputLocked) return;
+    if (textareaLocked) return;
     const audioFiles = Array.from(e.target.files || []);
     if (audioFiles.length > 0) {
       handleAudioFiles(audioFiles);
@@ -500,7 +503,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
   // Combined file handler for drag and drop (both images and text files)
   const handleDroppedFiles = async (droppedFiles: File[]) => {
-    if (inputLocked) return;
+    if (textareaLocked) return;
     // Separate images, audio, and (likely) text files
     const imageFiles = droppedFiles.filter((file) => file.type.startsWith('image/'));
     const audioFiles = droppedFiles.filter((file) => isAudioFile(file));
@@ -604,11 +607,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                         <button
                           type="button"
                           onClick={() => {
-                            if (inputLocked) return;
+                            if (textareaLocked) return;
                             setAttachOpen(false);
                             handleImageUploadClick();
                           }}
-                          disabled={inputLocked}
+                          disabled={textareaLocked}
                           className="w-full text-left p-2.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm flex items-center text-zinc-700 dark:text-zinc-300 transition-colors"
                         >
                           <ImagePlus className="w-4 h-4 mr-2.5" /> Upload Image
@@ -618,11 +621,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                         <button
                           type="button"
                           onClick={() => {
-                            if (inputLocked) return;
+                            if (textareaLocked) return;
                             setAttachOpen(false);
                             handleAudioUploadClick();
                           }}
-                          disabled={inputLocked}
+                          disabled={textareaLocked}
                           className="w-full text-left p-2.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm flex items-center text-zinc-700 dark:text-zinc-300 transition-colors"
                         >
                           <AudioLines className="w-4 h-4 mr-2.5" /> Upload Audio
@@ -632,11 +635,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                         <button
                           type="button"
                           onClick={() => {
-                            if (inputLocked) return;
+                            if (textareaLocked) return;
                             setAttachOpen(false);
                             handleFileUploadClick();
                           }}
-                          disabled={inputLocked}
+                          disabled={textareaLocked}
                           className="w-full text-left p-2.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm flex items-center text-zinc-700 dark:text-zinc-300 transition-colors"
                         >
                           <FileText className="w-4 h-4 mr-2.5" /> Upload File
@@ -681,15 +684,27 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
               <textarea
                 ref={inputRef}
                 className="flex-1 resize-none bg-transparent border-0 outline-none text-sm placeholder-zinc-400 dark:placeholder-zinc-500 text-zinc-800 dark:text-zinc-200"
-                placeholder={inputLocked ? disabledReason : 'Type your message...'}
+                placeholder={
+                  textareaLocked
+                    ? disableTextInput
+                      ? 'Change settings below and click Generate Response'
+                      : disabledReason
+                    : 'Type your message...'
+                }
                 value={input}
                 onChange={(e) => onInputChange(e.target.value)}
                 onKeyDown={handleKey}
                 onPaste={handlePaste}
                 rows={1}
-                disabled={inputLocked}
-                aria-disabled={inputLocked}
-                title={inputLocked ? disabledReason : undefined}
+                disabled={textareaLocked}
+                aria-disabled={textareaLocked}
+                title={
+                  textareaLocked
+                    ? disableTextInput
+                      ? 'Consecutive user messages are not allowed. Use Generate Response instead.'
+                      : disabledReason
+                    : undefined
+                }
               />
             </div>
 
@@ -716,10 +731,10 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                     <button
                       type="button"
                       onClick={() => {
-                        if (inputLocked) return;
+                        if (controlsDisabled) return;
                         onShouldStreamChange(!shouldStream);
                       }}
-                      disabled={inputLocked}
+                      disabled={controlsDisabled}
                       className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg border transition-all duration-200 ${
                         shouldStream
                           ? 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100'
@@ -747,10 +762,10 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                         type="button"
                         aria-label="Custom request params"
                         onClick={() => {
-                          if (inputLocked) return;
+                          if (controlsDisabled) return;
                           setCustomParamsOpen((v) => !v);
                         }}
-                        disabled={inputLocked}
+                        disabled={controlsDisabled}
                         className="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors duration-150"
                       >
                         <div className="relative w-4 h-4 flex items-center justify-center">
@@ -891,10 +906,10 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                         type="button"
                         aria-label="Tools"
                         onClick={() => {
-                          if (inputLocked) return;
+                          if (controlsDisabled) return;
                           setToolsOpen((v) => !v);
                         }}
-                        disabled={inputLocked}
+                        disabled={controlsDisabled}
                         className="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors duration-150"
                       >
                         <div className="relative w-4 h-4 flex items-center justify-center">
@@ -946,7 +961,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                                 checked={localSelected.length > 0}
                                 disabled={controlsDisabled}
                                 onChange={(v: boolean) => {
-                                  if (inputLocked) return;
+                                  if (controlsDisabled) return;
                                   if (!v) {
                                     setLocalSelected([]);
                                     onEnabledToolsChange?.([]);
@@ -1148,7 +1163,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                     onSend();
                   }
                 }}
-                disabled={(!canSend || inputLocked) && !pending.streaming}
+                disabled={(!canSend || textareaLocked) && !pending.streaming}
                 className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md disabled:hover:shadow-none flex-shrink-0"
               >
                 {pending.streaming ? (

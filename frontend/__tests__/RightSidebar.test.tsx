@@ -406,7 +406,7 @@ describe('RightSidebar', () => {
       expect(textarea).toHaveValue('You are a coding expert.');
     });
 
-    it('falls back to conversation system prompt when no ID', () => {
+    it('falls back to conversation system prompt when no ID', async () => {
       render(
         <RightSidebar
           collapsed={false}
@@ -419,7 +419,9 @@ describe('RightSidebar', () => {
       // When no prompt is selected but conversationSystemPrompt is provided,
       // the component falls back to showing that system prompt
       const textarea = screen.getByLabelText('Prompt content');
-      expect(textarea).toHaveValue('Custom system prompt from conversation');
+      await waitFor(() => {
+        expect(textarea).toHaveValue('Custom system prompt from conversation');
+      });
     });
   });
 

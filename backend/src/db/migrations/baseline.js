@@ -1,5 +1,5 @@
 export default {
-  version: 30,
+  version: 33,
   up: `
       PRAGMA journal_mode = WAL;
 
@@ -135,19 +135,9 @@ export default {
         content_json TEXT NULL,
         seq INTEGER NOT NULL,
         parent_message_id INTEGER NULL,
-        tokens_in INTEGER NULL,
-        tokens_out INTEGER NULL,
-        finish_reason TEXT NULL,
-        tool_calls TEXT NULL,
-        function_call TEXT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        response_id TEXT NULL,
-        reasoning_details TEXT NULL,
-        reasoning_tokens INTEGER NULL,
         client_message_id TEXT NULL,
-        total_tokens INTEGER NULL,
-        provider TEXT NULL,
         metadata_json TEXT NULL,
         UNIQUE(conversation_id, seq),
         FOREIGN KEY(conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
@@ -158,7 +148,6 @@ export default {
       CREATE INDEX IF NOT EXISTS idx_messages_conv_id ON messages(conversation_id, id);
       CREATE INDEX IF NOT EXISTS idx_messages_branch_seq ON messages(branch_id, seq ASC);
       CREATE INDEX IF NOT EXISTS idx_messages_parent_message_id ON messages(parent_message_id);
-      CREATE INDEX IF NOT EXISTS idx_messages_response_id ON messages(response_id) WHERE response_id IS NOT NULL;
       CREATE INDEX IF NOT EXISTS idx_messages_conversation_role_seq
         ON messages(conversation_id, role, seq DESC)
         WHERE role = 'assistant';

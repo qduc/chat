@@ -5,7 +5,7 @@
  * extracted from ChatV2.
  */
 
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
 import { useResizableRightSidebar } from '../hooks/useResizableRightSidebar';
 
 // ---------------------------------------------------------------------------
@@ -41,16 +41,20 @@ describe('default state', () => {
 // ---------------------------------------------------------------------------
 
 describe('localStorage persistence', () => {
-  test('restores width from localStorage on mount', () => {
+  test('restores width from localStorage on mount', async () => {
     storageMap.set('rightSidebarWidth', '400');
     const { result } = renderHook(() => useResizableRightSidebar({ collapsed: false }));
-    expect(result.current.width).toBe(400);
+    await waitFor(() => {
+      expect(result.current.width).toBe(400);
+    });
   });
 
-  test('clamps restored width to min/max bounds', () => {
+  test('clamps restored width to min/max bounds', async () => {
     storageMap.set('rightSidebarWidth', '100'); // below min 260
     const { result } = renderHook(() => useResizableRightSidebar({ collapsed: false }));
-    expect(result.current.width).toBe(260);
+    await waitFor(() => {
+      expect(result.current.width).toBe(260);
+    });
   });
 
   test('persists width to localStorage when not collapsed', () => {
@@ -70,10 +74,12 @@ describe('localStorage persistence', () => {
 // ---------------------------------------------------------------------------
 
 describe('handleResizeDoubleClick', () => {
-  test('resets width to default', () => {
+  test('resets width to default', async () => {
     storageMap.set('rightSidebarWidth', '450');
     const { result } = renderHook(() => useResizableRightSidebar({ collapsed: false }));
-    expect(result.current.width).toBe(450);
+    await waitFor(() => {
+      expect(result.current.width).toBe(450);
+    });
 
     act(() => {
       result.current.handleResizeDoubleClick();
@@ -81,11 +87,13 @@ describe('handleResizeDoubleClick', () => {
     expect(result.current.width).toBe(320);
   });
 
-  test('does nothing when collapsed', () => {
+  test('does nothing when collapsed', async () => {
     storageMap.set('rightSidebarWidth', '450');
     const { result } = renderHook(() => useResizableRightSidebar({ collapsed: true }));
     // Width is restored from localStorage regardless
-    expect(result.current.width).toBe(450);
+    await waitFor(() => {
+      expect(result.current.width).toBe(450);
+    });
 
     act(() => {
       result.current.handleResizeDoubleClick();

@@ -40,7 +40,8 @@ export function useResizableRightSidebar({
     if (Number.isFinite(parsed)) {
       const clamped = Math.min(Math.max(parsed, MIN_RIGHT_SIDEBAR_WIDTH), MAX_RIGHT_SIDEBAR_WIDTH);
       nextWidthRef.current = clamped;
-      setWidth(clamped);
+      const timer = setTimeout(() => setWidth(clamped), 0);
+      return () => clearTimeout(timer);
     }
   }, []);
 
@@ -98,9 +99,9 @@ export function useResizableRightSidebar({
     [scheduleWidthUpdate]
   );
 
-  // Attach global pointer listeners
+  // Attach global pointer listeners only while actively resizing.
   useEffect(() => {
-    if (typeof window === 'undefined') return;
+    if (!isResizing || typeof window === 'undefined') return;
     const handlePointerMove = (event: PointerEvent) => handleResizeMove(event);
     const handlePointerUp = () => stopResizing();
     window.addEventListener('pointermove', handlePointerMove);
@@ -109,7 +110,7 @@ export function useResizableRightSidebar({
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
     };
-  }, [handleResizeMove, stopResizing]);
+  }, [isResizing, handleResizeMove, stopResizing]);
 
   const handleResizeStart = useCallback(
     (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -133,7 +134,8 @@ export function useResizableRightSidebar({
   // Stop resizing when sidebar collapses
   useEffect(() => {
     if (!collapsed) return;
-    stopResizing();
+    const timer = setTimeout(() => stopResizing(), 0);
+    return () => clearTimeout(timer);
   }, [collapsed, stopResizing]);
 
   // Body cursor override while resizing

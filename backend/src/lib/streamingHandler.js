@@ -98,7 +98,7 @@ function setupStreamEventHandlers({
     completed = true;
     try {
       if (persistence && persistence.persist) {
-        persistence.markError();
+        persistence.markError(`[Error: ${err?.message || 'Upstream stream error'}]`);
       }
     } catch {
       // Ignore errors
@@ -154,6 +154,10 @@ function processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason
 
   if (obj?.provider && typeof persistence.setProvider === 'function') {
     persistence.setProvider(obj.provider);
+  }
+
+  if (obj?.model && typeof persistence.setModel === 'function') {
+    persistence.setModel(obj.model);
   }
 
   const choice = obj?.choices?.[0];
