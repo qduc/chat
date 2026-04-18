@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.18.0] - 2026-04-18
+
+### Added
+- `disableTextInput` prop to MessageInput component to lock input while showing generate button
+- Model tracking and display support across backend persistence and frontend message UI
+- Response facade pattern for standardized response handling with native Response brand check preservation
+- NODE_ENV production override for Next.js builds in entrypoint script
+- Enhanced error handling in persistence and streaming processes
+
+### Changed
+- Scroll event handling optimized for improved performance during resizing
+- Mouse hover tracking implemented for scroll controls visibility
+- Next.js upgraded to 16.2.4 with ESLint configuration migrated to flat config
+- Node.js version requirement upgraded to v24
+- Tailwind configuration migrated to ESM format
+
+### Fixed
+- Scroll behavior when transitioning from thinking to final answer
+- Token speed counting freeze occurring after first tool call
+- Model response being stopped early due to incorrect idle timeout check logic
+
+
 ## [0.17.2] - 2026-04-15
 
 ### Added
