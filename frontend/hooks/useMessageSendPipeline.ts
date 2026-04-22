@@ -64,7 +64,8 @@ export interface SendPipelineDeps {
     startTime: number;
     messageId: string;
     lastUpdated: number;
-    provider?: string;
+    provider?: string | null;
+    model?: string;
     isEstimate: boolean;
     activeGenerationMs?: number;
     lastActivityStartedAt?: number | null;
@@ -155,6 +156,8 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         targetModel: string;
         text: string;
         message_events: any[];
+        provider?: string | null;
+        model?: string;
         timeoutId: ReturnType<typeof setTimeout> | null;
       }
     >
@@ -259,7 +262,8 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         return {
           content: prev + pendingText,
           message_events: accumulator.getEvents(),
-          provider: tokenStatsRef.current?.provider,
+          provider: (current as any).provider || entry.provider,
+          model: (current as any).model || entry.model,
         };
       });
 
@@ -279,6 +283,8 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       assistantMessageId: string,
       targetModel: string,
       text: string,
+      provider?: string | null,
+      model?: string,
       event?: any
     ) => {
       if (!text && !event) return;
@@ -293,6 +299,8 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           targetModel,
           text: '',
           message_events: [],
+          provider,
+          model,
           timeoutId: null,
         });
 
@@ -501,6 +509,10 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       } else if (modelToProviderRef.current[targetModel]) {
         targetProviderId = modelToProviderRef.current[targetModel];
       }
+      if (isPrimary && tokenStatsRef.current) {
+        tokenStatsRef.current.provider = targetProviderId;
+        tokenStatsRef.current.model = actualModelId;
+      }
 
       const reasoning =
         reasoningEffortRef.current !== 'unset' ? { effort: reasoningEffortRef.current } : undefined;
@@ -572,7 +584,14 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
               resumeTokenEstimateClock();
               addEstimatedOutputChars(messageId, token.length);
             }
-            queueBufferedStreamingText(isPrimary, messageId, targetModel, token);
+            queueBufferedStreamingText(
+              isPrimary,
+              messageId,
+              targetModel,
+              token,
+              targetProviderId,
+              actualModelId
+            );
           },
           onEvent: (event: any) => {
             const clearRetryStatusIfCurrentModel = () => {
@@ -592,7 +611,14 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 resumeTokenEstimateClock();
                 addEstimatedOutputChars(messageId, event.value.length);
               }
-              queueBufferedStreamingText(isPrimary, messageId, targetModel, event.value);
+              queueBufferedStreamingText(
+                isPrimary,
+                messageId,
+                targetModel,
+                event.value,
+                targetProviderId,
+                actualModelId
+              );
               clearRetryStatusIfCurrentModel();
             } else if (event.type === 'reasoning') {
               if (isPrimary && typeof event.value === 'string') {
@@ -605,7 +631,15 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
               const messageEvents = Array.isArray(event.value) ? event.value : [event.value];
               for (const messageEvent of messageEvents) {
                 if (!messageEvent) continue;
-                queueBufferedStreamingText(isPrimary, messageId, targetModel, '', messageEvent);
+                queueBufferedStreamingText(
+                  isPrimary,
+                  messageId,
+                  targetModel,
+                  '',
+                  targetProviderId,
+                  actualModelId,
+                  messageEvent
+                );
               }
               clearRetryStatusIfCurrentModel();
             } else if (event.type === 'retry_status') {
@@ -674,25 +708,35 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
             } else if (event.type === 'usage') {
               flushBufferedStreamingText(messageId, targetModel, isPrimary);
               clearRetryStatusIfCurrentModel();
+              // Update stats for the progress bar / stats row
               if (
                 isPrimary &&
                 tokenStatsRef.current &&
-                tokenStatsRef.current.messageId === messageId &&
-                Number.isFinite(event.value?.completion_tokens)
+                tokenStatsRef.current.messageId === messageId
               ) {
                 const base = tokenStatsRef.current.baseCompletionTokens || 0;
-                tokenStatsRef.current.count = base + event.value.completion_tokens;
+                if (event.value.completion_tokens !== undefined) {
+                  tokenStatsRef.current.count = base + event.value.completion_tokens;
+                }
+                if (event.value.provider) {
+                  tokenStatsRef.current.provider = event.value.provider;
+                }
+                if (event.value.model) {
+                  tokenStatsRef.current.model = event.value.model;
+                }
                 tokenStatsRef.current.isEstimate = false;
                 tokenStatsRef.current.lastUpdated = Date.now();
-                if (Number.isFinite(event.value?.completion_ms) && event.value.completion_ms > 0) {
+
+                if (event.value.completion_ms !== undefined) {
                   const baseMs = tokenStatsRef.current.baseCompletionMs || 0;
                   tokenStatsRef.current.durationMsOverride = baseMs + event.value.completion_ms;
                 }
               }
-              updateMessageState(isPrimary, messageId, targetModel, () => ({
-                usage: event.value,
-                provider: event.value.provider,
-                model: event.value.model,
+
+              updateMessageState(isPrimary, messageId, targetModel, (prev) => ({
+                usage: { ...(prev as any).usage, ...event.value },
+                provider: event.value.provider || (prev as any).provider,
+                model: event.value.model || (prev as any).model,
               }));
             } else if (event.type === 'tool_output') {
               flushBufferedStreamingText(messageId, targetModel, isPrimary);
