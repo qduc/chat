@@ -298,14 +298,14 @@ async function handler({
 
 export const webSearchTool = createTool({
   name: TOOL_NAME,
-  description: 'Fast, high-quality search with excellent default relevance. Best for quick answers, news/current events, and general queries. Optionally includes AI-generated answers.',
+  description: 'Fast, accurate search with excellent out-of-the-box relevance. Best for general orientation and evergreen topics. Returns a tightly curated set of high-authority results. Optional AI-generated summaries available.',
   validate,
   handler,
   openAI: {
     type: 'function',
     function: {
       name: TOOL_NAME,
-      description: 'Fast, accurate search with excellent out-of-the-box relevance. Best for quick answers, news/current events, and broad queries. Superior for time-sensitive topics with optional AI-generated summaries (include_answer). Defaults work great—only customize when needed.',
+      description: 'Fast, accurate search with excellent out-of-the-box relevance. Best for general orientation and evergreen topics. Returns a tightly curated set of high-authority results. Optional AI-generated summaries available (include_answer). Defaults work great—only customize when needed.',
       parameters: {
         type: 'object',
         properties: {

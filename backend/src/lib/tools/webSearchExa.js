@@ -314,14 +314,14 @@ async function handler({
 
 export const webSearchExaTool = createTool({
   name: TOOL_NAME,
-  description: 'Deep research with semantic search and custom content extraction. Best for technical queries, detailed specs, and when you need precise excerpts or AI summaries. Returns highlights by default.',
+  description: 'Deep research tool with semantic/neural search and rich text extraction. Best for reading and analyzing long-form content without leaving the result page. Prioritizes text-rich articles and detailed guides.',
   validate,
   handler,
   openAI: {
     type: 'function',
     function: {
       name: TOOL_NAME,
-      description: 'Deep research tool with semantic/neural search. Best for technical deep-dives, detailed specs, benchmarks, and when you need custom highlight extraction or per-result AI summaries. Use type="neural" for semantic understanding. Returns highlights by default.',
+      description: 'Deep research tool with semantic/neural search and rich text extraction. Best for reading and analyzing long-form content without leaving the result page. Prioritizes text-rich articles and detailed guides; may not surface video, forum threads, or very recent corporate announcements. Returns highlights by default.',
       parameters: {
         type: 'object',
         properties: {
