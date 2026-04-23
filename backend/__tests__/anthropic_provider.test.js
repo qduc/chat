@@ -352,7 +352,7 @@ describe('AnthropicProvider', () => {
     test('throws on network error', async () => {
       mockFetch.mockRejectedValue(new Error('Network error'));
 
-      await expect(provider.makeHttpRequest({})).rejects.toThrow('Network error');
+      await expect(provider.makeHttpRequest({})).rejects.toThrow('Could not connect to provider test-provider.');
     });
   });
 
