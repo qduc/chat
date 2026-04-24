@@ -347,6 +347,56 @@ describe('useChat hook', () => {
     expect(result.current.error).toBeNull();
   });
 
+  test('sendMessage handles finish_reason: error correctly', async () => {
+    mockChat.sendMessage.mockImplementation(async (options: ChatOptionsExtended) => {
+      options.onToken?.('Partial content');
+      options.onEvent?.({
+        type: 'message_event',
+        value: { seq: 1, type: 'content', payload: { text: 'Partial content' } },
+      });
+      options.onEvent?.({
+        type: 'finish_reason',
+        value: 'error',
+      });
+
+      return {
+        content: 'Partial content',
+        status: 'error',
+        message_events: [{ seq: 1, type: 'content', payload: { text: 'Partial content' } }],
+        conversation: {
+          id: 'conv-error',
+          title: 'Error Conversation',
+          created_at: new Date().toISOString(),
+          active_branch_id: 'branch-error',
+        },
+      };
+    });
+
+    const { result } = renderUseChat();
+
+    mockConversations.getBranches.mockResolvedValue({
+      active_branch_id: 'branch-error',
+      branches: [],
+    } as any);
+
+    await act(async () => {
+      result.current.setInput('Trigger error');
+    });
+
+    await act(async () => {
+      await result.current.sendMessage();
+    });
+
+    expect(mockChat.sendMessage).toHaveBeenCalledTimes(1);
+    expect(result.current.messages).toHaveLength(2);
+
+    await waitFor(() => {
+      const msg = result.current.messages[1];
+      expect(msg.content).toContain('Partial content');
+      expect(msg.status).toBe('error');
+    });
+  });
+
   test('sendMessage preserves buffered token bursts even before the next flush interval', async () => {
     jest.useFakeTimers();
     const now = new Date().toISOString();

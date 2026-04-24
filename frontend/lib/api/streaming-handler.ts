@@ -196,6 +196,8 @@ export function processStreamChunk(
   reasoning_summary?: string;
   usage?: any;
   usageSent?: boolean;
+  status?: 'error';
+  finishReason?: string;
   reasoningDetails?: any[];
   reasoningTokens?: number;
   message_events?: MessageEvent[];
@@ -291,6 +293,7 @@ export function processStreamChunk(
         ? { regenerate_revision_count: data._conversation.regenerate_revision_count }
         : {}),
     };
+
     onEvent?.({ type: 'conversation', value: conversation });
     return { conversation };
   }
@@ -310,6 +313,8 @@ export function processStreamChunk(
     content?: string;
     usage?: any;
     usageSent?: boolean;
+    status?: 'error';
+    finishReason?: string;
     reasoningStarted?: boolean;
     reasoningDetails?: any[];
     reasoningTokens?: number;
@@ -375,8 +380,16 @@ export function processStreamChunk(
     result.reasoningTokens = (data as any).reasoning_tokens;
   }
 
-  const chunk = data as StreamChunk;
-  const delta = chunk.choices?.[0]?.delta;
+  const chunkPayload = data as StreamChunk;
+  const delta = chunkPayload.choices?.[0]?.delta;
+  const finishReason = chunkPayload.choices?.[0]?.finish_reason;
+
+  if (finishReason) {
+    result.finishReason = finishReason;
+    if (finishReason === 'error') {
+      result.status = 'error';
+    }
+  }
 
   if (reasoningStarted && delta?.content) {
     onToken?.(delta.content);
@@ -389,6 +402,9 @@ export function processStreamChunk(
       type: 'message_event',
       value: messageEvent,
     });
+    if (finishReason) {
+      onEvent?.({ type: 'finish_reason', value: finishReason });
+    }
 
     return {
       ...result,
@@ -415,6 +431,9 @@ export function processStreamChunk(
       type: 'message_event',
       value: messageEvent,
     });
+    if (finishReason) {
+      onEvent?.({ type: 'finish_reason', value: finishReason });
+    }
 
     return {
       ...result,
@@ -442,6 +461,9 @@ export function processStreamChunk(
       type: 'message_event',
       value: messageEvent,
     });
+    if (finishReason) {
+      onEvent?.({ type: 'finish_reason', value: finishReason });
+    }
 
     return {
       ...result,
@@ -482,6 +504,9 @@ export function processStreamChunk(
       });
       messageEvents.push(messageEvent);
     }
+    if (finishReason) {
+      onEvent?.({ type: 'finish_reason', value: finishReason });
+    }
 
     return {
       ...result,
@@ -492,6 +517,10 @@ export function processStreamChunk(
 
   if (delta?.tool_output) {
     onEvent?.({ type: 'tool_output', value: delta.tool_output });
+  }
+
+  if (finishReason) {
+    onEvent?.({ type: 'finish_reason', value: finishReason });
   }
 
   return result;
@@ -513,6 +542,8 @@ export async function handleStreamingResponse(
   reasoning_tokens?: number;
   message_events?: MessageEvent[];
   usage?: any;
+  status?: 'error';
+  finish_reason?: string;
 }> {
   const decoder = new TextDecoder('utf-8');
   const parser = new SSEParser();
@@ -525,6 +556,8 @@ export async function handleStreamingResponse(
   let usage: any | undefined;
   let reasoning_details: any[] | undefined;
   let reasoning_tokens: number | undefined;
+  let status: 'error' | undefined;
+  let finish_reason: string | undefined;
   let lastSentUsage: any | undefined; // Track last sent usage to prevent duplicate events
 
   const eventAccumulator = new MessageEventAccumulator();
@@ -535,6 +568,8 @@ export async function handleStreamingResponse(
     conversation,
     reasoning_summary,
     message_events: eventAccumulator.getEvents(),
+    ...(status ? { status } : {}),
+    ...(finish_reason ? { finish_reason } : {}),
     ...(reasoning_details ? { reasoning_details } : {}),
     ...(reasoning_tokens !== undefined ? { reasoning_tokens } : {}),
     ...(usage ? { usage } : {}),
@@ -558,6 +593,7 @@ export async function handleStreamingResponse(
           reasoningStarted,
           lastSentUsage
         );
+
         if (result.content) content += result.content;
         if (Array.isArray(result.message_events) && result.message_events.length > 0) {
           for (const messageEvent of result.message_events) {
@@ -568,6 +604,8 @@ export async function handleStreamingResponse(
         if (result.conversation) conversation = result.conversation;
         if (result.reasoningStarted !== undefined) reasoningStarted = result.reasoningStarted;
         if (result.reasoning_summary) reasoning_summary = result.reasoning_summary;
+        if (result.status) status = result.status;
+        if (result.finishReason) finish_reason = result.finishReason;
         if (result.usage) {
           usage = { ...usage, ...result.usage };
           // Update lastSentUsage if we actually sent a usage event

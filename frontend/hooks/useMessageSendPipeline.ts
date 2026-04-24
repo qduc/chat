@@ -736,6 +736,13 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 provider: event.value.provider || (prev as any).provider,
                 model: event.value.model || (prev as any).model,
               }));
+            } else if (event.type === 'finish_reason') {
+              if (event.value === 'error') {
+                flushBufferedStreamingText(messageId, targetModel, isPrimary);
+                updateMessageState(isPrimary, messageId, targetModel, () => ({
+                  status: 'error',
+                }));
+              }
             } else if (event.type === 'tool_output') {
               flushBufferedStreamingText(messageId, targetModel, isPrimary);
               clearRetryStatusIfCurrentModel();
@@ -814,7 +821,21 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 (response as any).message_events ||
                 (current as any).message_events ||
                 accumulator.getEvents(),
-              status: isPrimary ? undefined : 'complete',
+              status: isPrimary
+                ? response.status === 'error' || current.status === 'error'
+                  ? 'error'
+                  : undefined
+                : response.status === 'error'
+                  ? 'error'
+                  : 'complete',
+              ...(!isPrimary
+                ? {
+                    error:
+                      response.status === 'error'
+                        ? response.content || (current as any).error
+                        : (current as any).error,
+                  }
+                : {}),
               id: isPrimary
                 ? response.conversation?.assistant_message_id?.toString() || messageId
                 : undefined,

@@ -129,6 +129,7 @@ export function hydrateMessages(
       id: msgId,
       role: msg.role,
       content,
+      status: msg.status || undefined,
       branch_id: typeof msg.branch_id === 'string' ? msg.branch_id : undefined,
       _dbId: typeof msg._dbId === 'number' ? msg._dbId : undefined,
       _parentMessageId:
@@ -398,7 +399,7 @@ export function useConversationHydration(deps: ConversationHydrationDeps) {
                         messageId: String(lMsg.id),
                         content: lMsg.content ?? '',
                         usage: (lMsg as any).usage,
-                        status: 'complete',
+                        status: lMsg.status === 'error' ? 'error' : 'complete',
                         tool_calls: lMsg.tool_calls,
                         tool_outputs: lMsg.tool_outputs,
                         message_events: lMsg.message_events,

@@ -387,7 +387,8 @@ export interface ChatEvent {
     | 'generated_image'
     | 'conversation'
     | 'message_event'
-    | 'retry_status';
+    | 'retry_status'
+    | 'finish_reason';
   value: any;
 }
 
@@ -395,6 +396,8 @@ export interface ChatResponse {
   content: string;
   responseId?: string;
   conversation?: ConversationMeta;
+  status?: 'error';
+  finish_reason?: string;
   reasoning_summary?: string;
   message_events?: MessageEvent[];
   usage?: {
