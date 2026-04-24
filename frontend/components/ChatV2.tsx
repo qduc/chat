@@ -234,10 +234,9 @@ export function ChatV2() {
     : 'Primary model is locked for comparison chats after the first message. Start a new chat to change.';
   const canSend = !modelAvailability.locked;
   const composerBlockedByError = isComposerBlockedByAssistantError(chat.messages);
-  const composerDisabled = !canSend || composerBlockedByError;
-  const composerDisabledReason = composerBlockedByError
-    ? 'Regenerate the failed response or edit the previous message to continue.'
-    : modelLockReason;
+  const composerDisabled = !canSend;
+  const composerDisabledReason = modelLockReason;
+  const composerTextInputDisabled = composerBlockedByError;
 
   const { sidebarCollapsed, rightSidebarCollapsed, toggleSidebar, toggleRightSidebar } = chat;
 
@@ -781,9 +780,9 @@ export function ChatV2() {
                 onAudiosChange={chat.setAudios}
                 files={chat.files}
                 onFilesChange={chat.setFiles}
-                disabled={composerDisabled}
+                disabled={!canSend}
                 disabledReason={composerDisabledReason}
-                disableTextInput={showGenerateButton}
+                disableTextInput={composerTextInputDisabled}
               />
             </div>
             <SettingsModal
