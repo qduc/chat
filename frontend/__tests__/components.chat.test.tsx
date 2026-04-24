@@ -88,7 +88,11 @@ const mockHttpClient = jest.requireMock('../lib/http').httpClient;
 
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { buildBaseMessagesAfterLocalEdit, ChatV2 as Chat } from '../components/ChatV2';
+import {
+  buildBaseMessagesAfterLocalEdit,
+  isComposerBlockedByAssistantError,
+  ChatV2 as Chat,
+} from '../components/ChatV2';
 import { ThemeProvider } from '../contexts/ThemeContext';
 
 // Mock the Markdown component to avoid ES module issues
@@ -394,6 +398,23 @@ describe('<Chat />', () => {
     // Verify the content is there
     expect(textarea.value).toContain('Line 1');
     expect(textarea.value).toContain('Line 4');
+  });
+
+  test('composer is blocked only when the latest message is an assistant error', () => {
+    expect(
+      isComposerBlockedByAssistantError([
+        { id: 'u1', role: 'user', content: 'Hello' },
+        { id: 'a1', role: 'assistant', status: 'error', content: '[Error: failed]' },
+      ] as any)
+    ).toBe(true);
+
+    expect(
+      isComposerBlockedByAssistantError([
+        { id: 'u1', role: 'user', content: 'Hello' },
+        { id: 'a1', role: 'assistant', status: 'error', content: '[Error: failed]' },
+        { id: 'u2', role: 'user', content: 'Edited recovery' },
+      ] as any)
+    ).toBe(false);
   });
 
   test('has clipboard functionality available', async () => {

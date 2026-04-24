@@ -277,6 +277,7 @@ export interface ChatMessage {
   id: string;
   role: Role;
   content: MessageContent;
+  status?: 'streaming' | 'final' | 'error' | string;
   timestamp?: number;
   seq?: number; // Message sequence number from backend
   branch_id?: string;

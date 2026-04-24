@@ -33,6 +33,8 @@ const STREAMING_TEXT_FLUSH_INTERVAL_MS = 40;
 // Types
 // ---------------------------------------------------------------------------
 
+type ComparisonResult = NonNullable<Message['comparisonResults']>[string];
+
 /** Refs and setters that the pipeline needs from surrounding hooks. */
 export interface SendPipelineDeps {
   // -- Model / provider refs --
@@ -171,11 +173,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       isPrimary: boolean,
       assistantMessageId: string,
       targetModel: string,
-      updater: (
-        current: Message | { content: MessageContent; tool_calls?: any[]; tool_outputs?: any[] }
-      ) =>
-        | Partial<Message>
-        | Partial<{ content: MessageContent; tool_calls?: any[]; tool_outputs?: any[] }>
+      updater: (current: Message | ComparisonResult) => Partial<Message> | Partial<ComparisonResult>
     ) => {
       setMessages((prev) => {
         let messageIdx = prev.findIndex((message) => message.id === assistantMessageId);
@@ -193,7 +191,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         if (!lastMsg || lastMsg.role !== 'assistant') return prev;
 
         if (isPrimary) {
-          const updates = updater(lastMsg);
+          const updates = updater(lastMsg) as Partial<Message>;
           return [
             ...prev.slice(0, messageIdx),
             { ...lastMsg, ...updates },
@@ -202,7 +200,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         } else {
           const existingRes = lastMsg.comparisonResults?.[targetModel];
           if (!existingRes) return prev;
-          const updates = updater(existingRes);
+          const updates = updater(existingRes) as Partial<ComparisonResult>;
           return [
             ...prev.slice(0, messageIdx),
             {

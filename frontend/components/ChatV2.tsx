@@ -66,6 +66,11 @@ export function buildBaseMessagesAfterLocalEdit({
   });
 }
 
+export function isComposerBlockedByAssistantError(messages: ChatMessage[]): boolean {
+  const latestMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+  return latestMessage?.role === 'assistant' && latestMessage.status === 'error';
+}
+
 export function ChatV2() {
   const chat = useChat();
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -228,6 +233,11 @@ export function ChatV2() {
     ? modelLockReason
     : 'Primary model is locked for comparison chats after the first message. Start a new chat to change.';
   const canSend = !modelAvailability.locked;
+  const composerBlockedByError = isComposerBlockedByAssistantError(chat.messages);
+  const composerDisabled = !canSend || composerBlockedByError;
+  const composerDisabledReason = composerBlockedByError
+    ? 'Regenerate the failed response or edit the previous message to continue.'
+    : modelLockReason;
 
   const { sidebarCollapsed, rightSidebarCollapsed, toggleSidebar, toggleRightSidebar } = chat;
 
@@ -531,14 +541,14 @@ export function ChatV2() {
 
   // Clear the input immediately when the user presses send, then invoke sendMessage
   const handleSend = useCallback(() => {
-    if (!canSend) return;
+    if (composerDisabled) return;
     const messageToSend = chat.input;
     // clear input right away so the UI feels responsive
     chat.setInput('');
     // call sendMessage with the captured content so it doesn't rely on chat.input after clearing
     void chat.sendMessage(messageToSend);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canSend, chat.input, chat.setInput, chat.sendMessage]);
+  }, [composerDisabled, chat.input, chat.setInput, chat.sendMessage]);
 
   const handleSuggestionClick = useCallback(
     (text: string) => {
@@ -770,8 +780,8 @@ export function ChatV2() {
                 onAudiosChange={chat.setAudios}
                 files={chat.files}
                 onFilesChange={chat.setFiles}
-                disabled={!canSend}
-                disabledReason={modelLockReason}
+                disabled={composerDisabled}
+                disabledReason={composerDisabledReason}
                 disableTextInput={showGenerateButton}
               />
             </div>
