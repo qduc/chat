@@ -3,7 +3,15 @@ import assert from 'node:assert/strict';
 import request from 'supertest';
 import express from 'express';
 import { createChatProxyTestContext } from '../test_utils/chatProxyTestUtils.js';
-import { getDb, upsertSession, createConversation } from '../src/db/index.js';
+import {
+  getDb,
+  upsertSession,
+  createConversation,
+  insertUserMessage,
+  createAssistantDraft,
+  insertAssistantFinal,
+  updateMessageContent,
+} from '../src/db/index.js';
 import { generateAccessToken } from '../src/middleware/auth.js';
 import { config } from '../src/env.js';
 
@@ -100,6 +108,134 @@ describe('openaiProxy.js - Unit Tests', () => {
       assert.equal(lastRequest.stream, false);
       assert.ok(!Object.hasOwn(lastRequest, 'provider_stream'));
       assert.ok(!Object.hasOwn(lastRequest, 'providerStream'));
+    });
+
+    test('rejects new sends when the active conversation tail is an assistant error', async () => {
+      const app = makeApp({ mockUser });
+      const sessionId = 'error-tail-session';
+      const conversationId = 'error-tail-conv';
+      upsertSession(sessionId, { userId: mockUser.id });
+      createConversation({ id: conversationId, sessionId, userId: mockUser.id, title: 'Error tail' });
+      insertUserMessage({
+        conversationId,
+        content: 'Original prompt',
+        seq: 1,
+        clientMessageId: 'user-original',
+      });
+      const draft = createAssistantDraft({
+        conversationId,
+        seq: 2,
+        clientMessageId: 'assistant-error',
+      });
+      updateMessageContent({
+        messageId: draft.id,
+        conversationId,
+        userId: mockUser.id,
+        content: '[Error: provider failed]',
+        status: 'error',
+        finishReason: 'error',
+      });
+
+      const res = await request(app)
+        .post('/v1/chat/completions')
+        .set('x-session-id', sessionId)
+        .send({
+          conversation_id: conversationId,
+          messages: [{ id: 'user-new', role: 'user', content: 'New prompt' }],
+          stream: false,
+        });
+
+      assert.equal(res.status, 409);
+      assert.equal(res.body.error, 'conversation_in_error_state');
+      assert.equal(upstream.lastChatRequestBody, null);
+    });
+
+    test('allows retrying the previous user turn after an assistant error without sending the error upstream', async () => {
+      const app = makeApp({ mockUser });
+      const sessionId = 'error-retry-session';
+      const conversationId = 'error-retry-conv';
+      upsertSession(sessionId, { userId: mockUser.id });
+      createConversation({ id: conversationId, sessionId, userId: mockUser.id, title: 'Error retry' });
+      insertUserMessage({
+        conversationId,
+        content: 'Original prompt',
+        seq: 1,
+        clientMessageId: 'user-original',
+      });
+      const draft = createAssistantDraft({
+        conversationId,
+        seq: 2,
+        clientMessageId: 'assistant-error',
+      });
+      updateMessageContent({
+        messageId: draft.id,
+        conversationId,
+        userId: mockUser.id,
+        content: '[Error: provider failed]',
+        status: 'error',
+        finishReason: 'error',
+      });
+
+      const res = await request(app)
+        .post('/v1/chat/completions')
+        .set('x-session-id', sessionId)
+        .send({
+          conversation_id: conversationId,
+          messages: [{ id: 'user-original', role: 'user', content: 'Original prompt' }],
+          stream: false,
+        });
+
+      assert.equal(res.status, 200);
+      assert.ok(upstream.lastChatRequestBody);
+      assert.equal(
+        upstream.lastChatRequestBody.messages.some(
+          (message) => message.role === 'assistant' && message.content === '[Error: provider failed]'
+        ),
+        false
+      );
+    });
+
+    test('streaming provider errors include conversation revision metadata for regenerate UI', async () => {
+      const app = makeApp({ mockUser });
+      const sessionId = 'error-revision-session';
+      const conversationId = 'error-revision-conv';
+      upsertSession(sessionId, { userId: mockUser.id });
+      createConversation({ id: conversationId, sessionId, userId: mockUser.id, title: 'Error revision' });
+      insertUserMessage({
+        conversationId,
+        content: 'Original prompt',
+        seq: 1,
+        clientMessageId: 'user-original',
+      });
+      insertAssistantFinal({
+        conversationId,
+        content: 'Original answer',
+        seq: 2,
+        clientMessageId: 'assistant-original',
+      });
+      upstream.setChatErrorResponder((_req, res) =>
+        res.status(400).json({ error: { message: 'Provider rejected request' } })
+      );
+
+      const res = await request(app)
+        .post('/v1/chat/completions')
+        .set('x-session-id', sessionId)
+        .set('accept', 'text/event-stream')
+        .send({
+          conversation_id: conversationId,
+          messages: [{ id: 'user-original', role: 'user', content: 'Original prompt' }],
+          stream: true,
+        });
+
+      assert.equal(res.status, 200);
+      const metadataLine = res.text
+        .split('\n')
+        .find((line) => line.startsWith('data: {"_conversation"'));
+      assert.ok(metadataLine);
+      const metadata = JSON.parse(metadataLine.replace(/^data: /, ''));
+      assert.equal(metadata._conversation.regenerate_anchor_message_id, 'user-original');
+      assert.equal(metadata._conversation.regenerate_revision_count, 1);
+      assert.ok(res.text.includes('[Error: Provider rejected request]'));
     });
 
     test('handles empty or null content gracefully', async () => {

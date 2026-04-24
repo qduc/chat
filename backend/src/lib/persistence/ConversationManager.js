@@ -554,6 +554,16 @@ export class ConversationManager {
 
     transaction();
 
+    if (targetBranchId && insertedMessages.some((message) => message.role === 'user')) {
+      const ok = setConversationActiveBranch({ conversationId, branchId: targetBranchId, userId });
+      if (!ok) {
+        logger.error('[ConversationManager] syncMessageHistoryDiff: setConversationActiveBranch returned false', {
+          conversationId,
+          branchId: targetBranchId,
+        });
+      }
+    }
+
     return {
       idMappings,
       insertedMessages,

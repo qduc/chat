@@ -39,7 +39,8 @@ export function useChatStreaming() {
     startTime: number;
     messageId: string;
     lastUpdated: number;
-    provider?: string;
+    provider?: string | null;
+    model?: string;
     isEstimate: boolean;
     activeGenerationMs?: number;
     lastActivityStartedAt?: number | null;

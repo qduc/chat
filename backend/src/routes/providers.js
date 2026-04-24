@@ -13,6 +13,7 @@ import {
   getDefaultProvider,
 } from '../db/providers.js';
 import { ProviderModelsError } from '../lib/providers/baseProvider.js';
+import { ProviderTransportError } from '../lib/providers/baseProvider.js';
 import { createProviderWithSettings, selectProviderConstructor } from '../lib/providers/index.js';
 import { filterModels } from '../lib/modelFilter.js';
 import { fetchAllModelsForUser as fetchAllModelsForUserShared } from '../lib/modelFetch.js';
@@ -104,6 +105,27 @@ function mapProviderStatusToMessage(status, context) {
 function truncateDetail(detail) {
   if (!detail) return '';
   return String(detail).slice(0, 200);
+}
+
+function getProviderTransportMessage(err, fallbackMessage) {
+  if (!(err instanceof ProviderTransportError)) {
+    return fallbackMessage;
+  }
+
+  switch (err.kind) {
+    case 'timeout':
+      return 'Connection timeout. Please check your base URL and network connection.';
+    case 'dns':
+      return 'Cannot connect to the provider. Please check your base URL.';
+    case 'refused':
+      return 'Cannot connect to the provider. Please check your base URL.';
+    case 'unreachable':
+      return 'Cannot connect to the provider. Please check your base URL.';
+    case 'tls':
+      return 'Secure connection failed while connecting to the provider.';
+    default:
+      return fallbackMessage;
+  }
 }
 
 function buildProviderInstance(providerType, settings, http) {
@@ -313,8 +335,13 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
       let errorMessage = 'Failed to retrieve models. Please check your provider configuration.';
       let statusCode = 502; // Default to bad gateway for provider connectivity issues
 
-      if (err.name === 'AbortError' || err.code === 'ETIMEDOUT' || err.message?.includes('timeout')) {
-        errorMessage = 'Connection timeout. Please check your base URL and network connection.';
+      if (
+        err instanceof ProviderTransportError ||
+        err.name === 'AbortError' ||
+        err.code === 'ETIMEDOUT' ||
+        (err.message || '').toLowerCase().includes('timeout')
+      ) {
+        errorMessage = getProviderTransportMessage(err, errorMessage);
       } else if (
         err.code === 'ENOTFOUND' ||
         err.code === 'ECONNREFUSED' ||
@@ -389,8 +416,8 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
 
       let errorMessage = 'Connection test failed. Please check your configuration.';
 
-      if (err.name === 'AbortError' || err.code === 'ETIMEDOUT') {
-        errorMessage = 'Connection timeout. Please check your base URL and network connection.';
+      if (err instanceof ProviderTransportError || err.name === 'AbortError' || err.code === 'ETIMEDOUT') {
+        errorMessage = getProviderTransportMessage(err, errorMessage);
       } else if (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED') {
         errorMessage = 'Cannot connect to the provider. Please check your base URL.';
       }
@@ -463,8 +490,8 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
 
       let errorMessage = 'Connection test failed. Please check your configuration.';
 
-      if (err.name === 'AbortError' || err.code === 'ETIMEDOUT') {
-        errorMessage = 'Connection timeout. Please check your base URL and network connection.';
+      if (err instanceof ProviderTransportError || err.name === 'AbortError' || err.code === 'ETIMEDOUT') {
+        errorMessage = getProviderTransportMessage(err, errorMessage);
       } else if (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED') {
         errorMessage = 'Cannot connect to the provider. Please check your base URL.';
       }
@@ -538,4 +565,3 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
 
 // Backwards-compatible default router export
 export const providersRouter = createProvidersRouter();
-

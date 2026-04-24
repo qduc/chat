@@ -141,6 +141,34 @@ describe('toolOrchestrationUtils', () => {
   });
 
   describe('buildConversationMessages', () => {
+    test('skips assistant error messages from client-provided fallback history', () => {
+      const result = buildConversationMessages({
+        body: { messages: [] },
+        bodyIn: {
+          messages: [
+            { role: 'user', content: 'Original prompt' },
+            { role: 'assistant', status: 'error', content: '[Error: provider failed]' },
+            { role: 'user', content: 'Next prompt' },
+          ],
+        },
+        persistence: {},
+      });
+
+      expect(result).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ role: 'user', content: 'Original prompt' }),
+          expect.objectContaining({ role: 'user', content: 'Next prompt' }),
+        ])
+      );
+      expect(result).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ role: 'assistant', content: '[Error: provider failed]' }),
+        ])
+      );
+    });
+  });
+
+  describe('buildConversationMessages', () => {
     beforeAll(() => {
       jest.useFakeTimers();
       jest.setSystemTime(new Date('2025-01-15'));

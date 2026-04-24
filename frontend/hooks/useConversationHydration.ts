@@ -33,6 +33,7 @@ export interface ConversationHydrationDeps {
   setConversationId: (id: string | null) => void;
   setCurrentConversationTitle: (title: string | null) => void;
   setActiveBranchId: (id: string | null) => void;
+  setViewedBranchId: (id: string | null) => void;
   setBranches: Dispatch<SetStateAction<ConversationBranch[]>>;
 
   // -- Model / provider --
@@ -129,6 +130,7 @@ export function hydrateMessages(
       id: msgId,
       role: msg.role,
       content,
+      status: msg.status || undefined,
       branch_id: typeof msg.branch_id === 'string' ? msg.branch_id : undefined,
       _dbId: typeof msg._dbId === 'number' ? msg._dbId : undefined,
       _parentMessageId:
@@ -271,6 +273,7 @@ export function useConversationHydration(deps: ConversationHydrationDeps) {
     setConversationId,
     setCurrentConversationTitle,
     setActiveBranchId,
+    setViewedBranchId,
     setBranches,
     modelToProviderRef,
     setModelState,
@@ -317,8 +320,13 @@ export function useConversationHydration(deps: ConversationHydrationDeps) {
         setEvaluationDrafts([]);
         setConversationId(id);
         setCurrentConversationTitle(data.title || null);
-        setActiveBranchId(data.active_branch_id ?? null);
-        setBranches(Array.isArray(data.branches) ? data.branches : []);
+        const branchList = Array.isArray(data.branches) ? data.branches : [];
+        const persistedActiveBranchId =
+          branchList.find((branch) => branch.is_active)?.id ?? data.active_branch_id ?? null;
+        const viewedBranchId = options?.branchId ?? persistedActiveBranchId;
+        setActiveBranchId(persistedActiveBranchId);
+        setViewedBranchId(viewedBranchId);
+        setBranches(branchList);
 
         // --- Model / Provider ---
         const rawModel = typeof data.model === 'string' ? data.model.trim() : null;
@@ -398,7 +406,7 @@ export function useConversationHydration(deps: ConversationHydrationDeps) {
                         messageId: String(lMsg.id),
                         content: lMsg.content ?? '',
                         usage: (lMsg as any).usage,
-                        status: 'complete',
+                        status: lMsg.status === 'error' ? 'error' : 'complete',
                         tool_calls: lMsg.tool_calls,
                         tool_outputs: lMsg.tool_outputs,
                         message_events: lMsg.message_events,
@@ -437,6 +445,7 @@ export function useConversationHydration(deps: ConversationHydrationDeps) {
       setConversationId,
       setCurrentConversationTitle,
       setActiveBranchId,
+      setViewedBranchId,
       setBranches,
       modelToProviderRef,
       setModelState,

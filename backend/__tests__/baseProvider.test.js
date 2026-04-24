@@ -1,5 +1,5 @@
 import { jest } from '@jest/globals';
-import { BaseProvider, ProviderModelsError } from '../src/lib/providers/baseProvider.js';
+import { BaseProvider, ProviderModelsError, ProviderTransportError } from '../src/lib/providers/baseProvider.js';
 
 // Create a concrete implementation for testing
 class TestProvider extends BaseProvider {
@@ -111,6 +111,43 @@ describe('BaseProvider', () => {
       const provider = new TestProvider({});
 
       expect(provider.buildAdapterContext()).toEqual({});
+    });
+  });
+
+  describe('normalizeTransportError', () => {
+    test('formats fetch failures with provider name', () => {
+      const provider = new TestProvider({
+        providerId: 'fallback-id',
+        settings: {
+          providerType: 'openai-completions',
+          raw: { name: 'Friendly Provider' },
+        },
+      });
+
+      const normalized = provider.normalizeTransportError(new Error('fetch failed'));
+
+      expect(normalized).toBeInstanceOf(ProviderTransportError);
+      expect(normalized.message).toBe('Could not connect to provider Friendly Provider.');
+      expect(normalized.kind).toBe('network');
+      expect(normalized.providerName).toBe('Friendly Provider');
+    });
+
+    test('formats timeout failures when timeout classification is enabled', () => {
+      const provider = new TestProvider({
+        providerId: 'fallback-id',
+        settings: {
+          providerType: 'anthropic',
+          raw: { name: 'Claude Proxy' },
+        },
+      });
+
+      const timeoutError = new Error('The operation was aborted due to timeout');
+      timeoutError.name = 'AbortError';
+
+      const normalized = provider.normalizeTransportError(timeoutError, { operation: 'fetch', includeTimeout: true });
+
+      expect(normalized.message).toBe('Timed out when trying to fetch provider Claude Proxy.');
+      expect(normalized.kind).toBe('timeout');
     });
   });
 

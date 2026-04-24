@@ -142,16 +142,20 @@ export function useChat() {
   const [error, setError] = useState<string | null>(null);
   const [user, setUser] = useState<{ id: string } | null>(null);
   const [activeBranchId, setActiveBranchIdState] = useState<string | null>(null);
-  const activeBranchIdRef = useRef<string | null>(null);
   const setActiveBranchId = useCallback((id: string | null) => {
-    activeBranchIdRef.current = id;
     setActiveBranchIdState(id);
+  }, []);
+  const [viewedBranchId, setViewedBranchIdState] = useState<string | null>(null);
+  const viewedBranchIdRef = useRef<string | null>(null);
+  const setViewedBranchId = useCallback((id: string | null) => {
+    viewedBranchIdRef.current = id;
+    setViewedBranchIdState(id);
   }, []);
   const [branches, setBranches] = useState<ConversationBranch[]>([]);
 
   useEffect(() => {
-    activeBranchIdRef.current = activeBranchId;
-  }, [activeBranchId]);
+    viewedBranchIdRef.current = viewedBranchId;
+  }, [viewedBranchId]);
 
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === 'undefined') return true;
@@ -242,7 +246,8 @@ export function useChat() {
     setCurrentConversationTitle,
     setConversations,
     setActiveBranchId,
-    activeBranchIdRef,
+    setViewedBranchId,
+    viewedBranchIdRef,
     setBranches,
     buildMessageContent,
     clearAttachments,
@@ -288,6 +293,7 @@ export function useChat() {
     setConversationId,
     setCurrentConversationTitle,
     setActiveBranchId,
+    setViewedBranchId,
     setBranches,
     modelToProviderRef,
     setModelState,
@@ -441,6 +447,7 @@ export function useChat() {
     setMessages([]);
     setConversationId(null);
     setActiveBranchId(null);
+    setViewedBranchId(null);
     setBranches([]);
     setInput('');
     setError(null);
@@ -455,6 +462,7 @@ export function useChat() {
     setMessages,
     setConversationId,
     setActiveBranchId,
+    setViewedBranchId,
     setBranches,
     setInput,
     resetStreaming,
@@ -487,7 +495,8 @@ export function useChat() {
       conversationIdRef.current,
       editingMessageId,
       editingContent,
-      compareModels.length > 0
+      compareModels.length > 0,
+      viewedBranchIdRef.current
     );
     const selection = await selectConversation(conversationIdRef.current);
     const hasReloadedEditedMessage = selection?.messages.some(
@@ -532,18 +541,17 @@ export function useChat() {
   const switchBranch = useCallback(
     async (branchId: string) => {
       const currentConversationId = conversationIdRef.current;
-      if (!currentConversationId || !branchId || branchId === activeBranchId) return null;
+      if (!currentConversationId || !branchId || branchId === viewedBranchId) return null;
       if (pending.streaming || status === 'streaming') {
-        throw new Error('Stop streaming before switching branches');
+        throw new Error('Stop streaming before viewing another branch');
       }
-      await conversationsApi.switchBranch(currentConversationId, branchId);
-      const selection = await selectConversation(currentConversationId);
+      const selection = await selectConversation(currentConversationId, { branchId });
       if (!selection) {
         throw new Error('Failed to load selected branch');
       }
       return selection;
     },
-    [conversationIdRef, activeBranchId, pending.streaming, status, selectConversation]
+    [conversationIdRef, viewedBranchId, pending.streaming, status, selectConversation]
   );
 
   // Effects
@@ -567,7 +575,7 @@ export function useChat() {
   }, [loadModels]);
 
   const draftScopeId =
-    conversationId && activeBranchId ? `${conversationId}:${activeBranchId}` : conversationId;
+    conversationId && viewedBranchId ? `${conversationId}:${viewedBranchId}` : conversationId;
   useDraftPersistence(user?.id, draftScopeId, input, setInput);
 
   // Use system prompts hook
@@ -582,6 +590,7 @@ export function useChat() {
     error,
     pending,
     activeBranchId,
+    viewedBranchId,
     branches,
     model,
     providerId,

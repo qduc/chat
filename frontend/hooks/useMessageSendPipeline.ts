@@ -33,6 +33,8 @@ const STREAMING_TEXT_FLUSH_INTERVAL_MS = 40;
 // Types
 // ---------------------------------------------------------------------------
 
+type ComparisonResult = NonNullable<Message['comparisonResults']>[string];
+
 /** Refs and setters that the pipeline needs from surrounding hooks. */
 export interface SendPipelineDeps {
   // -- Model / provider refs --
@@ -64,7 +66,8 @@ export interface SendPipelineDeps {
     startTime: number;
     messageId: string;
     lastUpdated: number;
-    provider?: string;
+    provider?: string | null;
+    model?: string;
     isEstimate: boolean;
     activeGenerationMs?: number;
     lastActivityStartedAt?: number | null;
@@ -82,7 +85,8 @@ export interface SendPipelineDeps {
   setCurrentConversationTitle: (title: string | null) => void;
   setConversations: Dispatch<SetStateAction<Conversation[]>>;
   setActiveBranchId: (id: string | null) => void;
-  activeBranchIdRef: MutableRefObject<string | null>;
+  setViewedBranchId: (id: string | null) => void;
+  viewedBranchIdRef: MutableRefObject<string | null>;
   setBranches: Dispatch<SetStateAction<ConversationBranch[]>>;
 
   // -- Attachments --
@@ -134,7 +138,8 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
     setCurrentConversationTitle,
     setConversations,
     setActiveBranchId,
-    activeBranchIdRef,
+    setViewedBranchId,
+    viewedBranchIdRef,
     setBranches,
     buildMessageContent,
     clearAttachments,
@@ -155,6 +160,8 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         targetModel: string;
         text: string;
         message_events: any[];
+        provider?: string | null;
+        model?: string;
         timeoutId: ReturnType<typeof setTimeout> | null;
       }
     >
@@ -168,11 +175,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       isPrimary: boolean,
       assistantMessageId: string,
       targetModel: string,
-      updater: (
-        current: Message | { content: MessageContent; tool_calls?: any[]; tool_outputs?: any[] }
-      ) =>
-        | Partial<Message>
-        | Partial<{ content: MessageContent; tool_calls?: any[]; tool_outputs?: any[] }>
+      updater: (current: Message | ComparisonResult) => Partial<Message> | Partial<ComparisonResult>
     ) => {
       setMessages((prev) => {
         let messageIdx = prev.findIndex((message) => message.id === assistantMessageId);
@@ -190,7 +193,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         if (!lastMsg || lastMsg.role !== 'assistant') return prev;
 
         if (isPrimary) {
-          const updates = updater(lastMsg);
+          const updates = updater(lastMsg) as Partial<Message>;
           return [
             ...prev.slice(0, messageIdx),
             { ...lastMsg, ...updates },
@@ -199,7 +202,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         } else {
           const existingRes = lastMsg.comparisonResults?.[targetModel];
           if (!existingRes) return prev;
-          const updates = updater(existingRes);
+          const updates = updater(existingRes) as Partial<ComparisonResult>;
           return [
             ...prev.slice(0, messageIdx),
             {
@@ -259,7 +262,8 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         return {
           content: prev + pendingText,
           message_events: accumulator.getEvents(),
-          provider: tokenStatsRef.current?.provider,
+          provider: (current as any).provider || entry.provider,
+          model: (current as any).model || entry.model,
         };
       });
 
@@ -270,7 +274,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         delete bufferedStreamingTextRef.current[bufferKey];
       }
     },
-    [getBufferedStreamKey, tokenStatsRef, updateMessageState]
+    [getBufferedStreamKey, updateMessageState]
   );
 
   const queueBufferedStreamingText = useCallback(
@@ -279,6 +283,8 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       assistantMessageId: string,
       targetModel: string,
       text: string,
+      provider?: string | null,
+      model?: string,
       event?: any
     ) => {
       if (!text && !event) return;
@@ -293,6 +299,8 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           targetModel,
           text: '',
           message_events: [],
+          provider,
+          model,
           timeoutId: null,
         });
 
@@ -376,6 +384,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         const branchData = await conversationsApi.getBranches(conversationId);
         const activeBranch = branchData.active_branch_id ?? null;
         setActiveBranchId(activeBranch);
+        setViewedBranchId(activeBranch);
         setBranches(Array.isArray(branchData.branches) ? branchData.branches : []);
 
         const resolvedUserMessageDbId =
@@ -470,7 +479,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         // Ignore branch refresh errors and keep the message update path responsive.
       }
     },
-    [setActiveBranchId, setBranches, setMessages]
+    [setActiveBranchId, setViewedBranchId, setBranches, setMessages]
   );
 
   // ---------------------------------------------------------------------------
@@ -500,6 +509,10 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         targetProviderId = targetModel.split('::')[0];
       } else if (modelToProviderRef.current[targetModel]) {
         targetProviderId = modelToProviderRef.current[targetModel];
+      }
+      if (isPrimary && tokenStatsRef.current) {
+        tokenStatsRef.current.provider = targetProviderId;
+        tokenStatsRef.current.model = actualModelId;
       }
 
       const reasoning =
@@ -551,7 +564,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           requestId: isPrimary ? messageId : `${messageId}-${targetModel}`,
           signal: options?.signal || abortControllerRef.current?.signal || undefined,
           conversationId: targetConversationId,
-          branchId: isPrimary ? activeBranchIdRef.current : null,
+          branchId: isPrimary ? viewedBranchIdRef.current : null,
           parentConversationId,
           streamingEnabled: shouldStreamRef.current,
           toolsEnabled: useToolsRef.current,
@@ -572,7 +585,14 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
               resumeTokenEstimateClock();
               addEstimatedOutputChars(messageId, token.length);
             }
-            queueBufferedStreamingText(isPrimary, messageId, targetModel, token);
+            queueBufferedStreamingText(
+              isPrimary,
+              messageId,
+              targetModel,
+              token,
+              targetProviderId,
+              actualModelId
+            );
           },
           onEvent: (event: any) => {
             const clearRetryStatusIfCurrentModel = () => {
@@ -592,7 +612,14 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 resumeTokenEstimateClock();
                 addEstimatedOutputChars(messageId, event.value.length);
               }
-              queueBufferedStreamingText(isPrimary, messageId, targetModel, event.value);
+              queueBufferedStreamingText(
+                isPrimary,
+                messageId,
+                targetModel,
+                event.value,
+                targetProviderId,
+                actualModelId
+              );
               clearRetryStatusIfCurrentModel();
             } else if (event.type === 'reasoning') {
               if (isPrimary && typeof event.value === 'string') {
@@ -605,7 +632,15 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
               const messageEvents = Array.isArray(event.value) ? event.value : [event.value];
               for (const messageEvent of messageEvents) {
                 if (!messageEvent) continue;
-                queueBufferedStreamingText(isPrimary, messageId, targetModel, '', messageEvent);
+                queueBufferedStreamingText(
+                  isPrimary,
+                  messageId,
+                  targetModel,
+                  '',
+                  targetProviderId,
+                  actualModelId,
+                  messageEvent
+                );
               }
               clearRetryStatusIfCurrentModel();
             } else if (event.type === 'retry_status') {
@@ -633,6 +668,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                   setCurrentConversationTitle(c.title || null);
                   if (typeof c.active_branch_id === 'string' && c.active_branch_id) {
                     setActiveBranchId(c.active_branch_id);
+                    setViewedBranchId(c.active_branch_id);
                   }
                   setConversations((prev) => {
                     if (prev.some((curr) => curr.id === c.id)) {
@@ -674,26 +710,43 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
             } else if (event.type === 'usage') {
               flushBufferedStreamingText(messageId, targetModel, isPrimary);
               clearRetryStatusIfCurrentModel();
+              // Update stats for the progress bar / stats row
               if (
                 isPrimary &&
                 tokenStatsRef.current &&
-                tokenStatsRef.current.messageId === messageId &&
-                Number.isFinite(event.value?.completion_tokens)
+                tokenStatsRef.current.messageId === messageId
               ) {
                 const base = tokenStatsRef.current.baseCompletionTokens || 0;
-                tokenStatsRef.current.count = base + event.value.completion_tokens;
+                if (event.value.completion_tokens !== undefined) {
+                  tokenStatsRef.current.count = base + event.value.completion_tokens;
+                }
+                if (event.value.provider) {
+                  tokenStatsRef.current.provider = event.value.provider;
+                }
+                if (event.value.model) {
+                  tokenStatsRef.current.model = event.value.model;
+                }
                 tokenStatsRef.current.isEstimate = false;
                 tokenStatsRef.current.lastUpdated = Date.now();
-                if (Number.isFinite(event.value?.completion_ms) && event.value.completion_ms > 0) {
+
+                if (event.value.completion_ms !== undefined) {
                   const baseMs = tokenStatsRef.current.baseCompletionMs || 0;
                   tokenStatsRef.current.durationMsOverride = baseMs + event.value.completion_ms;
                 }
               }
-              updateMessageState(isPrimary, messageId, targetModel, () => ({
-                usage: event.value,
-                provider: event.value.provider,
-                model: event.value.model,
+
+              updateMessageState(isPrimary, messageId, targetModel, (prev) => ({
+                usage: { ...(prev as any).usage, ...event.value },
+                provider: event.value.provider || (prev as any).provider,
+                model: event.value.model || (prev as any).model,
               }));
+            } else if (event.type === 'finish_reason') {
+              if (event.value === 'error') {
+                flushBufferedStreamingText(messageId, targetModel, isPrimary);
+                updateMessageState(isPrimary, messageId, targetModel, () => ({
+                  status: 'error',
+                }));
+              }
             } else if (event.type === 'tool_output') {
               flushBufferedStreamingText(messageId, targetModel, isPrimary);
               clearRetryStatusIfCurrentModel();
@@ -772,7 +825,21 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 (response as any).message_events ||
                 (current as any).message_events ||
                 accumulator.getEvents(),
-              status: isPrimary ? undefined : 'complete',
+              status: isPrimary
+                ? response.status === 'error' || current.status === 'error'
+                  ? 'error'
+                  : undefined
+                : response.status === 'error'
+                  ? 'error'
+                  : 'complete',
+              ...(!isPrimary
+                ? {
+                    error:
+                      response.status === 'error'
+                        ? response.content || (current as any).error
+                        : (current as any).error,
+                  }
+                : {}),
               id: isPrimary
                 ? response.conversation?.assistant_message_id?.toString() || messageId
                 : undefined,
@@ -841,12 +908,13 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       updateMessageState,
       queueBufferedStreamingText,
       flushBufferedStreamingText,
-      activeBranchIdRef,
+      viewedBranchIdRef,
       conversationIdRef,
       setConversationId,
       setCurrentConversationTitle,
       setConversations,
       setActiveBranchId,
+      setViewedBranchId,
       user,
       setLinkedConversations,
       setStatus,

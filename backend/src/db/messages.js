@@ -1077,7 +1077,7 @@ export function getPreviousUserMessage({ conversationId, beforeSeq, userId }) {
   const branchId = resolveConversationBranchId(conversationId);
   if (!branchId) return null;
   const query = `${getActiveTimelineQuery()}
-     SELECT m.id, m.conversation_id, m.branch_id, m.parent_message_id, m.role, m.seq, m.content, m.content_json
+     SELECT m.id, m.conversation_id, m.branch_id, m.parent_message_id, m.role, m.seq, m.content, m.content_json, m.client_message_id
      FROM timeline t
      JOIN messages m ON m.id = t.id
      JOIN conversations c ON m.conversation_id = c.id

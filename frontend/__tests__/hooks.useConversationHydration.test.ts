@@ -80,6 +80,12 @@ describe('hydrateMessages', () => {
     expect(result[0].provider).toBe('openai');
   });
 
+  test('preserves assistant status (e.g. error)', () => {
+    const raw = [{ id: 'a1', role: 'assistant', content: '', status: 'error', created_at: now }];
+    const result = hydrateMessages(raw);
+    expect(result[0].status).toBe('error');
+  });
+
   test('handles null/undefined content gracefully', () => {
     const raw = [
       { id: 'u1', role: 'user', content: null, created_at: now },
@@ -231,6 +237,19 @@ describe('mergeLinkedMessages', () => {
     expect(result[0].normalizedModel).toBe('openai::gpt-4o-mini');
     expect(result[0].assistants).toHaveLength(2);
     expect(result[0].assistants[0].content).toBe('A1');
+  });
+
+  test('preserves linked assistant error status', () => {
+    const linked = [
+      {
+        id: 'c1',
+        model: 'gpt-4o-mini',
+        provider_id: 'openai',
+        messages: [{ id: 'a1', role: 'assistant', content: 'Err', status: 'error' }],
+      },
+    ];
+    const result = mergeLinkedMessages(linked, modelToProvider);
+    expect(result[0].assistants[0].status).toBe('error');
   });
 
   test('handles multiple linked conversations', () => {

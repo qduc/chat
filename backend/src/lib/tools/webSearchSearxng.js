@@ -278,7 +278,7 @@ async function handler(
 export const webSearchSearxngTool = createTool({
   name: TOOL_NAME,
   description:
-    'Search the web using SearXNG. Aggregates results from multiple engines. Returns snippets and URLs.',
+    'Broad-coverage metasearch with superior source diversity. Excellent for discovering niche, local, and breaking-news sources. Returns short snippets.',
   validate,
   handler,
   openAI: {
@@ -286,7 +286,7 @@ export const webSearchSearxngTool = createTool({
     function: {
       name: TOOL_NAME,
       description:
-        'Search the web for latest news, info, and sites. Returns snippets (not full content). Pair with web_fetch to read full pages.',
+        'Broad-coverage metasearch with superior source diversity. Excellent for discovering niche, local, and breaking-news sources across multiple indexes, including forums and regional sites. Returns short snippets; pair with web_fetch or web_search_exa to read full content. Includes query refinement suggestions.',
       parameters: {
         type: 'object',
         properties: {

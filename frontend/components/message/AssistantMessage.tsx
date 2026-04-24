@@ -115,13 +115,23 @@ export function AssistantMessage({
   // Build display data for each selected model
   const modelDisplayData = activeModels.map((modelId) => {
     if (modelId === 'primary') {
+      const pendingError = isStreaming ? pending.error : undefined;
+      const isError = !!pendingError || message.status === 'error';
+      const errorMessage =
+        pendingError ||
+        (message.status === 'error'
+          ? typeof message.content === 'string' && message.content.length > 0
+            ? message.content
+            : 'Generation failed.'
+          : undefined);
+
       return {
         modelId,
         displayMessage: message,
         isModelStreaming: isStreaming,
-        isModelError: !!pending.error,
-        error: pending.error,
-        assistantSegments: buildAssistantSegments(message),
+        isModelError: isError,
+        error: errorMessage,
+        assistantSegments: isError ? [] : buildAssistantSegments(message),
       };
     }
 
@@ -137,13 +147,21 @@ export function AssistantMessage({
         provider: (result as any).provider,
         model: (result as any).model || modelId,
       };
+
+      const isError = result.status === 'error';
+      const errorMessage =
+        result.error ||
+        (isError && typeof result.content === 'string' && result.content.length > 0
+          ? result.content
+          : undefined);
+
       return {
         modelId,
         displayMessage,
         isModelStreaming: result.status === 'streaming',
-        isModelError: result.status === 'error',
-        error: result.error,
-        assistantSegments: buildAssistantSegments(displayMessage),
+        isModelError: isError,
+        error: errorMessage,
+        assistantSegments: isError ? [] : buildAssistantSegments(displayMessage),
       };
     }
 

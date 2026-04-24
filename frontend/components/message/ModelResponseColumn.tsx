@@ -150,10 +150,12 @@ export function ModelResponseColumn({
                 style={{ animationDelay: '300ms' }}
               />
             </span>
-          ) : isModelError && modelError && isMultiColumn ? (
+          ) : isModelError && modelError ? (
             <div className="flex items-start gap-2 text-red-500 dark:text-red-400 text-sm bg-red-50/50 dark:bg-red-950/20 rounded-lg px-3 py-2 border border-red-100 dark:border-red-900/30">
               <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-              <span>{modelError}</span>
+              <div className="flex-1 overflow-auto whitespace-pre-wrap leading-relaxed">
+                {modelError}
+              </div>
             </div>
           ) : (
             <span className="text-zinc-500 dark:text-zinc-400 italic">No response content</span>

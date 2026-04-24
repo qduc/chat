@@ -52,6 +52,38 @@ const baseData = {
 };
 
 describe('ModelResponseColumn retry status', () => {
+  it('renders model errors inline in the response body', () => {
+    render(
+      <ModelResponseColumn
+        data={
+          {
+            ...baseData,
+            isModelStreaming: false,
+            isModelError: true,
+            error: '[Error: No endpoints available]',
+            assistantSegments: [],
+          } as any
+        }
+        messageId="assistant-1"
+        isMultiColumn={false}
+        isEditing={false}
+        isUser={false}
+        hasComparison={false}
+        pending={{ streaming: false, abort: null } as any}
+        streamingStats={null}
+        collapsedToolOutputs={{}}
+        copiedMessageId={null}
+        actionsDisabled={false}
+        onToggleToolOutput={jest.fn()}
+        onCopy={jest.fn()}
+        getModelDisplayName={(id) => id}
+      />
+    );
+
+    expect(screen.getByText('[Error: No endpoints available]')).toBeInTheDocument();
+    expect(screen.queryByText('No response content')).not.toBeInTheDocument();
+  });
+
   it('renders retry status inline while waiting for provider retry', () => {
     render(
       <ModelResponseColumn

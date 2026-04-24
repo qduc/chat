@@ -111,7 +111,8 @@ export interface PendingState {
     startTime: number;
     messageId: string;
     lastUpdated: number;
-    provider?: string;
+    provider?: string | null;
+    model?: string;
     isEstimate: boolean;
     activeGenerationMs?: number;
     lastActivityStartedAt?: number | null;
@@ -276,6 +277,7 @@ export interface ChatMessage {
   id: string;
   role: Role;
   content: MessageContent;
+  status?: 'streaming' | 'final' | 'error' | string;
   timestamp?: number;
   seq?: number; // Message sequence number from backend
   branch_id?: string;
@@ -333,6 +335,8 @@ export interface ChatMessage {
       }>;
       message_events?: MessageEvent[];
       usage?: any;
+      provider?: string;
+      model?: string;
       status: 'streaming' | 'complete' | 'error';
       error?: string;
     }
@@ -383,7 +387,8 @@ export interface ChatEvent {
     | 'generated_image'
     | 'conversation'
     | 'message_event'
-    | 'retry_status';
+    | 'retry_status'
+    | 'finish_reason';
   value: any;
 }
 
@@ -391,6 +396,8 @@ export interface ChatResponse {
   content: string;
   responseId?: string;
   conversation?: ConversationMeta;
+  status?: 'error';
+  finish_reason?: string;
   reasoning_summary?: string;
   message_events?: MessageEvent[];
   usage?: {

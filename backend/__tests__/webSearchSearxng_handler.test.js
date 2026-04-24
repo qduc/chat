@@ -389,6 +389,9 @@ describe('webSearchSearxng tool - specification', () => {
 
   test('has correct tool metadata', () => {
     expect(webSearchSearxngTool.name).toBe('web_search_searxng');
-    expect(webSearchSearxngTool.description).toContain('SearXNG');
+    expect(typeof webSearchSearxngTool.description).toBe('string');
+    expect(webSearchSearxngTool.description.length).toBeGreaterThan(0);
+    expect(webSearchSearxngTool.spec.type).toBe('function');
+    expect(webSearchSearxngTool.spec.function.name).toBe('web_search_searxng');
   });
 });

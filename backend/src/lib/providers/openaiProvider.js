@@ -143,18 +143,23 @@ export class OpenAIProvider extends BaseProvider {
     }
 
     // Wrap fetch call with retry logic for 429 and 5xx errors
-    const response = await retryWithBackoff(
-      () => client(url, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(translatedRequest),
-        ...(context.signal ? { signal: context.signal } : {}),
-      }),
-      {
-        ...config.providerConfig.retry,
-        onRetry: context.onRetry,
-      }
-    );
+    let response;
+    try {
+      response = await retryWithBackoff(
+        () => client(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify(translatedRequest),
+          ...(context.signal ? { signal: context.signal } : {}),
+        }),
+        {
+          ...config.providerConfig.retry,
+          onRetry: context.onRetry,
+        }
+      );
+    } catch (error) {
+      throw this.normalizeTransportError(error, { operation: 'connect to', includeTimeout: false });
+    }
 
     // Log the upstream response for debugging
     try {
@@ -254,14 +259,19 @@ export class OpenAIProvider extends BaseProvider {
     }
 
     // Wrap fetch call with retry logic for 429 and 5xx errors
-    const response = await retryWithBackoff(
-      () => client(url, {
-        method: 'GET',
-        headers,
-        signal: createTimeoutSignal(timeoutMs),
-      }),
-      config.providerConfig.retry
-    );
+    let response;
+    try {
+      response = await retryWithBackoff(
+        () => client(url, {
+          method: 'GET',
+          headers,
+          signal: createTimeoutSignal(timeoutMs),
+        }),
+        config.providerConfig.retry
+      );
+    } catch (error) {
+      throw this.normalizeTransportError(error, { operation: 'fetch', includeTimeout: true });
+    }
 
     if (!response.ok) {
       const errorBody = typeof response.text === 'function' ? await response.text().catch(() => '') : '';

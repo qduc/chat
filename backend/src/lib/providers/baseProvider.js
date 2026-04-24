@@ -41,6 +41,38 @@ export class BaseProvider {
     return context;
   }
 
+  getDisplayName() {
+    return (
+      this.settings?.raw?.name ||
+      this.settings?.name ||
+      this.providerId ||
+      this.settings?.providerType ||
+      this.constructor?.name ||
+      'provider'
+    );
+  }
+
+  normalizeTransportError(error, { operation = 'connect to', includeTimeout = false } = {}) {
+    const providerName = this.getDisplayName();
+    const classification = classifyTransportError(error, { includeTimeout });
+    if (!classification) return error;
+
+    const message = formatTransportErrorMessage(classification, providerName, operation);
+    const normalized = new ProviderTransportError(message, {
+      kind: classification,
+      providerName,
+      providerId: this.providerId || null,
+      providerType: this.settings?.providerType || null,
+      baseUrl: this.settings?.baseUrl || null,
+      operation,
+      cause: error,
+    });
+    if (error?.stack) {
+      normalized.stack = `${normalized.name}: ${normalized.message}\nCaused by: ${error.stack}`;
+    }
+    return normalized;
+  }
+
   async translateRequest(internalRequest = {}, context = {}) {
     const adapterContext = this.buildAdapterContext(context);
     return await this.getAdapter().translateRequest(internalRequest, adapterContext);
@@ -185,6 +217,89 @@ export class ProviderModelsError extends Error {
     this.name = 'ProviderModelsError';
     this.status = status;
     this.body = body;
+  }
+}
+
+export class ProviderTransportError extends Error {
+  constructor(message, details = {}) {
+    super(message);
+    this.name = 'ProviderTransportError';
+    Object.assign(this, details);
+  }
+}
+
+function extractErrorCode(error) {
+  return error?.code || error?.cause?.code || error?.cause?.errno || error?.cause?.name || error?.name || '';
+}
+
+function classifyTransportError(error, { includeTimeout = false } = {}) {
+  const message = String(error?.message || '').toLowerCase();
+  const code = String(extractErrorCode(error) || '').toUpperCase();
+  const causeMessage = String(error?.cause?.message || '').toLowerCase();
+  const haystack = `${message} ${causeMessage} ${code}`.trim();
+
+  if (includeTimeout && (
+    code === 'ETIMEOUT' ||
+    code === 'ETIMEDOUT' ||
+    code === 'UND_ERR_CONNECT_TIMEOUT' ||
+    code === 'UND_ERR_HEADERS_TIMEOUT' ||
+    haystack.includes('timed out') ||
+    haystack.includes('timeout')
+  )) {
+    return 'timeout';
+  }
+
+  if (code === 'ENOTFOUND' || code === 'EAI_AGAIN' || haystack.includes('dns') || haystack.includes('name resolution')) {
+    return 'dns';
+  }
+
+  if (code === 'ECONNREFUSED' || haystack.includes('connection refused')) {
+    return 'refused';
+  }
+
+  if (code === 'EHOSTUNREACH' || code === 'ENETUNREACH' || haystack.includes('network is unreachable')) {
+    return 'unreachable';
+  }
+
+  if (
+    code === 'DEPTH_ZERO_SELF_SIGNED_CERT' ||
+    code === 'ERR_TLS_CERT_ALTNAME_INVALID' ||
+    code === 'CERT_HAS_EXPIRED' ||
+    code === 'UNABLE_TO_VERIFY_LEAF_SIGNATURE' ||
+    haystack.includes('tls') ||
+    haystack.includes('certificate')
+  ) {
+    return 'tls';
+  }
+
+  if (
+    code === 'EPIPE' ||
+    code === 'ECONNRESET' ||
+    haystack.includes('fetch failed') ||
+    haystack.includes('network error') ||
+    haystack.includes('socket hang up')
+  ) {
+    return 'network';
+  }
+
+  return null;
+}
+
+function formatTransportErrorMessage(kind, providerName, operation) {
+  const label = providerName || 'provider';
+  switch (kind) {
+    case 'timeout':
+      return `Timed out when trying to ${operation} provider ${label}.`;
+    case 'dns':
+      return `Could not resolve provider ${label}.`;
+    case 'refused':
+      return `Could not connect to provider ${label}.`;
+    case 'unreachable':
+      return `Provider ${label} is unreachable right now.`;
+    case 'tls':
+      return `Secure connection failed while trying to ${operation} provider ${label}.`;
+    default:
+      return `Could not connect to provider ${label}.`;
   }
 }
 

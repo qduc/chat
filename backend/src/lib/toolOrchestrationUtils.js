@@ -51,6 +51,7 @@ function normalizeStoredMessage(message) {
   // fetched from the database when building the request body and would
   // otherwise appear as an empty assistant message sent upstream.
   const isStreamingAssistant = message.role === 'assistant' && message.status === 'streaming';
+  const isErrorAssistant = message.role === 'assistant' && message.status === 'error';
   const hasToolCalls = Array.isArray(message.tool_calls) && message.tool_calls.length > 0;
   const hasToolOutputs = Array.isArray(message.tool_outputs) && message.tool_outputs.length > 0;
   const isContentEmpty =
@@ -60,7 +61,7 @@ function normalizeStoredMessage(message) {
     (Array.isArray(message.content) && message.content.length === 0);
   const isEmptyAssistant = message.role === 'assistant' && isContentEmpty && !hasToolCalls && !hasToolOutputs;
 
-  if (isStreamingAssistant || isEmptyAssistant) {
+  if (isStreamingAssistant || isErrorAssistant || isEmptyAssistant) {
     return null;
   }
 
@@ -496,7 +497,8 @@ export function buildConversationMessages({ body, bodyIn, persistence }) {
   } else if (Array.isArray(bodyIn?.messages)) {
     prior = bodyIn.messages
       .filter((m) => m && m.role !== 'system')
-      .map((m) => normalizeStoredMessage(m) || { role: m.role, content: m.content });
+      .map((m) => normalizeStoredMessage(m))
+      .filter(Boolean);
   }
 
   const result = systemPrompt
@@ -545,13 +547,15 @@ export async function buildConversationMessagesAsync({ body, bodyIn, persistence
       prior = Array.isArray(bodyIn?.messages)
         ? bodyIn.messages
           .filter((m) => m && m.role !== 'system')
-          .map((m) => normalizeStoredMessage(m) || { role: m.role, content: m.content })
+          .map((m) => normalizeStoredMessage(m))
+          .filter(Boolean)
         : [];
     }
   } else if (Array.isArray(bodyIn?.messages)) {
     prior = bodyIn.messages
       .filter((m) => m && m.role !== 'system')
-      .map((m) => normalizeStoredMessage(m) || { role: m.role, content: m.content });
+      .map((m) => normalizeStoredMessage(m))
+      .filter(Boolean);
   }
 
   const result = systemPrompt
@@ -696,7 +700,8 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
   const prior = Array.isArray(bodyIn?.messages)
     ? bodyIn.messages
       .filter((m) => m && m.role !== 'system')
-      .map((m) => normalizeStoredMessage(m) || { role: m.role, content: m.content })
+      .map((m) => normalizeStoredMessage(m))
+      .filter(Boolean)
     : [];
 
   const messages = systemPrompt

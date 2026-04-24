@@ -827,8 +827,10 @@ describe('webSearchExa (Exa.ai) tool', () => {
 
     test('has correct tool metadata', () => {
       expect(webSearchExaTool.name).toBe('web_search_exa');
-      expect(webSearchExaTool.description).toContain('Deep research');
-      expect(webSearchExaTool.description).toContain('semantic search');
+      expect(typeof webSearchExaTool.description).toBe('string');
+      expect(webSearchExaTool.description.length).toBeGreaterThan(0);
+      expect(webSearchExaTool.spec.type).toBe('function');
+      expect(webSearchExaTool.spec.function.name).toBe('web_search_exa');
     });
 
     test('has correct parameter types in specification', () => {

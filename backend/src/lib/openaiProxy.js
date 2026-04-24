@@ -16,6 +16,8 @@ import { extractUpstreamMessage, readUpstreamErrorBody } from './upstreamErrors.
 import { getUserSetting } from '../db/userSettings.js';
 import { normalizeCustomRequestParamsIds } from './customRequestParams.js';
 import { getConversationBranch } from '../db/branches.js';
+import { getConversationById } from '../db/conversations.js';
+import { getLastMessage, getPreviousUserMessage } from '../db/messages.js';
 import { writeSseEvent } from './streamUtils.js';
 
 // --- Helpers: sanitize, validate, selection, and error shaping ---
@@ -343,6 +345,71 @@ function handleProxyError(error, req, res, persistence) {
   return res.status(500).json({ error: 'upstream_error', message: error.message });
 }
 
+function getIncomingLatestUserMessageId(bodyIn) {
+  const messages = Array.isArray(bodyIn?.messages) ? bodyIn.messages : [];
+  const latestUser = [...messages].reverse().find((message) => message?.role === 'user');
+  if (!latestUser || typeof latestUser !== 'object') return null;
+
+  const candidates = [
+    latestUser.id,
+    latestUser.uuid,
+    latestUser.client_message_id,
+    latestUser.clientMessageId,
+  ];
+  const id = candidates.find((value) => typeof value === 'string' && value.trim());
+  return typeof id === 'string' ? id.trim() : null;
+}
+
+function isRetryingFailedAssistantTurn({ bodyIn, conversationId, userId, failedAssistant }) {
+  const incomingUserMessageId = getIncomingLatestUserMessageId(bodyIn);
+  if (!incomingUserMessageId || !failedAssistant?.seq) return false;
+
+  try {
+    const previousUser = getPreviousUserMessage({
+      conversationId,
+      beforeSeq: failedAssistant.seq,
+      userId,
+    });
+    if (!previousUser) return false;
+
+    const previousIds = [
+      previousUser.client_message_id,
+      previousUser.id != null ? String(previousUser.id) : null,
+    ].filter(Boolean);
+
+    return previousIds.includes(incomingUserMessageId);
+  } catch (error) {
+    logger.warn('[openaiProxy] Failed to inspect previous user message for error recovery:', error?.message || error);
+    return false;
+  }
+}
+
+function validateConversationErrorState({ context }) {
+  const { conversationId, userId, bodyIn } = context;
+  if (!conversationId || !userId) return null;
+
+  const conversation = getConversationById({ id: conversationId, userId });
+  if (!conversation) return null;
+
+  const lastMessage = getLastMessage({ conversationId });
+  const isAssistantError = lastMessage?.role === 'assistant' && lastMessage?.status === 'error';
+  if (!isAssistantError) return null;
+
+  if (isRetryingFailedAssistantTurn({ bodyIn, conversationId, userId, failedAssistant: lastMessage })) {
+    // Detect retry of failed turn and signal to persistence that this should overwrite, not branch
+    context.retryOfErroredAssistant = true;
+    return null;
+  }
+
+  return {
+    status: 409,
+    payload: {
+      error: 'conversation_in_error_state',
+      message: 'Regenerate the failed response or edit the previous message before sending a new message.',
+    },
+  };
+}
+
 // --- Handler Execution ---
 
 async function handleRequest(context, req, res) {
@@ -410,6 +477,7 @@ async function handleRequest(context, req, res) {
 
   const emitStreamingError = (message) => {
     const errorMessage = persistAssistantError(message);
+    const conversationMeta = getConversationMetadata(persistence);
     const errorChunk = {
       id: 'error',
       object: 'chat.completion.chunk',
@@ -421,6 +489,9 @@ async function handleRequest(context, req, res) {
         finish_reason: 'error',
       }],
     };
+    if (conversationMeta) {
+      writeAndFlush(res, `data: ${JSON.stringify(conversationMeta)}\n\n`);
+    }
     writeAndFlush(res, `data: ${JSON.stringify(errorChunk)}\n\n`);
     writeAndFlush(res, 'data: [DONE]\n\n');
     return res.end();
@@ -809,6 +880,11 @@ async function executeRequestHandler(context, req, res) {
     }
   }
 
+  const errorStateValidation = validateConversationErrorState({ context });
+  if (errorStateValidation) {
+    return res.status(errorStateValidation.status).json(errorStateValidation.payload);
+  }
+
   const initResult = await persistence.initialize({
     conversationId: context.conversationId,
     branchId: context.branchId,
@@ -816,6 +892,7 @@ async function executeRequestHandler(context, req, res) {
     userId, // Pass user context to persistence
     req,
     bodyIn: context.bodyIn,
+    retryOfErroredAssistant: context.retryOfErroredAssistant,
     onTitleGenerated
   });
 
