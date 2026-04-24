@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.18.1] - 2026-04-24
+
+### Added
+- Ability to modify reasoning effort, tools, and other settings when regenerating messages from error state
+- Error retry handling in chat composer
+- User-friendly error messages when provider connections fail
+
+### Changed
+- Conversation branch switching on the UI is now read-only; branches are marked as active only when performing write operations
+- Enhanced error handling throughout chat components
+
+### Fixed
+- Branch creation no longer occurs when message generation fails
+- Flickering provider and model labels during streaming
+- Improved tool metadata validation in web search tools and error handling in provider routes
+
+
 ## [0.18.0] - 2026-04-18
 
 ### Added
