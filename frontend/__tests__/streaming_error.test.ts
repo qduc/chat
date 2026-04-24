@@ -43,6 +43,7 @@ describe('Chat Streaming Error Handling', () => {
     const response = await chat.sendMessage({
       messages: [{ role: 'user', content: 'hello', id: 'm1' }],
       model: 'test-model',
+      providerId: 'test-provider',
     });
 
     expect(response.status).toBe('error');
@@ -65,6 +66,7 @@ describe('Chat Streaming Error Handling', () => {
     const response = await chat.sendMessage({
       messages: [{ role: 'user', content: 'hello', id: 'm2' }],
       model: 'test-model',
+      providerId: 'test-provider',
     });
 
     expect(response.content).toBe('Hello');
