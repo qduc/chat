@@ -396,6 +396,8 @@ function validateConversationErrorState({ context }) {
   if (!isAssistantError) return null;
 
   if (isRetryingFailedAssistantTurn({ bodyIn, conversationId, userId, failedAssistant: lastMessage })) {
+    // Detect retry of failed turn and signal to persistence that this should overwrite, not branch
+    context.retryOfErroredAssistant = true;
     return null;
   }
 
@@ -890,6 +892,7 @@ async function executeRequestHandler(context, req, res) {
     userId, // Pass user context to persistence
     req,
     bodyIn: context.bodyIn,
+    retryOfErroredAssistant: context.retryOfErroredAssistant,
     onTitleGenerated
   });
 

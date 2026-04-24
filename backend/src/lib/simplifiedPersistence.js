@@ -81,6 +81,7 @@ export class SimplifiedPersistence {
     this.branchOperationType = null;
     this.parentBranchId = null;
     this.isNewBranchCreated = false;
+    this.retryOfErroredAssistant = false;
   }
 
   /**
@@ -91,6 +92,7 @@ export class SimplifiedPersistence {
    * @param {string|null} params.userId - User ID (if authenticated)
    * @param {Object} params.req - Express request object
    * @param {Object} params.bodyIn - Original request body
+   * @param {boolean} params.retryOfErroredAssistant - Flag indicating retry of an errored assistant turn
    * @returns {Promise<{error?: Object}>} Error object if validation fails
    */
   async initialize({
@@ -100,10 +102,12 @@ export class SimplifiedPersistence {
     userId = null,
     req,
     bodyIn,
+    retryOfErroredAssistant = false,
     onTitleGenerated,
   }) {
     // Store user context for later use
     this.userId = userId;
+    this.retryOfErroredAssistant = retryOfErroredAssistant;
     this.userMessageId = null;
     this.assistantMessageId = null;
     this.regenerateAnchorMessageId = null;
@@ -244,14 +248,22 @@ export class SimplifiedPersistence {
       .reduce((max, current) => Math.max(max, current), 0);
     const seq = Math.max(0, maxSeq - 1);
 
-    if (messages.length > 0) {
+    // Retry of an errored assistant turn: DB history is already correct
+    // (user message + errored assistant on active branch). Sync would see the
+    // errored row as "diverging" and physically delete it, preventing
+    // overwrite-in-place. Skip sync; createDraftMessage will reuse the
+    // errored row on the current branch.
+    if (messages.length > 0 && !this.retryOfErroredAssistant) {
       // Sync message history using diff-based approach with automatic fallback
       const syncResult = this.conversationManager.syncMessageHistoryDiff(
         this.conversationId,
         userId,
         messages,
         seq,
-        { branchId: this.requestBranchId, skipRevisionBranch: !!bodyIn.no_revision_branch }
+        {
+          branchId: this.requestBranchId,
+          skipRevisionBranch: !!bodyIn.no_revision_branch,
+        }
       );
       this._latestSyncMappings = Array.isArray(syncResult?.idMappings) ? syncResult.idMappings : [];
       this.regenerateAnchorMessageId = syncResult?.regenerateRevision?.anchorMessageId ?? null;
@@ -772,8 +784,8 @@ export class SimplifiedPersistence {
     if (this.finalized) return;
     this.finalized = true;
 
-    // Check if we should revert an empty regeneration branch
-    this.revertIfEmpty();
+    // Check if we should revert an empty regeneration branch (pure error)
+    this.revertIfNoAssistantActivity();
 
     const finalContent = this._finalizeContentWithImages();
       if (this.currentMessageId) {
@@ -1125,10 +1137,12 @@ export class SimplifiedPersistence {
     if (!this.persist || !this.conversationId || this.assistantSeq === null) return;
     if (this.finalized || this.errored) return;
 
-    this._appendErrorContent(errorContent);
+    // Check before appending the error framing text — otherwise the "[Error: ...]"
+    // string would make assistantBuffer non-empty and mask a pure provider failure
+    // as if it were a partial response.
+    this.revertIfNoAssistantActivity();
 
-    // Check if we should revert an empty regeneration branch
-    this.revertIfEmpty();
+    this._appendErrorContent(errorContent);
 
     try {
       // Prefer to update the existing assistant message row (by cached id or lookup) to preserve partial content
@@ -1188,12 +1202,61 @@ export class SimplifiedPersistence {
 
   /**
    * Create a draft message row for the current assistant seq
+   * If retrying an errored assistant turn and an error message exists,
+   * reuse that message instead of creating a new one.
    * Non-throwing: failures will be logged and currentMessageId left null
    */
   createDraftMessage() {
     if (!this.persist || !this.conversationId || this.assistantSeq === null) return null;
     try {
-      const result = createAssistantDraft({
+      let result = null;
+
+      // If this is a retry of an errored assistant turn, look up and reuse
+      // the existing errored row on the active branch.
+      if (this.retryOfErroredAssistant && this.activeBranchId) {
+        const db = getDb();
+        const erroredRow = db.prepare(
+          `SELECT id, seq, client_message_id FROM messages
+           WHERE conversation_id = @conversationId
+           AND branch_id = @branchId
+           AND role = 'assistant'
+           AND status = 'error'
+           ORDER BY seq DESC
+           LIMIT 1`
+        ).get({ conversationId: this.conversationId, branchId: this.activeBranchId });
+
+        if (erroredRow && erroredRow.id) {
+          // Align in-memory identity with the row we're reusing so finalize,
+          // tool/event linking, and client id mapping stay consistent.
+          this.currentMessageId = erroredRow.id;
+          this.assistantSeq = erroredRow.seq;
+          if (erroredRow.client_message_id) {
+            this.assistantMessageId = erroredRow.client_message_id;
+          }
+
+          updateMessageContent({
+            messageId: erroredRow.id,
+            conversationId: this.conversationId,
+            userId: this.userId,
+            content: '',
+            status: 'draft',
+            finishReason: null,
+          });
+
+          logger.info('[SimplifiedPersistence] Reusing errored message for retry', {
+            conversationId: this.conversationId,
+            messageId: this.currentMessageId,
+            seq: this.assistantSeq,
+          });
+
+          this.lastCheckpoint = Date.now();
+          this.lastCheckpointLength = 0;
+          return { id: erroredRow.id };
+        }
+      }
+
+      // Normal case: create a new draft message
+      result = createAssistantDraft({
         conversationId: this.conversationId,
         seq: this.assistantSeq,
         clientMessageId: this.assistantMessageId,
@@ -1276,10 +1339,15 @@ export class SimplifiedPersistence {
   }
 
   /**
-   * Revert to the initial branch if the assistant response is empty and it was a regeneration
+   * Revert a branch with no assistant activity (pure error)
+   * If a new branch was created for regeneration but the assistant response
+   * failed before producing any content (pure error - no streamed content, tool calls,
+   * reasoning, or generated images), delete the branch and revert to parent.
+   * This handles the case where a provider/transport failure occurs before any
+   * assistant content is generated.
    * @private
    */
-  revertIfEmpty() {
+  revertIfNoAssistantActivity() {
     if (!this.persist || !this.isNewBranchCreated || !this.initialActiveBranchId) return;
     if (this.branchOperationType !== 'regenerate') return;
 
@@ -1294,7 +1362,7 @@ export class SimplifiedPersistence {
 
     if (isEmpty) {
       const branchToDelete = this.activeBranchId;
-      logger.info('[SimplifiedPersistence] Reverting and deleting empty regeneration branch', {
+      logger.info('[SimplifiedPersistence] Reverting and deleting branch with no assistant activity (pure error)', {
         conversationId: this.conversationId,
         revertingTo: this.initialActiveBranchId,
         emptyBranchId: branchToDelete,
