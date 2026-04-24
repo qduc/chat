@@ -522,7 +522,7 @@ describe('useChat hook', () => {
     expect(conv2Calls).toBe(2);
   });
 
-  test('switchBranch preserves edit state when branch hydration fails', async () => {
+  test('switchBranch preserves edit state when read-only branch hydration fails', async () => {
     const now = new Date().toISOString();
     mockConversations.get
       .mockResolvedValueOnce({
@@ -565,7 +565,11 @@ describe('useChat hook', () => {
       }
     });
 
-    expect(mockConversations.switchBranch).toHaveBeenCalledWith('conv-edit', 'branch-2');
+    expect(mockConversations.switchBranch).not.toHaveBeenCalled();
+    expect(mockConversations.get).toHaveBeenLastCalledWith(
+      'conv-edit',
+      expect.objectContaining({ branch_id: 'branch-2' })
+    );
     expect((thrown as Error | null)?.message).toBe('Failed to load selected branch');
     expect(result.current.editingMessageId).toBe('msg-1');
     expect(result.current.editingContent).toBe('Unsaved draft');
@@ -608,6 +612,93 @@ describe('useChat hook', () => {
       expect.objectContaining({
         conversationId: 'conv-branch',
         branchId: 'branch-123',
+      })
+    );
+  });
+
+  test('sendMessage uses the viewed branch after read-only branch navigation', async () => {
+    const now = new Date().toISOString();
+    const branches = [
+      {
+        id: 'branch-1',
+        conversation_id: 'conv-branch',
+        parent_branch_id: null,
+        branch_point_message_id: null,
+        source_message_id: null,
+        operation_type: 'root',
+        head_message_id: null,
+        created_at: now,
+        is_active: true,
+      },
+      {
+        id: 'branch-2',
+        conversation_id: 'conv-branch',
+        parent_branch_id: 'branch-1',
+        branch_point_message_id: null,
+        source_message_id: null,
+        operation_type: 'fork',
+        head_message_id: null,
+        created_at: now,
+        is_active: false,
+      },
+    ];
+
+    mockConversations.get
+      .mockResolvedValueOnce({
+        id: 'conv-branch',
+        title: 'Branchy',
+        model: 'gpt-4o',
+        provider: 'openai',
+        created_at: now,
+        active_branch_id: 'branch-1',
+        branches,
+        messages: [],
+        next_after_seq: null,
+      } as any)
+      .mockResolvedValueOnce({
+        id: 'conv-branch',
+        title: 'Branchy',
+        model: 'gpt-4o',
+        provider: 'openai',
+        created_at: now,
+        active_branch_id: 'branch-2',
+        branches,
+        messages: [],
+        next_after_seq: null,
+      } as any);
+
+    mockChat.sendMessage.mockResolvedValue({
+      content: 'branch-aware',
+      conversation: {
+        id: 'conv-branch',
+        title: 'Branchy',
+        created_at: now,
+      },
+    });
+
+    const { result } = renderUseChat();
+
+    await act(async () => {
+      await result.current.selectConversation('conv-branch');
+    });
+    expect(result.current.activeBranchId).toBe('branch-1');
+    expect(result.current.viewedBranchId).toBe('branch-1');
+
+    await act(async () => {
+      await result.current.switchBranch('branch-2');
+    });
+    expect(mockConversations.switchBranch).not.toHaveBeenCalled();
+    expect(result.current.activeBranchId).toBe('branch-1');
+    expect(result.current.viewedBranchId).toBe('branch-2');
+
+    await act(async () => {
+      await result.current.sendMessage('Continue on viewed branch');
+    });
+
+    expect(mockChat.sendMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        conversationId: 'conv-branch',
+        branchId: 'branch-2',
       })
     );
   });
@@ -1401,7 +1492,8 @@ describe('useChat hook', () => {
       'conv-edit',
       'msg-1',
       'Updated text',
-      true
+      true,
+      null
     );
     expect(result.current.conversationId).toBe('conv-edit');
     expect(result.current.compareModels).toEqual(['openai::gpt-4o-mini']);

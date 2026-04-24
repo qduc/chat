@@ -30,6 +30,7 @@ import {
 import {
   createConversationBranch,
   getActiveBranchId,
+  getConversationBranch,
   getConversationBranches,
   setConversationActiveBranch,
 } from '../db/branches.js';
@@ -387,8 +388,21 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
 
     getDb();
 
-    // Look up the active branch first so we can scope the message lookup to the correct branch
-    const activeBranchId = getActiveBranchId({ conversationId: req.params.id, userId });
+    const requestedBranchId =
+      typeof req.body.branch_id === 'string' && req.body.branch_id.trim()
+        ? req.body.branch_id.trim()
+        : null;
+    const requestedBranch = requestedBranchId
+      ? getConversationBranch({ conversationId: req.params.id, branchId: requestedBranchId, userId })
+      : null;
+    if (requestedBranchId && !requestedBranch) {
+      return res.status(404).json({ error: 'not_found' });
+    }
+
+    // Scope the message lookup to the branch the user is viewing, falling back
+    // to the persisted active branch for older clients.
+    const activeBranchId =
+      requestedBranchId || getActiveBranchId({ conversationId: req.params.id, userId });
 
     // Look up the message using client_message_id or integer id (handles UUID from frontend)
     // Scope the search to the active branch to prevent editing messages from archived branches
@@ -428,6 +442,14 @@ conversationsRouter.put('/v1/conversations/:id/messages/:messageId/edit', (req, 
         userId,
         operationType: 'edit',
       });
+
+      if (requestedBranchId) {
+        setConversationActiveBranch({
+          conversationId: req.params.id,
+          branchId: requestedBranchId,
+          userId,
+        });
+      }
 
       return res.json({
         message: {

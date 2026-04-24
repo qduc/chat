@@ -377,7 +377,8 @@ export function ChatV2() {
             chat.conversationId,
             messageId,
             updatedContent,
-            chat.compareMode
+            chat.compareMode,
+            chat.viewedBranchId
           );
         } catch {
           return;
@@ -408,7 +409,7 @@ export function ChatV2() {
 
   const handleSwitchBranch = useCallback(
     async (branchId: string) => {
-      if (!chat.conversationId || !branchId || branchId === chat.activeBranchId) return;
+      if (!chat.conversationId || !branchId || branchId === chat.viewedBranchId) return;
       if (chat.pending.streaming || chat.status === 'streaming') return;
       if (
         chat.editingMessageId &&
@@ -673,7 +674,7 @@ export function ChatV2() {
               containerRef={messageListRef}
               onSuggestionClick={handleSuggestionClick}
               onFork={handleFork}
-              activeBranchId={chat.activeBranchId}
+              activeBranchId={chat.viewedBranchId}
               branches={chat.branches}
               onSwitchBranch={handleSwitchBranch}
               branchModeEnabled={!!chat.conversationId}

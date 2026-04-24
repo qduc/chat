@@ -85,7 +85,8 @@ export interface SendPipelineDeps {
   setCurrentConversationTitle: (title: string | null) => void;
   setConversations: Dispatch<SetStateAction<Conversation[]>>;
   setActiveBranchId: (id: string | null) => void;
-  activeBranchIdRef: MutableRefObject<string | null>;
+  setViewedBranchId: (id: string | null) => void;
+  viewedBranchIdRef: MutableRefObject<string | null>;
   setBranches: Dispatch<SetStateAction<ConversationBranch[]>>;
 
   // -- Attachments --
@@ -137,7 +138,8 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
     setCurrentConversationTitle,
     setConversations,
     setActiveBranchId,
-    activeBranchIdRef,
+    setViewedBranchId,
+    viewedBranchIdRef,
     setBranches,
     buildMessageContent,
     clearAttachments,
@@ -272,7 +274,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         delete bufferedStreamingTextRef.current[bufferKey];
       }
     },
-    [getBufferedStreamKey, tokenStatsRef, updateMessageState]
+    [getBufferedStreamKey, updateMessageState]
   );
 
   const queueBufferedStreamingText = useCallback(
@@ -382,6 +384,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         const branchData = await conversationsApi.getBranches(conversationId);
         const activeBranch = branchData.active_branch_id ?? null;
         setActiveBranchId(activeBranch);
+        setViewedBranchId(activeBranch);
         setBranches(Array.isArray(branchData.branches) ? branchData.branches : []);
 
         const resolvedUserMessageDbId =
@@ -476,7 +479,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         // Ignore branch refresh errors and keep the message update path responsive.
       }
     },
-    [setActiveBranchId, setBranches, setMessages]
+    [setActiveBranchId, setViewedBranchId, setBranches, setMessages]
   );
 
   // ---------------------------------------------------------------------------
@@ -561,7 +564,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           requestId: isPrimary ? messageId : `${messageId}-${targetModel}`,
           signal: options?.signal || abortControllerRef.current?.signal || undefined,
           conversationId: targetConversationId,
-          branchId: isPrimary ? activeBranchIdRef.current : null,
+          branchId: isPrimary ? viewedBranchIdRef.current : null,
           parentConversationId,
           streamingEnabled: shouldStreamRef.current,
           toolsEnabled: useToolsRef.current,
@@ -665,6 +668,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                   setCurrentConversationTitle(c.title || null);
                   if (typeof c.active_branch_id === 'string' && c.active_branch_id) {
                     setActiveBranchId(c.active_branch_id);
+                    setViewedBranchId(c.active_branch_id);
                   }
                   setConversations((prev) => {
                     if (prev.some((curr) => curr.id === c.id)) {
@@ -904,12 +908,13 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       updateMessageState,
       queueBufferedStreamingText,
       flushBufferedStreamingText,
-      activeBranchIdRef,
+      viewedBranchIdRef,
       conversationIdRef,
       setConversationId,
       setCurrentConversationTitle,
       setConversations,
       setActiveBranchId,
+      setViewedBranchId,
       user,
       setLinkedConversations,
       setStatus,
