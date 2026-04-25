@@ -57,8 +57,13 @@ This document provides essential knowledge for AI agents to be immediately produ
 
 ### Testing & Database
 ```bash
-./dev.sh test[:backend|:frontend] # Run tests
-./dev.sh migrate [status|up|fresh] # Manage migrations
+./dev.sh test[:backend|:frontend]     # Run all, backend, or frontend tests
+./dev.sh test:backend __tests__/x.js  # Run a targeted backend test file
+./dev.sh exec backend npm run lint    # Backend lint
+./dev.sh exec frontend npm run lint   # Frontend lint
+./dev.sh exec frontend npm run tsc    # Frontend type check
+./dev.sh exec frontend npm run build  # Production frontend build
+./dev.sh migrate [status|up|fresh]    # Manage migrations
 ./dev.sh exec backend sqlite3 /data/dev.db # Direct DB access
 ```
 
@@ -92,8 +97,25 @@ This document provides essential knowledge for AI agents to be immediately produ
 - **Routes & Tools**: `backend/src/routes/`, `backend/src/lib/tools/`
 - **Frontend Logic**: `frontend/hooks/` (controllers), `frontend/lib/` (utilities)
 - **UI Components**: `frontend/components/` (organized by feature)
-- **Database Schema**: `backend/scripts/` (migrations)
+- **Database Schema**: `backend/src/db/migrations/` (migration files), `backend/scripts/migrate.js` (runner)
 - **Upstream Logs**: `backend/logs/` (read bottom lines for recent API activity)
+
+### Common Change Targets
+
+- **Chat API / proxy**: `backend/src/lib/openaiProxy.js`, `backend/src/routes/`
+- **Tool registry / execution**: `backend/src/lib/tools/`, `docs/TOOLS.md`
+- **Auth / session handling**: `backend/src/middleware/`, `backend/src/routes/auth.js`
+- **Providers / models**: `backend/src/lib/providers/`, provider routes, frontend model hooks
+- **Persistence / conversations / messages**: `backend/src/lib/persistence/`, `backend/src/db/`
+- **Uploads / multimodal files**: `backend/src/lib/images/`, upload routes, frontend attachment hooks
+- **Main chat UI**: `frontend/components/ChatV2.tsx`, `frontend/hooks/useChat.ts`, `frontend/hooks/useMessageSendPipeline.ts`
+- **API client / streaming**: `frontend/lib/http.ts`, `frontend/lib/streaming.ts`
+
+### Local URLs
+
+- **App / proxy**: http://localhost:3003
+- **Backend direct port**: http://localhost:4001
+- **Adminer**: http://localhost:3080
 
 ## Documentation Map
 

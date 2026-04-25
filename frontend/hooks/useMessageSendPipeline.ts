@@ -875,6 +875,11 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         if (err.name === 'AbortError' || err.message === 'aborted') msg = 'Message cancelled';
 
         if (isPrimary) {
+          const conversationIdForBranchRefresh =
+            targetConversationId || conversationIdRef.current || undefined;
+          if (conversationIdForBranchRefresh) {
+            await refreshBranchState(conversationIdForBranchRefresh);
+          }
           setError(msg);
           setStatus('idle');
           setPending((prev) => ({ ...prev, error: msg, streaming: false, retryStatus: undefined }));
