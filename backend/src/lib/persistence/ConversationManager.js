@@ -389,16 +389,19 @@ export class ConversationManager {
           .filter(m => m.seq < forkSeq)
           .slice(-1)[0] || null;
 
-        const hasUserUpdate = diff.toUpdate.some(m => m.role === 'user');
-        const hasUserDelete = diff.toDelete.some(m => m.role === 'user');
-        const isUserEdit = hasUserUpdate || hasUserDelete;
-        
+        const firstUpdated = diff.toUpdate
+          .filter(m => typeof m.seq === 'number')
+          .sort((a, b) => a.seq - b.seq)[0] || null;
         const firstDeleted = diff.toDelete[0];
-        const isAssistantTurnRegen = !isUserEdit && firstDeleted && (firstDeleted.role === 'assistant' || firstDeleted.role === 'tool');
-        
-        const allNonUser = !isUserEdit && diff.toDelete.every(m => m.role !== 'user');
+        const firstDivergingMessage =
+          firstUpdated && firstUpdated.seq <= firstDeleteSeq ? firstUpdated : firstDeleted;
+        const isUserEdit = firstDivergingMessage?.role === 'user';
+        const isAssistantTurnRegen =
+          !isUserEdit &&
+          firstDivergingMessage &&
+          (firstDivergingMessage.role === 'assistant' || firstDivergingMessage.role === 'tool');
 
-        branchOperationType = isUserEdit ? 'edit' : (isAssistantTurnRegen ? 'regenerate' : (allNonUser ? 'regenerate' : 'fork'));
+        branchOperationType = isUserEdit ? 'edit' : (isAssistantTurnRegen ? 'regenerate' : 'fork');
 
         if (skipRevisionBranch) {
           // Compare mode: physically delete the diverging messages on the current branch
@@ -416,13 +419,13 @@ export class ConversationManager {
             userId,
             parentBranchId: targetBranchId,
             operationType: branchOperationType,
-            sourceMessage: (isAssistantTurnRegen || allNonUser) ? branchPointMessage : (isUserEdit ? (diff.toUpdate.find(m => m.role === 'user') || diff.toDelete.find(m => m.role === 'user')) : null),
+            sourceMessage: isAssistantTurnRegen ? branchPointMessage : (isUserEdit ? firstDivergingMessage : null),
             branchPointMessageId: branchPointMessage?._dbId ?? null,
           });
           parentBranchId = requestedBranchId || getActiveBranchId({ conversationId, userId });
           isNewBranch = true;
 
-          if (allNonUser && branchPointMessage) {
+          if (isAssistantTurnRegen && branchPointMessage) {
             const anchorMessageId = String(branchPointMessage.id);
             regenerateRevision = {
               anchorMessageId,
