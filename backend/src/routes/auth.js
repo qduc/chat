@@ -226,11 +226,13 @@ router.post('/refresh', async (req, res) => {
       });
     }
 
-    // Generate new access token
+    // Generate new access token and a fresh refresh token (sliding expiry)
     const accessToken = generateAccessToken(user);
+    const newRefreshToken = generateRefreshToken(user);
 
     res.json({
-      accessToken
+      accessToken,
+      refreshToken: newRefreshToken
     });
 
   } catch (error) {

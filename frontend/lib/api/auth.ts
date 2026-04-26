@@ -19,14 +19,17 @@ async function refreshToken(): Promise<void> {
   }
 
   try {
-    const response = await httpClient.post<{ accessToken: string }>(
+    const response = await httpClient.post<{ accessToken: string; refreshToken?: string }>(
       '/v1/auth/refresh',
       { refreshToken },
       { skipAuth: true, skipRetry: true }
     );
 
-    // Store new access token (refresh token remains the same)
+    // Store new access token and rotated refresh token (sliding expiry)
     setToken(response.data.accessToken);
+    if (response.data.refreshToken) {
+      setRefreshToken(response.data.refreshToken);
+    }
   } catch (error) {
     // Clear tokens if refresh fails
     clearTokens();
