@@ -122,4 +122,27 @@ describe('ModelResponseColumn retry status', () => {
     ).toBeInTheDocument();
     expect(screen.getByTestId('loader')).toBeInTheDocument();
   });
+
+  it('uses the provided display name for the primary model column header', () => {
+    render(
+      <ModelResponseColumn
+        data={baseData as any}
+        messageId="assistant-1"
+        isMultiColumn={true}
+        isEditing={false}
+        isUser={false}
+        hasComparison={true}
+        pending={{ streaming: false, abort: null } as any}
+        streamingStats={null}
+        collapsedToolOutputs={{}}
+        copiedMessageId={null}
+        actionsDisabled={false}
+        onToggleToolOutput={jest.fn()}
+        onCopy={jest.fn()}
+        getModelDisplayName={(id) => (id === 'primary' ? 'gpt-4' : id)}
+      />
+    );
+
+    expect(screen.getByText('gpt-4')).toBeInTheDocument();
+  });
 });

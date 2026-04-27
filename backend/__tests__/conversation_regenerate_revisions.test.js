@@ -152,6 +152,69 @@ describe('ConversationManager regenerate branches', () => {
     });
   });
 
+  test('classifies middle assistant regeneration as regenerate even when later turns are truncated', () => {
+    const convId = 'conv-middle-regenerate';
+    createConversation({
+      id: convId,
+      sessionId,
+      userId,
+      title: 'Middle regen',
+      model: 'gpt-4o',
+      provider_id: 'openai',
+    });
+
+    const user1 = insertUserMessage({
+      conversationId: convId,
+      content: 'A',
+      seq: 1,
+      clientMessageId: 'user-1',
+    });
+    insertAssistantFinal({
+      conversationId: convId,
+      content: 'B',
+      seq: 2,
+      finishReason: 'stop',
+      clientMessageId: 'assistant-1',
+    });
+    insertUserMessage({
+      conversationId: convId,
+      content: 'C',
+      seq: 3,
+      clientMessageId: 'user-2',
+    });
+    insertAssistantFinal({
+      conversationId: convId,
+      content: 'D',
+      seq: 4,
+      finishReason: 'stop',
+      clientMessageId: 'assistant-2',
+    });
+
+    const manager = new ConversationManager();
+    const result = manager.syncMessageHistoryDiff(
+      convId,
+      userId,
+      [{ id: 'user-1', role: 'user', content: 'A', seq: 1 }],
+      0
+    );
+
+    assert.deepStrictEqual(result.regenerateRevision, {
+      anchorMessageId: 'user-1',
+      count: 1,
+    });
+
+    const branches = getConversationBranches({ conversationId: convId, userId });
+    const regenerateBranch = branches.find((branch) => branch.operation_type === 'regenerate');
+    assert.ok(regenerateBranch);
+    assert.strictEqual(regenerateBranch.branch_point_message_id, user1.id);
+    assert.strictEqual(regenerateBranch.source_message_id, user1.id);
+
+    assert.deepStrictEqual(getRevisionCountsForConversation({ conversationId: convId, userId }), {
+      edit: {},
+      regenerate: { 'user-1': 1 },
+    });
+  });
+
   test('revision follow-ups stop before later turns for regenerate and edit branches', () => {
     const convId = 'conv-revision-bounds';
     createConversation({

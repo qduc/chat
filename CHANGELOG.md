@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.18.2] - 2026-04-27
+
+### Added
+- Enhanced token refresh mechanism to include rotated refresh token
+
+### Fixed
+- Primary column header now displays the provided model name instead of "Primary"
+- Token speed not displaying during streaming
+- Branch not found error after network error
+- Regenerating middle message not creating new branch
+
+
 ## [0.18.1] - 2026-04-24
 
 ### Added

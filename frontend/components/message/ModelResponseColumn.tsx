@@ -54,6 +54,7 @@ export function ModelResponseColumn({
   onFork,
   onRetryMessage,
   onRetryComparisonModel,
+  getModelDisplayName,
   regenRevision,
 }: ModelResponseColumnProps) {
   const {
@@ -64,13 +65,6 @@ export function ModelResponseColumn({
     error: modelError,
     assistantSegments: segments,
   } = data;
-
-  const getModelDisplayName = (id: string) => {
-    if (id === 'primary') {
-      return 'Primary';
-    }
-    return id.includes('::') ? id.split('::')[1] : id;
-  };
 
   const retryStatus = pending.retryStatus;
   const isRetryingThisModel =

@@ -703,6 +703,73 @@ describe('useChat hook', () => {
     );
   });
 
+  test('sendMessage refreshes branch state after a network error before regenerate', async () => {
+    const now = new Date().toISOString();
+    const userMessage = { id: 'user-1', role: 'user', content: 'Original question' };
+
+    mockConversations.get.mockResolvedValue({
+      id: 'conv-branch-error',
+      title: 'Branch error',
+      model: 'gpt-4o',
+      provider: 'openai',
+      created_at: now,
+      active_branch_id: 'deleted-regen-branch',
+      messages: [userMessage],
+      next_after_seq: null,
+    } as any);
+    mockChat.sendMessage.mockRejectedValueOnce(new Error('Network error')).mockResolvedValueOnce({
+      content: 'regenerated',
+      conversation: {
+        id: 'conv-branch-error',
+        title: 'Branch error',
+        created_at: now,
+        active_branch_id: 'root-branch',
+      },
+    });
+
+    const { result } = renderUseChat();
+    mockConversations.getBranches.mockResolvedValue({
+      active_branch_id: 'root-branch',
+      branches: [
+        {
+          id: 'root-branch',
+          conversation_id: 'conv-branch-error',
+          parent_branch_id: null,
+          branch_point_message_id: null,
+          source_message_id: null,
+          operation_type: 'root',
+          head_message_id: null,
+          created_at: now,
+          is_active: true,
+        },
+      ],
+    } as any);
+
+    await act(async () => {
+      await result.current.selectConversation('conv-branch-error');
+    });
+    await waitFor(() => expect(result.current.conversationId).toBe('conv-branch-error'));
+    expect(result.current.viewedBranchId).toBe('deleted-regen-branch');
+
+    await act(async () => {
+      await result.current.sendMessage('Retry trigger');
+    });
+    expect(result.current.error).toBe('Network error');
+    expect(result.current.viewedBranchId).toBe('root-branch');
+
+    await act(async () => {
+      await result.current.regenerate([userMessage] as any);
+    });
+
+    expect(mockChat.sendMessage).toHaveBeenCalledTimes(2);
+    expect(mockChat.sendMessage.mock.calls[1][0]).toEqual(
+      expect.objectContaining({
+        conversationId: 'conv-branch-error',
+        branchId: 'root-branch',
+      })
+    );
+  });
+
   test('stopStreaming aborts in-flight request and records cancellation error', async () => {
     let capturedSignal: AbortSignal | undefined;
     mockChat.sendMessage.mockImplementation(
