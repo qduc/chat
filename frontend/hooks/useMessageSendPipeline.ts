@@ -717,8 +717,9 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 tokenStatsRef.current.messageId === messageId
               ) {
                 const base = tokenStatsRef.current.baseCompletionTokens || 0;
-                if (event.value.completion_tokens !== undefined) {
+                if (Number.isFinite(event.value?.completion_tokens)) {
                   tokenStatsRef.current.count = base + event.value.completion_tokens;
+                  tokenStatsRef.current.isEstimate = false;
                 }
                 if (event.value.provider) {
                   tokenStatsRef.current.provider = event.value.provider;
@@ -726,10 +727,9 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 if (event.value.model) {
                   tokenStatsRef.current.model = event.value.model;
                 }
-                tokenStatsRef.current.isEstimate = false;
                 tokenStatsRef.current.lastUpdated = Date.now();
 
-                if (event.value.completion_ms !== undefined) {
+                if (Number.isFinite(event.value?.completion_ms) && event.value.completion_ms > 0) {
                   const baseMs = tokenStatsRef.current.baseCompletionMs || 0;
                   tokenStatsRef.current.durationMsOverride = baseMs + event.value.completion_ms;
                 }
