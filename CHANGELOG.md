@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.18.3] - 2026-04-29
+
+### Added
+- llama.cpp provider support
+- Reasoning control support for DeepSeek API
+- Ability to select reasoning effort for judge model
+
+### Fixed
+- System prompt clearing now takes effect in conversations that previously had a system prompt set
+- Providers without API keys (e.g., local llama.cpp servers) now display correctly
+
+
 ## [0.18.2] - 2026-04-27
 
 ### Added

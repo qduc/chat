@@ -138,6 +138,45 @@ describe('Providers CRUD', () => {
 });
 
 describe('Providers connectivity', () => {
+  test('GET /v1/models includes providers without API key as empty model groups', async () => {
+    const mockHttp = jest.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ data: [{ id: 'gpt-x' }] }),
+    });
+
+    const { createProvidersRouter } = await import('../src/routes/providers.js');
+    const app = makeApp(createProvidersRouter({ http: mockHttp }));
+    const agent = request(app);
+
+    const db = getDb();
+    db.exec('DELETE FROM providers;');
+    db.prepare(
+      `INSERT INTO providers (id, user_id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
+                VALUES ('p-has-key', @user_id, 'Has Key','openai','key123','http://mock',1,1,'{}','{}',datetime('now'),datetime('now'))`
+    ).run({ user_id: testUser.id });
+    db.prepare(
+      `INSERT INTO providers (id, user_id, name, provider_type, api_key, base_url, enabled, is_default, extra_headers, metadata, created_at, updated_at)
+                VALUES ('p-no-key', @user_id, 'No Key','openai',NULL,'http://mock',1,0,'{}','{}',datetime('now'),datetime('now'))`
+    ).run({ user_id: testUser.id });
+
+    const res = await agent.get('/v1/models');
+    assert.equal(res.status, 200);
+
+    const body = res.body;
+    assert.ok(Array.isArray(body.providers));
+    assert.ok(body.providers.some((entry) => entry.provider?.id === 'p-has-key'));
+    assert.ok(body.providers.some((entry) => entry.provider?.id === 'p-no-key'));
+
+    const noKeyEntry = body.providers.find((entry) => entry.provider?.id === 'p-no-key');
+    assert.ok(noKeyEntry);
+    assert.deepEqual(noKeyEntry.models, []);
+
+    assert.ok(Array.isArray(body.errors));
+    assert.ok(body.errors.some((e) => e.providerId === 'p-no-key' && /Missing API key/i.test(e.error)));
+
+    assert.equal(mockHttp.mock.calls.length, 1);
+  });
+
   test('GET /v1/providers/:id/models returns normalized model list when upstream ok', async () => {
     // Use DI to inject a mocked HTTP client
     const mockHttp = jest.fn().mockResolvedValueOnce({

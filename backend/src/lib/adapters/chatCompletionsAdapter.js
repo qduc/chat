@@ -193,6 +193,43 @@ function normalizeTools(tools) {
   return normalized.length > 0 ? normalized : undefined;
 }
 
+function applyDeepSeekReasoningControls(target, reasoningEffort) {
+  if (reasoningEffort === 'none' || reasoningEffort === 'minimal') {
+    target.thinking = { type: 'disabled' };
+    return;
+  }
+
+  target.thinking = { type: 'enabled' };
+  target.reasoning_effort = reasoningEffort === 'xhigh' ? 'max' : 'high';
+}
+
+function applyLlamaCppReasoningControls(target, reasoningEffort) {
+  const budgets = {
+    low: 1024,
+    medium: 4096,
+    high: 8192,
+    xhigh: 16384,
+  };
+
+  if (reasoningEffort === 'none' || reasoningEffort === 'minimal') {
+    target.chat_template_kwargs = {
+      reasoning_effort: 'low',
+      enable_thinking: false,
+      thinking_mode: 'disabled',
+      reasoning_budget: 0,
+    };
+    return;
+  }
+
+  const templateEffort = reasoningEffort === 'xhigh' ? 'high' : reasoningEffort;
+  target.chat_template_kwargs = {
+    reasoning_effort: templateEffort,
+    enable_thinking: true,
+    thinking_mode: templateEffort,
+    reasoning_budget: budgets[reasoningEffort] ?? budgets.medium,
+  };
+}
+
 function omitReservedKeys(payload) {
   if (!payload || typeof payload !== 'object') return {};
   const result = {};
@@ -208,10 +245,12 @@ export class ChatCompletionsAdapter extends BaseAdapter {
    * @param {object} options
    * @param {function} [options.supportsReasoningControls] - Function to check if model supports reasoning
    * @param {function} [options.getDefaultModel] - Function to get default model
-   * @param {'nested'|'flat'|'none'} [options.reasoningFormat='nested'] - Format for reasoning controls:
+   * @param {'nested'|'flat'|'none'|'deepseek'|'llama-cpp'} [options.reasoningFormat='nested'] - Format for reasoning controls:
    *   - 'nested': Use `reasoning: { effort: value }` (OpenAI o1/o3 style)
    *   - 'flat': Use `reasoning_effort: value` as top-level field
    *   - 'none': Don't include reasoning fields (for providers that don't support it)
+   *   - 'deepseek': Use `thinking.type` plus DeepSeek's reduced effort values
+   *   - 'llama-cpp': Use kitchen-sink `chat_template_kwargs` for common Jinja templates
    */
   constructor(options = {}) {
     super(options);
@@ -272,6 +311,13 @@ export class ChatCompletionsAdapter extends BaseAdapter {
       } else if (format === 'flat') {
         // Some providers expect top-level reasoning_effort
         normalized.reasoning_effort = reasoningEffort;
+      } else if (format === 'deepseek') {
+        // Provider-specific value mappers are intentionally kept here while
+        // there are only a few. If this grows again, replace these enum branches
+        // with a strategy/helper selected by the provider.
+        applyDeepSeekReasoningControls(normalized, reasoningEffort);
+      } else if (format === 'llama-cpp') {
+        applyLlamaCppReasoningControls(normalized, reasoningEffort);
       }
       // format === 'none': Don't include reasoning fields
     }

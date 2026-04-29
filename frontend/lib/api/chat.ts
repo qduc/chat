@@ -11,7 +11,13 @@ import {
   handleStreamingResponse,
   handleJudgeStreamingResponse,
 } from './streaming-handler';
-import type { ChatOptions, ChatOptionsExtended, ChatResponse, Evaluation } from '../types';
+import type {
+  ChatOptions,
+  ChatOptionsExtended,
+  ChatResponse,
+  Evaluation,
+  ReasoningEffortLevel,
+} from '../types';
 
 export interface JudgeOptions {
   conversationId: string;
@@ -23,6 +29,7 @@ export interface JudgeOptions {
   }>;
   judgeModelId: string;
   criteria?: string | null;
+  reasoningEffort?: ReasoningEffortLevel | null;
   judgeProviderId?: string | null;
   apiBase?: string;
   signal?: AbortSignal;
@@ -79,8 +86,10 @@ function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: bo
     ...(extendedOptions.toolsEnabled !== undefined && {
       toolsEnabled: extendedOptions.toolsEnabled,
     }),
-    ...((options as any).systemPrompt && { system_prompt: (options as any).systemPrompt }),
-    ...((options as any).activeSystemPromptId && {
+    ...(Object.hasOwn(options as object, 'systemPrompt') && {
+      system_prompt: (options as any).systemPrompt,
+    }),
+    ...(Object.hasOwn(options as object, 'activeSystemPromptId') && {
       active_system_prompt_id: (options as any).activeSystemPromptId,
     }),
   };
@@ -235,6 +244,7 @@ export const judge = {
       judge_model: payload.judgeModelId,
       judge_provider_id: payload.judgeProviderId ?? undefined,
       criteria: payload.criteria ?? null,
+      reasoning_effort: payload.reasoningEffort ?? undefined,
     };
 
     const requestHeaders = {

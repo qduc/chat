@@ -63,6 +63,9 @@ export default function ProvidersTab({ isVisible, isOpen, onProvidersChanged }: 
   const [toggleLoading, setToggleLoading] = React.useState<Set<string>>(new Set());
   const [showApiKey, setShowApiKey] = React.useState(false);
   const [lastTestTime, setLastTestTime] = React.useState(0);
+  const isLlamaCppProvider = form.provider_type === 'llama-cpp';
+  const supportsCustomBaseUrl = form.provider_type.startsWith('openai') || isLlamaCppProvider;
+  const apiKeyRequired = !form.id && !isLlamaCppProvider;
 
   // Generate user-friendly ID from provider name
   const generateIdFromName = React.useCallback((name: string): string => {
@@ -79,7 +82,7 @@ export default function ProvidersTab({ isVisible, isOpen, onProvidersChanged }: 
     setSelectedId(null);
     setForm({
       name: '',
-      provider_type: 'openai',
+      provider_type: 'openai-completions',
       base_url: '',
       enabled: true,
       api_key: '',
@@ -266,7 +269,7 @@ export default function ProvidersTab({ isVisible, isOpen, onProvidersChanged }: 
     const hasApiKey = form.api_key && form.api_key.trim() !== '';
     const isExistingProvider = form.id && form.id.trim() !== '';
 
-    if (!hasApiKey && !isExistingProvider) {
+    if (!hasApiKey && !isExistingProvider && !isLlamaCppProvider) {
       const errorResult = {
         success: false,
         message: 'Please enter an API key to test the connection',
@@ -283,12 +286,12 @@ export default function ProvidersTab({ isVisible, isOpen, onProvidersChanged }: 
       let testPayload;
       let endpoint;
 
-      if (hasApiKey) {
+      if (hasApiKey || (!isExistingProvider && isLlamaCppProvider)) {
         testPayload = {
           name: form.name,
           provider_type: form.provider_type,
           base_url: form.base_url || null,
-          api_key: form.api_key,
+          api_key: form.api_key || null,
           metadata: { model_filter: form.model_filter || null },
         };
         endpoint = `${apiBase}/v1/providers/test`;
@@ -517,6 +520,7 @@ export default function ProvidersTab({ isVisible, isOpen, onProvidersChanged }: 
                 >
                   <option value="openai-responses">OpenAI Responses API</option>
                   <option value="openai-completions">OpenAI Chat Completions</option>
+                  <option value="llama-cpp">llama.cpp</option>
                   <option value="anthropic">Anthropic</option>
                   <option value="gemini">Google Gemini</option>
                 </select>
@@ -525,13 +529,15 @@ export default function ProvidersTab({ isVisible, isOpen, onProvidersChanged }: 
                     ? 'Native Anthropic Claude API support with Messages API'
                     : form.provider_type === 'gemini'
                       ? 'Native Google Gemini API support'
-                      : form.provider_type === 'openai-responses'
-                        ? 'Use OpenAI Responses API (/v1/responses) for advanced features'
-                        : 'Use Chat Completions API (/v1/chat/completions) for broad compatibility'}
+                      : form.provider_type === 'llama-cpp'
+                        ? 'OpenAI-compatible llama.cpp server with chat template reasoning controls'
+                        : form.provider_type === 'openai-responses'
+                          ? 'Use OpenAI Responses API (/v1/responses) for advanced features'
+                          : 'Use Chat Completions API (/v1/chat/completions) for broad compatibility'}
                 </p>
               </div>
 
-              {form.provider_type.startsWith('openai') && (
+              {supportsCustomBaseUrl && (
                 <div className="space-y-1.5">
                   <label
                     htmlFor="base-url"
@@ -549,10 +555,16 @@ export default function ProvidersTab({ isVisible, isOpen, onProvidersChanged }: 
                     className="w-full px-3 py-2 lg:py-2.5 border border-zinc-200/70 dark:border-zinc-800 rounded-lg bg-white/80 dark:bg-zinc-900/70 text-sm focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 focus:border-zinc-400 transition-colors"
                     value={form.base_url}
                     onChange={(e) => setForm((f) => ({ ...f, base_url: e.target.value }))}
-                    placeholder="https://api.openai.com/v1 (auto-filled if empty)"
+                    placeholder={
+                      isLlamaCppProvider
+                        ? 'http://localhost:8080/v1 (auto-filled if empty)'
+                        : 'https://api.openai.com/v1 (auto-filled if empty)'
+                    }
                   />
                   <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                    Custom API endpoint. Leave empty for OpenAI&apos;s default endpoint.
+                    {isLlamaCppProvider
+                      ? 'llama.cpp server endpoint. Leave empty for the local default.'
+                      : 'Custom API endpoint. Leave empty for OpenAI&apos;s default endpoint.'}
                   </p>
                 </div>
               )}
@@ -562,7 +574,7 @@ export default function ProvidersTab({ isVisible, isOpen, onProvidersChanged }: 
                   htmlFor="api-key"
                   className="block text-sm font-medium text-zinc-700 dark:text-zinc-300"
                 >
-                  API Key {!form.id && <span className="text-red-500">*</span>}
+                  API Key {apiKeyRequired && <span className="text-red-500">*</span>}
                 </label>
                 <input
                   id="api-key"

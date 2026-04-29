@@ -100,40 +100,38 @@ export function useModelSelection() {
       const capabilitiesMap: Record<string, any> = {};
 
       for (const { provider, models } of providerModels) {
-        if (models.length > 0) {
-          // Create model options for this provider with provider-qualified values
-          const providerOptions: ModelOption[] = models.map((model: any) => ({
-            value: `${provider.id}::${model.id}`,
-            label: model.id,
-          }));
+        // Keep providers visible even when they currently have no models
+        const providerOptions: ModelOption[] = models.map((model: any) => ({
+          value: `${provider.id}::${model.id}`,
+          label: model.id,
+        }));
 
-          groups.push({
-            id: provider.id,
-            label: provider.name,
-            options: providerOptions,
-          });
+        groups.push({
+          id: provider.id,
+          label: provider.name,
+          options: providerOptions,
+        });
 
-          allOptions.push(...providerOptions);
+        allOptions.push(...providerOptions);
 
-          // Build model to provider mapping and store model capabilities
-          models.forEach((model: any) => {
-            const qualifiedId = `${provider.id}::${model.id}`;
-            modelToProviderMap[qualifiedId] = provider.id;
-            capabilitiesMap[qualifiedId] = model;
+        // Build model to provider mapping and store model capabilities
+        models.forEach((model: any) => {
+          const qualifiedId = `${provider.id}::${model.id}`;
+          modelToProviderMap[qualifiedId] = provider.id;
+          capabilitiesMap[qualifiedId] = model;
 
-            if (!modelToProviderMap[model.id]) {
-              modelToProviderMap[model.id] = provider.id;
-            }
+          if (!modelToProviderMap[model.id]) {
+            modelToProviderMap[model.id] = provider.id;
+          }
 
-            if (Array.isArray(model.aliases)) {
-              for (const alias of model.aliases) {
-                if (typeof alias === 'string' && !modelToProviderMap[alias]) {
-                  modelToProviderMap[alias] = provider.id;
-                }
+          if (Array.isArray(model.aliases)) {
+            for (const alias of model.aliases) {
+              if (typeof alias === 'string' && !modelToProviderMap[alias]) {
+                modelToProviderMap[alias] = provider.id;
               }
             }
-          });
-        }
+          }
+        });
       }
 
       setModelGroups(groups);

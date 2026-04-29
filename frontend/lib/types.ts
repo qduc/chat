@@ -661,7 +661,7 @@ export interface ChatOptionsExtended extends ChatOptions {
   // Persistence settings
   streamingEnabled?: boolean;
   toolsEnabled?: boolean;
-  systemPrompt?: string;
+  systemPrompt?: string | null;
   activeSystemPromptId?: string | null;
   modelCapabilities?: any;
   noRevisionBranch?: boolean;

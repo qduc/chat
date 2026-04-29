@@ -329,8 +329,9 @@ export function useChat() {
       selectedModelIds: string[];
       judgeModelId: string;
       criteria?: string | null;
+      reasoningEffort?: ReasoningEffortLevel | null;
     }) => {
-      const { messageId, judgeModelId, criteria, selectedModelIds } = options;
+      const { messageId, judgeModelId, criteria, selectedModelIds, reasoningEffort } = options;
       if (!conversationId) throw new Error('No active conversation');
       if (selectedModelIds.length < 2) throw new Error('At least 2 models must be selected');
 
@@ -378,6 +379,7 @@ export function useChat() {
           judgeModelId,
           judgeProviderId,
           criteria,
+          reasoningEffort,
           onToken: (token) => {
             setEvaluationDrafts((prev) =>
               prev.map((item) =>

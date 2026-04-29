@@ -1455,6 +1455,7 @@ describe('useChat hook', () => {
         messageId: 'assistant-1',
         selectedModelIds: ['primary', 'openai::gpt-4o-mini'],
         judgeModelId: 'openai::gpt-4o',
+        reasoningEffort: 'high',
       });
     });
 
@@ -1464,6 +1465,7 @@ describe('useChat hook', () => {
         messageId: 'assistant-1',
         judgeModelId: 'openai::gpt-4o',
         judgeProviderId: null,
+        reasoningEffort: 'high',
       })
     );
     expect(result.current.evaluationDrafts).toHaveLength(0);

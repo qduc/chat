@@ -72,10 +72,13 @@ export class OpenAIProvider extends BaseProvider {
   /**
    * Returns the reasoning format this provider expects.
    * Override in subclasses if the provider uses a different format.
-   * @returns {'nested'|'flat'|'none'} The reasoning format
+   * @returns {'nested'|'flat'|'none'|'deepseek'} The reasoning format
    */
   getReasoningFormat() {
     const baseUrl = (this.baseUrl || '').toLowerCase();
+    if (baseUrl.includes('api.deepseek.com')) {
+      return 'deepseek';
+    }
     // OpenRouter and OpenAI use nested format: reasoning: { effort: value }
     if (baseUrl.includes('openrouter.ai') || baseUrl.includes('openai.com')) {
       return 'nested';
@@ -98,7 +101,7 @@ export class OpenAIProvider extends BaseProvider {
   }
 
   get baseUrl() {
-    const url = this.settings?.baseUrl || OpenAIProvider.defaultBaseUrl;
+    const url = this.settings?.baseUrl || this.constructor.defaultBaseUrl;
     return String(url).replace(/\/$/, '').replace(/\/v1$/, '');
   }
 

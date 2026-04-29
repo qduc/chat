@@ -80,4 +80,29 @@ describe('Date Injection - Regression Tests', () => {
     // The knowledge_cutoff module should be included
     expect(result).toContain('knowledge cutoff');
   });
+
+  test('extractSystemPromptAsync does not reuse persisted prompt when request explicitly sets null', async () => {
+    const result = await extractSystemPromptAsync({
+      body: {},
+      bodyIn: {
+        system_prompt: null,
+        active_system_prompt_id: null,
+      },
+      persistence: {
+        persist: true,
+        conversationId: 'test-conv',
+        conversationMeta: {
+          metadata: {
+            system_prompt: 'Persisted old prompt that should not be reused',
+            active_system_prompt_id: 'prompt-old',
+          }
+        }
+      },
+      userId: 'test-user',
+    });
+
+    expect(result).toContain('<system_instructions>');
+    expect(result).toContain("Today's date:");
+    expect(result).not.toContain('Persisted old prompt that should not be reused');
+  });
 });

@@ -176,11 +176,24 @@ chatRouter.post('/v1/chat/judge', async (req, res) => {
     judge_model,
     judge_provider_id,
     criteria,
+    reasoning_effort,
   } = req.body || {};
 
   const conversationId = conversation_id || null;
   const messageId = message_id || null;
   const normalizedCriteria = typeof criteria === 'string' ? criteria.trim() : '';
+  const normalizedReasoningEffort =
+    typeof reasoning_effort === 'string' ? reasoning_effort.trim().toLowerCase() : '';
+
+  if (normalizedReasoningEffort) {
+    const allowedEfforts = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'];
+    if (!allowedEfforts.includes(normalizedReasoningEffort)) {
+      return res.status(400).json({
+        error: 'bad_request',
+        message: `Invalid reasoning_effort. Must be one of ${allowedEfforts.join(', ')}`,
+      });
+    }
+  }
 
   // New API: models array contains all models to compare (each with model_id, conversation_id, message_id)
   // Legacy API: comparison_models (or comparison_conversation_id/comparison_message_id) with implicit primary
@@ -343,6 +356,7 @@ chatRouter.post('/v1/chat/judge', async (req, res) => {
       stream: true,
       response_format: { type: 'json_object' },
       temperature: 0,
+      ...(normalizedReasoningEffort ? { reasoning_effort: normalizedReasoningEffort } : {}),
       messages: [
         { role: 'system', content: prompt.system },
         { role: 'user', content: prompt.user },
