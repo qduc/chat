@@ -135,6 +135,29 @@ describe('ChatCompletionsAdapter', () => {
       expect(result.reasoning_effort).toBeUndefined();
     });
 
+    test.each([
+      ['none', { type: 'disabled' }, undefined],
+      ['minimal', { type: 'disabled' }, undefined],
+      ['low', { type: 'enabled' }, 'high'],
+      ['medium', { type: 'enabled' }, 'high'],
+      ['high', { type: 'enabled' }, 'high'],
+      ['xhigh', { type: 'enabled' }, 'max'],
+    ])('maps %s reasoning controls for DeepSeek format', async (effort, thinking, upstreamEffort) => {
+      const adapter = createAdapter({ reasoningFormat: 'deepseek' });
+      const result = await adapter.translateRequest({
+        messages: [{ role: 'user', content: 'hi' }],
+        reasoning_effort: effort,
+      });
+
+      expect(result.thinking).toEqual(thinking);
+      if (upstreamEffort) {
+        expect(result.reasoning_effort).toBe(upstreamEffort);
+      } else {
+        expect(result.reasoning_effort).toBeUndefined();
+      }
+      expect(result.reasoning).toBeUndefined();
+    });
+
     test('context reasoningFormat overrides adapter default', async () => {
       const adapter = createAdapter({ reasoningFormat: 'nested' });
       const result = await adapter.translateRequest(

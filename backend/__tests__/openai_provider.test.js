@@ -50,6 +50,37 @@ describe('OpenAIProvider', () => {
     });
   });
 
+  describe('getReasoningFormat', () => {
+    test('uses DeepSeek reasoning format for api.deepseek.com providers', () => {
+      const deepSeekProvider = new OpenAIProvider({
+        config: { defaultModel: 'deepseek-v4-pro' },
+        settings: { apiKey: 'test-api-key', baseUrl: 'https://api.deepseek.com/v1' },
+        providerId: 'test-deepseek',
+        http: mockFetch,
+      });
+
+      expect(deepSeekProvider.getReasoningFormat()).toBe('deepseek');
+    });
+
+    test('translates reasoning controls into DeepSeek request shape', async () => {
+      const deepSeekProvider = new OpenAIProvider({
+        config: { defaultModel: 'deepseek-v4-pro' },
+        settings: { apiKey: 'test-api-key', baseUrl: 'https://api.deepseek.com' },
+        providerId: 'test-deepseek',
+        http: mockFetch,
+      });
+
+      await expect(deepSeekProvider.translateRequest({
+        messages: [{ role: 'user', content: 'hi' }],
+        reasoning_effort: 'xhigh',
+      })).resolves.toMatchObject({
+        model: 'deepseek-v4-pro',
+        thinking: { type: 'enabled' },
+        reasoning_effort: 'max',
+      });
+    });
+  });
+
   describe('listModels', () => {
     test('normalizes timeout failures with provider name', async () => {
       const providerWithName = new OpenAIProvider({
