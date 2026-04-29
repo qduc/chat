@@ -156,6 +156,42 @@ describe('chat API', () => {
     expect(fetchMock).toHaveBeenCalled();
   });
 
+  test('sends explicit null for system prompt fields when unset', async () => {
+    const fetchMock = jest.spyOn(global, 'fetch').mockImplementation((_url, init) => {
+      const body = JSON.parse((init as RequestInit).body as string);
+
+      expect(Object.prototype.hasOwnProperty.call(body, 'system_prompt')).toBe(true);
+      expect(Object.prototype.hasOwnProperty.call(body, 'active_system_prompt_id')).toBe(true);
+      expect(body.system_prompt).toBeNull();
+      expect(body.active_system_prompt_id).toBeNull();
+
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            choices: [
+              {
+                message: {
+                  content: 'ok',
+                },
+              },
+            ],
+          }),
+          { status: 200 }
+        )
+      );
+    });
+
+    await chat.sendMessage({
+      messages: [{ role: 'user' as Role, content: 'hi' }],
+      providerId: 'test-provider',
+      stream: false,
+      systemPrompt: null,
+      activeSystemPromptId: null,
+    });
+
+    expect(fetchMock).toHaveBeenCalled();
+  });
+
   test('closes reasoning before streaming tool calls to prevent orphan thinking tags', async () => {
     const lines = [
       'data: {"choices":[{"delta":{"reasoning_content":"I need to check current time"}}]}\n\n',

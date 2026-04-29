@@ -572,8 +572,8 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           reasoning,
           customRequestParamsId:
             customRequestParamsIdRef.current.length > 0 ? customRequestParamsIdRef.current : null,
-          systemPrompt: systemPromptRef.current || undefined,
-          activeSystemPromptId: activeSystemPromptIdRef.current || undefined,
+          systemPrompt: systemPromptRef.current,
+          activeSystemPromptId: activeSystemPromptIdRef.current,
           modelCapabilities,
           noRevisionBranch: options?.noRevisionBranch === true || undefined,
           onToken: (token: string) => {

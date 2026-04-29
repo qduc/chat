@@ -365,12 +365,15 @@ export class SimplifiedPersistence {
   async _handleMetadataUpdates(sessionId, userId, bodyIn) {
     if (!this.conversationMeta) return;
 
-    const incomingSystemPrompt = ConversationTitleService.extractSystemPrompt(bodyIn);
     const settings = this.persistenceConfig.extractRequestSettings(bodyIn);
     const {
+      systemPrompt: incomingSystemPrompt,
       activeTools: incomingActiveTools = [],
       model: incomingModel,
       customRequestParamsId: incomingCustomRequestParamsId,
+      hasSystemPromptField,
+      hasActiveSystemPromptIdField,
+      activeSystemPromptId,
     } = settings;
     const updates = this.persistenceConfig.checkMetadataUpdates(
       this.conversationMeta,
@@ -378,7 +381,12 @@ export class SimplifiedPersistence {
       this.providerId,
       incomingActiveTools,
       incomingModel,
-      incomingCustomRequestParamsId
+      incomingCustomRequestParamsId,
+      {
+        hasSystemPromptField,
+        hasActiveSystemPromptIdField,
+        activeSystemPromptId,
+      }
     );
 
     try {
@@ -389,6 +397,16 @@ export class SimplifiedPersistence {
         this.conversationMeta.metadata = {
           ...(this.conversationMeta.metadata || {}),
           system_prompt: updates.systemPrompt,
+        };
+      }
+
+      if (updates.needsActiveSystemPromptIdUpdate) {
+        this.conversationManager.updateMetadata(this.conversationId, userId, {
+          active_system_prompt_id: updates.activeSystemPromptId,
+        });
+        this.conversationMeta.metadata = {
+          ...(this.conversationMeta.metadata || {}),
+          active_system_prompt_id: updates.activeSystemPromptId,
         };
       }
 

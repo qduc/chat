@@ -86,8 +86,10 @@ function buildRequestBody(options: ChatOptions | ChatOptionsExtended, stream: bo
     ...(extendedOptions.toolsEnabled !== undefined && {
       toolsEnabled: extendedOptions.toolsEnabled,
     }),
-    ...((options as any).systemPrompt && { system_prompt: (options as any).systemPrompt }),
-    ...((options as any).activeSystemPromptId && {
+    ...(Object.hasOwn(options as object, 'systemPrompt') && {
+      system_prompt: (options as any).systemPrompt,
+    }),
+    ...(Object.hasOwn(options as object, 'activeSystemPromptId') && {
       active_system_prompt_id: (options as any).activeSystemPromptId,
     }),
   };

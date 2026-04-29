@@ -130,6 +130,40 @@ describe('PersistenceConfig', () => {
         active_tools: []
       });
     });
+
+    test('should preserve explicit null system prompt and active_system_prompt_id', () => {
+      const bodyIn = {
+        system_prompt: null,
+        active_system_prompt_id: null,
+      };
+
+      const result = config.extractRequestSettings(bodyIn);
+
+      assert.equal(result.systemPrompt, null);
+      assert.equal(result.activeSystemPromptId, null);
+      assert.equal(result.hasSystemPromptField, true);
+      assert.equal(result.hasActiveSystemPromptIdField, true);
+      assert.deepEqual(result.metadata, {
+        system_prompt: null,
+        active_system_prompt_id: null,
+        active_tools: [],
+      });
+    });
+
+    test('should treat empty system prompt string as explicit clear', () => {
+      const bodyIn = {
+        system_prompt: '   ',
+      };
+
+      const result = config.extractRequestSettings(bodyIn);
+
+      assert.equal(result.systemPrompt, null);
+      assert.equal(result.hasSystemPromptField, true);
+      assert.deepEqual(result.metadata, {
+        system_prompt: null,
+        active_tools: [],
+      });
+    });
   });
 
   describe('extractProviderId', () => {
@@ -258,6 +292,84 @@ describe('PersistenceConfig', () => {
       assert.equal(result.needsProviderUpdate, false);
       assert.equal(result.needsActiveToolsUpdate, true);
       assert.deepEqual(result.activeTools, ['a']);
+    });
+
+    test('should detect explicit null system prompt update', () => {
+      const existingConvo = {
+        metadata: { system_prompt: 'Old prompt' },
+        providerId: 'same-provider',
+      };
+
+      const result = config.checkMetadataUpdates(
+        existingConvo,
+        null,
+        'same-provider',
+        [],
+        null,
+        undefined,
+        { hasSystemPromptField: true }
+      );
+
+      assert.equal(result.needsSystemUpdate, true);
+      assert.equal(result.systemPrompt, null);
+    });
+
+    test('should detect active_system_prompt_id clear update', () => {
+      const existingConvo = {
+        metadata: { active_system_prompt_id: 'prompt-123' },
+        providerId: 'same-provider',
+      };
+
+      const result = config.checkMetadataUpdates(
+        existingConvo,
+        null,
+        'same-provider',
+        [],
+        null,
+        undefined,
+        { hasActiveSystemPromptIdField: true, activeSystemPromptId: null }
+      );
+
+      assert.equal(result.needsActiveSystemPromptIdUpdate, true);
+      assert.equal(result.activeSystemPromptId, null);
+    });
+
+    test('should not update system prompt when field is omitted', () => {
+      const existingConvo = {
+        metadata: { system_prompt: 'Keep me' },
+        providerId: 'same-provider',
+      };
+
+      const result = config.checkMetadataUpdates(
+        existingConvo,
+        null,
+        'same-provider',
+        [],
+        null,
+        undefined,
+        { hasSystemPromptField: false }
+      );
+
+      assert.equal(result.needsSystemUpdate, false);
+    });
+
+    test('should not update active_system_prompt_id when field is omitted', () => {
+      const existingConvo = {
+        metadata: { active_system_prompt_id: 'prompt-123' },
+        providerId: 'same-provider',
+      };
+
+      const result = config.checkMetadataUpdates(
+        existingConvo,
+        null,
+        'same-provider',
+        [],
+        null,
+        undefined,
+        { hasActiveSystemPromptIdField: false }
+      );
+
+      assert.equal(result.needsActiveSystemPromptIdUpdate, false);
     });
   });
 });

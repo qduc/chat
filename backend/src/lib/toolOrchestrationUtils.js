@@ -358,6 +358,9 @@ async function resolveSystemPromptContent(activePromptId, userId, options = {}) 
 }
 
 export function extractSystemPrompt({ body, bodyIn, persistence }) {
+  const hasSystemPromptField = Object.hasOwn(bodyIn || {}, 'systemPrompt')
+    || Object.hasOwn(bodyIn || {}, 'system_prompt');
+
   const fromMessages = Array.isArray(body?.messages)
     ? body.messages.find((msg) => msg && msg.role === 'system' && typeof msg.content === 'string' && msg.content.trim())
     : null;
@@ -370,6 +373,12 @@ export function extractSystemPrompt({ body, bodyIn, persistence }) {
     : (typeof bodyIn?.system_prompt === 'string' ? bodyIn.system_prompt.trim() : '');
   if (fromBodyParam) {
     return wrapPromptWithDate(fromBodyParam);
+  }
+
+  // Explicitly clearing system prompt should suppress persistence fallback
+  if (hasSystemPromptField) {
+    const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    return `<system_instructions>\nToday's date: ${currentDate}\n</system_instructions>`;
   }
 
   const fromPersistence = persistence?.conversationMeta?.metadata?.system_prompt;
@@ -398,6 +407,10 @@ export function extractSystemPrompt({ body, bodyIn, persistence }) {
  * @returns {Promise<string>} Resolved system prompt content
  */
 export async function extractSystemPromptAsync({ body, bodyIn, persistence, userId }) {
+  const hasSystemPromptField = Object.hasOwn(bodyIn || {}, 'systemPrompt')
+    || Object.hasOwn(bodyIn || {}, 'system_prompt');
+  const hasActiveSystemPromptIdField = Object.hasOwn(bodyIn || {}, 'active_system_prompt_id');
+
   // Extract enabled tools from the request body
   const enabledTools = Array.isArray(body?.tools) ? body.tools : null;
   const candidateModels = [];
@@ -430,13 +443,37 @@ export async function extractSystemPromptAsync({ body, bodyIn, persistence, user
     return wrapPromptWithStructure(fromBodyParam, { enabledTools, model });
   }
 
+  // If system prompt field is explicitly present but empty/null, do not fall back to persistence
+  const explicitlyClearedSystemPrompt = hasSystemPromptField;
+
+  let activePromptId = null;
+  if (hasActiveSystemPromptIdField) {
+    activePromptId = typeof bodyIn?.active_system_prompt_id === 'string'
+      ? bodyIn.active_system_prompt_id.trim()
+      : '';
+    activePromptId = activePromptId || null;
+  } else {
+    activePromptId = persistence?.conversationMeta?.metadata?.active_system_prompt_id || null;
+  }
+
   // If there's an active system prompt ID, resolve it (prefer this over legacy stored prompt)
-  const activePromptId = persistence?.conversationMeta?.metadata?.active_system_prompt_id;
   if (activePromptId) {
     const resolvedContent = await resolveSystemPromptContent(activePromptId, userId, { enabledTools, model });
     if (resolvedContent) {
       return resolvedContent;
     }
+  }
+
+  if (explicitlyClearedSystemPrompt || (hasActiveSystemPromptIdField && !activePromptId)) {
+    const currentDate = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    const sharedModules = await loadSharedModules({ enabledTools, model });
+
+    let systemInstructions = `Today's date: ${currentDate}`;
+    if (sharedModules) {
+      systemInstructions += `\n\n${sharedModules}`;
+    }
+
+    return `<system_instructions>\n${systemInstructions}\n</system_instructions>`;
   }
 
   // Fall back to legacy stored system_prompt

@@ -68,6 +68,10 @@ export class PersistenceConfig {
   extractRequestSettings(bodyIn) {
     const activeTools = this._extractActiveTools(bodyIn);
 
+    const hasSystemPromptField = Object.hasOwn(bodyIn || {}, 'systemPrompt')
+      || Object.hasOwn(bodyIn || {}, 'system_prompt');
+    const hasActiveSystemPromptIdField = Object.hasOwn(bodyIn || {}, 'active_system_prompt_id');
+
     const persistedStreamingEnabled = bodyIn.streamingEnabled !== undefined
       ? !!bodyIn.streamingEnabled
       : !!bodyIn.stream; // Map OpenAI 'stream' field
@@ -76,10 +80,19 @@ export class PersistenceConfig {
       ? !!bodyIn.toolsEnabled
       : activeTools.length > 0; // Map tools array presence
 
-    // Extract system prompt
-    const systemPrompt = typeof bodyIn?.systemPrompt === 'string'
+    // Extract system prompt (distinguish absent vs explicit null)
+    const rawSystemPrompt = typeof bodyIn?.systemPrompt === 'string'
       ? bodyIn.systemPrompt.trim()
-      : (typeof bodyIn?.system_prompt === 'string' ? bodyIn.system_prompt.trim() : '');
+      : (typeof bodyIn?.system_prompt === 'string' ? bodyIn.system_prompt.trim() : null);
+    const systemPrompt = rawSystemPrompt && rawSystemPrompt.length > 0 ? rawSystemPrompt : null;
+
+    // Extract active system prompt ID (distinguish absent vs explicit null)
+    const rawActiveSystemPromptId = typeof bodyIn?.active_system_prompt_id === 'string'
+      ? bodyIn.active_system_prompt_id.trim()
+      : null;
+    const activeSystemPromptId = rawActiveSystemPromptId && rawActiveSystemPromptId.length > 0
+      ? rawActiveSystemPromptId
+      : null;
 
     const hasCustomParamsId = bodyIn && Object.hasOwn(bodyIn, 'custom_request_params_id');
     const customRequestParamsId = hasCustomParamsId
@@ -87,8 +100,11 @@ export class PersistenceConfig {
       : undefined;
 
     const metadata = {};
-    if (systemPrompt) {
+    if (hasSystemPromptField) {
       metadata.system_prompt = systemPrompt;
+    }
+    if (hasActiveSystemPromptIdField) {
+      metadata.active_system_prompt_id = activeSystemPromptId;
     }
     metadata.active_tools = persistedToolsEnabled ? activeTools : [];
     if (customRequestParamsId !== undefined) {
@@ -102,9 +118,12 @@ export class PersistenceConfig {
       reasoningEffort: bodyIn.reasoning_effort || bodyIn.reasoningEffort || null,
       verbosity: bodyIn.verbosity || null,
       systemPrompt,
+      activeSystemPromptId,
       metadata,
       activeTools: metadata.active_tools,
       customRequestParamsId,
+      hasSystemPromptField,
+      hasActiveSystemPromptIdField,
     };
   }
 
@@ -117,28 +136,28 @@ export class PersistenceConfig {
   async extractRequestSettingsAsync(bodyIn, userId) {
     const settings = this.extractRequestSettings(bodyIn);
 
-    // If there's no explicit system prompt but there's an active_system_prompt_id, resolve it
-    if (!settings.systemPrompt && bodyIn.active_system_prompt_id) {
+    // If there's no explicit system prompt override but there's an active_system_prompt_id, resolve it
+    if (!settings.hasSystemPromptField && settings.activeSystemPromptId) {
       try {
         const { getPromptById } = await import('../promptService.js');
-        const prompt = await getPromptById(bodyIn.active_system_prompt_id, userId);
+        const prompt = await getPromptById(settings.activeSystemPromptId, userId);
         if (prompt?.body) {
           settings.systemPrompt = prompt.body.trim();
           settings.metadata = {
             ...settings.metadata,
             system_prompt: settings.systemPrompt,
-            active_system_prompt_id: bodyIn.active_system_prompt_id
+            active_system_prompt_id: settings.activeSystemPromptId
           };
         }
       } catch (error) {
         logger.warn('[PersistenceConfig] Failed to resolve system prompt:', error);
       }
-    } else if (settings.systemPrompt && bodyIn.active_system_prompt_id) {
+    } else if (settings.systemPrompt && settings.activeSystemPromptId) {
       // If there's both an explicit system prompt and active_system_prompt_id, save both
       settings.metadata = {
         ...settings.metadata,
         system_prompt: settings.systemPrompt,
-        active_system_prompt_id: bodyIn.active_system_prompt_id
+        active_system_prompt_id: settings.activeSystemPromptId
       };
     }
 
@@ -174,23 +193,44 @@ export class PersistenceConfig {
    * @param {string} incomingModel - New model
    * @returns {Object} Update flags and values
    */
-  checkMetadataUpdates(existingConvo, incomingSystemPrompt, incomingProviderId, incomingActiveTools = [], incomingModel = null, incomingCustomRequestParamsId = undefined) {
-    const existingSystemPrompt = existingConvo?.metadata?.system_prompt || null;
+  checkMetadataUpdates(
+    existingConvo,
+    incomingSystemPrompt,
+    incomingProviderId,
+    incomingActiveTools = [],
+    incomingModel = null,
+    incomingCustomRequestParamsId = undefined,
+    options = {}
+  ) {
+    const existingMetadata = existingConvo?.metadata || {};
+    const existingSystemPrompt = Object.hasOwn(existingMetadata, 'system_prompt')
+      ? existingMetadata.system_prompt
+      : null;
+    const existingActiveSystemPromptId = Object.hasOwn(existingMetadata, 'active_system_prompt_id')
+      ? existingMetadata.active_system_prompt_id
+      : null;
     const existingProviderId = existingConvo?.providerId;
     const existingModel = existingConvo?.model;
-    const existingActiveTools = Array.isArray(existingConvo?.metadata?.active_tools)
-      ? existingConvo.metadata.active_tools
+    const existingActiveTools = Array.isArray(existingMetadata?.active_tools)
+      ? existingMetadata.active_tools
       : [];
-    const existingCustomRequestParamsId = Object.hasOwn(existingConvo?.metadata || {}, 'custom_request_params_id')
-      ? normalizeCustomRequestParamsIds(existingConvo.metadata.custom_request_params_id)
+    const existingCustomRequestParamsId = Object.hasOwn(existingMetadata, 'custom_request_params_id')
+      ? normalizeCustomRequestParamsIds(existingMetadata.custom_request_params_id)
       : undefined;
+    const hasIncomingSystemPrompt = options?.hasSystemPromptField === true
+      || (incomingSystemPrompt !== undefined && incomingSystemPrompt !== null);
+    const hasIncomingActiveSystemPromptId = options?.hasActiveSystemPromptIdField === true;
+    const incomingActiveSystemPromptId = options?.activeSystemPromptId ?? null;
     const normalizedIncomingTools = Array.isArray(incomingActiveTools)
       ? incomingActiveTools
       : [];
 
     const needsActiveToolsUpdate = !this._areToolListsEqual(existingActiveTools, normalizedIncomingTools);
 
-    const needsSystemUpdate = incomingSystemPrompt && incomingSystemPrompt !== existingSystemPrompt;
+    const needsSystemUpdate = hasIncomingSystemPrompt
+      && incomingSystemPrompt !== existingSystemPrompt;
+    const needsActiveSystemPromptIdUpdate = hasIncomingActiveSystemPromptId
+      && incomingActiveSystemPromptId !== existingActiveSystemPromptId;
     const needsProviderUpdate = incomingProviderId && incomingProviderId !== existingProviderId;
     const needsModelUpdate = incomingModel && incomingModel !== existingModel;
     const needsCustomRequestParamsUpdate = incomingCustomRequestParamsId !== undefined
@@ -201,8 +241,10 @@ export class PersistenceConfig {
       needsProviderUpdate,
       needsModelUpdate,
       systemPrompt: incomingSystemPrompt,
+      activeSystemPromptId: incomingActiveSystemPromptId,
       providerId: incomingProviderId,
       model: incomingModel,
+      needsActiveSystemPromptIdUpdate,
       needsActiveToolsUpdate,
       activeTools: normalizedIncomingTools,
       needsCustomRequestParamsUpdate,
