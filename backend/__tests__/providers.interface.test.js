@@ -1,12 +1,14 @@
 import { OpenAIProvider } from '../src/lib/providers/openaiProvider.js';
 import { AnthropicProvider } from '../src/lib/providers/anthropicProvider.js';
 import { GeminiProvider } from '../src/lib/providers/geminiProvider.js';
+import { LlamaCppProvider } from '../src/lib/providers/llamaCppProvider.js';
 import { BaseProvider } from '../src/lib/providers/baseProvider.js';
 import { selectProviderConstructor, createProviderWithSettings } from '../src/lib/providers/index.js';
 
 describe('Provider Interface Compliance', () => {
   const providers = [
     { name: 'OpenAIProvider', Provider: OpenAIProvider, expectedTranslation: true },
+    { name: 'LlamaCppProvider', Provider: LlamaCppProvider, expectedTranslation: true },
     { name: 'AnthropicProvider', Provider: AnthropicProvider, expectedTranslation: true },
     { name: 'GeminiProvider', Provider: GeminiProvider, expectedTranslation: true },
   ];
@@ -80,8 +82,13 @@ describe('Provider Interface Compliance', () => {
       expect(GeminiProvider.defaultBaseUrl).toBe('https://generativelanguage.googleapis.com/v1beta');
     });
 
+    it('LlamaCppProvider should have correct default base URL', () => {
+      expect(LlamaCppProvider.defaultBaseUrl).toBe('http://localhost:8080/v1');
+    });
+
     it('selectProviderConstructor should return correct provider class', () => {
       expect(selectProviderConstructor('openai')).toBe(OpenAIProvider);
+      expect(selectProviderConstructor('llama-cpp')).toBe(LlamaCppProvider);
       expect(selectProviderConstructor('anthropic')).toBe(AnthropicProvider);
       expect(selectProviderConstructor('gemini')).toBe(GeminiProvider);
       // Default to OpenAI for unknown types
@@ -207,6 +214,18 @@ describe('Provider Interface Compliance', () => {
       });
 
       expect(provider.baseUrl).toBe('https://api.openai.com');
+    });
+
+    it('createProviderWithSettings should create llama.cpp provider with correct base URL', () => {
+      const provider = createProviderWithSettings({}, 'llama-cpp', {
+        apiKey: null,
+        baseUrl: '',
+        headers: {}
+      });
+
+      expect(provider).toBeInstanceOf(LlamaCppProvider);
+      expect(provider.baseUrl).toBe('http://localhost:8080');
+      expect(provider.isConfigured()).toBe(true);
     });
   });
 });

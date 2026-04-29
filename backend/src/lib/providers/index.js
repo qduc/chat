@@ -2,6 +2,7 @@ import { getDb } from '../../db/client.js';
 import { OpenAIProvider } from './openaiProvider.js';
 import { AnthropicProvider } from './anthropicProvider.js';
 import { GeminiProvider } from './geminiProvider.js';
+import { LlamaCppProvider } from './llamaCppProvider.js';
 
 function parseJSONSafe(value, fallback) {
   try {
@@ -20,6 +21,7 @@ function normalizeBaseUrl(url) {
 const providerConstructors = {
   'openai-responses': OpenAIProvider,
   'openai-completions': OpenAIProvider,
+  'llama-cpp': LlamaCppProvider,
   anthropic: AnthropicProvider,
   gemini: GeminiProvider,
 };

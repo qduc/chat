@@ -39,8 +39,12 @@ function getDefaultBaseUrl(providerType) {
 
 function normalizeProviderType(providerType) {
   const type = (providerType || 'openai-completions').toLowerCase();
-  const validTypes = ['openai-responses', 'openai-completions', 'anthropic', 'gemini'];
+  const validTypes = ['openai-responses', 'openai-completions', 'llama-cpp', 'anthropic', 'gemini'];
   return validTypes.includes(type) ? type : 'openai-completions';
+}
+
+function providerRequiresApiKey(providerType) {
+  return normalizeProviderType(providerType) !== 'llama-cpp';
 }
 
 function normalizeBaseUrlInput(baseUrl, providerType) {
@@ -443,11 +447,11 @@ export function createProvidersRouter({ http = globalThis.fetch ?? fetchLib } = 
         return res.status(404).json({ error: 'not_found', message: 'Provider not found' });
       }
 
-      if (!existingProvider.api_key) {
+      const providerType = normalizeProviderType(existingProvider.provider_type);
+      if (providerRequiresApiKey(providerType) && !existingProvider.api_key) {
         return res.status(400).json({ error: 'invalid_provider', message: 'Provider has no API key stored' });
       }
 
-      const providerType = normalizeProviderType(existingProvider.provider_type);
       const baseUrlInput = body.base_url !== undefined ? body.base_url : existingProvider.base_url;
       const baseUrl = normalizeBaseUrlInput(baseUrlInput, providerType);
       const headers = {

@@ -158,6 +158,25 @@ describe('ChatCompletionsAdapter', () => {
       expect(result.reasoning).toBeUndefined();
     });
 
+    test.each([
+      ['none', { reasoning_effort: 'low', enable_thinking: false, thinking_mode: 'disabled', reasoning_budget: 0 }],
+      ['minimal', { reasoning_effort: 'low', enable_thinking: false, thinking_mode: 'disabled', reasoning_budget: 0 }],
+      ['low', { reasoning_effort: 'low', enable_thinking: true, thinking_mode: 'low', reasoning_budget: 1024 }],
+      ['medium', { reasoning_effort: 'medium', enable_thinking: true, thinking_mode: 'medium', reasoning_budget: 4096 }],
+      ['high', { reasoning_effort: 'high', enable_thinking: true, thinking_mode: 'high', reasoning_budget: 8192 }],
+      ['xhigh', { reasoning_effort: 'high', enable_thinking: true, thinking_mode: 'high', reasoning_budget: 16384 }],
+    ])('maps %s reasoning controls for llama.cpp format', async (effort, chatTemplateKwargs) => {
+      const adapter = createAdapter({ reasoningFormat: 'llama-cpp' });
+      const result = await adapter.translateRequest({
+        messages: [{ role: 'user', content: 'hi' }],
+        reasoning_effort: effort,
+      });
+
+      expect(result.chat_template_kwargs).toEqual(chatTemplateKwargs);
+      expect(result.reasoning).toBeUndefined();
+      expect(result.reasoning_effort).toBeUndefined();
+    });
+
     test('context reasoningFormat overrides adapter default', async () => {
       const adapter = createAdapter({ reasoningFormat: 'nested' });
       const result = await adapter.translateRequest(

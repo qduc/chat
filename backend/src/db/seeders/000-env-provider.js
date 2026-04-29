@@ -5,6 +5,9 @@ import { logger } from '../../logger.js';
 // Duplicated here to avoid circular dependency with providers/index.js
 const PROVIDER_DEFAULT_BASE_URLS = {
   openai: 'https://api.openai.com/v1',
+  'openai-responses': 'https://api.openai.com/v1',
+  'openai-completions': 'https://api.openai.com/v1',
+  'llama-cpp': 'http://localhost:8080/v1',
   anthropic: 'https://api.anthropic.com',
   gemini: 'https://generativelanguage.googleapis.com/v1beta',
 };

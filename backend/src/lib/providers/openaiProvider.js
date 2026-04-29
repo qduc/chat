@@ -101,7 +101,7 @@ export class OpenAIProvider extends BaseProvider {
   }
 
   get baseUrl() {
-    const url = this.settings?.baseUrl || OpenAIProvider.defaultBaseUrl;
+    const url = this.settings?.baseUrl || this.constructor.defaultBaseUrl;
     return String(url).replace(/\/$/, '').replace(/\/v1$/, '');
   }
 
