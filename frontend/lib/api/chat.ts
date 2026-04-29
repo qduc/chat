@@ -11,7 +11,13 @@ import {
   handleStreamingResponse,
   handleJudgeStreamingResponse,
 } from './streaming-handler';
-import type { ChatOptions, ChatOptionsExtended, ChatResponse, Evaluation } from '../types';
+import type {
+  ChatOptions,
+  ChatOptionsExtended,
+  ChatResponse,
+  Evaluation,
+  ReasoningEffortLevel,
+} from '../types';
 
 export interface JudgeOptions {
   conversationId: string;
@@ -23,6 +29,7 @@ export interface JudgeOptions {
   }>;
   judgeModelId: string;
   criteria?: string | null;
+  reasoningEffort?: ReasoningEffortLevel | null;
   judgeProviderId?: string | null;
   apiBase?: string;
   signal?: AbortSignal;
@@ -235,6 +242,7 @@ export const judge = {
       judge_model: payload.judgeModelId,
       judge_provider_id: payload.judgeProviderId ?? undefined,
       criteria: payload.criteria ?? null,
+      reasoning_effort: payload.reasoningEffort ?? undefined,
     };
 
     const requestHeaders = {

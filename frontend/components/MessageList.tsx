@@ -19,7 +19,7 @@ import {
   type ImageAttachment,
   type ImageContent,
 } from '../lib';
-import type { Evaluation, MessageRevision } from '../lib/types';
+import type { Evaluation, MessageRevision, ReasoningEffortLevel } from '../lib/types';
 import { useStreamingScroll } from '../hooks/useStreamingScroll';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { WelcomeMessage } from './WelcomeMessage';
@@ -67,6 +67,7 @@ interface MessageListProps {
     selectedModelIds: string[];
     judgeModelId: string;
     criteria?: string | null;
+    reasoningEffort?: ReasoningEffortLevel | null;
   }) => Promise<unknown>;
   onDeleteJudgeResponse: (id: string) => Promise<void>;
 }
@@ -1061,7 +1062,12 @@ export function MessageList({
   }, []);
 
   const handleJudgeConfirm = useCallback(
-    (options: { judgeModelId: string; selectedModelIds: string[]; criteria: string | null }) => {
+    (options: {
+      judgeModelId: string;
+      selectedModelIds: string[];
+      criteria: string | null;
+      reasoningEffort?: ReasoningEffortLevel | null;
+    }) => {
       if (!onJudge || !judgeMessageId) return;
 
       setIsJudgeModalOpen(false);
@@ -1077,6 +1083,7 @@ export function MessageList({
         selectedModelIds: options.selectedModelIds,
         judgeModelId: options.judgeModelId,
         criteria: options.criteria,
+        reasoningEffort: options.reasoningEffort ?? null,
       }).catch((err) => {
         const message = err instanceof Error ? err.message : 'Failed to judge responses';
         showToast({ message, variant: 'error' });

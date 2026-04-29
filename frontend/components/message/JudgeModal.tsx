@@ -6,6 +6,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../ui/Modal';
 import ModelSelector from '../ui/ModelSelector';
+import QualitySlider from '../ui/QualitySlider';
+import type { ReasoningEffortLevel } from '../../lib/types';
 
 interface JudgeModalProps {
   isOpen: boolean;
@@ -14,6 +16,7 @@ interface JudgeModalProps {
     judgeModelId: string;
     selectedModelIds: string[];
     criteria: string | null;
+    reasoningEffort?: ReasoningEffortLevel | null;
   }) => void;
   availableModels: string[];
   primaryModelLabel: string | null;
@@ -52,6 +55,7 @@ export function JudgeModal({
     'general'
   );
   const [customCriteria, setCustomCriteria] = useState('');
+  const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffortLevel>('unset');
 
   // Reset state when modal opens
   useEffect(() => {
@@ -60,6 +64,7 @@ export function JudgeModal({
       setJudgeModelId(initialJudgeModelId || modelOptions[0]?.value || '');
       setCriteria('general');
       setCustomCriteria('');
+      setReasoningEffort('unset');
     }
     // Use stable init - only run once when modal opens
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -81,6 +86,7 @@ export function JudgeModal({
       judgeModelId,
       selectedModelIds,
       criteria: criteriaText || null,
+      reasoningEffort: reasoningEffort !== 'unset' ? reasoningEffort : null,
     });
   };
 
@@ -142,6 +148,19 @@ export function JudgeModal({
                 </button>
               );
             })}
+          </div>
+        </div>
+
+        <div>
+          <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400">
+            Judge reasoning effort
+          </label>
+          <div className="mt-2">
+            <QualitySlider
+              value={reasoningEffort}
+              onChange={setReasoningEffort}
+              ariaLabel="Judge reasoning effort"
+            />
           </div>
         </div>
 

@@ -86,7 +86,14 @@ jest.mock('../components/message', () => ({
       <div data-testid="judge-modal">
         <button onClick={onClose}>Close</button>
         <button
-          onClick={() => onConfirm({ judgeModelId: 'gpt-4', selectedModelIds: [], criteria: null })}
+          onClick={() =>
+            onConfirm({
+              judgeModelId: 'gpt-4',
+              selectedModelIds: [],
+              criteria: null,
+              reasoningEffort: null,
+            })
+          }
         >
           Confirm
         </button>
