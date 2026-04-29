@@ -21,6 +21,10 @@ function normalizeProviderType(providerType) {
   return (providerType || 'openai').toLowerCase();
 }
 
+function providerRequiresApiKey(providerType) {
+  return normalizeProviderType(providerType) !== 'llama-cpp';
+}
+
 /**
  * Get the effective base URL for a provider, falling back to provider defaults
  * @param {string|null} dbBaseUrl - Base URL from database
@@ -162,12 +166,19 @@ export async function fetchAllModelsForUser(userId, options = {}) {
         return null;
       }
 
-      if (!row.api_key) {
+      if (providerRequiresApiKey(row.provider_type) && !row.api_key) {
         if (skipMissingApiKey) {
           return null; // Silently skip
         }
         errors.push({ providerId: provider.id, providerName: provider.name, error: 'Missing API key' });
-        return null;
+        return {
+          provider: {
+            id: row.id,
+            name: row.name,
+            provider_type: row.provider_type,
+          },
+          models: [],
+        };
       }
 
       return await fetchModelsFromProvider(row, { http });
