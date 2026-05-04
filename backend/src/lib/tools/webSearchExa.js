@@ -3,7 +3,7 @@ import { logger } from '../../logger.js';
 import { getUserSetting } from '../../db/userSettings.js';
 
 const TOOL_NAME = 'web_search_exa';
-const VALID_TYPES = ['auto', 'keyword', 'neural'];
+const VALID_TYPES = ['auto', 'fast', 'instant', 'deep-lite', 'deep', 'deep-reasoning'];
 
 function validate(args) {
   if (!args || typeof args.query !== 'string' || args.query.trim().length === 0) {
@@ -35,7 +35,7 @@ function validate(args) {
   if (args.type !== undefined) {
     const type = String(args.type).toLowerCase();
     if (!VALID_TYPES.includes(type)) {
-      throw new Error('type must be one of: "auto", "keyword", "neural"');
+      throw new Error(`type must be one of: ${VALID_TYPES.map((t) => `"${t}"`).join(', ')}`);
     }
     validated.type = type;
   }
@@ -71,6 +71,15 @@ function validate(args) {
     validated.exclude_domains = args.exclude_domains.map((domain) => domain.trim());
   }
 
+  // Validate max_age_hours
+  if (args.max_age_hours !== undefined) {
+    const maxAgeHours = Number(args.max_age_hours);
+    if (!Number.isInteger(maxAgeHours) || maxAgeHours < -1) {
+      throw new Error('max_age_hours must be an integer >= -1');
+    }
+    validated.max_age_hours = maxAgeHours;
+  }
+
   // Validate text parameter (boolean or object)
   if (args.text !== undefined) {
     if (typeof args.text === 'boolean') {
@@ -104,22 +113,8 @@ function validate(args) {
         }
         validated.highlights.query = args.highlights.query.trim();
       }
-      if (args.highlights.num_sentences !== undefined) {
-        const numSentences = Number(args.highlights.num_sentences);
-        if (!Number.isInteger(numSentences) || numSentences < 1) {
-          throw new Error('highlights.num_sentences must be a positive integer');
-        }
-        validated.highlights.numSentences = numSentences;
-      }
-      if (args.highlights.highlights_per_url !== undefined) {
-        const highlightsPerUrl = Number(args.highlights.highlights_per_url);
-        if (!Number.isInteger(highlightsPerUrl) || highlightsPerUrl < 1) {
-          throw new Error('highlights.highlights_per_url must be a positive integer');
-        }
-        validated.highlights.highlightsPerUrl = highlightsPerUrl;
-      }
     } else {
-      throw new Error('highlights must be a boolean or an object with optional query, num_sentences, and highlights_per_url');
+      throw new Error('highlights must be a boolean or an object with optional query');
     }
   }
 
@@ -175,6 +170,7 @@ async function handler({
   num_results,
   include_domains,
   exclude_domains,
+  max_age_hours,
   text,
   highlights,
   summary,
@@ -206,13 +202,14 @@ async function handler({
   if (exclude_domains !== undefined) requestBody.excludeDomains = exclude_domains;
 
   // Content retrieval - must be nested inside 'contents' object
-  const hasContentRequest = text !== undefined || highlights !== undefined || summary !== undefined;
+  const hasContentRequest = text !== undefined || highlights !== undefined || summary !== undefined || max_age_hours !== undefined;
 
   if (hasContentRequest) {
     requestBody.contents = {};
     if (text !== undefined) requestBody.contents.text = text;
     if (highlights !== undefined) requestBody.contents.highlights = highlights;
     if (summary !== undefined) requestBody.contents.summary = summary;
+    if (max_age_hours !== undefined) requestBody.contents.maxAgeHours = max_age_hours;
   } else {
     // If no content was requested, default to highlights for better results
     requestBody.contents = { highlights: true };
@@ -332,13 +329,13 @@ export const webSearchExaTool = createTool({
           type: {
             type: 'string',
             enum: VALID_TYPES,
-            description: 'Search algorithm to use. "auto" lets Exa choose, "neural" prioritizes semantic relevance, "keyword" favors lexical matches.',
+            description: 'Search algorithm to use. "auto" (default) lets Exa choose. Options include "fast", "instant", "deep-lite", "deep", and "deep-reasoning" (most thorough).',
           },
           num_results: {
             type: 'integer',
             minimum: 1,
             maximum: 100,
-            description: 'Maximum number of results to return (1-100). Neural search supports up to 100, keyword search up to 10. Defaults to 10.',
+            description: 'Maximum number of results to return (1-100). Defaults to 10.',
           },
           include_domains: {
             type: 'array',
@@ -349,6 +346,11 @@ export const webSearchExaTool = createTool({
             type: 'array',
             items: { type: 'string' },
             description: 'List of domains to exclude from the results.',
+          },
+          max_age_hours: {
+            type: 'integer',
+            minimum: -1,
+            description: 'Maximum age of cached content in hours. Use 0 to force a live crawl of fresh content. Use -1 for no limit (default).',
           },
           text: {
             oneOf: [
@@ -381,21 +383,11 @@ export const webSearchExaTool = createTool({
                     type: 'string',
                     description: 'Specific query to use for generating highlights (if different from search query).',
                   },
-                  num_sentences: {
-                    type: 'integer',
-                    minimum: 1,
-                    description: 'Number of sentences per highlight.',
-                  },
-                  highlights_per_url: {
-                    type: 'integer',
-                    minimum: 1,
-                    description: 'Maximum number of highlights to return per URL.',
-                  },
                 },
                 additionalProperties: false,
               },
             ],
-            description: 'Retrieve key excerpts most relevant to your query. Pass true for defaults, or an object to configure query, num_sentences, and highlights_per_url.',
+            description: 'Retrieve key excerpts most relevant to your query. Pass true for defaults, or an object to configure query.',
           },
           summary: {
             oneOf: [
