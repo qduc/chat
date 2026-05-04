@@ -76,6 +76,7 @@ export function ChatV2() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('login');
+  const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
 
   const urlSync = useConversationUrlSync({
     conversationId: chat.conversationId,
@@ -314,14 +315,30 @@ export function ChatV2() {
   // Keyboard shortcut for toggling sidebar (Ctrl/Cmd + \)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === '\\') {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === '\\') {
         e.preventDefault();
         chat.toggleSidebar();
+        return;
       }
       // Keyboard shortcut for toggling right sidebar (Ctrl/Cmd + Shift + \)
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === '\\') {
         e.preventDefault();
         chat.toggleRightSidebar();
+        return;
+      }
+      // Keyboard shortcut for new conversation (Ctrl/Cmd + Shift + O)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'o') {
+        e.preventDefault();
+        handleNewChat();
+        return;
+      }
+      // Keyboard shortcut for opening model selector (Ctrl + M)
+      if (e.ctrlKey && e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        if (!modelSelectionLocked) {
+          setIsModelSelectorOpen(true);
+        }
+        return;
       }
     };
 
@@ -630,6 +647,8 @@ export function ChatV2() {
           groups={chat.modelGroups}
           fallbackOptions={chat.modelOptions}
           modelToProvider={chat.modelToProvider}
+          modelSelectorOpen={isModelSelectorOpen}
+          onModelSelectorOpenChange={setIsModelSelectorOpen}
           onFocusMessageInput={handleFocusMessageInput}
           onToggleLeftSidebar={chat.toggleSidebar}
           onToggleRightSidebar={chat.toggleRightSidebar}

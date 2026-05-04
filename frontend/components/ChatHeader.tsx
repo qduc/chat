@@ -19,6 +19,8 @@ interface ChatHeaderProps {
   groups?: TabGroup[] | null;
   fallbackOptions?: { value: string; label: string }[];
   modelToProvider?: Record<string, string> | Map<string, string>;
+  modelSelectorOpen?: boolean;
+  onModelSelectorOpenChange?: (open: boolean) => void;
   onFocusMessageInput?: () => void;
   onToggleLeftSidebar?: () => void;
   onToggleRightSidebar?: () => void;
@@ -46,6 +48,8 @@ export function ChatHeader({
   groups,
   fallbackOptions,
   modelToProvider,
+  modelSelectorOpen,
+  onModelSelectorOpenChange,
   onFocusMessageInput,
   onToggleLeftSidebar,
   onToggleRightSidebar,
@@ -151,6 +155,8 @@ export function ChatHeader({
             onAfterChange={onFocusMessageInput}
             disabled={modelSelectionLocked}
             disabledReason={modelSelectionLockReason}
+            isOpen={modelSelectorOpen}
+            onOpenChange={onModelSelectorOpenChange}
             selectedComparisonModels={selectedComparisonModels}
             onComparisonModelsChange={onComparisonModelsChange}
             comparisonDisabled={comparisonLocked}

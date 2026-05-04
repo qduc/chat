@@ -19,6 +19,9 @@ interface ModelSelectorProps {
   disabledReason?: string;
   favoritesStorageKey?: string;
   recentStorageKey?: string;
+  // Controlled open state
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
   // Comparison props
   selectedComparisonModels?: string[];
   onComparisonModelsChange?: (models: string[]) => void;
@@ -152,6 +155,8 @@ export default function ModelSelector({
   disabledReason = 'Primary model is locked after comparison starts.',
   favoritesStorageKey = FAVORITES_KEY,
   recentStorageKey = RECENT_KEY,
+  isOpen,
+  onOpenChange,
   selectedComparisonModels = EMPTY_STRING_ARRAY,
   onComparisonModelsChange,
   comparisonDisabled = false,
@@ -164,9 +169,24 @@ export default function ModelSelector({
   const scopedFavoritesKey = userId ? `${favoritesStorageKey}_${userId}` : favoritesStorageKey;
   const scopedRecentKey = userId ? `${recentStorageKey}_${userId}` : recentStorageKey;
 
-  const [isOpen, setIsOpen] = useState(false);
+  const [internalIsOpen, setInternalIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const isControlled = typeof isOpen !== 'undefined';
+  const effectiveIsOpen = isControlled ? isOpen : internalIsOpen;
+  const handleSetIsOpen = useCallback(
+    (open: boolean) => {
+      if (disabled && open) return;
+      if (!isControlled) {
+        setInternalIsOpen(open);
+      }
+      if (onOpenChange) {
+        onOpenChange(open);
+      }
+    },
+    [disabled, isControlled, onOpenChange]
+  );
+
   const [recentModels, setRecentModels] = useState<string[]>([]);
   const [selectedTab, setSelectedTab] = useState<string>('all');
   const [visibleCount, setVisibleCount] = useState(50); // Start with 50 items
@@ -357,7 +377,7 @@ export default function ModelSelector({
     (modelValue: string) => {
       if (disabled) return;
       onChange(modelValue);
-      setIsOpen(false);
+      handleSetIsOpen(false);
       setSearchQuery('');
       setSelectedTab('all'); // Reset to All tab after selection
 
@@ -381,20 +401,20 @@ export default function ModelSelector({
         }, 0);
       }
     },
-    [disabled, onChange, favorites, recentModels, onAfterChange, scopedRecentKey]
+    [disabled, onChange, favorites, recentModels, onAfterChange, scopedRecentKey, handleSetIsOpen]
   );
 
   useEffect(() => {
-    if (!isOpen) {
+    if (!effectiveIsOpen) {
       setVisibleCount(50);
     }
-  }, [isOpen]);
+  }, [effectiveIsOpen]);
 
   useEffect(() => {
-    if (disabled && isOpen) {
-      setIsOpen(false);
+    if (disabled && effectiveIsOpen) {
+      handleSetIsOpen(false);
     }
-  }, [disabled, isOpen]);
+  }, [disabled, effectiveIsOpen, handleSetIsOpen]);
 
   // When filtered models change, reset highlighted index
   useEffect(() => {
@@ -417,7 +437,7 @@ export default function ModelSelector({
 
   // Set active tab to current model's provider when opening
   useEffect(() => {
-    if (!isOpen) return;
+    if (!effectiveIsOpen) return;
 
     // Find model by exact value or by suffix if value doesn't include provider prefix
     const foundModel =
@@ -530,7 +550,7 @@ export default function ModelSelector({
       onClick={() => {
         if (disabled) return;
         const start = performance.now();
-        setIsOpen(!isOpen);
+        handleSetIsOpen(!effectiveIsOpen);
         requestAnimationFrame(() => {
           const end = performance.now();
           if (end - start > 100) {
@@ -563,8 +583,8 @@ export default function ModelSelector({
 
   return (
     <ModelSelectBase<ModelOption>
-      isOpen={isOpen}
-      setIsOpen={setIsOpen}
+      isOpen={effectiveIsOpen}
+      setIsOpen={handleSetIsOpen}
       onClose={() => {
         setSearchQuery('');
         setSelectedTab('all');
