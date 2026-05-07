@@ -533,6 +533,28 @@ export function ChatV2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat.conversationId]);
 
+  const [hasUnseenFinish, setHasUnseenFinish] = useState(false);
+  const prevIsBusyRef = useRef(false);
+
+  useEffect(() => {
+    const isBusy = chat.status === 'streaming' || chat.pending.streaming;
+    const wasBusy = prevIsBusyRef.current;
+    prevIsBusyRef.current = isBusy;
+
+    if (wasBusy && !isBusy && typeof document !== 'undefined' && document.hidden) {
+      setHasUnseenFinish(true);
+    }
+  }, [chat.status, chat.pending.streaming]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onVisibilityChange = () => {
+      if (!document.hidden) setHasUnseenFinish(false);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, []);
+
   useEffect(() => {
     if (typeof document === 'undefined') return;
 
@@ -540,7 +562,8 @@ export function ChatV2() {
       .find((convo) => convo.id === chat.conversationId)
       ?.title?.trim();
     const activeTitle = (chat.currentConversationTitle ?? sidebarTitle)?.trim();
-    const nextTitle = activeTitle ? `${activeTitle} - ChatForge` : 'ChatForge';
+    const baseTitle = activeTitle ? `${activeTitle} - ChatForge` : 'ChatForge';
+    const nextTitle = hasUnseenFinish ? `(*) ${baseTitle}` : baseTitle;
 
     const applyTitle = () => {
       document.title = nextTitle;
@@ -554,7 +577,14 @@ export function ChatV2() {
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [pathname, searchKey, chat.conversationId, chat.conversations, chat.currentConversationTitle]);
+  }, [
+    pathname,
+    searchKey,
+    chat.conversationId,
+    chat.conversations,
+    chat.currentConversationTitle,
+    hasUnseenFinish,
+  ]);
 
   // Clear the input immediately when the user presses send, then invoke sendMessage
   const handleSend = useCallback(() => {
