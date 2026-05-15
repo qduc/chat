@@ -9,6 +9,8 @@ import Markdown from '../Markdown';
 import { MessageContentRenderer } from '../ui/MessageContentRenderer';
 import { ToolSegment } from './ToolSegment';
 import { ReasoningBlock } from './ReasoningBlock';
+import { ThinkingToolGroup } from './ThinkingToolGroup';
+import type { GroupedSegmentItem, GroupedSegment } from './ThinkingToolGroup';
 import { MessageToolbar } from './MessageToolbar';
 import { RevisionNavigation } from './RevisionNavigation';
 import { formatUsageLabel } from '../../lib';
@@ -96,7 +98,8 @@ export function ModelResponseColumn({
 
   const renderToolSegment = (
     segment: { kind: 'tool_call'; toolCall: any; outputs: ToolOutput[] },
-    segmentIndex: number
+    segmentIndex: number,
+    nested = false
   ) => {
     const toggleKey = `${messageId}-${modelId}-${segment.toolCall.id ?? segmentIndex}`;
     const isCollapsed = collapsedToolOutputs[toggleKey] ?? true;
@@ -111,9 +114,37 @@ export function ModelResponseColumn({
         outputs={segment.outputs}
         isCollapsed={isCollapsed}
         onToggle={() => onToggleToolOutput(toggleKey)}
+        nested={nested}
       />
     );
   };
+
+  const MIN_GROUP_SIZE = 3;
+
+  // Group consecutive reasoning/tool_call segments together for a combined expandable block.
+  // Text and image segments break groups. Groups below MIN_GROUP_SIZE render as individual blocks.
+  type SegmentGroup =
+    | { kind: 'single'; segment: (typeof segments)[number]; index: number }
+    | { kind: 'group'; items: GroupedSegmentItem[] };
+
+  const segmentGroups: SegmentGroup[] = [];
+  let currentGroupItems: GroupedSegmentItem[] = [];
+
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    if (seg.kind === 'reasoning' || seg.kind === 'tool_call') {
+      currentGroupItems.push({ segment: seg as GroupedSegment, originalIndex: i });
+    } else {
+      if (currentGroupItems.length > 0) {
+        segmentGroups.push({ kind: 'group', items: currentGroupItems });
+        currentGroupItems = [];
+      }
+      segmentGroups.push({ kind: 'single', segment: seg, index: i });
+    }
+  }
+  if (currentGroupItems.length > 0) {
+    segmentGroups.push({ kind: 'group', items: currentGroupItems });
+  }
 
   return (
     <div key={modelId} className={`space-y-3 max-w-3xl ${isMultiColumn ? 'flex-1 min-w-0' : ''}`}>
@@ -163,41 +194,79 @@ export function ModelResponseColumn({
               <span>{retryStatusLabel}</span>
             </div>
           )}
-          {segments.map((segment, segmentIndex) => {
-            if (segment.kind === 'text') {
-              if (!segment.text) return null;
-              return (
-                <div
-                  key={`text-${modelId}-${segmentIndex}`}
-                  className="text-base leading-relaxed text-zinc-900 dark:text-zinc-200"
-                >
-                  <Markdown text={segment.text} isStreaming={isModelStreaming} />
-                </div>
-              );
-            }
-            if (segment.kind === 'reasoning') {
-              if (!segment.text) return null;
-              return (
-                <ReasoningBlock
-                  key={`reasoning-${modelId}-${segmentIndex}`}
-                  text={segment.text}
-                  isStreaming={isModelStreaming && segmentIndex === segments.length - 1}
-                />
-              );
-            }
-            if (segment.kind === 'images') {
-              if (!segment.images || segment.images.length === 0) return null;
-              return (
-                <div key={`images-${modelId}-${segmentIndex}`} className="mt-3">
-                  <MessageContentRenderer
-                    content={segment.images}
-                    isStreaming={false}
-                    role="assistant"
+          {segmentGroups.map((group) => {
+            if (group.kind === 'single') {
+              const { segment, index } = group;
+              if (segment.kind === 'text') {
+                if (!segment.text) return null;
+                return (
+                  <div
+                    key={`text-${modelId}-${index}`}
+                    className="text-base leading-relaxed text-zinc-900 dark:text-zinc-200"
+                  >
+                    <Markdown text={segment.text} isStreaming={isModelStreaming} />
+                  </div>
+                );
+              }
+              if (segment.kind === 'reasoning') {
+                if (!segment.text) return null;
+                return (
+                  <ReasoningBlock
+                    key={`reasoning-${modelId}-${index}`}
+                    text={segment.text}
+                    isStreaming={isModelStreaming && index === segments.length - 1}
                   />
-                </div>
+                );
+              }
+              if (segment.kind === 'images') {
+                if (!segment.images || segment.images.length === 0) return null;
+                return (
+                  <div key={`images-${modelId}-${index}`} className="mt-3">
+                    <MessageContentRenderer
+                      content={segment.images}
+                      isStreaming={false}
+                      role="assistant"
+                    />
+                  </div>
+                );
+              }
+              return renderToolSegment(segment, index);
+            }
+
+            // Below threshold: render each item individually (no outer wrapper)
+            if (group.items.length < MIN_GROUP_SIZE) {
+              return (
+                <React.Fragment key={`subthreshold-${group.items[0].originalIndex}`}>
+                  {group.items.map(({ segment, originalIndex }) => {
+                    if (segment.kind === 'reasoning') {
+                      if (!segment.text) return null;
+                      return (
+                        <ReasoningBlock
+                          key={`reasoning-${modelId}-${originalIndex}`}
+                          text={segment.text}
+                          isStreaming={isModelStreaming && originalIndex === segments.length - 1}
+                        />
+                      );
+                    }
+                    return renderToolSegment(segment, originalIndex);
+                  })}
+                </React.Fragment>
               );
             }
-            return renderToolSegment(segment, segmentIndex);
+
+            // Group of 2+: combined expandable block
+            const lastOriginalIndex = group.items[group.items.length - 1].originalIndex;
+            return (
+              <ThinkingToolGroup
+                key={`group-${modelId}-${group.items[0].originalIndex}`}
+                items={group.items}
+                messageId={messageId}
+                modelId={modelId}
+                isStreaming={isModelStreaming && lastOriginalIndex === segments.length - 1}
+                collapsedToolOutputs={collapsedToolOutputs}
+                onToggleToolOutput={onToggleToolOutput}
+              />
+            );
           })}
         </>
       )}
