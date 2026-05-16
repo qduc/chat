@@ -502,6 +502,57 @@ export function processStreamChunk(
       reasoningStarted = false;
     }
 
+    // Extract usage from tool call chunks (some providers emit usage here)
+    if (data.usage || data.timings) {
+      const toolUsage: any = {};
+      if (data.usage) {
+        if (data.usage.prompt_tokens !== undefined)
+          toolUsage.prompt_tokens = data.usage.prompt_tokens;
+        if (data.usage.completion_tokens !== undefined)
+          toolUsage.completion_tokens = data.usage.completion_tokens;
+        if (data.usage.total_tokens !== undefined) toolUsage.total_tokens = data.usage.total_tokens;
+        if (data.usage.reasoning_tokens !== undefined)
+          toolUsage.reasoning_tokens = data.usage.reasoning_tokens;
+        if (data.usage.cache_read_input_tokens !== undefined)
+          toolUsage.cache_read_input_tokens = data.usage.cache_read_input_tokens;
+        if (data.usage.cache_creation_input_tokens !== undefined)
+          toolUsage.cache_creation_input_tokens = data.usage.cache_creation_input_tokens;
+        if (data.usage.prompt_tokens_details?.cached_tokens !== undefined)
+          toolUsage.cache_read_input_tokens = data.usage.prompt_tokens_details.cached_tokens;
+      }
+      const timingsFromTool = usageFromTimings(data.timings);
+      if (timingsFromTool) {
+        if (toolUsage.prompt_tokens === undefined && timingsFromTool.prompt_tokens !== undefined)
+          toolUsage.prompt_tokens = timingsFromTool.prompt_tokens;
+        if (
+          toolUsage.completion_tokens === undefined &&
+          timingsFromTool.completion_tokens !== undefined
+        )
+          toolUsage.completion_tokens = timingsFromTool.completion_tokens;
+        if (toolUsage.total_tokens === undefined && timingsFromTool.total_tokens !== undefined)
+          toolUsage.total_tokens = timingsFromTool.total_tokens;
+        if (timingsFromTool.prompt_ms !== undefined)
+          toolUsage.prompt_ms = timingsFromTool.prompt_ms;
+        if (timingsFromTool.completion_ms !== undefined)
+          toolUsage.completion_ms = timingsFromTool.completion_ms;
+      }
+      if (Object.keys(toolUsage).length > 0) {
+        const usageChanged =
+          !lastSentUsage ||
+          lastSentUsage.prompt_tokens !== toolUsage.prompt_tokens ||
+          lastSentUsage.completion_tokens !== toolUsage.completion_tokens ||
+          lastSentUsage.total_tokens !== toolUsage.total_tokens ||
+          lastSentUsage.reasoning_tokens !== toolUsage.reasoning_tokens ||
+          lastSentUsage.cache_read_input_tokens !== toolUsage.cache_read_input_tokens ||
+          lastSentUsage.cache_creation_input_tokens !== toolUsage.cache_creation_input_tokens;
+        if (usageChanged) {
+          onEvent?.({ type: 'usage', value: toolUsage });
+          result.usageSent = true;
+        }
+        result.usage = toolUsage;
+      }
+    }
+
     const messageEvents: MessageEvent[] = [];
     for (const toolCall of delta.tool_calls) {
       const messageEvent: MessageEvent = {

@@ -379,20 +379,20 @@ Thanks!`;
       ).toBe('↑ 100 · ↓ 50 · ⇅ 200');
     });
 
-    it('formats cache read tokens with percentage', () => {
+    it('formats cache read tokens with prompt suffix', () => {
       expect(
         formatUsageLabel({ prompt_tokens: 100, completion_tokens: 50, cache_read_input_tokens: 80 })
-      ).toBe('↑ 100 · ↓ 50 · ⚡ cache 80 (80%)');
+      ).toBe('↑ 100 (80 cached) · ↓ 50');
     });
 
-    it('formats cache creation tokens with percentage', () => {
+    it('formats cache creation tokens with prompt suffix', () => {
       expect(
         formatUsageLabel({
           prompt_tokens: 200,
           completion_tokens: 50,
           cache_creation_input_tokens: 200,
         })
-      ).toBe('↑ 200 · ↓ 50 · ⚡ create 200 (100%)');
+      ).toBe('↑ 200 (200 written) · ↓ 50');
     });
 
     it('formats both cache read and creation tokens', () => {
@@ -403,7 +403,7 @@ Thanks!`;
           cache_read_input_tokens: 800,
           cache_creation_input_tokens: 200,
         })
-      ).toBe('↑ 1000 · ↓ 50 · ⚡ cache 800 (80%) / create 200 (20%)');
+      ).toBe('↑ 1000 (800 cached, 200 written) · ↓ 50');
     });
 
     it('formats cache tokens without percentage when prompt is unavailable', () => {

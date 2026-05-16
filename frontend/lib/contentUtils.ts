@@ -312,9 +312,20 @@ export function formatUsageLabel(usage?: ChatMessage['usage']): string | null {
   if (!hasPrompt && !hasCompletion && !hasTotal && !hasCacheRead && !hasCacheCreation) return null;
 
   const parts: string[] = [];
+  const cacheParts: string[] = [];
+
+  if (hasCacheRead) {
+    cacheParts.push(`${cacheRead} cached`);
+  }
+
+  if (hasCacheCreation) {
+    cacheParts.push(`${cacheCreation} written`);
+  }
+
+  const cacheSuffix = cacheParts.length > 0 ? ` (${cacheParts.join(', ')})` : '';
 
   if (hasPrompt || hasCompletion) {
-    if (hasPrompt) parts.push(`↑ ${prompt}`);
+    if (hasPrompt) parts.push(`↑ ${prompt}${cacheSuffix}`);
     if (hasCompletion) parts.push(`↓ ${completion}`);
     if (hasTotal && !(hasPrompt && hasCompletion && prompt! + completion! === total)) {
       parts.push(`⇅ ${total}`);
@@ -323,20 +334,12 @@ export function formatUsageLabel(usage?: ChatMessage['usage']): string | null {
     parts.push(`⇅ ${total}`);
   }
 
-  // Cache metadata: show as percentage of prompt when available
-  if (hasCacheRead || hasCacheCreation) {
-    const cacheParts: string[] = [];
-    if (hasCacheRead) {
-      const pct = hasPrompt && prompt! > 0 ? ` (${Math.round((cacheRead! / prompt!) * 100)}%)` : '';
-      cacheParts.push(`cache ${cacheRead}${pct}`);
-    }
-    if (hasCacheCreation) {
-      const pct =
-        hasPrompt && prompt! > 0 ? ` (${Math.round((cacheCreation! / prompt!) * 100)}%)` : '';
-      cacheParts.push(`create ${cacheCreation}${pct}`);
-    }
-    if (cacheParts.length > 0) {
-      parts.push(`⚡ ${cacheParts.join(' / ')}`);
+  if (!hasPrompt && (hasCacheRead || hasCacheCreation)) {
+    const fallbackCacheParts: string[] = [];
+    if (hasCacheRead) fallbackCacheParts.push(`cache ${cacheRead}`);
+    if (hasCacheCreation) fallbackCacheParts.push(`create ${cacheCreation}`);
+    if (fallbackCacheParts.length > 0) {
+      parts.push(`⚡ ${fallbackCacheParts.join(' / ')}`);
     }
   }
 
