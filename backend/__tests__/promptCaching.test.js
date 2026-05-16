@@ -59,7 +59,7 @@ describe('promptCaching', () => {
       assert.deepEqual(result, body);
     });
 
-    test('should add cache_control to last message in short conversation', async () => {
+    test('should add cache_control to first system and last user message in short conversation', async () => {
       const body = {
         messages: [
           { role: 'system', content: 'You are a helpful assistant.' },
@@ -75,13 +75,17 @@ describe('promptCaching', () => {
         userId: 'user-456'
       });
 
-      // Should add cache_control to the last message
-      // For user messages with string content, cache_control is added to the content array
-      const lastMessage = result.messages[3];
-      assert.ok(lastMessage.content[0].cache_control, 'Last message should have cache_control in content');
-      assert.deepEqual(lastMessage.content[0].cache_control, { type: 'ephemeral' });
+      // Should add cache_control to first system message and last user message
+      // String content is converted to content-block format with cache_control
+      const systemMessage = result.messages[0];
+      assert.ok(Array.isArray(systemMessage.content), 'System message content should be converted to array');
+      assert.deepEqual(systemMessage.content[0].cache_control, { type: 'ephemeral' });
 
-      // Count total cache points (either on message or in content)
+      const lastUserMessage = result.messages[3];
+      assert.ok(Array.isArray(lastUserMessage.content), 'Last user message content should be converted to array');
+      assert.deepEqual(lastUserMessage.content[0].cache_control, { type: 'ephemeral' });
+
+      // Count total cache points (in content arrays)
       const cachePoints = result.messages.filter(m => {
         if (m.cache_control) return true;
         if (Array.isArray(m.content)) {
@@ -89,15 +93,14 @@ describe('promptCaching', () => {
         }
         return false;
       });
-      assert.equal(cachePoints.length, 1);
+      assert.equal(cachePoints.length, 2);
 
-      // Other messages should not have cache_control
-      assert.equal(result.messages[0].cache_control, undefined);
+      // Non-cached messages should not have cache_control
       assert.equal(result.messages[1].cache_control, undefined);
       assert.equal(result.messages[2].cache_control, undefined);
     });
 
-    test('should not add cache_control to system message if it is the last message', async () => {
+    test('should not add cache_control to trailing system message, only first system and last user', async () => {
       const body = {
         messages: [
           { role: 'user', content: 'Hello!' },
@@ -112,11 +115,20 @@ describe('promptCaching', () => {
         userId: 'user-456'
       });
 
-      // Cache_control is added to the last message regardless of role
-      assert.deepEqual(result.messages[2].cache_control, { type: 'ephemeral' });
+      // The trailing system message at index 2 is NOT the first message, so no system cache point.
+      // The last user message is at index 0, so it gets the cache point.
+      assert.ok(Array.isArray(result.messages[0].content), 'User message content should be converted to array');
+      assert.deepEqual(result.messages[0].content[0].cache_control, { type: 'ephemeral' });
+
+      // Trailing system message should not get cache_control
+      assert.equal(result.messages[2].cache_control, undefined);
+      if (Array.isArray(result.messages[2].content)) {
+        const hasCache = result.messages[2].content.some(item => item.cache_control);
+        assert.equal(hasCache, false);
+      }
     });
 
-    test('should add two cache points for conversations with 11-20 messages', async () => {
+    test('should add cache points to first system and last user message', async () => {
       const messages = [
         { role: 'system', content: 'You are a helpful assistant.' },
         { role: 'user', content: 'Message 1' },
@@ -139,12 +151,24 @@ describe('promptCaching', () => {
         userId: 'user-456'
       });
 
-      // Count cache_control points
-      const cachePoints = result.messages.filter(m => m.cache_control);
-      assert.equal(cachePoints.length, 1);
+      // Count cache_control points (in content arrays)
+      const cachePoints = result.messages.filter(m => {
+        if (m.cache_control) return true;
+        if (Array.isArray(m.content)) {
+          return m.content.some(item => item.cache_control);
+        }
+        return false;
+      });
+      // First system message + last user message = 2 cache points
+      assert.equal(cachePoints.length, 2);
 
-      // Cache point should be the last message
-      assert.deepEqual(result.messages[result.messages.length - 1].cache_control, { type: 'ephemeral' });
+      // First system message should have cache_control in content
+      assert.ok(Array.isArray(result.messages[0].content));
+      assert.deepEqual(result.messages[0].content[0].cache_control, { type: 'ephemeral' });
+
+      // Last user message (index 9) should have cache_control in content
+      assert.ok(Array.isArray(result.messages[9].content));
+      assert.deepEqual(result.messages[9].content[0].cache_control, { type: 'ephemeral' });
     });
 
     test('should handle multi-modal content in messages', async () => {
@@ -172,8 +196,13 @@ describe('promptCaching', () => {
         userId: 'user-456'
       });
 
-      // Should handle multi-modal content without errors
-      assert.deepEqual(result.messages[1].cache_control, { type: 'ephemeral' });
+      // System message (first) gets cache_control on last content item
+      const systemContent = result.messages[0].content;
+      assert.deepEqual(systemContent[systemContent.length - 1].cache_control, { type: 'ephemeral' });
+
+      // Last user message gets cache_control on last content item (the image_url)
+      const userContent = result.messages[1].content;
+      assert.deepEqual(userContent[userContent.length - 1].cache_control, { type: 'ephemeral' });
     });
 
     test('should return original body on error without throwing', async () => {
@@ -228,8 +257,13 @@ describe('promptCaching', () => {
         hasTools: true
       });
 
-      // Should add caching even with tools
-      assert.deepEqual(result.messages[2].cache_control, { type: 'ephemeral' });
+      // First system message gets cache_control in content
+      assert.ok(Array.isArray(result.messages[0].content));
+      assert.deepEqual(result.messages[0].content[0].cache_control, { type: 'ephemeral' });
+
+      // Last user message gets cache_control in content
+      assert.ok(Array.isArray(result.messages[1].content));
+      assert.deepEqual(result.messages[1].content[0].cache_control, { type: 'ephemeral' });
     });
   });
 

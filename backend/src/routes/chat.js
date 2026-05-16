@@ -355,7 +355,6 @@ chatRouter.post('/v1/chat/judge', async (req, res) => {
       model: judgeModelId,
       stream: true,
       response_format: { type: 'json_object' },
-      temperature: 0,
       ...(normalizedReasoningEffort ? { reasoning_effort: normalizedReasoningEffort } : {}),
       messages: [
         { role: 'system', content: prompt.system },

@@ -4,9 +4,13 @@ import { logger } from '../logger.js';
  * Determines optimal cache breakpoints for conversation messages
  *
  * Strategy:
- * Cache everything up to and including the last user/tool message.
- * This allows the entire conversation history (including tool outputs) to be
- * cached while we generate the assistant's response.
+ * Add cache breakpoints at:
+ * 1. The first system message
+ * 2. The last user message
+ * 3. The last tool message
+ *
+ * If a message content is a string, it is converted to content-block format
+ * before adding cache_control.
  *
  * @param {Array} messages - Array of conversation messages
  * @returns {Array} Messages with cache_control annotations
@@ -17,40 +21,84 @@ function addCacheBreakpoints(messages) {
   }
 
   const annotatedMessages = [...messages];
+  const breakpointIndexes = new Set();
 
-  // Annotate the last message with cache control
-  const lastIdx = annotatedMessages.length - 1;
-  const lastMessage = annotatedMessages[lastIdx];
-
-  if (lastMessage.role === 'user') {
-    // Transform content to object format for user messages
-    if (typeof lastMessage.content === 'string') {
-      annotatedMessages[lastIdx] = {
-        ...lastMessage,
-        content: [{
-          type: 'text',
-          text: lastMessage.content,
-          cache_control: { type: 'ephemeral' }
-        }]
-      };
-    } else {
-      // If content is already an object/array, add cache_control to the message
-      annotatedMessages[lastIdx] = {
-        ...lastMessage,
-        cache_control: { type: 'ephemeral' }
-      };
-    }
-  } else {
-    // For non-user messages, add cache_control to the message
-    annotatedMessages[lastIdx] = {
-      ...lastMessage,
-      cache_control: { type: 'ephemeral' }
-    };
+  if (annotatedMessages[0]?.role === 'system') {
+    breakpointIndexes.add(0);
   }
 
-  logger.info('[promptCaching] Added cache point at last message', {
-    index: lastIdx,
-    role: annotatedMessages[lastIdx].role,
+  for (let i = annotatedMessages.length - 1; i >= 0; i--) {
+    if (annotatedMessages[i]?.role === 'user') {
+      breakpointIndexes.add(i);
+      break;
+    }
+  }
+
+  for (let i = annotatedMessages.length - 1; i >= 0; i--) {
+    if (annotatedMessages[i]?.role === 'tool') {
+      breakpointIndexes.add(i);
+      break;
+    }
+  }
+
+  const addCacheControlToMessage = (message) => {
+    if (typeof message.content === 'string') {
+      return {
+        ...message,
+        content: [
+          {
+            type: 'text',
+            text: message.content,
+            cache_control: { type: 'ephemeral' }
+          }
+        ]
+      };
+    }
+
+    if (Array.isArray(message.content)) {
+      if (message.content.length === 0) {
+        return {
+          ...message,
+          content: [
+            {
+              type: 'text',
+              text: '',
+              cache_control: { type: 'ephemeral' }
+            }
+          ]
+        };
+      }
+
+      return {
+        ...message,
+        content: message.content.map((item, index) => {
+          if (index === message.content.length - 1) {
+            return {
+              ...item,
+              cache_control: { type: 'ephemeral' }
+            };
+          }
+
+          return item;
+        })
+      };
+    }
+
+    return {
+      ...message,
+      cache_control: { type: 'ephemeral' }
+    };
+  };
+
+  for (const index of breakpointIndexes) {
+    annotatedMessages[index] = addCacheControlToMessage(annotatedMessages[index]);
+  }
+
+  logger.info('[promptCaching] Added cache points', {
+    indexes: [...breakpointIndexes].sort((a, b) => a - b),
+    roles: [...breakpointIndexes]
+      .sort((a, b) => a - b)
+      .map(index => annotatedMessages[index]?.role),
     totalMessages: annotatedMessages.length
   });
 
@@ -96,7 +144,12 @@ export async function addPromptCaching(body, options = {}) {
       userId,
       hasTools,
       messageCount: body.messages.length,
-      cachePoints: messagesWithCache.filter(m => m?.cache_control).length
+      cachePoints: messagesWithCache.filter(
+        (message) =>
+          message?.cache_control ||
+          (Array.isArray(message?.content) &&
+            message.content.some(item => item?.cache_control))
+      ).length
     });
 
     return {

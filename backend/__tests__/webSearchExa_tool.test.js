@@ -76,20 +76,20 @@ describe('webSearchExa (Exa.ai) tool', () => {
 
     test('validates type parameter', () => {
       expect(() => webSearchExaTool.validate({ query: 'test', type: 'invalid' }))
-        .toThrow('type must be one of: "auto", "keyword", "neural"');
+        .toThrow('type must be one of: "auto", "fast", "instant", "deep-lite", "deep", "deep-reasoning"');
 
       const auto = webSearchExaTool.validate({ query: 'test', type: 'auto' });
       expect(auto.type).toBe('auto');
 
-      const keyword = webSearchExaTool.validate({ query: 'test', type: 'keyword' });
-      expect(keyword.type).toBe('keyword');
+      const fast = webSearchExaTool.validate({ query: 'test', type: 'fast' });
+      expect(fast.type).toBe('fast');
 
-      const neural = webSearchExaTool.validate({ query: 'test', type: 'neural' });
-      expect(neural.type).toBe('neural');
+      const deep = webSearchExaTool.validate({ query: 'test', type: 'deep' });
+      expect(deep.type).toBe('deep');
 
       // Test case insensitivity
-      const upper = webSearchExaTool.validate({ query: 'test', type: 'NEURAL' });
-      expect(upper.type).toBe('neural');
+      const upper = webSearchExaTool.validate({ query: 'test', type: 'DEEP' });
+      expect(upper.type).toBe('deep');
     });
 
     test('validates num_results parameter', () => {
@@ -216,14 +216,10 @@ describe('webSearchExa (Exa.ai) tool', () => {
       const result = webSearchExaTool.validate({
         query: 'test',
         highlights: {
-          query: 'custom query',
-          num_sentences: 3,
-          highlights_per_url: 5
+          query: 'custom query'
         }
       });
       expect(result.highlights.query).toBe('custom query');
-      expect(result.highlights.numSentences).toBe(3);
-      expect(result.highlights.highlightsPerUrl).toBe(5);
 
       // Test with trimmed query
       const trimmed = webSearchExaTool.validate({
@@ -242,15 +238,22 @@ describe('webSearchExa (Exa.ai) tool', () => {
 
       expect(() => webSearchExaTool.validate({ query: 'test', highlights: { query: 123 } }))
         .toThrow('highlights.query must be a non-empty string');
+    });
 
-      expect(() => webSearchExaTool.validate({ query: 'test', highlights: { num_sentences: 0 } }))
-        .toThrow('highlights.num_sentences must be a positive integer');
+    test('validates max_age_hours parameter', () => {
+      expect(() => webSearchExaTool.validate({ query: 'test', max_age_hours: -2 }))
+        .toThrow('max_age_hours must be an integer >= -1');
+      expect(() => webSearchExaTool.validate({ query: 'test', max_age_hours: 1.5 }))
+        .toThrow('max_age_hours must be an integer >= -1');
 
-      expect(() => webSearchExaTool.validate({ query: 'test', highlights: { num_sentences: 1.5 } }))
-        .toThrow('highlights.num_sentences must be a positive integer');
+      const result = webSearchExaTool.validate({ query: 'test', max_age_hours: 24 });
+      expect(result.max_age_hours).toBe(24);
 
-      expect(() => webSearchExaTool.validate({ query: 'test', highlights: { highlights_per_url: -1 } }))
-        .toThrow('highlights.highlights_per_url must be a positive integer');
+      const live = webSearchExaTool.validate({ query: 'test', max_age_hours: 0 });
+      expect(live.max_age_hours).toBe(0);
+
+      const unlimited = webSearchExaTool.validate({ query: 'test', max_age_hours: -1 });
+      expect(unlimited.max_age_hours).toBe(-1);
     });
 
     test('validates summary parameter as boolean', () => {
@@ -353,12 +356,13 @@ describe('webSearchExa (Exa.ai) tool', () => {
       // First validate the arguments (as the tool system would do)
       const validated = webSearchExaTool.validate({
         query: 'machine learning',
-        type: 'neural',
+        type: 'deep',
         num_results: 20,
         include_domains: ['arxiv.org', 'scholar.google.com'],
         exclude_domains: ['spam.com'],
+        max_age_hours: 48,
         text: { max_characters: 500, include_html_tags: false },
-        highlights: { query: 'deep learning', num_sentences: 2, highlights_per_url: 3 },
+        highlights: { query: 'deep learning' },
         summary: { query: 'AI summary' }
       });
 
@@ -369,18 +373,17 @@ describe('webSearchExa (Exa.ai) tool', () => {
       const body = JSON.parse(options.body);
 
       expect(body.query).toBe('machine learning');
-      expect(body.type).toBe('neural');
+      expect(body.type).toBe('deep');
       expect(body.numResults).toBe(20);
       expect(body.includeDomains).toEqual(['arxiv.org', 'scholar.google.com']);
       expect(body.excludeDomains).toEqual(['spam.com']);
       // The handler receives validated params with camelCase properties
       expect(body.contents.text).toEqual({ maxCharacters: 500, includeHtmlTags: false });
       expect(body.contents.highlights).toEqual({
-        query: 'deep learning',
-        numSentences: 2,
-        highlightsPerUrl: 3
+        query: 'deep learning'
       });
       expect(body.contents.summary).toEqual({ query: 'AI summary' });
+      expect(body.contents.maxAgeHours).toBe(48);
     });
 
     test('handles boolean text parameter', async () => {
@@ -820,6 +823,7 @@ describe('webSearchExa (Exa.ai) tool', () => {
       expect(props).toHaveProperty('num_results');
       expect(props).toHaveProperty('include_domains');
       expect(props).toHaveProperty('exclude_domains');
+      expect(props).toHaveProperty('max_age_hours');
       expect(props).toHaveProperty('text');
       expect(props).toHaveProperty('highlights');
       expect(props).toHaveProperty('summary');
@@ -838,12 +842,14 @@ describe('webSearchExa (Exa.ai) tool', () => {
 
       expect(props.query.type).toBe('string');
       expect(props.type.type).toBe('string');
-      expect(props.type.enum).toEqual(['auto', 'keyword', 'neural']);
+      expect(props.type.enum).toEqual(['auto', 'fast', 'instant', 'deep-lite', 'deep', 'deep-reasoning']);
       expect(props.num_results.type).toBe('integer');
       expect(props.num_results.minimum).toBe(1);
       expect(props.num_results.maximum).toBe(100);
       expect(props.include_domains.type).toBe('array');
       expect(props.exclude_domains.type).toBe('array');
+      expect(props.max_age_hours.type).toBe('integer');
+      expect(props.max_age_hours.minimum).toBe(-1);
     });
 
     test('has oneOf schemas for complex parameters', () => {

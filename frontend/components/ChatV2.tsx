@@ -76,6 +76,7 @@ export function ChatV2() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authMode, setAuthMode] = useState<AuthMode>('login');
+  const [isModelSelectorOpen, setIsModelSelectorOpen] = useState(false);
 
   const urlSync = useConversationUrlSync({
     conversationId: chat.conversationId,
@@ -314,14 +315,30 @@ export function ChatV2() {
   // Keyboard shortcut for toggling sidebar (Ctrl/Cmd + \)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === '\\') {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === '\\') {
         e.preventDefault();
         chat.toggleSidebar();
+        return;
       }
       // Keyboard shortcut for toggling right sidebar (Ctrl/Cmd + Shift + \)
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === '\\') {
         e.preventDefault();
         chat.toggleRightSidebar();
+        return;
+      }
+      // Keyboard shortcut for new conversation (Ctrl/Cmd + Shift + O)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'o') {
+        e.preventDefault();
+        handleNewChat();
+        return;
+      }
+      // Keyboard shortcut for opening model selector (Ctrl + M)
+      if (e.ctrlKey && e.key.toLowerCase() === 'm') {
+        e.preventDefault();
+        if (!modelSelectionLocked) {
+          setIsModelSelectorOpen(true);
+        }
+        return;
       }
     };
 
@@ -516,6 +533,28 @@ export function ChatV2() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat.conversationId]);
 
+  const [hasUnseenFinish, setHasUnseenFinish] = useState(false);
+  const prevIsBusyRef = useRef(false);
+
+  useEffect(() => {
+    const isBusy = chat.status === 'streaming' || chat.pending.streaming;
+    const wasBusy = prevIsBusyRef.current;
+    prevIsBusyRef.current = isBusy;
+
+    if (wasBusy && !isBusy && typeof document !== 'undefined' && document.hidden) {
+      setHasUnseenFinish(true);
+    }
+  }, [chat.status, chat.pending.streaming]);
+
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const onVisibilityChange = () => {
+      if (!document.hidden) setHasUnseenFinish(false);
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+  }, []);
+
   useEffect(() => {
     if (typeof document === 'undefined') return;
 
@@ -523,7 +562,8 @@ export function ChatV2() {
       .find((convo) => convo.id === chat.conversationId)
       ?.title?.trim();
     const activeTitle = (chat.currentConversationTitle ?? sidebarTitle)?.trim();
-    const nextTitle = activeTitle ? `${activeTitle} - ChatForge` : 'ChatForge';
+    const baseTitle = activeTitle ? `${activeTitle} - ChatForge` : 'ChatForge';
+    const nextTitle = hasUnseenFinish ? `(*) ${baseTitle}` : baseTitle;
 
     const applyTitle = () => {
       document.title = nextTitle;
@@ -537,7 +577,14 @@ export function ChatV2() {
     return () => {
       window.cancelAnimationFrame(frameId);
     };
-  }, [pathname, searchKey, chat.conversationId, chat.conversations, chat.currentConversationTitle]);
+  }, [
+    pathname,
+    searchKey,
+    chat.conversationId,
+    chat.conversations,
+    chat.currentConversationTitle,
+    hasUnseenFinish,
+  ]);
 
   // Clear the input immediately when the user presses send, then invoke sendMessage
   const handleSend = useCallback(() => {
@@ -630,6 +677,8 @@ export function ChatV2() {
           groups={chat.modelGroups}
           fallbackOptions={chat.modelOptions}
           modelToProvider={chat.modelToProvider}
+          modelSelectorOpen={isModelSelectorOpen}
+          onModelSelectorOpenChange={setIsModelSelectorOpen}
           onFocusMessageInput={handleFocusMessageInput}
           onToggleLeftSidebar={chat.toggleSidebar}
           onToggleRightSidebar={chat.toggleRightSidebar}

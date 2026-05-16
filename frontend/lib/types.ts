@@ -304,6 +304,8 @@ export interface ChatMessage {
     completion_tokens?: number;
     total_tokens?: number;
     reasoning_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
   };
   reasoning_details?: any[];
   reasoning_tokens?: number | null;
@@ -407,6 +409,8 @@ export interface ChatResponse {
     completion_tokens?: number;
     total_tokens?: number;
     reasoning_tokens?: number;
+    cache_read_input_tokens?: number;
+    cache_creation_input_tokens?: number;
   };
   reasoning_details?: any[];
   reasoning_tokens?: number | null;
@@ -532,6 +536,8 @@ export interface ConversationWithMessages {
       completion_tokens?: number;
       total_tokens?: number;
       reasoning_tokens?: number;
+      cache_read_input_tokens?: number;
+      cache_creation_input_tokens?: number;
     };
   }[];
   next_after_seq: number | null;

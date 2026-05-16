@@ -5,14 +5,14 @@ describe('web_search_exa tool', () => {
   test('validate trims and normalizes arguments', () => {
     const validated = webSearchExaTool.validate({
       query: '  latest ai news  ',
-      type: 'NEURAL',
+      type: 'DEEP',
       num_results: '5',
       include_domains: [' arxiv.org ', 'openreview.net'],
       exclude_domains: ['example.com '],
     });
 
     assert.equal(validated.query, 'latest ai news');
-    assert.equal(validated.type, 'neural');
+    assert.equal(validated.type, 'deep');
     assert.equal(validated.num_results, 5);
     assert.deepEqual(validated.include_domains, ['arxiv.org', 'openreview.net']);
     assert.deepEqual(validated.exclude_domains, ['example.com']);

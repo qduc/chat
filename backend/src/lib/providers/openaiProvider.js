@@ -339,7 +339,7 @@ export class OpenAIProvider extends BaseProvider {
     // OpenRouter supports passing through cache_control for Anthropic models
     if (baseUrl.includes('openrouter.ai')) {
       const modelStr = (model || '').toLowerCase();
-      return modelStr.includes('anthropic') || modelStr.includes('claude');
+      return modelStr.includes('anthropic') || modelStr.includes('claude') || modelStr.includes('qwen');
     }
 
     // OpenAI doesn't natively support Anthropic's cache_control format

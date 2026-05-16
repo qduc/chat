@@ -7,6 +7,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { Modal } from '../ui/Modal';
 import ModelSelector from '../ui/ModelSelector';
 import QualitySlider from '../ui/QualitySlider';
+import { Gauge } from 'lucide-react';
 import type { ReasoningEffortLevel } from '../../lib/types';
 
 interface JudgeModalProps {
@@ -97,7 +98,7 @@ export function JudgeModal({
           <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400">
             Judge model
           </label>
-          <div className="mt-2">
+          <div className="mt-2 flex items-center gap-3">
             <ModelSelector
               value={judgeModelId || modelOptions[0]?.value || ''}
               onChange={setJudgeModelId}
@@ -106,6 +107,12 @@ export function JudgeModal({
               ariaLabel="Select judge model"
               favoritesStorageKey="chatforge-favorite-judge-models"
               recentStorageKey="chatforge-recent-judge-models"
+            />
+            <QualitySlider
+              value={reasoningEffort}
+              onChange={setReasoningEffort}
+              ariaLabel="Judge reasoning effort"
+              icon={<Gauge className="w-3.5 h-3.5" />}
             />
           </div>
         </div>
@@ -148,19 +155,6 @@ export function JudgeModal({
                 </button>
               );
             })}
-          </div>
-        </div>
-
-        <div>
-          <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400">
-            Judge reasoning effort
-          </label>
-          <div className="mt-2">
-            <QualitySlider
-              value={reasoningEffort}
-              onChange={setReasoningEffort}
-              ariaLabel="Judge reasoning effort"
-            />
           </div>
         </div>
 

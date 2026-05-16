@@ -58,6 +58,9 @@ export function normalizeUsage(usage) {
   const cacheReadTokens = coalesceNumber(
     usage.cache_read_input_tokens,
     usage.cacheReadInputTokens,
+    // OpenAI-style: prompt_tokens_details.cached_tokens
+    usage?.prompt_tokens_details?.cached_tokens,
+    usage?.promptTokensDetails?.cachedTokens,
   );
 
   const totalTokens = coalesceNumber(
@@ -99,6 +102,8 @@ export function normalizeUsage(usage) {
   if (completionTokens != null) mapped.completion_tokens = completionTokens;
   if (totalTokens != null) mapped.total_tokens = totalTokens;
   if (reasoningTokens != null) mapped.reasoning_tokens = reasoningTokens;
+  if (cacheCreationTokens != null) mapped.cache_creation_input_tokens = cacheCreationTokens;
+  if (cacheReadTokens != null) mapped.cache_read_input_tokens = cacheReadTokens;
   if (promptMs != null) mapped.prompt_ms = promptMs;
   if (completionMs != null) mapped.completion_ms = completionMs;
   if (usage.model) mapped.model = String(usage.model);

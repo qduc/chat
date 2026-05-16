@@ -15,9 +15,16 @@ interface ToolSegmentProps {
   outputs: ToolOutput[];
   isCollapsed: boolean;
   onToggle: () => void;
+  nested?: boolean;
 }
 
-export function ToolSegment({ toolCall, outputs, isCollapsed, onToggle }: ToolSegmentProps) {
+export function ToolSegment({
+  toolCall,
+  outputs,
+  isCollapsed,
+  onToggle,
+  nested = false,
+}: ToolSegmentProps) {
   const toolName = toolCall.function?.name;
   let parsedArgs = {};
   const argsRaw = toolCall.function?.arguments || '';
@@ -91,14 +98,16 @@ export function ToolSegment({ toolCall, outputs, isCollapsed, onToggle }: ToolSe
     (argsParseFailed && argsRaw.trim().length > 0);
   const isCompleted = outputs.length > 0;
 
-  return (
-    <div className="my-3 rounded-xl border border-zinc-200/60 dark:border-zinc-800/60 bg-white dark:bg-zinc-900/30 overflow-hidden shadow-sm">
+  const buttonPy = nested ? 'py-2.5' : 'py-3';
+
+  const inner = (
+    <>
       <button
         onClick={() => {
           if (!hasDetails) return;
           onToggle();
         }}
-        className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors select-none ${
+        className={`w-full flex items-center gap-3 px-4 ${buttonPy} text-left transition-colors select-none ${
           !hasDetails ? 'cursor-default' : 'hover:bg-zinc-50 dark:hover:bg-white/5 cursor-pointer'
         }`}
       >
@@ -176,6 +185,16 @@ export function ToolSegment({ toolCall, outputs, isCollapsed, onToggle }: ToolSe
           </div>
         </div>
       )}
+    </>
+  );
+
+  if (nested) {
+    return <div>{inner}</div>;
+  }
+
+  return (
+    <div className="my-3 rounded-xl border border-zinc-200/60 dark:border-zinc-800/60 bg-white dark:bg-zinc-900/30 overflow-hidden shadow-sm">
+      {inner}
     </div>
   );
 }

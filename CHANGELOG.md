@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.18.4] - 2026-05-16
+
+### Added
+- Keyboard shortcuts for New Chat and Model Selector
+- Unseen finish notification
+- Cache read and creation token usage tracking
+
+### Changed
+- Enhanced prompt caching to include first system message and last user message
+- Improved cache usage formatting and added tool usage extraction
+- Grouped reasoning and tool segments into expandable blocks
+- Updated web_search_exa tool to align with official Exa API guide
+
+### Fixed
+- JudgeModal layout adjustments
+- Judge model compatibility by removing unsupported temperature parameter
+
+
 ## [0.18.3] - 2026-04-29
 
 ### Added
