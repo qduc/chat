@@ -161,6 +161,13 @@ export function processNonStreamingData(
       usage.reasoning_tokens = json.usage.reasoning_tokens;
       reasoningTokens = json.usage.reasoning_tokens;
     }
+    if (json.usage.cache_read_input_tokens !== undefined)
+      usage.cache_read_input_tokens = json.usage.cache_read_input_tokens;
+    if (json.usage.cache_creation_input_tokens !== undefined)
+      usage.cache_creation_input_tokens = json.usage.cache_creation_input_tokens;
+    // OpenAI-style: prompt_tokens_details.cached_tokens
+    if (json.usage.prompt_tokens_details?.cached_tokens !== undefined)
+      usage.cache_read_input_tokens = json.usage.prompt_tokens_details.cached_tokens;
   }
 
   if (Object.keys(usage).length > 0) {
@@ -336,6 +343,13 @@ export function processStreamChunk(
         usage.reasoning_tokens = data.usage.reasoning_tokens;
         result.reasoningTokens = data.usage.reasoning_tokens;
       }
+      if (data.usage.cache_read_input_tokens !== undefined)
+        usage.cache_read_input_tokens = data.usage.cache_read_input_tokens;
+      if (data.usage.cache_creation_input_tokens !== undefined)
+        usage.cache_creation_input_tokens = data.usage.cache_creation_input_tokens;
+      // OpenAI-style: prompt_tokens_details.cached_tokens
+      if (data.usage.prompt_tokens_details?.cached_tokens !== undefined)
+        usage.cache_read_input_tokens = data.usage.prompt_tokens_details.cached_tokens;
     }
 
     if (timingsUsage) {
@@ -362,7 +376,9 @@ export function processStreamChunk(
         lastSentUsage.prompt_tokens !== usage.prompt_tokens ||
         lastSentUsage.completion_tokens !== usage.completion_tokens ||
         lastSentUsage.total_tokens !== usage.total_tokens ||
-        lastSentUsage.reasoning_tokens !== usage.reasoning_tokens;
+        lastSentUsage.reasoning_tokens !== usage.reasoning_tokens ||
+        lastSentUsage.cache_read_input_tokens !== usage.cache_read_input_tokens ||
+        lastSentUsage.cache_creation_input_tokens !== usage.cache_creation_input_tokens;
 
       if (usageChanged) {
         onEvent?.({ type: 'usage', value: usage });

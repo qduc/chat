@@ -59,6 +59,8 @@ export interface StreamUsage {
   reasoning_tokens?: number;
   prompt_ms?: number;
   completion_ms?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
 }
 
 /**

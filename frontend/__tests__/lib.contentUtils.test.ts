@@ -378,6 +378,45 @@ Thanks!`;
         formatUsageLabel({ prompt_tokens: 100, completion_tokens: 50, total_tokens: 200 })
       ).toBe('↑ 100 · ↓ 50 · ⇅ 200');
     });
+
+    it('formats cache read tokens with percentage', () => {
+      expect(
+        formatUsageLabel({ prompt_tokens: 100, completion_tokens: 50, cache_read_input_tokens: 80 })
+      ).toBe('↑ 100 · ↓ 50 · ⚡ cache 80 (80%)');
+    });
+
+    it('formats cache creation tokens with percentage', () => {
+      expect(
+        formatUsageLabel({
+          prompt_tokens: 200,
+          completion_tokens: 50,
+          cache_creation_input_tokens: 200,
+        })
+      ).toBe('↑ 200 · ↓ 50 · ⚡ create 200 (100%)');
+    });
+
+    it('formats both cache read and creation tokens', () => {
+      expect(
+        formatUsageLabel({
+          prompt_tokens: 1000,
+          completion_tokens: 50,
+          cache_read_input_tokens: 800,
+          cache_creation_input_tokens: 200,
+        })
+      ).toBe('↑ 1000 · ↓ 50 · ⚡ cache 800 (80%) / create 200 (20%)');
+    });
+
+    it('formats cache tokens without percentage when prompt is unavailable', () => {
+      expect(formatUsageLabel({ completion_tokens: 50, cache_read_input_tokens: 80 })).toBe(
+        '↓ 50 · ⚡ cache 80'
+      );
+    });
+
+    it('shows only cache info when no other tokens present', () => {
+      expect(
+        formatUsageLabel({ cache_read_input_tokens: 80, cache_creation_input_tokens: 20 })
+      ).toBe('⚡ cache 80 / create 20');
+    });
   });
 
   describe('buildAssistantSegments', () => {
