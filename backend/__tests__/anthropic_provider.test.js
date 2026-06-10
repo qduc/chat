@@ -238,6 +238,29 @@ describe('AnthropicProvider', () => {
       const adapter = provider.createAdapter();
       expect(adapter).toBeInstanceOf(MessagesAdapter);
     });
+
+    test('wires the anthropic reasoning format into the adapter', () => {
+      const adapter = provider.createAdapter();
+      expect(adapter.reasoningFormat).toBe('anthropic');
+    });
+  });
+
+  describe('getReasoningFormat', () => {
+    test('returns anthropic', () => {
+      expect(provider.getReasoningFormat()).toBe('anthropic');
+    });
+  });
+
+  describe('reasoning controls translation', () => {
+    test('translates reasoning_effort into thinking + output_config', async () => {
+      const result = await provider.translateRequest({
+        model: 'claude-3-5-sonnet-20241022',
+        messages: [{ role: 'user', content: 'hi' }],
+        reasoning_effort: 'high',
+      });
+      expect(result.thinking).toEqual({ type: 'adaptive', display: 'summarized' });
+      expect(result.output_config).toEqual({ effort: 'high' });
+    });
   });
 
   describe('makeHttpRequest', () => {
