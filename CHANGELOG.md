@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.18.5] - 2026-06-11
+
+### Added
+- Adaptive reasoning controls and enhanced thinking support for Anthropic
+
+### Fixed
+- Release script now uses dev.sh for consistent command execution
+
+
 ## [0.18.4] - 2026-05-16
 
 ### Added
