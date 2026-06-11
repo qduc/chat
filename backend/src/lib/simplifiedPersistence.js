@@ -578,6 +578,19 @@ export class SimplifiedPersistence {
           // Update other fields if present
           if (item.type) existingItem.type = item.type;
           if (item.format) existingItem.format = item.format;
+          // Carry the cryptographic signature (Anthropic extended-thinking)
+          // forward so it can be sent back on later turns to preserve the
+          // prompt cache.
+          if (typeof item.signature === 'string' && item.signature) {
+            existingItem.signature = item.signature;
+          }
+        } else if (existingItem && typeof item.signature === 'string' && item.signature) {
+          // A signature-only update for an item that has no accumulated text
+          // (e.g. signature_delta arrives before any thinking_delta, or the
+          // block had no visible text). Still update the existing entry.
+          existingItem.signature = item.signature;
+          if (item.type) existingItem.type = item.type;
+          if (item.format) existingItem.format = item.format;
         } else {
           // New item, add to array
           this.reasoningDetails.push(this._clone(item));

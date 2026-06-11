@@ -69,19 +69,19 @@ if [ "$SKIP_CHECKS" = true ]; then
 else
     # Run lint check
     info "Running lint checks..."
-    if ! npm --prefix backend run lint || ! npm --prefix frontend run lint; then
+    if ! ./dev.sh exec backend npm run lint || ! ./dev.sh exec frontend npm run lint; then
         error "Lint checks failed. Please fix the issues and try again."
     fi
 
     # Make sure frontend build succeeds
     info "Building frontend..."
-    if ! npm --prefix frontend run build; then
+    if ! ./dev.sh exec frontend npm run build; then
         error "Frontend build failed. Please fix the issues and try again."
     fi
 
     # Run tests
     info "Running unit tests"
-    if ! npm test; then
+    if ! ./dev.sh test; then
         error "Unit tests failed. Please fix the error and try again."
     fi
 

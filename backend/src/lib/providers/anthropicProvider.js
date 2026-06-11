@@ -43,14 +43,25 @@ export class AnthropicProvider extends BaseProvider {
       config: this.config,
       settings: this.settings,
       getDefaultModel: () => this.getDefaultModel(),
+      reasoningFormat: this.getReasoningFormat(),
     });
   }
 
   buildAdapterContext(context = {}) {
     return {
       getDefaultModel: () => this.getDefaultModel(),
+      reasoningFormat: this.getReasoningFormat(),
       ...context,
     };
+  }
+
+  /**
+   * Returns the reasoning format this provider expects.
+   * Anthropic supports the `thinking` + `output_config.effort` shape.
+   * @returns {'anthropic'|'none'}
+   */
+  getReasoningFormat() {
+    return 'anthropic';
   }
 
   get apiKey() {
@@ -93,6 +104,11 @@ export class AnthropicProvider extends BaseProvider {
 
     if (this.apiKey && !headers['x-api-key']) {
       headers['x-api-key'] = this.apiKey;
+    }
+
+    translatedRequest = {
+      ...translatedRequest,
+      max_tokens: 64000
     }
 
     // Log the exact upstream request for debugging
