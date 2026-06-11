@@ -631,8 +631,11 @@ describe('MessagesAdapter', () => {
 
       const assistantMessage = result.messages.find((m) => m.role === 'assistant');
       const thinkingBlock = assistantMessage.content.find((b) => b.type === 'thinking');
+      // The `thinking` field is always set (even to empty string) to satisfy
+      // the Anthropic API schema requirement on thinking content blocks.
       expect(thinkingBlock).toEqual({
         type: 'thinking',
+        thinking: '',
         signature: 'sig_abc',
       });
     });

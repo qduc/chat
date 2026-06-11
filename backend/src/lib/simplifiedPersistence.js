@@ -679,7 +679,27 @@ export class SimplifiedPersistence {
 
   _finalizeReasoningDetails() {
     if (Array.isArray(this.reasoningDetails)) {
-      return this._clone(this.reasoningDetails);
+      // Merge accumulated reasoning text buffer into thinking-type entries that
+      // lack a text field. This preserves the thinking text alongside the
+      // cryptographic signature (from signature_delta) so it round-trips back
+      // to the provider on the next turn as a complete Anthropic thinking block.
+      const merged = this._clone(this.reasoningDetails);
+      const hasThinkingText =
+        typeof this.reasoningTextBuffer === 'string' &&
+        this.reasoningTextBuffer.length > 0;
+      if (hasThinkingText) {
+        for (const entry of merged) {
+          if (
+            entry &&
+            typeof entry === 'object' &&
+            entry.type === 'thinking' &&
+            (typeof entry.text !== 'string' || entry.text.length === 0)
+          ) {
+            entry.text = this.reasoningTextBuffer;
+          }
+        }
+      }
+      return merged;
     }
 
     if (this.reasoningDetails && typeof this.reasoningDetails === 'object') {

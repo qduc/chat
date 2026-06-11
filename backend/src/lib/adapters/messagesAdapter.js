@@ -174,15 +174,18 @@ async function normalizeMessageForAnthropic(message) {
       .filter((detail) => detail && typeof detail === 'object' && detail.type === 'thinking')
       .map((detail) => {
         const block = { type: 'thinking' };
-        if (typeof detail.text === 'string') {
-          block.thinking = detail.text;
-        }
+        // Always set the `thinking` field to satisfy the Anthropic API schema
+        // (the field is required on thinking content blocks). Use detail.text
+        // when available; fall back to an empty string when only a signature
+        // is present (defensive — the persistence layer should merge text in).
+        block.thinking = typeof detail.text === 'string' ? detail.text : '';
         if (typeof detail.signature === 'string' && detail.signature) {
           block.signature = detail.signature;
         }
         return block;
       })
-      .filter((block) => block.thinking !== undefined || block.signature !== undefined);
+      // Only keep blocks that have meaningful text or a cryptographic signature
+      .filter((block) => block.thinking || block.signature !== undefined);
 
     if (thinkingBlocks.length > 0) {
       if (!normalized.content) {
