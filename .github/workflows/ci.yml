@@ -23,7 +23,7 @@ jobs:
 
       - name: Run Backend CI
         run: |
-          pushd backend && npx playwright install chromium --with-deps && popd
+          pushd backend && npx playwright@1.60.0 install chromium --with-deps && popd
           chmod +x ci.sh
           ./ci.sh backend
 
