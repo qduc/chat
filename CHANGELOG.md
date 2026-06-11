@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.18.6] - 2026-06-11
+
+### Changed
+- Updated Node.js base image to 24.16.0 in Docker setups
+- Pinned Playwright to version 1.60.0
+- Updated GitHub Actions workflows to latest versions
+
+
 ## [0.18.5] - 2026-06-11
 
 ### Added
