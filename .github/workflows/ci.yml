@@ -12,10 +12,10 @@ jobs:
     timeout-minutes: 3
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Use Node.js 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: 'npm'
@@ -23,7 +23,7 @@ jobs:
 
       - name: Run Backend CI
         run: |
-          pushd backend && npx playwright install chromium --with-deps && popd
+          pushd backend && npx playwright@1.60.0 install chromium --with-deps && popd
           chmod +x ci.sh
           ./ci.sh backend
 
@@ -32,10 +32,10 @@ jobs:
     timeout-minutes: 3
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Use Node.js 24
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: 'npm'

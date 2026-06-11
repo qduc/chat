@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=node:24-bookworm-slim
+ARG NODE_IMAGE=node:24.16.0-bookworm-slim
 FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
 COPY package*.json ./
@@ -7,7 +7,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN mkdir -p $PLAYWRIGHT_BROWSERS_PATH && chown node:node $PLAYWRIGHT_BROWSERS_PATH
 USER node
 RUN npm ci
-RUN npx playwright install chromium
+RUN npx playwright@1.60.0 install chromium
 
 ARG NODE_IMAGE
 FROM ${NODE_IMAGE} AS prod-deps
@@ -18,7 +18,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN mkdir -p $PLAYWRIGHT_BROWSERS_PATH && chown node:node $PLAYWRIGHT_BROWSERS_PATH
 USER node
 RUN npm ci --omit=dev
-RUN npx playwright install chromium
+RUN npx playwright@1.60.0 install chromium
 
 ARG NODE_IMAGE
 FROM ${NODE_IMAGE} AS dev
@@ -34,7 +34,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 COPY --from=deps --chown=node:node $PLAYWRIGHT_BROWSERS_PATH $PLAYWRIGHT_BROWSERS_PATH
-RUN npx playwright install-deps chromium
+RUN npx playwright@1.60.0 install-deps chromium
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node . .
 RUN chmod +x entrypoint.sh
@@ -61,7 +61,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 COPY --from=prod-deps --chown=node:node $PLAYWRIGHT_BROWSERS_PATH $PLAYWRIGHT_BROWSERS_PATH
-RUN npx playwright install-deps chromium
+RUN npx playwright@1.60.0 install-deps chromium
 RUN chmod +x entrypoint.sh
 RUN mkdir -p logs && chown -R node:node logs
 USER node

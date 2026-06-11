@@ -1,4 +1,4 @@
-ARG NODE_IMAGE=node:24-bookworm-slim
+ARG NODE_IMAGE=node:24.16.0-bookworm-slim
 
 # --- Frontend Build Stage ---
 FROM ${NODE_IMAGE} AS frontend-builder
@@ -35,7 +35,7 @@ RUN node -e "require('better-sqlite3'); console.log('better-sqlite3 loaded succe
 # Install Playwright browsers
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN mkdir -p $PLAYWRIGHT_BROWSERS_PATH && \
-    npx playwright install chromium
+    npx playwright@1.60.0 install chromium
 
 # --- Final Stage ---
 FROM ${NODE_IMAGE} AS runner
@@ -55,7 +55,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 COPY --from=backend-builder --chown=node:node $PLAYWRIGHT_BROWSERS_PATH $PLAYWRIGHT_BROWSERS_PATH
 
 # Install Playwright system dependencies
-RUN npx playwright install-deps chromium && \
+RUN npx playwright@1.60.0 install-deps chromium && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy backend source
