@@ -591,16 +591,9 @@ chatRouter.get('/v1/tools', (req, res) => {
           }
         }
 
-        // Special case for firecrawl: allow if custom base URL is set (may be self-hosted)
-        if (toolName === 'web_search_firecrawl' && !hasKey && userId) {
-          try {
-            const baseUrlSetting = getUserSetting(userId, 'firecrawl_base_url');
-            if (baseUrlSetting && baseUrlSetting.value && baseUrlSetting.value !== 'https://api.firecrawl.dev') {
-              hasKey = true;
-            }
-          } catch (err) {
-            // ignore
-          }
+        // Special case for firecrawl: firecrawl official API now allow using without an API key
+        if (toolName === 'web_search_firecrawl' && !hasKey) {
+          hasKey = true;
         }
 
         toolApiKeyStatus[toolName] = {

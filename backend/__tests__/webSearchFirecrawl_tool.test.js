@@ -110,12 +110,31 @@ describe('webSearchFirecrawl tool', () => {
   });
 
   describe('handler', () => {
-    test('throws error when API key is not configured for cloud version', async () => {
-      // No API key configured
-      await expect(webSearchFirecrawlTool.handler(
+    test('works without API key', async () => {
+      // No API key configured, handler should still make the request
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: [
+            { title: 'Result 1', url: 'https://example.com/1', description: 'Description 1' }
+          ]
+        })
+      });
+
+      const result = await webSearchFirecrawlTool.handler(
         { query: 'test' },
         { userId: TEST_USER_ID }
-      )).rejects.toThrow('Firecrawl API key is not configured');
+      );
+
+      // Should make request without Authorization header
+      expect(global.fetch).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({
+          headers: { 'Content-Type': 'application/json' }
+        })
+      );
+      expect(result).toContain('Result 1');
     });
 
     test('allows search without API key for custom base URL', async () => {
@@ -295,12 +314,25 @@ describe('webSearchFirecrawl tool', () => {
       expect(result).toContain('Has description');
     });
 
-    test('works without user context but requires API key', async () => {
-      // Without userId, can't get API key
-      await expect(webSearchFirecrawlTool.handler(
+    test('works without user context', async () => {
+      // Without userId, handler should still make the request (no auth)
+      global.fetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: [
+            { title: 'Public Result', url: 'https://example.com', description: 'Public info' }
+          ]
+        })
+      });
+
+      const result = await webSearchFirecrawlTool.handler(
         { query: 'test' },
         {}
-      )).rejects.toThrow('Firecrawl API key is not configured');
+      );
+
+      expect(result).toContain('Public Result');
+      expect(global.fetch).toHaveBeenCalled();
     });
   });
 
