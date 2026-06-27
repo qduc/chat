@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { Copy, Edit2, GitFork, RefreshCw } from 'lucide-react';
+import { Code, Copy, Edit2, GitFork, RefreshCw } from 'lucide-react';
 
 interface MessageToolbarProps {
   messageId: string;
@@ -20,6 +20,8 @@ interface MessageToolbarProps {
   onEdit?: (messageId: string, text: string) => void;
   onRetry?: (messageId: string) => void;
   onRetryModel?: (messageId: string, modelId: string) => void;
+  onToggleRaw?: () => void;
+  isRaw?: boolean;
   contentText: string;
   variant?: 'user' | 'assistant';
   toolbarRef?: React.RefObject<HTMLDivElement | null>;
@@ -40,6 +42,8 @@ export function MessageToolbar({
   onEdit,
   onRetry,
   onRetryModel,
+  onToggleRaw,
+  isRaw = false,
   contentText,
   variant = 'assistant',
   toolbarRef,
@@ -125,6 +129,21 @@ export function MessageToolbar({
             </div>
           )}
         </div>
+      )}
+      {hasContent && onToggleRaw && (
+        <button
+          type="button"
+          onClick={onToggleRaw}
+          title={isRaw ? 'Show rendered' : 'Show raw text'}
+          className={`p-1.5 rounded-md transition-colors ${
+            isRaw
+              ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100'
+              : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400'
+          }`}
+        >
+          <Code className="w-3.5 h-3.5" aria-hidden="true" />
+          <span className="sr-only">{isRaw ? 'Show rendered' : 'Show raw text'}</span>
+        </button>
       )}
       {onFork && (
         <button
