@@ -181,16 +181,19 @@ jobs:
           VERSION_NUM="${VERSION#v}"
 
           # Extract changelog section for this version
-          # Using awk to extract content between version headers
+          # Use exact string matching for headers to avoid regex edge cases in semver values.
           CHANGELOG=$(awk -v version="$VERSION_NUM" '
+            BEGIN {
+              target = "## [" version "]"
+            }
             /^## \[/ {
               if (found) exit
-              if ($0 ~ "\\[" version "\\]") {
+              if (index($0, target) == 1) {
                 found=1
                 next
               }
             }
-            found && /^---$/ { exit }
+            found && /^## \[/ { exit }
             found { print }
           ' CHANGELOG.md)
 
