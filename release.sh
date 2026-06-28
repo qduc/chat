@@ -32,10 +32,16 @@ SKIP_CHECKS=false
 if [[ "$1" == "--dry-run" ]]; then
     DRY_RUN=true
     info "Dry run mode enabled. Will stop after frontend build."
-fi
-if [[ "$1" == "--skip-checks" ]]; then
+elif [[ "$1" == "--skip-checks" ]]; then
     SKIP_CHECKS=true
     info "Skipping checks (lint, build, tests)."
+elif [[ -n "$1" ]]; then
+    # Usage
+    echo "Unknown option: $1"
+    info "Usage: ./release.sh [options]"
+    echo "  --dry-run       Stop after frontend build (no version bump or merge)"
+    echo "  --skip-checks   Skip lint, build, and tests"
+    exit 1
 fi
 
 # Check if we're in a git repository
@@ -379,8 +385,3 @@ else
     echo "  ⚠ No new develop branch was created. Current branch remains ${CURRENT_BRANCH}."
 fi
 
-# Usage
-echo ""
-info "Usage: ./release.sh [options]"
-echo "  --dry-run       Stop after frontend build (no version bump or merge)"
-echo "  --skip-checks   Skip lint, build, and tests"
