@@ -28,9 +28,14 @@ warning() {
 }
 
 DRY_RUN=false
+SKIP_CHECKS=false
 if [[ "$1" == "--dry-run" ]]; then
     DRY_RUN=true
     info "Dry run mode enabled. Will stop after frontend build."
+fi
+if [[ "$1" == "--skip-checks" ]]; then
+    SKIP_CHECKS=true
+    info "Skipping checks (lint, build, tests)."
 fi
 
 # Check if we're in a git repository
@@ -54,7 +59,6 @@ if git diff-index --quiet HEAD --; then
 fi
 
 CURRENT_COMMIT=$(git rev-parse HEAD)
-SKIP_CHECKS=false
 LAST_PASS_FILE=".git/last_test_passed_commit"
 
 if [ "$IS_CLEAN" = true ] && [ -f "$LAST_PASS_FILE" ]; then
@@ -65,7 +69,7 @@ if [ "$IS_CLEAN" = true ] && [ -f "$LAST_PASS_FILE" ]; then
 fi
 
 if [ "$SKIP_CHECKS" = true ]; then
-    success "Checks already passed for commit ${CURRENT_COMMIT:0:7}. Skipping lint, build, and tests."
+    success "Skipping checks (lint, build, tests)."
 else
     # Run lint check
     info "Running lint checks..."
@@ -174,35 +178,47 @@ echo "  Release type: ${RELEASE_NAME}"
 echo "  New version: ${NEW_TAG}"
 echo "  Next develop branch: ${NEXT_DEVELOP_BRANCH}"
 echo ""
-read -p "Proceed with release? (y/n) " -n 1 -r
-echo ""
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-    error "Release cancelled"
-fi
 
 # Start release process
 info "Starting release process..."
 
-# Update package.json versions
-info "Updating package files to version ${NEW_VERSION}..."
-npm version "${NEW_VERSION}" --no-git-tag-version --allow-same-version > /dev/null
-npm --prefix frontend version "${NEW_VERSION}" --no-git-tag-version --allow-same-version > /dev/null
-npm --prefix backend version "${NEW_VERSION}" --no-git-tag-version --allow-same-version > /dev/null
-npm --prefix electron version "${NEW_VERSION}" --no-git-tag-version --allow-same-version > /dev/null
-git add package.json package-lock.json \
-        frontend/package.json frontend/package-lock.json \
-        backend/package.json backend/package-lock.json \
-        electron/package.json electron/package-lock.json
-git commit -m "chore: bump version to ${NEW_VERSION}"
-git push origin "${CURRENT_BRANCH}"
-success "Version bumped to ${NEW_VERSION} in all package and lock files"
+# Update package.json versions (skip if already at $NEW_VERSION)
+VERSION_MATCH=true
+for pkg_dir in . frontend backend electron; do
+    CURRENT_VER=$(node -p "require('./${pkg_dir}/package.json').version" 2>/dev/null)
+    echo "Checking $pkg_dir: current=$CURRENT_VER target=$NEW_VERSION"
+    LOCK_VER=$(node -p "require('./${pkg_dir}/package-lock.json').version" 2>/dev/null)
+    echo "Checking $pkg_dir lock: current=$LOCK_VER target=$NEW_VERSION"
 
-# Update CHANGELOG.md with Claude
-info "Generating changelog entry with Claude..."
+    if [ "$CURRENT_VER" != "$NEW_VERSION" ] || [ "$LOCK_VER" != "$NEW_VERSION" ]; then
+        VERSION_MATCH=false
+        break
+    fi
+done
 
-# Check if claude command is available
-if ! command -v claude &> /dev/null; then
-    warning "Claude CLI not found. Skipping automatic changelog update."
+if [ "$VERSION_MATCH" = true ]; then
+    success "All package.json files already at version ${NEW_VERSION}. Skipping version bump."
+else
+    info "Updating package files to version ${NEW_VERSION}..."
+    npm version "${NEW_VERSION}" --no-git-tag-version --allow-same-version > /dev/null
+    npm --prefix frontend version "${NEW_VERSION}" --no-git-tag-version --allow-same-version > /dev/null
+    npm --prefix backend version "${NEW_VERSION}" --no-git-tag-version --allow-same-version > /dev/null
+    npm --prefix electron version "${NEW_VERSION}" --no-git-tag-version --allow-same-version > /dev/null
+    git add package.json package-lock.json \
+            frontend/package.json frontend/package-lock.json \
+            backend/package.json backend/package-lock.json \
+            electron/package.json electron/package-lock.json
+    git commit -m "chore: bump version to ${NEW_VERSION}"
+    git push origin "${CURRENT_BRANCH}"
+    success "Version bumped to ${NEW_VERSION} in all package and lock files"
+fi
+
+# Update CHANGELOG.md with Term2
+info "Generating changelog entry with Term2..."
+
+# Check if term2 command is available
+if ! command -v term2 &> /dev/null; then
+    warning "Term2 CLI not found. Skipping automatic changelog update."
     warning "Please update CHANGELOG.md manually before continuing."
     read -p "Press Enter to continue after updating CHANGELOG.md..." -r
 else
@@ -247,11 +263,11 @@ Format the output exactly as:
 ### Section Name
 - Description
 
-Only include sections that have changes. Keep descriptions concise and user-focused. Output ONLY the changelog entry, nothing else.
+Only include sections that have changes. Keep descriptions concise and user-focused. Do not write to the changelog file. Output ONLY the changelog entry, nothing else.
 EOF
 
-        # Generate changelog with Claude
-        CHANGELOG_ENTRY=$(claude --model haiku -p "$(cat "$TEMP_PROMPT")")
+        # Generate changelog with Term2
+        CHANGELOG_ENTRY=$(term2 --model ornith-9b-64k --provider llamacpp "$(cat "$TEMP_PROMPT")") 2>/dev/null
         rm "$TEMP_PROMPT"
 
         if [ -n "$CHANGELOG_ENTRY" ]; then
@@ -325,12 +341,6 @@ info "Creating tag ${NEW_TAG}..."
 git tag -a "${NEW_TAG}" -m "Release ${NEW_TAG}"
 success "Created tag ${NEW_TAG}"
 
-# Push main branch and tag
-info "Pushing main branch and tag to origin..."
-git push origin main
-git push origin "${NEW_TAG}"
-success "Pushed main and ${NEW_TAG} to origin"
-
 NEW_DEVELOP_BRANCH_CREATED=false
 echo ""
 read -p "Do you want to create the next develop branch (${NEXT_DEVELOP_BRANCH})? (y/n) " -n 1 -r CREATE_DEVELOP_BRANCH
@@ -338,13 +348,14 @@ echo ""
 if [[ $CREATE_DEVELOP_BRANCH =~ ^[Yy]$ ]]; then
     # Create and checkout next develop branch
     info "Creating new develop branch: ${NEXT_DEVELOP_BRANCH}..."
-    git checkout -b "${NEXT_DEVELOP_BRANCH}"
-    success "Created and checked out ${NEXT_DEVELOP_BRANCH}"
+    if git checkout -b "${NEXT_DEVELOP_BRANCH}"; then
+        success "Created and checked out ${NEXT_DEVELOP_BRANCH}"
+    else
+        info "Branch ${NEXT_DEVELOP_BRANCH} already exists. Checking it out..."
+    fi
 
-    # Push new develop branch
-    info "Pushing ${NEXT_DEVELOP_BRANCH} to origin..."
-    git push -u origin "${NEXT_DEVELOP_BRANCH}"
-    success "Pushed ${NEXT_DEVELOP_BRANCH} to origin"
+    git checkout "${NEXT_DEVELOP_BRANCH}"
+    git push origin "${NEXT_DEVELOP_BRANCH}"
     NEW_DEVELOP_BRANCH_CREATED=true
 else
     info "Skipping creation of new develop branch."
@@ -357,7 +368,7 @@ success "Release completed successfully! 🎉"
 echo ""
 echo "Summary:"
 echo "  ✓ Released: ${NEW_TAG}"
-echo "  ✓ Main branch updated and pushed"
+echo "  ✓ Main branch updated with tag"
 if [ "$NEW_DEVELOP_BRANCH_CREATED" = true ]; then
     echo "  ✓ Current branch: ${NEXT_DEVELOP_BRANCH}"
     echo "  ✓ Old develop branch: ${CURRENT_BRANCH} (still exists)"
@@ -367,3 +378,9 @@ else
     git checkout -
     echo "  ⚠ No new develop branch was created. Current branch remains ${CURRENT_BRANCH}."
 fi
+
+# Usage
+echo ""
+info "Usage: ./release.sh [options]"
+echo "  --dry-run       Stop after frontend build (no version bump or merge)"
+echo "  --skip-checks   Skip lint, build, and tests"
