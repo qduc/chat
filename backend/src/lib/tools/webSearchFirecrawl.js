@@ -47,14 +47,6 @@ async function handler({ query, pageOptions, searchOptions }, context = {}) {
     }
   }
 
-  if (!apiKey) {
-    // Some self-hosted instances might not require an API key, but typically it's needed.
-    // We'll warn but proceed if user is using a custom base URL, otherwise require it for the cloud version.
-    if (baseUrl === 'https://api.firecrawl.dev') {
-      throw new Error('Firecrawl API key is not configured. Please add it in Settings → Search & Web Tools.');
-    }
-  }
-
   // Ensure base URL doesn't end with slash
   const cleanBaseUrl = baseUrl.replace(/\/$/, '');
   const url = `${cleanBaseUrl}/v1/search`;

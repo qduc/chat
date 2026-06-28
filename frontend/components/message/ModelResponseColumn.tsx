@@ -68,6 +68,9 @@ export function ModelResponseColumn({
     assistantSegments: segments,
   } = data;
 
+  const [showingRaw, setShowingRaw] = React.useState(false);
+  const toggleRaw = React.useCallback(() => setShowingRaw((prev) => !prev), []);
+
   const retryStatus = pending.retryStatus;
   const isRetryingThisModel =
     !!retryStatus && (retryStatus.modelId ?? 'primary') === modelId && !isModelError;
@@ -153,7 +156,11 @@ export function ModelResponseColumn({
           {getModelDisplayName(modelId)}
         </div>
       )}
-      {segments.length === 0 ? (
+      {showingRaw ? (
+        <pre className="text-base leading-relaxed text-zinc-900 dark:text-zinc-200 whitespace-pre-wrap font-mono text-sm bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 overflow-auto max-h-[60vh]">
+          {extractTextFromContent(dm.content)}
+        </pre>
+      ) : segments.length === 0 ? (
         <div className="text-base leading-relaxed text-zinc-800 dark:text-zinc-200">
           {retryStatusLabel ? (
             <span className="inline-flex items-center gap-2 text-amber-700 dark:text-amber-300 text-sm">
@@ -318,6 +325,8 @@ export function ModelResponseColumn({
               onFork={onFork}
               onRetry={onRetryMessage}
               onRetryModel={onRetryComparisonModel}
+              onToggleRaw={toggleRaw}
+              isRaw={showingRaw}
               contentText={
                 isUser ? extractTextFromContent(dm.content) : extractAssistantCopyText(segments)
               }

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.18.8] - 2026-06-28
+
+### Added
+- Show raw text toggle in assistant message toolbar
+- Firecrawl API now supports usage without an API key
+
+
 ## [0.18.7] - 2026-06-11
 
 ### Fixed
