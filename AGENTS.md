@@ -40,6 +40,17 @@ This document provides essential knowledge for AI agents to be immediately produ
 
 **All development commands run in Docker via `./dev.sh`:**
 
+### Cloud sessions (no Docker)
+
+Claude Code cloud containers have no Docker daemon, so `./dev.sh` won't work there. `.claude/hooks/session-start.sh` installs deps, creates `backend/.env` and runs migrations automatically. Run things natively:
+
+```bash
+cd backend && npm run dev                # API on :3001
+cd backend && npm test                   # or: npm run lint
+cd frontend && BACKEND_ORIGIN=http://localhost:3001 NEXT_PUBLIC_API_BASE=/api npm run dev -- -p 3000
+cd frontend && npm run tsc               # type check
+```
+
 ### Container Management
 ```bash
 ./dev.sh up [-d] [--build]  # Start/Rebuild services
