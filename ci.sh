@@ -40,6 +40,9 @@ run_component() {
   log_info "Linting $component..."
   npm run lint
 
+  log_info "Type checking $component..."
+  npm run typecheck --if-present
+
   log_info "Testing $component..."
   npm test
 

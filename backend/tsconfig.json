@@ -1,0 +1,28 @@
+{
+  // Type-check only. Node 24 runs .ts files directly by stripping types, so
+  // there is no build step: Docker and Electron keep running source files.
+  // Existing JavaScript is allowed but not checked; new code is TypeScript.
+  "compilerOptions": {
+    "target": "es2024",
+    "lib": ["es2024"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+
+    "allowJs": true,
+    "checkJs": false,
+    "noEmit": true,
+
+    // Only syntax Node can strip: no enum, namespace, or parameter properties.
+    "erasableSyntaxOnly": true,
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true
+  },
+  "include": ["src/**/*.ts", "__tests__/**/*.ts"]
+}

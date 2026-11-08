@@ -164,12 +164,19 @@ npm start
 ./dev.sh test
 ```
 
-### 4. Linting Code
+### 4. Linting and Type Checking
 
 ```bash
 ./dev.sh exec backend npm run lint
+./dev.sh exec backend npm run typecheck
 ./dev.sh exec frontend npm run lint
 ```
+
+New backend code is TypeScript. Node 24 runs `.ts` files directly by stripping types, so there is
+no build step: Docker and Electron run the source files. Import TypeScript with its `.ts` extension,
+use only erasable syntax (no `enum`, `namespace` or constructor parameter properties), and use
+`import type` for types. Existing JavaScript stays JavaScript until it is changed for other reasons.
+`npm run typecheck` checks the `.ts` files; Jest strips types with SWC.
 
 ### 5. Building for Production
 
