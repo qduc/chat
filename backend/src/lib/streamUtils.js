@@ -160,8 +160,13 @@ function wrapResponseJson(response, provider, context = {}) {
 }
 
 export async function createOpenAIRequest(config, requestBody, options = {}) {
-  const { createProvider } = await import('./providers/index.js');
-  const provider = await createProvider(config, options);
+  // Callers that already hold a provider instance pass it, so the request uses
+  // exactly that provider's settings instead of resolving one again.
+  let provider = options.provider;
+  if (!provider) {
+    const { createProvider } = await import('./providers/index.js');
+    provider = await createProvider(config, options);
+  }
   const context = {
     providerId: options.providerId || provider.providerId,
     ...(typeof options.onRetry === 'function' ? { onRetry: options.onRetry } : {}),
