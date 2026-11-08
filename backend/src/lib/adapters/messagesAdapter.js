@@ -120,7 +120,7 @@ async function normalizeMessageForAnthropic(message) {
           return { type: 'text', text: part };
         }
         if (part?.type === 'text') {
-          return { type: 'text', text: part.text };
+          return withCacheControl({ type: 'text', text: part.text }, part);
         }
         if (part?.type === 'image_url') {
           // Convert OpenAI image format to Anthropic format
@@ -132,14 +132,14 @@ async function normalizeMessageForAnthropic(message) {
               const matches = url.match(/^data:image\/(\w+);base64,(.+)$/);
               if (matches) {
                 const [, mediaType, data] = matches;
-                return {
+                return withCacheControl({
                   type: 'image',
                   source: {
                     type: 'base64',
                     media_type: `image/${mediaType}`,
                     data,
                   },
-                };
+                }, part);
               }
             }
           }
@@ -258,6 +258,33 @@ async function normalizeMessageForAnthropic(message) {
   return normalized;
 }
 
+function withCacheControl(block, sourcePart) {
+  if (sourcePart?.cache_control && typeof sourcePart.cache_control === 'object') {
+    return { ...block, cache_control: sourcePart.cache_control };
+  }
+  return block;
+}
+
+function buildAnthropicSystem(systemMessages) {
+  if (systemMessages.length === 0) return undefined;
+
+  const hasBlocks = systemMessages.some((m) => Array.isArray(m.content));
+  if (!hasBlocks) {
+    return systemMessages.map((m) => m.content).filter(Boolean).join('\n\n') || undefined;
+  }
+
+  const blocks = systemMessages.flatMap((m) => {
+    if (typeof m.content === 'string') {
+      return m.content ? [{ type: 'text', text: m.content }] : [];
+    }
+    if (!Array.isArray(m.content)) return [];
+    return m.content
+      .filter((part) => part?.type === 'text' && typeof part.text === 'string' && part.text.length > 0)
+      .map((part) => withCacheControl({ type: 'text', text: part.text }, part));
+  });
+  return blocks.length > 0 ? blocks : undefined;
+}
+
 async function normalizeMessagesForAnthropic(messages) {
   if (!Array.isArray(messages)) return { system: undefined, messages: [] };
 
@@ -265,10 +292,10 @@ async function normalizeMessagesForAnthropic(messages) {
   const systemMessages = messages.filter((m) => m.role === 'system');
   const nonSystemMessages = messages.filter((m) => m.role !== 'system');
 
-  // Combine system messages into a single system prompt
-  const system = systemMessages.length > 0
-    ? systemMessages.map((m) => m.content).filter(Boolean).join('\n\n')
-    : undefined;
+  // Combine system messages into a single system prompt. Prompt caching turns
+  // system content into text blocks carrying cache_control; keep those as
+  // Anthropic system blocks instead of joining them as strings.
+  const system = buildAnthropicSystem(systemMessages);
 
   const normalized = await Promise.all(
     nonSystemMessages.map((message) => normalizeMessageForAnthropic(message))
