@@ -60,6 +60,8 @@
         "filter": [
           "!node_modules",
           "!**/*.test.js",
+          "!**/*.test.ts",
+          "!tsconfig.json",
           "!coverage",
           "!__tests__"
         ]

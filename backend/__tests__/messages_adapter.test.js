@@ -13,6 +13,26 @@ describe('MessagesAdapter', () => {
   });
 
   describe('translateRequest', () => {
+    test('keeps prompt-cache breakpoints as system and content blocks', async () => {
+      // Shape produced by addPromptCaching: string content becomes text blocks.
+      const result = await adapter.translateRequest({
+        model: 'claude-3-5-sonnet-20241022',
+        messages: [
+          { role: 'system', content: [{ type: 'text', text: 'You are ChatForge.', cache_control: { type: 'ephemeral' } }] },
+          { role: 'system', content: 'Today is Sunday.' },
+          { role: 'user', content: [{ type: 'text', text: 'Hello!', cache_control: { type: 'ephemeral' } }] },
+        ],
+      });
+
+      expect(result.system).toEqual([
+        { type: 'text', text: 'You are ChatForge.', cache_control: { type: 'ephemeral' } },
+        { type: 'text', text: 'Today is Sunday.' },
+      ]);
+      expect(result.messages).toEqual([
+        { role: 'user', content: [{ type: 'text', text: 'Hello!', cache_control: { type: 'ephemeral' } }] },
+      ]);
+    });
+
     test('converts OpenAI format to Anthropic format', async () => {
       const internalRequest = {
         model: 'claude-3-5-sonnet-20241022',

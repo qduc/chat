@@ -60,6 +60,7 @@ This document provides essential knowledge for AI agents to be immediately produ
 ./dev.sh test[:backend|:frontend]     # Run all, backend, or frontend tests
 ./dev.sh test:backend __tests__/x.js  # Run a targeted backend test file
 ./dev.sh exec backend npm run lint    # Backend lint
+./dev.sh exec backend npm run typecheck # Backend type check (new backend code is TypeScript)
 ./dev.sh exec frontend npm run lint   # Frontend lint
 ./dev.sh exec frontend npm run tsc    # Frontend type check
 ./dev.sh exec frontend npm run build  # Production frontend build
@@ -95,6 +96,7 @@ This document provides essential knowledge for AI agents to be immediately produ
 ## Finding Your Way Around
 
 - **Routes & Tools**: `backend/src/routes/`, `backend/src/lib/tools/`
+- **Agent harness adoption**: `backend/src/lib/harness/` (Model/Tool wrappers, event sink), see `docs/agent-harness-event-mapping.md`
 - **Frontend Logic**: `frontend/hooks/` (controllers), `frontend/lib/` (utilities)
 - **UI Components**: `frontend/components/` (organized by feature)
 - **Database Schema**: `backend/src/db/migrations/` (migration files), `backend/scripts/migrate.js` (runner)

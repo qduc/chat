@@ -760,6 +760,39 @@ export class SimplifiedPersistence {
   }
 
   /**
+   * Take back streamed text past `length`, e.g. a model step's partial text
+   * that the agent harness withdraws before retrying it. Trims the buffer and
+   * the trailing content events, and rewrites a checkpoint that already holds
+   * the withdrawn text.
+   * @param {number} length - Content length to keep
+   */
+  truncateContent(length) {
+    if (!this.persist || !Number.isInteger(length) || length < 0) return;
+    if (length >= this.assistantBuffer.length) return;
+
+    let excess = this.assistantBuffer.length - length;
+    this.assistantBuffer = this.assistantBuffer.slice(0, length);
+
+    for (let i = this.messageEvents.length - 1; i >= 0 && excess > 0; i--) {
+      const event = this.messageEvents[i];
+      if (event.type !== 'content' || typeof event.payload?.text !== 'string') continue;
+      const take = Math.min(excess, event.payload.text.length);
+      event.payload.text = event.payload.text.slice(0, event.payload.text.length - take);
+      excess -= take;
+      if (event.payload.text.length === 0) this.messageEvents.splice(i, 1);
+    }
+
+    if ((this.lastCheckpointLength || 0) > length) {
+      try {
+        this.performCheckpoint();
+      } catch (err) {
+        logger.warn('[SimplifiedPersistence] Checkpoint after truncate failed (non-fatal):', err?.message || err);
+      }
+      this.lastCheckpointLength = Math.min(this.lastCheckpointLength || 0, length);
+    }
+  }
+
+  /**
    * Buffer assistant content (no immediate DB write)
    * @param {string} delta - Content delta to add
    */

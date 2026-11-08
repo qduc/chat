@@ -3,6 +3,7 @@
 import globals from 'globals';
 import js from '@eslint/js';
 import { FlatCompat } from '@eslint/eslintrc';
+import tseslint from 'typescript-eslint';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
@@ -32,6 +33,23 @@ export default [
     rules: {
       'no-unused-vars': ['off', { argsIgnorePattern: '^_' }],
       // Allow empty catch blocks in tests/utilities where we intentionally swallow errors
+      'no-empty': ['error', { allowEmptyCatch: true }],
+    },
+  },
+  // TypeScript: parsed by typescript-eslint. Types are checked by `npm run typecheck`.
+  ...tseslint.configs.recommended.map((cfg) => ({ ...cfg, files: ['**/*.ts'] })),
+  {
+    files: ['**/*.ts'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: {
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/consistent-type-imports': 'error',
       'no-empty': ['error', { allowEmptyCatch: true }],
     },
   },
