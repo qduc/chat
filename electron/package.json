@@ -20,8 +20,9 @@
   "dependencies": {
     "@blackglory/better-sqlite3-migrations": "^0.1.20",
     "@mozilla/readability": "^0.6.0",
+    "@qduc/web-fetch": "^0.1.4",
     "bcryptjs": "^3.0.2",
-    "better-sqlite3": "^12.4.6",
+    "better-sqlite3": "^12.11.1",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^5.1.0",
@@ -32,6 +33,7 @@
     "multer": "^2.0.2",
     "nanoid": "^5.1.6",
     "node-fetch": "^3.3.2",
+    "p-limit": "^4.0.0",
     "pino": "^9.3.2",
     "pino-roll": "^3.1.0",
     "turndown": "^7.2.1",
@@ -39,8 +41,8 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "electron": "^39.2.4",
-    "electron-builder": "^26.0.12"
+    "electron": "^43.8.7",
+    "electron-builder": "^26.18.0"
   },
   "build": {
     "appId": "com.chatforge.app",

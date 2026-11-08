@@ -6,6 +6,7 @@ This directory contains the configuration to package ChatForge as a standalone E
 
 - Node.js 24+
 - NPM
+- On Linux, Clang 19 and the usual native build tools for rebuilding `better-sqlite3`.
 
 ## Setup
 
@@ -21,8 +22,11 @@ This directory contains the configuration to package ChatForge as a standalone E
 2.  **Install Electron Dependencies**:
     ```bash
     cd electron
-    npm install
+    # Linux: use the same compiler as the release build.
+    CC=clang-19 CXX=clang++-19 npm install
     ```
+
+    On Windows or macOS, use `npm install` without the Linux compiler variables.
 
 ## Running in Development
 
