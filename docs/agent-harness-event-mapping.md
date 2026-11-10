@@ -3,12 +3,9 @@
 Status: **Part B of [#40](https://github.com/qduc/chat/issues/40) in progress.** The streaming tool loop
 runs on the harness when `AGENT_HARNESS_TOOL_LOOP=true` (default off; the legacy loop runs otherwise).
 
-The harness is `@qduc/agent-core`, developed in qduc/agent-runtime (`packages/core/`). Until
-`0.2.0-alpha.1` is on npm it is installed from `backend/vendor/qduc-agent-core-0.2.0-alpha.1.tgz`,
-packed there at commit `3e322ba`
-(a `file:` dependency in `backend/package.json` and `electron/package.json`; both Dockerfiles copy
-`vendor/` before `npm ci`). Once published, switch both manifests to the exact npm version and delete
-`vendor/` and those `COPY` lines.
+The harness is `@qduc/agent-core`, developed in qduc/agent-runtime (`packages/core/`) and installed
+from npm at an exact version (`0.2.0-alpha.1`) in `backend/package.json` and `electron/package.json`.
+To pick up a harness change, publish a new version from agent-runtime and bump both pins.
 
 ## Pieces
 
@@ -124,7 +121,7 @@ None of these needed a local workaround in Part A; each is a candidate Term2 iss
 
 ## Part B checklist
 
-- [x] Install the package (vendored tarball for now); delete `contracts.ts`; fix imports;
+- [x] Install the package (from npm); delete `contracts.ts`; fix imports;
       `npm run typecheck` checks the wrappers against the package's declarations.
 - [x] Behind `AGENT_HARNESS_TOOL_LOOP`: build the `TurnSpec` (table above), `startTurn`, feed each event
       to `TurnEventSink`, then accept it (`harness/harnessToolsStreaming.ts`).
@@ -139,7 +136,7 @@ None of these needed a local workaround in Part A; each is a candidate Term2 iss
       Stop; the harness before it. Both agree on everything the client and database see.
 - [ ] Replace the synthetic parallel fixtures with real captures; run with the flag on against real
       providers.
-- [ ] Switch from the vendored tarball to the npm release.
+- [x] Switch from the vendored tarball to the npm release.
 - [ ] Wire `TurnDeps.continuity` so Responses-API providers get `previous_response_id` again.
 - [ ] Frontend: handle `content_withdrawn` (only needed if engine recovery is turned on).
 - [ ] Remove the legacy loop.
