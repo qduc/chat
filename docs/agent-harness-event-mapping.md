@@ -3,8 +3,9 @@
 Status: **Part B of [#40](https://github.com/qduc/chat/issues/40) in progress.** The streaming tool loop
 runs on the harness when `AGENT_HARNESS_TOOL_LOOP=true` (default off; the legacy loop runs otherwise).
 
-The harness is `@qduc/agent-core`, built in qduc/term2 (`packages/agent-harness-core/`). Until
-`0.2.0-alpha.1` is on npm it is installed from `backend/vendor/qduc-agent-core-0.2.0-alpha.1.tgz`
+The harness is `@qduc/agent-core`, developed in qduc/agent-runtime (`packages/core/`). Until
+`0.2.0-alpha.1` is on npm it is installed from `backend/vendor/qduc-agent-core-0.2.0-alpha.1.tgz`,
+packed there at commit `3e322ba`
 (a `file:` dependency in `backend/package.json` and `electron/package.json`; both Dockerfiles copy
 `vendor/` before `npm ci`). Once published, switch both manifests to the exact npm version and delete
 `vendor/` and those `COPY` lines.
