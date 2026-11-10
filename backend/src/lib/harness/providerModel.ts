@@ -627,7 +627,9 @@ function cancelled(reason: unknown): ModelFailure {
 function toModelFailure(error: unknown, signal: AbortSignal): ModelFailure {
   if (error instanceof ModelFailure) return error;
   if (signal.aborted || (error as { name?: string } | null)?.name === 'AbortError') return cancelled(error);
-  const message = error instanceof Error ? error.message : String(error);
+  // Duck-typed: errors from Node internals can come from another realm (e.g. under Jest).
+  const errorMessage = (error as { message?: unknown } | null)?.message;
+  const message = typeof errorMessage === 'string' ? errorMessage : String(error);
   const isTransport = (error as { name?: string } | null)?.name === 'ProviderTransportError';
   return new ModelFailure(
     { kind: isTransport ? 'network' : 'provider', message, retryable: true },

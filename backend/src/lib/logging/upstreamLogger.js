@@ -162,7 +162,12 @@ export function teeStreamWithPreview(readable, { maxBytes = 64 * 1024, encoding 
   passthrough.on('end', finalizePreview);
   passthrough.on('close', finalizePreview);
   passthrough.on('error', failPreview);
-  readable.on('error', failPreview);
+  // pipe() does not forward source errors: without this, a provider connection
+  // that drops mid-stream leaves consumers waiting for the idle timeout.
+  readable.on('error', (err) => {
+    failPreview(err);
+    passthrough.destroy(err);
+  });
 
   // Pipe original readable into the passthrough that consumers will read from.
   // Piping will forward data and not consume the original elsewhere.
