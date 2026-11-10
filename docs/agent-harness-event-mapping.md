@@ -133,7 +133,11 @@ None of these needed a local workaround in Part A; each is a candidate Term2 iss
 - [x] Replay e2e over sanitized real provider recordings (`npm run test:provider-replay`,
       `integration/providerReplay.test.js`): OpenAI Chat Completions, OpenAI Responses, Anthropic
       and Gemini, each through both loops, checked against the recording and against each other.
-- [ ] Parity for parallel tools and client abort; then run with the flag on against real providers.
+- [x] Parallel tools (synthetic fixtures, SDK-checked), Stop mid-answer and upstream drop, through
+      both loops in the replay suite. Legacy closes the upstream request ~50 ms after `[DONE]` on
+      Stop; the harness before it. Both agree on everything the client and database see.
+- [ ] Replace the synthetic parallel fixtures with real captures; run with the flag on against real
+      providers.
 - [ ] Switch from the vendored tarball to the npm release.
 - [ ] Wire `TurnDeps.continuity` so Responses-API providers get `previous_response_id` again.
 - [ ] Frontend: handle `content_withdrawn` (only needed if engine recovery is turned on).

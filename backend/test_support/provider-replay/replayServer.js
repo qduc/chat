@@ -5,6 +5,10 @@
 // for frame (status, content type, SSE event names and data). Requests without
 // tools (conversation title generation) get a 503 so they never consume a turn;
 // the title service falls back to a local title.
+//
+// `load(fixture, { cuts })` can cut a recorded turn short to model failures
+// with real frames: after N SSE events, either `stall` (keep the connection
+// open, sending nothing) or `drop` (destroy the socket, no terminal event).
 import http from 'node:http';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -34,7 +38,18 @@ export class ReplayServer {
     this.requests = [];
     /** Requests that arrived after the recording ran out. */
     this.unexpected = [];
+    /** turn index -> { afterEvents, then: 'stall' | 'drop' } */
+    this.cuts = {};
+    /** Turn indexes whose upstream connection the client closed before the turn ended. */
+    this.clientClosed = [];
+    /** Turn indexes whose connection the server cut on purpose (`drop`). */
+    this.dropped = [];
+    this.#stalled = new Set();
+    this.#stallWaiters = [];
   }
+
+  #stalled;
+  #stallWaiters;
 
   async start() {
     this.server = http.createServer((req, res) => this.#handle(req, res));
@@ -47,6 +62,8 @@ export class ReplayServer {
   }
 
   async stop() {
+    for (const res of this.#stalled) res.destroy();
+    this.#stalled.clear();
     for (const socket of this.sockets) socket.destroy();
     this.sockets.clear();
     if (this.server) await new Promise((resolve) => this.server.close(resolve));
@@ -58,10 +75,22 @@ export class ReplayServer {
   }
 
   /** Arm the server with one recording; clears what was captured before. */
-  load(fixture) {
+  load(fixture, { cuts = {} } = {}) {
+    for (const res of this.#stalled) res.destroy();
+    this.#stalled.clear();
     this.turns = fixture.turns.map((turn) => turn.frames);
     this.requests = [];
     this.unexpected = [];
+    this.cuts = cuts;
+    this.clientClosed = [];
+    this.dropped = [];
+    this.#stallWaiters = [];
+  }
+
+  /** Resolves once a `stall` cut has sent its frames and is holding the connection. */
+  waitForStall() {
+    if (this.#stalled.size > 0) return Promise.resolve();
+    return new Promise((resolve) => this.#stallWaiters.push(resolve));
   }
 
   #handle(req, res) {
@@ -90,21 +119,44 @@ export class ReplayServer {
         res.end(JSON.stringify({ error: { message: 'replay server: recording has no more turns' } }));
         return;
       }
+      const turnIndex = this.requests.length;
       this.requests.push(captured);
-      this.#replay(frames, res);
+      this.#replay(frames, res, turnIndex);
     });
   }
 
-  #replay(frames, res) {
+  #replay(frames, res, turnIndex) {
+    const cut = this.cuts[turnIndex];
+    let finished = false;
+    res.on('close', () => {
+      if (!finished) this.clientClosed.push(turnIndex);
+      this.#stalled.delete(res);
+    });
     const head = frames.find((frame) => frame.kind === 'http-response-head');
     res.writeHead(head?.status ?? 200, { 'content-type': head?.headers?.['content-type'] ?? 'text/event-stream' });
+    let events = 0;
     for (const frame of frames) {
       if (frame.kind === 'sse-event') {
+        if (cut && events >= cut.afterEvents) break;
         res.write(`${frame.event ? `event: ${frame.event}\n` : ''}data: ${frame.data}\n\n`);
+        events += 1;
       } else if (frame.kind === 'json-body') {
         res.write(JSON.stringify(frame.body));
       }
     }
+    if (cut?.then === 'stall') {
+      this.#stalled.add(res);
+      for (const resolve of this.#stallWaiters.splice(0)) resolve();
+      return;
+    }
+    if (cut?.then === 'drop') {
+      // Let the partial frames reach the client first, then cut the connection mid-stream.
+      finished = true;
+      this.dropped.push(turnIndex);
+      setTimeout(() => res.socket?.destroy(), 50);
+      return;
+    }
+    finished = true;
     res.end();
   }
 }

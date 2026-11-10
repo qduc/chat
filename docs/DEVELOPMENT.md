@@ -75,6 +75,11 @@ persistence. No real API calls. Each recording runs through both streaming tool 
 and `AGENT_HARNESS_TOOL_LOOP`). Expectations are read from the recording itself. Recordings
 and their provenance are in `backend/test_support/provider-replay/fixtures/`.
 
+The same suite covers parallel tool calls (synthetic fixtures derived from the recordings,
+checked against the official provider SDKs by `integration/syntheticFixtureOracle.test.js`),
+Stop mid-answer, and an upstream connection dropping mid-answer (real recordings cut short).
+Synthetic fixtures are a best guess at the wire format; see `fixtures/PROVENANCE.md`.
+
 ### Database Migrations
 
 #### Development
