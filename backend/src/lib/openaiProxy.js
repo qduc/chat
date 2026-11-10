@@ -564,12 +564,12 @@ async function handleRequest(context, req, res) {
     throw error;
   }
 
-  // If request with previous_response_id failed due to invalid ID format, retry with full history
+  // If the provider refused previous_response_id (unknown, expired, not stored, malformed), retry with full history
   if (!upstream.ok && requestBody.previous_response_id) {
     upstreamErrorBody = await readUpstreamErrorBody(upstream);
-    const isInvalidResponseIdError = upstream.status === 400
-      && upstreamErrorBody?.error?.param === 'previous_response_id'
-      && upstreamErrorBody?.error?.code === 'invalid_value';
+    const isInvalidResponseIdError = (upstream.status === 400 || upstream.status === 404)
+      && (upstreamErrorBody?.error?.param === 'previous_response_id'
+        || /previous[_ ]response/i.test(upstreamErrorBody?.error?.message ?? ''));
 
     if (isInvalidResponseIdError) {
       emitRetryStatus({

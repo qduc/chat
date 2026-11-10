@@ -74,6 +74,9 @@ function setupStreamEventHandlers({
         const finishReason = overrideFinishReason
           || (typeof lastFinishReason === 'object' && lastFinishReason !== null ? lastFinishReason.value : lastFinishReason)
           || 'stop';
+        // A cancelled reply has no completed response upstream (chunk ids can be
+        // placeholders); the next message must not continue from it.
+        if (finishReason === 'cancelled') persistence.clearResponseId?.();
         persistence.recordAssistantFinal({ finishReason });
       }
     } catch (e) {

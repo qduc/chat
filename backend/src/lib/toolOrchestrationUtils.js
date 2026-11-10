@@ -1,6 +1,6 @@
 import yaml from 'js-yaml';
 import { tools as toolRegistry } from './tools.js';
-import { getMessagesPage, getLastAssistantResponseId } from '../db/messages.js';
+import { getMessagesPage } from '../db/messages.js';
 import { getConversationMetadata } from './responseUtils.js';
 import { logger } from '../logger.js';
 
@@ -603,6 +603,56 @@ export async function buildConversationMessagesAsync({ body, bodyIn, persistence
 }
 
 /**
+ * Like `buildConversationMessagesAsync`, plus the stored Responses API id this
+ * turn can continue from (`previous_response_id`), when doing so is safe.
+ *
+ * Safe means the server-side response holds exactly the history being sent
+ * minus the new user message(s): the newest stored assistant message on the
+ * active branch carries a `resp_` id, any tool rows after it answer that
+ * message's own calls, and only user messages follow. Anything else (no id on
+ * the newest reply, an error or cancelled reply, edits) returns `resumeFrom: null`
+ * and the turn sends full history.
+ */
+export async function buildConversationMessagesWithResumeAsync({ body, bodyIn, persistence, userId }) {
+  const messages = await buildConversationMessagesAsync({ body, bodyIn, persistence, userId });
+  const hasPersistence = !!(persistence && persistence.persist && persistence.conversationId);
+  if (!hasPersistence) return { messages, resumeFrom: null };
+  try {
+    const page = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
+    return { messages, resumeFrom: resumableResponseId(page?.messages || []) };
+  } catch {
+    return { messages, resumeFrom: null };
+  }
+}
+
+/** The response id the next turn may continue from, or null. See buildConversationMessagesWithResumeAsync. */
+export function resumableResponseId(storedMessages) {
+  // The same messages the turn sends, in order.
+  const sent = storedMessages.filter((m) => normalizeStoredMessage(m));
+  let i = sent.length - 1;
+  let newUserMessages = 0;
+  while (i >= 0 && sent[i].role === 'user') {
+    newUserMessages++;
+    i--;
+  }
+  if (newUserMessages === 0) return null;
+
+  const toolCallIds = new Set();
+  while (i >= 0 && sent[i].role === 'tool') {
+    for (const output of sent[i].tool_outputs ?? []) toolCallIds.add(output.tool_call_id);
+    if (sent[i].tool_call_id) toolCallIds.add(sent[i].tool_call_id);
+    i--;
+  }
+  const assistant = sent[i];
+  if (!assistant || assistant.role !== 'assistant' || assistant.status !== 'final') return null;
+  if (!isValidResponsesAPIId(assistant.response_id)) return null;
+  // Tool rows must belong to this reply's calls, already settled in its response.
+  const ownCalls = new Set((assistant.tool_calls ?? []).map((tc) => tc.id));
+  for (const id of toolCallIds) if (!ownCalls.has(id)) return null;
+  return assistant.response_id;
+}
+
+/**
  * Validate if a response_id is compatible with the Responses API
  * The Responses API expects IDs that begin with 'resp_'
  * @param {string} responseId - The response ID to validate
@@ -647,35 +697,25 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
 
   if (persistence && persistence.persist && persistence.conversationId && supportsResponsesAPI) {
     try {
-      const previousResponseId = getLastAssistantResponseId({ conversationId: persistence.conversationId });
+      // Continue only from the newest stored reply, and only when nothing but new
+      // user messages follow it (see resumableResponseId).
+      const storedPage = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
+      const storedMessages = storedPage?.messages || [];
+      const previousResponseId = resumableResponseId(storedMessages);
 
-      // Only use the optimization if we have a valid response_id
-      if (previousResponseId && isValidResponsesAPIId(previousResponseId)) {
-        // We have a valid response_id - only send the latest user message
-        // OpenAI will manage conversation state server-side
-        const allUserMessages = Array.isArray(bodyIn?.messages)
-          ? bodyIn.messages.filter((m) => m && m.role === 'user')
-          : [];
-
-        // Take only the last user message (the new one being sent)
-        const latestUserMessage = allUserMessages.length > 0
-          ? [allUserMessages[allUserMessages.length - 1]]
-          : [];
+      if (previousResponseId) {
+        // Send every user message after that reply (more than one after a failed turn).
+        const sent = storedMessages.map((m) => normalizeStoredMessage(m)).filter(Boolean);
+        let start = sent.length;
+        while (start > 0 && sent[start - 1].role === 'user') start--;
+        const newUserMessages = sent.slice(start);
 
         const messages = systemPrompt
-          ? [{ role: 'system', content: systemPrompt }, ...latestUserMessage]
-          : latestUserMessage;
+          ? [{ role: 'system', content: systemPrompt }, ...newUserMessages]
+          : newUserMessages;
 
         debugLogMessages('buildConversationMessagesOptimized(previousResponseId)', messages, persistence);
         return { messages, previousResponseId };
-      }
-
-      if (previousResponseId && !isValidResponsesAPIId(previousResponseId)) {
-        logger.debug({
-          msg: 'skipping_invalid_previous_response_id_in_builder',
-          previous_response_id: previousResponseId,
-          reason: 'ID does not match Responses API format (expected resp_* prefix), using full history'
-        });
       }
 
       // No response_id yet - fall back to full history for this conversation

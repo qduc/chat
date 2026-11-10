@@ -77,6 +77,12 @@ export type ProviderModelOptions = {
   readonly userId?: string | null;
   /** Ask the provider to stream (default). False sends one JSON request per model call. */
   readonly stream?: boolean;
+  /**
+   * A stored response the turn's first request continues from (Responses API),
+   * sending only the new user messages. Only for models that support
+   * continuation; the caller has checked it matches the history being sent.
+   */
+  readonly resumeFrom?: string | null;
 };
 
 const DEFAULT_IDLE_TIMEOUT_MS = 300_000;
@@ -106,6 +112,10 @@ export class ProviderModel implements Model {
   protected readonly idleTimeoutMs: number;
   protected readonly userId: string | null;
   protected readonly streamUpstream: boolean;
+  /** Consumed by the first request that uses it. */
+  private resumeFrom: string | null;
+  /** Full-history request behind each resumed request, to retry with if the provider refuses the id. */
+  private readonly fullHistoryRequests = new WeakMap<ChatCompletionsBody, ChatCompletionsBody>();
 
   constructor(options: ProviderModelOptions) {
     this.provider = options.provider;
@@ -119,6 +129,7 @@ export class ProviderModel implements Model {
       options.idleTimeoutMs ?? options.config.providerConfig?.streamTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
     this.userId = options.userId ?? null;
     this.streamUpstream = options.stream ?? true;
+    this.resumeFrom = options.resumeFrom ?? null;
     this.capabilities = { continuity: this.supportsContinuation(), standardServiceTier: false, httpTransportDowngrade: false };
   }
 
@@ -161,7 +172,28 @@ export class ProviderModel implements Model {
     if (previousResponseId) body.previous_response_id = previousResponseId;
     else delete body.previous_response_id;
 
-    return this.finalizeBody(body, request);
+    const finalized = await this.finalizeBody(body, request);
+    return previousResponseId ? finalized : this.resumed(finalized);
+  }
+
+  /**
+   * The turn's first request, continued from the stored response: only the new
+   * user messages go upstream. The full-history request is kept for a retry.
+   */
+  private resumed(body: ChatCompletionsBody): ChatCompletionsBody {
+    const responseId = this.resumeFrom;
+    this.resumeFrom = null;
+    if (!responseId || !this.supportsContinuation()) return body;
+    let start = body.messages.length;
+    while (start > 0 && body.messages[start - 1]?.role === 'user') start--;
+    if (start === body.messages.length) return body;
+    const resumed: ChatCompletionsBody = {
+      ...body,
+      messages: [...body.messages.filter((m) => m.role === 'system'), ...body.messages.slice(start)],
+      previous_response_id: responseId,
+    };
+    this.fullHistoryRequests.set(resumed, body);
+    return resumed;
   }
 
   protected continuationFor(request: ModelRequest): string | undefined {
@@ -204,10 +236,11 @@ export class ProviderModel implements Model {
     if (!upstream.ok && body.previous_response_id) {
       const errorBody = await readUpstreamErrorBody(upstream);
       if (isRejectedContinuation(upstream.status, errorBody)) {
-        // The provider no longer holds that response. Full history is already
-        // in the request (the adapter trims it only when continuing), so retry
-        // self-contained.
-        const { previous_response_id: _dropped, ...selfContained } = body;
+        // The provider no longer holds that response: retry with full history.
+        // A resumed request kept it aside; otherwise it's already in the request
+        // (the adapter trims it only when continuing).
+        const fullHistory = this.fullHistoryRequests.get(body);
+        const { previous_response_id: _dropped, ...selfContained } = fullHistory ?? body;
         upstream = yield* this.send(selfContained as ChatCompletionsBody, signal);
       } else {
         throw upstreamFailure(upstream.status, errorBody);
@@ -597,9 +630,11 @@ function imageMediaType(url: string): string {
   return /^data:([^;,]+)[;,]/.exec(url)?.[1] ?? 'image/*';
 }
 
+/** The provider refused `previous_response_id` (unknown, expired, not stored, malformed). */
 function isRejectedContinuation(status: number, body: unknown): boolean {
-  const error = (body as { error?: { param?: string; code?: string } } | undefined)?.error;
-  return status === 400 && error?.param === 'previous_response_id' && error?.code === 'invalid_value';
+  if (status !== 400 && status !== 404) return false;
+  const error = (body as { error?: { param?: string; code?: string; message?: string } } | undefined)?.error;
+  return error?.param === 'previous_response_id' || /previous[_ ]response/i.test(error?.message ?? '');
 }
 
 function errorKindForStatus(status: number | undefined): ModelError['kind'] {

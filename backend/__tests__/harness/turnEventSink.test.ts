@@ -51,6 +51,7 @@ function recordingPersistence() {
     setReasoningTokens: record('setReasoningTokens'),
     setUsage: record('setUsage'),
     setResponseId: record('setResponseId'),
+    clearResponseId: record('clearResponseId'),
     addToolCalls: record('addToolCalls'),
     addToolOutputs: record('addToolOutputs'),
     addMessageEvent: record('addMessageEvent'),
@@ -183,6 +184,38 @@ describe('TurnEventSink', () => {
     expect(persistence.content()).toBe('Partial');
     expect(calls.at(-1)).toEqual(['recordAssistantFinal', { finishReason: 'cancelled', responseId: null }]);
     expect(res.writableEnded).toBe(true);
+  });
+
+  test('only a completed turn keeps its response id for the next turn', () => {
+    const outcomes = [
+      { kind: 'completed' },
+      { kind: 'cancelled' },
+      { kind: 'interrupted', terminalCause: 'budget_exhausted' },
+      { kind: 'failed', error: { kind: 'provider', message: 'down', retryable: false } },
+    ] as const;
+    const cleared = outcomes.map((result) => {
+      const { res } = fakeResponse();
+      const { persistence, calls } = recordingPersistence();
+      const sink = new TurnEventSink({ res, persistence, model: 'm' });
+      sink.handle({
+        type: 'model_response_completed',
+        modelStep: 1,
+        stopReason: 'tool_use',
+        continuation: 'resp_step1',
+      });
+      sink.handle({ type: 'turn_ended', result });
+      const clearAt = calls.findIndex(([name]) => name === 'clearResponseId');
+      const finalAt = calls.findIndex(([name]) => name === 'recordAssistantFinal');
+      // Cleared before the final write, which would otherwise store the stale id.
+      if (clearAt >= 0 && finalAt >= 0) expect(clearAt).toBeLessThan(finalAt);
+      return [result.kind, clearAt >= 0];
+    });
+    expect(cleared).toEqual([
+      ['completed', false],
+      ['cancelled', true],
+      ['interrupted', true],
+      ['failed', true],
+    ]);
   });
 
   test('the loop cap appends the legacy notice', () => {

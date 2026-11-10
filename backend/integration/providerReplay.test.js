@@ -161,7 +161,7 @@ const toolValue = (output) => (typeof output === 'string' ? JSON.parse(output) :
 
 const deltas = (events) => events.filter((e) => typeof e === 'object').map((e) => e?.choices?.[0]?.delta ?? {});
 
-async function runRecording(family, { fixture = loadFixture(family), cuts } = {}) {
+async function runRecording(family, { fixture = loadFixture(family), cuts, conversationId, prompt = PROMPT } = {}) {
   replay.load(fixture, { cuts });
   const app = makeApp({ mockUser });
   const providerId = seedProvider(family, fixture);
@@ -169,7 +169,8 @@ async function runRecording(family, { fixture = loadFixture(family), cuts } = {}
   const res = await request(app)
     .post('/v1/chat/completions')
     .send({
-      messages: [{ role: 'user', content: PROMPT }],
+      messages: [{ role: 'user', content: prompt }],
+      ...(conversationId ? { conversation_id: conversationId } : {}),
       model: fixture.capture.model,
       provider_id: providerId,
       stream: true,
@@ -177,8 +178,8 @@ async function runRecording(family, { fixture = loadFixture(family), cuts } = {}
     });
 
   const events = parseSse(res.text);
-  const conversationId = events.find((e) => typeof e === 'object' && e?._conversation)?._conversation?.id;
-  const page = conversationId ? getMessagesPage({ conversationId, afterSeq: 0, limit: 50 }) : null;
+  const replyConversationId = events.find((e) => typeof e === 'object' && e?._conversation)?._conversation?.id;
+  const page = replyConversationId ? getMessagesPage({ conversationId: replyConversationId, afterSeq: 0, limit: 50 }) : null;
   return {
     fixture,
     status: res.status,
@@ -268,6 +269,32 @@ describe('provider replay e2e (recorded real traffic)', () => {
       // Only the Responses API chains tool rounds; every other family sends full history.
       const chained = Boolean(run.requests[1].body?.previous_response_id);
       assert.equal(chained, family === 'openai-responses', `${family}: chains tool rounds only on the Responses API`);
+    });
+
+    test('a second message in the same conversation', async () => {
+      const first = await runRecording(family);
+      const conversationId = first.events.find((e) => typeof e === 'object' && e?._conversation)?._conversation?.id;
+      assert.ok(conversationId, 'first message created a conversation');
+      const SECOND = 'Now do it once more.';
+      // The same recording answers the second message.
+      const second = await runRecording(family, { conversationId, prompt: SECOND });
+
+      assert.equal(second.status, 200);
+      assert.deepEqual(second.unexpected, []);
+      assert.equal(second.assistant?.status, 'final');
+      const opening = second.requests[0].body;
+      const sent = JSON.stringify(opening);
+      assert.ok(sent.includes(SECOND), `${family}: sends the new message`);
+      if (family === 'openai-responses') {
+        // Continues from the first message's final response; only the new message goes up.
+        const [, turn2] = first.fixture.turns;
+        assert.equal(opening.previous_response_id, FAMILIES[family].responseId(turn2), 'chains to the stored response');
+        assert.ok(!sent.includes(PROMPT), 'earlier history stays server-side');
+        assert.ok(!sent.includes('function_call_output'), 'settled tool outputs are not resent');
+      } else {
+        assert.equal(opening.previous_response_id, undefined);
+        assert.ok(sent.includes(PROMPT), `${family}: full history includes the first message`);
+      }
     });
   });
 });

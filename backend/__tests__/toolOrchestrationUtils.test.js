@@ -12,8 +12,7 @@ const toolOrchestrationModule = await import('../src/lib/toolOrchestrationUtils.
 const {
   extractSystemPrompt,
   buildConversationMessages,
-  executeToolCall,
-  executeToolCallsParallel,
+  resumableResponseId,
 } = toolOrchestrationModule;
 
 describe('toolOrchestrationUtils', () => {
@@ -233,6 +232,50 @@ describe('toolOrchestrationUtils', () => {
 
       expect(result).toHaveLength(2);
       expect(result[1].content).toBe('From bodyIn');
+    });
+  });
+
+  describe('resumableResponseId', () => {
+    const userMsg = (content) => ({ role: 'user', content });
+    const reply = (content, extra = {}) => ({ role: 'assistant', content, status: 'final', response_id: 'resp_1', ...extra });
+
+    test('continues from the newest reply when only new user messages follow', () => {
+      expect(resumableResponseId([userMsg('q1'), reply('a1'), userMsg('q2')])).toBe('resp_1');
+    });
+
+    test('several new user messages (after a failed turn) still continue from the last good reply', () => {
+      const failed = { role: 'assistant', content: '[Error: boom]', status: 'error', response_id: 'resp_failed' };
+      expect(resumableResponseId([userMsg('q1'), reply('a1'), userMsg('q2'), failed, userMsg('q3')])).toBe('resp_1');
+    });
+
+    test('never skips back past a newer reply that has no id', () => {
+      // The legacy lookup returned resp_1 here and lost the second exchange.
+      const noId = { role: 'assistant', content: 'a2', status: 'final' };
+      expect(resumableResponseId([userMsg('q1'), reply('a1'), userMsg('q2'), noId, userMsg('q3')])).toBeNull();
+    });
+
+    test('tool rows after the reply must answer its own calls', () => {
+      const withCalls = reply('a1', { tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'x', arguments: '{}' } }] });
+      const ownRow = { role: 'tool', content: '', tool_outputs: [{ tool_call_id: 'call_1', output: 'ok' }] };
+      const foreignRow = { role: 'tool', content: '', tool_outputs: [{ tool_call_id: 'call_9', output: 'ok' }] };
+      expect(resumableResponseId([userMsg('q1'), withCalls, ownRow, userMsg('q2')])).toBe('resp_1');
+      expect(resumableResponseId([userMsg('q1'), withCalls, foreignRow, userMsg('q2')])).toBeNull();
+    });
+
+    test('null without a new user message, a Responses id, or a final reply', () => {
+      expect(resumableResponseId([userMsg('q1'), reply('a1')])).toBeNull();
+      expect(resumableResponseId([userMsg('q1'), reply('a1', { response_id: 'chatcmpl-1' }), userMsg('q2')])).toBeNull();
+      expect(resumableResponseId([userMsg('q1'), userMsg('q2')])).toBeNull();
+      expect(resumableResponseId([])).toBeNull();
+    });
+
+    test('a reply that is not final (draft) is not continued from', () => {
+      expect(resumableResponseId([userMsg('q1'), reply('a1', { status: 'draft' }), userMsg('q2')])).toBeNull();
+    });
+
+    test('ignores an in-progress draft after the new message', () => {
+      const draft = { role: 'assistant', content: '', status: 'streaming' };
+      expect(resumableResponseId([userMsg('q1'), reply('a1'), userMsg('q2'), draft])).toBe('resp_1');
     });
   });
 });

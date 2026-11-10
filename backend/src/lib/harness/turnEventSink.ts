@@ -27,6 +27,7 @@ export type SinkPersistence = {
   setReasoningTokens?(tokens: number): void;
   setUsage?(usage: Record<string, unknown>): void;
   setResponseId?(responseId: string): void;
+  clearResponseId?(): void;
   addToolCalls?(calls: unknown[]): void;
   addToolOutputs?(outputs: unknown[]): void;
   addMessageEvent?(type: string, payload: unknown): void;
@@ -245,6 +246,11 @@ export class TurnEventSink {
 
   private onTurnEnded(result: TurnResult): void {
     this.ended = true;
+    // Only a completed turn ends on a response that holds everything stored for it.
+    // After a cap, cancel or failure, the last response id would point at an earlier
+    // step (or at tool calls whose outputs it never received); the next turn must not
+    // continue from it.
+    if (result.kind !== 'completed') this.persistence?.clearResponseId?.();
     switch (result.kind) {
       case 'completed':
         recordFinalToPersistence(this.persistence, this.lastFinishReason ?? 'stop');

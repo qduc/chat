@@ -312,6 +312,86 @@ describe('OpenAIModel (Responses API)', () => {
     expect(calls[1]!.body.previous_response_id).toBeUndefined();
     expect(text(events)).toBe('Fresh');
   });
+
+  // A previous turn's reply, then the new message.
+  const priorTurn = (): Item[] => [
+    user('first question'),
+    { type: 'assistant_message', id: 'a1' as ItemId, content: [{ type: 'text', text: 'first answer' }] },
+    { type: 'user_message', id: 'u2' as ItemId, content: [{ type: 'text', text: 'second question' }] },
+  ];
+  const inputTexts = (body: Record<string, unknown>) => JSON.stringify(body.input);
+
+  test('resumeFrom: the first request sends only the new message, chained to the stored response', async () => {
+    const { fetch, calls } = recordedFetch({ body: responsesStream('resp_new', 'Second') }, { body: responsesStream('resp_more', 'Again') });
+    const provider = new OpenAIProvider({
+      config,
+      providerId: 'p1',
+      http: fetch,
+      settings: { providerType: 'openai-responses', apiKey: 'k', baseUrl: 'https://api.openai.com' },
+    });
+    const model = createModel({ provider, model: 'gpt-r', config, resumeFrom: 'resp_prev' });
+
+    const events = await collect(model.stream(request('gpt-r', priorTurn()), new AbortController().signal));
+
+    expect(calls[0]!.body.previous_response_id).toBe('resp_prev');
+    expect(inputTexts(calls[0]!.body)).toContain('second question');
+    expect(inputTexts(calls[0]!.body)).not.toContain('first question');
+    expect(inputTexts(calls[0]!.body)).not.toContain('first answer');
+    expect(text(events)).toBe('Second');
+
+    // Used once: a later request of the same turn doesn't reuse it.
+    await collect(model.stream(request('gpt-r', priorTurn()), new AbortController().signal));
+    expect(calls[1]!.body.previous_response_id).toBeUndefined();
+    expect(inputTexts(calls[1]!.body)).toContain('first question');
+  });
+
+  test('resumeFrom: an unknown stored response retries with the full history', async () => {
+    const { fetch, calls } = recordedFetch(
+      {
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: {
+            type: 'invalid_request_error',
+            param: 'previous_response_id',
+            code: 'previous_response_not_found',
+            message: "Previous response with id 'resp_prev' not found.",
+          },
+        }),
+      },
+      { body: responsesStream('resp_full', 'Recovered') },
+    );
+    const provider = new OpenAIProvider({
+      config,
+      providerId: 'p1',
+      http: fetch,
+      settings: { providerType: 'openai-responses', apiKey: 'k', baseUrl: 'https://api.openai.com' },
+    });
+    const model = createModel({ provider, model: 'gpt-r', config, resumeFrom: 'resp_prev' });
+
+    const events = await collect(model.stream(request('gpt-r', priorTurn()), new AbortController().signal));
+
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.body.previous_response_id).toBeUndefined();
+    for (const said of ['first question', 'first answer', 'second question']) expect(inputTexts(calls[1]!.body)).toContain(said);
+    expect(text(events)).toBe('Recovered');
+  });
+
+  test('resumeFrom is ignored where continuation is not supported (Chat Completions)', async () => {
+    const { fetch, calls } = recordedFetch({ body: sse([{ id: 'c', choices: [{ delta: { content: 'ok' }, finish_reason: 'stop' }] }]) });
+    const provider = new OpenAIProvider({
+      config,
+      providerId: 'p1',
+      http: fetch,
+      settings: { providerType: 'openai-completions', apiKey: 'k', baseUrl: 'https://api.example.test' },
+    });
+    const model = createModel({ provider, model: 'gpt-x', config, resumeFrom: 'resp_prev' });
+
+    await collect(model.stream(request('gpt-x', priorTurn()), new AbortController().signal));
+
+    expect(calls[0]!.body.previous_response_id).toBeUndefined();
+    expect(JSON.stringify(calls[0]!.body.messages)).toContain('first question');
+  });
 });
 
 describe('AnthropicModel', () => {

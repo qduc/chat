@@ -34,7 +34,7 @@ To pick up a harness change, publish a new version from agent-runtime and bump b
 | `reasoning_effort`, `verbosity`, custom params | `TurnSpec.reasoning`; the rest in `TurnSpec.providerOptions` |
 | conversation id | `TurnSpec.affinity.conversationKey` (cache-log key) |
 | `previous_response_id` within a turn | `TurnDeps.continuity`, only when `model.capabilities.continuity` (Responses API): tool rounds send the new items, chained to the last response |
-| `previous_response_id` from the last message (across turns) | Not used: each turn's first request carries the full history |
+| `previous_response_id` from the last message (across turns) | `buildConversationMessagesWithResumeAsync` → `resumeFrom` on the model: the first request sends only the new user messages, chained to the previous turn's stored response, when `resumableResponseId` says that is safe |
 | `abortContext.signal` | `handle.cancel()` on abort |
 | invalid-reasoning retry (2×, then warning) | Inside the model wrapper (`ProviderModel.stream`), same limit and warning text |
 
@@ -115,11 +115,18 @@ finish reason, upstream model and provider, response id) travels on
   `error` (legacy: `success`). The text the model sees is unchanged.
 - **`content_withdrawn` is new.** The frontend ignores it today, so withdrawn text stays on screen until
   reload. It only fires if engine recovery is enabled, which ChatForge does not configure.
-- **Continuation within a turn only.** Tool rounds on the Responses API chain with
-  `previous_response_id` (engine continuity). A turn's first request carries the full history; legacy
-  chained it to the previous turn's stored response id. Correct, but more input tokens on long
-  Responses-API threads. Continuity is gated on the model's capability: every wrapper reports a
+- **Continuation across and within turns, more carefully.** On the Responses API a turn's first
+  request continues from the previous turn's stored response (`resumeFrom`), and its tool rounds
+  chain with engine continuity. Both are gated on the model's capability: every wrapper reports a
   response id, and chaining a provider without server-side state would drop history.
+  `resumableResponseId` (also used by the plain no-tools path) continues only from the newest stored
+  reply on the active branch, when it is `final`, has a `resp_` id, any tool rows after it answer its
+  own calls, and only new user messages follow. Legacy took the newest reply *that had an id* among
+  the last 25, so a newer reply without one (another provider, a failure) was silently skipped. Only
+  a completed turn keeps its response id: after a cap, cancel or failure it is cleared, since it
+  would point at an earlier step or at tool calls whose outputs the provider never received. A
+  refused id (unknown, expired, not stored: any 400/404 naming `previous_response_id`) retries
+  with the full history; legacy retried only on `invalid_value`.
 - **Streamed `tool_output.output` is text.** Legacy streamed the tool's raw value (an object for JSON
   tools); the harness streams the serialized string the model saw, which is also what the database
   stores. The UI indents JSON text the same way it indents objects, so a result looks the same live

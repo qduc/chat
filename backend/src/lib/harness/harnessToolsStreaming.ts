@@ -13,7 +13,7 @@ import { startTurn } from '@qduc/agent-core';
 import type { InteractionRequest, ReasoningEffort, TurnDeps, TurnId, TurnSpec } from '@qduc/agent-core';
 import { createProvider } from '../providers/index.js';
 import { setupStreamingHeaders } from '../streamingHandler.js';
-import { buildConversationMessagesAsync } from '../toolOrchestrationUtils.js';
+import { buildConversationMessagesWithResumeAsync } from '../toolOrchestrationUtils.js';
 import { getUserMaxToolIterations } from '../../db/users.js';
 import { logger } from '../../logger.js';
 import { chatMessagesToItems } from './chatMessages.ts';
@@ -133,12 +133,16 @@ async function runToolTurn<Res>(
   let deps: TurnDeps<ChatForgeToolContext>;
   try {
     const providerInstance = (provider ?? (await createProvider(config, { providerId }))) as ChatForgeProvider;
-    // Each request starts from the full history. Within the turn, Responses-API
-    // providers chain tool rounds with previous_response_id (`continuity` below).
+    // The turn holds the full history. On the Responses API its first request
+    // continues from the previous turn's stored response when that is safe
+    // (`resumeFrom`), and later tool rounds chain within the turn (`continuity` below).
     // Its JSDoc says Object/string; null persistence and user id are handled at runtime.
-    const buildArgs = { body, bodyIn, persistence, userId } as Parameters<typeof buildConversationMessagesAsync>[0];
-    const messages = (await buildConversationMessagesAsync(buildArgs)) as ChatMessage[];
-    const { instructions, items } = chatMessagesToItems(messages);
+    const buildArgs = { body, bodyIn, persistence, userId } as Parameters<typeof buildConversationMessagesWithResumeAsync>[0];
+    const built = (await buildConversationMessagesWithResumeAsync(buildArgs)) as {
+      messages: ChatMessage[];
+      resumeFrom: string | null;
+    };
+    const { instructions, items } = chatMessagesToItems(built.messages);
 
     const model = createModel({
       provider: providerInstance,
@@ -146,6 +150,7 @@ async function runToolTurn<Res>(
       config,
       userId,
       stream: body.provider_stream !== false,
+      resumeFrom: built.resumeFrom,
     });
     const toolContext: ChatForgeToolContext = { userId };
     const tools = createToolRegistry(enabledToolNames(body));
