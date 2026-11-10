@@ -23,7 +23,8 @@ export class MockUpstream {
   }
 
   setupRoutes() {
-    this.app.use(express.json());
+    // Real providers take large requests (tool outputs); express.json() defaults to 100kb.
+    this.app.use(express.json({ limit: '10mb' }));
 
     // Mock OpenAI Chat Completions endpoint
     this.app.post('/v1/chat/completions', (req, res) => {

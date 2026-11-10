@@ -39,8 +39,8 @@ Tool orchestration in ChatForge is an **iterative, server-side execution system*
 
 **File Locations:**
 - `backend/src/lib/toolOrchestrationUtils.js` - Core orchestration utilities
-- `backend/src/lib/harness/harnessToolsStreaming.ts` - Streaming mode orchestration, on `@qduc/agent-core` (see [agent-harness-event-mapping.md](agent-harness-event-mapping.md))
-- `backend/src/lib/toolsJson.js` - Non-streaming (JSON) mode orchestration
+- `backend/src/lib/harness/harnessToolsStreaming.ts` - Tool orchestration (streaming and JSON), on `@qduc/agent-core` (see [agent-harness-event-mapping.md](agent-harness-event-mapping.md))
+- `backend/src/lib/harness/turnOutputs.ts` - Reply formats: SSE (`SseTurnOutput`) and one JSON body (`JsonTurnOutput`)
 - `backend/src/lib/tools/` - Tool implementations directory:
   - `baseTool.js` - Tool factory with `createTool`
   - `index.js` - Tool registry
@@ -352,12 +352,9 @@ Located in `backend/src/lib/openaiProxy.js:296-303`:
 
 ```javascript
 if (flags.hasTools) {
-  // Tool orchestration path
-  if (flags.streamToFrontend) {
-    return handleToolsStreaming({ body, bodyIn, config, res, req, persistence, provider, userId });
-  } else {
-    return handleToolsJson({ body, bodyIn, config, res, req, persistence, provider, userId });
-  }
+  // Tool orchestration path: the agent-core tool loop, as SSE or one JSON reply.
+  const args = { body, bodyIn, config, res, req, persistence, provider, userId, abortContext };
+  return flags.streamToFrontend ? handleToolsStreamingHarness(args) : handleToolsJsonHarness(args);
 }
 ```
 
@@ -478,9 +475,16 @@ for (const toolCall of normalizedToolCalls) {
 }
 ```
 
-### Non-Streaming Mode (`handleToolsJson`)
+### Non-Streaming Mode (`handleToolsJsonHarness`)
 
-**File:** `backend/src/lib/toolsJson.js`
+**File:** `backend/src/lib/harness/harnessToolsStreaming.ts` (reply format in `harness/turnOutputs.ts`)
+
+> **Note:** Non-streaming orchestration runs the same `@qduc/agent-core` turn as
+> streaming mode; only the reply differs (`JsonTurnOutput`). The former
+> `toolsJson.js` was removed; the code and line numbers below describe that
+> legacy implementation. The reply shape (`choices[0].message`, `tool_events`,
+> `_conversation`) is unchanged; see
+> [agent-harness-event-mapping.md](agent-harness-event-mapping.md#json-reply-stream-false).
 
 **Characteristics:**
 - Single JSON response at the end

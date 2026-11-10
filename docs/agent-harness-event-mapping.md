@@ -1,8 +1,8 @@
 # Agent harness: event mapping
 
-Status: **Part B of [#40](https://github.com/qduc/chat/issues/40) done.** Every streaming request with
-tools runs on the harness. The legacy loop (`toolsStreaming.js`) and the `AGENT_HARNESS_TOOL_LOOP` flag
-are gone. The non-streaming JSON tool path (`toolsJson.js`) is unchanged.
+Status: **Part B of [#40](https://github.com/qduc/chat/issues/40) done.** Every request with tools runs
+on the harness: streaming requests reply with SSE, `stream: false` with one JSON body. Both legacy loops
+(`toolsStreaming.js`, `toolsJson.js`) and the `AGENT_HARNESS_TOOL_LOOP` flag are gone.
 
 The harness is `@qduc/agent-core`, developed in qduc/agent-runtime (`packages/core/`) and installed
 from npm at an exact version (`0.2.0-alpha.1`) in `backend/package.json` and `electron/package.json`.
@@ -12,12 +12,13 @@ To pick up a harness change, publish a new version from agent-runtime and bump b
 
 | File | Role |
 | --- | --- |
-| `harness/harnessToolsStreaming.ts` | The streaming tool loop: builds the `TurnSpec`, runs `startTurn`, feeds the sink |
+| `harness/harnessToolsStreaming.ts` | The tool loop: builds the `TurnSpec`, runs `startTurn`, feeds the sink (`handleToolsStreamingHarness`, `handleToolsJsonHarness`) |
 | `harness/chatMessages.ts` | `Item[]` ⇄ Chat Completions messages, lossless (unmappable messages ride as `provider_input`) |
 | `harness/providerModel.ts` | Shared `Model.stream`: request building, ChatForge transport, chunk → `ModelEvent` |
 | `harness/models.ts` | One wrapper per provider (`OpenAIModel`, `AnthropicModel`, `GeminiModel`, `LlamaCppModel`), `createModel`, `createModelRegistry` |
 | `harness/tools.ts` | `toHarnessTool`, `createToolRegistry`; app context is `{ userId }` |
-| `harness/turnEventSink.ts` | `TurnEvent` → SSE + persistence, matching what the legacy loop sent and stored |
+| `harness/turnEventSink.ts` | `TurnEvent` → persistence, and client output through a `TurnOutput` |
+| `harness/turnOutputs.ts` | Reply formats: `SseTurnOutput` (what the legacy streaming loop sent), `JsonTurnOutput` (one body) |
 
 ## Building a turn
 
@@ -66,6 +67,32 @@ arrive (and checkpointed by it), and `recordAssistantFinal` writes the message a
 | `turn_ended` interrupted, `budget_exhausted` | `[Maximum iterations reached]`, then as completed | as completed, after appending the notice |
 | `turn_ended` cancelled | `_conversation`, `[DONE]` | `recordAssistantFinal('cancelled')`; partial text is what the deltas checkpointed |
 | `turn_ended` failed | `[Error: …]`, `_conversation`, `[DONE]` | `markError` |
+
+Tool calls are indexed per model response (`index` 0, 1, … within one response), in the stream and
+in persistence, even when other events arrive between one response's calls.
+
+### JSON reply (`stream: false`)
+
+The same turn and the same persistence; `JsonTurnOutput` collects what the SSE output would stream
+and answers once:
+
+| Collected | JSON |
+| --- | --- |
+| text deltas, notices (loop cap, warnings) | `tool_events` `{ type: 'text' }`, one per run of text; text since the last tool round is `choices[0].message.content` |
+| `tool_calls` | one `tool_events` `{ type: 'tool_call', value }` per call |
+| `tool_output` | `tool_events` `{ type: 'tool_output', value: { tool_call_id, name, output } }` |
+| reasoning, `reasoning_details`, images | on `choices[0].message` |
+| last response's usage, model, provider, id, finish reason | `usage`, `model`, `provider`, `id`, `choices[0].finish_reason` |
+| turn completed / interrupted | `200`, plus `_conversation` |
+| turn failed | `500` `{ error: { message, type: 'tool_orchestration_error' }, tool_events }` |
+| turn cancelled | no body (the client is gone) |
+
+Upstream follows `provider_stream`, which defaults to the client's `stream`: a `stream: false` request
+asks the provider for JSON too. Differences from the legacy JSON loop (`toolsJson.js`): the journal
+gets the user on single tool calls (legacy dropped it outside parallel mode); the iteration cap ends
+with the notice instead of one more model call; `provider_stream: true` works (legacy serialized the
+raw upstream `Response`); tool outputs are text and failed tools are stored as `error`, as in the
+streaming reply.
 
 **Partial text on abort** comes from collected text deltas, as today. The engine's accepted history
 never holds a partial assistant message; ChatForge's checkpoint does, by design.
@@ -130,8 +157,10 @@ None of these needed a local workaround in Part A; each is a candidate Term2 iss
       accept it (`harness/harnessToolsStreaming.ts`).
 - [x] Route-level tests over a scripted upstream (`__tests__/harness/toolLoop.test.js`): tool call
       then answer, reasoning-only retry and exhaustion, iteration cap, upstream error, a throwing
-      tool, malformed tool-call JSON, `provider_stream: false`. Expected values are the legacy
-      loop's results for the same scripts, captured before it was removed.
+      tool, malformed tool-call JSON, `provider_stream: false`, text before tool calls, two calls in
+      one response, special characters, a large output, malformed SSE, the idle timeout, and the
+      JSON reply. Streaming expectations are the legacy loop's results for the same scripts,
+      captured before it was removed.
 - [x] Replay e2e over sanitized real provider recordings (`npm run test:provider-replay`,
       `integration/providerReplay.test.js`): OpenAI Chat Completions, OpenAI Responses (chained
       tool round), Anthropic and Gemini, each checked against the recording.
@@ -142,3 +171,4 @@ None of these needed a local workaround in Part A; each is a candidate Term2 iss
 - [x] Wire `TurnDeps.continuity` so Responses-API tool rounds get `previous_response_id`.
 - [ ] Frontend: handle `content_withdrawn` (only needed if engine recovery is turned on).
 - [x] Make the harness the only streaming tool loop; remove the legacy loop and the flag.
+- [x] Run `stream: false` tool requests on the harness too (`JsonTurnOutput`); remove `toolsJson.js`.

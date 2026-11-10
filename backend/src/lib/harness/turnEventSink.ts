@@ -1,6 +1,6 @@
 /**
- * Lands harness `TurnEvent`s in ChatForge's existing SSE stream and
- * persistence, the way `handleToolsStreaming` writes them today.
+ * Lands harness `TurnEvent`s in ChatForge's persistence and in the client's
+ * reply: the SSE stream by default, or one JSON body (see turnOutputs.ts).
  *
  * The host loop (issue #40, Part B) does, for every accepted turn event:
  *     sink.handle(event);  // stream + checkpoint first
@@ -9,15 +9,10 @@
  * The full mapping, and why each choice was made, is in
  * docs/agent-harness-event-mapping.md.
  */
-import { createChatCompletionChunk, writeAndFlush, writeSseEvent } from '../streamUtils.js';
-import {
-  appendToPersistence,
-  emitConversationMetadata,
-  recordFinalToPersistence,
-  streamDeltaEvent,
-  streamDone,
-} from '../toolOrchestrationUtils.js';
+import { appendToPersistence, recordFinalToPersistence } from '../toolOrchestrationUtils.js';
 import type { Item, ModelError, TurnEvent, TurnResult } from '@qduc/agent-core';
+import { SseTurnOutput } from './turnOutputs.ts';
+import type { SseResponse, TurnOutput } from './turnOutputs.ts';
 
 export const MAX_ITERATIONS_NOTICE = '\n\n[Maximum iterations reached]';
 
@@ -39,15 +34,13 @@ export type SinkPersistence = {
   markError?(): void;
 };
 
-export type SinkResponse = {
-  readonly writableEnded: boolean;
-  write(chunk: string): unknown;
-  end(): unknown;
-  flush?(): void;
-};
+export type SinkResponse = SseResponse;
 
 export type TurnEventSinkOptions = {
-  readonly res: SinkResponse;
+  /** The SSE reply. Ignored when `output` is given. */
+  readonly res?: SinkResponse;
+  /** Where client-visible output goes; defaults to SSE on `res`. */
+  readonly output?: TurnOutput;
   readonly persistence?: SinkPersistence | null;
   /** Model id shown on synthesized chunks. */
   readonly model: string;
@@ -74,7 +67,7 @@ type PendingToolCall = {
 };
 
 export class TurnEventSink {
-  private readonly res: SinkResponse;
+  private readonly output: TurnOutput;
   private readonly persistence: SinkPersistence | null;
   private readonly model: string;
   private readonly completionId: string;
@@ -84,17 +77,21 @@ export class TurnEventSink {
   /** First-seen text offset per streamed tool call, keyed `${step}:${index}`. */
   private readonly toolCallOffsets = new Map<string, number>();
   private readonly toolNames = new Map<string, string>();
+  /** Tool calls seen so far in each model step: a call's index within its response. */
+  private readonly stepToolCalls = new Map<number, number>();
   /** Persistence content length when each model step's text began. */
   private readonly stepTextStart = new Map<number, number>();
   private lastFinishReason: string | null = null;
   private ended = false;
 
   constructor(options: TurnEventSinkOptions) {
-    this.res = options.res;
     this.persistence = options.persistence ?? null;
     this.model = options.model;
     this.completionId = options.completionId ?? `chatcmpl-${Date.now()}`;
     this.providerId = options.providerId ?? null;
+    if (options.output) this.output = options.output;
+    else if (options.res) this.output = new SseTurnOutput(options.res, this.model, this.completionId);
+    else throw new Error('TurnEventSink needs a response or an output');
   }
 
   get isEnded(): boolean {
@@ -147,7 +144,7 @@ export class TurnEventSink {
       const start = this.stepTextStart.get(step);
       if (start !== undefined) this.persistence?.truncateContent?.(start);
       this.stepTextStart.delete(step);
-      writeSseEvent(this.res, { type: 'content_withdrawn', value: { modelStep: event.modelStep ?? null } });
+      this.output.event({ type: 'content_withdrawn', value: { modelStep: event.modelStep ?? null } });
       return;
     }
     if (!event.delta) return;
@@ -187,7 +184,11 @@ export class TurnEventSink {
         return;
       }
       case 'tool_call': {
-        const index = this.pendingToolCalls.length;
+        // Numbered per model response, not per flush: other events can arrive
+        // between one response's calls and flush the earlier ones first.
+        const step = modelStep ?? -1;
+        const index = this.stepToolCalls.get(step) ?? 0;
+        this.stepToolCalls.set(step, index + 1);
         const signature = item.providerMetadata?.gemini_thought_signature;
         const offset = this.toolCallOffsets.get(`${modelStep}:${index}`);
         this.toolNames.set(item.callId, item.toolName);
@@ -206,10 +207,7 @@ export class TurnEventSink {
       }
       case 'tool_result': {
         const name = this.toolNames.get(item.callId);
-        const toolOutput = { tool_call_id: item.callId, name, output: item.output };
-        // Both chunks, as the legacy loop sends them.
-        this.chunk({ tool_output: toolOutput });
-        streamDeltaEvent({ res: this.res, model: this.model, event: { tool_output: toolOutput }, prefix: 'iter' });
+        this.output.toolOutput({ tool_call_id: item.callId, ...(name ? { name } : {}), output: item.output });
         if (this.persistence?.persist) {
           this.persistence.addToolOutputs?.([
             { tool_call_id: item.callId, output: item.output, status: item.isError ? 'error' : 'success' },
@@ -236,16 +234,13 @@ export class TurnEventSink {
       this.persistence?.setUsage?.(usage);
       if (typeof usage.reasoning_tokens === 'number') this.persistence?.setReasoningTokens?.(usage.reasoning_tokens);
     }
-    if (usage || meta.model || meta.provider) {
-      writeAndFlush(
-        this.res,
-        `data: ${JSON.stringify({
-          ...(usage ? { usage } : {}),
-          ...(meta.model ? { model: meta.model } : {}),
-          ...(meta.provider ? { provider: meta.provider } : {}),
-        })}\n\n`,
-      );
-    }
+    this.output.responseCompleted({
+      usage: usage ?? null,
+      model: meta.model ?? null,
+      provider: meta.provider ?? null,
+      responseId,
+      finishReason: meta.finishReason ?? null,
+    });
   }
 
   private onTurnEnded(result: TurnResult): void {
@@ -268,10 +263,14 @@ export class TurnEventSink {
         if (this.persistence?.persist) this.persistence.markError?.();
         break;
     }
-    if (this.res.writableEnded) return;
-    emitConversationMetadata(this.res, this.persistence);
-    streamDone(this.res);
-    this.res.end();
+    this.output.end(result, this.persistence);
+  }
+
+  /** The turn stopped without a `turn_ended` event: close the reply without finalizing persistence. */
+  abandon(): void {
+    if (this.ended) return;
+    this.ended = true;
+    this.output.abandon(this.persistence);
   }
 
   private flushToolCalls(): void {
@@ -283,7 +282,7 @@ export class TurnEventSink {
   }
 
   private retryStatus(info: { attempt: number; maxRetries: number; delayMs: number; error?: ModelError }): void {
-    writeSseEvent(this.res, {
+    this.output.event({
       type: 'retry_status',
       value: {
         source: 'provider',
@@ -300,12 +299,12 @@ export class TurnEventSink {
   }
 
   private notice(text: string): void {
-    streamDeltaEvent({ res: this.res, model: this.model, event: { content: text }, prefix: 'iter' });
+    this.output.notice(text);
     appendToPersistence(this.persistence, text);
   }
 
   private chunk(delta: Record<string, unknown>): void {
-    writeAndFlush(this.res, `data: ${JSON.stringify(createChatCompletionChunk(this.completionId, this.model, delta))}\n\n`);
+    this.output.chunk(delta);
   }
 
   private contentLength(): number {

@@ -1,16 +1,19 @@
 /**
- * The streaming tool loop: every streaming request with tools runs here,
- * through `startTurn` from `@qduc/agent-core` (see openaiProxy.js).
+ * The tool loop: every request with tools runs here, through `startTurn` from
+ * `@qduc/agent-core` (see openaiProxy.js). Streaming requests get SSE
+ * (`handleToolsStreamingHarness`); `stream: false` gets one JSON reply
+ * (`handleToolsJsonHarness`). Both drive the same turn and the same persistence.
  *
- * Event-to-SSE/persistence mapping lives in `TurnEventSink`; this file only
- * builds the turn and drives it. See docs/agent-harness-event-mapping.md.
+ * Event-to-persistence mapping lives in `TurnEventSink`, the wire format in
+ * turnOutputs.ts; this file only builds the turn and drives it.
+ * See docs/agent-harness-event-mapping.md.
  */
 import { randomUUID } from 'node:crypto';
 import { startTurn } from '@qduc/agent-core';
 import type { InteractionRequest, ReasoningEffort, TurnDeps, TurnId, TurnSpec } from '@qduc/agent-core';
 import { createProvider } from '../providers/index.js';
 import { setupStreamingHeaders } from '../streamingHandler.js';
-import { buildConversationMessagesAsync, emitConversationMetadata, streamDone } from '../toolOrchestrationUtils.js';
+import { buildConversationMessagesAsync } from '../toolOrchestrationUtils.js';
 import { getUserMaxToolIterations } from '../../db/users.js';
 import { logger } from '../../logger.js';
 import { chatMessagesToItems } from './chatMessages.ts';
@@ -20,7 +23,9 @@ import type { ChatForgeProvider, ChatForgeRuntimeConfig } from './providerModel.
 import { createToolRegistry } from './tools.ts';
 import type { ChatForgeToolContext } from './tools.ts';
 import { TurnEventSink } from './turnEventSink.ts';
-import type { SinkPersistence, SinkResponse } from './turnEventSink.ts';
+import type { SinkPersistence } from './turnEventSink.ts';
+import { JsonTurnOutput, SseTurnOutput } from './turnOutputs.ts';
+import type { JsonResponse, SseResponse, TurnOutput } from './turnOutputs.ts';
 
 const DEFAULT_MAX_ITERATIONS = 10;
 const REASONING_EFFORTS = new Set<ReasoningEffort>(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']);
@@ -49,17 +54,20 @@ type IncomingBody = {
   readonly [key: string]: unknown;
 };
 
-export type HarnessToolsStreamingArgs = {
+type TurnArgs<Res> = {
   readonly body: RequestBody;
   readonly bodyIn: IncomingBody;
   readonly config: HarnessConfig;
-  readonly res: SinkResponse & { setHeader?(name: string, value: string): unknown };
+  readonly res: Res;
   readonly req: { header(name: string): string | undefined };
   readonly persistence?: (SinkPersistence & { readonly conversationId?: string | null }) | null;
   readonly provider?: ChatForgeProvider | null;
   readonly userId?: string | null;
   readonly abortContext?: { readonly signal?: AbortSignal | null } | null;
 };
+
+export type HarnessToolsStreamingArgs = TurnArgs<SseResponse & { setHeader?(name: string, value: string): unknown }>;
+export type HarnessToolsJsonArgs = TurnArgs<JsonResponse>;
 
 /** Same parallel settings the legacy loop reads; 1 means sequential. */
 function maxParallelToolCalls(bodyIn: IncomingBody, config: HarnessConfig): number {
@@ -93,27 +101,31 @@ function providerOptions(body: RequestBody): Record<string, unknown> {
   return options;
 }
 
-export async function handleToolsStreamingHarness({
-  body,
-  bodyIn,
-  config,
-  res,
-  req,
-  persistence = null,
-  provider = null,
-  userId = null,
-  abortContext = null,
-}: HarnessToolsStreamingArgs): Promise<void> {
+/** Streaming reply: SSE chunks as the turn runs. */
+export async function handleToolsStreamingHarness(args: HarnessToolsStreamingArgs): Promise<void> {
+  setupStreamingHeaders(args.res);
+  return runToolTurn(args, (model, completionId) => new SseTurnOutput(args.res, model, completionId));
+}
+
+/** `stream: false`: one JSON reply once the turn ends. */
+export async function handleToolsJsonHarness(args: HarnessToolsJsonArgs): Promise<void> {
+  return runToolTurn(args, (model, completionId) => new JsonTurnOutput(args.res, model, completionId));
+}
+
+async function runToolTurn<Res>(
+  { body, bodyIn, config, req, persistence = null, provider = null, userId = null, abortContext = null }: TurnArgs<Res>,
+  createOutput: (model: string, completionId: string) => TurnOutput,
+): Promise<void> {
   const signal = abortContext?.signal ?? null;
   const providerId = bodyIn?.provider_id || req.header('x-provider-id') || undefined;
   const modelId = body.model || config.defaultModel || '';
-  setupStreamingHeaders(res);
+  const completionId = bodyIn?.id || `chatcmpl-${Date.now()}`;
 
   const sink = new TurnEventSink({
-    res,
+    output: createOutput(modelId, completionId),
     persistence,
     model: modelId,
-    ...(bodyIn?.id ? { completionId: bodyIn.id } : {}),
+    completionId,
     providerId: providerId ?? null,
   });
 
@@ -193,12 +205,8 @@ export async function handleToolsStreamingHarness({
     sink.handle({ type: 'turn_ended', result: { kind: 'failed', error: { kind: 'provider', message, retryable: false } } });
   } finally {
     signal?.removeEventListener('abort', onAbort);
-    if (!res.writableEnded) {
-      // The turn ended without a turn_ended event reaching the sink; close the stream cleanly.
-      emitConversationMetadata(res, persistence);
-      streamDone(res);
-      res.end();
-    }
+    // The turn ended without a turn_ended event reaching the sink; close the reply cleanly.
+    sink.abandon();
   }
 }
 
