@@ -124,8 +124,8 @@ proxyOpenAIRequest(req, res)
   │  ├─ Load conversation history (if applicable)
   │  ├─ Select execution path based on flags:
   │  │  ├─ Tools enabled → Tool orchestration
-  │  │  │  ├─ Streaming → handleToolsStreaming()
-  │  │  │  └─ JSON → handleToolsJson()
+  │  │  │  ├─ Streaming → handleToolsStreamingHarness()  (agent-core, SSE)
+  │  │  │  └─ JSON → handleToolsJsonHarness()  (agent-core, one JSON reply)
   │  │  └─ No tools → Direct proxy
   │  │     ├─ Streaming → handleRegularStreaming()
   │  │     └─ JSON → Direct JSON response
@@ -258,18 +258,17 @@ export const tools = Object.fromEntries(toolMap.entries());
 ### Tool Orchestration (`toolOrchestrationUtils.js`)
 
 #### 1. Message History Building
-- `buildConversationMessagesOptimized()` - Attempts Responses API optimization
-- Falls back to full history if no previous_response_id
-- Merges stored messages with request messages
+- `buildConversationMessagesAsync()` - Full history for the tool loop: stored messages merged with request messages
+- `buildConversationMessagesOptimized()` - Plain (no-tools) path: Responses API optimization with `previous_response_id`
 
 #### 2. Tool Execution Flow
-- `executeToolCall()` - Executes tool and returns output
-- Passes user context for user-scoped tools
-- Handles JSON parsing and validation errors gracefully
+- `harness/tools.ts` wraps each registered tool for `@qduc/agent-core`; the engine runs them
+- User context reaches user-scoped tools as `ctx.app.userId`
+- Malformed tool-call JSON and throwing tools become error results the model can read
 
 #### 3. Streaming Handlers
-- `handleToolsStreaming()` - Real-time tool orchestration with SSE
-- `handleToolsJson()` - Non-streaming tool orchestration
+- `handleToolsStreamingHarness()` - Tool orchestration on `@qduc/agent-core`, replying with SSE (`harness/harnessToolsStreaming.ts`)
+- `handleToolsJsonHarness()` - The same turn, replying with one JSON body
 
 ---
 

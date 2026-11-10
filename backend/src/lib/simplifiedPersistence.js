@@ -1192,6 +1192,14 @@ export class SimplifiedPersistence {
     }
   }
 
+  /**
+   * Forget the response ID: the turn did not end on a completed response, so the
+   * next turn must not continue from it (previous_response_id).
+   */
+  clearResponseId() {
+    this.responseId = null;
+  }
+
   _appendErrorContent(content) {
     if (!this.persist || content === undefined || content === null) return;
 

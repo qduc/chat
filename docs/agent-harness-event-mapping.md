@@ -1,7 +1,8 @@
 # Agent harness: event mapping
 
-Status: **Part B of [#40](https://github.com/qduc/chat/issues/40) in progress.** The streaming tool loop
-runs on the harness when `AGENT_HARNESS_TOOL_LOOP=true` (default off; the legacy loop runs otherwise).
+Status: **Part B of [#40](https://github.com/qduc/chat/issues/40) done.** Every request with tools runs
+on the harness: streaming requests reply with SSE, `stream: false` with one JSON body. Both legacy loops
+(`toolsStreaming.js`, `toolsJson.js`) and the `AGENT_HARNESS_TOOL_LOOP` flag are gone.
 
 The harness is `@qduc/agent-core`, developed in qduc/agent-runtime (`packages/core/`) and installed
 from npm at an exact version (`0.2.0-alpha.1`) in `backend/package.json` and `electron/package.json`.
@@ -11,26 +12,29 @@ To pick up a harness change, publish a new version from agent-runtime and bump b
 
 | File | Role |
 | --- | --- |
-| `harness/harnessToolsStreaming.ts` | The flagged tool loop: builds the `TurnSpec`, runs `startTurn`, feeds the sink |
+| `harness/harnessToolsStreaming.ts` | The tool loop: builds the `TurnSpec`, runs `startTurn`, feeds the sink (`handleToolsStreamingHarness`, `handleToolsJsonHarness`) |
 | `harness/chatMessages.ts` | `Item[]` ⇄ Chat Completions messages, lossless (unmappable messages ride as `provider_input`) |
 | `harness/providerModel.ts` | Shared `Model.stream`: request building, ChatForge transport, chunk → `ModelEvent` |
 | `harness/models.ts` | One wrapper per provider (`OpenAIModel`, `AnthropicModel`, `GeminiModel`, `LlamaCppModel`), `createModel`, `createModelRegistry` |
 | `harness/tools.ts` | `toHarnessTool`, `createToolRegistry`; app context is `{ userId }` |
-| `harness/turnEventSink.ts` | `TurnEvent` → SSE + persistence, matching `handleToolsStreaming` |
+| `harness/turnEventSink.ts` | `TurnEvent` → persistence, and client output through a `TurnOutput` |
+| `harness/turnOutputs.ts` | Reply formats: `SseTurnOutput` (what the legacy streaming loop sent), `JsonTurnOutput` (one body) |
 
 ## Building a turn
 
-| Legacy (`handleToolsStreaming`) | Harness |
+| Legacy (`handleToolsStreaming`, removed) | Harness |
 | --- | --- |
 | `buildConversationMessagesOptimized` → messages | `buildConversationMessagesAsync` (always full history) → `chatMessagesToItems` → `{ instructions, items }`, all as `newItems` |
-| `body.model`, provider instance | `createModel({ provider, model, config, userId })`, one registry per turn |
+| `body.model`, provider instance | `createModel({ provider, model, config, userId, stream })`, one registry per turn |
+| `provider_stream: false` → JSON upstream requests | `stream: false` on the model wrapper; it reads the JSON reply as one chunk |
 | `body.tools` (expanded specs) | `createToolRegistry(enabledNames)`; `TurnSpec.tools` = their specs |
 | `userId` passed to `executeToolCall` | `TurnDeps.toolContext = { userId }`, read by tools as `ctx.app.userId` |
 | `getUserMaxToolIterations(userId)` | `TurnSpec.limits.maxModelCalls` |
 | parallel tools opt-in + concurrency | `TurnDeps.maxParallelToolCalls` (1 when parallel mode is off) |
 | `reasoning_effort`, `verbosity`, custom params | `TurnSpec.reasoning`; the rest in `TurnSpec.providerOptions` |
 | conversation id | `TurnSpec.affinity.conversationKey` (cache-log key) |
-| `previous_response_id` from the last message | Not sent yet: without `TurnDeps.continuity` every request is self-contained |
+| `previous_response_id` within a turn | `TurnDeps.continuity`, only when `model.capabilities.continuity` (Responses API): tool rounds send the new items, chained to the last response |
+| `previous_response_id` from the last message (across turns) | `buildConversationMessagesWithResumeAsync` → `resumeFrom` on the model: the first request sends only the new user messages, chained to the previous turn's stored response, when `resumableResponseId` says that is safe |
 | `abortContext.signal` | `handle.cancel()` on abort |
 | invalid-reasoning retry (2×, then warning) | Inside the model wrapper (`ProviderModel.stream`), same limit and warning text |
 
@@ -64,6 +68,32 @@ arrive (and checkpointed by it), and `recordAssistantFinal` writes the message a
 | `turn_ended` cancelled | `_conversation`, `[DONE]` | `recordAssistantFinal('cancelled')`; partial text is what the deltas checkpointed |
 | `turn_ended` failed | `[Error: …]`, `_conversation`, `[DONE]` | `markError` |
 
+Tool calls are indexed per model response (`index` 0, 1, … within one response), in the stream and
+in persistence, even when other events arrive between one response's calls.
+
+### JSON reply (`stream: false`)
+
+The same turn and the same persistence; `JsonTurnOutput` collects what the SSE output would stream
+and answers once:
+
+| Collected | JSON |
+| --- | --- |
+| text deltas, notices (loop cap, warnings) | `tool_events` `{ type: 'text' }`, one per run of text; text since the last tool round is `choices[0].message.content` |
+| `tool_calls` | one `tool_events` `{ type: 'tool_call', value }` per call |
+| `tool_output` | `tool_events` `{ type: 'tool_output', value: { tool_call_id, name, output } }` |
+| reasoning, `reasoning_details`, images | on `choices[0].message` |
+| last response's usage, model, provider, id, finish reason | `usage`, `model`, `provider`, `id`, `choices[0].finish_reason` |
+| turn completed / interrupted | `200`, plus `_conversation` |
+| turn failed | `500` `{ error: { message, type: 'tool_orchestration_error' }, tool_events }` |
+| turn cancelled | no body (the client is gone) |
+
+Upstream follows `provider_stream`, which defaults to the client's `stream`: a `stream: false` request
+asks the provider for JSON too. Differences from the legacy JSON loop (`toolsJson.js`): the journal
+gets the user on single tool calls (legacy dropped it outside parallel mode); the iteration cap ends
+with the notice instead of one more model call; `provider_stream: true` works (legacy serialized the
+raw upstream `Response`); tool outputs are text and failed tools are stored as `error`, as in the
+streaming reply.
+
 **Partial text on abort** comes from collected text deltas, as today. The engine's accepted history
 never holds a partial assistant message; ChatForge's checkpoint does, by design.
 
@@ -81,19 +111,26 @@ finish reason, upstream model and provider, response id) travels on
   id) to Chat Completions providers from the second iteration on, because the adapter allow-lists the
   key. Wrappers send it only to Responses-API providers. A rejected continuation is retried
   self-contained from the request's own full history instead of rebuilding history from the database.
-- **Tool errors are errors.** A throwing tool is persisted with status `error` (legacy: `success`). The
-  text the model sees is unchanged.
+- **Tool errors are errors.** A throwing tool, or malformed tool-call JSON, is persisted with status
+  `error` (legacy: `success`). The text the model sees is unchanged.
 - **`content_withdrawn` is new.** The frontend ignores it today, so withdrawn text stays on screen until
   reload. It only fires if engine recovery is enabled, which ChatForge does not configure.
-- **No `previous_response_id` yet.** Every harness request carries the full history, including for
-  Responses-API providers. Correct, but more input tokens than legacy for long Responses-API threads.
-  Wiring `TurnDeps.continuity` restores it.
-- **Streamed `tool_output.output` is text.** Legacy streams the tool's raw value (an object for JSON
-  tools), the harness the serialized string the model saw. The UI pretty-prints objects and shows
-  strings as-is, so a JSON result is indented while streaming on legacy and compact on the harness;
-  after reload both are compact (the database stores the string).
-- **`provider_stream: false` is ignored.** The wrapper always asks upstream to stream; it already handles
-  a JSON reply if the provider sends one.
+- **Continuation across and within turns, more carefully.** On the Responses API a turn's first
+  request continues from the previous turn's stored response (`resumeFrom`), and its tool rounds
+  chain with engine continuity. Both are gated on the model's capability: every wrapper reports a
+  response id, and chaining a provider without server-side state would drop history.
+  `resumableResponseId` (also used by the plain no-tools path) continues only from the newest stored
+  reply on the active branch, when it is `final`, has a `resp_` id, any tool rows after it answer its
+  own calls, and only new user messages follow. Legacy took the newest reply *that had an id* among
+  the last 25, so a newer reply without one (another provider, a failure) was silently skipped. Only
+  a completed turn keeps its response id: after a cap, cancel or failure it is cleared, since it
+  would point at an earlier step or at tool calls whose outputs the provider never received. A
+  refused id (unknown, expired, not stored: any 400/404 naming `previous_response_id`) retries
+  with the full history; legacy retried only on `invalid_value`.
+- **Streamed `tool_output.output` is text.** Legacy streamed the tool's raw value (an object for JSON
+  tools); the harness streams the serialized string the model saw, which is also what the database
+  stores. The UI indents JSON text the same way it indents objects, so a result looks the same live
+  and after reload.
 
 ## Gaps to report to the harness
 
@@ -123,20 +160,22 @@ None of these needed a local workaround in Part A; each is a candidate Term2 iss
 
 - [x] Install the package (from npm); delete `contracts.ts`; fix imports;
       `npm run typecheck` checks the wrappers against the package's declarations.
-- [x] Behind `AGENT_HARNESS_TOOL_LOOP`: build the `TurnSpec` (table above), `startTurn`, feed each event
-      to `TurnEventSink`, then accept it (`harness/harnessToolsStreaming.ts`).
-- [x] Parity test over the real route, both loops, same scripted upstream
-      (`__tests__/harness/toolLoopParity.test.js`): tool call then answer, reasoning-only retry and
-      exhaustion, iteration cap, upstream error.
+- [x] Build the `TurnSpec` (table above), `startTurn`, feed each event to `TurnEventSink`, then
+      accept it (`harness/harnessToolsStreaming.ts`).
+- [x] Route-level tests over a scripted upstream (`__tests__/harness/toolLoop.test.js`): tool call
+      then answer, reasoning-only retry and exhaustion, iteration cap, upstream error, a throwing
+      tool, malformed tool-call JSON, `provider_stream: false`, text before tool calls, two calls in
+      one response, special characters, a large output, malformed SSE, the idle timeout, and the
+      JSON reply. Streaming expectations are the legacy loop's results for the same scripts,
+      captured before it was removed.
 - [x] Replay e2e over sanitized real provider recordings (`npm run test:provider-replay`,
-      `integration/providerReplay.test.js`): OpenAI Chat Completions, OpenAI Responses, Anthropic
-      and Gemini, each through both loops, checked against the recording and against each other.
-- [x] Parallel tools (synthetic fixtures, SDK-checked), Stop mid-answer and upstream drop, through
-      both loops in the replay suite. Legacy closes the upstream request ~50 ms after `[DONE]` on
-      Stop; the harness before it. Both agree on everything the client and database see.
-- [ ] Replace the synthetic parallel fixtures with real captures; run with the flag on against real
-      providers.
+      `integration/providerReplay.test.js`): OpenAI Chat Completions, OpenAI Responses (chained
+      tool round), Anthropic and Gemini, each checked against the recording.
+- [x] Parallel tools (synthetic fixtures, SDK-checked), Stop mid-answer and upstream drop in the
+      replay suite.
+- [ ] Replace the synthetic parallel fixtures with real captures.
 - [x] Switch from the vendored tarball to the npm release.
-- [ ] Wire `TurnDeps.continuity` so Responses-API providers get `previous_response_id` again.
+- [x] Wire `TurnDeps.continuity` so Responses-API tool rounds get `previous_response_id`.
 - [ ] Frontend: handle `content_withdrawn` (only needed if engine recovery is turned on).
-- [ ] Remove the legacy loop.
+- [x] Make the harness the only streaming tool loop; remove the legacy loop and the flag.
+- [x] Run `stream: false` tool requests on the harness too (`JsonTurnOutput`); remove `toolsJson.js`.

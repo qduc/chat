@@ -560,7 +560,7 @@ describe('AnthropicProvider', () => {
     });
 
     test('tools must be preserved through the entire provider flow', async () => {
-      // Simulate the full flow from toolsStreaming.js
+      // Simulate the full provider flow a tool request goes through
       const mockToolRegistry = {
         generateOpenAIToolSpecs: () => [
           {

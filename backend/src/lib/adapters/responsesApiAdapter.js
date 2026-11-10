@@ -903,8 +903,21 @@ function transformStreamingResponse(response, context = {}) {
   }
 
   let buffer = '';
+  // The stream ends once: on response.completed/failed, on [DONE], or when upstream
+  // ends. A server that sends [DONE] after response.completed (in the same network
+  // chunk or later) must not write after the end.
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    sendFinalChunk();
+    downstream.write('data: [DONE]\n\n');
+    downstream.end();
+    upstream.destroy?.();
+  };
 
   upstream.on('data', (chunk) => {
+    if (finished) return;
     buffer += chunk.toString();
     const parts = buffer.split(/\n\n/);
     buffer = parts.pop() || '';
@@ -920,10 +933,7 @@ function transformStreamingResponse(response, context = {}) {
 
       for (const dataLine of dataLines) {
         if (dataLine === '[DONE]') {
-          sendFinalChunk();
-          downstream.write('data: [DONE]\n\n');
-          downstream.end();
-          upstream.destroy();
+          finish();
           return;
         }
 
@@ -1049,22 +1059,16 @@ function transformStreamingResponse(response, context = {}) {
             if (state.usage?.reasoning_tokens != null) {
               state.reasoningTokens = state.usage.reasoning_tokens;
             }
-            sendFinalChunk();
-            downstream.write('data: [DONE]\n\n');
-            downstream.end();
-            upstream.destroy();
-            break;
+            finish();
+            return;
           }
           case 'response.required_action':
             state.finishReason = 'tool_calls';
             break;
           case 'response.failed':
             state.finishReason = 'error';
-            sendFinalChunk();
-            downstream.write('data: [DONE]\n\n');
-            downstream.end();
-            upstream.destroy();
-            break;
+            finish();
+            return;
           default:
             if (payload.delta && payload.type && payload.type.includes('reasoning')) {
               handleReasoningDelta(payload.delta);
@@ -1075,11 +1079,7 @@ function transformStreamingResponse(response, context = {}) {
     }
   });
 
-  upstream.on('end', () => {
-    sendFinalChunk();
-    downstream.write('data: [DONE]\n\n');
-    downstream.end();
-  });
+  upstream.on('end', finish);
 
   upstream.on('error', (err) => {
     downstream.destroy(err);
@@ -1138,9 +1138,10 @@ export class ResponsesAPIAdapter extends BaseAdapter {
         const newMessages = messages.slice(lastAssistantIndex + 1);
         input = await normalizeMessages(newMessages);
       } else {
-        // No assistant message found, send the last user message
-        const lastUserMessage = messages.findLast((msg) => msg?.role === 'user');
-        input = lastUserMessage ? await normalizeMessages([lastUserMessage]) : [];
+        // No assistant message: the caller already sent only what is new (the latest
+        // user message, or the tool outputs of a chained tool round). Send all of it
+        // except the system prompt.
+        input = await normalizeMessages(messages.filter((msg) => msg?.role !== 'system'));
       }
     } else {
       // Normal flow: send all messages including system prompt

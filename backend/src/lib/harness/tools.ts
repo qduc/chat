@@ -45,6 +45,18 @@ function serializeOutput(output: unknown): string {
   return String(output);
 }
 
+/** Parses raw arguments; on bad JSON, tells the model what it sent so it can correct the call. */
+function parseArguments(raw: string): unknown {
+  try {
+    return JSON.parse(raw || '{}');
+  } catch (error) {
+    const detail = error instanceof Error && error.message ? ` Error details: ${error.message}` : '';
+    throw new Error(
+      `Error: Invalid JSON in tool arguments. Please check the JSON syntax and try again. Arguments received: ${raw}.${detail}`,
+    );
+  }
+}
+
 export function toHarnessTool(tool: ChatForgeTool): Tool<unknown, ChatForgeToolContext> {
   const fn = tool.spec.function;
   return {
@@ -57,8 +69,8 @@ export function toHarnessTool(tool: ChatForgeTool): Tool<unknown, ChatForgeToolC
     // the engine's `maxParallelToolCalls` bounds them.
     parallelSafe: true,
     parse(raw) {
-      // The engine passes parsed JSON; accept a raw string defensively.
-      const args = typeof raw === 'string' ? JSON.parse(raw || '{}') : (raw ?? {});
+      // The engine passes parsed JSON, or the raw string when it isn't valid JSON.
+      const args = typeof raw === 'string' ? parseArguments(raw) : (raw ?? {});
       return tool.validate(args);
     },
     approval() {

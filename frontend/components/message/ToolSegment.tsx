@@ -162,7 +162,16 @@ export function ToolSegment({
                     const raw = out.output ?? out;
                     let formatted = '';
                     if (typeof raw === 'string') {
+                      // Tool results arrive as JSON text; indent objects the same way live and after reload.
                       formatted = raw;
+                      const trimmed = raw.trimStart();
+                      if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+                        try {
+                          formatted = JSON.stringify(JSON.parse(raw), null, 2);
+                        } catch {
+                          formatted = raw;
+                        }
+                      }
                     } else {
                       try {
                         formatted = JSON.stringify(raw, null, 2);

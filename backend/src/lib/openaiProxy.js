@@ -1,8 +1,6 @@
 import { config } from '../env.js';
 import { generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
-import { handleToolsJson } from './toolsJson.js';
-import { handleToolsStreaming } from './toolsStreaming.js';
-import { handleToolsStreamingHarness } from './harness/harnessToolsStreaming.ts';
+import { handleToolsJsonHarness, handleToolsStreamingHarness } from './harness/harnessToolsStreaming.ts';
 import { handleRegularStreaming } from './streamingHandler.js';
 import { setupStreamingHeaders, createOpenAIRequest, writeAndFlush } from './streamUtils.js';
 import { extractUsage } from './utils/usage.js';
@@ -435,15 +433,9 @@ async function handleRequest(context, req, res) {
   }
 
   if (flags.hasTools) {
-    // Tool orchestration path
-    if (flags.streamToFrontend) {
-      const args = { body, bodyIn, config, res, req, persistence, provider, userId, abortContext };
-      // Agent harness tool loop (issue #40, Part B), behind AGENT_HARNESS_TOOL_LOOP.
-      if (config.agentHarness?.streamingToolLoop) return handleToolsStreamingHarness(args);
-      return handleToolsStreaming(args);
-    } else {
-      return handleToolsJson({ body, bodyIn, config, res, req, persistence, provider, userId, abortContext });
-    }
+    // Tool orchestration path: the agent-core tool loop, as SSE or one JSON reply.
+    const args = { body, bodyIn, config, res, req, persistence, provider, userId, abortContext };
+    return flags.streamToFrontend ? handleToolsStreamingHarness(args) : handleToolsJsonHarness(args);
   }
 
   // Plain proxy path
@@ -572,12 +564,12 @@ async function handleRequest(context, req, res) {
     throw error;
   }
 
-  // If request with previous_response_id failed due to invalid ID format, retry with full history
+  // If the provider refused previous_response_id (unknown, expired, not stored, malformed), retry with full history
   if (!upstream.ok && requestBody.previous_response_id) {
     upstreamErrorBody = await readUpstreamErrorBody(upstream);
-    const isInvalidResponseIdError = upstream.status === 400
-      && upstreamErrorBody?.error?.param === 'previous_response_id'
-      && upstreamErrorBody?.error?.code === 'invalid_value';
+    const isInvalidResponseIdError = (upstream.status === 400 || upstream.status === 404)
+      && (upstreamErrorBody?.error?.param === 'previous_response_id'
+        || /previous[_ ]response/i.test(upstreamErrorBody?.error?.message ?? ''));
 
     if (isInvalidResponseIdError) {
       emitRetryStatus({

@@ -1,6 +1,6 @@
 import yaml from 'js-yaml';
 import { tools as toolRegistry } from './tools.js';
-import { getMessagesPage, getLastAssistantResponseId } from '../db/messages.js';
+import { getMessagesPage } from '../db/messages.js';
 import { getConversationMetadata } from './responseUtils.js';
 import { logger } from '../logger.js';
 
@@ -603,6 +603,56 @@ export async function buildConversationMessagesAsync({ body, bodyIn, persistence
 }
 
 /**
+ * Like `buildConversationMessagesAsync`, plus the stored Responses API id this
+ * turn can continue from (`previous_response_id`), when doing so is safe.
+ *
+ * Safe means the server-side response holds exactly the history being sent
+ * minus the new user message(s): the newest stored assistant message on the
+ * active branch carries a `resp_` id, any tool rows after it answer that
+ * message's own calls, and only user messages follow. Anything else (no id on
+ * the newest reply, an error or cancelled reply, edits) returns `resumeFrom: null`
+ * and the turn sends full history.
+ */
+export async function buildConversationMessagesWithResumeAsync({ body, bodyIn, persistence, userId }) {
+  const messages = await buildConversationMessagesAsync({ body, bodyIn, persistence, userId });
+  const hasPersistence = !!(persistence && persistence.persist && persistence.conversationId);
+  if (!hasPersistence) return { messages, resumeFrom: null };
+  try {
+    const page = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
+    return { messages, resumeFrom: resumableResponseId(page?.messages || []) };
+  } catch {
+    return { messages, resumeFrom: null };
+  }
+}
+
+/** The response id the next turn may continue from, or null. See buildConversationMessagesWithResumeAsync. */
+export function resumableResponseId(storedMessages) {
+  // The same messages the turn sends, in order.
+  const sent = storedMessages.filter((m) => normalizeStoredMessage(m));
+  let i = sent.length - 1;
+  let newUserMessages = 0;
+  while (i >= 0 && sent[i].role === 'user') {
+    newUserMessages++;
+    i--;
+  }
+  if (newUserMessages === 0) return null;
+
+  const toolCallIds = new Set();
+  while (i >= 0 && sent[i].role === 'tool') {
+    for (const output of sent[i].tool_outputs ?? []) toolCallIds.add(output.tool_call_id);
+    if (sent[i].tool_call_id) toolCallIds.add(sent[i].tool_call_id);
+    i--;
+  }
+  const assistant = sent[i];
+  if (!assistant || assistant.role !== 'assistant' || assistant.status !== 'final') return null;
+  if (!isValidResponsesAPIId(assistant.response_id)) return null;
+  // Tool rows must belong to this reply's calls, already settled in its response.
+  const ownCalls = new Set((assistant.tool_calls ?? []).map((tc) => tc.id));
+  for (const id of toolCallIds) if (!ownCalls.has(id)) return null;
+  return assistant.response_id;
+}
+
+/**
  * Validate if a response_id is compatible with the Responses API
  * The Responses API expects IDs that begin with 'resp_'
  * @param {string} responseId - The response ID to validate
@@ -647,35 +697,25 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
 
   if (persistence && persistence.persist && persistence.conversationId && supportsResponsesAPI) {
     try {
-      const previousResponseId = getLastAssistantResponseId({ conversationId: persistence.conversationId });
+      // Continue only from the newest stored reply, and only when nothing but new
+      // user messages follow it (see resumableResponseId).
+      const storedPage = getMessagesPage({ conversationId: persistence.conversationId, afterSeq: 0, limit: 200 });
+      const storedMessages = storedPage?.messages || [];
+      const previousResponseId = resumableResponseId(storedMessages);
 
-      // Only use the optimization if we have a valid response_id
-      if (previousResponseId && isValidResponsesAPIId(previousResponseId)) {
-        // We have a valid response_id - only send the latest user message
-        // OpenAI will manage conversation state server-side
-        const allUserMessages = Array.isArray(bodyIn?.messages)
-          ? bodyIn.messages.filter((m) => m && m.role === 'user')
-          : [];
-
-        // Take only the last user message (the new one being sent)
-        const latestUserMessage = allUserMessages.length > 0
-          ? [allUserMessages[allUserMessages.length - 1]]
-          : [];
+      if (previousResponseId) {
+        // Send every user message after that reply (more than one after a failed turn).
+        const sent = storedMessages.map((m) => normalizeStoredMessage(m)).filter(Boolean);
+        let start = sent.length;
+        while (start > 0 && sent[start - 1].role === 'user') start--;
+        const newUserMessages = sent.slice(start);
 
         const messages = systemPrompt
-          ? [{ role: 'system', content: systemPrompt }, ...latestUserMessage]
-          : latestUserMessage;
+          ? [{ role: 'system', content: systemPrompt }, ...newUserMessages]
+          : newUserMessages;
 
         debugLogMessages('buildConversationMessagesOptimized(previousResponseId)', messages, persistence);
         return { messages, previousResponseId };
-      }
-
-      if (previousResponseId && !isValidResponsesAPIId(previousResponseId)) {
-        logger.debug({
-          msg: 'skipping_invalid_previous_response_id_in_builder',
-          previous_response_id: previousResponseId,
-          reason: 'ID does not match Responses API format (expected resp_* prefix), using full history'
-        });
       }
 
       // No response_id yet - fall back to full history for this conversation
@@ -749,116 +789,6 @@ export async function buildConversationMessagesOptimized({ body, bodyIn, persist
     messages,
     previousResponseId: null
   };
-}
-
-export async function executeToolCall(call, userId = null) {
-  const name = call?.function?.name;
-  const argsStr = call?.function?.arguments || '{}';
-  const tool = toolRegistry[name];
-
-  if (!tool) {
-    return {
-      name,
-      output: `Error: Unknown tool '${name}'. Available tools: ${Object.keys(toolRegistry).join(', ')}. Please check the tool name and try again.`
-    };
-  }
-
-  let args;
-  try {
-    args = JSON.parse(argsStr || '{}');
-  } catch (parseError) {
-    const detail = parseError && typeof parseError.message === 'string' && parseError.message.length > 0
-      ? ` Error details: ${parseError.message}`
-      : '';
-    return {
-      name,
-      output: `Error: Invalid JSON in tool arguments. Please check the JSON syntax and try again. Arguments received: ${argsStr}.${detail}`
-    };
-  }
-
-  try {
-    const validated = tool.validate ? tool.validate(args) : args;
-    // Pass user context to tool handler as second parameter for tools that need it
-    const output = await tool.handler(validated, { userId });
-    return { name, output };
-  } catch (executionError) {
-    return {
-      name,
-      output: `Error executing tool '${name}': ${executionError.message}. Please check the arguments and try again.`
-    };
-  }
-}
-
-/**
- * Execute multiple tool calls in parallel with bounded concurrency.
- * Returns results in the original tool call order. Calls onToolComplete as each tool finishes.
- */
-export async function executeToolCallsParallel(toolCalls, userId = null, options = {}) {
-  const { concurrency = 3, onToolComplete = null } = options || {};
-  if (!Array.isArray(toolCalls) || toolCalls.length === 0) return [];
-
-  // Single call: short-circuit to avoid overhead
-  if (toolCalls.length === 1) {
-    const single = await executeToolCall(toolCalls[0], userId);
-    return [{ ...single, tool_call_id: toolCalls[0].id, index: 0, duration_ms: 0, status: 'success' }];
-  }
-
-  // Dynamic import of p-limit to keep startup footprint small
-  let pLimit;
-  try {
-    pLimit = (await import('p-limit')).default;
-  } catch (_err) {
-    // If p-limit is not available, fall back to Promise.allSettled (unbounded)
-    pLimit = null;
-  }
-
-  const limit = pLimit ? pLimit(Math.max(1, concurrency)) : null;
-
-  const indexed = toolCalls.map((call, i) => ({ call, index: i }));
-
-  const start = Date.now();
-
-  const tasks = indexed.map(({ call, index }) => {
-    const runner = async () => {
-      const t0 = Date.now();
-      try {
-        const result = await executeToolCall(call, userId);
-        const duration = Date.now() - t0;
-        const out = { ...result, tool_call_id: call.id, index, duration_ms: duration, status: 'success' };
-        try {
-          if (typeof onToolComplete === 'function') onToolComplete(out, index);
-        } catch (_e) {
-          // Swallow callback errors
-        }
-        return out;
-      } catch (err) {
-        const duration = Date.now() - t0;
-        const out = {
-          name: call.function?.name,
-          output: `Error executing tool '${call.function?.name}': ${err?.message || String(err)}`,
-          tool_call_id: call.id,
-          index,
-          duration_ms: duration,
-          status: 'error',
-        };
-        try {
-          if (typeof onToolComplete === 'function') onToolComplete(out, index);
-        } catch (_e) {}
-        return out;
-      }
-    };
-    return limit ? limit(runner) : runner();
-  });
-
-  const settled = await Promise.all(tasks);
-
-  // Ensure results are in original order
-  settled.sort((a, b) => (a.index || 0) - (b.index || 0));
-
-  const total = Date.now() - start;
-  logger.info({ msg: 'parallel_tool_execution_complete', tool_count: toolCalls.length, concurrency, total_duration_ms: total });
-
-  return settled;
 }
 
 export function appendToPersistence(persistence, content) {

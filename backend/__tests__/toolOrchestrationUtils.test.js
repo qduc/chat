@@ -12,8 +12,7 @@ const toolOrchestrationModule = await import('../src/lib/toolOrchestrationUtils.
 const {
   extractSystemPrompt,
   buildConversationMessages,
-  executeToolCall,
-  executeToolCallsParallel,
+  resumableResponseId,
 } = toolOrchestrationModule;
 
 describe('toolOrchestrationUtils', () => {
@@ -236,149 +235,47 @@ describe('toolOrchestrationUtils', () => {
     });
   });
 
-  describe('executeToolCall', () => {
-    test('should return error for unknown tool', async () => {
-      const result = await executeToolCall({
-        function: { name: 'nonexistent_tool', arguments: '{}' },
-      });
+  describe('resumableResponseId', () => {
+    const userMsg = (content) => ({ role: 'user', content });
+    const reply = (content, extra = {}) => ({ role: 'assistant', content, status: 'final', response_id: 'resp_1', ...extra });
 
-      expect(result.name).toBe('nonexistent_tool');
-      expect(result.output).toContain('Error: Unknown tool');
-      expect(result.output).toContain('nonexistent_tool');
+    test('continues from the newest reply when only new user messages follow', () => {
+      expect(resumableResponseId([userMsg('q1'), reply('a1'), userMsg('q2')])).toBe('resp_1');
     });
 
-    test('should return error for invalid JSON arguments', async () => {
-      const result = await executeToolCall({
-        function: { name: 'web_search', arguments: 'not valid json' },
-      });
-
-      expect(result.output).toContain('Error: Invalid JSON');
+    test('several new user messages (after a failed turn) still continue from the last good reply', () => {
+      const failed = { role: 'assistant', content: '[Error: boom]', status: 'error', response_id: 'resp_failed' };
+      expect(resumableResponseId([userMsg('q1'), reply('a1'), userMsg('q2'), failed, userMsg('q3')])).toBe('resp_1');
     });
 
-    test('should handle empty arguments', async () => {
-      const result = await executeToolCall({
-        function: { name: 'nonexistent_tool', arguments: '' },
-      });
-
-      // Should still parse as {} and return unknown tool error
-      expect(result.output).toContain('Unknown tool');
+    test('never skips back past a newer reply that has no id', () => {
+      // The legacy lookup returned resp_1 here and lost the second exchange.
+      const noId = { role: 'assistant', content: 'a2', status: 'final' };
+      expect(resumableResponseId([userMsg('q1'), reply('a1'), userMsg('q2'), noId, userMsg('q3')])).toBeNull();
     });
 
-    test('should handle null call', async () => {
-      const result = await executeToolCall(null);
-
-      expect(result.name).toBeUndefined();
-      expect(result.output).toContain('Unknown tool');
-    });
-  });
-
-  describe('executeToolCallsParallel', () => {
-    test('should return empty array for empty input', async () => {
-      const result = await executeToolCallsParallel([]);
-
-      expect(result).toEqual([]);
+    test('tool rows after the reply must answer its own calls', () => {
+      const withCalls = reply('a1', { tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'x', arguments: '{}' } }] });
+      const ownRow = { role: 'tool', content: '', tool_outputs: [{ tool_call_id: 'call_1', output: 'ok' }] };
+      const foreignRow = { role: 'tool', content: '', tool_outputs: [{ tool_call_id: 'call_9', output: 'ok' }] };
+      expect(resumableResponseId([userMsg('q1'), withCalls, ownRow, userMsg('q2')])).toBe('resp_1');
+      expect(resumableResponseId([userMsg('q1'), withCalls, foreignRow, userMsg('q2')])).toBeNull();
     });
 
-    test('should return empty array for null input', async () => {
-      const result = await executeToolCallsParallel(null);
-
-      expect(result).toEqual([]);
+    test('null without a new user message, a Responses id, or a final reply', () => {
+      expect(resumableResponseId([userMsg('q1'), reply('a1')])).toBeNull();
+      expect(resumableResponseId([userMsg('q1'), reply('a1', { response_id: 'chatcmpl-1' }), userMsg('q2')])).toBeNull();
+      expect(resumableResponseId([userMsg('q1'), userMsg('q2')])).toBeNull();
+      expect(resumableResponseId([])).toBeNull();
     });
 
-    test('should execute single call without overhead', async () => {
-      const calls = [
-        { id: 'call_1', function: { name: 'unknown_tool', arguments: '{}' } },
-      ];
-
-      const result = await executeToolCallsParallel(calls);
-
-      expect(result).toHaveLength(1);
-      expect(result[0].tool_call_id).toBe('call_1');
-      expect(result[0].index).toBe(0);
-      expect(result[0].status).toBe('success');
+    test('a reply that is not final (draft) is not continued from', () => {
+      expect(resumableResponseId([userMsg('q1'), reply('a1', { status: 'draft' }), userMsg('q2')])).toBeNull();
     });
 
-    test('should execute multiple calls in parallel', async () => {
-      const calls = [
-        { id: 'call_1', function: { name: 'unknown_tool1', arguments: '{}' } },
-        { id: 'call_2', function: { name: 'unknown_tool2', arguments: '{}' } },
-      ];
-
-      const result = await executeToolCallsParallel(calls);
-
-      expect(result).toHaveLength(2);
-      expect(result[0].tool_call_id).toBe('call_1');
-      expect(result[1].tool_call_id).toBe('call_2');
-    });
-
-    test('should call onToolComplete callback for each tool', async () => {
-      const calls = [
-        { id: 'call_1', function: { name: 'unknown_tool', arguments: '{}' } },
-        { id: 'call_2', function: { name: 'unknown_tool', arguments: '{}' } },
-      ];
-
-      const completedTools = [];
-      const onToolComplete = (result) => {
-        completedTools.push(result.tool_call_id);
-      };
-
-      await executeToolCallsParallel(calls, null, { onToolComplete });
-
-      expect(completedTools).toContain('call_1');
-      expect(completedTools).toContain('call_2');
-    });
-
-    test('should include duration_ms in results', async () => {
-      const calls = [
-        { id: 'call_1', function: { name: 'unknown_tool', arguments: '{}' } },
-      ];
-
-      const result = await executeToolCallsParallel(calls);
-
-      expect(typeof result[0].duration_ms).toBe('number');
-      expect(result[0].duration_ms).toBeGreaterThanOrEqual(0);
-    });
-
-    test('should respect concurrency limit', async () => {
-      const calls = [
-        { id: 'call_1', function: { name: 'unknown_tool1', arguments: '{}' } },
-        { id: 'call_2', function: { name: 'unknown_tool2', arguments: '{}' } },
-        { id: 'call_3', function: { name: 'unknown_tool3', arguments: '{}' } },
-        { id: 'call_4', function: { name: 'unknown_tool4', arguments: '{}' } },
-      ];
-
-      const result = await executeToolCallsParallel(calls, null, { concurrency: 2 });
-
-      expect(result).toHaveLength(4);
-    });
-
-    test('should preserve original order of results', async () => {
-      const calls = [
-        { id: 'call_a', function: { name: 'unknown_tool', arguments: '{}' } },
-        { id: 'call_b', function: { name: 'unknown_tool', arguments: '{}' } },
-        { id: 'call_c', function: { name: 'unknown_tool', arguments: '{}' } },
-      ];
-
-      const result = await executeToolCallsParallel(calls);
-
-      expect(result[0].index).toBe(0);
-      expect(result[1].index).toBe(1);
-      expect(result[2].index).toBe(2);
-    });
-
-    test('should handle callback errors gracefully', async () => {
-      const calls = [
-        { id: 'call_1', function: { name: 'unknown_tool', arguments: '{}' } },
-      ];
-
-      const onToolComplete = () => {
-        throw new Error('Callback error');
-      };
-
-      // Should not throw
-      const result = await executeToolCallsParallel(calls, null, { onToolComplete });
-
-      expect(result).toHaveLength(1);
+    test('ignores an in-progress draft after the new message', () => {
+      const draft = { role: 'assistant', content: '', status: 'streaming' };
+      expect(resumableResponseId([userMsg('q1'), reply('a1'), userMsg('q2'), draft])).toBe('resp_1');
     });
   });
 });
