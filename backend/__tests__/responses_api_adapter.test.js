@@ -263,6 +263,32 @@ describe('ResponsesAPIAdapter', () => {
       expect(finalChunk).toBeDefined();
       expect(finalChunk.usage).toEqual({ prompt_tokens: 2, completion_tokens: 4, total_tokens: 6 });
     });
+
+    test.each([
+      [{ type: 'error', error: { code: 'credit_balance_exhausted', message: 'No credits remaining' } }],
+      [{ type: 'response.failed', response: { error: { code: 'credit_balance_exhausted', message: 'No credits remaining' } } }],
+      [{ type: 'response.failed', response: {} }],
+    ])('forwards a streaming failure and ends with an error', async (event) => {
+      const upstream = new MockStreamResponse();
+      const transformed = createAdapter().translateResponse(upstream);
+      let received = '';
+      const ended = new Promise((resolve, reject) => {
+        transformed.body.on('data', (chunk) => { received += chunk.toString(); });
+        transformed.body.on('end', resolve);
+        transformed.body.on('error', reject);
+      });
+      upstream.body.end(`data: ${JSON.stringify(event)}\n\n`);
+      await ended;
+
+      const frames = received.split('\n\n').filter(Boolean).map((frame) => frame.slice(6));
+      const chunks = frames.filter((frame) => frame !== '[DONE]').map((frame) => JSON.parse(frame));
+      const failure = chunks.find((chunk) => chunk.error);
+      const message = event.error?.message || event.response?.error?.message || 'Upstream provider returned an error.';
+      expect(failure.error.message).toBe(message);
+      expect(failure.choices[0].delta.content).toBe(`[Error: ${message}]`);
+      expect(chunks.at(-1).choices[0].finish_reason).toBe('error');
+      expect(frames.at(-1)).toBe('[DONE]');
+    });
   });
 
   describe('translateStreamChunk', () => {

@@ -835,6 +835,22 @@ function transformStreamingResponse(response, context = {}) {
     }
   }
 
+  function sendFailure(error) {
+    const message = typeof error?.message === 'string' && error.message.trim()
+      ? error.message
+      : 'Upstream provider returned an error.';
+    ensureRoleChunk();
+    const chunk = createChatCompletionChunk(
+      state.id || `resp_${Date.now()}`,
+      state.model || defaultModel || 'unknown',
+      { content: `[Error: ${message}]` }
+    );
+    chunk.error = { ...(error && typeof error === 'object' ? error : {}), message };
+    downstream.write(`data: ${JSON.stringify(chunk)}\n\n`);
+    state.finishReason = 'error';
+    finish();
+  }
+
   function sendFinalChunk() {
     if (state.completed) return;
     state.completed = true;
@@ -1065,9 +1081,11 @@ function transformStreamingResponse(response, context = {}) {
           case 'response.required_action':
             state.finishReason = 'tool_calls';
             break;
+          case 'error':
+            sendFailure(payload.error || payload);
+            return;
           case 'response.failed':
-            state.finishReason = 'error';
-            finish();
+            sendFailure(payload.response?.error || payload.error);
             return;
           default:
             if (payload.delta && payload.type && payload.type.includes('reasoning')) {

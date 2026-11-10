@@ -399,6 +399,11 @@ export class ChunkAccumulator {
     const obj = translate ? this.translate(raw) : (raw as Record<string, unknown> | null);
     if (!obj || typeof obj !== 'object') return;
 
+    if (obj.error) {
+      const message = extractUpstreamMessage(obj) || 'Upstream provider returned an error.';
+      throw new ModelFailure({ kind: 'provider', message, retryable: false }, obj, 'model_behavior');
+    }
+
     if (!this.responseId && typeof obj.id === 'string' && obj.id) this.responseId = obj.id;
     if (typeof obj.model === 'string') this.model = obj.model;
     if (typeof obj.provider === 'string') this.upstreamProvider = obj.provider;

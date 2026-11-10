@@ -278,6 +278,20 @@ describe('OpenAIModel (Responses API)', () => {
     return createModel({ provider, model: 'gpt-r', config });
   }
 
+  test('surfaces an error delivered after the stream starts as a failed model call', async () => {
+    const { fetch } = recordedFetch({ body: sse([
+      { type: 'response.created', response: { id: 'resp_failed', model: 'gpt-r' } },
+      { type: 'error', error: { code: 'credit_balance_exhausted', message: 'No credits remaining' } },
+      { type: 'response.failed', response: { error: { message: 'No credits remaining' } } },
+    ], { events: true, done: false }) });
+    const model = responsesModel(fetch);
+    const failure = await collect(model.stream(request('gpt-r', [user('hello')]), new AbortController().signal))
+      .catch((error: unknown) => error);
+
+    expect(failure).toBeInstanceOf(ModelFailure);
+    expect(failure).toMatchObject({ message: 'No credits remaining', retryable: false });
+  });
+
   test('continues from previous_response_id and reports the new one', async () => {
     const { fetch, calls } = recordedFetch({ body: responsesStream('resp_2', 'Hi again') });
     const model = responsesModel(fetch);

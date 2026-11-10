@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { handleRegularStreaming } from '../src/lib/streamingHandler.js';
+import { ResponsesAPIAdapter } from '../src/lib/adapters/responsesApiAdapter.js';
 
 function fakeRes() {
   const res = new EventEmitter();
@@ -76,4 +77,29 @@ describe('plain streaming: response id after cancel', () => {
     assert.ok(!calls.some(([name]) => name === 'clearResponseId'));
     assert.deepEqual(calls.at(-1), ['recordAssistantFinal', { finishReason: 'stop' }]);
   });
+});
+
+test('plain Responses API stream displays and persists the upstream failure', async () => {
+  const body = new PassThrough();
+  const adapter = new ResponsesAPIAdapter({ getDefaultModel: () => 'model' });
+  const upstream = adapter.translateResponse({
+    body, ok: true, status: 200,
+    headers: { get: () => 'text/event-stream' },
+  });
+  const { persistence, calls } = recordingPersistence();
+  const res = fakeRes();
+  let output = '';
+  res.write = (chunk) => { output += chunk; return true; };
+  await handleRegularStreaming({
+    upstream, res, req: new EventEmitter(), persistence,
+    provider: { needsStreamingTranslation: () => true, translateStreamChunk: (chunk) => chunk },
+  });
+  body.end(`data: ${JSON.stringify({ type: 'response.failed', response: { id: 'failed-id', error: { message: 'No credits remaining' } } })}\n\n`);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  assert.match(output, /No credits remaining/);
+  assert.match(output, /"finish_reason":"error"/);
+  assert.ok(calls.some(([name, value]) => name === 'appendContent' && value === '[Error: No credits remaining]'));
+  assert.ok(calls.some(([name]) => name === 'clearResponseId'));
+  assert.deepEqual(calls.at(-1), ['recordAssistantFinal', { finishReason: 'error' }]);
 });
