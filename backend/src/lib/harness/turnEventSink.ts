@@ -17,7 +17,7 @@ import {
   streamDeltaEvent,
   streamDone,
 } from '../toolOrchestrationUtils.js';
-import type { Item, ModelError, TurnEvent, TurnResult } from './contracts.ts';
+import type { Item, ModelError, TurnEvent, TurnResult } from '@qduc/agent-core';
 
 export const MAX_ITERATIONS_NOTICE = '\n\n[Maximum iterations reached]';
 

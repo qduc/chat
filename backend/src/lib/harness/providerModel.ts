@@ -14,12 +14,13 @@ import { createOpenAIRequest } from '../streamUtils.js';
 import { parseSSEStream } from '../sseParser.js';
 import { extractUsage } from '../utils/usage.js';
 import { extractUpstreamMessage, readUpstreamErrorBody } from '../upstreamErrors.js';
+import { logger } from '../../logger.js';
 import { itemsToChatMessages, newItemId, toolSpecsToChatTools } from './chatMessages.ts';
 import type { ChatMessage, ChatToolCall } from './chatMessages.ts';
 import {
   DEFAULT_ASSUMED_CONTEXT_WINDOW,
   ModelFailure,
-} from './contracts.ts';
+} from '@qduc/agent-core';
 import type {
   ContentPart,
   Item,
@@ -31,7 +32,7 @@ import type {
   ModelRequest,
   StopReason,
   ToolCallId,
-} from './contracts.ts';
+} from '@qduc/agent-core';
 
 /** The slice of a ChatForge provider instance the wrapper uses. */
 export type ChatForgeProvider = {
@@ -77,6 +78,11 @@ export type ProviderModelOptions = {
 };
 
 const DEFAULT_IDLE_TIMEOUT_MS = 300_000;
+
+/** Same limit and text as the legacy loop (toolsStreaming.js). */
+const INCOMPLETE_REASONING_RETRY_LIMIT = 2;
+export const INCOMPLETE_REASONING_WARNING =
+  '[Warning: Model returned an incomplete reasoning response (no tool call and no completion). Proceeding after retries.]';
 
 const FINISH_TO_STOP: Record<string, StopReason> = {
   stop: 'end_turn',
@@ -163,6 +169,32 @@ export class ProviderModel implements Model {
 
   async *stream(request: ModelRequest, signal: AbortSignal, onDispatched?: () => void): AsyncGenerator<ModelEvent> {
     const body = await this.buildRequestBody(request);
+    // A reasoning-only response (no answer, no tool call) is asked again, as the
+    // legacy loop did. This stays inside the wrapper because the engine will not
+    // replay a request once its reasoning has streamed to the user.
+    for (let retries = 0; ; retries++) {
+      const accumulator = yield* this.attempt(body, signal, retries === 0 ? onDispatched : undefined);
+      if (!accumulator.isReasoningOnly()) {
+        yield* accumulator.finish();
+        return;
+      }
+      if (retries < INCOMPLETE_REASONING_RETRY_LIMIT) {
+        logger.warn({ msg: 'invalid_reasoning_response_retrying', retryAttempt: retries + 1, maxRetries: INCOMPLETE_REASONING_RETRY_LIMIT });
+        continue;
+      }
+      logger.warn({ msg: 'invalid_reasoning_response_retry_exhausted', retries });
+      yield* accumulator.appendText(INCOMPLETE_REASONING_WARNING);
+      yield* accumulator.finish();
+      return;
+    }
+  }
+
+  /** One upstream request, read to the end. The caller decides whether to finish it. */
+  private async *attempt(
+    body: ChatCompletionsBody,
+    signal: AbortSignal,
+    onDispatched?: () => void,
+  ): AsyncGenerator<ModelEvent, ChunkAccumulator> {
     let upstream = yield* this.send(body, signal, onDispatched);
 
     if (!upstream.ok && body.previous_response_id) {
@@ -194,8 +226,7 @@ export class ProviderModel implements Model {
     } else {
       yield* this.readStream(upstream.body, accumulator, signal);
     }
-
-    yield* accumulator.finish();
+    return accumulator;
   }
 
   /** Dispatch through ChatForge's transport, surfacing its HTTP retries as `retrying` events. */
@@ -389,9 +420,22 @@ export class ChunkAccumulator {
     if (choice.finish_reason) this.finishReason = choice.finish_reason;
   }
 
+  /** Reasoning arrived, but no answer, image or tool call. */
+  isReasoningOnly(): boolean {
+    const hasReasoning = this.reasoningText.trim().length > 0 || this.reasoningDetails.length > 0;
+    return hasReasoning && this.toolCalls.size === 0 && !this.text.trim() && this.images.length === 0;
+  }
+
+  /** Text the wrapper adds itself (the incomplete-reasoning warning), streamed like model text. */
+  *appendText(text: string): Generator<ModelEvent> {
+    this.text += text;
+    yield { type: 'text_delta', delta: text };
+  }
+
   /** Completed items, usage, then `done`, in that order. */
   *finish(): Generator<ModelEvent> {
     const toolCalls = [...this.toolCalls.entries()].sort(([a], [b]) => a - b).map(([, call]) => call);
+
 
     if (this.reasoningText || this.reasoningDetails.length > 0) {
       yield {

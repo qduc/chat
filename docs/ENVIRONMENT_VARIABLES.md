@@ -88,6 +88,14 @@ PARALLEL_TOOL_CONCURRENCY=3                # Default concurrency level
 PARALLEL_TOOL_MAX_CONCURRENCY=5            # Maximum concurrency
 ```
 
+### Optional - Agent harness (experimental)
+
+```env
+AGENT_HARNESS_TOOL_LOOP=false              # Run streaming tool requests on @qduc/agent-core instead of the legacy loop
+```
+
+See [agent-harness-event-mapping.md](agent-harness-event-mapping.md) for what differs while both loops exist.
+
 ### Optional - Browser/Playwright
 
 ```env

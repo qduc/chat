@@ -2,6 +2,8 @@ ARG NODE_IMAGE=node:24.16.0-bookworm-slim
 FROM ${NODE_IMAGE} AS deps
 WORKDIR /app
 COPY package*.json ./
+# Vendored prerelease packages (file: dependencies) must exist before npm ci.
+COPY vendor ./vendor
 RUN chown -R node:node /app
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN mkdir -p $PLAYWRIGHT_BROWSERS_PATH && chown node:node $PLAYWRIGHT_BROWSERS_PATH
@@ -13,6 +15,8 @@ ARG NODE_IMAGE
 FROM ${NODE_IMAGE} AS prod-deps
 WORKDIR /app
 COPY package*.json ./
+# Vendored prerelease packages (file: dependencies) must exist before npm ci.
+COPY vendor ./vendor
 RUN chown -R node:node /app
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN mkdir -p $PLAYWRIGHT_BROWSERS_PATH && chown node:node $PLAYWRIGHT_BROWSERS_PATH

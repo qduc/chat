@@ -12,7 +12,7 @@
  * another user's turn.
  */
 import { tools as registeredTools } from '../tools/index.js';
-import type { Tool, ToolContext, ToolRegistry, ToolResult } from './contracts.ts';
+import type { Tool, ToolContext, ToolRegistry, ToolResult } from '@qduc/agent-core';
 
 /** What ChatForge hands every tool, as `ToolContext.app`. */
 export type ChatForgeToolContext = {

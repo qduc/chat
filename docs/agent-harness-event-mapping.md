@@ -1,28 +1,30 @@
 # Agent harness: event mapping
 
-Status: **Part A of [#40](https://github.com/qduc/chat/issues/40) done.** Wrappers and mapping are built
-and tested; nothing runs on the harness yet. Part B (install the package, run `handleToolsStreaming`
-through `startTurn` behind a flag) needs the published package.
+Status: **Part B of [#40](https://github.com/qduc/chat/issues/40) in progress.** The streaming tool loop
+runs on the harness when `AGENT_HARNESS_TOOL_LOOP=true` (default off; the legacy loop runs otherwise).
 
-The harness contracts are mirrored in `backend/src/lib/harness/contracts.ts` until the package is
-installed; delete that file then and import the same names from the package.
+The harness is `@qduc/agent-core`, built in qduc/term2 (`packages/agent-harness-core/`). Until
+`0.2.0-alpha.1` is on npm it is installed from `backend/vendor/qduc-agent-core-0.2.0-alpha.1.tgz`
+(a `file:` dependency in `backend/package.json` and `electron/package.json`; both Dockerfiles copy
+`vendor/` before `npm ci`). Once published, switch both manifests to the exact npm version and delete
+`vendor/` and those `COPY` lines.
 
 ## Pieces
 
 | File | Role |
 | --- | --- |
-| `harness/contracts.ts` | Local mirror of `Model`, `Tool`, `Item`, `TurnSpec`, `TurnEvent` (temporary) |
+| `harness/harnessToolsStreaming.ts` | The flagged tool loop: builds the `TurnSpec`, runs `startTurn`, feeds the sink |
 | `harness/chatMessages.ts` | `Item[]` ⇄ Chat Completions messages, lossless (unmappable messages ride as `provider_input`) |
 | `harness/providerModel.ts` | Shared `Model.stream`: request building, ChatForge transport, chunk → `ModelEvent` |
 | `harness/models.ts` | One wrapper per provider (`OpenAIModel`, `AnthropicModel`, `GeminiModel`, `LlamaCppModel`), `createModel`, `createModelRegistry` |
 | `harness/tools.ts` | `toHarnessTool`, `createToolRegistry`; app context is `{ userId }` |
 | `harness/turnEventSink.ts` | `TurnEvent` → SSE + persistence, matching `handleToolsStreaming` |
 
-## Building a turn (Part B)
+## Building a turn
 
 | Legacy (`handleToolsStreaming`) | Harness |
 | --- | --- |
-| `buildConversationMessagesOptimized` → messages | `chatMessagesToItems(messages)` → `{ instructions, items }`; split into `history` and `newItems` |
+| `buildConversationMessagesOptimized` → messages | `buildConversationMessagesAsync` (always full history) → `chatMessagesToItems` → `{ instructions, items }`, all as `newItems` |
 | `body.model`, provider instance | `createModel({ provider, model, config, userId })`, one registry per turn |
 | `body.tools` (expanded specs) | `createToolRegistry(enabledNames)`; `TurnSpec.tools` = their specs |
 | `userId` passed to `executeToolCall` | `TurnDeps.toolContext = { userId }`, read by tools as `ctx.app.userId` |
@@ -30,8 +32,9 @@ installed; delete that file then and import the same names from the package.
 | parallel tools opt-in + concurrency | `TurnDeps.maxParallelToolCalls` (1 when parallel mode is off) |
 | `reasoning_effort`, `verbosity`, custom params | `TurnSpec.reasoning`; the rest in `TurnSpec.providerOptions` |
 | conversation id | `TurnSpec.affinity.conversationKey` (cache-log key) |
-| `previous_response_id` from the last message | `ModelRequest.previousResponseId`; next one comes back as `continuation` |
+| `previous_response_id` from the last message | Not sent yet: without `TurnDeps.continuity` every request is self-contained |
 | `abortContext.signal` | `handle.cancel()` on abort |
+| invalid-reasoning retry (2×, then warning) | Inside the model wrapper (`ProviderModel.stream`), same limit and warning text |
 
 Each wrapper is built per turn and holds no module state, so N concurrent turns (comparison mode,
 many users) share nothing. `createOpenAIRequest` now accepts the provider instance, so the wrapper no
@@ -83,15 +86,22 @@ finish reason, upstream model and provider, response id) travels on
 - **Tool errors are errors.** A throwing tool is persisted with status `error` (legacy: `success`). The
   text the model sees is unchanged.
 - **`content_withdrawn` is new.** The frontend ignores it today, so withdrawn text stays on screen until
-  reload. The frontend handler is a Part B task. It only fires if engine recovery is enabled.
+  reload. It only fires if engine recovery is enabled, which ChatForge does not configure.
+- **No `previous_response_id` yet.** Every harness request carries the full history, including for
+  Responses-API providers. Correct, but more input tokens than legacy for long Responses-API threads.
+  Wiring `TurnDeps.continuity` restores it.
+- **`provider_stream: false` is ignored.** The wrapper always asks upstream to stream; it already handles
+  a JSON reply if the provider sends one.
 
 ## Gaps to report to the harness
 
 None of these needed a local workaround in Part A; each is a candidate Term2 issue.
 
 1. **Reasoning-only responses.** The legacy loop retries (up to 2×) when a model returns reasoning with
-   no text and no tool call, then appends a warning. The harness has no seam for "this response is
-   invalid, ask again": `normalStop` can only continue with a reminder, which adds an item.
+   no text and no tool call, then appends a warning. The engine's `model_behavior` recovery looks like
+   the fit, but it refuses to replay once any reasoning delta has streamed (that counts as committed
+   output), so it never fires for this case. ChatForge handles it in the model wrapper instead. Worth
+   raising: should streamed reasoning block a model-behavior replay?
 2. **No live provider-metadata channel.** `ModelEvent` can't carry per-chunk provider extras (llama.cpp
    `timings`, OpenRouter `provider`, generated images while streaming). ChatForge sends them at the
    end of the response via `done.providerMetadata`.
@@ -109,10 +119,15 @@ None of these needed a local workaround in Part A; each is a candidate Term2 iss
 
 ## Part B checklist
 
-- [ ] Install the package; delete `contracts.ts`; fix imports; `npm run typecheck` checks the wrappers
-      against the published declarations.
-- [ ] In `handleToolsStreaming`, behind a flag: build the `TurnSpec` (table above), `startTurn`, feed
-      each event to `TurnEventSink`, then accept it.
-- [ ] Frontend: handle `content_withdrawn`.
-- [ ] Compare old and new paths on recorded turns (text only, tools, parallel tools, abort, error, loop
-      cap) before removing the old path.
+- [x] Install the package (vendored tarball for now); delete `contracts.ts`; fix imports;
+      `npm run typecheck` checks the wrappers against the package's declarations.
+- [x] Behind `AGENT_HARNESS_TOOL_LOOP`: build the `TurnSpec` (table above), `startTurn`, feed each event
+      to `TurnEventSink`, then accept it (`harness/harnessToolsStreaming.ts`).
+- [x] Parity test over the real route, both loops, same scripted upstream
+      (`__tests__/harness/toolLoopParity.test.js`): tool call then answer, reasoning-only retry and
+      exhaustion, iteration cap, upstream error.
+- [ ] Parity for parallel tools and client abort; then run with the flag on against real providers.
+- [ ] Switch from the vendored tarball to the npm release.
+- [ ] Wire `TurnDeps.continuity` so Responses-API providers get `previous_response_id` again.
+- [ ] Frontend: handle `content_withdrawn` (only needed if engine recovery is turned on).
+- [ ] Remove the legacy loop.

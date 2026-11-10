@@ -23,6 +23,8 @@ RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
     apt-get update && apt-get install -y python3 make g++
 
 COPY backend/package*.json ./
+# Vendored prerelease packages (file: dependencies) must exist before npm ci.
+COPY backend/vendor ./vendor
 
 # Clean install to ensure proper compilation in container
 RUN --mount=type=cache,target=/root/.npm \
