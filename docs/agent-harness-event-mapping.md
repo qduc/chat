@@ -90,6 +90,10 @@ finish reason, upstream model and provider, response id) travels on
 - **No `previous_response_id` yet.** Every harness request carries the full history, including for
   Responses-API providers. Correct, but more input tokens than legacy for long Responses-API threads.
   Wiring `TurnDeps.continuity` restores it.
+- **Streamed `tool_output.output` is text.** Legacy streams the tool's raw value (an object for JSON
+  tools), the harness the serialized string the model saw. The UI pretty-prints objects and shows
+  strings as-is, so a JSON result is indented while streaming on legacy and compact on the harness;
+  after reload both are compact (the database stores the string).
 - **`provider_stream: false` is ignored.** The wrapper always asks upstream to stream; it already handles
   a JSON reply if the provider sends one.
 
@@ -126,6 +130,9 @@ None of these needed a local workaround in Part A; each is a candidate Term2 iss
 - [x] Parity test over the real route, both loops, same scripted upstream
       (`__tests__/harness/toolLoopParity.test.js`): tool call then answer, reasoning-only retry and
       exhaustion, iteration cap, upstream error.
+- [x] Replay e2e over sanitized real provider recordings (`npm run test:provider-replay`,
+      `integration/providerReplay.test.js`): OpenAI Chat Completions, OpenAI Responses, Anthropic
+      and Gemini, each through both loops, checked against the recording and against each other.
 - [ ] Parity for parallel tools and client abort; then run with the flag on against real providers.
 - [ ] Switch from the vendored tarball to the npm release.
 - [ ] Wire `TurnDeps.continuity` so Responses-API providers get `previous_response_id` again.

@@ -10,6 +10,7 @@
     "dev": "nodemon src/index.js",
     "start": "NODE_ENV=production node src/index.js",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest --silent",
+    "test:provider-replay": "NODE_OPTIONS=--experimental-vm-modules jest integration/providerReplay.test.js",
     "lint": "eslint .",
     "typecheck": "tsc -p tsconfig.json",
     "lint:fix": "eslint . --fix",
