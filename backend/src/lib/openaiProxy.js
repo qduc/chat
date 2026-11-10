@@ -1,7 +1,6 @@
 import { config } from '../env.js';
 import { generateOpenAIToolSpecs, generateToolSpecs } from './tools.js';
 import { handleToolsJson } from './toolsJson.js';
-import { handleToolsStreaming } from './toolsStreaming.js';
 import { handleToolsStreamingHarness } from './harness/harnessToolsStreaming.ts';
 import { handleRegularStreaming } from './streamingHandler.js';
 import { setupStreamingHeaders, createOpenAIRequest, writeAndFlush } from './streamUtils.js';
@@ -438,9 +437,7 @@ async function handleRequest(context, req, res) {
     // Tool orchestration path
     if (flags.streamToFrontend) {
       const args = { body, bodyIn, config, res, req, persistence, provider, userId, abortContext };
-      // Agent harness tool loop (issue #40, Part B), behind AGENT_HARNESS_TOOL_LOOP.
-      if (config.agentHarness?.streamingToolLoop) return handleToolsStreamingHarness(args);
-      return handleToolsStreaming(args);
+      return handleToolsStreamingHarness(args);
     } else {
       return handleToolsJson({ body, bodyIn, config, res, req, persistence, provider, userId, abortContext });
     }

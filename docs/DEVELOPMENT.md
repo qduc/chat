@@ -71,8 +71,7 @@ All development commands run in Docker via `./dev.sh` or directly via npm.
 `backend/integration/providerReplay.test.js` replays sanitized recordings of real provider
 traffic (OpenAI Chat Completions, OpenAI Responses, Anthropic, Gemini) from a loopback server
 through the real `/v1/chat/completions` route, provider adapters, tool execution and
-persistence. No real API calls. Each recording runs through both streaming tool loops (legacy
-and `AGENT_HARNESS_TOOL_LOOP`). Expectations are read from the recording itself. Recordings
+persistence. No real API calls. Expectations are read from the recording itself. Recordings
 and their provenance are in `backend/test_support/provider-replay/fixtures/`.
 
 The same suite covers parallel tool calls (synthetic fixtures derived from the recordings,

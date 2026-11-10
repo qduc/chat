@@ -1138,9 +1138,10 @@ export class ResponsesAPIAdapter extends BaseAdapter {
         const newMessages = messages.slice(lastAssistantIndex + 1);
         input = await normalizeMessages(newMessages);
       } else {
-        // No assistant message found, send the last user message
-        const lastUserMessage = messages.findLast((msg) => msg?.role === 'user');
-        input = lastUserMessage ? await normalizeMessages([lastUserMessage]) : [];
+        // No assistant message: the caller already sent only what is new (the latest
+        // user message, or the tool outputs of a chained tool round). Send all of it
+        // except the system prompt.
+        input = await normalizeMessages(messages.filter((msg) => msg?.role !== 'system'));
       }
     } else {
       // Normal flow: send all messages including system prompt

@@ -1,12 +1,9 @@
 /**
- * The streaming tool loop on the agent harness: `handleToolsStreaming`'s job,
- * run through `startTurn` from `@qduc/agent-core`.
+ * The streaming tool loop: every streaming request with tools runs here,
+ * through `startTurn` from `@qduc/agent-core` (see openaiProxy.js).
  *
- * Off by default; `AGENT_HARNESS_TOOL_LOOP=true` routes streaming tool
- * requests here (see openaiProxy.js). The legacy loop stays until the two
- * match. Event-to-SSE/persistence mapping lives in `TurnEventSink`; this file
- * only builds the turn and drives it. Differences from the legacy loop are
- * listed in docs/agent-harness-event-mapping.md.
+ * Event-to-SSE/persistence mapping lives in `TurnEventSink`; this file only
+ * builds the turn and drives it. See docs/agent-harness-event-mapping.md.
  */
 import { randomUUID } from 'node:crypto';
 import { startTurn } from '@qduc/agent-core';
@@ -39,6 +36,8 @@ type RequestBody = {
   readonly tool_choice?: unknown;
   readonly reasoning_effort?: string;
   readonly verbosity?: unknown;
+  /** False when the user turned streaming off, or the model can't stream. */
+  readonly provider_stream?: boolean;
   readonly [key: string]: unknown;
 };
 
@@ -122,14 +121,20 @@ export async function handleToolsStreamingHarness({
   let deps: TurnDeps<ChatForgeToolContext>;
   try {
     const providerInstance = (provider ?? (await createProvider(config, { providerId }))) as ChatForgeProvider;
-    // Full history every request: the harness sends self-contained requests
-    // (no cross-turn previous_response_id) until continuity is wired up.
+    // Each request starts from the full history. Within the turn, Responses-API
+    // providers chain tool rounds with previous_response_id (`continuity` below).
     // Its JSDoc says Object/string; null persistence and user id are handled at runtime.
     const buildArgs = { body, bodyIn, persistence, userId } as Parameters<typeof buildConversationMessagesAsync>[0];
     const messages = (await buildConversationMessagesAsync(buildArgs)) as ChatMessage[];
     const { instructions, items } = chatMessagesToItems(messages);
 
-    const model = createModel({ provider: providerInstance, model: modelId, config, userId });
+    const model = createModel({
+      provider: providerInstance,
+      model: modelId,
+      config,
+      userId,
+      stream: body.provider_stream !== false,
+    });
     const toolContext: ChatForgeToolContext = { userId };
     const tools = createToolRegistry(enabledToolNames(body));
     const turnId = randomUUID() as TurnId;
@@ -156,6 +161,11 @@ export async function handleToolsStreamingHarness({
       // No `recovery`: HTTP retries happen in ChatForge's transport (createOpenAIRequest),
       // and the model wrapper re-asks reasoning-only responses itself.
       maxParallelToolCalls: maxParallelToolCalls(bodyIn, config),
+      // Chain tool rounds within this turn on the Responses API. Only there: other
+      // models still report a response id, but chaining them would drop history.
+      ...(model.capabilities.continuity
+        ? { continuity: { binding: { origin: turnId, endpoint: `${model.ref.provider}/${model.ref.model}` } } }
+        : {}),
     };
   } catch (error) {
     // Setup failed before a turn existed: report it the way a failed turn ends.

@@ -39,7 +39,7 @@ Tool orchestration in ChatForge is an **iterative, server-side execution system*
 
 **File Locations:**
 - `backend/src/lib/toolOrchestrationUtils.js` - Core orchestration utilities
-- `backend/src/lib/toolsStreaming.js` - Streaming mode orchestration
+- `backend/src/lib/harness/harnessToolsStreaming.ts` - Streaming mode orchestration, on `@qduc/agent-core` (see [agent-harness-event-mapping.md](agent-harness-event-mapping.md))
 - `backend/src/lib/toolsJson.js` - Non-streaming (JSON) mode orchestration
 - `backend/src/lib/tools/` - Tool implementations directory:
   - `baseTool.js` - Tool factory with `createTool`
@@ -361,9 +361,16 @@ if (flags.hasTools) {
 }
 ```
 
-### Streaming Mode (`handleToolsStreaming`)
+### Streaming Mode (`handleToolsStreamingHarness`)
 
-**File:** `backend/src/lib/toolsStreaming.js`
+**File:** `backend/src/lib/harness/harnessToolsStreaming.ts`
+
+> **Note:** Streaming orchestration now runs on `@qduc/agent-core`. The former
+> `toolsStreaming.js` loop was removed; references to it and its line numbers in
+> this document describe that legacy implementation. The client-visible SSE
+> stream and persistence are unchanged; see
+> [agent-harness-event-mapping.md](agent-harness-event-mapping.md) for how harness
+> events map onto them.
 
 **Characteristics:**
 - Real-time Server-Sent Events (SSE) to client

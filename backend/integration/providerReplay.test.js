@@ -1,7 +1,7 @@
 // End-to-end: real recorded provider traffic, replayed over loopback, through
 // ChatForge's own route, provider adapters, tool execution and persistence.
-// No real API calls. Every recording runs through both streaming tool loops:
-// the legacy loop and the agent harness (AGENT_HARNESS_TOOL_LOOP).
+// No real API calls. Every recording runs through the streaming tool loop
+// (agent harness).
 //
 // Recordings: test_support/provider-replay/fixtures (copied from qduc/term2).
 // Expectations about the answer and the tool call are read from the recording
@@ -14,7 +14,6 @@ import { PARALLEL_VARIANTS, SECOND_CALL, parallelFixture, sourceFamily } from '.
 import { getDb, getMessagesPage } from '../src/db/index.js';
 import { tools as toolRegistry } from '../src/lib/tools/index.js';
 import { createTool } from '../src/lib/tools/baseTool.js';
-import { config } from '../src/env.js';
 
 const { makeApp, withServer } = createChatProxyTestContext();
 const replay = new ReplayServer();
@@ -162,9 +161,8 @@ const toolValue = (output) => (typeof output === 'string' ? JSON.parse(output) :
 
 const deltas = (events) => events.filter((e) => typeof e === 'object').map((e) => e?.choices?.[0]?.delta ?? {});
 
-async function runRecording(family, { harness, fixture = loadFixture(family), cuts }) {
+async function runRecording(family, { fixture = loadFixture(family), cuts } = {}) {
   replay.load(fixture, { cuts });
-  config.agentHarness.streamingToolLoop = harness;
   const app = makeApp({ mockUser });
   const providerId = seedProvider(family, fixture);
 
@@ -200,20 +198,6 @@ async function runRecording(family, { harness, fixture = loadFixture(family), cu
   };
 }
 
-/** What a client and the database end up with; both loops must agree on it. */
-const outcome = (run) => ({
-  status: run.status,
-  done: run.events.at(-1) === '[DONE]',
-  content: run.content,
-  streamedToolCalls: run.streamedToolCalls.map((tc) => ({ id: tc.id, name: tc.function?.name, args: JSON.parse(tc.function?.arguments || '{}') })),
-  streamedToolOutputIds: [...new Set(run.streamedToolOutputs.map((o) => o.tool_call_id))],
-  persistedStatus: run.assistant?.status ?? null,
-  persistedContent: run.assistant?.content ?? null,
-  persistedToolCalls: (run.assistant?.tool_calls ?? []).map((tc) => ({ id: tc.id, name: tc.function?.name })),
-  persistedToolOutputs: run.toolOutputs.map((o) => ({ id: o.tool_call_id, status: o.status, output: o.output })),
-  upstreamRequests: run.requests.length,
-});
-
 function assertMatchesRecording(family, run) {
   const spec = FAMILIES[family];
   const [turn1, turn2] = run.fixture.turns;
@@ -234,7 +218,6 @@ function assertMatchesRecording(family, run) {
   assert.deepEqual(JSON.parse(streamedCall.function.arguments), recordedCall.args, `${family}: recorded arguments`);
   if (recordedCall.id) assert.equal(streamedCall.id, recordedCall.id, `${family}: call id round-trips`);
   assert.ok(
-    // Legacy streams the tool's raw object, the harness its serialized text; the UI renders either.
     run.streamedToolOutputs.some((o) => o.tool_call_id === streamedCall.id && toolValue(o.output) === TOOL_OUTPUT.value),
     `${family}: tool output streamed for the call`,
   );
@@ -259,7 +242,7 @@ function assertMatchesRecording(family, run) {
   if (recordedCall.id) assert.ok(followUp.includes(recordedCall.id), `${family}: follow-up references the call id`);
   const chainedFrom = run.requests[1].body?.previous_response_id;
   if (chainedFrom) {
-    // Continuation (legacy loop, Responses API): only new items, chained to turn 1's response.
+    // Continuation (Responses API): only new items, chained to turn 1's response.
     assert.equal(chainedFrom, spec.responseId(turn1), `${family}: chains to the recorded response`);
     assert.ok(!followUp.includes(PROMPT), `${family}: chained follow-up omits earlier history`);
   } else {
@@ -267,9 +250,7 @@ function assertMatchesRecording(family, run) {
   }
 }
 
-describe('provider replay e2e (recorded real traffic, both tool loops)', () => {
-  const originalFlag = config.agentHarness.streamingToolLoop;
-
+describe('provider replay e2e (recorded real traffic)', () => {
   beforeAll(async () => {
     await replay.start();
     toolRegistry.fixture = fixtureTool;
@@ -277,28 +258,16 @@ describe('provider replay e2e (recorded real traffic, both tool loops)', () => {
 
   afterAll(async () => {
     delete toolRegistry.fixture;
-    config.agentHarness.streamingToolLoop = originalFlag;
     await replay.stop();
   });
 
   describe.each(Object.keys(FAMILIES))('%s', (family) => {
-    test('legacy loop replays the recording', async () => {
-      const run = await runRecording(family, { harness: false });
+    test('replays the recording', async () => {
+      const run = await runRecording(family);
       assertMatchesRecording(family, run);
-      if (family === 'openai-responses') assert.ok(run.requests[1].body?.previous_response_id, 'legacy chains Responses turns');
-    });
-
-    test('harness loop replays the recording', async () => {
-      const run = await runRecording(family, { harness: true });
-      assertMatchesRecording(family, run);
-      // Known gap until TurnDeps.continuity is wired: no previous_response_id (see event-mapping doc).
-      assert.equal(run.requests[1].body?.previous_response_id, undefined);
-    });
-
-    test('both loops reach the same outcome', async () => {
-      const legacy = await runRecording(family, { harness: false });
-      const harness = await runRecording(family, { harness: true });
-      assert.deepEqual(outcome(harness), outcome(legacy));
+      // Only the Responses API chains tool rounds; every other family sends full history.
+      const chained = Boolean(run.requests[1].body?.previous_response_id);
+      assert.equal(chained, family === 'openai-responses', `${family}: chains tool rounds only on the Responses API`);
     });
   });
 });
@@ -399,35 +368,20 @@ const FOLLOW_UP_RESULTS = {
 };
 
 describe('parallel tool calls (synthetic, derived from real recordings)', () => {
-  const originalFlag = config.agentHarness.streamingToolLoop;
   beforeAll(async () => {
     await replay.start();
     toolRegistry.fixture = fixtureTool;
   });
   afterAll(async () => {
     delete toolRegistry.fixture;
-    config.agentHarness.streamingToolLoop = originalFlag;
     await replay.stop();
   });
 
   describe.each(PARALLEL_VARIANTS)('%s', (variant) => {
     const family = sourceFamily(variant);
-    test.each([false, true])('harness=%s runs both calls and answers both', async (harness) => {
-      const run = await runRecording(family, { harness, fixture: parallelFixture(variant) });
+    test('runs both calls and answers both', async () => {
+      const run = await runRecording(family, { fixture: parallelFixture(variant) });
       assertParallel(variant, run);
-    });
-
-    test('both loops reach the same outcome', async () => {
-      const legacy = await runRecording(family, { harness: false, fixture: parallelFixture(variant) });
-      const harness = await runRecording(family, { harness: true, fixture: parallelFixture(variant) });
-      const comparable = (run) => {
-        const o = outcome(run);
-        // Parallel tools may finish in either order; compare the sets.
-        o.persistedToolOutputs.sort((x, y) => x.id.localeCompare(y.id));
-        o.streamedToolOutputIds.sort();
-        return o;
-      };
-      assert.deepEqual(comparable(harness), comparable(legacy));
     });
   });
 });
@@ -449,14 +403,13 @@ function partialAnswerCut(family) {
 }
 
 /** Streams a turn through a real HTTP server, so the client can press Stop mid-answer. */
-async function runWithStop(family, { harness }) {
+async function runWithStop(family) {
   const fixture = loadFixture(family);
   const cut = partialAnswerCut(family);
   replay.load(fixture, { cuts: { 1: { afterEvents: cut.afterEvents, then: 'stall' } } });
-  config.agentHarness.streamingToolLoop = harness;
   const app = makeApp({ mockUser });
   const providerId = seedProvider(family, fixture);
-  const requestId = `stop-${family}-${harness}-${Date.now()}`;
+  const requestId = `stop-${family}-${Date.now()}`;
 
   return withServer(app, async (port) => {
     const res = await fetch(`http://127.0.0.1:${port}/v1/chat/completions`, {
@@ -494,7 +447,7 @@ async function runWithStop(family, { harness }) {
         stopped = plain(await stop.json());
       }
     }
-    // Legacy closes the upstream request just after [DONE] (~50 ms); allow a short grace period.
+    // Upstream may close just after [DONE]; allow a short grace period.
     const closeDeadline = Date.now() + 2000;
     while (replay.clientClosed.length === 0 && Date.now() < closeDeadline) await new Promise((resolve) => setTimeout(resolve, 25));
     const events = parseSse(text);
@@ -518,31 +471,19 @@ const streamedContentOf = (text) =>
     .filter((c) => typeof c === 'string')
     .join('');
 
-const stopOutcome = (run) => ({
-  stopped: run.stopped,
-  done: run.events.at(-1) === '[DONE]',
-  content: run.content,
-  persistedStatus: run.assistant?.status ?? null,
-  persistedContent: run.assistant?.content ?? null,
-  upstreamClosedByChatForge: run.clientClosed,
-  requests: run.requests,
-});
-
 describe('interruptions (real recordings cut short)', () => {
-  const originalFlag = config.agentHarness.streamingToolLoop;
   beforeAll(async () => {
     await replay.start();
     toolRegistry.fixture = fixtureTool;
   });
   afterAll(async () => {
     delete toolRegistry.fixture;
-    config.agentHarness.streamingToolLoop = originalFlag;
     await replay.stop();
   });
 
   describe.each(Object.keys(FAMILIES))('%s', (family) => {
-    test.each([false, true])('Stop mid-answer (harness=%s) keeps the partial text and closes upstream', async (harness) => {
-      const run = await runWithStop(family, { harness });
+    test('Stop mid-answer keeps the partial text and closes upstream', async () => {
+      const run = await runWithStop(family);
       assert.deepEqual(run.stopped, { stopped: true });
       assert.equal(run.events.at(-1), '[DONE]', 'stream closes cleanly');
       assert.equal(run.content, run.cut.partial, 'client saw exactly the partial answer');
@@ -550,16 +491,10 @@ describe('interruptions (real recordings cut short)', () => {
       assert.deepEqual(run.clientClosed, [1], 'ChatForge closed the stalled upstream request');
     });
 
-    test('Stop: both loops reach the same outcome', async () => {
-      const legacy = await runWithStop(family, { harness: false });
-      const harness = await runWithStop(family, { harness: true });
-      assert.deepEqual(stopOutcome(harness), stopOutcome(legacy));
-    });
-
-    test.each([false, true])('upstream drops mid-answer (harness=%s): fails fast, keeps the partial text, records an error', async (harness) => {
+    test('upstream drops mid-answer: fails fast, keeps the partial text, records an error', async () => {
       const { afterEvents, partial } = partialAnswerCut(family);
       const started = Date.now();
-      const run = await runRecording(family, { harness, cuts: { 1: { afterEvents, then: 'drop' } } });
+      const run = await runRecording(family, { cuts: { 1: { afterEvents, then: 'drop' } } });
       // Detected from the dropped connection, not the 30 s idle timeout (upstreamLogger tee fix).
       assert.ok(Date.now() - started < 5000, `detected in ${Date.now() - started} ms`);
       assert.equal(run.events.at(-1), '[DONE]', 'client stream closes');
@@ -567,15 +502,6 @@ describe('interruptions (real recordings cut short)', () => {
       assert.match(run.content.slice(partial.length), /^\[Error: .+\]$/, 'error notice follows the partial text');
       assert.equal(run.assistant?.status, 'error', 'not recorded as a finished answer');
       assert.equal(run.assistant?.content, run.content);
-    });
-
-    test('upstream drop: both loops reach the same outcome', async () => {
-      const { afterEvents } = partialAnswerCut(family);
-      const cuts = { 1: { afterEvents, then: 'drop' } };
-      const legacy = await runRecording(family, { harness: false, cuts });
-      const harness = await runRecording(family, { harness: true, cuts });
-      const summary = (run) => ({ done: run.events.at(-1) === '[DONE]', content: run.content, status: run.assistant?.status ?? null, requests: run.requests.length });
-      assert.deepEqual(summary(harness), summary(legacy));
     });
   });
 });

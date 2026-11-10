@@ -53,7 +53,7 @@ export type ChatForgeRuntimeConfig = {
 export type ChatCompletionsBody = {
   model: string;
   messages: ChatMessage[];
-  stream: true;
+  stream: boolean;
   tools?: ReturnType<typeof toolSpecsToChatTools>;
   tool_choice?: unknown;
   previous_response_id?: string;
@@ -75,6 +75,8 @@ export type ProviderModelOptions = {
   readonly idleTimeoutMs?: number;
   /** For prompt-caching logs only. */
   readonly userId?: string | null;
+  /** Ask the provider to stream (default). False sends one JSON request per model call. */
+  readonly stream?: boolean;
 };
 
 const DEFAULT_IDLE_TIMEOUT_MS = 300_000;
@@ -103,6 +105,7 @@ export class ProviderModel implements Model {
   protected readonly config: ChatForgeRuntimeConfig;
   protected readonly idleTimeoutMs: number;
   protected readonly userId: string | null;
+  protected readonly streamUpstream: boolean;
 
   constructor(options: ProviderModelOptions) {
     this.provider = options.provider;
@@ -115,6 +118,7 @@ export class ProviderModel implements Model {
     this.idleTimeoutMs =
       options.idleTimeoutMs ?? options.config.providerConfig?.streamTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
     this.userId = options.userId ?? null;
+    this.streamUpstream = options.stream ?? true;
     this.capabilities = { continuity: this.supportsContinuation(), standardServiceTier: false, httpTransportDowngrade: false };
   }
 
@@ -143,7 +147,7 @@ export class ProviderModel implements Model {
       ...(request.providerOptions ?? {}),
       model: request.model.model,
       messages: itemsToChatMessages(request.input, request.instructions),
-      stream: true,
+      stream: this.streamUpstream,
     };
     if (request.tools.length > 0) {
       body.tools = toolSpecsToChatTools(request.tools);
