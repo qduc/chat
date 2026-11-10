@@ -10,8 +10,8 @@ import { AnthropicProvider } from '../../src/lib/providers/anthropicProvider.js'
 import { GeminiProvider } from '../../src/lib/providers/geminiProvider.js';
 import { LlamaCppProvider } from '../../src/lib/providers/llamaCppProvider.js';
 import { AnthropicModel, GeminiModel, LlamaCppModel, OpenAIModel, createModel, createModelRegistry } from '../../src/lib/harness/models.ts';
-import { ModelFailure } from '../../src/lib/harness/contracts.ts';
-import type { Item, ItemId, ModelEvent, ModelRequest, ToolCallId } from '../../src/lib/harness/contracts.ts';
+import { ModelFailure } from '@qduc/agent-core';
+import type { Item, ItemId, ModelEvent, ModelRequest, ToolCallId } from '@qduc/agent-core';
 
 const config = { providerConfig: { streamTimeoutMs: 2_000 } };
 

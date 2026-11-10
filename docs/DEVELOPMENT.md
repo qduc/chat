@@ -61,7 +61,24 @@ All development commands run in Docker via `./dev.sh` or directly via npm.
 
 # Run specific test file
 ./dev.sh test:backend __tests__/conversations.test.js
+
+# Provider replay e2e (also part of the backend suite)
+./dev.sh exec backend npm run test:provider-replay
 ```
+
+#### Provider replay e2e
+
+`backend/integration/providerReplay.test.js` replays sanitized recordings of real provider
+traffic (OpenAI Chat Completions, OpenAI Responses, Anthropic, Gemini) from a loopback server
+through the real `/v1/chat/completions` route, provider adapters, tool execution and
+persistence. No real API calls. Each recording runs through both streaming tool loops (legacy
+and `AGENT_HARNESS_TOOL_LOOP`). Expectations are read from the recording itself. Recordings
+and their provenance are in `backend/test_support/provider-replay/fixtures/`.
+
+The same suite covers parallel tool calls (synthetic fixtures derived from the recordings,
+checked against the official provider SDKs by `integration/syntheticFixtureOracle.test.js`),
+Stop mid-answer, and an upstream connection dropping mid-answer (real recordings cut short).
+Synthetic fixtures are a best guess at the wire format; see `fixtures/PROVENANCE.md`.
 
 ### Database Migrations
 

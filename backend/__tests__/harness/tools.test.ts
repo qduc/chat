@@ -9,7 +9,7 @@ import { journalTool } from '../../src/lib/tools/journal.js';
 import { tools as registeredTools } from '../../src/lib/tools/index.js';
 import { createToolRegistry, toHarnessTool } from '../../src/lib/harness/tools.ts';
 import type { ChatForgeTool, ChatForgeToolContext } from '../../src/lib/harness/tools.ts';
-import type { ToolContext } from '../../src/lib/harness/contracts.ts';
+import type { ToolContext } from '@qduc/agent-core';
 
 function ctx(userId: string | null): ToolContext<ChatForgeToolContext> {
   return {

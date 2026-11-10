@@ -3,7 +3,7 @@ import { config } from '../../src/env.js';
 import { SimplifiedPersistence } from '../../src/lib/simplifiedPersistence.js';
 import { MAX_ITERATIONS_NOTICE, TurnEventSink } from '../../src/lib/harness/turnEventSink.ts';
 import type { SinkPersistence } from '../../src/lib/harness/turnEventSink.ts';
-import type { ExecutionId, ItemId, ToolCallId, TurnEvent, TurnId } from '../../src/lib/harness/contracts.ts';
+import type { ExecutionId, ItemId, ToolCallId, TurnEvent, TurnId } from '@qduc/agent-core';
 
 function fakeResponse() {
   const frames: string[] = [];

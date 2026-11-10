@@ -9,7 +9,7 @@
 import { addPromptCaching } from '../promptCaching.js';
 import { ProviderModel } from './providerModel.ts';
 import type { ChatCompletionsBody, ChatForgeProvider, ProviderModelOptions } from './providerModel.ts';
-import type { ModelRef, ModelRegistry, ModelRequest } from './contracts.ts';
+import type { ModelRef, ModelRegistry, ModelRequest } from '@qduc/agent-core';
 
 /** Applies ChatForge's cache breakpoints when the provider supports them. */
 async function withPromptCaching(

@@ -12,7 +12,7 @@
  *   - Gemini `gemini_thought_signature` -> tool_call item `providerMetadata.gemini_thought_signature`
  */
 import { randomUUID } from 'node:crypto';
-import type { ContentPart, Item, ItemId, ToolCallId, ToolSpec } from './contracts.ts';
+import type { ContentPart, Item, ItemId, ToolCallId, ToolSpec } from '@qduc/agent-core';
 
 /** `provider` value on `provider_input` items that carry a raw ChatForge message. */
 export const CHATFORGE_PROVIDER_INPUT = 'chatforge';

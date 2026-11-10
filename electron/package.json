@@ -20,6 +20,7 @@
   "dependencies": {
     "@blackglory/better-sqlite3-migrations": "^0.1.20",
     "@mozilla/readability": "^0.6.0",
+    "@qduc/agent-core": "0.2.0-alpha.1",
     "@qduc/web-fetch": "^0.1.4",
     "bcryptjs": "^3.0.2",
     "better-sqlite3": "^12.11.1",
