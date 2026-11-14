@@ -43,6 +43,89 @@ function applyCustomRequestParams(target, customParams) {
   }
 }
 
+const SAMPLING_PARAM_KEYS = ['temperature', 'top_p', 'top_k'];
+
+/**
+ * Request-shape adjustments keyed by canonical Claude model id.
+ *
+ * Dated and other suffixes (`claude-opus-5-5-20251101`, `claude-opus-5-5-latest`)
+ * resolve to the same entry. Ids that do not match keep the historical shape
+ * (`claude-opus-4-5`, `claude-sonnet-4-5`, `claude-3-5-*`, and so on).
+ *
+ * `noneMinimalThinking`:
+ *  - `adaptive-low`: Opus 5.5 rejects `thinking.type: "disabled"`. Send
+ *    adaptive thinking with `output_config.effort: "low"`.
+ *  - `between_tools`: Sonnet 5.5 rejects `"disabled"`. `between_tools` is the
+ *    off switch and is valid only at effort high or below (the API default
+ *    is high, so none/minimal does not send an effort).
+ *  - omitted: keep `thinking: { type: "disabled" }` (Haiku 5.5 and earlier).
+ *
+ * Sampling parameters are omitted for the 5.5 models and for every other
+ * Claude 4.7+ id. Non-default `temperature` / `top_p` / `top_k` return 400
+ * on Claude 4.7 and later, and the docs say to omit them:
+ * https://platform.claude.com/docs/en/build-with-claude/working-with-messages
+ */
+const CLAUDE_55_CAPABILITIES = {
+  'claude-opus-5-5': {
+    noneMinimalThinking: 'adaptive-low',
+    stripSamplingParams: true,
+    downgradeForcedToolChoice: true,
+  },
+  'claude-sonnet-5-5': {
+    noneMinimalThinking: 'between_tools',
+    stripSamplingParams: true,
+    downgradeForcedToolChoice: true,
+  },
+  'claude-haiku-5-5': {
+    stripSamplingParams: true,
+    downgradeForcedToolChoice: false,
+  },
+};
+
+const CLAUDE_47_PLUS_CAPABILITIES = {
+  stripSamplingParams: true,
+  downgradeForcedToolChoice: false,
+};
+
+const NO_ANTHROPIC_ADJUSTMENTS = {
+  stripSamplingParams: false,
+  downgradeForcedToolChoice: false,
+};
+
+function normalizeAnthropicModelId(model) {
+  if (typeof model !== 'string') return '';
+  let id = model.trim().toLowerCase();
+  const scoped = id.lastIndexOf('::');
+  if (scoped !== -1) id = id.slice(scoped + 2).trim();
+  const slash = id.lastIndexOf('/');
+  if (slash !== -1) id = id.slice(slash + 1).trim();
+  return id;
+}
+
+function claudeModelVersion(modelId) {
+  const match = /^claude-[a-z]+-(\d+)(?:-(\d+))?(?=-|$)/.exec(modelId);
+  if (!match) return null;
+  return {
+    major: Number(match[1]),
+    minor: match[2] === undefined ? 0 : Number(match[2]),
+  };
+}
+
+function isClaude47OrLater(modelId) {
+  const version = claudeModelVersion(modelId);
+  if (!version) return false;
+  return version.major > 4 || (version.major === 4 && version.minor >= 7);
+}
+
+function getAnthropicModelCapabilities(model) {
+  const id = normalizeAnthropicModelId(model);
+  for (const [key, capabilities] of Object.entries(CLAUDE_55_CAPABILITIES)) {
+    if (id === key || id.startsWith(`${key}-`)) return capabilities;
+  }
+  if (isClaude47OrLater(id)) return CLAUDE_47_PLUS_CAPABILITIES;
+  return NO_ANTHROPIC_ADJUSTMENTS;
+}
+
 /**
  * Map our normalized reasoning_effort values to the Anthropic Messages API
  * extended / adaptive thinking shape.
@@ -57,7 +140,9 @@ function applyCustomRequestParams(target, customParams) {
  *    thought being returned (recommended for cost/latency). The full
  *    chain-of-thought can still be obtained by passing
  *    `thinking.display: "full"` via `custom_request_params`.
- *  - `thinking: { type: "disabled" }` explicitly turns thinking off.
+ *  - `thinking: { type: "disabled" }` explicitly turns thinking off on models
+ *    that accept it. Opus 5.5 and Sonnet 5.5 do not; see
+ *    `getAnthropicModelCapabilities`.
  *  - `thinking: { type: "enabled", budget_tokens: N }` is the legacy manual
  *    form; we do not emit it because the proxy does not know the model's
  *    max thinking budget, and adaptive + effort is the recommended path
@@ -69,15 +154,24 @@ function applyCustomRequestParams(target, customParams) {
  *
  * Our internal vocabulary (from openaiProxy validation):
  *   none, minimal, low, medium, high, xhigh
- * `none` / `minimal` are treated as "disable thinking". `max` is forwarded
- * as-is when explicitly provided.
+ * `none` / `minimal` disable thinking on models that allow it. `max` is
+ * forwarded as-is when explicitly provided.
  */
-function applyAnthropicReasoningControls(target, reasoningEffort) {
+function applyAnthropicReasoningControls(target, reasoningEffort, capabilities) {
   if (typeof reasoningEffort !== 'string' || !reasoningEffort) return;
 
   const normalized = reasoningEffort.toLowerCase();
 
   if (normalized === 'none' || normalized === 'minimal') {
+    if (capabilities?.noneMinimalThinking === 'adaptive-low') {
+      target.thinking = { type: 'adaptive' };
+      target.output_config = { ...(target.output_config || {}), effort: 'low' };
+      return;
+    }
+    if (capabilities?.noneMinimalThinking === 'between_tools') {
+      target.thinking = { type: 'between_tools' };
+      return;
+    }
     target.thinking = { type: 'disabled' };
     return;
   }
@@ -381,6 +475,7 @@ export class MessagesAdapter extends BaseAdapter {
     }
 
     const normalized = { model, messages };
+    const capabilities = getAnthropicModelCapabilities(model);
 
     // Add system prompt if present
     if (system) {
@@ -409,13 +504,18 @@ export class MessagesAdapter extends BaseAdapter {
           if (payload.tool_choice === 'auto') {
             normalized.tool_choice = { type: 'auto' };
           } else if (payload.tool_choice === 'required') {
-            normalized.tool_choice = { type: 'any' };
+            // Opus 5.5 and Sonnet 5.5 reject tool_choice "any" and "tool".
+            normalized.tool_choice = capabilities.downgradeForcedToolChoice
+              ? { type: 'auto' }
+              : { type: 'any' };
           }
         } else if (payload.tool_choice?.type === 'function') {
-          normalized.tool_choice = {
-            type: 'tool',
-            name: payload.tool_choice.function?.name,
-          };
+          normalized.tool_choice = capabilities.downgradeForcedToolChoice
+            ? { type: 'auto' }
+            : {
+                type: 'tool',
+                name: payload.tool_choice.function?.name,
+              };
         }
       }
     }
@@ -438,7 +538,7 @@ export class MessagesAdapter extends BaseAdapter {
     if (reasoningEffort !== undefined) {
       const format = context.reasoningFormat || this.reasoningFormat;
       if (format === 'anthropic') {
-        applyAnthropicReasoningControls(normalized, reasoningEffort);
+        applyAnthropicReasoningControls(normalized, reasoningEffort, capabilities);
       }
       // format === 'none': Don't include reasoning fields. Callers that need
       // manual extended thinking can still inject `thinking` /
@@ -446,6 +546,15 @@ export class MessagesAdapter extends BaseAdapter {
     }
 
     applyCustomRequestParams(normalized, payload.custom_request_params);
+
+    // Drop sampling params last so custom_request_params cannot put them back.
+    // Claude 4.7+ and the 5.5 models reject them (title generation sends
+    // temperature 0.2). Earlier models keep whatever the caller set.
+    if (capabilities.stripSamplingParams) {
+      for (const key of SAMPLING_PARAM_KEYS) {
+        delete normalized[key];
+      }
+    }
 
     return normalized;
   }
