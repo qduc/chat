@@ -13,13 +13,15 @@ const APP_EFFORTS = ['none', 'low', 'medium', 'high', 'xhigh'];
 
 function openAIExpected(model, effort) {
   const id = model.split('/').pop().toLowerCase();
-  const legacy = effort === 'minimal' ? 'low' : effort === 'max' ? 'xhigh' : effort;
   if (id.startsWith('gpt-6-astra') || id.startsWith('gpt-6.1-sol')) {
-    if (legacy === 'none') return 'low';
-    return legacy;
+    if (effort === 'none' || effort === 'minimal') return 'low';
+    if (effort === 'max') return 'xhigh';
+    return effort;
   }
   if (id.startsWith('gpt-6-luna')) {
-    return legacy;
+    if (effort === 'minimal') return 'none';
+    if (effort === 'max') return 'xhigh';
+    return effort;
   }
   return effort;
 }
@@ -141,10 +143,10 @@ function geminiExpected(model, effort) {
   const base = { includeThoughts: true };
 
   if (id.startsWith('gemini-4-')) {
-    if (effort === 'none') return { ...base, thinkingBudget: 0 };
+    if (effort === 'none' || effort === 'minimal') return { ...base, thinkingBudget: 0 };
     const hydrogen = id.startsWith('gemini-4-hydrogen');
     const levels = hydrogen ? ['low', 'medium', 'high', 'xhigh'] : ['low', 'medium', 'high'];
-    const requested = effort === 'minimal' ? 'low' : effort === 'max' ? 'xhigh' : effort;
+    const requested = effort === 'max' ? 'xhigh' : effort;
     const thinkingLevel = levels.includes(requested) ? requested : 'high';
     return { ...base, thinkingLevel };
   }
@@ -233,6 +235,92 @@ describe('Gemini reasoning effort mapping', () => {
         messages: [{ role: 'user', content: 'hi' }],
       });
       expect(request.generationConfig.thinkingConfig).toEqual({ includeThoughts: true });
+    }
+  });
+});
+
+describe('legacy minimal is off when the model has an off setting', () => {
+  test('gpt-6-luna sends none', async () => {
+    for (const model of ['gpt-6-luna', 'openai/gpt-6-luna']) {
+      const responsesRequest = await responsesEffort(model, 'minimal');
+      const chatRequest = await chatEffort(nested, model, 'minimal');
+      expect(responsesRequest.reasoning.effort).toBe('none');
+      expect(chatRequest.reasoning.effort).toBe('none');
+    }
+  });
+
+  test('gpt-6-astra and gpt-6.1-sol send low', async () => {
+    for (const model of ['gpt-6-astra', 'openai/gpt-6-astra', 'gpt-6.1-sol', 'openai/gpt-6.1-sol']) {
+      const responsesRequest = await responsesEffort(model, 'minimal');
+      const chatRequest = await chatEffort(nested, model, 'minimal');
+      expect(responsesRequest.reasoning.effort).toBe('low');
+      expect(chatRequest.reasoning.effort).toBe('low');
+    }
+  });
+
+  test('Gemini 4 sends thinkingBudget 0', async () => {
+    for (const model of ['gemini-4-carbon', 'gemini-4-argon', 'gemini-4-hydrogen']) {
+      const request = await gemini.translateRequest({
+        model,
+        messages: [{ role: 'user', content: 'hi' }],
+        reasoning_effort: 'minimal',
+      });
+      expect(request.generationConfig.thinkingConfig).toEqual({ includeThoughts: true, thinkingBudget: 0 });
+    }
+  });
+
+  test('Gemini 2.5 sends thinkingBudget 0', async () => {
+    const request = await gemini.translateRequest({
+      model: 'gemini-2.5-flash',
+      messages: [{ role: 'user', content: 'hi' }],
+      reasoning_effort: 'minimal',
+    });
+    expect(request.generationConfig.thinkingConfig).toEqual({ includeThoughts: true, thinkingBudget: 0 });
+  });
+
+  test('Gemini 3.x sends its lowest supported level', async () => {
+    const cases = [
+      ['gemini-3.8-flash', 'low'],
+      ['gemini-3.7-flash', 'low'],
+      ['gemini-3.5-flash', 'minimal'],
+      ['gemini-3-flash-preview', 'minimal'],
+      ['gemini-3-pro-preview', 'low'],
+      ['gemini-3.1-pro-preview', 'low'],
+    ];
+    for (const [model, level] of cases) {
+      const request = await gemini.translateRequest({
+        model,
+        messages: [{ role: 'user', content: 'hi' }],
+        reasoning_effort: 'minimal',
+      });
+      expect(request.generationConfig.thinkingConfig).toEqual({ includeThoughts: true, thinkingLevel: level });
+    }
+  });
+
+  test('DeepSeek disables thinking', async () => {
+    const request = await chatEffort(deepseek, 'deepseek-reasoner', 'minimal');
+    expect(request.thinking).toEqual({ type: 'disabled' });
+    expect(request.reasoning).toBeUndefined();
+    expect(request.reasoning_effort).toBeUndefined();
+  });
+
+  test('llama.cpp disables thinking', async () => {
+    const request = await chatEffort(llama, 'llama-local', 'minimal');
+    expect(request.chat_template_kwargs).toEqual({
+      reasoning_effort: 'low',
+      enable_thinking: false,
+      thinking_mode: 'disabled',
+      reasoning_budget: 0,
+    });
+    expect(request.reasoning).toBeUndefined();
+  });
+
+  test('other OpenAI-compatible models keep minimal', async () => {
+    for (const model of ['gpt-4o', 'gpt-6.1-terra', 'openai/gpt-6-sol']) {
+      const responsesRequest = await responsesEffort(model, 'minimal');
+      const chatRequest = await chatEffort(nested, model, 'minimal');
+      expect(responsesRequest.reasoning).toEqual({ effort: 'minimal', summary: 'auto' });
+      expect(chatRequest.reasoning).toEqual({ effort: 'minimal' });
     }
   });
 });

@@ -231,9 +231,10 @@ export class GeminiAdapter extends BaseAdapter {
 
     if (internalRequest.reasoning_effort && internalRequest.reasoning_effort !== 'unset') {
       const effort = internalRequest.reasoning_effort;
-      // Gemini 4 is level-based (Hydrogen also accepts xhigh). `none` keeps
-      // thinkingBudget 0. Gemini 3.x maps none/minimal/xhigh onto a level the
-      // model documents. Gemini 2.x and Gemma stay on their previous shapes.
+      // Gemini 4 is level-based (Hydrogen also accepts xhigh). `none` and
+      // legacy `minimal` keep thinkingBudget 0. Gemini 3.x has no off switch,
+      // so none/minimal use the lowest documented level. Gemini 2.x and Gemma
+      // stay on their previous shapes.
       const geminiThinking = resolveGeminiThinking(model, effort);
       if (geminiThinking) {
         Object.assign(geminiRequest.generationConfig.thinkingConfig, geminiThinking);

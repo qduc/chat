@@ -307,9 +307,10 @@ export class ChatCompletionsAdapter extends BaseAdapter {
     if (reasoningEffort !== undefined) {
       const format = context.reasoningFormat || this.reasoningFormat;
       if (format === 'nested' || format === 'flat') {
-        // GPT-6 Astra / GPT-6.1 Sol reject `none`; other listed models snap
-        // xhigh/max and legacy minimal onto a level they accept. Unlisted
-        // models keep the value. DeepSeek and llama.cpp keep their own maps.
+        // Listed GPT-6 models snap unsupported values onto a level they accept.
+        // Legacy `minimal` is off (`none`) when the model has that setting,
+        // otherwise its lowest level. Unlisted models keep the value.
+        // DeepSeek and llama.cpp keep their own maps.
         const effort = mapOpenAIReasoningEffort(model, reasoningEffort);
         if (format === 'nested') {
           normalized.reasoning = { effort };

@@ -1,9 +1,10 @@
 /**
- * Map the app's reasoning effort vocabulary onto what each model accepts.
+ * Per-adapter mapping from an effort value onto what that model accepts.
  *
- * The app's set is none, low, medium, high, xhigh. `minimal` and `max` still
- * arrive from older clients; they map to the nearest accepted level here so
- * this does not depend on upstream normalization landing first.
+ * This is not the incoming normalizer. `minimal` and `max` may still arrive.
+ * `minimal` turns thinking off when the model has an off setting (`none`, or
+ * Gemini 4's `thinkingBudget: 0`); otherwise it uses the lowest accepted level.
+ * `max` starts at `xhigh`, then the nearest accepted level.
  *
  * Models that are not listed keep the effort they were given.
  */
@@ -69,16 +70,22 @@ function openAIProfile(model) {
 }
 
 /**
- * Nearest level in `supported`. An exact match wins. Legacy `minimal` starts
- * the search at `low` and legacy `max` starts at `xhigh` (the same aliases
- * upstream normalization uses) so a tie cannot land on `none`. Any remaining
+ * Nearest value in `supported`, which is ordered lowest to highest.
+ *
+ * `minimal` is the legacy off request: `none` when that off setting is
+ * accepted, otherwise the lowest accepted level (the first entry). A model
+ * whose accepted levels include the level named `minimal` therefore keeps it.
+ * `max` starts at `xhigh`, then the nearest accepted level. Any remaining
  * tie picks the lower level.
  */
 export function nearestSupportedEffort(effort, supported) {
   const requested = String(effort).toLowerCase();
-  if (supported.includes(requested)) return requested;
+  if (requested === 'minimal') {
+    if (supported.includes('none')) return 'none';
+    return supported[0] ?? requested;
+  }
 
-  const start = requested === 'minimal' ? 'low' : requested === 'max' ? 'xhigh' : requested;
+  const start = requested === 'max' ? 'xhigh' : requested;
   if (supported.includes(start)) return start;
 
   const startIndex = EFFORT_LADDER.indexOf(start);
@@ -154,8 +161,9 @@ function gemini3Levels(id) {
  * the budget / Gemma path.
  *
  * Gemini 4 is level-based: Carbon and Argon accept low, medium, high.
- * Hydrogen also accepts xhigh. `none` stays `thinkingBudget: 0`, which the
- * live Gemini 4 Carbon call accepted (0 thought tokens).
+ * Hydrogen also accepts xhigh. `none` and legacy `minimal` stay
+ * `thinkingBudget: 0` (thinking off). The live Gemini 4 Carbon call accepted
+ * budget 0 and returned 0 thought tokens.
  * https://firebase.google.com/docs/ai-logic/thinking
  */
 export function resolveGeminiThinking(model, effort) {
@@ -164,7 +172,7 @@ export function resolveGeminiThinking(model, effort) {
   const requested = effort.toLowerCase();
 
   if (isGemini4(id)) {
-    if (requested === 'none') return { thinkingBudget: 0 };
+    if (requested === 'none' || requested === 'minimal') return { thinkingBudget: 0 };
     const levels = isGemini4Hydrogen(id)
       ? ['low', 'medium', 'high', 'xhigh']
       : ['low', 'medium', 'high'];
