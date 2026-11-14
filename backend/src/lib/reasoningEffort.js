@@ -1,20 +1,23 @@
-/** Canonical reasoning efforts exposed by the API and the UI. */
-export const REASONING_EFFORTS = Object.freeze(['none', 'low', 'medium', 'high', 'xhigh']);
-
-const LEGACY_REASONING_EFFORTS = {
-  minimal: 'low',
-  max: 'xhigh',
-};
-
 /**
- * Map a stored or incoming effort onto the canonical set.
- * `minimal` becomes `low` and `max` becomes `xhigh`. Other strings are
- * trimmed and lowercased so `High` matches the allow-list. Null and
- * non-strings pass through.
+ * Incoming reasoning-effort normalization shared by the chat proxy and the
+ * tool harness. Adapters do their own mapping; this helper does not.
+ *
+ * Allowed values are the five UI levels plus legacy `minimal`, which passes
+ * through unchanged. `max` is rewritten to `xhigh` before the allow-list check.
  */
+export const REASONING_EFFORTS = Object.freeze([
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+]);
+
 export function normalizeReasoningEffort(value) {
   if (typeof value !== 'string') return value;
   const lowered = value.trim().toLowerCase();
   if (!lowered) return value;
-  return LEGACY_REASONING_EFFORTS[lowered] || lowered;
+  if (lowered === 'max') return 'xhigh';
+  return lowered;
 }

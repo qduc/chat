@@ -30,7 +30,7 @@ import { ImagePreview, ImageUploadZone } from './ui/ImagePreview';
 import { FilePreview } from './ui/FilePreview';
 import { AudioPreview } from './ui/AudioPreview';
 import Tooltip from './ui/Tooltip';
-import type { ReasoningEffortLevel } from './ui/QualitySlider';
+import type { ReasoningEffortLevel, StoredReasoningEffort } from './ui/QualitySlider';
 import type { CustomRequestParamPreset } from '../lib/types';
 
 // Stable empty arrays to prevent infinite re-renders from default parameters
@@ -57,7 +57,7 @@ interface MessageInputProps {
   customRequestParamsId?: string[] | null;
   onCustomRequestParamsIdChange?: (ids: string[] | null) => void;
   model: string;
-  reasoningEffort: ReasoningEffortLevel;
+  reasoningEffort: StoredReasoningEffort;
   onReasoningEffortChange: (level: ReasoningEffortLevel) => void;
   modelCapabilities?: Record<string, any>; // Model capabilities from provider
   images?: ImageAttachment[];

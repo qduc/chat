@@ -240,13 +240,13 @@ describe('MessagesAdapter', () => {
         expect(result.output_config).toBeUndefined();
       });
 
-      test('maps legacy minimal to the nearest accepted effort, low', async () => {
+      test('disables thinking for minimal, same as none', async () => {
         const result = await anthropicAdapter().translateRequest({
           ...baseRequest,
           reasoning_effort: 'minimal',
         });
-        expect(result.thinking).toEqual({ type: 'adaptive', display: 'summarized' });
-        expect(result.output_config).toEqual({ effort: 'low' });
+        expect(result.thinking).toEqual({ type: 'disabled' });
+        expect(result.output_config).toBeUndefined();
       });
 
       test.each([
@@ -1005,13 +1005,29 @@ describe('MessagesAdapter', () => {
       });
 
       test.each([
-        ['claude-opus-5-5', 'minimal', { effort: 'low' }],
+        ['claude-opus-5-5', { type: 'adaptive' }, { effort: 'low' }],
+        ['claude-sonnet-5-5', { type: 'between_tools' }, undefined],
+        ['claude-haiku-5-5', { type: 'disabled' }, undefined],
+        ['claude-3-5-sonnet-20241022', { type: 'disabled' }, undefined],
+        ['claude-opus-4-5', { type: 'disabled' }, undefined],
+        ['claude-sonnet-4-5', { type: 'disabled' }, undefined],
+        ['claude-opus-4-7', { type: 'disabled' }, undefined],
+        ['claude-sonnet-4-20250514', { type: 'disabled' }, undefined],
+      ])('%s minimal matches none', async (model, thinking, outputConfig) => {
+        const result = await anthropicAdapter().translateRequest(request(model, { reasoning_effort: 'minimal' }));
+        expect(result.thinking).toEqual(thinking);
+        if (outputConfig) {
+          expect(result.output_config).toEqual(outputConfig);
+        } else {
+          expect(result.output_config).toBeUndefined();
+        }
+      });
+
+      test.each([
         ['claude-opus-5-5', 'max', { effort: 'xhigh' }],
         ['claude-sonnet-5-5', 'max', { effort: 'xhigh' }],
-        ['claude-haiku-5-5', 'minimal', { effort: 'low' }],
         ['claude-opus-4-5', 'max', { effort: 'high' }],
         ['claude-opus-4-7', 'max', { effort: 'xhigh' }],
-        ['claude-sonnet-4-20250514', 'minimal', { effort: 'low' }],
       ])('%s maps unsupported %s to the nearest accepted effort', async (model, effort, outputConfig) => {
         const result = await anthropicAdapter().translateRequest(request(model, { reasoning_effort: effort }));
         expect(result.thinking).toEqual({ type: 'adaptive', display: 'summarized' });

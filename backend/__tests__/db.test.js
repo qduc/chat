@@ -148,21 +148,21 @@ describe('DB helpers', () => {
       assert.equal(message.message_events[1].payload.text, 'world');
     });
 
-    test('stores and reads legacy reasoning effort as the canonical value', () => {
+    test('does not rewrite a saved minimal or max reasoning effort', () => {
       createConversation({
         id: 'conv-effort',
         sessionId,
         userId: testUser.id,
         reasoningEffort: 'minimal',
       });
-      assert.equal(getConversationById({ id: 'conv-effort', userId: testUser.id }).reasoning_effort, 'low');
+      assert.equal(getConversationById({ id: 'conv-effort', userId: testUser.id }).reasoning_effort, 'minimal');
 
       updateConversationSettings({
         id: 'conv-effort',
         userId: testUser.id,
         reasoningEffort: 'max',
       });
-      assert.equal(getConversationById({ id: 'conv-effort', userId: testUser.id }).reasoning_effort, 'xhigh');
+      assert.equal(getConversationById({ id: 'conv-effort', userId: testUser.id }).reasoning_effort, 'max');
     });
 
     test('hydrates usage from stored metadata_json', () => {

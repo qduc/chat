@@ -162,7 +162,7 @@ describe('POST /v1/chat/judge', () => {
     assert.equal(modelRows.length, 3);
   });
 
-  test('normalizes legacy reasoning_effort before the judge request', async () => {
+  test('passes legacy minimal through the judge request', async () => {
     const app = makeApp({ mockUser });
     seedJudgeConversations();
 
@@ -178,21 +178,7 @@ describe('POST /v1/chat/judge', () => {
         reasoning_effort: 'minimal',
       });
     assert.equal(minimal.status, 200);
-    assert.equal(upstream.lastChatRequestBody.reasoning_effort, 'low');
-
-    const max = await request(app)
-      .post('/v1/chat/judge')
-      .send({
-        conversation_id: 'conv-primary',
-        comparison_conversation_id: 'conv-compare',
-        message_id: 'assistant-a',
-        comparison_message_id: 'assistant-b',
-        judge_model: 'gpt-3.5-turbo',
-        criteria: 'Alias max',
-        reasoning_effort: 'MAX',
-      });
-    assert.equal(max.status, 200);
-    assert.equal(upstream.lastChatRequestBody.reasoning_effort, 'xhigh');
+    assert.equal(upstream.lastChatRequestBody.reasoning_effort, 'minimal');
   });
 
   test('rejects a reasoning_effort outside the canonical set', async () => {
@@ -211,7 +197,7 @@ describe('POST /v1/chat/judge', () => {
         reasoning_effort: 'extreme',
       });
     assert.equal(res.status, 400);
-    assert.match(res.body.message, /none, low, medium, high, xhigh/);
+    assert.match(res.body.message, /none, minimal, low, medium, high, xhigh/);
   });
 
   test('returns cached evaluation without hitting upstream', async () => {

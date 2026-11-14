@@ -193,11 +193,12 @@ function getAnthropicModelCapabilities(model) {
  *    going forward. Users who need manual control can still pass it through
  *    `custom_request_params`.
  *
- * Canonical efforts are none, low, medium, high, xhigh. `minimal` and `max`
- * are legacy values: each model maps them to the nearest effort it accepts.
- * `xhigh` is passed through only on the models listed in the effort docs
- * (see `claudeAcceptsXhigh`); every other Claude model receives `high`.
- * Unknown strings are left unset.
+ * Canonical efforts are none, low, medium, high, xhigh. Legacy `minimal`
+ * means thinking off and is mapped exactly like `none` (Opus 5.5 has no off
+ * setting, so both are adaptive + effort low). Legacy `max` maps to the
+ * nearest accepted effort. `xhigh` is passed through only on the models
+ * listed in the effort docs (see `claudeAcceptsXhigh`); every other Claude
+ * model receives `high`. Unknown strings are left unset.
  */
 const CLAUDE_EFFORT_ORDER = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
@@ -224,7 +225,10 @@ function nearestAcceptedEffort(value, acceptsXhigh) {
 function applyAnthropicReasoningControls(target, reasoningEffort, capabilities) {
   if (typeof reasoningEffort !== 'string' || !reasoningEffort) return;
 
-  const normalized = reasoningEffort.trim().toLowerCase();
+  let normalized = reasoningEffort.trim().toLowerCase();
+  // `minimal` is thinking off, the same request as `none`. It is not the
+  // nearest positive effort (`low`).
+  if (normalized === 'minimal') normalized = 'none';
   const mapped = nearestAcceptedEffort(normalized, capabilities?.acceptsXhigh === true);
   if (!mapped) return;
 

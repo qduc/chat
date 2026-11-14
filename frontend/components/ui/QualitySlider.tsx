@@ -1,11 +1,23 @@
 import React from 'react';
+import type { ReasoningEffortLevel, StoredReasoningEffort } from '../../lib/types';
 
-export type ReasoningEffortLevel = 'unset' | 'none' | 'low' | 'medium' | 'high' | 'xhigh';
+export type { ReasoningEffortLevel, StoredReasoningEffort };
 /** @deprecated Use ReasoningEffortLevel instead */
 export type QualityLevel = ReasoningEffortLevel;
 
+/**
+ * A saved `minimal` is thinking off, so it sits on None. A saved `max` sits
+ * on X-High, which is what the proxy sends. The stored value changes only
+ * when the user picks a different option.
+ */
+function displayedEffort(value: StoredReasoningEffort): ReasoningEffortLevel {
+  if (value === 'minimal') return 'none';
+  if (value === 'max') return 'xhigh';
+  return value;
+}
+
 interface QualitySliderProps {
-  value: ReasoningEffortLevel;
+  value: StoredReasoningEffort;
   onChange: (value: ReasoningEffortLevel) => void;
   ariaLabel?: string;
   disabled?: boolean;
@@ -32,7 +44,7 @@ export function QualitySlider({
       )}
 
       <select
-        value={value}
+        value={displayedEffort(value)}
         onChange={handleChange}
         disabled={disabled}
         aria-label={ariaLabel || 'Reasoning effort'}

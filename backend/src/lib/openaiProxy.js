@@ -139,8 +139,7 @@ function resolveCustomRequestParams({ userId, customRequestParamsIds }) {
 }
 
 function validateAndNormalizeReasoningControls(body) {
-  // Validate and handle reasoning_effort. Legacy aliases are rewritten first:
-  // minimal -> low, max -> xhigh.
+  // Validate reasoning_effort. Legacy `minimal` passes through. `max` becomes `xhigh`.
   if (body.reasoning_effort) {
     body.reasoning_effort = normalizeReasoningEffort(body.reasoning_effort);
     if (!REASONING_EFFORTS.includes(body.reasoning_effort)) {

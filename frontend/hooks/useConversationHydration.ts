@@ -4,12 +4,11 @@ import type {
   ChatMessage as Message,
   ConversationBranch,
   MessageContent,
-  ReasoningEffortLevel,
   Status,
   Evaluation,
   EvaluationDraft,
 } from '../lib';
-import { normalizeReasoningEffortLevel } from '../lib/types';
+import { readStoredReasoningEffort, type StoredReasoningEffort } from '../lib/types';
 import { conversations as conversationsApi } from '../lib/api';
 
 // ---------------------------------------------------------------------------
@@ -52,8 +51,8 @@ export interface ConversationHydrationDeps {
   providerStreamRef: MutableRefObject<boolean>;
   setUseTools: (v: boolean) => void;
   useToolsRef: MutableRefObject<boolean>;
-  setReasoningEffort: (l: ReasoningEffortLevel) => void;
-  reasoningEffortRef: MutableRefObject<ReasoningEffortLevel>;
+  setReasoningEffort: (l: StoredReasoningEffort) => void;
+  reasoningEffortRef: MutableRefObject<StoredReasoningEffort>;
   normalizeCustomRequestParamsIds: (value: any) => string[];
   setCustomRequestParamsId: (ids: string[]) => void;
   customRequestParamsIdRef: MutableRefObject<string[]>;
@@ -362,7 +361,7 @@ export function useConversationHydration(deps: ConversationHydrationDeps) {
           useToolsRef.current = data.tools_enabled;
         }
         if (data.reasoning_effort) {
-          const effort = normalizeReasoningEffortLevel(String(data.reasoning_effort));
+          const effort = readStoredReasoningEffort(String(data.reasoning_effort));
           if (effort) {
             setReasoningEffort(effort);
             reasoningEffortRef.current = effort;

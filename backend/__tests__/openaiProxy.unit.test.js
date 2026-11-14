@@ -281,7 +281,7 @@ describe('openaiProxy.js - Unit Tests', () => {
       }
     });
 
-    test('normalizes legacy reasoning_effort aliases on incoming requests', async () => {
+    test('passes legacy minimal through and rewrites max to xhigh', async () => {
       const app = makeApp({ mockUser });
 
       const minimal = await request(app)
@@ -293,7 +293,7 @@ describe('openaiProxy.js - Unit Tests', () => {
           stream: false,
         });
       assert.equal(minimal.status, 200);
-      assert.equal(upstream.lastChatRequestBody.reasoning_effort, 'low');
+      assert.equal(upstream.lastChatRequestBody.reasoning_effort, 'minimal');
 
       const max = await request(app)
         .post('/v1/chat/completions')

@@ -94,9 +94,9 @@ describe('PersistenceConfig', () => {
       assert.deepEqual(result.activeTools, ['test']);
     });
 
-    test('normalizes legacy reasoning effort when extracting conversation settings', () => {
-      assert.equal(config.extractRequestSettings({ reasoning_effort: 'minimal' }).reasoningEffort, 'low');
-      assert.equal(config.extractRequestSettings({ reasoningEffort: 'max' }).reasoningEffort, 'xhigh');
+    test('keeps legacy reasoning effort when extracting conversation settings', () => {
+      assert.equal(config.extractRequestSettings({ reasoning_effort: 'minimal' }).reasoningEffort, 'minimal');
+      assert.equal(config.extractRequestSettings({ reasoningEffort: 'max' }).reasoningEffort, 'max');
       assert.equal(config.extractRequestSettings({ reasoning_effort: 'high' }).reasoningEffort, 'high');
     });
 

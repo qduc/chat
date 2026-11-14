@@ -19,3 +19,12 @@ test('shows exactly the five reasoning effort levels', () => {
   expect(screen.queryByRole('option', { name: 'Minimal' })).not.toBeInTheDocument();
   expect(screen.queryByRole('option', { name: 'Max' })).not.toBeInTheDocument();
 });
+
+test('shows a saved minimal on None without offering Minimal', () => {
+  const onChange = jest.fn();
+  render(<QualitySlider value="minimal" onChange={onChange} />);
+
+  expect(screen.getByRole('combobox')).toHaveValue('none');
+  expect(screen.queryByRole('option', { name: 'Minimal' })).not.toBeInTheDocument();
+  expect(onChange).not.toHaveBeenCalled();
+});

@@ -11,6 +11,7 @@ import type {
   ModelOption,
   ModelGroup,
   ReasoningEffortLevel,
+  StoredReasoningEffort,
   Evaluation,
 } from '../lib';
 import { conversations as conversationsApi, judge, auth } from '../lib/api';
@@ -654,7 +655,7 @@ export function useChat() {
       providerStreamRef.current = v;
       clearError();
     },
-    setReasoningEffort: (l: ReasoningEffortLevel) => {
+    setReasoningEffort: (l: StoredReasoningEffort) => {
       setReasoningEffort(l);
       clearError();
     },
