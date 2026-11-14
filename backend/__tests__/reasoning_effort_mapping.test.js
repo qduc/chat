@@ -1,6 +1,7 @@
 import { ChatCompletionsAdapter } from '../src/lib/adapters/chatCompletionsAdapter.js';
 import { ResponsesAPIAdapter } from '../src/lib/adapters/responsesApiAdapter.js';
 import { GeminiAdapter } from '../src/lib/adapters/geminiAdapter.js';
+import { ConversationTitleService } from '../src/lib/persistence/ConversationTitleService.js';
 
 const responses = new ResponsesAPIAdapter({ getDefaultModel: () => 'gpt-default' });
 const nested = new ChatCompletionsAdapter({ reasoningFormat: 'nested' });
@@ -138,14 +139,21 @@ describe('OpenAI reasoning effort mapping', () => {
   });
 });
 
+function isGemini4Id(id) {
+  return /^gemini-4(?:[.-]|$)/.test(id);
+}
+
+function isHydrogenId(id) {
+  return /^gemini-4(?:\.\d+)?-hydrogen(?:-|$)/.test(id);
+}
+
 function geminiExpected(model, effort) {
   const id = model.split('/').pop().toLowerCase();
   const base = { includeThoughts: true };
 
-  if (id.startsWith('gemini-4-')) {
-    if (effort === 'none' || effort === 'minimal') return { ...base, thinkingBudget: 0 };
-    const hydrogen = id.startsWith('gemini-4-hydrogen');
-    const levels = hydrogen ? ['low', 'medium', 'high', 'xhigh'] : ['low', 'medium', 'high'];
+  if (isGemini4Id(id)) {
+    if (effort === 'none' || effort === 'minimal') return { ...base, thinkingLevel: 'low' };
+    const levels = isHydrogenId(id) ? ['low', 'medium', 'high', 'xhigh'] : ['low', 'medium', 'high'];
     const requested = effort === 'max' ? 'xhigh' : effort;
     const thinkingLevel = levels.includes(requested) ? requested : 'high';
     return { ...base, thinkingLevel };
@@ -175,7 +183,8 @@ function geminiExpected(model, effort) {
   }
 
   if (id.startsWith('gemma-4')) {
-    return { ...base, thinkingLevel: effort === 'xhigh' ? 'high' : effort };
+    const gemmaEffort = effort === 'max' || effort === 'xhigh' ? 'high' : effort;
+    return { ...base, thinkingLevel: gemmaEffort };
   }
 
   if (effort === 'none' || effort === 'minimal') return { ...base, thinkingBudget: 0 };
@@ -187,6 +196,8 @@ describe('Gemini reasoning effort mapping', () => {
     'gemini-4-carbon',
     'gemini-4-argon',
     'gemini-4-hydrogen',
+    'gemini-4.1-pro',
+    'gemini-4.1-hydrogen',
     'models/gemini-4-hydrogen',
     'gemini-3.8-flash',
     'gemini-3.7-flash',
@@ -258,14 +269,17 @@ describe('legacy minimal is off when the model has an off setting', () => {
     }
   });
 
-  test('Gemini 4 sends thinkingBudget 0', async () => {
-    for (const model of ['gemini-4-carbon', 'gemini-4-argon', 'gemini-4-hydrogen']) {
-      const request = await gemini.translateRequest({
-        model,
-        messages: [{ role: 'user', content: 'hi' }],
-        reasoning_effort: 'minimal',
-      });
-      expect(request.generationConfig.thinkingConfig).toEqual({ includeThoughts: true, thinkingBudget: 0 });
+  test('Gemini 4 sends thinkingLevel low and never thinkingBudget', async () => {
+    for (const model of ['gemini-4-carbon', 'gemini-4-argon', 'gemini-4-hydrogen', 'gemini-4.1-pro', 'gemini-4.1-hydrogen']) {
+      for (const effort of ['none', 'minimal']) {
+        const request = await gemini.translateRequest({
+          model,
+          messages: [{ role: 'user', content: 'hi' }],
+          reasoning_effort: effort,
+        });
+        expect(request.generationConfig.thinkingConfig).toEqual({ includeThoughts: true, thinkingLevel: 'low' });
+        expect(request.generationConfig.thinkingConfig).not.toHaveProperty('thinkingBudget');
+      }
     }
   });
 
@@ -313,6 +327,73 @@ describe('legacy minimal is off when the model has an off setting', () => {
       reasoning_budget: 0,
     });
     expect(request.reasoning).toBeUndefined();
+  });
+
+  test('max becomes xhigh and then the nearest accepted level', async () => {
+    const deepseekMax = await chatEffort(deepseek, 'deepseek-reasoner', 'max');
+    expect(deepseekMax.thinking).toEqual({ type: 'enabled' });
+    expect(deepseekMax.reasoning_effort).toBe('max');
+
+    const llamaMax = await chatEffort(llama, 'llama-local', 'max');
+    expect(llamaMax.chat_template_kwargs).toEqual({
+      reasoning_effort: 'high',
+      enable_thinking: true,
+      thinking_mode: 'high',
+      reasoning_budget: 16384,
+    });
+
+    const gemma = await gemini.translateRequest({
+      model: 'gemma-4-26b',
+      messages: [{ role: 'user', content: 'hi' }],
+      reasoning_effort: 'max',
+    });
+    expect(gemma.generationConfig.thinkingConfig).toEqual({ includeThoughts: true, thinkingLevel: 'high' });
+
+    for (const model of ['gpt-5.1', 'gpt-5.1-mini', 'openai/gpt-5.1-mini']) {
+      const responsesRequest = await responsesEffort(model, 'max');
+      const chatRequest = await chatEffort(nested, model, 'max');
+      expect(responsesRequest.reasoning.effort).toBe('xhigh');
+      expect(chatRequest.reasoning.effort).toBe('xhigh');
+      const minimal = await responsesEffort(model, 'minimal');
+      expect(minimal.reasoning.effort).toBe('minimal');
+    }
+  });
+
+  test('gemini-3-pro medium ties round down to low', async () => {
+    const request = await gemini.translateRequest({
+      model: 'gemini-3-pro-preview',
+      messages: [{ role: 'user', content: 'hi' }],
+      reasoning_effort: 'medium',
+    });
+    expect(request.generationConfig.thinkingConfig.thinkingLevel).toBe('low');
+  });
+
+  test('native Gemini 4 titles ask for none and translate to thinkingLevel low', async () => {
+    for (const model of ['gemini-4-hydrogen', 'gemini-4-carbon', 'gemini-4.1-pro']) {
+      const raw = ConversationTitleService.buildTitleRequestBody(model, 'How do I bake sourdough bread?');
+      expect(raw.reasoning_effort).toBe('none');
+      expect(raw.temperature).toBe(0.2);
+      expect(raw.max_tokens).toBe(1024);
+      const translated = await gemini.translateRequest({ ...raw, stream: false });
+      expect(translated.generationConfig.thinkingConfig).toEqual({ includeThoughts: true, thinkingLevel: 'low' });
+      expect(translated.generationConfig.thinkingConfig).not.toHaveProperty('thinkingBudget');
+      expect(translated.generationConfig.maxOutputTokens).toBe(1024);
+      expect(translated.generationConfig.temperature).toBe(0.2);
+    }
+  });
+
+  test('OpenRouter google/gemini titles send low, not none', async () => {
+    for (const model of ['google/gemini-3.8-flash', 'google/gemini-4-hydrogen', 'openrouter::google/gemini-4.1-pro']) {
+      const raw = ConversationTitleService.buildTitleRequestBody(model, 'How do I bake sourdough bread?');
+      expect(raw.model).toBe(model);
+      expect(raw.reasoning_effort).toBe('low');
+      expect(raw.temperature).toBe(0.2);
+      expect(raw.max_tokens).toBe(1024);
+      const translated = await nested.translateRequest(raw);
+      expect(translated.reasoning).toEqual({ effort: 'low' });
+      expect(translated.max_tokens).toBe(1024);
+      expect(translated.temperature).toBe(0.2);
+    }
   });
 
   test('other OpenAI-compatible models keep minimal', async () => {

@@ -195,13 +195,15 @@ function normalizeTools(tools) {
 }
 
 function applyDeepSeekReasoningControls(target, reasoningEffort) {
-  if (reasoningEffort === 'none' || reasoningEffort === 'minimal') {
+  // `max` is the legacy alias of `xhigh`. DeepSeek's highest value is `max`.
+  const effort = reasoningEffort === 'max' ? 'xhigh' : reasoningEffort;
+  if (effort === 'none' || effort === 'minimal') {
     target.thinking = { type: 'disabled' };
     return;
   }
 
   target.thinking = { type: 'enabled' };
-  target.reasoning_effort = reasoningEffort === 'xhigh' ? 'max' : 'high';
+  target.reasoning_effort = effort === 'xhigh' ? 'max' : 'high';
 }
 
 function applyLlamaCppReasoningControls(target, reasoningEffort) {
@@ -212,7 +214,9 @@ function applyLlamaCppReasoningControls(target, reasoningEffort) {
     xhigh: 16384,
   };
 
-  if (reasoningEffort === 'none' || reasoningEffort === 'minimal') {
+  // `max` is the legacy alias of `xhigh`, which this template expresses as high.
+  const effort = reasoningEffort === 'max' ? 'xhigh' : reasoningEffort;
+  if (effort === 'none' || effort === 'minimal') {
     target.chat_template_kwargs = {
       reasoning_effort: 'low',
       enable_thinking: false,
@@ -222,12 +226,12 @@ function applyLlamaCppReasoningControls(target, reasoningEffort) {
     return;
   }
 
-  const templateEffort = reasoningEffort === 'xhigh' ? 'high' : reasoningEffort;
+  const templateEffort = effort === 'xhigh' ? 'high' : effort;
   target.chat_template_kwargs = {
     reasoning_effort: templateEffort,
     enable_thinking: true,
     thinking_mode: templateEffort,
-    reasoning_budget: budgets[reasoningEffort] ?? budgets.medium,
+    reasoning_budget: budgets[effort] ?? budgets.medium,
   };
 }
 

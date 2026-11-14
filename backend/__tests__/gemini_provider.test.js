@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach, jest } from '@jest/globals';
 import { GeminiProvider } from '../src/lib/providers/geminiProvider.js';
+import { formatUpstreamRequestLog } from '../src/lib/logging/upstreamLogger.js';
 
 describe('GeminiProvider', () => {
   let provider;
@@ -340,6 +341,80 @@ describe('GeminiProvider', () => {
       };
 
       await expect(provider.makeHttpRequest(translatedRequest)).rejects.toThrow('Network failure');
+    });
+
+    test('redacts extra header secrets on success, SSE, 400, 500 retry, and thrown fetch', async () => {
+      const secretProvider = new GeminiProvider({
+        config: {},
+        settings: {
+          apiKey: 'AIzaFAKE',
+          headers: {
+            'api-key': 'sk-FAKE-123',
+            'proxy-authorization': 'proxy-secret',
+            'X-Request-Id': 'req-keep',
+          },
+        },
+        providerId: 'test',
+        http: mockFetch,
+      });
+      const loggedAt = new Date('2026-11-14T00:00:00.000Z');
+      const assertCallRedacted = () => {
+        for (const [url, options] of mockFetch.mock.calls) {
+          expect(String(url)).not.toContain('AIzaFAKE');
+          expect(String(url)).not.toContain('sk-FAKE-123');
+          const log = formatUpstreamRequestLog({
+            url,
+            headers: options.headers,
+            body: { model: 'gemini-4-hydrogen' },
+            now: loggedAt,
+          });
+          expect(log).not.toContain('AIzaFAKE');
+          expect(log).not.toContain('sk-FAKE-123');
+          expect(log).not.toContain('proxy-secret');
+          expect(log).toContain('"api-key": "[REDACTED]"');
+          expect(log).toContain('"proxy-authorization": "[REDACTED]"');
+          expect(log).toContain('"x-goog-api-key": "[REDACTED]"');
+          expect(log).toContain('"X-Request-Id": "req-keep"');
+          expect(log).toContain('"Content-Type": "application/json"');
+        }
+      };
+
+      mockFetch.mockResolvedValue(new Response('{"candidates":[]}', {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }));
+      await secretProvider.makeHttpRequest({ __model: 'gemini-4-hydrogen', __stream: false });
+      assertCallRedacted();
+
+      mockFetch.mockClear();
+      mockFetch.mockResolvedValue(new Response('data: {"candidates":[]}\n\n', {
+        status: 200,
+        headers: { 'content-type': 'text/event-stream' },
+      }));
+      await secretProvider.makeHttpRequest({ __model: 'gemini-4-hydrogen', __stream: true });
+      expect(String(mockFetch.mock.calls[0][0])).toContain('alt=sse');
+      assertCallRedacted();
+
+      mockFetch.mockClear();
+      mockFetch.mockResolvedValue(new Response('bad', {
+        status: 400,
+        headers: { 'content-type': 'text/event-stream' },
+      }));
+      await secretProvider.makeHttpRequest({ __model: 'gemini-4-hydrogen', __stream: true });
+      assertCallRedacted();
+
+      mockFetch.mockClear();
+      mockFetch
+        .mockResolvedValueOnce(new Response('busy', { status: 500, headers: { 'content-type': 'text/plain' } }))
+        .mockResolvedValueOnce(new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } }));
+      await secretProvider.makeHttpRequest({ __model: 'gemini-4-hydrogen', __stream: false });
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      assertCallRedacted();
+
+      mockFetch.mockClear();
+      mockFetch.mockRejectedValue(new Error('fetch failed'));
+      await expect(secretProvider.makeHttpRequest({ __model: 'gemini-4-hydrogen' })).rejects.toThrow();
+      assertCallRedacted();
     });
   });
 

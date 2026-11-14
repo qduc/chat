@@ -3,7 +3,9 @@
  *
  * This is not the incoming normalizer. `minimal` and `max` may still arrive.
  * `minimal` turns thinking off when the model has an off setting (`none`, or
- * Gemini 4's `thinkingBudget: 0`); otherwise it uses the lowest accepted level.
+ * Gemini 2.x `thinkingBudget: 0`). Gemini 4 has no off switch: `none` and
+ * `minimal` use thinking level `low` and never send `thinkingBudget`.
+ * Otherwise `minimal` uses the lowest accepted level.
  * `max` starts at `xhigh`, then the nearest accepted level.
  *
  * Models that are not listed keep the effort they were given.
@@ -75,8 +77,10 @@ function openAIProfile(model) {
  * `minimal` is the legacy off request: `none` when that off setting is
  * accepted, otherwise the lowest accepted level (the first entry). A model
  * whose accepted levels include the level named `minimal` therefore keeps it.
- * `max` starts at `xhigh`, then the nearest accepted level. Any remaining
- * tie picks the lower level.
+ * `max` starts at `xhigh`, then the nearest accepted level. Ties round down:
+ * when two accepted levels are the same distance away, the lower one wins
+ * (less thinking). `gemini-3-pro` `medium` is equidistant from `low` and
+ * `high`, so it sends `low`.
  */
 export function nearestSupportedEffort(effort, supported) {
   const requested = String(effort).toLowerCase();
@@ -111,19 +115,26 @@ export function nearestSupportedEffort(effort, supported) {
  * Effort to send on the OpenAI Responses and Chat Completions APIs.
  * Unlisted models (including gpt-6.1-terra and gpt-6-sol) are returned unchanged.
  */
+function isGpt51(model) {
+  return /^gpt-5\.1(?:-|$)/.test(canonicalModelId(model));
+}
+
 export function mapOpenAIReasoningEffort(model, effort) {
   if (typeof effort !== 'string' || effort.length === 0) return effort;
   const profile = openAIProfile(model);
-  if (!profile) return effort;
-  return nearestSupportedEffort(effort, profile.levels);
+  if (profile) return nearestSupportedEffort(effort, profile.levels);
+  // gpt-5.1 accepts xhigh. `max` is only the legacy alias, so it becomes xhigh.
+  // Every other value, including `minimal` and `none`, stays as sent.
+  if (isGpt51(model) && effort.toLowerCase() === 'max') return 'xhigh';
+  return effort;
 }
 
 function isGemini4(id) {
-  return id === 'gemini-4' || id.startsWith('gemini-4-');
+  return /^gemini-4(?:[.-]|$)/.test(id);
 }
 
 function isGemini4Hydrogen(id) {
-  return id === 'gemini-4-hydrogen' || id.startsWith('gemini-4-hydrogen-');
+  return /^gemini-4(?:\.\d+)?-hydrogen(?:-|$)/.test(id);
 }
 
 function isGemini3(id) {
@@ -161,18 +172,19 @@ function gemini3Levels(id) {
  * the budget / Gemma path.
  *
  * Gemini 4 is level-based: Carbon and Argon accept low, medium, high.
- * Hydrogen also accepts xhigh. `none` and legacy `minimal` stay
- * `thinkingBudget: 0` (thinking off). The live Gemini 4 Carbon call accepted
- * budget 0 and returned 0 thought tokens.
+ * Hydrogen also accepts xhigh, including `gemini-4.1-hydrogen`. `none` and
+ * `minimal` use the lowest level. Gemini 4 never sends `thinkingBudget`.
  * https://firebase.google.com/docs/ai-logic/thinking
  */
+const GEMINI_4_OFF_LEVEL = 'low';
+
 export function resolveGeminiThinking(model, effort) {
   if (typeof effort !== 'string' || effort.length === 0 || effort === 'unset') return null;
   const id = canonicalModelId(model);
   const requested = effort.toLowerCase();
 
   if (isGemini4(id)) {
-    if (requested === 'none' || requested === 'minimal') return { thinkingBudget: 0 };
+    if (requested === 'none' || requested === 'minimal') return { thinkingLevel: GEMINI_4_OFF_LEVEL };
     const levels = isGemini4Hydrogen(id)
       ? ['low', 'medium', 'high', 'xhigh']
       : ['low', 'medium', 'high'];
@@ -191,13 +203,22 @@ export function resolveGeminiThinking(model, effort) {
  * consumes a 20-token cap. Other models return null and keep temperature 0.2
  * and max_tokens 20.
  *
- * The request asks for effort `none` (lowest intent). Adapters map that to
- * the lowest effort the model accepts. Temperature is omitted only when the
- * effort that will actually be sent is not `none` on a model that rejects
- * sampling params in that case (GPT-6 Astra and GPT-6.1 Sol). Gemini accepts
- * temperature 0.2, and GPT-6 Luna accepts it at effort `none`.
+ * Native Gemini still asks for effort `none`; the Gemini adapter lowers that
+ * to the model's minimum (`low` on Gemini 4, the documented floor on Gemini 3).
+ * A routed id such as `google/gemini-3.8-flash` is Chat Completions, which has
+ * no thinking-level translator. Those titles send `low` directly. `none` is
+ * rejected by Gemini 3.8. Temperature is omitted only when the effort that
+ * will actually be sent is not `none` on GPT-6 Astra or GPT-6.1 Sol.
  * https://developers.openai.com/api/docs/guides/latest-model
  */
+function isRoutedModel(model) {
+  if (typeof model !== 'string') return false;
+  let id = model.trim().toLowerCase();
+  const scoped = id.lastIndexOf('::');
+  if (scoped !== -1) id = id.slice(scoped + 2).trim();
+  return id.includes('/');
+}
+
 export function titleGenerationOverrides(model) {
   const id = canonicalModelId(model);
   const profile = openAIProfile(id);
@@ -206,8 +227,11 @@ export function titleGenerationOverrides(model) {
 
   const mapped = profile ? nearestSupportedEffort('none', profile.levels) : 'none';
   const stripTemperature = Boolean(profile?.rejectsSamplingUnlessNone && mapped !== 'none');
+  // OpenRouter slugs (`google/gemini-*`) stay on Chat Completions. Send the
+  // same lowest level native Gemini uses for these models: `low`.
+  const reasoningEffort = geminiReasoning && isRoutedModel(model) ? 'low' : 'none';
   return {
-    reasoningEffort: 'none',
+    reasoningEffort,
     maxTokens: TITLE_REASONING_MAX_TOKENS,
     includeTemperature: !stripTemperature,
   };

@@ -3,6 +3,8 @@ import {
   formatSSEChunks,
   formatUpstreamRequestLog,
   formatUpstreamResponseMeta,
+  isSensitiveHeaderName,
+  redactUpstreamUrl,
 } from '../src/lib/logging/upstreamLogger.js';
 
 describe('upstreamLogger SSE formatting', () => {
@@ -156,9 +158,15 @@ describe('upstreamLogger credential redaction', () => {
     url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=AIzaFAKE&alt=sse',
     headers: {
       Authorization: 'Bearer sk-FAKE-123',
+      'proxy-authorization': 'proxy-secret',
+      'api-key': 'sk-FAKE-123',
       'x-api-key': 'sk-FAKE-123',
       'x-goog-api-key': 'AIzaFAKE',
+      cookie: 'session=secret',
+      'set-cookie': 'session=secret',
+      'x-auth-token': 'tok-FAKE',
       'Content-Type': 'application/json',
+      'X-Request-Id': 'req-keep',
     },
     body: {
       model: 'openai/gpt-6-luna',
@@ -183,16 +191,42 @@ describe('upstreamLogger credential redaction', () => {
     expect(combined).not.toContain('sk-FAKE-123');
     expect(combined).not.toContain('AIzaFAKE');
     expect(combined).not.toContain('session=secret');
+    expect(combined).not.toContain('proxy-secret');
+    expect(combined).not.toContain('tok-FAKE');
     expect(requestLog).toContain('"Authorization": "[REDACTED]"');
+    expect(requestLog).toContain('"proxy-authorization": "[REDACTED]"');
+    expect(requestLog).toContain('"api-key": "[REDACTED]"');
     expect(requestLog).toContain('"x-api-key": "[REDACTED]"');
     expect(requestLog).toContain('"x-goog-api-key": "[REDACTED]"');
+    expect(requestLog).toContain('"cookie": "[REDACTED]"');
+    expect(requestLog).toContain('"set-cookie": "[REDACTED]"');
+    expect(requestLog).toContain('"x-auth-token": "[REDACTED]"');
     expect(requestLog).toContain('"Content-Type": "application/json"');
+    expect(requestLog).toContain('"X-Request-Id": "req-keep"');
     expect(requestLog).toContain('key=[REDACTED]');
     expect(requestLog).toContain('alt=sse');
+    expect(isSensitiveHeaderName('content-type')).toBe(false);
+    expect(isSensitiveHeaderName('x-request-id')).toBe(false);
     expect(responseMeta.url).toBe('https://openrouter.ai/api/v1/responses?foo=1&key=[REDACTED]');
     expect(responseMeta.headers['x-api-key']).toBe('[REDACTED]');
     expect(responseMeta.headers['x-goog-api-key']).toBe('[REDACTED]');
     expect(responseMeta.headers['set-cookie']).toBe('[REDACTED]');
     expect(responseMeta.headers['content-type']).toBe('application/json');
+  });
+
+  it('redacts credential query names, including percent-encoded forms', () => {
+    const url = redactUpstreamUrl(
+      'https://example.test/v1?key=sk-FAKE-123&api_key=sk-FAKE-123&apikey=sk-FAKE-123&access_token=tok-FAKE&token=tok-FAKE&api%5Fkey=sk-FAKE-123&access%5Ftoken=tok-FAKE&alt=sse'
+    );
+    expect(url).not.toContain('sk-FAKE-123');
+    expect(url).not.toContain('tok-FAKE');
+    expect(url).toContain('alt=sse');
+    expect(url).toContain('key=[REDACTED]');
+    expect(url).toContain('api_key=[REDACTED]');
+    expect(url).toContain('apikey=[REDACTED]');
+    expect(url).toContain('access_token=[REDACTED]');
+    expect(url).toContain('token=[REDACTED]');
+    expect(url).toContain('api%5Fkey=[REDACTED]');
+    expect(url).toContain('access%5Ftoken=[REDACTED]');
   });
 });

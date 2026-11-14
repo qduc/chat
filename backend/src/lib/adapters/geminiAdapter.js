@@ -231,15 +231,17 @@ export class GeminiAdapter extends BaseAdapter {
 
     if (internalRequest.reasoning_effort && internalRequest.reasoning_effort !== 'unset') {
       const effort = internalRequest.reasoning_effort;
-      // Gemini 4 is level-based (Hydrogen also accepts xhigh). `none` and
-      // legacy `minimal` keep thinkingBudget 0. Gemini 3.x has no off switch,
-      // so none/minimal use the lowest documented level. Gemini 2.x and Gemma
-      // stay on their previous shapes.
+      // Gemini 4 is level-based (Hydrogen also accepts xhigh, including
+      // gemini-4.1-*). `none` and `minimal` use thinking level `low` and never
+      // send thinkingBudget. Gemini 3.x has no off switch, so none/minimal use
+      // the lowest documented level. Gemini 2.x keeps thinkingBudget 0 for
+      // none/minimal. Gemma maps `max` through `xhigh` to `high`.
       const geminiThinking = resolveGeminiThinking(model, effort);
       if (geminiThinking) {
         Object.assign(geminiRequest.generationConfig.thinkingConfig, geminiThinking);
       } else if (isGemma4) {
-        geminiRequest.generationConfig.thinkingConfig.thinkingLevel = effort === 'xhigh' ? 'high' : effort;
+        const gemmaEffort = effort === 'max' ? 'xhigh' : effort;
+        geminiRequest.generationConfig.thinkingConfig.thinkingLevel = gemmaEffort === 'xhigh' ? 'high' : gemmaEffort;
       } else {
         // Gemini 2.x and others use thinkingBudget (mapping our levels to budgets or -1 for dynamic)
         // Based on doc, -1 is dynamic. We use 0 for 'none'/'minimal' to disable thinking.

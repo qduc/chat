@@ -219,12 +219,42 @@ function sanitizeForLogging(obj, maxBase64Length = 100) {
 }
 
 const REDACTED = '[REDACTED]';
-const SENSITIVE_HEADER_NAMES = new Set(['authorization', 'x-api-key', 'x-goog-api-key']);
+const SENSITIVE_HEADER_NAMES = new Set([
+  'authorization',
+  'proxy-authorization',
+  'cookie',
+  'set-cookie',
+  'api-key',
+  'x-api-key',
+  'x-goog-api-key',
+]);
+// Suffix match: api-key, apikey, token, secret, auth. Does not match
+// content-type or authorization (that name is in the exact set).
+const SENSITIVE_HEADER_PATTERN = /(^|[-_])(api-?key|token|secret|auth)$/i;
+const SENSITIVE_QUERY_NAMES = new Set(['key', 'api_key', 'apikey', 'access_token', 'token']);
 
-/** Strip `key` query values so logged URLs cannot carry an API key. */
+export function isSensitiveHeaderName(name) {
+  const lower = String(name).toLowerCase();
+  return SENSITIVE_HEADER_NAMES.has(lower) || SENSITIVE_HEADER_PATTERN.test(lower);
+}
+
+function isSensitiveQueryName(name) {
+  let decoded = name;
+  try {
+    decoded = decodeURIComponent(name);
+  } catch {
+    decoded = name;
+  }
+  return SENSITIVE_QUERY_NAMES.has(decoded.replace(/-/g, '_').toLowerCase());
+}
+
+/** Strip credential query values, including percent-encoded parameter names. */
 export function redactUpstreamUrl(url) {
   if (typeof url !== 'string') return url;
-  return url.replace(/([?&]key=)[^&#\s]+/gi, `$1${REDACTED}`);
+  return url.replace(/([?&])([^&#=\s]+)=([^&#\s]*)/gi, (match, sep, name) => {
+    if (!isSensitiveQueryName(name)) return match;
+    return `${sep}${name}=${REDACTED}`;
+  });
 }
 
 /** Replace credential header values. Empty values are omitted, matching the previous Authorization handling. */
@@ -232,7 +262,7 @@ export function redactUpstreamHeaders(headers) {
   if (!headers || typeof headers !== 'object') return headers;
   const safe = {};
   for (const [key, value] of Object.entries(headers)) {
-    if (SENSITIVE_HEADER_NAMES.has(key.toLowerCase())) {
+    if (isSensitiveHeaderName(key)) {
       if (value) safe[key] = REDACTED;
       continue;
     }
