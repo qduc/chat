@@ -2,6 +2,7 @@ import { BaseAdapter } from './baseAdapter.js';
 import { normalizeUsage } from '../utils/usage.js';
 import { convertContentPartImage } from '../localImageEncoder.js';
 import { logger } from '../../logger.js';
+import { resolveGeminiThinking } from './reasoningEffort.js';
 
 /**
  * Adapter for Google Gemini API (Generative Language API)
@@ -222,7 +223,6 @@ export class GeminiAdapter extends BaseAdapter {
     // Reasoning controls - Always set includeThoughts=true even when reasoning_effort is 'unset'
     // Apply based on model type but don't guard (allow upstream to return error if unsupported)
     const lowerModel = model.toLowerCase();
-    const isGemini3 = lowerModel.includes('gemini-3');
     const isGemma4 = lowerModel.includes('gemma-4');
 
     geminiRequest.generationConfig.thinkingConfig = {
@@ -231,8 +231,13 @@ export class GeminiAdapter extends BaseAdapter {
 
     if (internalRequest.reasoning_effort && internalRequest.reasoning_effort !== 'unset') {
       const effort = internalRequest.reasoning_effort;
-      if (isGemini3 || isGemma4) {
-        // Gemini 3 uses thinkingLevel; map 'none' -> 'none', 'xhigh' -> 'high' (max supported)
+      // Gemini 4 is level-based (Hydrogen also accepts xhigh). `none` keeps
+      // thinkingBudget 0. Gemini 3.x maps none/minimal/xhigh onto a level the
+      // model documents. Gemini 2.x and Gemma stay on their previous shapes.
+      const geminiThinking = resolveGeminiThinking(model, effort);
+      if (geminiThinking) {
+        Object.assign(geminiRequest.generationConfig.thinkingConfig, geminiThinking);
+      } else if (isGemma4) {
         geminiRequest.generationConfig.thinkingConfig.thinkingLevel = effort === 'xhigh' ? 'high' : effort;
       } else {
         // Gemini 2.x and others use thinkingBudget (mapping our levels to budgets or -1 for dynamic)
@@ -303,15 +308,23 @@ export class GeminiAdapter extends BaseAdapter {
 
     const functionCalls = parts.filter(p => 'functionCall' in p);
     if (functionCalls.length > 0) {
-      message.tool_calls = functionCalls.map((part, index) => ({
-        id: `call_${Math.random().toString(36).substr(2, 9)}`, // Gemini doesn't provide IDs, generate one
-        type: 'function',
-        function: {
-          name: part.functionCall.name,
-          arguments: JSON.stringify(part.functionCall.args),
-        },
-        index,
-      }));
+      message.tool_calls = functionCalls.map((part, index) => {
+        const thoughtSignature = part.thoughtSignature || part.functionCall?.thoughtSignature;
+        return {
+          id: `call_${Math.random().toString(36).substr(2, 9)}`, // Gemini doesn't provide IDs, generate one
+          type: 'function',
+          function: {
+            name: part.functionCall.name,
+            arguments: JSON.stringify(part.functionCall.args),
+          },
+          index,
+          // Same field the streaming path keeps. Gemini 4 rejects a later
+          // function call that is replayed without thoughtSignature.
+          ...(typeof thoughtSignature === 'string' && thoughtSignature
+            ? { gemini_thought_signature: thoughtSignature }
+            : {}),
+        };
+      });
     }
 
     return {

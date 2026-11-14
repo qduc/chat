@@ -218,19 +218,47 @@ function sanitizeForLogging(obj, maxBase64Length = 100) {
   return obj;
 }
 
-export function logUpstreamRequest({ url, headers, body }) {
-  if (process.env.NODE_ENV === 'test') return;
+const REDACTED = '[REDACTED]';
+const SENSITIVE_HEADER_NAMES = new Set(['authorization', 'x-api-key', 'x-goog-api-key']);
 
-  const logEntry = `[${new Date().toISOString()}] UPSTREAM REQUEST\n${JSON.stringify(
+/** Strip `key` query values so logged URLs cannot carry an API key. */
+export function redactUpstreamUrl(url) {
+  if (typeof url !== 'string') return url;
+  return url.replace(/([?&]key=)[^&#\s]+/gi, `$1${REDACTED}`);
+}
+
+/** Replace credential header values. Empty values are omitted, matching the previous Authorization handling. */
+export function redactUpstreamHeaders(headers) {
+  if (!headers || typeof headers !== 'object') return headers;
+  const safe = {};
+  for (const [key, value] of Object.entries(headers)) {
+    if (SENSITIVE_HEADER_NAMES.has(key.toLowerCase())) {
+      if (value) safe[key] = REDACTED;
+      continue;
+    }
+    safe[key] = value;
+  }
+  return safe;
+}
+
+/** The exact text `logUpstreamRequest` appends. Exported so tests can show the redacted entry. */
+export function formatUpstreamRequestLog({ url, headers, body, now = new Date() }) {
+  return `[${now.toISOString()}] UPSTREAM REQUEST\n${JSON.stringify(
     {
-      url,
+      url: redactUpstreamUrl(url),
       method: 'POST',
-      headers: { ...headers, Authorization: headers?.Authorization ? '[REDACTED]' : undefined },
+      headers: redactUpstreamHeaders(headers),
       body: sanitizeForLogging({ ...body, tools: body?.tools ? '[OMITTED]' : undefined }),
     },
     null,
     2
   )}\n\n`;
+}
+
+export function logUpstreamRequest({ url, headers, body }) {
+  if (process.env.NODE_ENV === 'test') return;
+
+  const logEntry = formatUpstreamRequestLog({ url, headers, body });
 
   try {
     cleanupOldLogs(LOG_DIR);
@@ -433,13 +461,21 @@ export function formatSSEChunks(bodyStr) {
   return formattedChunks.join('\n');
 }
 
+/** Response log metadata with credential headers and `key` query values removed. */
+export function formatUpstreamResponseMeta({ url, status, headers }) {
+  const safeHeaders = redactUpstreamHeaders(headers || {});
+  if (headers?.['set-cookie']) safeHeaders['set-cookie'] = REDACTED;
+  return { url: redactUpstreamUrl(url), status, headers: safeHeaders };
+}
+
 export function logUpstreamResponse({ url, status, headers, body }) {
   if (process.env.NODE_ENV === 'test') return;
 
   const isEventStream = headers?.['content-type']?.includes('text/event-stream');
 
-  // redact sensitive headers
-  const safeHeaders = { ...headers, 'set-cookie': headers?.['set-cookie'] ? '[REDACTED]' : undefined };
+  const safeMeta = formatUpstreamResponseMeta({ url, status, headers });
+  url = safeMeta.url;
+  const safeHeaders = safeMeta.headers;
 
   const dateStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD (UTC)
 

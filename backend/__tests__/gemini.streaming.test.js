@@ -159,6 +159,41 @@ describe('Gemini Provider Streaming Translation', () => {
     expect(toolCall.gemini_thought_signature).toBe("sig_123");
   });
 
+  it('keeps thoughtSignature on a non-streaming tool call so the next turn can replay it', async () => {
+    const provider = new GeminiProvider({ config: {}, providerId: 'test' });
+    const translated = await provider.translateResponse({
+      candidates: [{
+        content: {
+          role: 'model',
+          parts: [{
+            functionCall: { name: 'get_weather', args: { city: 'Paris' } },
+            thoughtSignature: 'SIG_A',
+          }],
+        },
+        finishReason: 'STOP',
+      }],
+    });
+
+    const toolCall = translated.choices[0].message.tool_calls[0];
+    expect(toolCall.function.name).toBe('get_weather');
+    expect(toolCall.gemini_thought_signature).toBe('SIG_A');
+
+    const replay = await provider.translateRequest({
+      model: 'gemini-4-carbon',
+      messages: [
+        { role: 'user', content: 'Weather in Paris?' },
+        { role: 'assistant', content: '', tool_calls: [toolCall] },
+        { role: 'tool', tool_call_id: toolCall.id, content: '18C and sunny' },
+      ],
+    });
+
+    expect(replay.contents[1].parts[0].thoughtSignature).toBe('SIG_A');
+    expect(replay.contents[1].parts[0].functionCall).toEqual({
+      name: 'get_weather',
+      args: { city: 'Paris' },
+    });
+  });
+
   it('should inject thoughtSignature back into translateRequest', async () => {
     const provider = new GeminiProvider({ config: {}, providerId: 'test' });
 

@@ -37,6 +37,7 @@ import type {
 /** The slice of a ChatForge provider instance the wrapper uses. */
 export type ChatForgeProvider = {
   readonly providerId?: string | null;
+  readonly baseUrl?: string;
   readonly settings?: { readonly providerType?: string; readonly baseUrl?: string };
   needsStreamingTranslation?(): boolean;
   translateStreamChunk(chunk: unknown, context?: unknown): unknown;

@@ -257,6 +257,67 @@ describe('ConversationTitleService', () => {
     });
   });
 
+  describe('reasoning model title requests', () => {
+    const TITLE_SYSTEM = 'You create a very short, descriptive chat title (max 6 words). Output only the title, no quotes, no punctuation at the end.';
+
+    function captureBody(model) {
+      let requestBody;
+      mockCreateOpenAIRequest = (_config, body) => {
+        requestBody = body;
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            choices: [{ message: { content: 'Baked Title' } }],
+          }),
+        });
+      };
+      return titleService.generateTitle('How do I bake sourdough bread', 'test-provider', model)
+        .then((result) => ({ result, requestBody }));
+    }
+
+    test('gpt-6-luna asks for effort none, keeps temperature, and raises the token cap', async () => {
+      for (const model of ['gpt-6-luna', 'openai/gpt-6-luna']) {
+        const { result, requestBody } = await captureBody(model);
+        assert.equal(result, 'Baked Title');
+        assert.equal(requestBody.model, model);
+        assert.equal(requestBody.temperature, 0.2);
+        assert.equal(requestBody.max_tokens, 1024);
+        assert.equal(requestBody.reasoning_effort, 'none');
+        assert.equal(requestBody.messages[0].content, TITLE_SYSTEM);
+      }
+    });
+
+    test('gpt-6-astra and gpt-6.1-sol omit temperature because none is raised to low', async () => {
+      for (const model of ['gpt-6-astra', 'openai/gpt-6-astra', 'gpt-6.1-sol', 'openai/gpt-6.1-sol']) {
+        const { requestBody } = await captureBody(model);
+        assert.equal(requestBody.model, model);
+        assert.equal(Object.hasOwn(requestBody, 'temperature'), false);
+        assert.equal(requestBody.max_tokens, 1024);
+        assert.equal(requestBody.reasoning_effort, 'none');
+      }
+    });
+
+    test('gemini-3.8-flash and gemini-4 keep temperature and ask for effort none', async () => {
+      for (const model of ['gemini-3.8-flash', 'gemini-4-carbon', 'gemini-4-hydrogen']) {
+        const { requestBody } = await captureBody(model);
+        assert.equal(requestBody.model, model);
+        assert.equal(requestBody.temperature, 0.2);
+        assert.equal(requestBody.max_tokens, 1024);
+        assert.equal(requestBody.reasoning_effort, 'none');
+      }
+    });
+
+    test('models outside the reasoning title set keep temperature 0.2 and max_tokens 20', async () => {
+      for (const model of ['gpt-4.1-mini', 'gpt-4o', 'claude-opus-4-5', 'claude-opus-5-5', 'gemini-2.5-flash']) {
+        const { requestBody } = await captureBody(model);
+        assert.equal(requestBody.model, model);
+        assert.equal(requestBody.temperature, 0.2);
+        assert.equal(requestBody.max_tokens, 20);
+        assert.equal(Object.hasOwn(requestBody, 'reasoning_effort'), false);
+      }
+    });
+  });
+
   describe('extractSystemPrompt', () => {
     test('should extract from systemPrompt field', () => {
       const bodyIn = { systemPrompt: '  System prompt  ' };

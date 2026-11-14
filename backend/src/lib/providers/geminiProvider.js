@@ -99,16 +99,25 @@ export class GeminiProvider extends BaseProvider {
     delete payload.__stream;
 
     const method = stream ? 'streamGenerateContent' : 'generateContent';
-    let url = `${this.baseUrl}/models/${model}:${method}?key=${this.apiKey}`;
+    let url = `${this.baseUrl}/models/${model}:${method}`;
 
     if (stream) {
-      url += '&alt=sse';
+      url += '?alt=sse';
     }
 
     const headers = {
       'Content-Type': 'application/json',
       ...this.defaultHeaders,
     };
+
+    // The key stays out of the URL so request logs and proxies cannot retain it.
+    // listModels already sends the same header.
+    const hasGoogKey = Object.keys(headers).some(
+      (key) => key.toLowerCase() === 'x-goog-api-key' && headers[key]
+    );
+    if (this.apiKey && !hasGoogKey) {
+      headers['x-goog-api-key'] = this.apiKey;
+    }
 
     // Log upstream request
     try {

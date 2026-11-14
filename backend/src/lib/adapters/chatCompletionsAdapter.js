@@ -1,5 +1,6 @@
 import { BaseAdapter } from './baseAdapter.js';
 import { convertContentPartImage } from '../localImageEncoder.js';
+import { mapOpenAIReasoningEffort } from './reasoningEffort.js';
 
 const OPENAI_ALLOWED_REQUEST_KEYS = new Set([
   'frequency_penalty',
@@ -305,12 +306,16 @@ export class ChatCompletionsAdapter extends BaseAdapter {
     const reasoningEffort = payload.reasoning_effort ?? payload.reasoning?.effort;
     if (reasoningEffort !== undefined) {
       const format = context.reasoningFormat || this.reasoningFormat;
-      if (format === 'nested') {
-        // OpenAI o1/o3 style: reasoning: { effort: value }
-        normalized.reasoning = { effort: reasoningEffort };
-      } else if (format === 'flat') {
-        // Some providers expect top-level reasoning_effort
-        normalized.reasoning_effort = reasoningEffort;
+      if (format === 'nested' || format === 'flat') {
+        // GPT-6 Astra / GPT-6.1 Sol reject `none`; other listed models snap
+        // xhigh/max and legacy minimal onto a level they accept. Unlisted
+        // models keep the value. DeepSeek and llama.cpp keep their own maps.
+        const effort = mapOpenAIReasoningEffort(model, reasoningEffort);
+        if (format === 'nested') {
+          normalized.reasoning = { effort };
+        } else {
+          normalized.reasoning_effort = effort;
+        }
       } else if (format === 'deepseek') {
         // Provider-specific value mappers are intentionally kept here while
         // there are only a few. If this grows again, replace these enum branches

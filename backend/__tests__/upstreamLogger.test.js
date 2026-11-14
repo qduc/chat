@@ -1,5 +1,9 @@
 import { describe, it, expect } from '@jest/globals';
-import { formatSSEChunks } from '../src/lib/logging/upstreamLogger.js';
+import {
+  formatSSEChunks,
+  formatUpstreamRequestLog,
+  formatUpstreamResponseMeta,
+} from '../src/lib/logging/upstreamLogger.js';
 
 describe('upstreamLogger SSE formatting', () => {
   it('should format SSE chunks with content in a readable way', () => {
@@ -142,5 +146,53 @@ data: [DONE]`;
     expect(formatted).toContain('Accumulated Tool Calls');
     expect(formatted).toContain('tool1({})');
     expect(formatted).toContain('tool2({})');
+  });
+});
+
+describe('upstreamLogger credential redaction', () => {
+  const loggedAt = new Date('2026-11-14T10:00:00.000Z');
+  const requestLog = formatUpstreamRequestLog({
+    now: loggedAt,
+    url: 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=AIzaFAKE&alt=sse',
+    headers: {
+      Authorization: 'Bearer sk-FAKE-123',
+      'x-api-key': 'sk-FAKE-123',
+      'x-goog-api-key': 'AIzaFAKE',
+      'Content-Type': 'application/json',
+    },
+    body: {
+      model: 'openai/gpt-6-luna',
+      messages: [{ role: 'user', content: 'Name this chat' }],
+    },
+  });
+
+  const responseMeta = formatUpstreamResponseMeta({
+    url: 'https://openrouter.ai/api/v1/responses?foo=1&key=sk-FAKE-123',
+    status: 200,
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': 'sk-FAKE-123',
+      'x-goog-api-key': 'AIzaFAKE',
+      'set-cookie': 'session=secret',
+    },
+  });
+
+  it('omits fake keys from every logged header and URL', () => {
+    const responseLog = JSON.stringify(responseMeta, null, 2);
+    const combined = `${requestLog}\n${responseLog}`;
+    expect(combined).not.toContain('sk-FAKE-123');
+    expect(combined).not.toContain('AIzaFAKE');
+    expect(combined).not.toContain('session=secret');
+    expect(requestLog).toContain('"Authorization": "[REDACTED]"');
+    expect(requestLog).toContain('"x-api-key": "[REDACTED]"');
+    expect(requestLog).toContain('"x-goog-api-key": "[REDACTED]"');
+    expect(requestLog).toContain('"Content-Type": "application/json"');
+    expect(requestLog).toContain('key=[REDACTED]');
+    expect(requestLog).toContain('alt=sse');
+    expect(responseMeta.url).toBe('https://openrouter.ai/api/v1/responses?foo=1&key=[REDACTED]');
+    expect(responseMeta.headers['x-api-key']).toBe('[REDACTED]');
+    expect(responseMeta.headers['x-goog-api-key']).toBe('[REDACTED]');
+    expect(responseMeta.headers['set-cookie']).toBe('[REDACTED]');
+    expect(responseMeta.headers['content-type']).toBe('application/json');
   });
 });

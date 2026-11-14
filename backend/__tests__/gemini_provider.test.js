@@ -258,7 +258,9 @@ describe('GeminiProvider', () => {
       const [url, options] = mockFetch.mock.calls[0];
 
       expect(url).toContain('https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent');
-      expect(url).toContain('key=test-api-key');
+      expect(url).not.toContain('key=');
+      expect(url).not.toContain('test-api-key');
+      expect(options.headers['x-goog-api-key']).toBe('test-api-key');
       expect(options.method).toBe('POST');
       expect(options.body).toContain('"contents"');
       expect(options.body).not.toContain('__model'); // Should be cleaned up
@@ -280,9 +282,12 @@ describe('GeminiProvider', () => {
 
       await provider.makeHttpRequest(translatedRequest);
 
-      const [url] = mockFetch.mock.calls[0];
+      const [url, options] = mockFetch.mock.calls[0];
       expect(url).toContain(':streamGenerateContent');
       expect(url).toContain('alt=sse');
+      expect(url).not.toContain('key=');
+      expect(url).not.toContain('test-api-key');
+      expect(options.headers['x-goog-api-key']).toBe('test-api-key');
     });
 
     test('preserves streaming error body for downstream handlers', async () => {
