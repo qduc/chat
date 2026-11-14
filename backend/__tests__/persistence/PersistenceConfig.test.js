@@ -94,6 +94,12 @@ describe('PersistenceConfig', () => {
       assert.deepEqual(result.activeTools, ['test']);
     });
 
+    test('normalizes legacy reasoning effort when extracting conversation settings', () => {
+      assert.equal(config.extractRequestSettings({ reasoning_effort: 'minimal' }).reasoningEffort, 'low');
+      assert.equal(config.extractRequestSettings({ reasoningEffort: 'max' }).reasoningEffort, 'xhigh');
+      assert.equal(config.extractRequestSettings({ reasoning_effort: 'high' }).reasoningEffort, 'high');
+    });
+
     test('should handle explicit persistence flags', () => {
       const bodyIn = {
         streamingEnabled: false,

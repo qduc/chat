@@ -240,21 +240,21 @@ describe('MessagesAdapter', () => {
         expect(result.output_config).toBeUndefined();
       });
 
-      test('disables thinking for minimal', async () => {
+      test('maps legacy minimal to the nearest accepted effort, low', async () => {
         const result = await anthropicAdapter().translateRequest({
           ...baseRequest,
           reasoning_effort: 'minimal',
         });
-        expect(result.thinking).toEqual({ type: 'disabled' });
-        expect(result.output_config).toBeUndefined();
+        expect(result.thinking).toEqual({ type: 'adaptive', display: 'summarized' });
+        expect(result.output_config).toEqual({ effort: 'low' });
       });
 
       test.each([
         ['low', 'low'],
         ['medium', 'medium'],
         ['high', 'high'],
-        ['xhigh', 'xhigh'],
-        ['max', 'max'],
+        ['xhigh', 'high'],
+        ['max', 'high'],
       ])('maps %s to adaptive thinking + output_config.effort=%s', async (input, expected) => {
         const result = await anthropicAdapter().translateRequest({
           ...baseRequest,
@@ -791,8 +791,8 @@ describe('MessagesAdapter', () => {
       'claude-sonnet-4-7',
     ];
 
-    describe('effort none and minimal', () => {
-      test.each(opus55Ids.flatMap((model) => ['none', 'minimal'].map((effort) => [model, effort])))(
+    describe('effort none', () => {
+      test.each(opus55Ids.map((model) => [model, 'none']))(
         '%s %s sends adaptive thinking with effort low',
         async (model, effort) => {
           const result = await anthropicAdapter().translateRequest(combinedRequest(model, effort));
@@ -802,7 +802,7 @@ describe('MessagesAdapter', () => {
         }
       );
 
-      test.each(sonnet55Ids.flatMap((model) => ['none', 'minimal'].map((effort) => [model, effort])))(
+      test.each(sonnet55Ids.map((model) => [model, 'none']))(
         '%s %s sends between_tools and no effort',
         async (model, effort) => {
           const result = await anthropicAdapter().translateRequest(combinedRequest(model, effort));
@@ -812,7 +812,7 @@ describe('MessagesAdapter', () => {
         }
       );
 
-      test.each(haiku55Ids.flatMap((model) => ['none', 'minimal'].map((effort) => [model, effort])))(
+      test.each(haiku55Ids.map((model) => [model, 'none']))(
         '%s %s keeps thinking disabled',
         async (model, effort) => {
           const result = await anthropicAdapter().translateRequest(combinedRequest(model, effort));
@@ -821,7 +821,7 @@ describe('MessagesAdapter', () => {
         }
       );
 
-      test.each([...earlierIds, ...claude47Ids].flatMap((model) => ['none', 'minimal'].map((effort) => [model, effort])))(
+      test.each([...earlierIds, ...claude47Ids].map((model) => [model, 'none']))(
         '%s %s stays thinking disabled with no output_config',
         async (model, effort) => {
           const result = await anthropicAdapter().translateRequest(request(model, { reasoning_effort: effort }));
@@ -906,7 +906,7 @@ describe('MessagesAdapter', () => {
 
     describe('unchanged request shapes', () => {
       test.each(earlierIds)('%s combined request matches the historical shape', async (model) => {
-        const result = await anthropicAdapter().translateRequest(combinedRequest(model, 'minimal'));
+        const result = await anthropicAdapter().translateRequest(combinedRequest(model, 'none'));
         expect(result).toEqual(historicalShape(model));
       });
 
@@ -963,27 +963,63 @@ describe('MessagesAdapter', () => {
         });
       });
 
-      test.each(['low', 'medium', 'high', 'xhigh', 'max'])(
-        'effort %s on the 5.5 models stays adaptive with summarized display',
-        async (effort) => {
-          for (const model of ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-opus-4-5']) {
-            const result = await anthropicAdapter().translateRequest(request(model, {
-              reasoning_effort: effort,
-              temperature: 0.3,
-            }));
-            expect(result.thinking).toEqual({ type: 'adaptive', display: 'summarized' });
-            expect(result.output_config).toEqual({ effort });
-            if (model === 'claude-opus-4-5') {
-              expect(result.temperature).toBe(0.3);
-            } else {
-              expect(result).not.toHaveProperty('temperature');
-            }
-          }
+      test.each([
+        ['claude-opus-5-5', 'none', { type: 'adaptive' }, { effort: 'low' }],
+        ['claude-opus-5-5', 'low', { type: 'adaptive', display: 'summarized' }, { effort: 'low' }],
+        ['claude-opus-5-5', 'medium', { type: 'adaptive', display: 'summarized' }, { effort: 'medium' }],
+        ['claude-opus-5-5', 'high', { type: 'adaptive', display: 'summarized' }, { effort: 'high' }],
+        ['claude-opus-5-5', 'xhigh', { type: 'adaptive', display: 'summarized' }, { effort: 'xhigh' }],
+        ['claude-sonnet-5-5', 'none', { type: 'between_tools' }, undefined],
+        ['claude-sonnet-5-5', 'low', { type: 'adaptive', display: 'summarized' }, { effort: 'low' }],
+        ['claude-sonnet-5-5', 'medium', { type: 'adaptive', display: 'summarized' }, { effort: 'medium' }],
+        ['claude-sonnet-5-5', 'high', { type: 'adaptive', display: 'summarized' }, { effort: 'high' }],
+        ['claude-sonnet-5-5', 'xhigh', { type: 'adaptive', display: 'summarized' }, { effort: 'xhigh' }],
+        ['claude-haiku-5-5', 'none', { type: 'disabled' }, undefined],
+        ['claude-haiku-5-5', 'low', { type: 'adaptive', display: 'summarized' }, { effort: 'low' }],
+        ['claude-haiku-5-5', 'medium', { type: 'adaptive', display: 'summarized' }, { effort: 'medium' }],
+        ['claude-haiku-5-5', 'high', { type: 'adaptive', display: 'summarized' }, { effort: 'high' }],
+        ['claude-haiku-5-5', 'xhigh', { type: 'adaptive', display: 'summarized' }, { effort: 'xhigh' }],
+        ['claude-3-5-sonnet-20241022', 'none', { type: 'disabled' }, undefined],
+        ['claude-3-5-sonnet-20241022', 'low', { type: 'adaptive', display: 'summarized' }, { effort: 'low' }],
+        ['claude-3-5-sonnet-20241022', 'medium', { type: 'adaptive', display: 'summarized' }, { effort: 'medium' }],
+        ['claude-3-5-sonnet-20241022', 'high', { type: 'adaptive', display: 'summarized' }, { effort: 'high' }],
+        ['claude-3-5-sonnet-20241022', 'xhigh', { type: 'adaptive', display: 'summarized' }, { effort: 'high' }],
+        ['claude-opus-4-5', 'none', { type: 'disabled' }, undefined],
+        ['claude-opus-4-5', 'low', { type: 'adaptive', display: 'summarized' }, { effort: 'low' }],
+        ['claude-opus-4-5', 'medium', { type: 'adaptive', display: 'summarized' }, { effort: 'medium' }],
+        ['claude-opus-4-5', 'high', { type: 'adaptive', display: 'summarized' }, { effort: 'high' }],
+        ['claude-opus-4-5', 'xhigh', { type: 'adaptive', display: 'summarized' }, { effort: 'high' }],
+        ['claude-sonnet-4-20250514', 'none', { type: 'disabled' }, undefined],
+        ['claude-sonnet-4-20250514', 'low', { type: 'adaptive', display: 'summarized' }, { effort: 'low' }],
+        ['claude-sonnet-4-20250514', 'medium', { type: 'adaptive', display: 'summarized' }, { effort: 'medium' }],
+        ['claude-sonnet-4-20250514', 'high', { type: 'adaptive', display: 'summarized' }, { effort: 'high' }],
+        ['claude-sonnet-4-20250514', 'xhigh', { type: 'adaptive', display: 'summarized' }, { effort: 'high' }],
+      ])('%s effort %s is an accepted request shape', async (model, effort, thinking, outputConfig) => {
+        const result = await anthropicAdapter().translateRequest(request(model, { reasoning_effort: effort }));
+        expect(result.thinking).toEqual(thinking);
+        if (outputConfig) {
+          expect(result.output_config).toEqual(outputConfig);
+        } else {
+          expect(result.output_config).toBeUndefined();
         }
-      );
+      });
+
+      test.each([
+        ['claude-opus-5-5', 'minimal', { effort: 'low' }],
+        ['claude-opus-5-5', 'max', { effort: 'xhigh' }],
+        ['claude-sonnet-5-5', 'max', { effort: 'xhigh' }],
+        ['claude-haiku-5-5', 'minimal', { effort: 'low' }],
+        ['claude-opus-4-5', 'max', { effort: 'high' }],
+        ['claude-opus-4-7', 'xhigh', { effort: 'high' }],
+        ['claude-sonnet-4-20250514', 'minimal', { effort: 'low' }],
+      ])('%s maps unsupported %s to the nearest accepted effort', async (model, effort, outputConfig) => {
+        const result = await anthropicAdapter().translateRequest(request(model, { reasoning_effort: effort }));
+        expect(result.thinking).toEqual({ type: 'adaptive', display: 'summarized' });
+        expect(result.output_config).toEqual(outputConfig);
+      });
 
       test('claude-opus-5 strips sampling params without the 5.5 thinking or tool_choice changes', async () => {
-        const result = await anthropicAdapter().translateRequest(combinedRequest('claude-opus-5', 'minimal'));
+        const result = await anthropicAdapter().translateRequest(combinedRequest('claude-opus-5', 'none'));
         const expected = historicalShape('claude-opus-5');
         delete expected.temperature;
         delete expected.top_p;

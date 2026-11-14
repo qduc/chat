@@ -52,13 +52,15 @@ const SAMPLING_PARAM_KEYS = ['temperature', 'top_p', 'top_k'];
  * resolve to the same entry. Ids that do not match keep the historical shape
  * (`claude-opus-4-5`, `claude-sonnet-4-5`, `claude-3-5-*`, and so on).
  *
- * `noneMinimalThinking`:
+ * `noneThinking` is how effort `none` is sent:
  *  - `adaptive-low`: Opus 5.5 rejects `thinking.type: "disabled"`. Send
  *    adaptive thinking with `output_config.effort: "low"`.
  *  - `between_tools`: Sonnet 5.5 rejects `"disabled"`. `between_tools` is the
  *    off switch and is valid only at effort high or below (the API default
- *    is high, so none/minimal does not send an effort).
- *  - omitted: keep `thinking: { type: "disabled" }` (Haiku 5.5 and earlier).
+ *    is high, so `none` does not send an effort).
+ *  - omitted: `thinking: { type: "disabled" }` (Haiku 5.5 and earlier).
+ * `acceptsXhigh`: Claude 5.5 models keep `xhigh`. Other Claude models do not,
+ * so `xhigh` is sent as `high`.
  *
  * Sampling parameters are omitted for the 5.5 models and for every other
  * Claude 4.7+ id. Non-default `temperature` / `top_p` / `top_k` return 400
@@ -67,16 +69,19 @@ const SAMPLING_PARAM_KEYS = ['temperature', 'top_p', 'top_k'];
  */
 const CLAUDE_55_CAPABILITIES = {
   'claude-opus-5-5': {
-    noneMinimalThinking: 'adaptive-low',
+    noneThinking: 'adaptive-low',
+    acceptsXhigh: true,
     stripSamplingParams: true,
     downgradeForcedToolChoice: true,
   },
   'claude-sonnet-5-5': {
-    noneMinimalThinking: 'between_tools',
+    noneThinking: 'between_tools',
+    acceptsXhigh: true,
     stripSamplingParams: true,
     downgradeForcedToolChoice: true,
   },
   'claude-haiku-5-5': {
+    acceptsXhigh: true,
     stripSamplingParams: true,
     downgradeForcedToolChoice: false,
   },
@@ -151,26 +156,47 @@ function getAnthropicModelCapabilities(model) {
  *    going forward. Users who need manual control can still pass it through
  *    `custom_request_params`.
  *
- * Effort levels accepted by the upstream `output_config.effort`:
- *   low, medium, high, xhigh, max (xhigh/max availability depends on model).
- *
- * Our internal vocabulary (from openaiProxy validation):
- *   none, minimal, low, medium, high, xhigh
- * `none` / `minimal` disable thinking on models that allow it. `max` is
- * forwarded as-is when explicitly provided.
+ * Canonical efforts are none, low, medium, high, xhigh. `minimal` and `max`
+ * are legacy values: each model maps them to the nearest effort it accepts.
+ * Claude 5.5 accepts `xhigh`; every other Claude model tops out at `high`.
+ * Unknown strings are left unset.
  */
+const CLAUDE_EFFORT_ORDER = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+
+function nearestAcceptedEffort(value, acceptsXhigh) {
+  const accepted = acceptsXhigh
+    ? ['none', 'low', 'medium', 'high', 'xhigh']
+    : ['none', 'low', 'medium', 'high'];
+  const index = CLAUDE_EFFORT_ORDER.indexOf(value);
+  if (index === -1) return null;
+
+  let best = accepted[0];
+  let bestDistance = Infinity;
+  for (const candidate of accepted) {
+    const candidateIndex = CLAUDE_EFFORT_ORDER.indexOf(candidate);
+    const distance = Math.abs(candidateIndex - index);
+    if (distance < bestDistance || (distance === bestDistance && candidateIndex > CLAUDE_EFFORT_ORDER.indexOf(best))) {
+      best = candidate;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
 function applyAnthropicReasoningControls(target, reasoningEffort, capabilities) {
   if (typeof reasoningEffort !== 'string' || !reasoningEffort) return;
 
-  const normalized = reasoningEffort.toLowerCase();
+  const normalized = reasoningEffort.trim().toLowerCase();
+  const mapped = nearestAcceptedEffort(normalized, capabilities?.acceptsXhigh === true);
+  if (!mapped) return;
 
-  if (normalized === 'none' || normalized === 'minimal') {
-    if (capabilities?.noneMinimalThinking === 'adaptive-low') {
+  if (mapped === 'none') {
+    if (capabilities?.noneThinking === 'adaptive-low') {
       target.thinking = { type: 'adaptive' };
       target.output_config = { ...(target.output_config || {}), effort: 'low' };
       return;
     }
-    if (capabilities?.noneMinimalThinking === 'between_tools') {
+    if (capabilities?.noneThinking === 'between_tools') {
       target.thinking = { type: 'between_tools' };
       return;
     }
@@ -178,14 +204,11 @@ function applyAnthropicReasoningControls(target, reasoningEffort, capabilities) 
     return;
   }
 
-  const allowedEffort = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
-  if (!allowedEffort.has(normalized)) return;
-
   // `display: "summarized"` requests that the API return a summary of the
   // thinking content (rather than the full chain-of-thought) on models that
   // support it. This is the recommended default for cost/latency.
   target.thinking = { type: 'adaptive', display: 'summarized' };
-  target.output_config = { ...(target.output_config || {}), effort: normalized };
+  target.output_config = { ...(target.output_config || {}), effort: mapped };
 }
 
 /**

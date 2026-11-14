@@ -1,5 +1,6 @@
 import { logger } from '../../logger.js';
 import { normalizeCustomRequestParamsIds } from '../customRequestParams.js';
+import { normalizeReasoningEffort } from '../reasoningEffort.js';
 
 /**
  * Centralized configuration management for persistence operations
@@ -115,7 +116,7 @@ export class PersistenceConfig {
       model: bodyIn.model || this.getDefaultModel(),
       streamingEnabled: persistedStreamingEnabled,
       toolsEnabled: persistedToolsEnabled,
-      reasoningEffort: bodyIn.reasoning_effort || bodyIn.reasoningEffort || null,
+      reasoningEffort: normalizeReasoningEffort(bodyIn.reasoning_effort || bodyIn.reasoningEffort || null),
       verbosity: bodyIn.verbosity || null,
       systemPrompt,
       activeSystemPromptId,

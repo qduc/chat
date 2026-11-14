@@ -14,6 +14,7 @@ import { isAbortError } from './abortUtils.js';
 import { extractUpstreamMessage, readUpstreamErrorBody } from './upstreamErrors.js';
 import { getUserSetting } from '../db/userSettings.js';
 import { normalizeCustomRequestParamsIds } from './customRequestParams.js';
+import { REASONING_EFFORTS, normalizeReasoningEffort } from './reasoningEffort.js';
 import { getConversationBranch } from '../db/branches.js';
 import { getConversationById } from '../db/conversations.js';
 import { getLastMessage, getPreviousUserMessage } from '../db/messages.js';
@@ -138,16 +139,17 @@ function resolveCustomRequestParams({ userId, customRequestParamsIds }) {
 }
 
 function validateAndNormalizeReasoningControls(body) {
-  // Validate and handle reasoning_effort
+  // Validate and handle reasoning_effort. Legacy aliases are rewritten first:
+  // minimal -> low, max -> xhigh.
   if (body.reasoning_effort) {
-    const allowedEfforts = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'];
-    if (!allowedEfforts.includes(body.reasoning_effort)) {
+    body.reasoning_effort = normalizeReasoningEffort(body.reasoning_effort);
+    if (!REASONING_EFFORTS.includes(body.reasoning_effort)) {
       return {
         ok: false,
         status: 400,
         payload: {
           error: 'invalid_request_error',
-          message: `Invalid reasoning_effort. Must be one of ${allowedEfforts.join(', ')}`,
+          message: `Invalid reasoning_effort. Must be one of ${REASONING_EFFORTS.join(', ')}`,
         },
       };
     }

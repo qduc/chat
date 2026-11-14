@@ -1,6 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import { httpClient } from '../lib/http';
 import type { ReasoningEffortLevel, CustomRequestParamPreset } from '../lib/types';
+import { normalizeReasoningEffortLevel } from '../lib/types';
 
 /**
  * Hook for managing chat settings (tools, streaming, reasoning, prompts).
@@ -61,8 +62,9 @@ export function useChatSettings() {
   }, []);
 
   const setReasoningEffortWrapper = useCallback((level: ReasoningEffortLevel) => {
-    setReasoningEffort(level);
-    reasoningEffortRef.current = level;
+    const normalized = normalizeReasoningEffortLevel(level) ?? 'unset';
+    setReasoningEffort(normalized);
+    reasoningEffortRef.current = normalized;
   }, []);
 
   const setCustomRequestParamsIdWrapper = useCallback((value: string[] | null) => {

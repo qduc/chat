@@ -5,6 +5,8 @@ import {
   getDb,
   upsertSession,
   createConversation,
+  getConversationById,
+  updateConversationSettings,
   listConversations,
   getMessagesPage,
   insertUserMessage,
@@ -144,6 +146,23 @@ describe('DB helpers', () => {
       assert.equal(message.message_events.length, 2);
       assert.equal(message.message_events[0].payload.text, 'Hello ');
       assert.equal(message.message_events[1].payload.text, 'world');
+    });
+
+    test('stores and reads legacy reasoning effort as the canonical value', () => {
+      createConversation({
+        id: 'conv-effort',
+        sessionId,
+        userId: testUser.id,
+        reasoningEffort: 'minimal',
+      });
+      assert.equal(getConversationById({ id: 'conv-effort', userId: testUser.id }).reasoning_effort, 'low');
+
+      updateConversationSettings({
+        id: 'conv-effort',
+        userId: testUser.id,
+        reasoningEffort: 'max',
+      });
+      assert.equal(getConversationById({ id: 'conv-effort', userId: testUser.id }).reasoning_effort, 'xhigh');
     });
 
     test('hydrates usage from stored metadata_json', () => {

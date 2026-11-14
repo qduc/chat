@@ -7,6 +7,7 @@ import { abortStream } from '../lib/streamAbortRegistry.js';
 import { authenticateToken } from '../middleware/auth.js';
 import { getUserSetting } from '../db/userSettings.js';
 import { config } from '../env.js';
+import { REASONING_EFFORTS, normalizeReasoningEffort } from '../lib/reasoningEffort.js';
 import { createOpenAIRequest, setupStreamingHeaders, writeAndFlush, createChatCompletionChunk } from '../lib/streamUtils.js';
 import { parseSSEStream } from '../lib/sseParser.js';
 import { getDb } from '../db/client.js';
@@ -183,14 +184,13 @@ chatRouter.post('/v1/chat/judge', async (req, res) => {
   const messageId = message_id || null;
   const normalizedCriteria = typeof criteria === 'string' ? criteria.trim() : '';
   const normalizedReasoningEffort =
-    typeof reasoning_effort === 'string' ? reasoning_effort.trim().toLowerCase() : '';
+    typeof reasoning_effort === 'string' ? normalizeReasoningEffort(reasoning_effort) : '';
 
   if (normalizedReasoningEffort) {
-    const allowedEfforts = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'];
-    if (!allowedEfforts.includes(normalizedReasoningEffort)) {
+    if (!REASONING_EFFORTS.includes(normalizedReasoningEffort)) {
       return res.status(400).json({
         error: 'bad_request',
-        message: `Invalid reasoning_effort. Must be one of ${allowedEfforts.join(', ')}`,
+        message: `Invalid reasoning_effort. Must be one of ${REASONING_EFFORTS.join(', ')}`,
       });
     }
   }

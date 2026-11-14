@@ -9,6 +9,7 @@ import type {
   Evaluation,
   EvaluationDraft,
 } from '../lib';
+import { normalizeReasoningEffortLevel } from '../lib/types';
 import { conversations as conversationsApi } from '../lib/api';
 
 // ---------------------------------------------------------------------------
@@ -361,8 +362,11 @@ export function useConversationHydration(deps: ConversationHydrationDeps) {
           useToolsRef.current = data.tools_enabled;
         }
         if (data.reasoning_effort) {
-          setReasoningEffort(data.reasoning_effort as ReasoningEffortLevel);
-          reasoningEffortRef.current = data.reasoning_effort as ReasoningEffortLevel;
+          const effort = normalizeReasoningEffortLevel(String(data.reasoning_effort));
+          if (effort) {
+            setReasoningEffort(effort);
+            reasoningEffortRef.current = effort;
+          }
         }
         const ids = normalizeCustomRequestParamsIds((data as any).custom_request_params_id);
         setCustomRequestParamsId(ids);

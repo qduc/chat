@@ -28,7 +28,7 @@ import { JsonTurnOutput, SseTurnOutput } from './turnOutputs.ts';
 import type { JsonResponse, SseResponse, TurnOutput } from './turnOutputs.ts';
 
 const DEFAULT_MAX_ITERATIONS = 10;
-const REASONING_EFFORTS = new Set<ReasoningEffort>(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']);
+const REASONING_EFFORTS = new Set<ReasoningEffort>(['none', 'low', 'medium', 'high', 'xhigh']);
 
 type HarnessConfig = ChatForgeRuntimeConfig & {
   readonly defaultModel?: string;
@@ -85,9 +85,19 @@ function enabledToolNames(body: RequestBody): string[] | undefined {
   return body.tools.map((tool) => tool.function?.name).filter((name): name is string => Boolean(name));
 }
 
+function canonicalizeReasoningEffort(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const lowered = value.trim().toLowerCase();
+  if (!lowered) return undefined;
+  if (lowered === 'minimal') return 'low';
+  if (lowered === 'max') return 'xhigh';
+  return lowered;
+}
+
 function reasoningEffort(value: unknown): ReasoningEffort | undefined {
-  return typeof value === 'string' && REASONING_EFFORTS.has(value as ReasoningEffort)
-    ? (value as ReasoningEffort)
+  const canonical = canonicalizeReasoningEffort(value);
+  return canonical && REASONING_EFFORTS.has(canonical as ReasoningEffort)
+    ? (canonical as ReasoningEffort)
     : undefined;
 }
 

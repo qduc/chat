@@ -656,7 +656,6 @@ export function useChat() {
     },
     setReasoningEffort: (l: ReasoningEffortLevel) => {
       setReasoningEffort(l);
-      reasoningEffortRef.current = l;
       clearError();
     },
     setCustomRequestParamsId: (ids: string[] | null) => {

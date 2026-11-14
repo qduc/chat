@@ -435,16 +435,31 @@ export interface ModelGroup {
 }
 
 export type Status = 'idle' | 'streaming';
-export type ReasoningEffortLevel =
-  | 'unset'
-  | 'none'
-  | 'minimal'
-  | 'low'
-  | 'medium'
-  | 'high'
-  | 'xhigh';
+export type ReasoningEffortLevel = 'unset' | 'none' | 'low' | 'medium' | 'high' | 'xhigh';
 /** @deprecated Use ReasoningEffortLevel instead */
 export type QualityLevel = ReasoningEffortLevel;
+
+const REASONING_EFFORT_LEVELS: readonly ReasoningEffortLevel[] = [
+  'unset',
+  'none',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+];
+
+/** Map a saved or incoming effort onto the five UI levels. `minimal` -> `low`, `max` -> `xhigh`. */
+export function normalizeReasoningEffortLevel(
+  value: string | null | undefined
+): ReasoningEffortLevel | null {
+  if (typeof value !== 'string') return null;
+  const lowered = value.trim().toLowerCase();
+  if (lowered === 'minimal') return 'low';
+  if (lowered === 'max') return 'xhigh';
+  return REASONING_EFFORT_LEVELS.includes(lowered as ReasoningEffortLevel)
+    ? (lowered as ReasoningEffortLevel)
+    : null;
+}
 
 export interface CustomRequestParamPreset {
   id: string;

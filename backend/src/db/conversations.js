@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDb } from './client.js';
 import { clampLimit, parseCreatedAtCursor, appendCreatedAtCursor } from './pagination.js';
 import { getRootBranchId, initializeConversationRootBranch } from './branches.js';
+import { normalizeReasoningEffort } from '../lib/reasoningEffort.js';
 
 export function createConversation({
   id,
@@ -33,7 +34,7 @@ export function createConversation({
       metadata: JSON.stringify(metadata || {}),
       streaming_enabled: streamingEnabled ? 1 : 0,
       tools_enabled: toolsEnabled ? 1 : 0,
-      reasoning_effort: reasoningEffort,
+      reasoning_effort: normalizeReasoningEffort(reasoningEffort),
       verbosity,
       parent_conversation_id: parentConversationId || null,
       now,
@@ -58,6 +59,9 @@ export function getConversationById({ id, userId }) {
   if (result) {
     result.streaming_enabled = Boolean(result.streaming_enabled);
     result.tools_enabled = Boolean(result.tools_enabled);
+    if (typeof result.reasoning_effort === 'string') {
+      result.reasoning_effort = normalizeReasoningEffort(result.reasoning_effort);
+    }
     try {
       result.metadata = result.metadata ? JSON.parse(result.metadata) : {};
     } catch {
@@ -157,7 +161,7 @@ export function updateConversationSettings({ id, userId, streamingEnabled, tools
   }
   if (reasoningEffort !== undefined) {
     updates.push('reasoning_effort=@reasoning_effort');
-    paramData.reasoning_effort = reasoningEffort;
+    paramData.reasoning_effort = normalizeReasoningEffort(reasoningEffort);
   }
   if (verbosity !== undefined) {
     updates.push('verbosity=@verbosity');
