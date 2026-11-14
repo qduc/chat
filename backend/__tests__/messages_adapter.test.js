@@ -773,12 +773,23 @@ describe('MessagesAdapter', () => {
       'claude-opus-4-5',
       'claude-opus-4-5-20251101',
       'claude-sonnet-4-5',
+      'claude-sonnet-4-5-20250929',
       'claude-haiku-4-5',
       'claude-opus-4-6',
       'claude-sonnet-4-6',
+      // Date suffix is not a minor version. These must stay on the historical shape.
+      'claude-sonnet-4-20250514',
+      'claude-opus-4-20250514',
+      'claude-opus-4-1-20250805',
     ];
     // Sampling is rejected on Claude 4.7+. Thinking and tool_choice stay historical.
-    const claude47Ids = ['claude-opus-4-7', 'claude-opus-4-7-20260501', 'claude-opus-4-8', 'claude-sonnet-4-7'];
+    const claude47Ids = [
+      'claude-opus-4-7',
+      'claude-opus-4-7-20260101',
+      'claude-opus-4-7-20260501',
+      'claude-opus-4-8',
+      'claude-sonnet-4-7',
+    ];
 
     describe('effort none and minimal', () => {
       test.each(opus55Ids.flatMap((model) => ['none', 'minimal'].map((effort) => [model, effort])))(
@@ -898,6 +909,33 @@ describe('MessagesAdapter', () => {
         const result = await anthropicAdapter().translateRequest(combinedRequest(model, 'minimal'));
         expect(result).toEqual(historicalShape(model));
       });
+
+      test.each([
+        'claude-sonnet-4-20250514',
+        'claude-opus-4-20250514',
+        'claude-opus-4-1-20250805',
+        'claude-sonnet-4-5-20250929',
+      ])('date suffix on %s is not a 4.7 minor version', async (model) => {
+        const result = await anthropicAdapter().translateRequest(combinedRequest(model, 'none'));
+        expect(result).toEqual(historicalShape(model));
+        expect(result.temperature).toBe(0.2);
+        expect(result.top_p).toBe(0.95);
+        expect(result.top_k).toBe(40);
+        expect(result.tool_choice).toEqual({ type: 'any' });
+        expect(result.thinking).toEqual({ type: 'disabled' });
+      });
+
+      test.each(['claude-opus-4-7', 'claude-opus-4-7-20260101'])(
+        '%s still strips sampling parameters',
+        async (model) => {
+          const result = await anthropicAdapter().translateRequest(combinedRequest(model, 'none'));
+          expect(result).not.toHaveProperty('temperature');
+          expect(result).not.toHaveProperty('top_p');
+          expect(result).not.toHaveProperty('top_k');
+          expect(result.thinking).toEqual({ type: 'disabled' });
+          expect(result.tool_choice).toEqual({ type: 'any' });
+        }
+      );
 
       test.each(claude47Ids)('%s drops sampling params and otherwise matches the historical shape', async (model) => {
         const result = await anthropicAdapter().translateRequest(combinedRequest(model, 'none'));

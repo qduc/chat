@@ -103,7 +103,9 @@ function normalizeAnthropicModelId(model) {
 }
 
 function claudeModelVersion(modelId) {
-  const match = /^claude-[a-z]+-(\d+)(?:-(\d+))?(?=-|$)/.exec(modelId);
+  // Minor is one or two digits (`4-5`, `4-7`). An 8-digit snapshot such as
+  // `claude-sonnet-4-20250514` is not a minor version; treat it as `4.0`.
+  const match = /^claude-[a-z]+-(\d+)(?:-(\d{1,2}))?(?=-|$)/.exec(modelId);
   if (!match) return null;
   return {
     major: Number(match[1]),
