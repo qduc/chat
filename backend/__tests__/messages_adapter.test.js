@@ -240,7 +240,7 @@ describe('MessagesAdapter', () => {
         expect(result.output_config).toBeUndefined();
       });
 
-      test('disables thinking for minimal', async () => {
+      test('disables thinking for minimal, same as none', async () => {
         const result = await anthropicAdapter().translateRequest({
           ...baseRequest,
           reasoning_effort: 'minimal',
@@ -253,8 +253,8 @@ describe('MessagesAdapter', () => {
         ['low', 'low'],
         ['medium', 'medium'],
         ['high', 'high'],
-        ['xhigh', 'xhigh'],
-        ['max', 'max'],
+        ['xhigh', 'high'],
+        ['max', 'high'],
       ])('maps %s to adaptive thinking + output_config.effort=%s', async (input, expected) => {
         const result = await anthropicAdapter().translateRequest({
           ...baseRequest,
@@ -686,6 +686,447 @@ describe('MessagesAdapter', () => {
         thinking: 'R',
         signature: 'sig',
       });
+    });
+  });
+
+  describe('Claude 5.5 request adjustments', () => {
+    function anthropicAdapter() {
+      return new MessagesAdapter({
+        config: {},
+        settings: {},
+        getDefaultModel: () => 'claude-3-5-sonnet-20241022',
+        reasoningFormat: 'anthropic',
+      });
+    }
+
+    const lookupTool = {
+      type: 'function',
+      function: {
+        name: 'lookup',
+        description: 'Look up a record',
+        parameters: { type: 'object', properties: { q: { type: 'string' } } },
+      },
+    };
+
+    const normalizedLookupTool = {
+      name: 'lookup',
+      description: 'Look up a record',
+      input_schema: { type: 'object', properties: { q: { type: 'string' } } },
+    };
+
+    function request(model, extra = {}) {
+      return {
+        model,
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 100,
+        ...extra,
+      };
+    }
+
+    // Same body ConversationTitleService._requestTitleFromAPI sends.
+    const TITLE_SYSTEM = 'You create a very short, descriptive chat title (max 6 words). Output only the title, no quotes, no punctuation at the end.';
+
+    function titleRequest(model) {
+      return {
+        model,
+        temperature: 0.2,
+        max_tokens: 20,
+        messages: [
+          { role: 'system', content: TITLE_SYSTEM },
+          { role: 'user', content: 'Create a short title for: Hello there' },
+        ],
+      };
+    }
+
+    function combinedRequest(model, effort = 'none') {
+      return request(model, {
+        reasoning_effort: effort,
+        temperature: 0.2,
+        top_p: 0.95,
+        top_k: 40,
+        tools: [lookupTool],
+        tool_choice: 'required',
+      });
+    }
+
+    function historicalShape(model) {
+      return {
+        model,
+        messages: [{ role: 'user', content: 'hi' }],
+        max_tokens: 100,
+        tools: [normalizedLookupTool],
+        tool_choice: { type: 'any' },
+        temperature: 0.2,
+        top_p: 0.95,
+        top_k: 40,
+        thinking: { type: 'disabled' },
+      };
+    }
+
+    const opus55Ids = ['claude-opus-5-5', 'claude-opus-5-5-20251101', 'anthropic::claude-opus-5-5'];
+    const sonnet55Ids = ['claude-sonnet-5-5', 'claude-sonnet-5-5-20260301', 'Claude-Sonnet-5-5'];
+    const haiku55Ids = ['claude-haiku-5-5', 'claude-haiku-5-5-latest'];
+    const earlierIds = [
+      'claude-3-5-sonnet-20241022',
+      'claude-3-5-haiku-20241022',
+      'claude-3-opus-20240229',
+      'claude-opus-4-5',
+      'claude-opus-4-5-20251101',
+      'claude-sonnet-4-5',
+      'claude-sonnet-4-5-20250929',
+      'claude-haiku-4-5',
+      'claude-opus-4-6',
+      'claude-sonnet-4-6',
+      // Date suffix is not a minor version. These must stay on the historical shape.
+      'claude-sonnet-4-20250514',
+      'claude-opus-4-20250514',
+      'claude-opus-4-1-20250805',
+    ];
+    // Sampling is rejected on Claude 4.7+. Thinking and tool_choice stay historical.
+    const claude47Ids = [
+      'claude-opus-4-7',
+      'claude-opus-4-7-20260101',
+      'claude-opus-4-7-20260501',
+      'claude-opus-4-8',
+      'claude-sonnet-4-7',
+    ];
+
+    describe('effort none', () => {
+      test.each(opus55Ids.map((model) => [model, 'none']))(
+        '%s %s sends adaptive thinking with effort low',
+        async (model, effort) => {
+          const result = await anthropicAdapter().translateRequest(combinedRequest(model, effort));
+          expect(result.thinking).toEqual({ type: 'adaptive' });
+          expect(result.output_config).toEqual({ effort: 'low' });
+          expect(result.model).toBe(model);
+        }
+      );
+
+      test.each(sonnet55Ids.map((model) => [model, 'none']))(
+        '%s %s sends between_tools and no effort',
+        async (model, effort) => {
+          const result = await anthropicAdapter().translateRequest(combinedRequest(model, effort));
+          expect(result.thinking).toEqual({ type: 'between_tools' });
+          expect(result.output_config).toBeUndefined();
+          expect(result.model).toBe(model);
+        }
+      );
+
+      test.each(haiku55Ids.map((model) => [model, 'none']))(
+        '%s %s keeps thinking disabled',
+        async (model, effort) => {
+          const result = await anthropicAdapter().translateRequest(combinedRequest(model, effort));
+          expect(result.thinking).toEqual({ type: 'disabled' });
+          expect(result.output_config).toBeUndefined();
+        }
+      );
+
+      test.each([...earlierIds, ...claude47Ids].map((model) => [model, 'none']))(
+        '%s %s stays thinking disabled with no output_config',
+        async (model, effort) => {
+          const result = await anthropicAdapter().translateRequest(request(model, { reasoning_effort: effort }));
+          expect(result.thinking).toEqual({ type: 'disabled' });
+          expect(result.output_config).toBeUndefined();
+        }
+      );
+    });
+
+    describe('sampling parameters', () => {
+      test.each([...opus55Ids, ...sonnet55Ids, ...haiku55Ids, ...claude47Ids])(
+        '%s omits temperature, top_p, and top_k',
+        async (model) => {
+          const result = await anthropicAdapter().translateRequest(combinedRequest(model));
+          expect(result).not.toHaveProperty('temperature');
+          expect(result).not.toHaveProperty('top_p');
+          expect(result).not.toHaveProperty('top_k');
+        }
+      );
+
+      test.each(earlierIds)('%s keeps temperature, top_p, and top_k', async (model) => {
+        const result = await anthropicAdapter().translateRequest(combinedRequest(model));
+        expect(result.temperature).toBe(0.2);
+        expect(result.top_p).toBe(0.95);
+        expect(result.top_k).toBe(40);
+      });
+
+      test('strips sampling params reintroduced by custom_request_params on 5.5 models', async () => {
+        const result = await anthropicAdapter().translateRequest(request('claude-opus-5-5', {
+          custom_request_params: { temperature: 1, top_p: 1, top_k: 5 },
+        }));
+        expect(result).not.toHaveProperty('temperature');
+        expect(result).not.toHaveProperty('top_p');
+        expect(result).not.toHaveProperty('top_k');
+      });
+
+      test('keeps sampling params from custom_request_params on earlier models', async () => {
+        const result = await anthropicAdapter().translateRequest(request('claude-opus-4-5', {
+          custom_request_params: { temperature: 0.4, top_p: 0.9, top_k: 10 },
+        }));
+        expect(result.temperature).toBe(0.4);
+        expect(result.top_p).toBe(0.9);
+        expect(result.top_k).toBe(10);
+      });
+    });
+
+    describe('tool_choice required', () => {
+      test.each([...opus55Ids, ...sonnet55Ids])(
+        '%s downgrades required and named tool choice to auto',
+        async (model) => {
+          const required = await anthropicAdapter().translateRequest(combinedRequest(model));
+          expect(required.tool_choice).toEqual({ type: 'auto' });
+
+          const named = await anthropicAdapter().translateRequest(request(model, {
+            tools: [lookupTool],
+            tool_choice: { type: 'function', function: { name: 'lookup' } },
+          }));
+          expect(named.tool_choice).toEqual({ type: 'auto' });
+
+          const auto = await anthropicAdapter().translateRequest(request(model, {
+            tools: [lookupTool],
+            tool_choice: 'auto',
+          }));
+          expect(auto.tool_choice).toEqual({ type: 'auto' });
+        }
+      );
+
+      test.each([...haiku55Ids, ...earlierIds, ...claude47Ids])(
+        '%s keeps required as any and named tool choice as tool',
+        async (model) => {
+          const required = await anthropicAdapter().translateRequest(combinedRequest(model));
+          expect(required.tool_choice).toEqual({ type: 'any' });
+
+          const named = await anthropicAdapter().translateRequest(request(model, {
+            tools: [lookupTool],
+            tool_choice: { type: 'function', function: { name: 'lookup' } },
+          }));
+          expect(named.tool_choice).toEqual({ type: 'tool', name: 'lookup' });
+        }
+      );
+    });
+
+    describe('unchanged request shapes', () => {
+      test.each(earlierIds)('%s combined request matches the historical shape', async (model) => {
+        const result = await anthropicAdapter().translateRequest(combinedRequest(model, 'none'));
+        expect(result).toEqual(historicalShape(model));
+      });
+
+      test.each([
+        'claude-sonnet-4-20250514',
+        'claude-opus-4-20250514',
+        'claude-opus-4-1-20250805',
+        'claude-sonnet-4-5-20250929',
+      ])('date suffix on %s is not a 4.7 minor version', async (model) => {
+        const result = await anthropicAdapter().translateRequest(combinedRequest(model, 'none'));
+        expect(result).toEqual(historicalShape(model));
+        expect(result.temperature).toBe(0.2);
+        expect(result.top_p).toBe(0.95);
+        expect(result.top_k).toBe(40);
+        expect(result.tool_choice).toEqual({ type: 'any' });
+        expect(result.thinking).toEqual({ type: 'disabled' });
+      });
+
+      test.each(['claude-opus-4-7', 'claude-opus-4-7-20260101'])(
+        '%s still strips sampling parameters',
+        async (model) => {
+          const result = await anthropicAdapter().translateRequest(combinedRequest(model, 'none'));
+          expect(result).not.toHaveProperty('temperature');
+          expect(result).not.toHaveProperty('top_p');
+          expect(result).not.toHaveProperty('top_k');
+          expect(result.thinking).toEqual({ type: 'disabled' });
+          expect(result.tool_choice).toEqual({ type: 'any' });
+        }
+      );
+
+      test.each(claude47Ids)('%s drops sampling params and otherwise matches the historical shape', async (model) => {
+        const result = await anthropicAdapter().translateRequest(combinedRequest(model, 'none'));
+        const expected = historicalShape(model);
+        delete expected.temperature;
+        delete expected.top_p;
+        delete expected.top_k;
+        expect(result).toEqual(expected);
+      });
+
+      test.each([
+        ['claude-opus-5-5', { type: 'adaptive' }, { effort: 'low' }, { type: 'auto' }],
+        ['claude-sonnet-5-5-20260301', { type: 'between_tools' }, undefined, { type: 'auto' }],
+        ['claude-haiku-5-5', { type: 'disabled' }, undefined, { type: 'any' }],
+      ])('%s combined request applies only its own adjustments', async (model, thinking, outputConfig, toolChoice) => {
+        const result = await anthropicAdapter().translateRequest(combinedRequest(model));
+        expect(result).toEqual({
+          model,
+          messages: [{ role: 'user', content: 'hi' }],
+          max_tokens: 100,
+          tools: [normalizedLookupTool],
+          tool_choice: toolChoice,
+          thinking,
+          ...(outputConfig ? { output_config: outputConfig } : {}),
+        });
+      });
+
+      test.each([
+        ['claude-opus-5-5', 'none', { type: 'adaptive' }, { effort: 'low' }],
+        ['claude-opus-5-5', 'low', { type: 'adaptive', display: 'summarized' }, { effort: 'low' }],
+        ['claude-opus-5-5', 'medium', { type: 'adaptive', display: 'summarized' }, { effort: 'medium' }],
+        ['claude-opus-5-5', 'high', { type: 'adaptive', display: 'summarized' }, { effort: 'high' }],
+        ['claude-opus-5-5', 'xhigh', { type: 'adaptive', display: 'summarized' }, { effort: 'xhigh' }],
+        ['claude-sonnet-5-5', 'none', { type: 'between_tools' }, undefined],
+        ['claude-sonnet-5-5', 'low', { type: 'adaptive', display: 'summarized' }, { effort: 'low' }],
+        ['claude-sonnet-5-5', 'medium', { type: 'adaptive', display: 'summarized' }, { effort: 'medium' }],
+        ['claude-sonnet-5-5', 'high', { type: 'adaptive', display: 'summarized' }, { effort: 'high' }],
+        ['claude-sonnet-5-5', 'xhigh', { type: 'adaptive', display: 'summarized' }, { effort: 'xhigh' }],
+        ['claude-haiku-5-5', 'none', { type: 'disabled' }, undefined],
+        ['claude-haiku-5-5', 'low', { type: 'adaptive', display: 'summarized' }, { effort: 'low' }],
+        ['claude-haiku-5-5', 'medium', { type: 'adaptive', display: 'summarized' }, { effort: 'medium' }],
+        ['claude-haiku-5-5', 'high', { type: 'adaptive', display: 'summarized' }, { effort: 'high' }],
+        ['claude-haiku-5-5', 'xhigh', { type: 'adaptive', display: 'summarized' }, { effort: 'xhigh' }],
+        ['claude-3-5-sonnet-20241022', 'none', { type: 'disabled' }, undefined],
+        ['claude-3-5-sonnet-20241022', 'low', { type: 'adaptive', display: 'summarized' }, { effort: 'low' }],
+        ['claude-3-5-sonnet-20241022', 'medium', { type: 'adaptive', display: 'summarized' }, { effort: 'medium' }],
+        ['claude-3-5-sonnet-20241022', 'high', { type: 'adaptive', display: 'summarized' }, { effort: 'high' }],
+        ['claude-3-5-sonnet-20241022', 'xhigh', { type: 'adaptive', display: 'summarized' }, { effort: 'high' }],
+        ['claude-opus-4-5', 'none', { type: 'disabled' }, undefined],
+        ['claude-opus-4-5', 'low', { type: 'adaptive', display: 'summarized' }, { effort: 'low' }],
+        ['claude-opus-4-5', 'medium', { type: 'adaptive', display: 'summarized' }, { effort: 'medium' }],
+        ['claude-opus-4-5', 'high', { type: 'adaptive', display: 'summarized' }, { effort: 'high' }],
+        ['claude-opus-4-5', 'xhigh', { type: 'adaptive', display: 'summarized' }, { effort: 'high' }],
+        ['claude-sonnet-4-20250514', 'none', { type: 'disabled' }, undefined],
+        ['claude-sonnet-4-20250514', 'low', { type: 'adaptive', display: 'summarized' }, { effort: 'low' }],
+        ['claude-sonnet-4-20250514', 'medium', { type: 'adaptive', display: 'summarized' }, { effort: 'medium' }],
+        ['claude-sonnet-4-20250514', 'high', { type: 'adaptive', display: 'summarized' }, { effort: 'high' }],
+        ['claude-sonnet-4-20250514', 'xhigh', { type: 'adaptive', display: 'summarized' }, { effort: 'high' }],
+      ])('%s effort %s is an accepted request shape', async (model, effort, thinking, outputConfig) => {
+        const result = await anthropicAdapter().translateRequest(request(model, { reasoning_effort: effort }));
+        expect(result.thinking).toEqual(thinking);
+        if (outputConfig) {
+          expect(result.output_config).toEqual(outputConfig);
+        } else {
+          expect(result.output_config).toBeUndefined();
+        }
+      });
+
+      test.each([
+        ['claude-opus-5-5', { type: 'adaptive' }, { effort: 'low' }],
+        ['claude-sonnet-5-5', { type: 'between_tools' }, undefined],
+        ['claude-haiku-5-5', { type: 'disabled' }, undefined],
+        ['claude-3-5-sonnet-20241022', { type: 'disabled' }, undefined],
+        ['claude-opus-4-5', { type: 'disabled' }, undefined],
+        ['claude-sonnet-4-5', { type: 'disabled' }, undefined],
+        ['claude-opus-4-7', { type: 'disabled' }, undefined],
+        ['claude-sonnet-4-20250514', { type: 'disabled' }, undefined],
+      ])('%s minimal matches none', async (model, thinking, outputConfig) => {
+        const result = await anthropicAdapter().translateRequest(request(model, { reasoning_effort: 'minimal' }));
+        expect(result.thinking).toEqual(thinking);
+        if (outputConfig) {
+          expect(result.output_config).toEqual(outputConfig);
+        } else {
+          expect(result.output_config).toBeUndefined();
+        }
+      });
+
+      test.each([
+        ['claude-opus-5-5', 'max', { effort: 'xhigh' }],
+        ['claude-sonnet-5-5', 'max', { effort: 'xhigh' }],
+        ['claude-opus-4-5', 'max', { effort: 'high' }],
+        ['claude-opus-4-7', 'max', { effort: 'xhigh' }],
+      ])('%s maps unsupported %s to the nearest accepted effort', async (model, effort, outputConfig) => {
+        const result = await anthropicAdapter().translateRequest(request(model, { reasoning_effort: effort }));
+        expect(result.thinking).toEqual({ type: 'adaptive', display: 'summarized' });
+        expect(result.output_config).toEqual(outputConfig);
+      });
+
+      test.each([
+        'claude-fable-5-2',
+        'claude-mythos-5-2',
+        'claude-fable-5-1',
+        'claude-mythos-5-1',
+        'claude-fable-5',
+        'claude-mythos-5',
+        'claude-opus-5-5',
+        'claude-opus-5',
+        'claude-opus-4-8',
+        'claude-opus-4-7',
+        'claude-opus-4-7-20260101',
+        'claude-sonnet-5-5',
+        'claude-sonnet-5',
+        'claude-haiku-5-5',
+      ])('%s passes xhigh through', async (model) => {
+        const result = await anthropicAdapter().translateRequest(request(model, { reasoning_effort: 'xhigh' }));
+        expect(result.thinking).toEqual({ type: 'adaptive', display: 'summarized' });
+        expect(result.output_config).toEqual({ effort: 'xhigh' });
+      });
+
+      test.each([
+        'claude-opus-4-5',
+        'claude-sonnet-4-5',
+        'claude-opus-4-6',
+        'claude-sonnet-4-6',
+        'claude-sonnet-4-7',
+        'claude-haiku-4-5',
+        'claude-haiku-5',
+        'claude-3-5-sonnet-20241022',
+        'claude-sonnet-4-20250514',
+      ])('%s sends xhigh as high', async (model) => {
+        const result = await anthropicAdapter().translateRequest(request(model, { reasoning_effort: 'xhigh' }));
+        expect(result.thinking).toEqual({ type: 'adaptive', display: 'summarized' });
+        expect(result.output_config).toEqual({ effort: 'high' });
+      });
+
+      test('claude-opus-5 strips sampling params without the 5.5 thinking or tool_choice changes', async () => {
+        const result = await anthropicAdapter().translateRequest(combinedRequest('claude-opus-5', 'none'));
+        const expected = historicalShape('claude-opus-5');
+        delete expected.temperature;
+        delete expected.top_p;
+        delete expected.top_k;
+        expect(result).toEqual(expected);
+      });
+
+      test('reasoningFormat none still omits thinking on Opus 5.5 and still strips temperature', async () => {
+        const adapter = new MessagesAdapter({
+          config: {},
+          settings: {},
+          getDefaultModel: () => 'claude-3-5-sonnet-20241022',
+        });
+        const result = await adapter.translateRequest(request('claude-opus-5-5', {
+          reasoning_effort: 'none',
+          temperature: 0.2,
+        }));
+        expect(result.thinking).toBeUndefined();
+        expect(result.output_config).toBeUndefined();
+        expect(result).not.toHaveProperty('temperature');
+      });
+    });
+
+    describe('title generation', () => {
+      test.each([
+        'claude-opus-5-5',
+        'claude-sonnet-5-5',
+        'claude-haiku-5-5',
+        'claude-opus-5-5-20251101',
+        'claude-opus-4-7',
+      ])('title request for %s carries no temperature', async (model) => {
+        const result = await anthropicAdapter().translateRequest(titleRequest(model));
+        expect(result).toEqual({
+          model,
+          max_tokens: 20,
+          system: TITLE_SYSTEM,
+          messages: [{ role: 'user', content: 'Create a short title for: Hello there' }],
+        });
+        expect(result).not.toHaveProperty('temperature');
+      });
+
+      test.each(['claude-3-5-sonnet-20241022', 'claude-opus-4-5', 'claude-sonnet-4-5'])(
+        'title request for %s still sends temperature 0.2',
+        async (model) => {
+          const result = await anthropicAdapter().translateRequest(titleRequest(model));
+          expect(result).toEqual({
+            model,
+            max_tokens: 20,
+            temperature: 0.2,
+            system: TITLE_SYSTEM,
+            messages: [{ role: 'user', content: 'Create a short title for: Hello there' }],
+          });
+        }
+      );
     });
   });
 });

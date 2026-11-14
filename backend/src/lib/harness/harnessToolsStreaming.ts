@@ -26,9 +26,10 @@ import { TurnEventSink } from './turnEventSink.ts';
 import type { SinkPersistence } from './turnEventSink.ts';
 import { JsonTurnOutput, SseTurnOutput } from './turnOutputs.ts';
 import type { JsonResponse, SseResponse, TurnOutput } from './turnOutputs.ts';
+import { REASONING_EFFORTS as REASONING_EFFORT_VALUES, normalizeReasoningEffort } from '../reasoningEffort.js';
 
 const DEFAULT_MAX_ITERATIONS = 10;
-const REASONING_EFFORTS = new Set<ReasoningEffort>(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']);
+const REASONING_EFFORTS = new Set<ReasoningEffort>(REASONING_EFFORT_VALUES as readonly ReasoningEffort[]);
 
 type HarnessConfig = ChatForgeRuntimeConfig & {
   readonly defaultModel?: string;
@@ -86,8 +87,10 @@ function enabledToolNames(body: RequestBody): string[] | undefined {
 }
 
 function reasoningEffort(value: unknown): ReasoningEffort | undefined {
-  return typeof value === 'string' && REASONING_EFFORTS.has(value as ReasoningEffort)
-    ? (value as ReasoningEffort)
+  if (typeof value !== 'string') return undefined;
+  const normalized = normalizeReasoningEffort(value);
+  return typeof normalized === 'string' && REASONING_EFFORTS.has(normalized as ReasoningEffort)
+    ? (normalized as ReasoningEffort)
     : undefined;
 }
 

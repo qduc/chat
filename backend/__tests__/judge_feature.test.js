@@ -162,6 +162,44 @@ describe('POST /v1/chat/judge', () => {
     assert.equal(modelRows.length, 3);
   });
 
+  test('passes legacy minimal through the judge request', async () => {
+    const app = makeApp({ mockUser });
+    seedJudgeConversations();
+
+    const minimal = await request(app)
+      .post('/v1/chat/judge')
+      .send({
+        conversation_id: 'conv-primary',
+        comparison_conversation_id: 'conv-compare',
+        message_id: 'assistant-a',
+        comparison_message_id: 'assistant-b',
+        judge_model: 'gpt-3.5-turbo',
+        criteria: 'Alias minimal',
+        reasoning_effort: 'minimal',
+      });
+    assert.equal(minimal.status, 200);
+    assert.equal(upstream.lastChatRequestBody.reasoning_effort, 'minimal');
+  });
+
+  test('rejects a reasoning_effort outside the canonical set', async () => {
+    const app = makeApp({ mockUser });
+    seedJudgeConversations();
+
+    const res = await request(app)
+      .post('/v1/chat/judge')
+      .send({
+        conversation_id: 'conv-primary',
+        comparison_conversation_id: 'conv-compare',
+        message_id: 'assistant-a',
+        comparison_message_id: 'assistant-b',
+        judge_model: 'gpt-3.5-turbo',
+        criteria: 'Fact check',
+        reasoning_effort: 'extreme',
+      });
+    assert.equal(res.status, 400);
+    assert.match(res.body.message, /none, minimal, low, medium, high, xhigh/);
+  });
+
   test('returns cached evaluation without hitting upstream', async () => {
     const app = makeApp({ mockUser });
     seedJudgeConversations();

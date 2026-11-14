@@ -435,16 +435,34 @@ export interface ModelGroup {
 }
 
 export type Status = 'idle' | 'streaming';
-export type ReasoningEffortLevel =
-  | 'unset'
-  | 'none'
-  | 'minimal'
-  | 'low'
-  | 'medium'
-  | 'high'
-  | 'xhigh';
+export type ReasoningEffortLevel = 'unset' | 'none' | 'low' | 'medium' | 'high' | 'xhigh';
+/** Legacy values that can still be loaded from a conversation. The slider does not offer them. */
+export type LegacyReasoningEffort = 'minimal' | 'max';
+export type StoredReasoningEffort = ReasoningEffortLevel | LegacyReasoningEffort;
 /** @deprecated Use ReasoningEffortLevel instead */
 export type QualityLevel = ReasoningEffortLevel;
+
+const STORED_REASONING_EFFORTS: readonly StoredReasoningEffort[] = [
+  'unset',
+  'none',
+  'minimal',
+  'low',
+  'medium',
+  'high',
+  'xhigh',
+  'max',
+];
+
+/** Recognize a stored effort without rewriting `minimal` or `max`. */
+export function readStoredReasoningEffort(
+  value: string | null | undefined
+): StoredReasoningEffort | null {
+  if (typeof value !== 'string') return null;
+  const lowered = value.trim().toLowerCase();
+  return STORED_REASONING_EFFORTS.includes(lowered as StoredReasoningEffort)
+    ? (lowered as StoredReasoningEffort)
+    : null;
+}
 
 export interface CustomRequestParamPreset {
   id: string;

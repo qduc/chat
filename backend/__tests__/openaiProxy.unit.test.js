@@ -267,7 +267,7 @@ describe('openaiProxy.js - Unit Tests', () => {
       const app = makeApp({ mockUser });
 
       // Test valid values
-      for (const effort of ['minimal', 'low', 'medium', 'high']) {
+      for (const effort of ['none', 'low', 'medium', 'high', 'xhigh']) {
         const res = await request(app)
           .post('/v1/chat/completions')
           .send({
@@ -277,7 +277,37 @@ describe('openaiProxy.js - Unit Tests', () => {
             stream: false,
           });
         assert.equal(res.status, 200, `Should accept ${effort}`);
+        // gpt-5.1 accepts only none/low/medium/high, so the adapter maps xhigh to high.
+        const expected = effort === 'xhigh' ? 'high' : effort;
+        assert.equal(upstream.lastChatRequestBody.reasoning_effort, expected);
       }
+    });
+
+    test('passes legacy minimal through and rewrites max to xhigh', async () => {
+      const app = makeApp({ mockUser });
+      // gpt-4o is not remapped by the adapter, so the upstream body shows the
+      // normalizer: minimal passes through, max becomes xhigh.
+      const minimal = await request(app)
+        .post('/v1/chat/completions')
+        .send({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: 'Test' }],
+          reasoning_effort: 'minimal',
+          stream: false,
+        });
+      assert.equal(minimal.status, 200);
+      assert.equal(upstream.lastChatRequestBody.reasoning_effort, 'minimal');
+
+      const max = await request(app)
+        .post('/v1/chat/completions')
+        .send({
+          model: 'gpt-4o',
+          messages: [{ role: 'user', content: 'Test' }],
+          reasoning_effort: 'max',
+          stream: false,
+        });
+      assert.equal(max.status, 200);
+      assert.equal(upstream.lastChatRequestBody.reasoning_effort, 'xhigh');
     });
 
     test('proxy families apply adapter mapping after the real normalizer', async () => {
@@ -295,13 +325,12 @@ describe('openaiProxy.js - Unit Tests', () => {
         .send({
           model: 'gpt-5.1-mini',
           messages: [{ role: 'user', content: 'Test' }],
-            reasoning_effort: 'xhigh',
-            stream: false,
-            provider_stream: false,
-          });
-      // `max` is rejected by the current proxy allow-list and rewritten to
-      // `xhigh` by PR #44 before this adapter runs. gpt-5.1 then snaps both
-      // `xhigh` and `max` to `high`.
+          reasoning_effort: 'xhigh',
+          stream: false,
+          provider_stream: false,
+        });
+      // The normalizer leaves xhigh alone. gpt-5.1's adapter maps it to high.
+      // max would be rewritten to xhigh first and then to the same high.
       assert.equal(flat.status, 200);
       assert.equal(upstream.lastChatRequestBody.reasoning_effort, 'high');
 
@@ -314,6 +343,7 @@ describe('openaiProxy.js - Unit Tests', () => {
           stream: false,
           provider_stream: false,
         });
+      // The normalizer passes minimal through. gpt-5.1's adapter maps it to none.
       assert.equal(minimal.status, 200);
       assert.equal(upstream.lastChatRequestBody.reasoning_effort, 'none');
 
