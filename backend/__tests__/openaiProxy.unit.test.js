@@ -267,7 +267,7 @@ describe('openaiProxy.js - Unit Tests', () => {
       const app = makeApp({ mockUser });
 
       // Test valid values
-      for (const effort of ['minimal', 'low', 'medium', 'high']) {
+      for (const effort of ['none', 'low', 'medium', 'high', 'xhigh']) {
         const res = await request(app)
           .post('/v1/chat/completions')
           .send({
@@ -277,7 +277,34 @@ describe('openaiProxy.js - Unit Tests', () => {
             stream: false,
           });
         assert.equal(res.status, 200, `Should accept ${effort}`);
+        assert.equal(upstream.lastChatRequestBody.reasoning_effort, effort);
       }
+    });
+
+    test('passes legacy minimal through and rewrites max to xhigh', async () => {
+      const app = makeApp({ mockUser });
+
+      const minimal = await request(app)
+        .post('/v1/chat/completions')
+        .send({
+          model: 'gpt-5.1-mini',
+          messages: [{ role: 'user', content: 'Test' }],
+          reasoning_effort: 'minimal',
+          stream: false,
+        });
+      assert.equal(minimal.status, 200);
+      assert.equal(upstream.lastChatRequestBody.reasoning_effort, 'minimal');
+
+      const max = await request(app)
+        .post('/v1/chat/completions')
+        .send({
+          model: 'gpt-5.1-mini',
+          messages: [{ role: 'user', content: 'Test' }],
+          reasoning_effort: 'max',
+          stream: false,
+        });
+      assert.equal(max.status, 200);
+      assert.equal(upstream.lastChatRequestBody.reasoning_effort, 'xhigh');
     });
 
     test('rejects invalid reasoning_effort value', async () => {

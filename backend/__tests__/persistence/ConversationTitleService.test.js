@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { jest } from '@jest/globals';
+import { MessagesAdapter } from '../../src/lib/adapters/messagesAdapter.js';
 
 const streamUtilsModule = new URL('../../src/lib/streamUtils.js', import.meta.url).href;
 const providersModule = new URL('../../src/lib/providers/index.js', import.meta.url).href;
@@ -241,6 +242,65 @@ describe('ConversationTitleService', () => {
       const result = await titleService.generateTitle(mixedContent, 'test-provider');
 
       assert.equal(result, 'Image Analysis');
+    });
+
+    test('title request for a Claude 5.5 model carries no temperature after Anthropic translation', async () => {
+      const adapter = new MessagesAdapter({
+        config: {},
+        settings: {},
+        getDefaultModel: () => 'claude-3-5-sonnet-20241022',
+        reasoningFormat: 'anthropic',
+      });
+
+      for (const model of ['claude-opus-5-5', 'claude-sonnet-5-5', 'claude-haiku-5-5', 'claude-opus-5-5-20251101']) {
+        let requestBody;
+        mockCreateOpenAIRequest = (_config, body) => {
+          requestBody = body;
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({
+              choices: [{ message: { content: 'Hello Title' } }],
+            }),
+          });
+        };
+
+        const result = await titleService.generateTitle('Hello there', 'anthropic', model);
+
+        assert.equal(result, 'Hello Title');
+        assert.equal(requestBody.model, model);
+        assert.equal(requestBody.temperature, 0.2);
+        const translated = await adapter.translateRequest(requestBody);
+        assert.equal(Object.hasOwn(translated, 'temperature'), false);
+        assert.equal(translated.temperature, undefined);
+        assert.equal(translated.model, model);
+        assert.equal(translated.max_tokens, 20);
+      }
+    });
+
+    test('title request for an earlier Claude model still carries temperature 0.2', async () => {
+      const adapter = new MessagesAdapter({
+        config: {},
+        settings: {},
+        getDefaultModel: () => 'claude-3-5-sonnet-20241022',
+        reasoningFormat: 'anthropic',
+      });
+
+      let requestBody;
+      mockCreateOpenAIRequest = (_config, body) => {
+        requestBody = body;
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({
+            choices: [{ message: { content: 'Hello Title' } }],
+          }),
+        });
+      };
+
+      await titleService.generateTitle('Hello there', 'anthropic', 'claude-opus-4-5');
+
+      const translated = await adapter.translateRequest(requestBody);
+      assert.equal(translated.temperature, 0.2);
+      assert.equal(translated.model, 'claude-opus-4-5');
     });
 
     test('should fallback for mixed content when API fails', async () => {

@@ -135,6 +135,7 @@ export type {
   PendingState,
   Status,
   ReasoningEffortLevel,
+  StoredReasoningEffort,
   QualityLevel,
   ModelOption,
   ModelGroup,
