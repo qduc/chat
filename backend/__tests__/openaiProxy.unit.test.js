@@ -300,10 +300,10 @@ describe('openaiProxy.js - Unit Tests', () => {
             provider_stream: false,
           });
       // `max` is rejected by the current proxy allow-list and rewritten to
-      // `xhigh` by PR #44 before this adapter runs. `xhigh` is the value both
-      // versions hand the adapter; adapter tests lock `max` to the same shape.
+      // `xhigh` by PR #44 before this adapter runs. gpt-5.1 then snaps both
+      // `xhigh` and `max` to `high`.
       assert.equal(flat.status, 200);
-      assert.equal(upstream.lastChatRequestBody.reasoning_effort, 'xhigh');
+      assert.equal(upstream.lastChatRequestBody.reasoning_effort, 'high');
 
       const minimal = await request(app)
         .post('/v1/chat/completions')
@@ -315,7 +315,7 @@ describe('openaiProxy.js - Unit Tests', () => {
           provider_stream: false,
         });
       assert.equal(minimal.status, 200);
-      assert.equal(upstream.lastChatRequestBody.reasoning_effort, 'minimal');
+      assert.equal(upstream.lastChatRequestBody.reasoning_effort, 'none');
 
       insert('proxy-openrouter', 'openai', 'https://openrouter.ai/api/v1');
       insert('proxy-deepseek', 'openai', 'https://api.deepseek.com');

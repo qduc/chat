@@ -349,13 +349,18 @@ describe('legacy minimal is off when the model has an off setting', () => {
     });
     expect(gemma.generationConfig.thinkingConfig).toEqual({ includeThoughts: true, thinkingLevel: 'high' });
 
-    for (const model of ['gpt-5.1', 'gpt-5.1-mini', 'openai/gpt-5.1-mini']) {
-      const responsesRequest = await responsesEffort(model, 'max');
-      const chatRequest = await chatEffort(nested, model, 'max');
-      expect(responsesRequest.reasoning.effort).toBe('xhigh');
-      expect(chatRequest.reasoning.effort).toBe('xhigh');
-      const minimal = await responsesEffort(model, 'minimal');
-      expect(minimal.reasoning.effort).toBe('minimal');
+    for (const model of ['gpt-5.1', 'gpt-5.1-mini', 'gpt-5.1-20251101', 'openai/gpt-5.1', 'openai/gpt-5.1-mini']) {
+      expect((await responsesEffort(model, 'none')).reasoning.effort).toBe('none');
+      expect((await responsesEffort(model, 'minimal')).reasoning.effort).toBe('none');
+      expect((await responsesEffort(model, 'low')).reasoning.effort).toBe('low');
+      expect((await responsesEffort(model, 'medium')).reasoning.effort).toBe('medium');
+      expect((await responsesEffort(model, 'high')).reasoning.effort).toBe('high');
+      expect((await responsesEffort(model, 'xhigh')).reasoning.effort).toBe('high');
+      expect((await responsesEffort(model, 'max')).reasoning.effort).toBe('high');
+      expect((await chatEffort(nested, model, 'xhigh')).reasoning.effort).toBe('high');
+      expect((await chatEffort(nested, model, 'max')).reasoning.effort).toBe('high');
+      expect((await chatEffort(flat, model, 'xhigh')).reasoning_effort).toBe('high');
+      expect((await chatEffort(flat, model, 'max')).reasoning_effort).toBe('high');
     }
   });
 

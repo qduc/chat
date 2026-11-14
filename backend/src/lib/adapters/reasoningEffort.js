@@ -114,18 +114,22 @@ export function nearestSupportedEffort(effort, supported) {
 /**
  * Effort to send on the OpenAI Responses and Chat Completions APIs.
  * Unlisted models (including gpt-6.1-terra and gpt-6-sol) are returned unchanged.
+ * gpt-5.1 accepts only `none`, `low`, `medium`, and `high`, including dated
+ * and vendor-prefixed ids (`gpt-5.1-20251101`, `openai/gpt-5.1-mini`).
+ * `xhigh` and `max` are the nearest step above `high`, so both send `high`.
+ * https://developers.openai.com/api/docs/models/gpt-5.1
  */
 function isGpt51(model) {
   return /^gpt-5\.1(?:-|$)/.test(canonicalModelId(model));
 }
 
+const GPT51_LEVELS = ['none', 'low', 'medium', 'high'];
+
 export function mapOpenAIReasoningEffort(model, effort) {
   if (typeof effort !== 'string' || effort.length === 0) return effort;
   const profile = openAIProfile(model);
   if (profile) return nearestSupportedEffort(effort, profile.levels);
-  // gpt-5.1 accepts xhigh. `max` is only the legacy alias, so it becomes xhigh.
-  // Every other value, including `minimal` and `none`, stays as sent.
-  if (isGpt51(model) && effort.toLowerCase() === 'max') return 'xhigh';
+  if (isGpt51(model)) return nearestSupportedEffort(effort, GPT51_LEVELS);
   return effort;
 }
 

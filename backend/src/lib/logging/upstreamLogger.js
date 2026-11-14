@@ -228,14 +228,22 @@ const SENSITIVE_HEADER_NAMES = new Set([
   'x-api-key',
   'x-goog-api-key',
 ]);
-// Suffix match: api-key, apikey, token, secret, auth. Does not match
-// content-type or authorization (that name is in the exact set).
-const SENSITIVE_HEADER_PATTERN = /(^|[-_])(api-?key|token|secret|auth)$/i;
+// After '_' is folded to '-', a credential word at the end, or `api-key` /
+// `apikey` anywhere in the name. `content-type` and `x-request-id` do not match.
+const SENSITIVE_HEADER_PATTERN = /(^|-)(api-?key|token|secret|auth|password|credential)s?$/i;
+const SENSITIVE_HEADER_PART = /^(token|secret|auth|password|credential)s?$/i;
 const SENSITIVE_QUERY_NAMES = new Set(['key', 'api_key', 'apikey', 'access_token', 'token']);
 
+function normalizedHeaderName(name) {
+  return String(name).toLowerCase().replace(/_/g, '-');
+}
+
 export function isSensitiveHeaderName(name) {
-  const lower = String(name).toLowerCase();
-  return SENSITIVE_HEADER_NAMES.has(lower) || SENSITIVE_HEADER_PATTERN.test(lower);
+  const normalized = normalizedHeaderName(name);
+  if (SENSITIVE_HEADER_NAMES.has(normalized)) return true;
+  if (SENSITIVE_HEADER_PATTERN.test(normalized)) return true;
+  if (normalized.includes('api-key') || normalized.replace(/-/g, '').includes('apikey')) return true;
+  return normalized.split('-').some((part) => SENSITIVE_HEADER_PART.test(part));
 }
 
 function isSensitiveQueryName(name) {
