@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.19.0] - 2026-11-14
+
+### Changed
+- Moved server-side tool orchestration to the agent-core harness.
+- Updated the Electron runtime to Node 24.
+
+### Fixed
+- Improved Anthropic request compatibility for Claude 5.5 and reasoning controls across providers.
+- Fixed OpenRouter continuations and Gemini reasoning request handling.
+- Improved conversation title generation, upstream streaming errors, and API key redaction.
+
 ## [0.18.8] - 2026-06-28
 
 ### Added
