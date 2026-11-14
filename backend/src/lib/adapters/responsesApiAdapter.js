@@ -3,6 +3,7 @@ import { maybeConvertLocalImageUrl } from '../localImageEncoder.js';
 import { BaseAdapter } from './baseAdapter.js';
 import { createChatCompletionChunk, createResponseFacade } from '../streamUtils.js';
 import { normalizeUsage } from '../utils/usage.js';
+import { mapOpenAIReasoningEffort } from './reasoningEffort.js';
 
 const RESPONSES_ENDPOINT = '/v1/responses';
 
@@ -1221,7 +1222,7 @@ export class ResponsesAPIAdapter extends BaseAdapter {
 
     if (payload.reasoning_effort !== undefined) {
       request.reasoning = {
-        effort: payload.reasoning_effort,
+        effort: mapOpenAIReasoningEffort(model, payload.reasoning_effort),
         summary: 'auto',
       };
     }

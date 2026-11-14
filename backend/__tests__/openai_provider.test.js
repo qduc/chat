@@ -1,5 +1,6 @@
 import { describe, test, expect, beforeEach, jest } from '@jest/globals';
 import { OpenAIProvider } from '../src/lib/providers/openaiProvider.js';
+import { formatUpstreamRequestLog } from '../src/lib/logging/upstreamLogger.js';
 
 describe('OpenAIProvider', () => {
   let provider;
@@ -47,6 +48,40 @@ describe('OpenAIProvider', () => {
 
       await expect(providerWithName.makeHttpRequest({ model: 'gpt-4.1-mini' }))
         .rejects.toThrow('Could not connect to provider OpenAI Proxy.');
+    });
+
+    test('redacts api-key and proxy-authorization from extra headers', async () => {
+      const secretProvider = new OpenAIProvider({
+        config: { defaultModel: 'gpt-4.1-mini' },
+        settings: {
+          apiKey: 'sk-FAKE-123',
+          headers: {
+            'api-key': 'sk-FAKE-123',
+            'proxy-authorization': 'proxy-secret',
+            'Content-Type': 'application/json',
+          },
+        },
+        providerId: 'test-openai',
+        http: mockFetch,
+      });
+      mockFetch.mockResolvedValue(new Response('{}', {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }));
+      await secretProvider.makeHttpRequest({ model: 'gpt-4.1-mini' });
+      const [url, options] = mockFetch.mock.calls[0];
+      const log = formatUpstreamRequestLog({
+        url,
+        headers: options.headers,
+        body: { model: 'gpt-4.1-mini' },
+        now: new Date('2026-11-14T00:00:00.000Z'),
+      });
+      expect(log).not.toContain('sk-FAKE-123');
+      expect(log).not.toContain('proxy-secret');
+      expect(log).toContain('"api-key": "[REDACTED]"');
+      expect(log).toContain('"proxy-authorization": "[REDACTED]"');
+      expect(log).toContain('"Authorization": "[REDACTED]"');
+      expect(log).toContain('application/json');
     });
   });
 

@@ -406,6 +406,77 @@ describe('OpenAIModel (Responses API)', () => {
     expect(calls[0]!.body.previous_response_id).toBeUndefined();
     expect(JSON.stringify(calls[0]!.body.messages)).toContain('first question');
   });
+
+  test('OpenRouter Responses does not continue from previous_response_id', async () => {
+    const { fetch, calls } = recordedFetch({ body: responsesStream('resp_2', 'Hi again') });
+    const provider = new OpenAIProvider({
+      config,
+      providerId: 'openrouter',
+      http: fetch,
+      settings: { providerType: 'openai-responses', apiKey: 'k', baseUrl: 'https://openrouter.ai/api/v1' },
+    });
+    const model = createModel({ provider, model: 'openai/gpt-6-astra', config, resumeFrom: 'resp_prev' });
+    expect(model.capabilities.continuity).toBe(false);
+
+    await collect(
+      model.stream(
+        request('openai/gpt-6-astra', priorTurn(), { previousResponseId: 'resp_1' }),
+        new AbortController().signal,
+      ),
+    );
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.url).toContain('https://openrouter.ai/api/v1/responses');
+    expect(calls[0]!.body.previous_response_id).toBeUndefined();
+    for (const said of ['first question', 'first answer', 'second question']) {
+      expect(inputTexts(calls[0]!.body)).toContain(said);
+    }
+  });
+
+  test('OpenRouter tool follow-up sends full history and no previous_response_id', async () => {
+    const { fetch, calls } = recordedFetch({ body: responsesStream('resp_2', '18C and sunny') });
+    const provider = new OpenAIProvider({
+      config,
+      providerId: 'openrouter',
+      http: fetch,
+      settings: { providerType: 'openai-responses', apiKey: 'k', baseUrl: 'https://openrouter.ai/api/v1' },
+    });
+    const model = createModel({ provider, model: 'openai/gpt-6-astra', config });
+    const history: Item[] = [
+      user('Weather in Paris?'),
+      {
+        type: 'tool_call',
+        id: 't1' as ItemId,
+        callId: 'call_weather_1' as ToolCallId,
+        toolName: 'web_search',
+        input: { query: 'paris weather' },
+        rawArguments: '{"query":"paris weather"}',
+      },
+      {
+        type: 'tool_result',
+        id: 'r1' as ItemId,
+        callId: 'call_weather_1' as ToolCallId,
+        output: '18C and sunny',
+        isError: false,
+      },
+    ];
+
+    await collect(
+      model.stream(
+        request('openai/gpt-6-astra', history, { previousResponseId: 'resp_turn1', reasoning: 'none' }),
+        new AbortController().signal,
+      ),
+    );
+
+    expect(calls[0]!.body.previous_response_id).toBeUndefined();
+    expect(calls[0]!.body.reasoning).toEqual({ effort: 'low', summary: 'auto' });
+    const inputTypes = (calls[0]!.body.input as Array<{ type?: string; role?: string }>).map(
+      (item) => item.type ?? item.role,
+    );
+    expect(inputTypes).toEqual(['system', 'user', 'function_call', 'function_call_output']);
+    expect(JSON.stringify(calls[0]!.body.input)).toContain('call_weather_1');
+    expect(JSON.stringify(calls[0]!.body.input)).toContain('18C and sunny');
+  });
 });
 
 describe('AnthropicModel', () => {

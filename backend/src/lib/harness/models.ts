@@ -30,9 +30,15 @@ async function withPromptCaching(
 
 /** OpenAI and OpenAI-compatible servers (Chat Completions or Responses API). */
 export class OpenAIModel extends ProviderModel {
-  /** Only the Responses API holds server-side state to continue from. */
+  /**
+   * Only the Responses API holds server-side state to continue from.
+   * OpenRouter answers 400 for `previous_response_id` ("not supported on this
+   * proxy"), so those requests always send the full history.
+   */
   protected override supportsContinuation(): boolean {
-    return this.provider.shouldUseResponsesAPI?.() ?? false;
+    if (!(this.provider.shouldUseResponsesAPI?.() ?? false)) return false;
+    const baseUrl = `${this.provider.baseUrl ?? ''} ${this.provider.settings?.baseUrl ?? ''}`.toLowerCase();
+    return !baseUrl.includes('openrouter.ai');
   }
 
   /** OpenRouter passes Anthropic-style breakpoints through for Claude models. */

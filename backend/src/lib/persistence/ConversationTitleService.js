@@ -1,6 +1,7 @@
 import { createOpenAIRequest } from '../streamUtils.js';
 import { providerIsConfigured } from '../providers/index.js';
 import { logger } from '../../logger.js';
+import { titleGenerationOverrides } from '../adapters/reasoningEffort.js';
 
 /**
  * Handles conversation title generation
@@ -69,8 +70,6 @@ export class ConversationTitleService {
    * @returns {Promise<string|null>} Generated title or null
    */
   async _requestTitleFromAPI(text, providerId, model = null) {
-    const promptUser = text.length > 500 ? text.slice(0, 500) + '…' : text;
-
     let modelToUse = model || this.config.titleModel || this.config.defaultModel || 'gpt-4.1-mini';
     let providerToUse = providerId;
 
@@ -80,21 +79,7 @@ export class ConversationTitleService {
       modelToUse = parts[1];
     }
 
-    const requestBody = {
-      model: modelToUse,
-      temperature: 0.2,
-      max_tokens: 20,
-      messages: [
-        {
-          role: 'system',
-          content: 'You create a very short, descriptive chat title (max 6 words). Output only the title, no quotes, no punctuation at the end.'
-        },
-        {
-          role: 'user',
-          content: `Create a short title for: ${promptUser}`
-        },
-      ],
-    };
+    const requestBody = ConversationTitleService.buildTitleRequestBody(modelToUse, text);
 
     const resp = await createOpenAIRequest(this.config, requestBody, { providerId: providerToUse });
 
@@ -118,6 +103,43 @@ export class ConversationTitleService {
     }
 
     return title;
+  }
+
+  /**
+   * OpenAI-shaped title request. Reasoning models get effort `none` (adapters
+   * lower that to the model's minimum) and a larger output cap, because a
+   * 20-token cap is spent on thinking before any title text. Temperature stays
+   * 0.2 except where the model rejects it at the effort that will be sent.
+   * Every other model keeps temperature 0.2 and max_tokens 20.
+   * @param {string} model
+   * @param {string} text - User text. Longer than 500 characters is truncated here.
+   * @returns {object}
+   */
+  static buildTitleRequestBody(model, text) {
+    const promptUser = text.length > 500 ? text.slice(0, 500) + '…' : text;
+    const overrides = titleGenerationOverrides(model);
+    const requestBody = {
+      model,
+      max_tokens: overrides ? overrides.maxTokens : 20,
+      messages: [
+        {
+          role: 'system',
+          content: 'You create a very short, descriptive chat title (max 6 words). Output only the title, no quotes, no punctuation at the end.'
+        },
+        {
+          role: 'user',
+          content: `Create a short title for: ${promptUser}`
+        },
+      ],
+    };
+
+    if (!overrides || overrides.includeTemperature) {
+      requestBody.temperature = 0.2;
+    }
+    if (overrides) {
+      requestBody.reasoning_effort = overrides.reasoningEffort;
+    }
+    return requestBody;
   }
 
   /**

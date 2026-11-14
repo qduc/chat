@@ -277,17 +277,20 @@ describe('openaiProxy.js - Unit Tests', () => {
             stream: false,
           });
         assert.equal(res.status, 200, `Should accept ${effort}`);
-        assert.equal(upstream.lastChatRequestBody.reasoning_effort, effort);
+        // gpt-5.1 accepts only none/low/medium/high, so the adapter maps xhigh to high.
+        const expected = effort === 'xhigh' ? 'high' : effort;
+        assert.equal(upstream.lastChatRequestBody.reasoning_effort, expected);
       }
     });
 
     test('passes legacy minimal through and rewrites max to xhigh', async () => {
       const app = makeApp({ mockUser });
-
+      // gpt-4o is not remapped by the adapter, so the upstream body shows the
+      // normalizer: minimal passes through, max becomes xhigh.
       const minimal = await request(app)
         .post('/v1/chat/completions')
         .send({
-          model: 'gpt-5.1-mini',
+          model: 'gpt-4o',
           messages: [{ role: 'user', content: 'Test' }],
           reasoning_effort: 'minimal',
           stream: false,
@@ -298,13 +301,117 @@ describe('openaiProxy.js - Unit Tests', () => {
       const max = await request(app)
         .post('/v1/chat/completions')
         .send({
-          model: 'gpt-5.1-mini',
+          model: 'gpt-4o',
           messages: [{ role: 'user', content: 'Test' }],
           reasoning_effort: 'max',
           stream: false,
         });
       assert.equal(max.status, 200);
       assert.equal(upstream.lastChatRequestBody.reasoning_effort, 'xhigh');
+    });
+
+    test('proxy families apply adapter mapping after the real normalizer', async () => {
+      const app = makeApp({ mockUser });
+      const db = getDb();
+      const now = new Date().toISOString();
+      const insert = (id, type, baseUrl) => {
+        db.prepare(`
+          INSERT OR REPLACE INTO providers (id, user_id, name, provider_type, api_key, base_url, is_default, enabled, extra_headers, metadata, created_at, updated_at)
+          VALUES (@id, @userId, @id, @type, 'test-key', @baseUrl, 0, 1, '{}', '{}', @now, @now)
+        `).run({ id, userId: mockUser.id, type, baseUrl, now });
+      };
+      const flat = await request(app)
+        .post('/v1/chat/completions')
+        .send({
+          model: 'gpt-5.1-mini',
+          messages: [{ role: 'user', content: 'Test' }],
+          reasoning_effort: 'xhigh',
+          stream: false,
+          provider_stream: false,
+        });
+      // The normalizer leaves xhigh alone. gpt-5.1's adapter maps it to high.
+      // max would be rewritten to xhigh first and then to the same high.
+      assert.equal(flat.status, 200);
+      assert.equal(upstream.lastChatRequestBody.reasoning_effort, 'high');
+
+      const minimal = await request(app)
+        .post('/v1/chat/completions')
+        .send({
+          model: 'gpt-5.1-mini',
+          messages: [{ role: 'user', content: 'Test' }],
+          reasoning_effort: 'minimal',
+          stream: false,
+          provider_stream: false,
+        });
+      // The normalizer passes minimal through. gpt-5.1's adapter maps it to none.
+      assert.equal(minimal.status, 200);
+      assert.equal(upstream.lastChatRequestBody.reasoning_effort, 'none');
+
+      insert('proxy-openrouter', 'openai', 'https://openrouter.ai/api/v1');
+      insert('proxy-deepseek', 'openai', 'https://api.deepseek.com');
+      insert('proxy-llama', 'llama-cpp', 'http://127.0.0.1:9/v1');
+      insert('proxy-gemini', 'gemini', 'https://generativelanguage.googleapis.com/v1beta');
+
+      const originalFetch = globalThis.fetch;
+      const calls = [];
+      globalThis.fetch = async (url, init) => {
+        calls.push({ url: String(url), body: JSON.parse(init.body) });
+        const host = String(url);
+        const payload = host.includes('generativelanguage.googleapis.com')
+          ? { candidates: [{ content: { parts: [{ text: 'Hi' }], role: 'model' }, finishReason: 'STOP' }] }
+          : { id: 'chat_123', choices: [{ message: { role: 'assistant', content: 'Hi' }, finish_reason: 'stop' }] };
+        return new Response(JSON.stringify(payload), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      };
+
+      try {
+        const send = (providerId, model, effort) => request(app)
+          .post('/v1/chat/completions')
+          .send({
+            provider_id: providerId,
+            model,
+            messages: [{ role: 'user', content: 'Test' }],
+            reasoning_effort: effort,
+            stream: false,
+            provider_stream: false,
+          });
+
+        assert.equal((await send('proxy-openrouter', 'openai/gpt-6-astra', 'xhigh')).status, 200);
+        assert.equal((await send('proxy-deepseek', 'deepseek-chat', 'xhigh')).status, 200);
+        assert.equal((await send('proxy-llama', 'local-model', 'xhigh')).status, 200);
+        assert.equal((await send('proxy-gemini', 'gemini-4-hydrogen', 'none')).status, 200);
+        assert.equal((await send('proxy-gemini', 'gemma-4-26b', 'xhigh')).status, 200);
+
+        const textOf = (body) => JSON.stringify(body.contents || body.messages || body.input || '');
+        const isChat = (body) => textOf(body).includes('Test') && !textOf(body).includes('Create a short title');
+        const chatBody = (part) => calls
+          .filter((call) => call.url.includes(part) && isChat(call.body))
+          .map((call) => call.body)
+          .at(-1);
+        assert.equal(chatBody('openrouter.ai').reasoning.effort, 'xhigh');
+        assert.equal(chatBody('api.deepseek.com').reasoning_effort, 'max');
+        assert.equal(chatBody('api.deepseek.com').thinking.type, 'enabled');
+        assert.equal(chatBody('127.0.0.1:9').chat_template_kwargs.reasoning_effort, 'high');
+        assert.equal(chatBody('127.0.0.1:9').chat_template_kwargs.reasoning_budget, 16384);
+        const geminiCalls = calls.filter((call) => call.url.includes('generativelanguage.googleapis.com'));
+        const hydrogen = geminiCalls.find((call) => call.url.includes('gemini-4-hydrogen') && isChat(call.body));
+        const gemma = geminiCalls.find((call) => call.url.includes('gemma-4-26b') && isChat(call.body));
+        assert.ok(hydrogen, geminiCalls.map((call) => call.url).join(' | '));
+        assert.ok(gemma, geminiCalls.map((call) => call.url).join(' | '));
+        assert.equal(hydrogen.body.generationConfig.thinkingConfig.thinkingLevel, 'low');
+        assert.equal(hydrogen.body.generationConfig.thinkingConfig.thinkingBudget, undefined);
+        assert.equal(gemma.body.generationConfig.thinkingConfig.thinkingLevel, 'high');
+      } finally {
+        globalThis.fetch = originalFetch;
+        db.prepare('DELETE FROM providers WHERE id IN (?, ?, ?, ?)').run(
+          'proxy-openrouter',
+          'proxy-deepseek',
+          'proxy-llama',
+          'proxy-gemini',
+        );
+      }
     });
 
     test('rejects invalid reasoning_effort value', async () => {

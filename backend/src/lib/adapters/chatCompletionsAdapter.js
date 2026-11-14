@@ -1,5 +1,6 @@
 import { BaseAdapter } from './baseAdapter.js';
 import { convertContentPartImage } from '../localImageEncoder.js';
+import { mapOpenAIReasoningEffort } from './reasoningEffort.js';
 
 const OPENAI_ALLOWED_REQUEST_KEYS = new Set([
   'frequency_penalty',
@@ -194,13 +195,15 @@ function normalizeTools(tools) {
 }
 
 function applyDeepSeekReasoningControls(target, reasoningEffort) {
-  if (reasoningEffort === 'none' || reasoningEffort === 'minimal') {
+  // `max` is the legacy alias of `xhigh`. DeepSeek's highest value is `max`.
+  const effort = reasoningEffort === 'max' ? 'xhigh' : reasoningEffort;
+  if (effort === 'none' || effort === 'minimal') {
     target.thinking = { type: 'disabled' };
     return;
   }
 
   target.thinking = { type: 'enabled' };
-  target.reasoning_effort = reasoningEffort === 'xhigh' ? 'max' : 'high';
+  target.reasoning_effort = effort === 'xhigh' ? 'max' : 'high';
 }
 
 function applyLlamaCppReasoningControls(target, reasoningEffort) {
@@ -211,7 +214,9 @@ function applyLlamaCppReasoningControls(target, reasoningEffort) {
     xhigh: 16384,
   };
 
-  if (reasoningEffort === 'none' || reasoningEffort === 'minimal') {
+  // `max` is the legacy alias of `xhigh`, which this template expresses as high.
+  const effort = reasoningEffort === 'max' ? 'xhigh' : reasoningEffort;
+  if (effort === 'none' || effort === 'minimal') {
     target.chat_template_kwargs = {
       reasoning_effort: 'low',
       enable_thinking: false,
@@ -221,12 +226,12 @@ function applyLlamaCppReasoningControls(target, reasoningEffort) {
     return;
   }
 
-  const templateEffort = reasoningEffort === 'xhigh' ? 'high' : reasoningEffort;
+  const templateEffort = effort === 'xhigh' ? 'high' : effort;
   target.chat_template_kwargs = {
     reasoning_effort: templateEffort,
     enable_thinking: true,
     thinking_mode: templateEffort,
-    reasoning_budget: budgets[reasoningEffort] ?? budgets.medium,
+    reasoning_budget: budgets[effort] ?? budgets.medium,
   };
 }
 
@@ -305,12 +310,17 @@ export class ChatCompletionsAdapter extends BaseAdapter {
     const reasoningEffort = payload.reasoning_effort ?? payload.reasoning?.effort;
     if (reasoningEffort !== undefined) {
       const format = context.reasoningFormat || this.reasoningFormat;
-      if (format === 'nested') {
-        // OpenAI o1/o3 style: reasoning: { effort: value }
-        normalized.reasoning = { effort: reasoningEffort };
-      } else if (format === 'flat') {
-        // Some providers expect top-level reasoning_effort
-        normalized.reasoning_effort = reasoningEffort;
+      if (format === 'nested' || format === 'flat') {
+        // Listed GPT-6 models snap unsupported values onto a level they accept.
+        // Legacy `minimal` is off (`none`) when the model has that setting,
+        // otherwise its lowest level. Unlisted models keep the value.
+        // DeepSeek and llama.cpp keep their own maps.
+        const effort = mapOpenAIReasoningEffort(model, reasoningEffort);
+        if (format === 'nested') {
+          normalized.reasoning = { effort };
+        } else {
+          normalized.reasoning_effort = effort;
+        }
       } else if (format === 'deepseek') {
         // Provider-specific value mappers are intentionally kept here while
         // there are only a few. If this grows again, replace these enum branches
