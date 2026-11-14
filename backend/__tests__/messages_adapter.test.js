@@ -1010,12 +1010,49 @@ describe('MessagesAdapter', () => {
         ['claude-sonnet-5-5', 'max', { effort: 'xhigh' }],
         ['claude-haiku-5-5', 'minimal', { effort: 'low' }],
         ['claude-opus-4-5', 'max', { effort: 'high' }],
-        ['claude-opus-4-7', 'xhigh', { effort: 'high' }],
+        ['claude-opus-4-7', 'max', { effort: 'xhigh' }],
         ['claude-sonnet-4-20250514', 'minimal', { effort: 'low' }],
       ])('%s maps unsupported %s to the nearest accepted effort', async (model, effort, outputConfig) => {
         const result = await anthropicAdapter().translateRequest(request(model, { reasoning_effort: effort }));
         expect(result.thinking).toEqual({ type: 'adaptive', display: 'summarized' });
         expect(result.output_config).toEqual(outputConfig);
+      });
+
+      test.each([
+        'claude-fable-5-2',
+        'claude-mythos-5-2',
+        'claude-fable-5-1',
+        'claude-mythos-5-1',
+        'claude-fable-5',
+        'claude-mythos-5',
+        'claude-opus-5-5',
+        'claude-opus-5',
+        'claude-opus-4-8',
+        'claude-opus-4-7',
+        'claude-opus-4-7-20260101',
+        'claude-sonnet-5-5',
+        'claude-sonnet-5',
+        'claude-haiku-5-5',
+      ])('%s passes xhigh through', async (model) => {
+        const result = await anthropicAdapter().translateRequest(request(model, { reasoning_effort: 'xhigh' }));
+        expect(result.thinking).toEqual({ type: 'adaptive', display: 'summarized' });
+        expect(result.output_config).toEqual({ effort: 'xhigh' });
+      });
+
+      test.each([
+        'claude-opus-4-5',
+        'claude-sonnet-4-5',
+        'claude-opus-4-6',
+        'claude-sonnet-4-6',
+        'claude-sonnet-4-7',
+        'claude-haiku-4-5',
+        'claude-haiku-5',
+        'claude-3-5-sonnet-20241022',
+        'claude-sonnet-4-20250514',
+      ])('%s sends xhigh as high', async (model) => {
+        const result = await anthropicAdapter().translateRequest(request(model, { reasoning_effort: 'xhigh' }));
+        expect(result.thinking).toEqual({ type: 'adaptive', display: 'summarized' });
+        expect(result.output_config).toEqual({ effort: 'high' });
       });
 
       test('claude-opus-5 strips sampling params without the 5.5 thinking or tool_choice changes', async () => {

@@ -59,8 +59,10 @@ const SAMPLING_PARAM_KEYS = ['temperature', 'top_p', 'top_k'];
  *    off switch and is valid only at effort high or below (the API default
  *    is high, so `none` does not send an effort).
  *  - omitted: `thinking: { type: "disabled" }` (Haiku 5.5 and earlier).
- * `acceptsXhigh`: Claude 5.5 models keep `xhigh`. Other Claude models do not,
- * so `xhigh` is sent as `high`.
+ * `acceptsXhigh`: pass `xhigh` through. Set from the effort docs, not from
+ * "4.7+" alone. Sonnet 4.7 and Haiku variants are included only when that
+ * page lists them.
+ * https://platform.claude.com/docs/en/build-with-claude/effort
  *
  * Sampling parameters are omitted for the 5.5 models and for every other
  * Claude 4.7+ id. Non-default `temperature` / `top_p` / `top_k` return 400
@@ -107,30 +109,65 @@ function normalizeAnthropicModelId(model) {
   return id;
 }
 
-function claudeModelVersion(modelId) {
+function parseClaudeModelId(modelId) {
   // Minor is one or two digits (`4-5`, `4-7`). An 8-digit snapshot such as
   // `claude-sonnet-4-20250514` is not a minor version; treat it as `4.0`.
-  const match = /^claude-[a-z]+-(\d+)(?:-(\d{1,2}))?(?=-|$)/.exec(modelId);
+  const match = /^claude-([a-z]+)-(\d+)(?:-(\d{1,2}))?(?=-|$)/.exec(modelId);
   if (!match) return null;
   return {
-    major: Number(match[1]),
-    minor: match[2] === undefined ? 0 : Number(match[2]),
+    family: match[1],
+    major: Number(match[2]),
+    minor: match[3] === undefined ? 0 : Number(match[3]),
   };
 }
 
 function isClaude47OrLater(modelId) {
-  const version = claudeModelVersion(modelId);
+  const version = parseClaudeModelId(modelId);
   if (!version) return false;
   return version.major > 4 || (version.major === 4 && version.minor >= 7);
+}
+
+/**
+ * `output_config.effort: "xhigh"` is not available on every Claude model.
+ * The effort docs list exactly: Fable 5.2, Mythos 5.2, Fable 5.1, Mythos 5.1,
+ * Fable 5, Mythos 5, Opus 5.5, Opus 5, Opus 4.8, Opus 4.7, Sonnet 5.5,
+ * Sonnet 5, and Haiku 5.5.
+ * https://platform.claude.com/docs/en/build-with-claude/effort
+ * Opus 4.6, Sonnet 4.6, Sonnet 4.7, Haiku 5, and anything 4.5 or earlier
+ * are not on that list.
+ */
+function claudeAcceptsXhigh(modelId) {
+  const parsed = parseClaudeModelId(modelId);
+  if (!parsed) return false;
+  const { family, major, minor } = parsed;
+  if (family === 'fable' || family === 'mythos') {
+    return major === 5 && (minor === 2 || minor === 1 || minor === 0);
+  }
+  if (family === 'opus') {
+    if (major === 5 && (minor === 5 || minor === 0)) return true;
+    return major === 4 && (minor === 8 || minor === 7);
+  }
+  if (family === 'sonnet') {
+    return major === 5 && (minor === 5 || minor === 0);
+  }
+  if (family === 'haiku') {
+    return major === 5 && minor === 5;
+  }
+  return false;
+}
+
+function withXhigh(capabilities, modelId) {
+  if (!claudeAcceptsXhigh(modelId) || capabilities.acceptsXhigh) return capabilities;
+  return { ...capabilities, acceptsXhigh: true };
 }
 
 function getAnthropicModelCapabilities(model) {
   const id = normalizeAnthropicModelId(model);
   for (const [key, capabilities] of Object.entries(CLAUDE_55_CAPABILITIES)) {
-    if (id === key || id.startsWith(`${key}-`)) return capabilities;
+    if (id === key || id.startsWith(`${key}-`)) return withXhigh(capabilities, id);
   }
-  if (isClaude47OrLater(id)) return CLAUDE_47_PLUS_CAPABILITIES;
-  return NO_ANTHROPIC_ADJUSTMENTS;
+  if (isClaude47OrLater(id)) return withXhigh(CLAUDE_47_PLUS_CAPABILITIES, id);
+  return withXhigh(NO_ANTHROPIC_ADJUSTMENTS, id);
 }
 
 /**
@@ -158,7 +195,8 @@ function getAnthropicModelCapabilities(model) {
  *
  * Canonical efforts are none, low, medium, high, xhigh. `minimal` and `max`
  * are legacy values: each model maps them to the nearest effort it accepts.
- * Claude 5.5 accepts `xhigh`; every other Claude model tops out at `high`.
+ * `xhigh` is passed through only on the models listed in the effort docs
+ * (see `claudeAcceptsXhigh`); every other Claude model receives `high`.
  * Unknown strings are left unset.
  */
 const CLAUDE_EFFORT_ORDER = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
