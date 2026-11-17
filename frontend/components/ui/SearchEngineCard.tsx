@@ -1,6 +1,8 @@
 import React from 'react';
 import { ChevronDown, ExternalLink, Check } from 'lucide-react';
 import SecretInputCard from './SecretInputCard';
+import { iconButtonClasses } from './Button';
+import { cn } from '../../lib/cn';
 
 interface SecretField {
   label: string;
@@ -45,67 +47,56 @@ export default function SearchEngineCard({
   const isConfigured = !!apiKeyField.value;
 
   return (
-    <div className="border-b border-zinc-200/70 dark:border-zinc-800 last:border-b-0">
-      {/* Collapsed Header - Clickable to expand */}
+    <div className="overflow-hidden rounded-card border border-line bg-surface">
       <button
-        onClick={onToggleExpand}
-        className="w-full flex items-center justify-between gap-3 py-3 px-4 hover:bg-zinc-50/50 dark:hover:bg-zinc-900/50 transition-colors text-left group"
-        aria-expanded={isExpanded}
         type="button"
+        onClick={onToggleExpand}
+        aria-expanded={isExpanded}
+        className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-muted touch-target focus-ring-inset"
       >
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          {/* Status indicator circle */}
-          <div
-            className={`w-2 h-2 rounded-full flex-shrink-0 ${
-              isConfigured ? 'bg-green-500' : 'bg-zinc-300 dark:bg-zinc-600'
-            }`}
+        <span className="flex min-w-0 flex-1 items-center gap-3">
+          <span
+            aria-hidden="true"
+            className={cn(
+              'size-2 shrink-0 rounded-full',
+              isConfigured ? 'bg-success' : 'bg-line-strong'
+            )}
           />
+          <span className="truncate text-sm font-medium text-fg">{name}</span>
+        </span>
 
-          {/* Engine name */}
-          <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">
-            {name}
-          </span>
-        </div>
-
-        {/* Status label and chevron */}
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {isConfigured && (
-            <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium">
-              <Check className="w-3 h-3" />
+        <span className="flex shrink-0 items-center gap-2">
+          {isConfigured ? (
+            <span className="inline-flex items-center gap-1 text-xs text-success">
+              <Check aria-hidden="true" className="size-4" />
               Configured
-            </div>
-          )}
-          {!isConfigured && (
-            <span className="text-xs text-zinc-500 dark:text-zinc-400">Not configured</span>
+            </span>
+          ) : (
+            <span className="text-xs text-fg-subtle">Not configured</span>
           )}
           <ChevronDown
-            className={`w-4 h-4 text-zinc-400 dark:text-zinc-600 transition-transform ${
-              isExpanded ? 'rotate-180' : ''
-            }`}
+            aria-hidden="true"
+            className={cn('size-4 text-fg-subtle', isExpanded && 'rotate-180')}
           />
-        </div>
+        </span>
       </button>
 
-      {/* Expanded Content */}
       {isExpanded && (
-        <div className="px-4 py-4 bg-zinc-50/50 dark:bg-zinc-900/30 border-t border-zinc-200/70 dark:border-zinc-800 space-y-4">
-          {/* Description and Link */}
+        <div className="flex flex-col gap-4 border-t border-line p-4">
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <p className="text-xs text-zinc-600 dark:text-zinc-400">{description}</p>
-            </div>
+            <p className="text-sm text-fg-muted">{description}</p>
             <a
               href={docsUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-zinc-500 hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200 transition-colors flex-shrink-0 mt-0.5"
+              className={iconButtonClasses({ size: 'sm', className: 'size-7' })}
               title={`View ${name} documentation`}
+              aria-label={`View ${name} documentation`}
             >
-              <ExternalLink className="w-4 h-4" />
+              <ExternalLink />
             </a>
           </div>
 
-          {/* Form Fields */}
           <SecretInputCard
             title={baseUrlField ? '' : 'API Key'}
             apiKeyField={apiKeyField}
