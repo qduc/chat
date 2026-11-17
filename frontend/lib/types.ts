@@ -273,6 +273,28 @@ export interface FileUploadProgress {
   error?: string;
 }
 
+/** Estimated or provider-reported cost of one assistant message. */
+export interface MessageUsageCost {
+  usd: number;
+  /** 'provider' when the upstream reported it, 'catalog' when computed from list prices. */
+  source: 'provider' | 'catalog';
+  /** How much prompt caching saved on this message, in USD. */
+  cache_savings_usd?: number;
+}
+
+/** Token usage reported for a message. Every field is optional. */
+export interface MessageUsage {
+  provider?: string;
+  model?: string;
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  reasoning_tokens?: number;
+  cache_read_input_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cost?: MessageUsageCost;
+}
+
 export interface ChatMessage {
   id: string;
   role: Role;
@@ -297,16 +319,7 @@ export interface ChatMessage {
     output: any;
     status?: string;
   }>;
-  usage?: {
-    provider?: string;
-    model?: string;
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-    reasoning_tokens?: number;
-    cache_read_input_tokens?: number;
-    cache_creation_input_tokens?: number;
-  };
+  usage?: MessageUsage;
   reasoning_details?: any[];
   reasoning_tokens?: number | null;
   /** Number of edit revisions for this message (user messages only) */
@@ -402,16 +415,7 @@ export interface ChatResponse {
   finish_reason?: string;
   reasoning_summary?: string;
   message_events?: MessageEvent[];
-  usage?: {
-    provider?: string;
-    model?: string;
-    prompt_tokens?: number;
-    completion_tokens?: number;
-    total_tokens?: number;
-    reasoning_tokens?: number;
-    cache_read_input_tokens?: number;
-    cache_creation_input_tokens?: number;
-  };
+  usage?: MessageUsage;
   reasoning_details?: any[];
   reasoning_tokens?: number | null;
 }
@@ -547,16 +551,7 @@ export interface ConversationWithMessages {
     }>;
     reasoning_details?: any[];
     reasoning_tokens?: number | null;
-    usage?: {
-      provider?: string;
-      model?: string;
-      prompt_tokens?: number;
-      completion_tokens?: number;
-      total_tokens?: number;
-      reasoning_tokens?: number;
-      cache_read_input_tokens?: number;
-      cache_creation_input_tokens?: number;
-    };
+    usage?: MessageUsage;
   }[];
   next_after_seq: number | null;
   evaluations?: Evaluation[];

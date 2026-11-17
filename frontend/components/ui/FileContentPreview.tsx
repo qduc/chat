@@ -149,7 +149,7 @@ interface FilePreviewOverlayProps {
   onClose: () => void;
 }
 
-function FilePreviewOverlay({ file, onClose }: FilePreviewOverlayProps) {
+export function FilePreviewOverlay({ file, onClose }: FilePreviewOverlayProps) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(async () => {

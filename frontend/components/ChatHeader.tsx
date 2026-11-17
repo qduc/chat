@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import ModelSelector, { type Group as TabGroup } from './ui/ModelSelector';
 import { AuthButton } from './auth/AuthButton';
 import { IconButton } from './ui/Button';
+import { cn } from '../lib/cn';
 
 interface ChatHeaderProps {
   isStreaming: boolean;
@@ -25,6 +26,8 @@ interface ChatHeaderProps {
   onFocusMessageInput?: () => void;
   onToggleLeftSidebar?: () => void;
   onToggleRightSidebar?: () => void;
+  /** Whether the chat details panel is open (drives the toggle's pressed state). */
+  rightSidebarOpen?: boolean;
   showLeftSidebarButton?: boolean;
   showRightSidebarButton?: boolean;
   selectedComparisonModels?: string[];
@@ -54,6 +57,7 @@ export function ChatHeader({
   onFocusMessageInput,
   onToggleLeftSidebar,
   onToggleRightSidebar,
+  rightSidebarOpen = false,
   showLeftSidebarButton = false,
   showRightSidebarButton = false,
   onNewChat,
@@ -182,13 +186,14 @@ export function ChatHeader({
           )}
           <AuthButton onShowLogin={onShowLogin} onShowRegister={onShowRegister} />
 
-          {/* Right Sidebar Toggle - Mobile Only */}
+          {/* Chat details panel toggle */}
           {showRightSidebarButton && onToggleRightSidebar && (
             <IconButton
-              label="Toggle system prompts"
-              title="Toggle system prompts"
+              label="Chat details"
+              title={rightSidebarOpen ? 'Hide chat details' : 'Show chat details'}
+              aria-pressed={rightSidebarOpen}
               onClick={onToggleRightSidebar}
-              className="md:hidden"
+              className={cn(rightSidebarOpen && 'bg-muted text-fg')}
             >
               <PanelRight />
             </IconButton>

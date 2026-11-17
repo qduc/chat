@@ -1,16 +1,19 @@
 # Prompt Manager Components
 
-React components for the System Prompts right sidebar (`components/RightSidebar.tsx`).
+Modals used by the "System prompt" section of the chat details panel (`components/details/SystemPromptSection.tsx`).
 
 ## Component Structure
 
-- `PromptDropdown.tsx` - Prompt picker. A `Menu` from `components/ui` with radio items: "No system prompt", built-ins (ordered by `order`), then custom prompts (most recently used first).
 - `SaveAsModal.tsx` - `Modal` that saves the current content as a new prompt, with name validation.
-- `UnsavedChangesModal.tsx` - `Modal` for handling unsaved changes: save, save as new, discard, or cancel.
+- `UnsavedChangesModal.tsx` - `Modal` shown when switching prompts while the current one has unsaved inline edits: save, save as new, discard, or cancel.
+
+The picker and editor themselves live in `components/details/`:
+- `PromptRadioList.tsx` - native radio group: "None", built-ins (ordered by `order`), then custom prompts (most recently used first).
+- `PromptEditor.tsx` - auto-growing textarea with Revert / Save as new / Save.
 
 ## State Management
 
-`RightSidebar` uses the `useSystemPrompts` hook for:
+`SystemPromptSection` uses the `useSystemPrompts` hook for:
 - Fetching prompt lists from the backend
 - Managing CRUD operations
 - Handling local inline editing state
@@ -19,5 +22,6 @@ React components for the System Prompts right sidebar (`components/RightSidebar.
 ## Design Notes
 
 - Styling follows `docs/design-system.md`: semantic tokens only and shared `components/ui` primitives. Each modal has one primary button in its `footer`.
-- Built-in prompts are read-only and marked with a neutral "Built-in" chip.
-- A prompt with unsaved changes shows an asterisk (`*`, `text-accent` in the menu); the sidebar shows an accent dot with a note.
+- Built-in prompts are read-only and marked with a neutral "Built-in" chip; edits to them apply to the current chat only.
+- A prompt with unsaved inline edits shows an accent dot and "Edited" next to its name.
+- Deleting a custom prompt is confirmed with a `Dialog`.

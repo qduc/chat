@@ -16,7 +16,7 @@ jest.mock('../contexts/AuthContext', () => {
 });
 
 import React from 'react';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { ChatHeader } from '../components/ChatHeader';
 import { ThemeProvider } from '../contexts/ThemeContext';
 
@@ -58,5 +58,34 @@ describe('ChatHeader', () => {
 
     // Model selector exists
     expect(screen.getByLabelText('Model')).toBeInTheDocument();
+  });
+
+  it('shows the chat details toggle with its pressed state', () => {
+    const onToggleRightSidebar = jest.fn();
+    const props = {
+      isStreaming: false,
+      model: 'gpt-4.1-mini',
+      onModelChange: jest.fn(),
+      fallbackOptions: [{ value: 'gpt-4.1-mini', label: 'GPT-4.1 Mini' }],
+      onToggleRightSidebar,
+      showRightSidebarButton: true,
+    };
+    const { rerender } = renderWithProvider(<ChatHeader {...props} rightSidebarOpen={false} />);
+
+    const toggle = screen.getByRole('button', { name: 'Chat details' });
+    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(toggle).not.toHaveClass('md:hidden');
+    fireEvent.click(toggle);
+    expect(onToggleRightSidebar).toHaveBeenCalledTimes(1);
+
+    rerender(
+      <ThemeProvider>
+        <ChatHeader {...props} rightSidebarOpen />
+      </ThemeProvider>
+    );
+    expect(screen.getByRole('button', { name: 'Chat details' })).toHaveAttribute(
+      'aria-pressed',
+      'true'
+    );
   });
 });
