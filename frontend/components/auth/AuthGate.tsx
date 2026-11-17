@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { LoginForm } from './LoginForm';
 import { RegisterForm } from './RegisterForm';
+import { Logo } from '../ui/Logo';
 import type { AuthMode } from './AuthModal';
 
 export function AuthGate() {
@@ -11,25 +12,31 @@ export function AuthGate() {
   const isLogin = mode === 'login';
 
   return (
-    <div className="min-h-dvh flex items-center justify-center px-4 bg-gradient-to-br from-slate-50 via-white to-slate-100/60 dark:from-neutral-950 dark:via-neutral-950 dark:to-neutral-900/40">
-      <div className="w-full max-w-md space-y-6 rounded-3xl border border-slate-200/70 dark:border-neutral-800 bg-white/80 dark:bg-neutral-900/80 shadow-xl backdrop-blur-sm p-8">
-        <div className="space-y-2 text-center">
-          <h1 className="text-2xl font-semibold text-slate-900 dark:text-slate-100">
-            {isLogin ? 'Sign in to continue' : 'Create your ChatForge account'}
-          </h1>
-          <p className="text-sm text-slate-600 dark:text-slate-400">
-            {isLogin
-              ? 'Access your saved conversations and personalized settings.'
-              : 'Set up your account to start building your conversation history.'}
-          </p>
+    <main className="flex min-h-dvh items-center justify-center bg-canvas-subtle px-4 py-8">
+      <div className="flex w-full max-w-sm flex-col gap-8">
+        <div className="flex flex-col items-center gap-4 text-center">
+          {}
+          <img src="/logo.png" alt="" className="size-8" />
+          <div className="flex flex-col gap-2">
+            <h1 className="text-xl font-medium text-fg">
+              {isLogin ? 'Sign in to continue' : 'Create your ChatForge account'}
+            </h1>
+            <p className="text-sm text-fg-muted">
+              {isLogin
+                ? 'Access your saved conversations and personalized settings.'
+                : 'Set up your account to start building your conversation history.'}
+            </p>
+          </div>
         </div>
 
-        {isLogin ? (
-          <LoginForm onSwitchToRegister={() => setMode('register')} />
-        ) : (
-          <RegisterForm onSwitchToLogin={() => setMode('login')} />
-        )}
+        <div className="rounded-card border border-line bg-surface p-6">
+          {isLogin ? (
+            <LoginForm onSwitchToRegister={() => setMode('register')} />
+          ) : (
+            <RegisterForm onSwitchToLogin={() => setMode('login')} />
+          )}
+        </div>
       </div>
-    </div>
+    </main>
   );
 }

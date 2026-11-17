@@ -303,3 +303,9 @@
 .hljs-link {
   text-decoration: underline;
 }
+
+/* ---------- Brand mark (see components/ui/Logo.tsx) ---------- */
+.logo-mark {
+  mask: url('/logo.png') center / contain no-repeat;
+  -webkit-mask: url('/logo.png') center / contain no-repeat;
+}
