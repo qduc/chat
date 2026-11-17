@@ -1,8 +1,7 @@
 import React from 'react';
 import { Sun, Moon, Settings, RefreshCw, Loader2, PanelLeft, PanelRight, Plus } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
-import ModelSelector from './ui/ModelSelector';
-import { type Group as TabGroup } from './ui/TabbedSelect';
+import ModelSelector, { type Group as TabGroup } from './ui/ModelSelector';
 import { AuthButton } from './auth/AuthButton';
 import { IconButton } from './ui/Button';
 
