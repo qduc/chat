@@ -10,6 +10,16 @@
  * CSS variables directly, so redefining a token under .dark re-themes everything.
  */
 @theme inline {
+  /* Only the design system's values exist: Tailwind's default palette, weights,
+     radii, shadows and type sizes are removed, so legacy classes generate nothing. */
+  --color-*: initial;
+  --font-weight-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --text-*: initial;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+
   --color-canvas: var(--canvas);
   --color-canvas-subtle: var(--canvas-subtle);
   --color-surface: var(--surface);

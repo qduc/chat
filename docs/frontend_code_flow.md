@@ -977,9 +977,10 @@ frontend/
 │   ├── page.tsx                   # Entry point (Home → ChatV2)
 │   └── components/
 │       └── promptManager/         # System prompt management UI
-│           ├── PromptEditor.tsx   # Prompt editing interface
-│           ├── PromptList.tsx     # List of prompts
-│           └── index.ts           # Public exports
+│           ├── PromptDropdown.tsx       # Prompt picker (Base UI Menu)
+│           ├── SaveAsModal.tsx          # Save prompt as new
+│           ├── UnsavedChangesModal.tsx  # Unsaved-changes confirmation
+│           └── README.md
 │
 ├── components/
 │   ├── ChatV2.tsx                 # Main container

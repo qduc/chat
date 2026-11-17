@@ -657,7 +657,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
           {/* ===== CONTROLS BAR ===== */}
           <div className="flex items-center justify-between gap-2 px-3 pb-3">
-            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto *:shrink-0">
               <Tooltip content="Reasoning effort level">
                 <QualitySlider
                   value={reasoningEffort}
@@ -674,6 +674,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   variant="ghost"
                   size="sm"
                   aria-pressed={shouldStream}
+                  aria-label="Stream"
                   onClick={() => {
                     if (controlsDisabled) return;
                     onShouldStreamChange(!shouldStream);
