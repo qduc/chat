@@ -418,10 +418,11 @@ const [comparisonResults, setComparisonResults] = useState<Record<string, Messag
 
 ### 9. System Prompt Management
 
-**RightSidebar Component (`components/RightSidebar.tsx`):**
-- Displays and manages system prompts
-- Toggle visibility via UI controls
-- Shows prompt editor interface
+**Chat details panel (`components/RightSidebar.tsx`, sections in `components/details/`):**
+- Toggled from the header's "Chat details" button (`aria-pressed`) or Ctrl/Cmd+Shift+\; closed state is remembered by `useChat` and the panel is removed from the layout when closed
+- Stacked collapsible sections (open state remembered in localStorage by `useDetailsSections`): System prompt, This chat, Usage, Sources, Files, Memory. Sections without data hide themselves
+- `SystemPromptSection` is always mounted (even while collapsed) because it reports the effective prompt to `useChat`
+- Pure data helpers: `lib/usageSummary.ts` (token/cost totals, context meter), `lib/conversationSources.ts` (web tool sources), `lib/conversationFiles.ts` (attachments), `lib/chatInfo.ts`; API helpers: `lib/modelInfo.ts` (`GET /v1/models/info`, cached), `lib/journal.ts` (`/v1/journal`)
 
 **Prompt Editor (`app/components/promptManager/`):**
 - Full CRUD operations for system prompts
@@ -977,7 +978,6 @@ frontend/
 │   ├── page.tsx                   # Entry point (Home → ChatV2)
 │   └── components/
 │       └── promptManager/         # System prompt management UI
-│           ├── PromptDropdown.tsx       # Prompt picker (Base UI Menu)
 │           ├── SaveAsModal.tsx          # Save prompt as new
 │           ├── UnsavedChangesModal.tsx  # Unsaved-changes confirmation
 │           └── README.md
@@ -988,7 +988,8 @@ frontend/
 │   ├── MessageInput.tsx           # Input area
 │   ├── ChatHeader.tsx             # Model selector, settings
 │   ├── ChatSidebar.tsx            # Conversation history
-│   ├── RightSidebar.tsx           # System prompts sidebar
+│   ├── RightSidebar.tsx           # Chat details panel shell
+│   ├── details/                   # Chat details sections (prompt, usage, sources, ...)
 │   ├── SettingsModal.tsx          # Provider configuration
 │   ├── Markdown.tsx               # Markdown rendering
 │   ├── auth/                      # Authentication components

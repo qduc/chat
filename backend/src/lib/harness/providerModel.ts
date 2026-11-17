@@ -17,10 +17,7 @@ import { extractUpstreamMessage, readUpstreamErrorBody } from '../upstreamErrors
 import { logger } from '../../logger.js';
 import { itemsToChatMessages, newItemId, toolSpecsToChatTools } from './chatMessages.ts';
 import type { ChatMessage, ChatToolCall } from './chatMessages.ts';
-import {
-  DEFAULT_ASSUMED_CONTEXT_WINDOW,
-  ModelFailure,
-} from '@qduc/agent-core';
+import { ModelFailure } from '@qduc/agent-core';
 import type {
   ContentPart,
   Item,
@@ -35,6 +32,14 @@ import type {
 } from '@qduc/agent-core';
 
 /** The slice of a ChatForge provider instance the wrapper uses. */
+
+/**
+ * Context window assumed when none is configured. agent-core <= 0.2.0-alpha.1
+ * exported this as DEFAULT_ASSUMED_CONTEXT_WINDOW; alpha.4 no longer does, so
+ * ChatForge keeps the same value locally.
+ */
+const DEFAULT_ASSUMED_CONTEXT_WINDOW = 128_000;
+
 export type ChatForgeProvider = {
   readonly providerId?: string | null;
   readonly baseUrl?: string;

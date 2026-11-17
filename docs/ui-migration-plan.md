@@ -105,3 +105,31 @@ These go beyond a pure restyle. They were approved after the migration review.
 - **Test changes (the only ones in this migration):**
   - `QualitySlider.test.tsx` expects the "Default" label.
   - Two Stream tests in `MessageInput.test.tsx` now open the Params popover before checking or toggling the switch.
+
+## Round 4: chat details panel
+
+The right "System Prompts" sidebar is now a **chat details panel** with folding sections. Empty sections hide themselves, and the open/closed state of each section is remembered.
+
+- **System prompt:** a list of radio buttons replaces the dropdown and the full-height text box.
+  - The selected prompt shows a preview, an Edit button and a ⋯ menu (Duplicate, and Delete with a confirmation dialog).
+  - Editing happens in place, in a text box that grows with its content, with Revert / Save as new / Save underneath.
+  - Fixed: Revert used to empty the text; it now restores the saved prompt.
+  - Fixed: the unsaved-changes dialog was never shown; it now appears when you switch prompts with unsaved edits.
+- **This chat:** the model, reasoning, tools and params the chat uses, plus when it started.
+- **Usage:**
+  - Input, cached and output tokens.
+  - A context meter: the last request's size against the model's context window.
+  - The cost ("Est." when it comes from the catalog), plus how much prompt caching saved.
+- **Sources:** pages found by search or fetched by web_fetch, deduplicated, showing 5 with "Show all".
+- **Files:** a thumbnail grid of the attachments in the chat.
+- **Memory:** the user's Journal entries, which can be deleted.
+- **Panel toggle:** a "Chat details" button in the header, at every width, replaces the 64px collapsed strip.
+
+**Backend support:**
+- **Model catalog:** copied from `qduc/term2` (context windows and per-token prices) into `backend/src/lib/modelCatalog/`.
+- **Cost math:** imported from `@qduc/agent-core`, which is bumped from 0.2.0-alpha.1 to alpha.4 for pricing tiers and 1-hour cache writes.
+- **Per-message usage:** messages now store cache-read and cache-write tokens, plus the cost the provider reports, and their `usage` includes a `cost` field.
+- **New routes:**
+  - `GET /v1/models/info`
+  - `GET /v1/journal`
+  - `DELETE /v1/journal/:id`

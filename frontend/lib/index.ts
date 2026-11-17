@@ -122,6 +122,8 @@ export type {
   FileUploadProgress,
   ChatMessage,
   ChatMessage as Message,
+  MessageUsage,
+  MessageUsageCost,
   MessageEvent,
   ChatEvent,
   ChatResponse,

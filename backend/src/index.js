@@ -15,6 +15,8 @@ import { imagesRouter } from './routes/images.js';
 import { filesRouter } from './routes/files.js';
 import authRouter from './routes/auth.js';
 import { userSettingsRouter } from './routes/userSettings.js';
+import { modelInfoRouter } from './routes/modelInfo.js';
+import { journalRouter } from './routes/journal.js';
 import { requestLogger } from './middleware/logger.js';
 import { logger } from './logger.js';
 
@@ -55,6 +57,8 @@ apiRouter.use(filesRouter); // File upload routes
 apiRouter.use(conversationsRouter);
 apiRouter.use(providersRouter);
 apiRouter.use(userSettingsRouter);
+apiRouter.use(modelInfoRouter);
+apiRouter.use(journalRouter);
 apiRouter.use(systemPromptsRouter);
 apiRouter.use(chatRouter);
 

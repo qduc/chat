@@ -168,6 +168,7 @@ export function processNonStreamingData(
     // OpenAI-style: prompt_tokens_details.cached_tokens
     if (json.usage.prompt_tokens_details?.cached_tokens !== undefined)
       usage.cache_read_input_tokens = json.usage.prompt_tokens_details.cached_tokens;
+    if (json.usage.cost && typeof json.usage.cost.usd === 'number') usage.cost = json.usage.cost;
   }
 
   if (Object.keys(usage).length > 0) {
@@ -350,6 +351,7 @@ export function processStreamChunk(
       // OpenAI-style: prompt_tokens_details.cached_tokens
       if (data.usage.prompt_tokens_details?.cached_tokens !== undefined)
         usage.cache_read_input_tokens = data.usage.prompt_tokens_details.cached_tokens;
+      if (data.usage.cost && typeof data.usage.cost.usd === 'number') usage.cost = data.usage.cost;
     }
 
     if (timingsUsage) {

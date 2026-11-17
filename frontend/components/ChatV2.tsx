@@ -17,6 +17,7 @@ import SettingsModal from './SettingsModal';
 import { AuthModal, AuthMode } from './auth/AuthModal';
 import type { ChatMessage, MessageContent } from '../lib';
 import { conversations as conversationsApi } from '../lib/api';
+import { buildChatInfo } from '../lib/chatInfo';
 
 export function buildBaseMessagesAfterLocalEdit({
   currentMessages,
@@ -614,6 +615,37 @@ export function ChatV2() {
     [chat]
   );
 
+  const startedAt = chat.conversationId
+    ? (chat.conversations.find((convo) => convo.id === chat.conversationId)?.created_at ?? null)
+    : null;
+  const chatInfo = useMemo(
+    () =>
+      buildChatInfo({
+        model: chat.model,
+        providerId: chat.providerId,
+        modelGroups: chat.modelGroups,
+        reasoningEffort: chat.reasoningEffort,
+        useTools: chat.useTools,
+        enabledTools: chat.enabledTools,
+        customRequestParams: chat.customRequestParams,
+        customRequestParamsId: chat.customRequestParamsId,
+        shouldStream: chat.shouldStream,
+        startedAt,
+      }),
+    [
+      chat.model,
+      chat.providerId,
+      chat.modelGroups,
+      chat.reasoningEffort,
+      chat.useTools,
+      chat.enabledTools,
+      chat.customRequestParams,
+      chat.customRequestParamsId,
+      chat.shouldStream,
+      startedAt,
+    ]
+  );
+
   // Observe MessageInput container height changes
   useEffect(() => {
     const container = messageInputContainerRef.current;
@@ -691,6 +723,7 @@ export function ChatV2() {
           onFocusMessageInput={handleFocusMessageInput}
           onToggleLeftSidebar={chat.toggleSidebar}
           onToggleRightSidebar={chat.toggleRightSidebar}
+          rightSidebarOpen={!chat.rightSidebarCollapsed}
           showLeftSidebarButton={chat.historyEnabled}
           showRightSidebarButton={true}
           selectedComparisonModels={chat.compareModels}
@@ -849,7 +882,7 @@ export function ChatV2() {
             <div
               role="separator"
               aria-orientation="vertical"
-              aria-label="Resize right sidebar"
+              aria-label="Resize chat details"
               className={cn(
                 'hidden w-1 shrink-0 cursor-col-resize self-stretch transition-colors select-none md:block',
                 rightSidebar.isResizing ? 'bg-accent' : 'hover:bg-line-strong'
@@ -859,25 +892,25 @@ export function ChatV2() {
             />
           )}
 
-          {/* Right Sidebar - Overlay on mobile, static on desktop */}
+          {/* Chat details panel - overlay drawer on mobile, static on desktop, gone when closed.
+              It stays mounted while closed because it reports the effective system prompt. */}
           <div
-            className={`
-              ${chat.rightSidebarCollapsed ? 'translate-x-full md:translate-x-0' : 'translate-x-0'}
-              fixed md:relative inset-y-0 right-0 z-50 md:z-auto
-              transition-transform duration-200
-            `}
+            className={cn(
+              'fixed inset-y-0 right-0 z-50 transition-transform duration-200 md:relative md:z-auto',
+              chat.rightSidebarCollapsed ? 'invisible translate-x-full md:hidden' : 'translate-x-0'
+            )}
           >
             <RightSidebar
               userId={chat.user?.id}
               conversationId={chat.conversationId || undefined}
-              collapsed={chat.rightSidebarCollapsed}
               onToggleCollapse={chat.toggleRightSidebar}
               onEffectivePromptChange={chat.setInlineSystemPromptOverride}
               onActivePromptIdChange={chat.setActiveSystemPromptId}
               conversationActivePromptId={chat.activeSystemPromptId}
               conversationSystemPrompt={chat.systemPrompt}
               width={rightSidebar.width}
-              isResizing={rightSidebar.isResizing}
+              chatInfo={chatInfo}
+              messages={chat.messages}
             />
           </div>
         </div>

@@ -130,6 +130,7 @@ async function runToolTurn<Res>(
     model: modelId,
     completionId,
     providerId: providerId ?? null,
+    userId,
   });
 
   let spec: TurnSpec;

@@ -42,3 +42,44 @@ export function listJournalEntries(userId, page = 1, pageSize = 10) {
 
   return rows;
 }
+
+/**
+ * One page of a user's journal entries, newest first, with a `hasMore` flag.
+ * @param {string} userId
+ * @param {number} page - 1-based page number
+ * @param {number} pageSize
+ * @returns {{ entries: Array<{id: number, model_name: string, content: string, created_at: string}>, hasMore: boolean }}
+ */
+export function listJournalEntriesPage(userId, page = 1, pageSize = 20) {
+  if (!userId) throw new Error('userId is required');
+  const db = getDb();
+  const offset = (Math.max(1, page) - 1) * pageSize;
+
+  // Fetch one extra row to learn whether another page exists.
+  const rows = db
+    .prepare(
+      `SELECT id, model_name, content, created_at
+       FROM journal
+       WHERE user_id = @userId
+       ORDER BY created_at DESC, id DESC
+       LIMIT @limit OFFSET @offset`
+    )
+    .all({ userId, limit: pageSize + 1, offset });
+
+  return { entries: rows.slice(0, pageSize), hasMore: rows.length > pageSize };
+}
+
+/**
+ * Delete one journal entry owned by the user.
+ * @param {string} userId
+ * @param {number} id
+ * @returns {boolean} true when an entry was deleted
+ */
+export function deleteJournalEntry(userId, id) {
+  if (!userId) throw new Error('userId is required');
+  const db = getDb();
+  const info = db
+    .prepare(`DELETE FROM journal WHERE id = @id AND user_id = @userId`)
+    .run({ id, userId });
+  return info.changes > 0;
+}

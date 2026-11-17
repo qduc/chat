@@ -11,7 +11,7 @@ import { audioPartToDataUrl } from '../../lib/audioUtils';
 import Markdown from '../Markdown';
 import { useSecureImageUrl } from '../../hooks/useSecureImageUrl';
 import { FileContentPreview } from './FileContentPreview';
-import { Modal } from './Modal';
+import { ImagePreviewOverlay } from './ImagePreviewOverlay';
 import { cn } from '../../lib/cn';
 
 interface MessageContentRendererProps {
@@ -236,30 +236,6 @@ function MessageImage({ image, className = '', onClick }: MessageImageProps) {
         />
       )}
     </button>
-  );
-}
-
-interface ImagePreviewOverlayProps {
-  src: string;
-  onClose: () => void;
-}
-
-function ImagePreviewOverlay({ src, onClose }: ImagePreviewOverlayProps) {
-  return (
-    <Modal
-      open
-      onClose={onClose}
-      title="Image preview"
-      size="full"
-      closeLabel="Close image preview"
-      bodyClassName="flex items-center justify-center p-4"
-    >
-      <img
-        src={src}
-        alt="Enlarged chat message attachment"
-        className="max-h-full max-w-full rounded-card object-contain"
-      />
-    </Modal>
   );
 }
 
