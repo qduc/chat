@@ -1,4 +1,6 @@
 import React from 'react';
+import { NativeSelect } from './Input';
+import { cn } from '../../lib/cn';
 import type { ReasoningEffortLevel, StoredReasoningEffort } from '../../lib/types';
 
 export type { ReasoningEffortLevel, StoredReasoningEffort };
@@ -31,28 +33,25 @@ export function QualitySlider({
   ariaLabel,
   disabled,
   icon,
-  className = '',
+  className,
 }: QualitySliderProps) {
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     onChange(e.target.value as ReasoningEffortLevel);
   };
 
   return (
-    <div className={`flex items-center gap-2 ${className}`}>
+    <div className={cn('flex items-center gap-2', className)}>
       {icon && (
-        <span className="w-4 h-4 flex items-center text-slate-600 dark:text-slate-400">{icon}</span>
+        <span aria-hidden="true" className="flex size-4 items-center text-fg-muted [&_svg]:size-4">
+          {icon}
+        </span>
       )}
-
-      <select
+      <NativeSelect
+        controlSize="sm"
         value={displayedEffort(value)}
         onChange={handleChange}
         disabled={disabled}
         aria-label={ariaLabel || 'Reasoning effort'}
-        className="text-xs px-2 py-1 bg-transparent border border-slate-200 dark:border-neutral-700 rounded-md
-                   text-slate-800 dark:text-slate-200 cursor-pointer
-                   hover:bg-slate-50 dark:hover:bg-neutral-800
-                   focus:outline-none focus:ring-2 focus:ring-slate-400 dark:focus:ring-neutral-600
-                   disabled:opacity-50 disabled:cursor-not-allowed"
       >
         <option value="unset">Unset</option>
         <option value="none">None</option>
@@ -60,7 +59,7 @@ export function QualitySlider({
         <option value="medium">Medium</option>
         <option value="high">High</option>
         <option value="xhigh">X-High</option>
-      </select>
+      </NativeSelect>
     </div>
   );
 }

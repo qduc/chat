@@ -11,7 +11,7 @@ export const floatingPanelClasses =
 /** Shared look for a row inside a floating panel. */
 export const floatingItemClasses =
   'flex w-full cursor-default items-center gap-2 rounded-control px-3 py-2 text-left text-sm text-fg outline-none select-none touch-target ' +
-  'data-highlighted:bg-muted data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-fg-muted';
+  'data-highlighted:bg-muted hover:bg-muted focus-ring-inset disabled:pointer-events-none disabled:opacity-50 data-disabled:pointer-events-none data-disabled:opacity-50 [&_svg]:size-4 [&_svg]:shrink-0 [&_svg]:text-fg-muted';
 
 export const Menu = BaseMenu.Root;
 

@@ -1,6 +1,8 @@
 import React from 'react';
 import { X, AlertCircle, Loader2, FileText, FileCode } from 'lucide-react';
 import type { FileAttachment, FileUploadProgress } from '@/lib/types';
+import { cn } from '../../lib/cn';
+import { IconButton } from './Button';
 
 interface FilePreviewProps {
   files: FileAttachment[];
@@ -9,7 +11,7 @@ interface FilePreviewProps {
   className?: string;
 }
 
-export function FilePreview({ files, uploadProgress, onRemove, className = '' }: FilePreviewProps) {
+export function FilePreview({ files, uploadProgress, onRemove, className }: FilePreviewProps) {
   const getProgressForFile = (fileId: string) => {
     return uploadProgress?.find((p) => p.fileId === fileId);
   };
@@ -19,7 +21,7 @@ export function FilePreview({ files, uploadProgress, onRemove, className = '' }:
   }
 
   return (
-    <div className={`flex flex-wrap gap-2 ${className}`}>
+    <div className={cn('flex flex-wrap gap-2', className)}>
       {files.map((file) => (
         <PreviewItem
           key={file.id}
@@ -60,65 +62,59 @@ function PreviewItem({ file, progress, onRemove }: PreviewItemProps) {
   ].includes(ext);
 
   return (
-    <div className="relative group rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 p-3 min-w-[200px] max-w-[300px]">
-      <div className="flex items-start gap-3">
-        {/* File Icon */}
-        <div
-          className={`flex-shrink-0 w-10 h-10 rounded flex items-center justify-center ${
-            hasError
-              ? 'bg-red-100 dark:bg-red-900/20'
-              : isCodeFile
-                ? 'bg-blue-100 dark:bg-blue-900/20'
-                : 'bg-zinc-100 dark:bg-zinc-700'
-          }`}
-        >
-          {hasError ? (
-            <AlertCircle className="w-5 h-5 text-red-500" />
-          ) : isUploading ? (
-            <Loader2 className="w-5 h-5 text-zinc-500 animate-spin" />
-          ) : isCodeFile ? (
-            <FileCode className={`w-5 h-5 text-blue-600 dark:text-blue-400`} />
-          ) : (
-            <FileText className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
-          )}
-        </div>
-
-        {/* File Info */}
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-zinc-800 dark:text-zinc-200 truncate">
-            {file.name}
-          </div>
-          <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-            {(file.size / 1024).toFixed(1)} KB
-            {file.type && ` • ${ext.toUpperCase()}`}
-          </div>
-          {isUploading && progress && (
-            <div className="mt-2">
-              <div className="w-full bg-zinc-200 dark:bg-zinc-700 rounded-full h-1">
-                <div
-                  className="bg-blue-600 dark:bg-blue-500 h-1 rounded-full transition-all duration-300"
-                  style={{ width: `${progress.progress}%` }}
-                />
-              </div>
-            </div>
-          )}
-          {hasError && progress?.error && (
-            <div className="text-xs text-red-600 dark:text-red-400 mt-1">{progress.error}</div>
-          )}
-        </div>
-
-        {/* Remove Button */}
-        {onRemove && !isUploading && (
-          <button
-            type="button"
-            onClick={() => onRemove(file.id)}
-            className="flex-shrink-0 w-6 h-6 rounded-full bg-zinc-200 dark:bg-zinc-700 hover:bg-zinc-300 dark:hover:bg-zinc-600 text-zinc-600 dark:text-zinc-300 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-            aria-label={`Remove ${file.name}`}
-          >
-            <X className="w-4 h-4" />
-          </button>
+    <div className="group flex w-64 max-w-full items-start gap-3 rounded-card border border-line bg-canvas-subtle p-3">
+      <span
+        aria-hidden="true"
+        className={cn(
+          'flex size-10 shrink-0 items-center justify-center rounded-control [&_svg]:size-4',
+          hasError ? 'bg-danger-subtle text-danger' : 'bg-muted text-fg-muted'
         )}
+      >
+        {hasError ? (
+          <AlertCircle />
+        ) : isUploading ? (
+          <Loader2 className="animate-spin" />
+        ) : isCodeFile ? (
+          <FileCode />
+        ) : (
+          <FileText />
+        )}
+      </span>
+
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="truncate text-sm font-medium text-fg">{file.name}</div>
+        <div className="text-xs text-fg-muted">
+          {(file.size / 1024).toFixed(1)} KB
+          {file.type && ` • ${ext.toUpperCase()}`}
+        </div>
+        {isUploading && progress && (
+          <div
+            role="progressbar"
+            aria-label={`Uploading ${file.name}`}
+            aria-valuenow={progress.progress}
+            aria-valuemin={0}
+            aria-valuemax={100}
+            className="h-1 w-full overflow-hidden rounded-full bg-emphasis"
+          >
+            <div
+              className="h-full rounded-full bg-accent transition-[width]"
+              style={{ width: `${progress.progress}%` }}
+            />
+          </div>
+        )}
+        {hasError && progress?.error && <div className="text-xs text-danger">{progress.error}</div>}
       </div>
+
+      {onRemove && !isUploading && (
+        <IconButton
+          label={`Remove ${file.name}`}
+          size="sm"
+          onClick={() => onRemove(file.id)}
+          className="size-7 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100"
+        >
+          <X />
+        </IconButton>
+      )}
     </div>
   );
 }
