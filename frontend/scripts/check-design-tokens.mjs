@@ -85,7 +85,11 @@ const rules = [
 
 // Narrow, documented exceptions: [file suffix, rule id, reason]
 const EXCEPTIONS = [
-  ['components/ui/Toggle.tsx', 'spacing', '2px thumb inset and 10px touch hit-area extension on the switch'],
+  [
+    'components/ui/Toggle.tsx',
+    'spacing',
+    '2px thumb inset and 10px touch hit-area extension on the switch',
+  ],
 ];
 
 function walk(target) {
