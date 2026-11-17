@@ -6,6 +6,7 @@
 import { useEffect, useRef, useState, useMemo, useCallback } from 'react';
 import { AlertCircle } from 'lucide-react';
 import { useToast } from './ui/Toast';
+import { cn } from '../lib/cn';
 import { Message, JudgeModal, MAX_COMPARISON_COLUMNS } from './message';
 import type { PendingState, EvaluationDraft } from '../hooks/useChat';
 import {
@@ -1109,11 +1110,14 @@ export function MessageList({
 
       <main
         ref={containerRef}
-        className="flex-1 overflow-y-auto overflow-x-hidden scrollbar-thin scrollbar-track-transparent relative"
+        className="relative flex-1 overflow-x-hidden overflow-y-auto scrollbar-thin"
         style={{ willChange: 'scroll-position' }}
       >
         <div
-          className={`w-full mx-auto px-4 sm:px-4 md:px-6 py-6 space-y-6 ${hasMultiColumnLayout ? 'max-w-6xl' : 'max-w-3xl'}`}
+          className={cn(
+            'mx-auto w-full space-y-6 px-4 py-6 md:px-6',
+            hasMultiColumnLayout ? 'max-w-6xl' : 'max-w-3xl'
+          )}
           style={{ paddingBottom: dynamicBottomPadding }}
         >
           {messages.length === 0 && <WelcomeMessage onSuggestionClick={onSuggestionClick} />}
@@ -1188,11 +1192,16 @@ export function MessageList({
             );
           })}
           {displayedError && (
-            <div className="flex items-start gap-3 text-base text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-xl px-4 py-3 shadow-sm">
-              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-              <div>
-                <div className="font-medium mb-1">Error occurred</div>
-                <div className="text-red-600 dark:text-red-400">{displayedError}</div>
+            <div
+              role="alert"
+              className="flex items-start gap-3 rounded-card bg-danger-subtle px-4 py-3 text-sm text-danger"
+            >
+              <span className="flex h-5 shrink-0 items-center">
+                <AlertCircle aria-hidden="true" className="size-4" />
+              </span>
+              <div className="min-w-0">
+                <div className="mb-1 font-medium">Error occurred</div>
+                <div className="whitespace-pre-wrap">{displayedError}</div>
               </div>
             </div>
           )}

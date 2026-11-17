@@ -7,25 +7,15 @@ interface WelcomeMessageProps {
 
 export function WelcomeMessage({ onSuggestionClick }: WelcomeMessageProps) {
   return (
-    <div className="flex flex-col items-center justify-center min-h-[60vh] max-w-3xl mx-auto px-6 py-12 animate-in fade-in duration-700">
-      {/* Subtle background glow */}
-      <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-zinc-500/3 rounded-full blur-[100px]" />
-      </div>
+    <div className="mx-auto flex min-h-120 max-w-3xl flex-col items-center justify-center px-6 py-8">
+      <h1 className="mb-2 text-xl font-medium text-fg">Welcome to Chat</h1>
 
-      {/* Heading */}
-      <h1 className="mb-3 text-3xl font-semibold text-zinc-900 dark:text-zinc-200 tracking-tight">
-        Welcome to Chat
-      </h1>
+      <p className="mb-8 max-w-md text-center text-base text-fg-muted">How can I help you today?</p>
 
-      <p className="mb-10 text-lg text-zinc-500 dark:text-zinc-400 max-w-md text-center leading-relaxed">
-        How can I help you today?
-      </p>
-
-      {/* Suggestion Chips */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-2xl">
+      {/* Suggestions: equal-priority tiles */}
+      <div className="grid w-full max-w-2xl grid-cols-1 gap-3 sm:grid-cols-2">
         <SuggestionCard
-          icon={<Code className="w-4 h-4" />}
+          icon={<Code />}
           text="Write a new component"
           subtext="Generate clean, modern code"
           onClick={() =>
@@ -33,19 +23,19 @@ export function WelcomeMessage({ onSuggestionClick }: WelcomeMessageProps) {
           }
         />
         <SuggestionCard
-          icon={<Zap className="w-4 h-4" />}
+          icon={<Zap />}
           text="Debug an issue"
           subtext="Find and fix errors quickly"
           onClick={() => onSuggestionClick?.('Help me debug this error: ')}
         />
         <SuggestionCard
-          icon={<Lightbulb className="w-4 h-4" />}
+          icon={<Lightbulb />}
           text="Brainstorm ideas"
           subtext="Get creative solutions"
           onClick={() => onSuggestionClick?.('Brainstorm 5 creative ideas for a ')}
         />
         <SuggestionCard
-          icon={<HelpCircle className="w-4 h-4" />}
+          icon={<HelpCircle />}
           text="Explain a concept"
           subtext="Understand complex topics"
           onClick={() => onSuggestionClick?.('Explain how React Server Components work')}
@@ -65,18 +55,20 @@ interface SuggestionCardProps {
 function SuggestionCard({ icon, text, subtext, onClick }: SuggestionCardProps) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className="group flex items-center gap-4 p-4 text-left bg-white dark:bg-zinc-900/40 border border-zinc-200 dark:border-zinc-800/60 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-900/60 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all duration-200"
+      className="flex items-center gap-4 rounded-card border border-line p-4 text-left transition-colors hover:bg-muted focus-ring"
     >
-      <div className="p-2 bg-zinc-50 dark:bg-zinc-800 rounded-lg text-zinc-500 dark:text-zinc-400 group-hover:text-zinc-900 dark:group-hover:text-zinc-200 transition-colors">
+      <span
+        aria-hidden="true"
+        className="flex size-8 shrink-0 items-center justify-center rounded-control border border-line text-fg-muted [&_svg]:size-4"
+      >
         {icon}
-      </div>
-      <div>
-        <div className="font-medium text-zinc-900 dark:text-zinc-200 text-sm group-hover:text-black dark:group-hover:text-zinc-200 transition-colors">
-          {text}
-        </div>
-        <div className="text-xs text-zinc-500 dark:text-zinc-500 mt-0.5">{subtext}</div>
-      </div>
+      </span>
+      <span className="flex flex-col gap-1">
+        <span className="text-sm font-medium text-fg">{text}</span>
+        <span className="text-xs text-fg-subtle">{subtext}</span>
+      </span>
     </button>
   );
 }

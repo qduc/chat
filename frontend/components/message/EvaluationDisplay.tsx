@@ -5,6 +5,8 @@
 
 import React from 'react';
 import { Scale, Trophy, Trash } from 'lucide-react';
+import { IconButton } from '../ui/Button';
+import { cn } from '../../lib/cn';
 import Markdown from '../Markdown';
 import { extractReasoningFromPartialJson } from '../../lib';
 import type { Evaluation } from '../../lib/types';
@@ -18,6 +20,8 @@ interface EvaluationDisplayProps {
   onDeleteJudgeResponse: (id: string) => Promise<void>;
   resolveModelLabel: (modelId: string | null | undefined) => string;
 }
+
+const cardClasses = 'rounded-card border border-line bg-surface px-4 py-3';
 
 export function EvaluationDisplay({
   evaluationDrafts,
@@ -62,27 +66,26 @@ export function EvaluationDisplay({
           : 'Analyzing...';
 
         return (
-          <div
-            key={draft.id}
-            className="border border-amber-200/70 dark:border-amber-900/50 bg-amber-50/70 dark:bg-amber-950/30 rounded-xl px-4 py-3"
-          >
-            <div className="flex items-center justify-between text-xs text-amber-700 dark:text-amber-300">
-              <div className="flex items-center gap-2">
-                <Scale className="w-3.5 h-3.5" />
+          <div key={draft.id} className={cardClasses}>
+            <div className="flex items-center justify-between gap-2 text-xs text-fg-muted">
+              <div className="flex min-w-0 items-center gap-2">
+                <Scale aria-hidden="true" className="size-4 shrink-0 text-fg-subtle" />
                 <span>Judging: {modelLabels}</span>
               </div>
-              <span className="uppercase tracking-wide">
+              <span className={draft.status === 'error' ? 'text-danger' : 'text-fg-subtle'}>
                 {draft.status === 'error' ? 'Failed' : 'Working'}
               </span>
             </div>
-            <div className="mt-2 text-sm text-amber-900 dark:text-amber-100">
+            <div className="mt-2 text-sm text-fg">
               {draft.status === 'error' ? (
-                <div className="text-red-600 dark:text-red-300">{draft.error}</div>
+                <div role="alert" className="text-danger">
+                  {draft.error}
+                </div>
               ) : (
                 <Markdown
                   text={reasoning}
                   isStreaming={draft.status === 'streaming'}
-                  className="md-compact !text-amber-900 dark:!text-amber-100"
+                  className="md-compact"
                 />
               )}
             </div>
@@ -139,30 +142,28 @@ export function EvaluationDisplay({
         const judgeLabel = resolveModelLabel(evaluation.judge_model_id);
 
         return (
-          <div
-            key={evaluation.id}
-            className="border border-emerald-200/70 dark:border-emerald-900/50 bg-emerald-50/70 dark:bg-emerald-950/30 rounded-xl px-4 py-3"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-emerald-700 dark:text-emerald-300">
-              <div className="flex items-center gap-2">
-                <Trophy className="w-3.5 h-3.5" />
+          <div key={evaluation.id} className={cardClasses}>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-sm font-medium text-fg">
+                <Trophy aria-hidden="true" className="size-4 shrink-0 text-fg-muted" />
                 <span>Winner: {winnerLabel}</span>
               </div>
               <div className="flex items-center gap-2">
-                <div className="flex items-center gap-2 text-xs text-emerald-600 dark:text-emerald-400">
+                <div className="flex items-center gap-2 text-xs text-fg-subtle">
                   <span>Judge: {judgeLabel}</span>
                   {evaluation.criteria ? <span>• {evaluation.criteria}</span> : null}
                 </div>
-                <button
-                  onClick={() => onDeleteJudgeResponse(evaluation.id)}
+                <IconButton
+                  label="Delete judge response"
                   title="Delete judge response"
-                  className="p-1 rounded hover:bg-emerald-100 dark:hover:bg-emerald-900/50 text-emerald-600 dark:text-emerald-400 transition-colors"
+                  onClick={() => onDeleteJudgeResponse(evaluation.id)}
+                  className="size-7 hover:text-danger"
                 >
-                  <Trash className="w-3.5 h-3.5" />
-                </button>
+                  <Trash />
+                </IconButton>
               </div>
             </div>
-            <div className="mt-2 grid grid-cols-1 sm:grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-2 text-xs text-emerald-800 dark:text-emerald-100">
+            <div className="mt-2 flex flex-col gap-2 text-xs sm:flex-row sm:flex-wrap">
               {evaluationModels.map((model) => {
                 const label = resolveEvaluationModelLabel(model);
                 const isWinner =
@@ -177,25 +178,24 @@ export function EvaluationDisplay({
                 return (
                   <div
                     key={`${evaluation.id}-${model.conversation_id}-${model.message_id}`}
-                    className={`flex items-center justify-between rounded-lg px-2.5 py-1.5 ${
+                    className={cn(
+                      'flex items-center justify-between gap-2 rounded-control border px-3 py-2 sm:min-w-50 sm:flex-1',
                       isWinner
-                        ? 'bg-yellow-100 dark:bg-yellow-950/40 border border-yellow-300 dark:border-yellow-700'
-                        : 'bg-white/60 dark:bg-emerald-950/40'
-                    }`}
+                        ? 'border-line-strong bg-emphasis font-medium text-fg'
+                        : 'border-line bg-canvas-subtle text-fg-muted'
+                    )}
                   >
-                    <div className="flex items-center gap-2">
-                      {isWinner && (
-                        <Trophy className="w-3 h-3 text-yellow-600 dark:text-yellow-400" />
-                      )}
-                      <span className={isWinner ? 'font-semibold' : ''}>{label}</span>
+                    <div className="flex min-w-0 items-center gap-2">
+                      {isWinner && <Trophy aria-label="Winner" className="size-4 shrink-0" />}
+                      <span>{label}</span>
                     </div>
-                    <span className={isWinner ? 'font-semibold' : ''}>{model.score ?? '—'}</span>
+                    <span className="tabular-nums">{model.score ?? '—'}</span>
                   </div>
                 );
               })}
             </div>
             {evaluation.reasoning && (
-              <div className="mt-2 text-base leading-relaxed text-emerald-900 dark:text-emerald-100">
+              <div className="mt-2 text-base leading-relaxed text-fg">
                 <Markdown text={evaluation.reasoning} className="md-compact" />
               </div>
             )}

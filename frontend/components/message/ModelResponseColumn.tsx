@@ -17,6 +17,11 @@ import { formatUsageLabel } from '../../lib';
 import { extractTextFromContent, extractAssistantCopyText } from '../../lib/contentUtils';
 import type { ModelDisplayData, ToolOutput, RevisionNavProps } from './types';
 import type { PendingState } from '../../hooks/useChat';
+import { cn } from '../../lib/cn';
+
+/** Neutral metadata chip: speed, token usage, provider, model. */
+const metaChipClasses =
+  'inline-flex h-5 items-center rounded-control bg-muted px-2 text-xs whitespace-nowrap text-fg-subtle tabular-nums';
 
 interface ModelResponseColumnProps {
   data: ModelDisplayData;
@@ -122,6 +127,8 @@ export function ModelResponseColumn({
     );
   };
 
+  const usageLabel = formatUsageLabel(dm.usage);
+
   const MIN_GROUP_SIZE = 3;
 
   // Group consecutive reasoning/tool_call segments together for a combined expandable block.
@@ -150,54 +157,56 @@ export function ModelResponseColumn({
   }
 
   return (
-    <div key={modelId} className={`space-y-3 max-w-3xl ${isMultiColumn ? 'flex-1 min-w-0' : ''}`}>
+    <div className={cn('max-w-3xl space-y-3', isMultiColumn && 'min-w-0 flex-1')}>
       {isMultiColumn && (
-        <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400 pb-1 border-b border-zinc-100 dark:border-zinc-800">
+        <div className="border-b border-line pb-1 text-xs font-medium text-fg-muted">
           {getModelDisplayName(modelId)}
         </div>
       )}
       {showingRaw ? (
-        <pre className="text-base leading-relaxed text-zinc-900 dark:text-zinc-200 whitespace-pre-wrap font-mono text-sm bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-4 overflow-auto max-h-[60vh]">
+        <pre
+          tabIndex={0}
+          aria-label="Raw message text"
+          className="max-h-160 overflow-auto rounded-card border border-line bg-muted p-4 font-mono text-sm leading-relaxed whitespace-pre-wrap text-fg focus-ring"
+        >
           {extractTextFromContent(dm.content)}
         </pre>
       ) : segments.length === 0 ? (
-        <div className="text-base leading-relaxed text-zinc-800 dark:text-zinc-200">
+        <div className="text-base leading-relaxed text-fg">
           {retryStatusLabel ? (
-            <span className="inline-flex items-center gap-2 text-amber-700 dark:text-amber-300 text-sm">
-              <Loader2 className="w-4 h-4 animate-spin" />
+            <span role="status" className="inline-flex items-center gap-2 text-sm text-warning">
+              <Loader2 aria-hidden="true" className="size-4 animate-spin" />
               <span>{retryStatusLabel}</span>
             </span>
           ) : (isModelStreaming || pending.abort) && !isModelError && !pending.error ? (
-            <span className="inline-flex items-center gap-1 text-zinc-500 dark:text-zinc-400">
-              <span
-                className="w-1.5 h-1.5 rounded-full bg-current animate-bounce"
-                style={{ animationDelay: '0ms' }}
-              />
-              <span
-                className="w-1.5 h-1.5 rounded-full bg-current animate-bounce"
-                style={{ animationDelay: '150ms' }}
-              />
-              <span
-                className="w-1.5 h-1.5 rounded-full bg-current animate-bounce"
-                style={{ animationDelay: '300ms' }}
-              />
+            <span className="inline-flex items-center gap-1 text-fg-subtle">
+              {[0, 150, 300].map((delay) => (
+                <span
+                  key={delay}
+                  className="size-1.5 animate-bounce rounded-full bg-current"
+                  style={{ animationDelay: `${delay}ms` }}
+                />
+              ))}
             </span>
           ) : isModelError && modelError ? (
-            <div className="flex items-start gap-2 text-red-500 dark:text-red-400 text-sm bg-red-50/50 dark:bg-red-950/20 rounded-lg px-3 py-2 border border-red-100 dark:border-red-900/30">
-              <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
-              <div className="flex-1 overflow-auto whitespace-pre-wrap leading-relaxed">
-                {modelError}
-              </div>
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-card bg-danger-subtle px-3 py-2 text-sm text-danger"
+            >
+              <span className="flex h-5 shrink-0 items-center">
+                <AlertCircle aria-hidden="true" className="size-4" />
+              </span>
+              <div className="min-w-0 flex-1 whitespace-pre-wrap">{modelError}</div>
             </div>
           ) : (
-            <span className="text-zinc-500 dark:text-zinc-400 italic">No response content</span>
+            <span className="text-fg-muted italic">No response content</span>
           )}
         </div>
       ) : (
         <>
           {retryStatusLabel && (
-            <div className="mb-2 inline-flex items-center gap-2 text-amber-700 dark:text-amber-300 text-sm">
-              <Loader2 className="w-4 h-4 animate-spin" />
+            <div role="status" className="mb-2 inline-flex items-center gap-2 text-sm text-warning">
+              <Loader2 aria-hidden="true" className="size-4 animate-spin" />
               <span>{retryStatusLabel}</span>
             </div>
           )}
@@ -209,7 +218,7 @@ export function ModelResponseColumn({
                 return (
                   <div
                     key={`text-${modelId}-${index}`}
-                    className="text-base leading-relaxed text-zinc-900 dark:text-zinc-200"
+                    className="text-base leading-relaxed text-fg"
                   >
                     <Markdown text={segment.text} isStreaming={isModelStreaming} />
                   </div>
@@ -280,70 +289,52 @@ export function ModelResponseColumn({
 
       {/* Stats row for this model */}
       {!isEditing && (dm.content || !isUser) && (
-        <div className="mt-2 flex items-center justify-between opacity-70 group-hover:opacity-100 transition-opacity text-xs border-t border-zinc-100 dark:border-zinc-800/50 pt-2">
-          <div className="flex items-center gap-2 flex-wrap mr-2 min-w-0">
+        <div className="mt-2 flex items-center justify-between gap-2 border-t border-line pt-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-1">
             {streamingStats &&
               streamingStats.tokensPerSecond > 0 &&
               modelId === 'primary' &&
               !isMultiColumn && (
-                <div className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 text-[10px] font-mono whitespace-nowrap">
+                <span className={metaChipClasses}>
                   {streamingStats.isEstimate ? '~' : ''}
                   {streamingStats.tokensPerSecond.toFixed(1)} t/s
-                </div>
+                </span>
               )}
-            {(() => {
-              const usageLabel = formatUsageLabel(dm.usage);
-              if (!usageLabel) return null;
-              return (
-                <div className="px-1.5 py-0.5 rounded bg-zinc-50 dark:bg-zinc-800/50 text-slate-500 dark:text-slate-500 text-[10px] font-mono whitespace-nowrap">
-                  {usageLabel} tokens
-                </div>
-              );
-            })()}
-            {dm.provider && (
-              <div className="px-1.5 py-0.5 rounded bg-zinc-50 dark:bg-zinc-800/50 text-slate-500 dark:text-slate-500 text-[10px] font-mono whitespace-nowrap">
-                {dm.provider}
-              </div>
-            )}
-            {dm.model && (
-              <div className="px-1.5 py-0.5 rounded bg-zinc-50 dark:bg-zinc-800/50 text-slate-500 dark:text-slate-500 text-[10px] font-mono whitespace-nowrap">
-                {dm.model}
-              </div>
-            )}
+            {usageLabel && <span className={metaChipClasses}>{usageLabel} tokens</span>}
+            {dm.provider && <span className={metaChipClasses}>{dm.provider}</span>}
+            {dm.model && <span className={metaChipClasses}>{dm.model}</span>}
           </div>
-          <div className="flex items-center gap-2">
-            <MessageToolbar
-              messageId={messageId}
-              modelId={modelId}
-              hasContent={!!dm.content}
-              copiedMessageId={copiedMessageId}
-              actionsDisabled={actionsDisabled}
-              isStreaming={pending.streaming}
-              hasComparison={hasComparison}
-              isUser={isUser}
-              onCopy={onCopy}
-              onFork={onFork}
-              onRetry={onRetryMessage}
-              onRetryModel={onRetryComparisonModel}
-              onToggleRaw={toggleRaw}
-              isRaw={showingRaw}
-              contentText={
-                isUser ? extractTextFromContent(dm.content) : extractAssistantCopyText(segments)
-              }
-              revisionNavigation={
-                regenRevision ? (
-                  <RevisionNavigation
-                    current={regenRevision.slot}
-                    total={regenRevision.total}
-                    onPrev={regenRevision.onPrev}
-                    onNext={regenRevision.onNext}
-                    loading={regenRevision.loading}
-                    disabled={regenRevision.disabled}
-                  />
-                ) : undefined
-              }
-            />
-          </div>
+          <MessageToolbar
+            messageId={messageId}
+            modelId={modelId}
+            hasContent={!!dm.content}
+            copiedMessageId={copiedMessageId}
+            actionsDisabled={actionsDisabled}
+            isStreaming={pending.streaming}
+            hasComparison={hasComparison}
+            isUser={isUser}
+            onCopy={onCopy}
+            onFork={onFork}
+            onRetry={onRetryMessage}
+            onRetryModel={onRetryComparisonModel}
+            onToggleRaw={toggleRaw}
+            isRaw={showingRaw}
+            contentText={
+              isUser ? extractTextFromContent(dm.content) : extractAssistantCopyText(segments)
+            }
+            revisionNavigation={
+              regenRevision ? (
+                <RevisionNavigation
+                  current={regenRevision.slot}
+                  total={regenRevision.total}
+                  onPrev={regenRevision.onPrev}
+                  onNext={regenRevision.onNext}
+                  loading={regenRevision.loading}
+                  disabled={regenRevision.disabled}
+                />
+              ) : undefined
+            }
+          />
         </div>
       )}
     </div>

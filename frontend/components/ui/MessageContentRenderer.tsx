@@ -1,6 +1,4 @@
 import React from 'react';
-import { createPortal } from 'react-dom';
-import { X } from 'lucide-react';
 import type { MessageContent, ImageContent, InputAudioContent } from '../../lib';
 import {
   extractImagesFromContent,
@@ -13,17 +11,14 @@ import { audioPartToDataUrl } from '../../lib/audioUtils';
 import Markdown from '../Markdown';
 import { useSecureImageUrl } from '../../hooks/useSecureImageUrl';
 import { FileContentPreview } from './FileContentPreview';
+import { Modal } from './Modal';
+import { cn } from '../../lib/cn';
 
 interface MessageContentRendererProps {
   content: MessageContent;
   isStreaming?: boolean;
   className?: string;
   role?: 'user' | 'assistant' | 'system' | 'tool';
-}
-
-interface SelectedImage {
-  image: ImageContent;
-  src: string;
 }
 
 export function MessageContentRenderer({
@@ -39,10 +34,10 @@ export function MessageContentRenderer({
   const audioContents = extractAudioFromContent(content);
   const hasAudioContent = hasAudio(content);
   const hasFileContent = files.length > 0;
-  const [selectedImage, setSelectedImage] = React.useState<SelectedImage | null>(null);
+  const [selectedImage, setSelectedImage] = React.useState<string | null>(null);
 
-  const handleImageClick = React.useCallback((image: ImageContent, src: string) => {
-    setSelectedImage({ image, src });
+  const handleImageClick = React.useCallback((_image: ImageContent, src: string) => {
+    setSelectedImage(src);
   }, []);
 
   const handleClosePreview = React.useCallback(() => {
@@ -55,7 +50,7 @@ export function MessageContentRenderer({
 
   return (
     <>
-      <div className={`space-y-3 ${className}`}>
+      <div className={cn('space-y-3', className)}>
         {/* Render file attachments as icons */}
         {hasFileContent && (
           <div className="space-y-2">
@@ -96,17 +91,11 @@ export function MessageContentRenderer({
 
         {/* If no content at all, show placeholder */}
         {!textWithoutFiles && !hasImageContent && !hasFileContent && !hasAudioContent && (
-          <span className="text-zinc-500 dark:text-zinc-400 italic">No content</span>
+          <span className="text-fg-muted italic">No content</span>
         )}
       </div>
 
-      {selectedImage && (
-        <ImagePreviewOverlay
-          image={selectedImage.image}
-          src={selectedImage.src}
-          onClose={handleClosePreview}
-        />
-      )}
+      {selectedImage && <ImagePreviewOverlay src={selectedImage} onClose={handleClosePreview} />}
     </>
   );
 }
@@ -122,7 +111,7 @@ function MessageAudios({ audios }: { audios: InputAudioContent[] }) {
           return (
             <div
               key={idx}
-              className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 p-3 text-sm text-zinc-600 dark:text-zinc-300"
+              className="rounded-card border border-line bg-muted p-3 text-sm text-fg-muted"
             >
               Audio attachment (unavailable)
             </div>
@@ -130,10 +119,7 @@ function MessageAudios({ audios }: { audios: InputAudioContent[] }) {
         }
 
         return (
-          <div
-            key={idx}
-            className="rounded-lg border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 p-3"
-          >
+          <div key={idx} className="rounded-card border border-line bg-muted p-3">
             <audio controls preload="metadata" className="w-full">
               <source src={src} />
               Your browser does not support the audio element.
@@ -157,7 +143,7 @@ function MessageImages({ images, className = '', onImageClick }: MessageImagesPr
   }
 
   return (
-    <div className={`grid gap-2 ${getGridClass(images.length)} ${className}`}>
+    <div className={cn('grid gap-2', getGridClass(images.length), className)}>
       {images.map((image, index) => (
         <MessageImage key={index} image={image} onClick={onImageClick} />
       ))}
@@ -211,23 +197,24 @@ function MessageImage({ image, className = '', onClick }: MessageImageProps) {
       type="button"
       onClick={handleClick}
       disabled={combinedError || !hasSource}
-      className={`relative block w-full rounded-lg overflow-hidden ${
-        showSpinner || combinedError ? 'bg-zinc-100 dark:bg-zinc-800' : ''
-      } ${
-        combinedError || !hasSource ? 'cursor-not-allowed' : 'cursor-zoom-in'
-      } focus:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-2 focus-visible:ring-offset-white dark:focus-visible:ring-offset-zinc-900 ${className}`}
+      className={cn(
+        'relative block w-full overflow-hidden rounded-card focus-ring',
+        (showSpinner || combinedError) && 'bg-muted',
+        combinedError || !hasSource ? 'cursor-not-allowed' : 'cursor-zoom-in',
+        className
+      )}
       aria-label="View image"
     >
       {showSpinner && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="w-6 h-6 border-2 border-zinc-300 dark:border-zinc-600 border-t-zinc-600 dark:border-t-zinc-300 rounded-full animate-spin" />
+          <div className="size-6 animate-spin rounded-full border-2 border-line-strong border-t-fg-muted" />
         </div>
       )}
 
       {combinedError && (
-        <div className="absolute inset-0 flex items-center justify-center text-zinc-500 dark:text-zinc-400">
+        <div className="absolute inset-0 flex items-center justify-center text-fg-muted">
           <div className="text-center">
-            <div className="w-8 h-8 mx-auto mb-2 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center">
+            <div className="mx-auto mb-2 flex size-8 items-center justify-center rounded-full bg-emphasis">
               <span className="text-sm">!</span>
             </div>
             <div className="text-xs">Failed to load image</div>
@@ -239,10 +226,10 @@ function MessageImage({ image, className = '', onClick }: MessageImageProps) {
         <img
           src={src}
           alt="Chat message attachment"
-          className={`max-w-full h-auto rounded-lg transition-opacity duration-200 ${
+          className={cn(
+            'h-auto max-h-100 w-auto max-w-full rounded-card transition-opacity',
             loaded ? 'opacity-100' : 'opacity-0'
-          }`}
-          style={{ maxHeight: '400px', width: 'auto' }}
+          )}
           onLoad={handleLoad}
           onError={handleError}
           loading="lazy"
@@ -253,70 +240,26 @@ function MessageImage({ image, className = '', onClick }: MessageImageProps) {
 }
 
 interface ImagePreviewOverlayProps {
-  image: ImageContent;
   src: string;
   onClose: () => void;
 }
 
 function ImagePreviewOverlay({ src, onClose }: ImagePreviewOverlayProps) {
-  React.useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [onClose]);
-
-  const handleBackdropClick = () => {
-    onClose();
-  };
-
-  const stopPropagation = (event: React.MouseEvent<HTMLDivElement>) => {
-    event.stopPropagation();
-  };
-
-  if (typeof document === 'undefined') {
-    return null;
-  }
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-      onClick={handleBackdropClick}
-      role="dialog"
-      aria-modal="true"
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Image preview"
+      size="full"
+      closeLabel="Close image preview"
+      bodyClassName="flex items-center justify-center p-4"
     >
-      <div className="relative max-h-full max-w-full" onClick={stopPropagation}>
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute -top-3 -right-3 md:-top-4 md:-right-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-zinc-700 shadow-lg hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
-          aria-label="Close image preview"
-        >
-          <X className="h-4 w-4" />
-        </button>
-        <img
-          src={src}
-          alt="Enlarged chat message attachment"
-          className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
-        />
-      </div>
-    </div>,
-    document.body
+      <img
+        src={src}
+        alt="Enlarged chat message attachment"
+        className="max-h-full max-w-full rounded-card object-contain"
+      />
+    </Modal>
   );
 }
 

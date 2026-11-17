@@ -5,7 +5,6 @@ import remarkMath from 'remark-math';
 import rehypeHighlight from 'rehype-highlight';
 import rehypeKatex from 'rehype-katex';
 import 'katex/dist/katex.min.css';
-import { useTheme } from '../contexts/ThemeContext';
 import {
   ClipboardCheck,
   Clipboard,
@@ -16,6 +15,8 @@ import {
   Eye,
 } from 'lucide-react';
 import { Modal } from './ui/Modal';
+import { IconButton } from './ui/Button';
+import { cn } from '../lib/cn';
 
 interface MarkdownProps {
   text: string;
@@ -292,7 +293,6 @@ function escapeCurrencyDollarSigns(input: string): string {
     .join('');
 }
 
-// ...existing code...
 // Normalize common LaTeX delimiters from \(…\)/\[…\] to $…$/$$…$$.
 // Some providers emit the escaped forms by default, and remark-math only parses dollar delimiters.
 function normalizeLatexDelimiters(input: string): string {
@@ -451,14 +451,13 @@ const MarkdownComponents: any = {
       href={href}
       target="_blank"
       rel="noopener noreferrer"
-      className="md-link underline decoration-zinc-300 hover:decoration-zinc-400 transition-colors"
+      className="text-accent underline underline-offset-2 transition-colors hover:text-accent-hover"
     >
       {children}
     </a>
   ),
   pre: function PreRenderer(p: any) {
     const { children } = p;
-    const preRef = React.useRef<HTMLPreElement | null>(null);
     const codeRef = React.useRef<HTMLDivElement | null>(null);
     const [copied, setCopied] = React.useState(false);
     const [isCollapsed, setIsCollapsed] = React.useState(false);
@@ -526,78 +525,50 @@ const MarkdownComponents: any = {
 
     return (
       <>
-        <pre
-          ref={preRef}
-          className={`md-pre relative my-3 rounded-xl border border-zinc-200/60 dark:border-zinc-800/60 bg-zinc-50/50 dark:bg-zinc-900/30 !overflow-visible`}
-        >
-          {/* Header with language and copy button */}
-          <div className="sticky top-0 z-10 flex items-center px-3 py-2 border-b border-zinc-200/40 dark:border-zinc-800/40 bg-zinc-100 dark:bg-zinc-900">
-            {language && (
-              <span className="text-xs text-zinc-500 dark:text-zinc-500">{language}</span>
-            )}
-            <div className="flex items-center gap-1 ml-auto">
-              <button
-                type="button"
-                aria-label={isWrapped ? 'Disable word wrap' : 'Enable word wrap'}
+        <pre className="relative my-3 rounded-card border border-line bg-muted overflow-visible!">
+          {/* Header with language and toolbar */}
+          <div className="sticky top-0 z-10 flex items-center gap-2 rounded-t-card border-b border-line bg-muted py-1 pr-1 pl-3">
+            {language && <span className="text-xs text-fg-subtle">{language}</span>}
+            <div className="ml-auto flex items-center gap-1">
+              <IconButton
+                size="sm"
+                label={isWrapped ? 'Disable word wrap' : 'Enable word wrap'}
                 aria-pressed={isWrapped}
                 onClick={() => setIsWrapped((prev) => !prev)}
-                className={`inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs transition-colors ${
-                  isWrapped
-                    ? 'text-zinc-700 dark:text-zinc-200 bg-zinc-200/70 dark:bg-zinc-800/70'
-                    : 'text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'
-                }`}
+                className={cn(isWrapped && 'bg-emphasis text-fg')}
               >
-                <WrapText className="h-3.5 w-3.5" />
-              </button>
-              <button
-                type="button"
-                aria-label={copied ? 'Copied' : 'Copy code'}
-                onClick={onCopy}
-                className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition-colors"
-              >
-                {copied ? (
-                  <ClipboardCheck className="h-3.5 w-3.5" />
-                ) : (
-                  <Clipboard className="h-3.5 w-3.5" />
-                )}
-                <span className="sr-only">{copied ? 'Copied' : 'Copy'}</span>
-              </button>
+                <WrapText />
+              </IconButton>
+              <IconButton size="sm" label={copied ? 'Copied' : 'Copy code'} onClick={onCopy}>
+                {copied ? <ClipboardCheck /> : <Clipboard />}
+              </IconButton>
               {isHtml && (
-                <button
-                  type="button"
-                  aria-label="Preview HTML"
-                  onClick={() => setShowHtmlPreview(true)}
-                  className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition-colors"
-                >
-                  <Eye className="h-3.5 w-3.5" />
-                  <span className="sr-only">Preview HTML</span>
-                </button>
+                <IconButton size="sm" label="Preview HTML" onClick={() => setShowHtmlPreview(true)}>
+                  <Eye />
+                </IconButton>
               )}
-              <button
-                type="button"
-                aria-label={isCollapsed ? 'Expand code block' : 'Collapse code block'}
+              <IconButton
+                size="sm"
+                label={isCollapsed ? 'Expand code block' : 'Collapse code block'}
                 aria-expanded={!isCollapsed}
                 onClick={() => setIsCollapsed((prev) => !prev)}
-                className="inline-flex items-center gap-1 rounded px-1.5 py-1 text-xs text-zinc-500 dark:text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300 hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50 transition-colors"
               >
-                {isCollapsed ? (
-                  <ChevronDown className="h-3.5 w-3.5" />
-                ) : (
-                  <ChevronUp className="h-3.5 w-3.5" />
-                )}
-                <span className="sr-only">
-                  {isCollapsed ? 'Expand code block' : 'Collapse code block'}
-                </span>
-              </button>
+                {isCollapsed ? <ChevronDown /> : <ChevronUp />}
+              </IconButton>
             </div>
           </div>
 
           {/* padded, scrollable code area */}
           <div
             ref={codeRef}
-            className={`px-4 py-3 overflow-auto text-sm font-mono text-zinc-700 dark:text-zinc-300 leading-snug transition-all duration-200 ease-in-out ${
-              isCollapsed ? 'pointer-events-none select-none' : ''
-            } ${isWrapped ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'}`}
+            tabIndex={isCollapsed ? -1 : 0}
+            role="region"
+            aria-label={language ? `${language} code` : 'Code'}
+            className={cn(
+              'overflow-auto px-4 py-3 font-mono text-sm leading-snug text-fg transition-opacity focus-ring-inset',
+              isCollapsed && 'pointer-events-none select-none',
+              isWrapped ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'
+            )}
             style={
               isCollapsed
                 ? {
@@ -670,36 +641,30 @@ const MarkdownComponents: any = {
       const isStreaming = !shouldHighlight;
 
       return (
-        <div className="my-3 rounded-xl border border-zinc-200/60 dark:border-zinc-800/60 bg-white dark:bg-zinc-900/40 overflow-hidden shadow-sm">
+        <div className="my-3 overflow-hidden rounded-card border border-line bg-surface">
           <button
+            type="button"
+            aria-expanded={isExpanded}
             onClick={() => setIsExpanded(!isExpanded)}
-            className="w-full flex items-center gap-2.5 px-4 py-3 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors select-none group/think-btn"
+            className="flex w-full items-center gap-2 px-4 py-3 text-fg-muted transition-colors select-none hover:bg-muted focus-ring-inset"
           >
             <Brain
-              size={13}
-              strokeWidth={1.5}
-              className={`shrink-0 transition-colors ${
-                isStreaming
-                  ? 'text-amber-500/80 dark:text-amber-400/80 animate-pulse'
-                  : 'text-zinc-400 dark:text-zinc-500 group-hover/think-btn:text-zinc-600 dark:group-hover/think-btn:text-zinc-300'
-              }`}
+              aria-hidden="true"
+              className={cn(
+                'size-4 shrink-0',
+                isStreaming ? 'animate-pulse text-fg-muted' : 'text-fg-subtle'
+              )}
             />
-            <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
-              Thought Process
-            </span>
-            <div className="ml-auto flex items-center gap-2">
-              <ChevronDown
-                size={13}
-                className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} text-zinc-400 dark:text-zinc-500`}
-              />
-            </div>
+            <span className="text-xs font-medium text-fg-muted">Thought Process</span>
+            <ChevronDown
+              aria-hidden="true"
+              className={cn('ml-auto size-4 text-fg-subtle', isExpanded && 'rotate-180')}
+            />
           </button>
 
           {isExpanded && (
-            <div className="border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/30 dark:bg-[#0a0a0a]/20">
-              <div className="px-3 py-3 text-[13px] leading-relaxed text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap">
-                {children}
-              </div>
+            <div className="border-t border-line px-3 py-3 text-sm leading-relaxed whitespace-pre-wrap text-fg-muted">
+              {children}
             </div>
           )}
         </div>
@@ -713,49 +678,50 @@ const MarkdownComponents: any = {
 
     // Handle inline code (single backticks)
     return (
-      <code
-        className={`${className || ''} bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-sm font-mono`}
-      >
+      <code className={cn(className, 'rounded-control bg-muted px-1 font-mono text-sm')}>
         {children}
       </code>
     );
   },
-  hr: () => <hr className="my-4 border-zinc-200 dark:border-zinc-800" />,
-  p: ({ children }: any) => <p className="md-p leading-relaxed mt-4 first:mt-0">{children}</p>,
+  hr: () => <hr className="my-4 border-line" />,
+  p: ({ children }: any) => <p className="md-p mt-4 leading-relaxed first:mt-0">{children}</p>,
   h1: ({ children }: any) => (
-    <h1 className="md-h1 text-2xl font-bold leading-tight mt-6 mb-4 pb-2 border-b border-zinc-200 dark:border-zinc-800 first:mt-0">
+    <h1 className="md-h1 mt-6 mb-4 border-b border-line pb-2 text-xl font-medium first:mt-0">
       {children}
     </h1>
   ),
   h2: ({ children }: any) => (
-    <h2 className="md-h2 text-xl font-semibold leading-snug mt-5 mb-3 first:mt-0">{children}</h2>
+    <h2 className="md-h2 mt-6 mb-3 text-lg font-medium first:mt-0">{children}</h2>
   ),
   h3: ({ children }: any) => (
-    <h3 className="md-h3 text-lg font-medium leading-normal mt-4 mb-2 first:mt-0">{children}</h3>
+    <h3 className="md-h3 mt-4 mb-2 text-base font-medium first:mt-0">{children}</h3>
   ),
-  ul: ({ children }: any) => <ul className="list-disc ml-6 space-y-2 mb-4">{children}</ul>,
-  ol: ({ children }: any) => <ol className="list-decimal ml-6 space-y-2 mb-4">{children}</ol>,
+  ul: ({ children }: any) => <ul className="mb-4 ml-6 list-disc space-y-2">{children}</ul>,
+  ol: ({ children }: any) => <ol className="mb-4 ml-6 list-decimal space-y-2">{children}</ol>,
   li: ({ children }: any) => <li className="leading-relaxed">{children}</li>,
   blockquote: ({ children }: any) => (
-    <blockquote className="border-l-2 border-zinc-300 dark:border-zinc-700 pl-4 py-2 my-4 italic bg-zinc-50 dark:bg-zinc-900/50 rounded-r-lg leading-relaxed">
+    <blockquote className="my-4 border-l-2 border-line-strong py-2 pl-4 leading-relaxed text-fg-muted italic">
       {children}
     </blockquote>
   ),
   table: ({ children }: any) => (
-    <div className="my-6 w-full overflow-y-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
-      <table className="min-w-full text-sm border-collapse bg-white dark:bg-zinc-900">
-        {children}
-      </table>
+    <div
+      tabIndex={0}
+      role="region"
+      aria-label="Table"
+      className="my-6 w-full overflow-x-auto rounded-card border border-line focus-ring"
+    >
+      <table className="min-w-full border-collapse text-sm">{children}</table>
     </div>
   ),
 
   th: ({ children }: any) => (
-    <th className="text-left px-4 py-3 border-b border-zinc-200 dark:border-zinc-800 font-semibold bg-zinc-50 dark:bg-zinc-900 first:rounded-tl-lg last:rounded-tr-lg">
+    <th className="border-b border-line bg-muted px-4 py-3 text-left font-medium text-fg">
       {processTableCellContent(children)}
     </th>
   ),
   td: ({ children }: any) => (
-    <td className="px-4 py-3 border-b border-zinc-100 dark:border-zinc-900 align-top last:border-b-0">
+    <td className="border-b border-line px-4 py-3 align-top [tr:last-child>&]:border-b-0">
       {processTableCellContent(children)}
     </td>
   ),
@@ -821,9 +787,6 @@ const MemoizedMarkdownBlock = React.memo(
 // - Secure by default (no raw HTML rendering)
 // - Accessible links opening in a new tab
 export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming = false }) => {
-  const { resolvedTheme } = useTheme();
-  const isDark = resolvedTheme === 'dark';
-
   // Throttling for streaming content to improve performance and selection stability
   const [throttledText, setThrottledText] = useState(text);
   const lastUpdateRef = React.useRef<number>(0);
@@ -897,11 +860,8 @@ export const Markdown: React.FC<MarkdownProps> = ({ text, className, isStreaming
   // Split text into blocks to prevent re-rendering of stable content
   const blocks = useMemo(() => splitMarkdownIntoBlocks(processedText), [processedText]);
 
-  // Note: Syntax highlighting theme is automatically handled by CSS
-  // based on the .dark class applied to the document root
-
   return (
-    <div className={`md-content ${className || ''} ${isDark ? 'dark' : ''}`}>
+    <div className={cn('md-content', className)}>
       {blocks.map((block, index) => (
         <MemoizedMarkdownBlock
           key={index}

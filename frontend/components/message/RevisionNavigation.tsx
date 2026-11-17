@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { IconButton } from '../ui/Button';
 
 interface RevisionNavigationProps {
   /** 1-based index of the currently displayed version (total = revisionCount + 1) */
@@ -27,35 +28,35 @@ export function RevisionNavigation({
 }: RevisionNavigationProps) {
   return (
     <div className="flex items-center gap-1 select-none">
-      <button
+      <IconButton
+        label="Previous version"
         onClick={onPrev}
         disabled={current <= 1 || loading || disabled}
-        className="p-0.5 rounded text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-        aria-label="Previous version"
+        className="size-7"
       >
-        <ChevronLeft className="w-3.5 h-3.5" />
-      </button>
+        <ChevronLeft />
+      </IconButton>
 
-      <span className="text-xs text-zinc-500 dark:text-zinc-400 min-w-[3.5rem] text-center tabular-nums">
+      <span className="min-w-14 text-center text-xs text-fg-subtle tabular-nums">
         {loading ? (
-          <span className="text-zinc-400 dark:text-zinc-500">…</span>
+          '…'
         ) : (
           <>
-            <span className="font-medium text-zinc-600 dark:text-zinc-300">{current}</span>
-            <span className="mx-0.5">/</span>
-            <span>{total}</span>
+            <span className="font-medium text-fg-muted">{current}</span>
+            <span className="mx-1">/</span>
+            {total}
           </>
         )}
       </span>
 
-      <button
+      <IconButton
+        label="Next version"
         onClick={onNext}
         disabled={current >= total || loading || disabled}
-        className="p-0.5 rounded text-zinc-400 dark:text-zinc-500 hover:text-zinc-600 dark:hover:text-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-        aria-label="Next version"
+        className="size-7"
       >
-        <ChevronRight className="w-3.5 h-3.5" />
-      </button>
+        <ChevronRight />
+      </IconButton>
     </div>
   );
 }
