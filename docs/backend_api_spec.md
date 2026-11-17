@@ -17,6 +17,8 @@ Content Type: `application/json` unless stated (multipart for image upload, SSE 
 - [Images](#images)
 - [Files](#files)
 - [User Settings](#user-settings)
+- [Model Info](#model-info)
+- [Journal](#journal)
 - [Error Codes](#error-codes-non-exhaustive)
 - [Security Notes](#security-notes)
 - [Rate Limiting](#rate-limiting)
@@ -176,6 +178,9 @@ Success 200:
 Errors: 400 refresh_in_progress (if refresh already running), 500 internal_server_error.
 Note: Individual provider failures are included in the response with empty models array and error field.
 
+### GET /v1/models/info
+Static model metadata from the vendored model catalog (see [Model Info](#model-info)).
+
 ### GET /v1/providers/{id}/models
 Fetch upstream models via stored credentials. Applies optional model filtering.
 Note: If provider's `base_url` is not set, defaults are used based on `provider_type`. Authentication headers are automatically set based on provider type (Anthropic uses `x-api-key`, others use `Authorization: Bearer`).
@@ -269,6 +274,34 @@ When `include_linked=messages` is specified, linked comparison conversation mess
 }
 ```
 Errors: 404 not_found, 500 internal_error.
+
+#### Message `usage` object
+Assistant messages carry `usage` when the provider reported any. All fields are optional:
+```
+{
+  "prompt_tokens": number,                 // FULL prompt: uncached + cache reads + cache writes
+  "completion_tokens": number,
+  "total_tokens": number,
+  "reasoning_tokens": number,
+  "prompt_ms": number,
+  "completion_ms": number,
+  "cache_read_input_tokens": number,       // subset of prompt_tokens served from the prompt cache
+  "cache_creation_input_tokens": number,   // subset of prompt_tokens written to the prompt cache
+  "cost": {
+    "usd": number,                         // charge for the whole message
+    "source": "provider" | "catalog",      // provider-reported charge (e.g. OpenRouter usage.cost) or catalog estimate
+    "cache_savings_usd": number            // only when catalog rates are known and cache reads > 0
+  },
+  "model": "string",
+  "provider": "string"                     // upstream provider name when reported (e.g. via OpenRouter)
+}
+```
+- Token fields describe the **last** model request behind the message (what fills the context window). `cost` covers **all** model requests behind the message (a tool turn makes several): each request is priced on its own and summed.
+- `cost.source` is `"provider"` only when every request had a provider-reported charge; any catalog-estimated request makes it `"catalog"`.
+- `cost` is **omitted** when the message cannot be priced: unknown model, missing or ambiguous usage, or a local provider (`llama-cpp` type, or a localhost/private-network base URL) without a provider-reported charge. An unknown price is never reported as `$0`.
+- `cache_savings_usd` = cache-read tokens at the uncached input rate minus the same tokens at the cache-read rate, using the applicable pricing tier.
+- `cost` is computed on read from stored per-request usage and the static catalog, so it reflects the catalog shipped with the running backend. Messages stored before this field existed have no cache counts or provider charge; their `cost` (if any) is a catalog estimate from prompt/completion tokens, and their native-Anthropic `prompt_tokens` excludes cache reads.
+- The same `usage` shape (with `cost` for that one request) is sent in the streaming usage frame (`data: {"usage": {...}, "model": ...}`) of tool-enabled turns and in the JSON body of `stream:false` tool turns, and on translated (Anthropic/Gemini) chunks of the non-tool stream. Untranslated OpenAI-compatible chunks of the non-tool stream are forwarded byte-for-byte (raw upstream usage).
 
 ### GET /v1/conversations/{id}/branches
 Returns branch metadata for a conversation.
@@ -620,6 +653,49 @@ Success 200:
 ```
 Errors: 400 validation_error, 500 internal_server_error.
 
+## Model Info
+All endpoints require auth.
+
+### GET /v1/models/info
+Query params: `model` (required, model id as configured or as reported upstream), `provider?` (one of the caller's provider ids).
+Looks the model up in the model catalog vendored from qduc/term2 (`backend/src/lib/modelCatalog/`). Matching: exact id, then the longest dash-bounded prefix (dated ids like `claude-sonnet-4-5-20250929`), each retried with any leading `vendor/` segment stripped; the provider only picks which catalog provider's entry wins (openrouter.ai -> `openrouter`, api.openai.com -> `openai`, api.anthropic.com / type `anthropic` -> `anthropic`, api.moonshot.ai -> `moonshotai`; other providers match by model id across the whole catalog). Unknown or foreign provider ids are ignored.
+Success 200:
+```
+{
+  "model": "string",
+  "context_window": number | null,
+  "max_output_tokens": number | null,
+  "pricing": null | {
+    "input_per_mtok": number,           // USD per million tokens, base (lowest) tier
+    "output_per_mtok": number,
+    "cache_read_per_mtok": number | null,
+    "cache_write_per_mtok": number | null
+  }
+}
+```
+- Unknown model: 200 with `context_window`, `max_output_tokens` and `pricing` all `null`.
+- `pricing` is `null` for local providers (never catalog-priced).
+Errors: 400 invalid_request (missing `model`), 401, 500 internal_server_error.
+
+## Journal
+The user's Journal ("memory") entries written by the `journal` tool. All endpoints require auth and only ever see the caller's entries.
+
+### GET /v1/journal
+Query params: `page?` (1-based, default 1), `page_size?` (default 20, capped at 100).
+Success 200 (newest first):
+```
+{
+  "entries": [ { "id": number, "model_name": "string", "content": "string", "created_at": "ISO8601" } ],
+  "page": number,
+  "page_size": number,   // after capping
+  "has_more": boolean
+}
+```
+Errors: 400 invalid_request (non-positive-integer `page`/`page_size`), 401, 500 internal_server_error.
+
+### DELETE /v1/journal/{id}
+Deletes one of the caller's entries. 204 empty; 404 not_found when the entry does not exist or belongs to another user.
+
 ## Error Codes (Non-exhaustive)
 - authentication: invalid_token, refresh_token_expired, invalid_refresh_token, electron_login_failed
 - validation: validation_error, invalid_request, bad_request, weak_password, invalid_email
@@ -652,6 +728,7 @@ When `stream:true` chat responses use SSE with event lines following OpenAI spec
 - 2025-10-16: Added initial documentation and health endpoints.
 - 2025-11-23: Refined provider model fetching and error handling.
 - 2026-01-07: Added specifications for image generation, linked conversations (model comparison), mixed-content messages (audio/images), and streaming abort.
+- 2026-11-17: Added `GET /v1/models/info`, `GET /v1/journal`, `DELETE /v1/journal/{id}`, and `cache_read_input_tokens` / `cache_creation_input_tokens` / `cost` on message `usage`.
 
 ---
 For questions or proposing changes, open a PR updating this file alongside corresponding tests in `backend/__tests__/*`.
