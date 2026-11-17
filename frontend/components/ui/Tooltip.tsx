@@ -1,32 +1,33 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import {
-  FloatingPortal,
-  arrow,
-  flip,
-  offset,
-  shift,
-  useDismiss,
-  useFloating,
-  useFocus,
-  useHover,
-  useInteractions,
-  useRole,
-  useTransitionStyles,
-} from '@floating-ui/react';
-import type { Placement } from '@floating-ui/react';
-import type { ReactNode } from 'react';
+import React from 'react';
+import { Tooltip as BaseTooltip } from '@base-ui/react/tooltip';
+import { cn } from '../../lib/cn';
+
+type Side = 'top' | 'bottom' | 'left' | 'right';
+type Align = 'start' | 'center' | 'end';
+export type TooltipPlacement = Side | `${Side}-${'start' | 'end'}`;
 
 interface TooltipProps {
-  content: ReactNode;
-  children: ReactNode;
+  content: React.ReactNode;
+  children: React.ReactNode;
+  /** Open delay in ms. */
   delay?: number;
-  placement?: Placement;
+  placement?: TooltipPlacement;
   disabled?: boolean;
+  /** Classes for the wrapper element around `children`. */
   className?: string;
 }
 
+function parsePlacement(placement: TooltipPlacement): { side: Side; align: Align } {
+  const [side, align] = placement.split('-') as [Side, 'start' | 'end' | undefined];
+  return { side, align: align ?? 'center' };
+}
+
+/**
+ * Supplementary hover/focus hint. Not shown on touch devices, so never put
+ * essential information in a tooltip.
+ */
 export default function Tooltip({
   content,
   children,
@@ -35,97 +36,36 @@ export default function Tooltip({
   disabled = false,
   className,
 }: TooltipProps) {
-  const arrowRef = useRef<SVGSVGElement | null>(null);
-  const [open, setOpen] = useState(false);
-
-  const middleware = useMemo(
-    // eslint-disable-next-line react-hooks/refs
-    () => [offset(8), flip({ padding: 8 }), shift({ padding: 8 }), arrow({ element: arrowRef })],
-    []
-  );
-
-  // Force close when disabled
-  useEffect(() => {
-    if (disabled && open) {
-      const timer = setTimeout(() => setOpen(false), 0);
-      return () => clearTimeout(timer);
-    }
-  }, [disabled, open]);
-
-  const {
-    refs,
-    floatingStyles,
-    context,
-    placement: resolvedPlacement,
-    middlewareData,
-  } = useFloating({
-    open,
-    onOpenChange: setOpen,
-    middleware,
-    placement,
-  });
-
-  const { isMounted, styles } = useTransitionStyles(context, {
-    duration: 200,
-    initial: { opacity: 0, transform: 'scale(0.95) translateY(2px)' },
-    open: { opacity: 1, transform: 'scale(1) translateY(0)' },
-    close: { opacity: 0, transform: 'scale(0.95) translateY(2px)' },
-  });
-
-  const hover = useHover(context, {
-    delay: { open: delay, close: 80 },
-    move: false,
-    enabled: !disabled,
-  });
-  const focus = useFocus(context, { enabled: !disabled });
-  const role = useRole(context, { role: 'tooltip' });
-  const dismiss = useDismiss(context);
-  const { getReferenceProps, getFloatingProps } = useInteractions([hover, focus, role, dismiss]);
-
-  const arrowPlacementClass = useMemo(() => {
-    const base = 'fill-white dark:fill-zinc-900';
-    const side = resolvedPlacement.split('-')[0];
-    if (side === 'bottom') return `${base} -top-1 rotate-180`;
-    if (side === 'left') return `${base} -right-1 rotate-90`;
-    if (side === 'right') return `${base} -left-1 -rotate-90`;
-    return `${base} -bottom-1`;
-  }, [resolvedPlacement]);
+  const { side, align } = parsePlacement(placement);
+  const isDisabled = disabled || !content;
 
   return (
-    <>
-      <div ref={refs.setReference} className={className ?? 'inline-flex'} {...getReferenceProps()}>
+    <BaseTooltip.Root disabled={isDisabled}>
+      <BaseTooltip.Trigger
+        delay={delay}
+        closeDelay={80}
+        render={<div className={className ?? 'inline-flex'} />}
+      >
         {children}
-      </div>
-      {isMounted && content && !disabled && (
-        <FloatingPortal>
-          <div
-            // eslint-disable-next-line react-hooks/refs
-            ref={refs.setFloating}
-            style={floatingStyles}
-            className="z-[9999] outline-none"
-            {...getFloatingProps()}
+      </BaseTooltip.Trigger>
+      <BaseTooltip.Portal>
+        <BaseTooltip.Positioner
+          side={side}
+          align={align}
+          sideOffset={8}
+          collisionPadding={8}
+          className="z-50"
+        >
+          <BaseTooltip.Popup
+            className={cn(
+              'max-w-64 rounded-control bg-primary px-2 py-1 text-xs text-on-primary break-words',
+              'transition-opacity data-starting-style:opacity-0 data-ending-style:opacity-0'
+            )}
           >
-            <div
-              style={styles}
-              className="pointer-events-none rounded-lg bg-white/90 px-2.5 py-1.5 text-xs font-medium text-zinc-900 shadow-xl shadow-zinc-900/10 backdrop-blur-xl border border-white/20 ring-1 ring-zinc-200/50 max-w-[12rem] sm:max-w-[16rem] md:max-w-[20rem] lg:max-w-[24rem] tracking-tight dark:bg-zinc-900/90 dark:text-zinc-100 dark:ring-white/10 dark:border-white/5 dark:shadow-black/40"
-            >
-              {/* allow wrapping for long content and constrain width responsively */}
-              <span className="break-words whitespace-normal">{content}</span>
-              <svg
-                ref={arrowRef}
-                className={`absolute h-2 w-2 ${arrowPlacementClass}`}
-                viewBox="0 0 8 8"
-                style={{
-                  left: middlewareData.arrow?.x != null ? `${middlewareData.arrow.x}px` : '',
-                  top: middlewareData.arrow?.y != null ? `${middlewareData.arrow.y}px` : '',
-                }}
-              >
-                <path d="M4 0L8 8H0L4 0Z" />
-              </svg>
-            </div>
-          </div>
-        </FloatingPortal>
-      )}
-    </>
+            {content}
+          </BaseTooltip.Popup>
+        </BaseTooltip.Positioner>
+      </BaseTooltip.Portal>
+    </BaseTooltip.Root>
   );
 }

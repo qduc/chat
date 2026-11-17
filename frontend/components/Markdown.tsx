@@ -620,12 +620,13 @@ const MarkdownComponents: any = {
             open={showHtmlPreview}
             onClose={() => setShowHtmlPreview(false)}
             title="HTML Preview"
-            maxWidthClassName="max-w-[95vw]"
+            size="full"
+            bodyClassName="flex p-0"
           >
             <iframe
               srcDoc={codeContent}
               title="HTML Preview"
-              className="w-full h-[80vh] border border-zinc-200 dark:border-zinc-700 rounded-lg bg-white"
+              className="h-full w-full flex-1 bg-document"
               sandbox="allow-scripts allow-same-origin"
             />
           </Modal>

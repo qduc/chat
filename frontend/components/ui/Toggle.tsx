@@ -1,4 +1,7 @@
+'use client';
 import React from 'react';
+import { Switch } from '@base-ui/react/switch';
+import { cn } from '../../lib/cn';
 
 interface ToggleProps {
   checked: boolean;
@@ -10,6 +13,7 @@ interface ToggleProps {
   className?: string;
 }
 
+/** On/off switch built on Base UI Switch. */
 export function Toggle({
   checked,
   onChange,
@@ -17,50 +21,46 @@ export function Toggle({
   disabled,
   icon,
   label,
-  className = '',
+  className,
 }: ToggleProps) {
-  return (
-    <div
-      className={`flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400 select-none ${className}`}
-    >
-      {icon && <span className="w-4 h-4 flex items-center justify-center">{icon}</span>}
-
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        aria-label={ariaLabel}
-        disabled={disabled}
-        onClick={() => onChange(!checked)}
-        className={`
-          relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent
-          transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-2
-          ${
-            checked
-              ? 'bg-zinc-800 dark:bg-zinc-200 focus:ring-zinc-500'
-              : 'bg-zinc-200 dark:bg-zinc-700 focus:ring-zinc-400'
-          }
-          ${disabled ? 'opacity-50 cursor-not-allowed' : 'hover:shadow-sm'}
-        `}
-      >
-        <span
-          className={`
-            pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow-lg ring-0
-            transition duration-200 ease-in-out
-            ${checked ? 'translate-x-5' : 'translate-x-0'}
-            ${disabled ? 'opacity-75' : ''}
-          `}
-        />
-      </button>
-
-      {label && (
-        <span
-          className={`text-sm ${disabled ? 'opacity-50 text-zinc-400' : 'text-zinc-700 dark:text-zinc-300'}`}
-        >
-          {label}
-        </span>
+  const control = (
+    <Switch.Root
+      checked={checked}
+      onCheckedChange={(next) => onChange(next)}
+      disabled={disabled}
+      aria-label={label ? undefined : ariaLabel}
+      className={cn(
+        'relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-line-strong bg-emphasis p-0.5 transition-colors focus-ring',
+        'data-checked:border-accent data-checked:bg-accent',
+        'data-disabled:cursor-not-allowed data-disabled:opacity-50',
+        // Enlarge the hit area to 44px on touch without changing the visual size.
+        'pointer-coarse:after:absolute pointer-coarse:after:-inset-3'
       )}
-    </div>
+    >
+      <Switch.Thumb className="size-3.5 rounded-full bg-fg-muted transition-[translate,background-color] data-checked:translate-x-4 data-checked:bg-on-accent" />
+    </Switch.Root>
+  );
+
+  if (!label && !icon) {
+    return <span className={cn('inline-flex', className)}>{control}</span>;
+  }
+
+  return (
+    <label
+      className={cn(
+        'inline-flex items-center gap-2 text-sm text-fg-muted select-none',
+        disabled && 'opacity-50',
+        className
+      )}
+    >
+      {icon ? (
+        <span aria-hidden="true" className="flex size-4 items-center justify-center">
+          {icon}
+        </span>
+      ) : null}
+      {control}
+      {label ? <span className="text-fg">{label}</span> : null}
+    </label>
   );
 }
 

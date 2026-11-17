@@ -31,7 +31,7 @@ export default function SettingsModal({
       <Modal
         open={open}
         onClose={onClose}
-        maxWidthClassName="max-w-4xl"
+        size="xl"
         title={
           (
             <div className="flex items-center gap-2">

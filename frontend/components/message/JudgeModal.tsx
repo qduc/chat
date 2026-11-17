@@ -92,7 +92,7 @@ export function JudgeModal({
   };
 
   return (
-    <Modal open={isOpen} onClose={onClose} title="Judge responses" maxWidthClassName="max-w-2xl">
+    <Modal open={isOpen} onClose={onClose} title="Judge responses" size="lg">
       <div className="space-y-4">
         <div>
           <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400">
