@@ -28,7 +28,7 @@ import Toggle from './ui/Toggle';
 import { Button, IconButton, buttonClasses, iconButtonClasses } from './ui/Button';
 import { Input } from './ui/Input';
 import { floatingItemClasses } from './ui/Menu';
-import { Popover, PopoverContent, PopoverTrigger } from './ui/Popover';
+import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from './ui/Popover';
 import { cn } from '../lib/cn';
 import QualitySlider from './ui/QualitySlider';
 import { ImagePreview, ImageUploadZone } from './ui/ImagePreview';
@@ -552,7 +552,13 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                       <Paperclip />
                     </PopoverTrigger>
                   </Tooltip>
-                  <PopoverContent side="top" align="start" ariaLabel="Attach" className="w-56 p-1">
+                  <PopoverContent
+                    side="top"
+                    align="start"
+                    ariaLabel="Attach"
+                    hiddenCloseLabel="Close"
+                    className="w-56 p-1"
+                  >
                     {onImagesChange && (
                       <button
                         type="button"
@@ -718,6 +724,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                         {customRequestParams.length} presets
                       </div>
                     </div>
+                    <PopoverClose aria-label="Close" className={iconButtonClasses({ size: 'sm' })}>
+                      <X />
+                    </PopoverClose>
                   </div>
                   <div className="flex max-h-72 flex-col gap-1 overflow-y-auto p-1">
                     <button
@@ -831,26 +840,34 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                       <div className="text-sm font-medium text-fg">Tools</div>
                       <div className="text-xs text-fg-muted">{availableTools.length} available</div>
                     </div>
-                    <Toggle
-                      ariaLabel="Enable tools"
-                      checked={localSelected.length > 0}
-                      disabled={controlsDisabled}
-                      onChange={(v: boolean) => {
-                        if (controlsDisabled) return;
-                        if (!v) {
-                          setLocalSelected([]);
-                          onEnabledToolsChange?.([]);
-                          onUseToolsChange?.(false);
-                        } else if (availableTools.length > 0) {
-                          const all = availableTools
-                            .filter((t) => !isToolDisabled(t.name))
-                            .map((t) => t.name);
-                          setLocalSelected(all);
-                          onEnabledToolsChange?.(all);
-                          onUseToolsChange?.(all.length > 0);
-                        }
-                      }}
-                    />
+                    <div className="flex items-center gap-2">
+                      <Toggle
+                        ariaLabel="Enable tools"
+                        checked={localSelected.length > 0}
+                        disabled={controlsDisabled}
+                        onChange={(v: boolean) => {
+                          if (controlsDisabled) return;
+                          if (!v) {
+                            setLocalSelected([]);
+                            onEnabledToolsChange?.([]);
+                            onUseToolsChange?.(false);
+                          } else if (availableTools.length > 0) {
+                            const all = availableTools
+                              .filter((t) => !isToolDisabled(t.name))
+                              .map((t) => t.name);
+                            setLocalSelected(all);
+                            onEnabledToolsChange?.(all);
+                            onUseToolsChange?.(all.length > 0);
+                          }
+                        }}
+                      />
+                      <PopoverClose
+                        aria-label="Close"
+                        className={iconButtonClasses({ size: 'sm' })}
+                      >
+                        <X />
+                      </PopoverClose>
+                    </div>
                   </div>
 
                   <div className="flex shrink-0 flex-col gap-3 border-b border-line p-3">

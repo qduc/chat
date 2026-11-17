@@ -1,6 +1,6 @@
 # UI Migration Plan: Design Tokens + Base UI
 
-Status: in progress. The visual and component layer is being migrated. Behavior, routing, data, and API stay unchanged.
+Status: complete. All screens below use the design tokens and Base UI components. Behavior, routing, data, and API are unchanged.
 
 ## Audit (baseline, v0.19.0)
 
@@ -60,3 +60,17 @@ Each step leaves the app building, linting, and passing tests. The legacy styles
 7. **System prompts sidebar**: right sidebar and prompt manager modals.
 8. **Settings**: modal, Providers, Search Engines, Advanced.
 9. **Cleanup**: remove legacy CSS vars, reset Tailwind's default color palette, drop `@floating-ui/react` if unused, run the final audits.
+
+## Results
+
+| Check | Before | After |
+| --- | --- | --- |
+| Design-lint violations (`npm run lint:design`) | 3,658 in 71 files | 0 in 66 files |
+| Hex colors outside `app/tokens.css` | 5 (plus ~60 in the dark syntax theme) | 0 |
+| Token contrast pairs meeting WCAG AA (`npm run check:contrast`) | n/a | 178 / 178 |
+| axe (WCAG 2.2 A/AA), 17 states × light/dark | violations on 10 of 12 audited states | 0 |
+| Keyboard walkthrough (trap, visible focus, restore) | n/a | 0 issues |
+| Frontend tests | 534 pass | 534 pass (no test changes) |
+| Build warnings | 3 (pre-existing `rewrites` + static export) | same 3 |
+| JS (gzip) | 759 KB | 850 KB (+90 KB: Base UI) |
+| CSS (gzip) | 21.6 KB | 13.1 KB (−39%) |

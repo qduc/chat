@@ -376,6 +376,8 @@ export default function ModelSelector({
           highlightedRef.current = item;
         }}
         disabled={disabled}
+        // Keep Tab inside the popup so the provider filter and Clear stay keyboard-reachable.
+        modal
       >
         {disabled ? (
           <Tooltip content={disabledReason} className="flex min-w-0">

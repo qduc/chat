@@ -515,18 +515,14 @@ export function RightSidebar({
                     </Button>
                   )}
                   <Button
-                    variant={!canSaveInPlace && hasChanges ? 'primary' : 'secondary'}
+                    variant="secondary"
                     onClick={handleShowSaveAs}
                     disabled={!currentContent.trim()}
                   >
                     Save As
                   </Button>
                   {canSaveInPlace && (
-                    <Button
-                      variant={hasChanges ? 'primary' : 'secondary'}
-                      onClick={handleSavePrompt}
-                      disabled={!hasChanges}
-                    >
+                    <Button variant="secondary" onClick={handleSavePrompt} disabled={!hasChanges}>
                       Save
                     </Button>
                   )}

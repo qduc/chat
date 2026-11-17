@@ -18,6 +18,12 @@ export interface PopoverContentProps {
   ariaLabel?: string;
   /** Element to focus when the popover opens. */
   initialFocus?: React.RefObject<HTMLElement | null>;
+  /**
+   * Adds a close button that stays visually hidden until focused. Base UI only traps
+   * focus in a `modal="trap-focus"` popover when a close part is rendered, and it gives
+   * touch screen-reader users a way out. Omit if the content renders its own PopoverClose.
+   */
+  hiddenCloseLabel?: string;
   className?: string;
   children: React.ReactNode;
 }
@@ -27,6 +33,7 @@ export function PopoverContent({
   align = 'start',
   ariaLabel,
   initialFocus,
+  hiddenCloseLabel,
   className,
   children,
 }: PopoverContentProps) {
@@ -49,6 +56,11 @@ export function PopoverContent({
           )}
         >
           {children}
+          {hiddenCloseLabel ? (
+            <BasePopover.Close className="sr-only focus-visible:not-sr-only focus-visible:block focus-visible:w-full focus-visible:rounded-control focus-visible:px-3 focus-visible:py-2 focus-visible:text-left focus-visible:text-sm focus-visible:text-fg-muted focus-ring-inset">
+              {hiddenCloseLabel}
+            </BasePopover.Close>
+          ) : null}
         </BasePopover.Popup>
       </BasePopover.Positioner>
     </BasePopover.Portal>
