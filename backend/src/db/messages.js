@@ -831,6 +831,10 @@ export function getMessagesPage({ conversationId, branchId: requestedBranchId = 
 
     const metadata = parseMetadataJson(message.metadata_json, message.id) || {};
 
+    if (typeof metadata.finish_reason === 'string') {
+      message.finish_reason = metadata.finish_reason;
+    }
+
     if (Array.isArray(metadata.reasoning_details)) {
       message.reasoning_details = metadata.reasoning_details;
     } else {

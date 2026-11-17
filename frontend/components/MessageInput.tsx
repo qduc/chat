@@ -71,6 +71,7 @@ interface MessageInputProps {
   disabled?: boolean;
   disabledReason?: string;
   disableTextInput?: boolean;
+  submitDisabled?: boolean;
 }
 
 export interface MessageInputRef {
@@ -105,6 +106,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     disabled = false,
     disabledReason = 'Selected models are unavailable. Refresh models to resume.',
     disableTextInput = false,
+    submitDisabled = false,
   },
   ref
 ) {
@@ -177,7 +179,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
     input.trim().length > 0 || images.length > 0 || audios.length > 0 || files.length > 0;
   const inputLocked = disabled;
   const textareaLocked = disabled || disableTextInput;
-  const canSubmit = canSend && !textareaLocked;
+  const canSubmit = canSend && !textareaLocked && !submitDisabled;
   const controlsDisabled = inputLocked || pending.streaming;
 
   // Helper to check if a tool is disabled due to missing API key
@@ -232,49 +234,56 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   // Load tool specs for the selector UI
   useEffect(() => {
     let mounted = true;
-    import('../lib/api')
-      .then((mod) => {
-        const apiTools = (mod as any).tools;
-        if (!apiTools || typeof apiTools.getToolSpecs !== 'function') {
-          if (mounted) setAvailableTools([]);
-          return;
-        }
+    let requestId = 0;
+    const loadTools = () => {
+      const currentRequest = ++requestId;
+      import('../lib/api')
+        .then((mod) => {
+          const apiTools = (mod as any).tools;
+          if (!apiTools || typeof apiTools.getToolSpecs !== 'function') {
+            if (mounted && currentRequest === requestId) setAvailableTools([]);
+            return;
+          }
 
-        apiTools
-          .getToolSpecs()
-          .then((res: any) => {
-            if (!mounted) return;
-            const specs = Array.isArray(res?.tools) ? res.tools : [];
-            const names = Array.isArray(res?.available_tools) ? res.available_tools : [];
-            const apiKeyStatus = res?.tool_api_key_status || {};
+          apiTools
+            .getToolSpecs()
+            .then((res: any) => {
+              if (!mounted || currentRequest !== requestId) return;
+              const specs = Array.isArray(res?.tools) ? res.tools : [];
+              const names = Array.isArray(res?.available_tools) ? res.available_tools : [];
+              const apiKeyStatus = res?.tool_api_key_status || {};
 
-            const tools =
-              specs.length > 0
-                ? specs.map((t: any) => ({
-                    name: t.function?.name || t.name,
-                    description: t.function?.description || t.description,
-                  }))
-                : names.map((n: string) => ({ name: n, description: undefined }));
+              const tools =
+                specs.length > 0
+                  ? specs.map((t: any) => ({
+                      name: t.function?.name || t.name,
+                      description: t.function?.description || t.description,
+                    }))
+                  : names.map((n: string) => ({ name: n, description: undefined }));
 
-            setAvailableTools(tools);
-            setToolApiKeyStatus(apiKeyStatus);
-          })
-          .catch(() => {
-            if (mounted) {
-              setAvailableTools([]);
-              setToolApiKeyStatus({});
-            }
-          });
-      })
-      .catch(() => {
-        if (mounted) {
-          setAvailableTools([]);
-          setToolApiKeyStatus({});
-        }
-      });
+              setAvailableTools(tools);
+              setToolApiKeyStatus(apiKeyStatus);
+            })
+            .catch(() => {
+              if (mounted && currentRequest === requestId) {
+                setAvailableTools([]);
+                setToolApiKeyStatus({});
+              }
+            });
+        })
+        .catch(() => {
+          if (mounted && currentRequest === requestId) {
+            setAvailableTools([]);
+            setToolApiKeyStatus({});
+          }
+        });
+    };
+    loadTools();
+    window.addEventListener('tool-settings-changed', loadTools);
 
     return () => {
       mounted = false;
+      window.removeEventListener('tool-settings-changed', loadTools);
     };
   }, []);
 
@@ -539,7 +548,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
               placeholder={
                 textareaLocked
                   ? disableTextInput
-                    ? 'Change settings below and click Generate Response'
+                    ? 'Use Regenerate on the failed response to try again'
                     : disabledReason
                   : 'Type your message...'
               }
@@ -553,7 +562,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
               title={
                 textareaLocked
                   ? disableTextInput
-                    ? 'Consecutive user messages are not allowed. Use Generate Response instead.'
+                    ? 'Use Regenerate on the failed response to try again.'
                     : disabledReason
                   : undefined
               }
@@ -1025,7 +1034,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   onSend();
                 }
               }}
-              disabled={(!canSend || textareaLocked) && !pending.streaming}
+              disabled={!canSubmit && !pending.streaming}
               aria-label={pending.streaming ? 'Stop' : 'Send'}
               title={pending.streaming ? 'Stop' : 'Send'}
               className="size-8 rounded-full p-0 disabled:bg-emphasis disabled:text-fg-subtle disabled:opacity-100"

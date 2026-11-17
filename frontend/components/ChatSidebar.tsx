@@ -228,7 +228,9 @@ export function ChatSidebar({
                     size="sm"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onDeleteConversation(c.id);
+                      if (window.confirm(`Delete "${c.title || 'Untitled conversation'}"?`)) {
+                        onDeleteConversation(c.id);
+                      }
                     }}
                     className="absolute right-1 size-7 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-danger pointer-coarse:opacity-100"
                   >

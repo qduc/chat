@@ -15,7 +15,7 @@ import type { Status, PendingState } from '../lib';
  * - `status` / `setStatus`: Current streaming status
  * - `pending` / `setPending`: Pending state with error info
  * - `abortControllerRef`: Ref to current AbortController
- * - `currentRequestIdRef`: Ref to current request ID for abort API
+ * - `activeRequestsRef`: In-flight request IDs and their cancellation acknowledgments
  * - `tokenStatsRef`: Ref to live token statistics
  * - `stopStreaming()`: Abort current stream and notify backend
  * - `resetStreaming()`: Reset all streaming state
@@ -30,7 +30,7 @@ export function useChatStreaming() {
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
-  const currentRequestIdRef = useRef<string | null>(null);
+  const activeRequestsRef = useRef(new Map<string, Promise<boolean> | null>());
 
   // Token streaming stats ref to avoid re-renders on every token
   const tokenStatsRef = useRef<{
@@ -50,15 +50,23 @@ export function useChatStreaming() {
     baseCompletionMs?: number;
   } | null>(null);
 
-  const stopStreaming = useCallback(() => {
-    const requestId = currentRequestIdRef.current;
-    if (requestId) {
-      void chat.stopMessage({ requestId });
-    }
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
-    }
+  const stopStreaming = useCallback(async () => {
+    const controller = abortControllerRef.current;
+    const requests = activeRequestsRef.current;
+    const cancellations = Array.from(requests, ([requestId, existing]) => {
+      if (existing) return existing;
+      const cancellation = chat
+        .stopMessage({ requestId })
+        .then((response) => response.stopped)
+        .catch(() => false);
+      requests.set(requestId, cancellation);
+      return cancellation;
+    });
+    // Deliver the server-side stop before closing the streams, so partial replies finalize as cancelled.
+    if (cancellations.length) await Promise.all(cancellations);
+    if (abortControllerRef.current !== controller) return;
+    controller?.abort();
+    abortControllerRef.current = null;
     setStatus('idle');
     setPending((prev) => ({ ...prev, streaming: false, abort: null }));
   }, []);
@@ -72,7 +80,7 @@ export function useChatStreaming() {
       retryStatus: null,
     });
     abortControllerRef.current = null;
-    currentRequestIdRef.current = null;
+    activeRequestsRef.current = new Map();
     tokenStatsRef.current = null;
   }, []);
 
@@ -82,7 +90,7 @@ export function useChatStreaming() {
     pending,
     setPending,
     abortControllerRef,
-    currentRequestIdRef,
+    activeRequestsRef,
     tokenStatsRef,
     stopStreaming,
     resetStreaming,

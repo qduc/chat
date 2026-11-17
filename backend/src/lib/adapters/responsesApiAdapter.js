@@ -1128,6 +1128,9 @@ function wrapJsonResponse(response) {
 }
 
 export class ResponsesAPIAdapter extends BaseAdapter {
+  rejectedCustomRequestParams(params) {
+    return Object.keys(params || {}).filter((key) => CUSTOM_REQUEST_PARAMS_BLOCKLIST.has(key));
+  }
   constructor(options = {}) {
     super(options);
     this.supportsReasoningControls = options.supportsReasoningControls || (() => false);

@@ -135,6 +135,7 @@ describe('useChat hook', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockChat.stopMessage.mockResolvedValue({ stopped: false });
     window.localStorage.clear();
   });
 
@@ -770,12 +771,13 @@ describe('useChat hook', () => {
     );
   });
 
-  test('stopStreaming aborts in-flight request and records cancellation error', async () => {
+  test('stopStreaming aborts in-flight request and records stopped state', async () => {
     let capturedSignal: AbortSignal | undefined;
     mockChat.sendMessage.mockImplementation(
       (options: ChatOptionsExtended) =>
         new Promise((_resolve, reject) => {
           capturedSignal = options.signal;
+          options.onToken?.('Partial response');
           options.signal?.addEventListener?.('abort', () => {
             const err = new Error('aborted');
             err.name = 'AbortError';
@@ -802,8 +804,79 @@ describe('useChat hook', () => {
 
     expect(capturedSignal?.aborted).toBe(true);
     expect(result.current.status).toBe('idle');
-    await waitFor(() => expect(result.current.error).toBe('Message cancelled'));
+    await waitFor(() =>
+      expect(result.current.messages.find((m) => m.role === 'assistant')?.status).toBe('stopped')
+    );
+    expect(result.current.error).toBeFalsy();
+    expect(result.current.messages.find((m) => m.role === 'assistant')?.content).toBe(
+      'Partial response'
+    );
   });
+
+  test.each([false, true])(
+    'stopping a comparison preserves partial responses (primary finished: %s)',
+    async (primaryFinished) => {
+      mockConversations.create.mockResolvedValue({
+        id: 'conv-stop',
+        title: 'Stop',
+        created_at: new Date().toISOString(),
+      } as any);
+      const endStreams = new Map<string, () => void>();
+      mockChat.sendMessage.mockImplementation((options: ChatOptionsExtended) => {
+        const isComparison = options.model === 'gpt-4o-mini';
+        if (primaryFinished && !isComparison)
+          return Promise.resolve({ content: 'Primary complete' });
+        const content = isComparison ? 'Comparison partial' : 'Primary partial';
+        options.onToken?.(content);
+        return new Promise((resolve) => {
+          endStreams.set(options.requestId as string, () => resolve({ content }));
+        });
+      });
+      mockChat.stopMessage.mockImplementation(async ({ requestId }) => {
+        endStreams.get(requestId)?.();
+        return { stopped: true };
+      });
+      const { result } = renderUseChat();
+      act(() => result.current.setCompareModels(['openai::gpt-4o-mini']));
+      let sending: Promise<void> | undefined;
+      act(() => {
+        sending = result.current.sendMessage('Compare');
+      });
+      await waitFor(() => expect(mockChat.sendMessage).toHaveBeenCalledTimes(2));
+      if (primaryFinished) {
+        await waitFor(() =>
+          expect(result.current.messages.at(-1)?.content).toBe('Primary complete')
+        );
+      }
+      expect(result.current.pending.streaming).toBe(true);
+      await act(async () => {
+        await result.current.stopStreaming();
+        await sending;
+      });
+      expect(mockChat.stopMessage.mock.calls.map(([options]) => options.requestId)).toEqual([
+        ...endStreams.keys(),
+      ]);
+      const assistant = result.current.messages.find((m) => m.role === 'assistant')!;
+      expect(assistant.status).toBe(primaryFinished ? undefined : 'stopped');
+      expect(assistant.content).toBe(primaryFinished ? 'Primary complete' : 'Primary partial');
+      expect(assistant.comparisonResults?.['openai::gpt-4o-mini']).toMatchObject({
+        status: 'stopped',
+        content: 'Comparison partial',
+      });
+      mockChat.sendMessage.mockResolvedValue({ content: 'Retried' } as any);
+      await act(async () => {
+        await result.current.retryComparisonModel(assistant.id, 'openai::gpt-4o-mini');
+      });
+      expect(
+        result.current.messages.find((m) => m.id === assistant.id)?.comparisonResults?.[
+          'openai::gpt-4o-mini'
+        ]
+      ).toMatchObject({
+        status: 'complete',
+        content: 'Retried',
+      });
+    }
+  );
 
   test('sendMessage surfaces upstream error details when proxy wraps errors', async () => {
     mockChat.sendMessage.mockRejectedValue(
@@ -1369,7 +1442,7 @@ describe('useChat hook', () => {
     expect(assistantMessageIds).toHaveLength(0);
   });
 
-  test('judgeComparison streams draft content, stores evaluation, and deleteJudgeResponse removes it', async () => {
+  test('judgeComparison replaces a failed attempt on retry and the saved evaluation can be deleted', async () => {
     const now = new Date().toISOString();
     mockConversations.get.mockResolvedValue({
       id: 'conv-judge',
@@ -1450,13 +1523,22 @@ describe('useChat hook', () => {
       expect(result.current.messages[1].comparisonResults?.['openai::gpt-4o-mini']).toBeDefined()
     );
 
+    const options = {
+      messageId: 'assistant-1',
+      selectedModelIds: ['primary', 'openai::gpt-4o-mini'],
+      judgeModelId: 'openai::gpt-4o',
+      reasoningEffort: 'high' as const,
+    };
+    mockJudge.evaluate.mockRejectedValueOnce(new Error('Invalid verdict'));
     await act(async () => {
-      await result.current.judgeComparison({
-        messageId: 'assistant-1',
-        selectedModelIds: ['primary', 'openai::gpt-4o-mini'],
-        judgeModelId: 'openai::gpt-4o',
-        reasoningEffort: 'high',
-      });
+      await expect(result.current.judgeComparison(options)).rejects.toThrow('Invalid verdict');
+    });
+    expect(result.current.evaluationDrafts).toEqual([
+      expect.objectContaining({ messageId: 'assistant-1', status: 'error' }),
+    ]);
+
+    await act(async () => {
+      await result.current.judgeComparison(options);
     });
 
     expect(mockJudge.evaluate).toHaveBeenCalledWith(
@@ -2580,7 +2662,7 @@ describe('Phase 0 Characterization Tests', () => {
       );
     });
 
-    test('selectConversation populates comparisonResults from linked messages', async () => {
+    test('selectConversation restores stopped status independently for primary and linked replies', async () => {
       const now = new Date().toISOString();
       arrangeHttpMocks();
       mockAuth.getProfile.mockResolvedValue({
@@ -2611,7 +2693,8 @@ describe('Phase 0 Characterization Tests', () => {
             role: 'assistant',
             content: 'Primary answer',
             created_at: now,
-            status: 'completed',
+            status: 'final',
+            finish_reason: 'cancelled',
             usage: { prompt_tokens: 10, completion_tokens: 20, total_tokens: 30 },
             tool_calls: [
               {
@@ -2621,6 +2704,22 @@ describe('Phase 0 Characterization Tests', () => {
                 function: { name: 'search', arguments: '{}' },
               },
             ],
+          },
+          {
+            id: 'user-2',
+            seq: 3,
+            role: 'user',
+            content: 'Next question',
+            created_at: now,
+            status: 'final',
+          },
+          {
+            id: 'assistant-2',
+            seq: 4,
+            role: 'assistant',
+            content: 'Completed primary answer',
+            created_at: now,
+            status: 'final',
           },
         ],
         linked_conversations: [
@@ -2636,8 +2735,18 @@ describe('Phase 0 Characterization Tests', () => {
                 role: 'assistant',
                 content: 'Mini answer',
                 created_at: now,
-                status: 'completed',
+                status: 'final',
+                finish_reason: 'stop',
                 usage: { prompt_tokens: 5, completion_tokens: 10, total_tokens: 15 },
+              },
+              {
+                id: 'assistant-mini-2',
+                seq: 4,
+                role: 'assistant',
+                content: 'Partial mini answer',
+                created_at: now,
+                status: 'final',
+                finish_reason: 'cancelled',
               },
             ],
           },
@@ -2651,12 +2760,24 @@ describe('Phase 0 Characterization Tests', () => {
         await result.current.selectConversation('conv-results');
       });
 
-      const assistantMsg = result.current.messages.find((m) => m.role === 'assistant');
+      const [assistantMsg, nextAssistantMsg] = result.current.messages.filter(
+        (m) => m.role === 'assistant'
+      );
+      expect(assistantMsg).toMatchObject({ content: 'Primary answer', status: 'stopped' });
       expect(assistantMsg?.comparisonResults?.['openai::gpt-4o-mini']).toMatchObject({
         messageId: 'assistant-mini',
         content: 'Mini answer',
         status: 'complete',
         usage: { prompt_tokens: 5, completion_tokens: 10, total_tokens: 15 },
+      });
+      expect(nextAssistantMsg).toMatchObject({
+        content: 'Completed primary answer',
+        status: 'final',
+      });
+      expect(nextAssistantMsg?.comparisonResults?.['openai::gpt-4o-mini']).toMatchObject({
+        messageId: 'assistant-mini-2',
+        content: 'Partial mini answer',
+        status: 'stopped',
       });
     });
 

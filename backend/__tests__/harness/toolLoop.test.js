@@ -7,6 +7,7 @@ import request from 'supertest';
 import { createChatProxyTestContext } from '../../test_utils/chatProxyTestUtils.js';
 import { getMessagesPage } from '../../src/db/index.js';
 import { updateUserMaxToolIterations } from '../../src/db/users.js';
+import { upsertUserSetting } from '../../src/db/userSettings.js';
 import { tools as toolRegistry } from '../../src/lib/tools/index.js';
 import { createTool } from '../../src/lib/tools/baseTool.js';
 import { config } from '../../src/env.js';
@@ -295,6 +296,59 @@ const EMPTY_JOURNAL = '{"entries":[],"page":1,"pageSize":10}';
 
 describe('streaming tool loop', () => {
 
+  test('applies selected presets to each upstream tool-loop request', async () => {
+    const app = makeApp({ mockUser });
+    upsertUserSetting(mockUser.id, 'custom_request_params', JSON.stringify([
+      { id: 'first', params: { temperature: 0.1, seed: 42 } },
+      { id: 'second', params: { temperature: 0.35 } },
+    ]));
+    const requests = scriptUpstream(streamOrJson([toolCallChunks('call_preset'), textChunks('Done.')]));
+    const res = await request(app).post('/v1/chat/completions').send({
+      messages: [{ role: 'user', content: 'Look in my journal' }],
+      stream: true,
+      tools: ['journal'],
+      custom_request_params_id: ['first', 'second'],
+    });
+    assert.equal(res.status, 200);
+    assert.equal(requests.length, 2);
+    for (const body of requests) {
+      assert.equal(body.temperature, 0.35);
+      assert.equal(body.seed, 42);
+      assert.equal(Object.hasOwn(body, 'custom_request_params'), false);
+    }
+  });
+
+  test('rejects protected preset fields before sending upstream', async () => {
+    const app = makeApp({ mockUser });
+    upsertUserSetting(mockUser.id, 'custom_request_params', JSON.stringify([
+      { id: 'invalid', params: { model: 'override' } },
+    ]));
+    const res = await request(app).post('/v1/chat/completions').send({
+      messages: [{ role: 'user', content: 'Hello' }],
+      tools: ['journal'],
+      custom_request_params_id: ['invalid'],
+    });
+    assert.equal(res.status, 400);
+    assert.match(res.body.message, /model/);
+    assert.equal(upstream.lastChatRequestBody, null);
+  });
+
+  test('shows an upstream rejection of a selected preset', async () => {
+    const app = makeApp({ mockUser });
+    upsertUserSetting(mockUser.id, 'custom_request_params', JSON.stringify([
+      { id: 'sampling', params: { temperature: 0.35 } },
+    ]));
+    const requests = scriptUpstream([(_req, res) => res.status(400).json({ error: { message: 'temperature is unsupported' } })]);
+    const res = await request(app).post('/v1/chat/completions').send({
+      messages: [{ role: 'user', content: 'Hello' }],
+      stream: true,
+      tools: ['journal'],
+      custom_request_params_id: ['sampling'],
+    });
+    assert.equal(requests[0].temperature, 0.35);
+    assert.match(streamedContent(parseSse(res.text)), /temperature is unsupported/);
+  });
+
   test('tool call then answer', async () => {
     const run = await runTurn({ script: [toolCallChunks('call_1'), textChunks('Your journal is empty.')] });
 
@@ -375,6 +429,7 @@ describe('streaming tool loop', () => {
     const run = await runTurn({ script: [fail] });
 
     const error = '[Error: Upstream API error (400): bad request from upstream]';
+    assert.ok(run.events.some((event) => event?.choices?.[0]?.finish_reason === 'error'));
     assert.deepEqual(summarize(run), {
       upstreamRequests: 1,
       done: true,

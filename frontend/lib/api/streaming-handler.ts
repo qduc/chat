@@ -820,61 +820,11 @@ export async function handleJudgeStreamingResponse(
   const decoder = new TextDecoder('utf-8');
   const parser = new SSEParser();
 
-  let content = '';
   let evaluation: Evaluation | null = null;
 
   const finalize = (): Evaluation => {
     if (evaluation) return evaluation;
-    // Fallback if evaluation wasn't sent explicitly
-    try {
-      const parsed = content ? JSON.parse(content) : null;
-      const scores =
-        parsed && typeof parsed === 'object' && typeof parsed.scores === 'object'
-          ? parsed.scores
-          : null;
-      const inferredModels = scores
-        ? Object.entries(scores).map(([modelId, score]) => ({
-            model_id: modelId,
-            conversation_id: 'unknown',
-            message_id: 'unknown',
-            score: Number.isFinite(Number(score)) ? Number(score) : null,
-          }))
-        : [];
-      return {
-        id: 'unknown',
-        user_id: 'unknown',
-        conversation_id: 'unknown',
-        model_a_conversation_id: 'unknown',
-        model_a_message_id: 'unknown',
-        model_b_conversation_id: 'unknown',
-        model_b_message_id: 'unknown',
-        judge_model_id: 'unknown',
-        criteria: null,
-        score_a: Number.isFinite(Number(parsed?.score_a)) ? Number(parsed?.score_a) : null,
-        score_b: Number.isFinite(Number(parsed?.score_b)) ? Number(parsed?.score_b) : null,
-        winner: typeof parsed?.winner === 'string' ? parsed.winner : 'tie',
-        reasoning: typeof parsed?.reasoning === 'string' ? parsed.reasoning : content,
-        created_at: new Date().toISOString(),
-        models: inferredModels.length > 0 ? inferredModels : undefined,
-      };
-    } catch {
-      return {
-        id: 'unknown',
-        user_id: 'unknown',
-        conversation_id: 'unknown',
-        model_a_conversation_id: 'unknown',
-        model_a_message_id: 'unknown',
-        model_b_conversation_id: 'unknown',
-        model_b_message_id: 'unknown',
-        judge_model_id: 'unknown',
-        criteria: null,
-        score_a: null,
-        score_b: null,
-        winner: 'tie',
-        reasoning: content,
-        created_at: new Date().toISOString(),
-      };
-    }
+    throw new Error('Judge did not return an evaluation. Please try again.');
   };
 
   const body: any = response.body;
@@ -886,6 +836,9 @@ export async function handleJudgeStreamingResponse(
       }
 
       if (event.type === 'data' && event.data) {
+        if (event.data.type === 'error') {
+          throw new Error(event.data.message || 'Judge failed. Please try again.');
+        }
         if (event.data.type === 'evaluation' && event.data.evaluation) {
           evaluation = event.data.evaluation as Evaluation;
           onEvaluation?.(evaluation);
@@ -894,7 +847,6 @@ export async function handleJudgeStreamingResponse(
 
         const delta = event.data?.choices?.[0]?.delta;
         if (delta?.content) {
-          content += delta.content;
           onToken?.(delta.content);
         }
       }

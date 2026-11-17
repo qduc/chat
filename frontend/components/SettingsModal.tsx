@@ -40,16 +40,25 @@ export default function SettingsModal({
     >
       <div className="flex min-h-100 flex-col gap-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
-          <TabsList ariaLabel="Settings tabs">
-            <TabsTab value="providers">
+          <TabsList ariaLabel="Settings tabs" className="gap-2 sm:gap-4">
+            <TabsTab
+              value="providers"
+              className="flex-1 justify-center text-xs sm:flex-none sm:text-sm"
+            >
               <Database aria-hidden="true" />
               Providers
             </TabsTab>
-            <TabsTab value="search">
+            <TabsTab
+              value="search"
+              className="flex-1 justify-center text-xs sm:flex-none sm:text-sm"
+            >
               <Zap aria-hidden="true" />
               Search Engines
             </TabsTab>
-            <TabsTab value="advanced">
+            <TabsTab
+              value="advanced"
+              className="flex-1 justify-center text-xs sm:flex-none sm:text-sm"
+            >
               <Sliders aria-hidden="true" />
               Advanced
             </TabsTab>

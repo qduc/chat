@@ -59,7 +59,7 @@ export interface SendPipelineDeps {
 
   // -- Streaming --
   abortControllerRef: MutableRefObject<AbortController | null>;
-  currentRequestIdRef: MutableRefObject<string | null>;
+  activeRequestsRef: MutableRefObject<Map<string, Promise<boolean> | null>>;
   tokenStatsRef: MutableRefObject<{
     count: number;
     charCount: number;
@@ -129,7 +129,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
     messagesRef,
     setMessages,
     abortControllerRef,
-    currentRequestIdRef,
+    activeRequestsRef,
     tokenStatsRef,
     setStatus,
     setPending,
@@ -500,6 +500,8 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         noRevisionBranch?: boolean;
       }
     ) => {
+      const signal = options?.signal ?? abortControllerRef.current?.signal;
+      if (signal?.aborted) return;
       const targetConversationId = options?.conversationId;
       const parentConversationId = options?.parentConversationId;
       const actualModelId = targetModel.includes('::') ? targetModel.split('::')[1] : targetModel;
@@ -554,6 +556,9 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
         });
       }
 
+      const requestId = isPrimary ? messageId : `${messageId}-${targetModel}`;
+      const activeRequests = activeRequestsRef.current;
+      activeRequests.set(requestId, null);
       try {
         const payload: ChatOptionsExtended = {
           messages: messagesPayload,
@@ -561,8 +566,8 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           providerId: targetProviderId,
           stream: shouldStreamRef.current,
           providerStream: providerStreamRef.current,
-          requestId: isPrimary ? messageId : `${messageId}-${targetModel}`,
-          signal: options?.signal || abortControllerRef.current?.signal || undefined,
+          requestId,
+          signal,
           conversationId: targetConversationId,
           branchId: isPrimary ? viewedBranchIdRef.current : null,
           parentConversationId,
@@ -814,6 +819,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           setLinkedConversations((prev) => ({ ...prev, [targetModel]: response.conversation!.id }));
         }
 
+        const stopped = await activeRequests.get(requestId);
         updateMessageState(
           isPrimary,
           messageId,
@@ -825,13 +831,15 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                 (response as any).message_events ||
                 (current as any).message_events ||
                 accumulator.getEvents(),
-              status: isPrimary
-                ? response.status === 'error' || current.status === 'error'
-                  ? 'error'
-                  : undefined
-                : response.status === 'error'
-                  ? 'error'
-                  : 'complete',
+              status: stopped
+                ? 'stopped'
+                : isPrimary
+                  ? response.status === 'error' || current.status === 'error'
+                    ? 'error'
+                    : undefined
+                  : response.status === 'error'
+                    ? 'error'
+                    : 'complete',
               ...(!isPrimary
                 ? {
                     error:
@@ -855,15 +863,18 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
                   (current as any).messageId,
             }) as any
         );
-        if (isPrimary) {
-          setPending((prev) => ({ ...prev, streaming: false }));
-        }
-
         return response;
       } catch (err: any) {
         flushBufferedStreamingText(messageId, targetModel, isPrimary);
         if (isPrimary) {
           pauseTokenEstimateClock();
+        }
+
+        if (signal?.aborted && (err?.name === 'AbortError' || err?.message === 'aborted')) {
+          updateMessageState(isPrimary, messageId, targetModel, (current) =>
+            current.status === 'error' ? {} : ({ status: 'stopped' } as any)
+          );
+          return;
         }
 
         let msg =
@@ -881,8 +892,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
             await refreshBranchState(conversationIdForBranchRefresh);
           }
           setError(msg);
-          setStatus('idle');
-          setPending((prev) => ({ ...prev, error: msg, streaming: false, retryStatus: undefined }));
+          setPending((prev) => ({ ...prev, error: msg, retryStatus: undefined }));
         } else
           updateMessageState(
             false,
@@ -890,6 +900,8 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
             targetModel,
             () => ({ status: 'error', error: msg }) as any
           );
+      } finally {
+        activeRequests.delete(requestId);
       }
     },
     [
@@ -922,10 +934,10 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       setViewedBranchId,
       user,
       setLinkedConversations,
-      setStatus,
       setError,
       setPending,
       abortControllerRef,
+      activeRequestsRef,
       refreshBranchState,
     ]
   );
@@ -971,7 +983,6 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       abortControllerRef.current = new AbortController();
       const signal = abortControllerRef.current.signal;
       const messageId = generateClientId();
-      currentRequestIdRef.current = messageId;
       tokenStatsRef.current = {
         count: 0,
         charCount: 0,
@@ -1112,7 +1123,6 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
       executeRequest,
       linkedConversationsRef,
       abortControllerRef,
-      currentRequestIdRef,
       setCurrentConversationTitle,
       tokenStatsRef,
     ]
@@ -1166,6 +1176,7 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
               ? {
                   ...m,
                   content: '',
+                  status: undefined,
                   tool_calls: undefined,
                   tool_outputs: undefined,
                   message_events: undefined,
@@ -1175,19 +1186,24 @@ export function useMessageSendPipeline(deps: SendPipelineDeps) {
           )
         );
       }
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
       setStatus('streaming');
+      setPending((prev) => ({ ...prev, streaming: true, abort: controller }));
       await executeRequest(modelKey, isPrimary, messageId, userMsg.id, userMsg.content, {
         conversationId: isPrimary
           ? conversationIdRef.current || undefined
           : linkedConversationsRef.current[modelKey],
-        signal: abortControllerRef.current?.signal,
+        signal: controller.signal,
       });
       setStatus('idle');
+      setPending((prev) => ({ ...prev, streaming: false, abort: null, retryStatus: undefined }));
     },
     [
       messagesRef,
       modelRef,
       setStatus,
+      setPending,
       setMessages,
       executeRequest,
       conversationIdRef,

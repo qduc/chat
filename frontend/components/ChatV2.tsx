@@ -236,7 +236,13 @@ export function ChatV2() {
   const modelSelectionLockReason = modelAvailability.locked
     ? modelLockReason
     : 'Primary model is locked for comparison chats after the first message. Start a new chat to change.';
-  const canSend = !modelAvailability.locked;
+  const needsProviderSetup = !chat.isLoadingModels && chat.modelOptions.length === 0;
+  const needsModelSelection = !chat.isLoadingModels && !needsProviderSetup && !chat.model;
+  const canSend =
+    !modelAvailability.locked &&
+    !needsProviderSetup &&
+    !needsModelSelection &&
+    !chat.isLoadingModels;
   const composerBlockedByError = isComposerBlockedByAssistantError(chat.messages);
   const composerDisabled = !canSend;
   const composerDisabledReason = modelLockReason;
@@ -391,7 +397,7 @@ export function ChatV2() {
     async (messageId: string, updatedContent: MessageContent) => {
       if (!canSend) return;
       if (chat.status === 'streaming') {
-        chat.stopStreaming();
+        await chat.stopStreaming();
       }
 
       const idx = chat.messages.findIndex((m) => m.id === messageId);
@@ -609,7 +615,7 @@ export function ChatV2() {
 
   const handleSuggestionClick = useCallback(
     (text: string) => {
-      chat.setInput(text);
+      chat.setInput(chat.input ? `${chat.input}\n\n${text}` : text);
       messageInputRef.current?.focus();
     },
     [chat]
@@ -824,6 +830,22 @@ export function ChatV2() {
               ref={messageInputContainerRef}
               className="absolute bottom-2 left-1/2 z-30 flex w-full max-w-3xl -translate-x-1/2 flex-col gap-2 px-2 sm:bottom-4 sm:px-4 md:px-6"
             >
+              {needsProviderSetup && (
+                <div className="flex items-center justify-center gap-2 text-sm text-fg-muted">
+                  No models available.
+                  <Button variant="secondary" onClick={() => setIsSettingsOpen(true)}>
+                    Set up a provider
+                  </Button>
+                </div>
+              )}
+              {needsModelSelection && (
+                <div className="flex items-center justify-center gap-2 text-sm text-fg-muted">
+                  Select a model to send.
+                  <Button variant="secondary" onClick={() => setIsModelSelectorOpen(true)}>
+                    Select model
+                  </Button>
+                </div>
+              )}
               {showGenerateButton && (
                 <div className="flex justify-center">
                   <Button variant="primary" onClick={handleGenerate}>
@@ -858,7 +880,8 @@ export function ChatV2() {
                 onAudiosChange={chat.setAudios}
                 files={chat.files}
                 onFilesChange={chat.setFiles}
-                disabled={!canSend}
+                disabled={modelAvailability.locked}
+                submitDisabled={!canSend}
                 disabledReason={composerDisabledReason}
                 disableTextInput={composerTextInputDisabled}
               />

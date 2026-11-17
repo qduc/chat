@@ -252,7 +252,17 @@ async function validateRequestContext(context, req) {
   const { body, provider } = context;
 
   // Validate reasoning controls early and return guard failures
-  const validation = validateAndNormalizeReasoningControls(body);
+  let validation = validateAndNormalizeReasoningControls(body);
+  if (validation.ok && body.custom_request_params) {
+    const rejected = provider.getAdapter().rejectedCustomRequestParams?.(body.custom_request_params, body.model) || [];
+    if (rejected.length) {
+      validation = {
+        ok: false,
+        status: 400,
+        payload: { error: 'invalid_request_error', message: `Custom request parameters not supported for this provider or model: ${rejected.join(', ')}` },
+      };
+    }
+  }
 
   if (!validation.ok) {
     logger.error({

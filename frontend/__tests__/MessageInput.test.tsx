@@ -9,6 +9,7 @@ import userEvent from '@testing-library/user-event';
 import '@testing-library/jest-dom';
 import { MessageInput, MessageInputRef } from '../components/MessageInput';
 import type { ReasoningEffortLevel } from '../components/ui/QualitySlider';
+import { tools } from '../lib/api';
 
 // Mock the lib/api tools
 jest.mock('../lib/api', () => ({
@@ -280,6 +281,15 @@ describe('MessageInput', () => {
   });
 
   describe('Send button', () => {
+    it('keeps the draft editable while submission is unavailable', () => {
+      const onSend = jest.fn();
+      render(<MessageInput {...defaultProps} input="Draft" submitDisabled onSend={onSend} />);
+      expect(screen.getByRole('textbox', { name: 'Message' })).toBeEnabled();
+      expect(screen.getByRole('button', { name: 'Send' })).toBeDisabled();
+      fireEvent.keyDown(screen.getByRole('textbox', { name: 'Message' }), { key: 'Enter' });
+      expect(onSend).not.toHaveBeenCalled();
+    });
+
     it('is disabled when input is empty', () => {
       render(<MessageInput {...defaultProps} input="" />);
 
@@ -499,6 +509,26 @@ describe('MessageInput', () => {
   });
 
   describe('Tools dropdown', () => {
+    it('refreshes tool availability when search settings change', async () => {
+      const getSpecs = tools.getToolSpecs as jest.Mock;
+      getSpecs.mockResolvedValueOnce({
+        tools: [{ name: 'web_search_searxng' }],
+        tool_api_key_status: { web_search_searxng: { requiresApiKey: true, hasApiKey: false } },
+      });
+      getSpecs.mockResolvedValueOnce({
+        tools: [{ name: 'web_search_searxng' }],
+        tool_api_key_status: { web_search_searxng: { requiresApiKey: true, hasApiKey: true } },
+      });
+      render(<MessageInput {...defaultProps} enabledTools={[]} onEnabledToolsChange={jest.fn()} />);
+      await userEvent.click(screen.getByLabelText('Tools'));
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /web_search_searxng/i })).toBeDisabled()
+      );
+      act(() => window.dispatchEvent(new Event('tool-settings-changed')));
+      await waitFor(() =>
+        expect(screen.getByRole('button', { name: /web_search_searxng/i })).toBeEnabled()
+      );
+    });
     it('shows tools dropdown when tools button is clicked', async () => {
       render(<MessageInput {...defaultProps} enabledTools={[]} onEnabledToolsChange={jest.fn()} />);
 
@@ -616,12 +646,12 @@ describe('MessageInput', () => {
       render(<MessageInput {...defaultProps} disableTextInput={true} />);
 
       const textarea = screen.getByPlaceholderText(
-        /Change settings below and click Generate Response/i
+        /Use Regenerate on the failed response to try again/i
       );
       expect(textarea).toBeDisabled();
       expect(textarea).toHaveAttribute(
         'title',
-        'Consecutive user messages are not allowed. Use Generate Response instead.'
+        'Use Regenerate on the failed response to try again.'
       );
 
       const sendButton = screen.getByRole('button', { name: /send/i });

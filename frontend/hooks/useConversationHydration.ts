@@ -71,6 +71,10 @@ export interface ConversationHydrationDeps {
 // Pure helpers (exported for unit testing)
 // ---------------------------------------------------------------------------
 
+function hydrateMessageStatus(message: { status?: string; finish_reason?: string }) {
+  return message.finish_reason === 'cancelled' ? 'stopped' : message.status || undefined;
+}
+
 /**
  * Convert raw API messages into hydrated `Message[]`, merging reasoning details
  * and tool outputs.
@@ -130,7 +134,7 @@ export function hydrateMessages(
       id: msgId,
       role: msg.role,
       content,
-      status: msg.status || undefined,
+      status: hydrateMessageStatus(msg),
       branch_id: typeof msg.branch_id === 'string' ? msg.branch_id : undefined,
       _dbId: typeof msg._dbId === 'number' ? msg._dbId : undefined,
       _parentMessageId:
@@ -401,6 +405,7 @@ export function useConversationHydration(deps: ConversationHydrationDeps) {
                   if (m.role !== 'assistant') return m;
                   const lMsg = assistants[assistantCount++];
                   if (!lMsg) return m;
+                  const status = hydrateMessageStatus(lMsg);
                   return {
                     ...m,
                     comparisonResults: {
@@ -409,7 +414,7 @@ export function useConversationHydration(deps: ConversationHydrationDeps) {
                         messageId: String(lMsg.id),
                         content: lMsg.content ?? '',
                         usage: (lMsg as any).usage,
-                        status: lMsg.status === 'error' ? 'error' : 'complete',
+                        status: status === 'error' || status === 'stopped' ? status : 'complete',
                         tool_calls: lMsg.tool_calls,
                         tool_outputs: lMsg.tool_outputs,
                         message_events: lMsg.message_events,

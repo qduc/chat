@@ -92,7 +92,11 @@ export class SseTurnOutput implements TurnOutput {
     );
   }
 
-  end(_result: TurnResult, persistence: unknown): void {
+  end(result: TurnResult, persistence: unknown): void {
+    if (result.kind === 'failed' && !this.res.writableEnded) {
+      const chunk = createChatCompletionChunk(this.completionId, this.model, {}, 'error');
+      writeAndFlush(this.res, `data: ${JSON.stringify(chunk)}\n\n`);
+    }
     this.abandon(persistence);
   }
 
