@@ -103,11 +103,34 @@ function outputsFor(call: any, outputs: ToolOutput[]): ToolOutput[] {
   });
 }
 
+/**
+ * Search tools sometimes return scraped markdown as a "title" (for example a
+ * Wikipedia citation line). Reduce it to readable text: links become their
+ * text, emphasis markers and citation arrows go, whitespace collapses.
+ * Returns null when nothing readable is left.
+ */
+export function cleanSourceTitle(raw: string | null): string | null {
+  if (!raw) return null;
+  const text = raw
+    .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/[↑^]/g, '')
+    .replace(/(^|\s)[_*]+|[_*]+(?=\s|[.,;:]|$)/g, '$1')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/^["'“”]+|["'“”]+$/g, '')
+    .trim();
+  // A leftover unpaired quote (from a stripped link) reads as noise; drop them all.
+  const cleaned = (text.match(/["“”]/g)?.length ?? 0) % 2 === 1 ? text.replace(/["“”]/g, '') : text;
+  if (!cleaned || /^https?:\/\/\S+$/.test(cleaned)) return null;
+  return cleaned;
+}
+
 /** All web sources in the given messages, deduplicated by URL, in first-seen order. */
 export function extractSources(messages: ChatMessage[]): ConversationSource[] {
   const byUrl = new Map<string, ConversationSource>();
 
-  const add = (url: string, title: string | null) => {
+  const add = (url: string, rawTitle: string | null) => {
+    const title = cleanSourceTitle(rawTitle);
     const existing = byUrl.get(url);
     if (existing) {
       if (!existing.title && title) existing.title = title;
