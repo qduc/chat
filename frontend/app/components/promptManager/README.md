@@ -1,20 +1,16 @@
 # Prompt Manager Components
 
-This directory contains React components for the System Prompt Management feature.
+React components for the System Prompts right sidebar (`components/RightSidebar.tsx`).
 
 ## Component Structure
 
-- `PromptList.tsx` - Lists built-in and custom prompts with grouping
-- `PromptEditor.tsx` - Inline editing interface for prompt content
-- `UnsavedChangesModal.tsx` - Modal for handling unsaved changes when switching prompts
-
-## Integration
-
-These components will be integrated into the right sidebar (`RightSidebar.tsx`) as a new panel alongside existing system prompt configuration.
+- `PromptDropdown.tsx` - Prompt picker. A `Menu` from `components/ui` with radio items: "No system prompt", built-ins (ordered by `order`), then custom prompts (most recently used first).
+- `SaveAsModal.tsx` - `Modal` that saves the current content as a new prompt, with name validation.
+- `UnsavedChangesModal.tsx` - `Modal` for handling unsaved changes: save, save as new, discard, or cancel.
 
 ## State Management
 
-Components use the `useSystemPrompts` hook for:
+`RightSidebar` uses the `useSystemPrompts` hook for:
 - Fetching prompt lists from the backend
 - Managing CRUD operations
 - Handling local inline editing state
@@ -22,7 +18,6 @@ Components use the `useSystemPrompts` hook for:
 
 ## Design Notes
 
-- Built-in prompts are read-only and displayed at the top
-- Custom prompts are sorted by last_used_at descending
-- Active prompt shows an asterisk (*) when unsaved changes exist
-- Switching prompts with unsaved edits triggers confirmation modal
+- Styling follows `docs/design-system.md`: semantic tokens only and shared `components/ui` primitives. Each modal has one primary button in its `footer`.
+- Built-in prompts are read-only and marked with a neutral "Built-in" chip.
+- A prompt with unsaved changes shows an asterisk (`*`, `text-accent` in the menu); the sidebar shows an accent dot with a note.

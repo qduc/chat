@@ -4,6 +4,9 @@ import { useSystemPrompts } from '../hooks/useSystemPrompts';
 import PromptDropdown from '../app/components/promptManager/PromptDropdown';
 import SaveAsModal from '../app/components/promptManager/SaveAsModal';
 import UnsavedChangesModal from '../app/components/promptManager/UnsavedChangesModal';
+import { Button, IconButton } from './ui/Button';
+import { Textarea } from './ui/Input';
+import { cn } from '../lib/cn';
 
 interface RightSidebarProps {
   userId?: string;
@@ -369,193 +372,174 @@ export function RightSidebar({
   const existingNames = prompts
     ? [...prompts.built_ins.map((p) => p.name), ...prompts.custom.map((p) => p.name)]
     : [];
-  const computedWidth = collapsed ? collapsedWidth : width;
+  const computedWidth = `${collapsed ? collapsedWidth : width}px`;
+  // The main save action is "Save" for an editable saved prompt, otherwise "Save As".
+  const canSaveInPlace = Boolean(effectiveSelectedPromptId && !isBuiltIn);
+
+  const handleContentChange = (value: string) => {
+    if (effectiveSelectedPromptId) {
+      handleInlineChange(value);
+    } else {
+      setNewPromptContent(value);
+      if (onEffectivePromptChange) {
+        onEffectivePromptChange(value);
+      }
+    }
+  };
 
   return (
     <>
       <aside
+        aria-label="System prompts"
         style={{
-          width: collapsed ? `${collapsedWidth}px` : `${computedWidth}px`,
-          minWidth: collapsed ? `${collapsedWidth}px` : `${computedWidth}px`,
+          width: computedWidth,
+          minWidth: computedWidth,
           flexShrink: 0,
           transition: isResizing ? 'none' : 'width 0.3s ease-in-out',
           willChange: isResizing ? 'width' : undefined,
         }}
-        className="z-30 flex flex-col bg-white dark:bg-zinc-900 border-l border-zinc-200/50 dark:border-zinc-800/50 relative h-full"
+        className={cn(
+          'relative z-30 flex h-full flex-col border-l border-line bg-canvas-subtle',
+          collapsed ? 'items-center gap-2 px-2 py-3' : 'gap-4 p-3'
+        )}
       >
         {collapsed ? (
-          // Collapsed state - compact indicator
-          <div className="flex flex-col items-center space-y-3 pt-2 p-4">
-            {/* Expand button - Desktop only */}
-            <button
-              className="hidden md:flex w-10 h-10 rounded-lg hover:bg-zinc-200/50 dark:hover:bg-zinc-800 transition-colors items-center justify-center text-zinc-500 dark:text-zinc-400 cursor-pointer"
-              onClick={onToggleCollapse}
-              title="Expand sidebar"
-              aria-label="Expand sidebar"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-          </div>
+          // Expand button - Desktop only
+          <IconButton
+            label="Expand sidebar"
+            title="Expand sidebar"
+            onClick={onToggleCollapse}
+            className="hidden md:inline-flex"
+          >
+            <ChevronLeft />
+          </IconButton>
         ) : (
-          // Expanded state - full prompt manager UI
-          <div className="flex flex-col h-full">
-            {/* Header */}
-            <div className="p-4 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">
-                System Prompts
-              </h2>
+          <>
+            <div className="flex items-center justify-between gap-2 pl-1">
+              <h2 className="text-sm font-medium text-fg">System Prompts</h2>
               {/* Collapse button - Desktop only */}
-              <button
-                className="hidden md:flex p-1.5 rounded-lg hover:bg-zinc-200/50 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors items-center justify-center"
-                onClick={onToggleCollapse}
+              <IconButton
+                label="Collapse sidebar"
                 title="Collapse sidebar"
+                size="sm"
+                onClick={onToggleCollapse}
+                className="hidden md:inline-flex"
               >
-                <ChevronRight className="w-4 h-4" />
-              </button>
+                <ChevronRight />
+              </IconButton>
             </div>
 
-            {/* Content */}
-            <div className="flex-1 flex flex-col min-h-0">
-              {loading && !prompts ? (
-                <div className="p-4 text-center text-gray-500 dark:text-gray-400">
-                  Loading prompts...
-                </div>
-              ) : (
-                <>
-                  {/* Error display */}
-                  {(error || prompts?.error) && (
-                    <div className="p-4">
-                      <div
-                        className="p-2 text-sm text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded"
-                        role="status"
-                        aria-live="polite"
-                      >
-                        ⚠️ {error || prompts?.error}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Prompt Dropdown */}
-                  <div className="p-4">
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1">
-                        <PromptDropdown
-                          builtIns={prompts?.built_ins || []}
-                          customPrompts={prompts?.custom || []}
-                          selectedPromptId={effectiveSelectedPromptId}
-                          hasUnsavedChanges={hasUnsavedChanges}
-                          onSelectPrompt={handleSelectPrompt}
-                          onClearSelection={handleClearSelection}
-                        />
-                      </div>
-                      <button
-                        type="button"
-                        onClick={handleClearSelection}
-                        title="Clear selection"
-                        className="p-1 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800/80 text-zinc-500 dark:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-400"
-                        aria-label="Clear prompt selection"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
+            {loading && !prompts ? (
+              <p className="flex-1 px-4 py-8 text-center text-sm text-fg-muted">
+                Loading prompts...
+              </p>
+            ) : (
+              <>
+                {(error || prompts?.error) && (
+                  <div
+                    className="rounded-control bg-warning-subtle px-3 py-2 text-sm text-warning"
+                    role="status"
+                    aria-live="polite"
+                  >
+                    {error || prompts?.error}
                   </div>
+                )}
 
-                  {/* Content Textarea */}
-                  <div className="flex-1 flex flex-col min-h-0 px-4">
-                    <label
-                      htmlFor="prompt-content"
-                      className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-2 flex items-center gap-2"
-                    >
-                      <span>Content</span>
-                      <button
-                        type="button"
-                        onClick={handleClearContent}
-                        title="Revert changes"
-                        className="ml-1 p-1 rounded-lg hover:bg-zinc-200 dark:hover:bg-zinc-800/80 text-zinc-500 dark:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-zinc-400"
-                        aria-label="Revert changes"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5" />
-                      </button>
-                    </label>
-                    <textarea
-                      id="prompt-content"
-                      value={currentContent}
-                      onChange={(e) => {
-                        if (effectiveSelectedPromptId) {
-                          handleInlineChange(e.target.value);
-                        } else {
-                          setNewPromptContent(e.target.value);
-                          if (onEffectivePromptChange) {
-                            onEffectivePromptChange(e.target.value);
-                          }
-                        }
-                      }}
-                      className="flex-1 p-4 rounded-xl resize-none focus:outline-none bg-zinc-50 dark:bg-zinc-900 border border-zinc-200/50 dark:border-zinc-800/50 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 dark:placeholder-zinc-600 scrollbar-thin scrollbar-track-transparent"
-                      placeholder={
-                        effectiveSelectedPromptId
-                          ? isBuiltIn
-                            ? 'This is a built-in prompt. Your edits will be temporary and used only for the current session.'
-                            : 'Edit your prompt content...'
-                          : 'Enter new prompt content...'
-                      }
-                      readOnly={false}
-                      aria-label="Prompt content"
+                <div className="flex items-center gap-2">
+                  <div className="min-w-0 flex-1">
+                    <PromptDropdown
+                      builtIns={prompts?.built_ins || []}
+                      customPrompts={prompts?.custom || []}
+                      selectedPromptId={effectiveSelectedPromptId}
+                      hasUnsavedChanges={hasUnsavedChanges}
+                      onSelectPrompt={handleSelectPrompt}
+                      onClearSelection={handleClearSelection}
                     />
-
-                    {/* Unsaved changes indicator */}
-                    {hasChanges && (
-                      <div className="mt-2 p-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-700 rounded text-sm text-orange-700 dark:text-orange-300">
-                        {effectiveSelectedPromptId
-                          ? 'Unsaved changes will be used for new conversations.'
-                          : "Click 'Save As' to create a new prompt with this content."}
-                      </div>
-                    )}
                   </div>
+                  <IconButton
+                    label="Clear prompt selection"
+                    title="Clear selection"
+                    onClick={handleClearSelection}
+                  >
+                    <X />
+                  </IconButton>
+                </div>
 
-                  {/* Action Buttons */}
-                  <div className="p-4">
-                    <div className="flex justify-end space-x-2">
-                      <button
-                        onClick={handleShowSaveAs}
-                        disabled={!currentContent.trim()}
-                        className="px-3 py-2 rounded-lg text-sm font-medium text-zinc-700 dark:text-zinc-200 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        Save As
-                      </button>
-
-                      {effectiveSelectedPromptId && !isBuiltIn && (
-                        <button
-                          onClick={handleSavePrompt}
-                          disabled={!hasChanges}
-                          className="px-3 py-2 rounded-lg text-sm font-medium text-zinc-700 dark:text-zinc-200 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Save
-                        </button>
-                      )}
-
-                      {effectiveSelectedPromptId && !isBuiltIn && (
-                        <button
-                          onClick={handleDeletePrompt}
-                          className="px-3 py-2 rounded-lg text-sm font-medium text-red-600 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Delete
-                        </button>
-                      )}
-                    </div>
+                <div className="flex min-h-0 flex-1 flex-col gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <label htmlFor="prompt-content" className="pl-1 text-sm text-fg-muted">
+                      Content
+                    </label>
+                    <IconButton
+                      label="Revert changes"
+                      title="Revert changes"
+                      size="sm"
+                      onClick={handleClearContent}
+                    >
+                      <RotateCcw />
+                    </IconButton>
                   </div>
-                </>
-              )}
-            </div>
+                  <Textarea
+                    id="prompt-content"
+                    aria-label="Prompt content"
+                    value={currentContent}
+                    onChange={(e) => handleContentChange(e.target.value)}
+                    className="scrollbar-thin min-h-0 flex-1 resize-none"
+                    placeholder={
+                      effectiveSelectedPromptId
+                        ? isBuiltIn
+                          ? 'This is a built-in prompt. Your edits will be temporary and used only for the current session.'
+                          : 'Edit your prompt content...'
+                        : 'Enter new prompt content...'
+                    }
+                  />
 
-            {/* Footer info */}
-            <div className="px-4 pb-2 text-xs text-zinc-400 dark:text-zinc-500">
-              {effectiveSelectedPromptId ? (
-                <span>Active prompt will be used for new messages</span>
-              ) : (
-                <span>No active prompt selected</span>
-              )}
-            </div>
-          </div>
+                  {hasChanges && (
+                    <p className="flex items-center gap-2 pl-1 text-xs text-fg-muted">
+                      <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-accent" />
+                      {effectiveSelectedPromptId
+                        ? 'Unsaved changes will be used for new conversations.'
+                        : "Click 'Save As' to create a new prompt with this content."}
+                    </p>
+                  )}
+                </div>
+
+                <div className="flex justify-end gap-2">
+                  {canSaveInPlace && (
+                    <Button
+                      variant="ghost"
+                      onClick={handleDeletePrompt}
+                      className="mr-auto text-danger hover:text-danger"
+                    >
+                      Delete
+                    </Button>
+                  )}
+                  <Button
+                    variant={!canSaveInPlace && hasChanges ? 'primary' : 'secondary'}
+                    onClick={handleShowSaveAs}
+                    disabled={!currentContent.trim()}
+                  >
+                    Save As
+                  </Button>
+                  {canSaveInPlace && (
+                    <Button
+                      variant={hasChanges ? 'primary' : 'secondary'}
+                      onClick={handleSavePrompt}
+                      disabled={!hasChanges}
+                    >
+                      Save
+                    </Button>
+                  )}
+                </div>
+              </>
+            )}
+
+            <p className="border-t border-line pt-3 text-xs text-fg-subtle">
+              {effectiveSelectedPromptId
+                ? 'Active prompt will be used for new messages'
+                : 'No active prompt selected'}
+            </p>
+          </>
         )}
       </aside>
 
