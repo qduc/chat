@@ -4,12 +4,12 @@
  */
 
 import React from 'react';
-import { Bot } from 'lucide-react';
 import { UserMessage } from './UserMessage';
 import { AssistantMessage } from './AssistantMessage';
 import { MessageEditForm } from './MessageEditForm';
-import { hasAudio, extractTextFromContent } from '../../lib';
-import type { MessageProps, ToolOutput } from './types';
+import { hasAudio } from '../../lib';
+import { cn } from '../../lib/cn';
+import type { MessageProps } from './types';
 import type { ChatMessage } from '../../lib/types';
 
 // Deep comparison for comparisonResults objects to detect changes from linked conversations
@@ -117,17 +117,17 @@ export const Message = React.memo<MessageProps>(
 
     return (
       <div
-        className={`flex gap-4 ${isUser ? 'justify-end' : 'justify-start'}`}
+        className={cn('flex', isUser ? 'justify-end' : 'justify-start')}
         ref={lastUserMessageRef}
       >
-        {!isUser && (
-          <div className="hidden">
-            <Bot className="w-4 h-4 text-slate-700 dark:text-slate-200" />
-          </div>
-        )}
         <div
-          className={`group relative ${isEditing ? 'w-full' : ''} ${isUser ? (messageHasAudio ? 'max-w-full order-first' : 'max-w-full sm:max-w-[85%] md:max-w-[75%] lg:max-w-[60%] order-first') : 'w-full'}`}
-          style={{ minWidth: 0 }}
+          className={cn(
+            'group relative min-w-0',
+            isEditing && 'w-full',
+            isUser
+              ? cn('max-w-full', !messageHasAudio && 'sm:max-w-5/6 md:max-w-3/4 lg:max-w-3/5')
+              : 'w-full'
+          )}
         >
           {isEditing ? (
             <MessageEditForm

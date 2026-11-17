@@ -225,11 +225,6 @@
   accent-color: var(--accent);
 }
 
-.md-code {
-  font-family: var(--font-mono);
-  line-height: 1.5;
-}
-
 /* Compact variant for judge output and reasoning blocks */
 .md-compact .md-h1 { font-size: var(--text-base); margin-top: 1rem; margin-bottom: 0.5rem; }
 .md-compact .md-h2 { font-size: var(--text-base); margin-top: 0.75rem; margin-bottom: 0.5rem; }

@@ -4,7 +4,9 @@
  */
 
 import React from 'react';
+import { Paperclip } from 'lucide-react';
 import { ImagePreview, ImageUploadZone } from '../ui/ImagePreview';
+import { Button } from '../ui/Button';
 import type { ImageAttachment } from '../../lib/types';
 
 interface MessageEditFormProps {
@@ -49,10 +51,10 @@ export function MessageEditForm({
       fullPage={false}
       clickToUpload={false}
     >
-      <div className="space-y-2 rounded-2xl bg-white/95 dark:bg-zinc-900/95 border border-zinc-200 dark:border-zinc-800 shadow-sm p-4">
+      <div className="space-y-2 rounded-card border border-line bg-surface p-4 transition-colors focus-within:border-focus">
         {/* Image Previews */}
         {editingImages.length > 0 && (
-          <div className="pb-2 border-b border-zinc-200 dark:border-zinc-800">
+          <div className="border-b border-line pb-2">
             <ImagePreview
               images={editingImages}
               uploadProgress={[]}
@@ -92,38 +94,37 @@ export function MessageEditForm({
           }}
           disabled={actionsDisabled}
           aria-disabled={actionsDisabled}
-          className="w-full min-h-[100px] resize-vertical bg-transparent border-0 outline-none text-base leading-relaxed text-zinc-800 dark:text-zinc-200 placeholder-zinc-500 dark:placeholder-zinc-400"
+          aria-label="Edit message"
+          className="min-h-25 w-full resize-y bg-transparent text-base leading-relaxed text-fg outline-none placeholder:text-fg-subtle"
           placeholder="Edit your message... (paste or drop images)"
           style={{ overflow: 'hidden' }}
         />
 
-        <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-neutral-700">
-          <button
-            type="button"
+        <div className="flex items-center justify-between gap-2 border-t border-line pt-2">
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={onEditingImageUploadClick}
             disabled={actionsDisabled}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <span className="text-sm">📎</span>
+            <Paperclip />
             {editingImages.length > 0
               ? `${editingImages.length} image${editingImages.length > 1 ? 's' : ''}`
               : 'Add images'}
-          </button>
+          </Button>
 
           <div className="flex gap-2">
-            <button
-              onClick={onCancelEdit}
-              className="px-3 py-1.5 text-xs rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors"
-            >
+            <Button variant="secondary" size="sm" onClick={onCancelEdit}>
               Cancel
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
               onClick={() => onApplyLocalEdit(messageId)}
               disabled={actionsDisabled || !canSaveEdit}
-              className="px-3 py-1.5 text-xs rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
             >
               Save
-            </button>
+            </Button>
           </div>
         </div>
       </div>

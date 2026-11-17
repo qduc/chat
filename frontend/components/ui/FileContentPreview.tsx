@@ -1,8 +1,10 @@
-import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { createPortal } from 'react-dom';
-import { X, FileText, FileCode, Copy, Check } from 'lucide-react';
+import React, { useState, useCallback, useMemo } from 'react';
+import { FileText, FileCode, Copy, Check } from 'lucide-react';
 import hljs from 'highlight.js';
 import type { FileContent } from '../../lib/types';
+import { Dialog, DialogContent } from './Dialog';
+import { Button } from './Button';
+import { cn } from '../../lib/cn';
 
 // Map file extensions to highlight.js language identifiers
 const LANGUAGE_MAP: Record<string, string> = {
@@ -76,7 +78,7 @@ export function FileContentPreview({ files, className = '' }: FileContentPreview
 
   return (
     <>
-      <div className={`flex flex-wrap gap-2 ${className}`}>
+      <div className={cn('flex flex-wrap gap-2', className)}>
         {files.map((file, index) => (
           <FileItem key={`${file.name}-${index}`} file={file} onClick={handleFileClick} />
         ))}
@@ -117,27 +119,28 @@ function FileItem({ file, onClick }: FileItemProps) {
     <button
       type="button"
       onClick={() => onClick(file)}
-      className="group flex items-center gap-2 px-3 py-2 rounded-lg border border-zinc-200 dark:border-zinc-700 bg-zinc-50 dark:bg-zinc-800 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-colors cursor-pointer"
+      className="flex items-center gap-2 rounded-card border border-line bg-surface px-3 py-2 transition-colors hover:bg-muted focus-ring"
       aria-label={`View ${file.name}`}
     >
-      <div
-        className={`flex-shrink-0 w-8 h-8 rounded flex items-center justify-center ${
-          isCodeFile ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-zinc-100 dark:bg-zinc-700'
-        }`}
-      >
-        {isCodeFile ? (
-          <FileCode className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-        ) : (
-          <FileText className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
-        )}
-      </div>
-      <div className="text-left min-w-0">
-        <div className="text-sm font-medium text-zinc-800 dark:text-zinc-200 truncate max-w-[150px]">
-          {file.name}
-        </div>
-        <div className="text-xs text-zinc-500 dark:text-zinc-400">{ext.toUpperCase()}</div>
+      <FileTypeIcon isCodeFile={isCodeFile} />
+      <div className="min-w-0 text-left">
+        <div className="max-w-38 truncate text-sm font-medium text-fg">{file.name}</div>
+        <div className="text-xs text-fg-subtle">{ext.toUpperCase()}</div>
       </div>
     </button>
+  );
+}
+
+/** Neutral file-type chip (file types never use status or accent colors). */
+function FileTypeIcon({ isCodeFile }: { isCodeFile: boolean }) {
+  const Icon = isCodeFile ? FileCode : FileText;
+  return (
+    <span
+      aria-hidden="true"
+      className="flex size-8 shrink-0 items-center justify-center rounded-control bg-muted text-fg-muted"
+    >
+      <Icon className="size-4" />
+    </span>
   );
 }
 
@@ -149,27 +152,6 @@ interface FilePreviewOverlayProps {
 function FilePreviewOverlay({ file, onClose }: FilePreviewOverlayProps) {
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    if (typeof window === 'undefined') {
-      return;
-    }
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [onClose]);
-
   const handleCopy = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(file.content);
@@ -180,16 +162,7 @@ function FilePreviewOverlay({ file, onClose }: FilePreviewOverlayProps) {
     }
   }, [file.content]);
 
-  const handleBackdropClick = () => {
-    onClose();
-  };
-
-  const stopPropagation = (event: React.MouseEvent<HTMLDivElement>) => {
-    event.stopPropagation();
-  };
-
   const ext = file.name.split('.').pop()?.toLowerCase() || '';
-  const isCodeFile = Object.hasOwn(LANGUAGE_MAP, ext) || Object.hasOwn(LANGUAGE_MAP, file.language);
 
   // Get highlighted HTML for the file content
   const highlightedHtml = useMemo(() => {
@@ -213,86 +186,36 @@ function FilePreviewOverlay({ file, onClose }: FilePreviewOverlayProps) {
     return null;
   }, [file.content, file.language, ext]);
 
-  if (typeof document === 'undefined') {
-    return null;
-  }
-
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-      onClick={handleBackdropClick}
-      role="dialog"
-      aria-modal="true"
-    >
-      <div
-        className="relative w-full max-w-4xl max-h-[90vh] bg-white dark:bg-zinc-900 rounded-lg shadow-2xl flex flex-col"
-        onClick={stopPropagation}
+  return (
+    <Dialog open onOpenChange={(next) => !next && onClose()}>
+      <DialogContent
+        title={file.name}
+        description={file.language.toUpperCase()}
+        size="xl"
+        closeLabel="Close file preview"
+        bodyClassName="flex flex-col p-0"
+        footer={
+          <Button onClick={handleCopy} aria-label="Copy file content">
+            {copied ? <Check /> : <Copy />}
+            {copied ? 'Copied' : 'Copy'}
+          </Button>
+        }
       >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-200 dark:border-zinc-700">
-          <div className="flex items-center gap-3">
-            <div
-              className={`flex-shrink-0 w-8 h-8 rounded flex items-center justify-center ${
-                isCodeFile ? 'bg-blue-100 dark:bg-blue-900/30' : 'bg-zinc-100 dark:bg-zinc-700'
-              }`}
-            >
-              {isCodeFile ? (
-                <FileCode className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              ) : (
-                <FileText className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
-              )}
-            </div>
-            <div>
-              <div className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
-                {file.name}
-              </div>
-              <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                {file.language.toUpperCase()}
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={handleCopy}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-md bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors"
-              aria-label="Copy file content"
-            >
-              {copied ? (
-                <>
-                  <Check className="w-4 h-4 text-green-600" />
-                  <span>Copied</span>
-                </>
-              ) : (
-                <>
-                  <Copy className="w-4 h-4" />
-                  <span>Copy</span>
-                </>
-              )}
-            </button>
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
-              aria-label="Close file preview"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-auto p-4">
-          <pre className="text-sm font-mono whitespace-pre-wrap break-words">
+        <div
+          tabIndex={0}
+          role="region"
+          aria-label={`${file.name} contents`}
+          className="min-h-0 flex-1 overflow-auto bg-muted p-4 focus-ring-inset"
+        >
+          <pre className="font-mono text-sm break-words whitespace-pre-wrap text-fg">
             {highlightedHtml ? (
               <code className="hljs" dangerouslySetInnerHTML={{ __html: highlightedHtml }} />
             ) : (
-              <code className="text-zinc-800 dark:text-zinc-200">{file.content}</code>
+              <code>{file.content}</code>
             )}
           </pre>
         </div>
-      </div>
-    </div>,
-    document.body
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -3,12 +3,24 @@
  * Allows selecting judge model, models to compare, and evaluation criteria
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useId } from 'react';
 import { Modal } from '../ui/Modal';
 import ModelSelector from '../ui/ModelSelector';
 import QualitySlider from '../ui/QualitySlider';
 import { Gauge } from 'lucide-react';
+import { Button } from '../ui/Button';
+import { Input } from '../ui/Input';
+import { cn } from '../../lib/cn';
 import type { ReasoningEffortLevel } from '../../lib/types';
+
+const sectionLabelClasses = 'text-sm font-medium text-fg';
+
+/** Selectable option tile; the selected state uses the accent as its indicator. */
+const optionClasses = (selected: boolean) =>
+  cn(
+    'flex flex-col gap-1 rounded-control border px-3 py-2 text-left transition-colors focus-ring',
+    selected ? 'border-accent bg-accent-subtle' : 'border-line bg-surface hover:bg-muted'
+  );
 
 interface JudgeModalProps {
   isOpen: boolean;
@@ -57,6 +69,7 @@ export function JudgeModal({
   );
   const [customCriteria, setCustomCriteria] = useState('');
   const [reasoningEffort, setReasoningEffort] = useState<ReasoningEffortLevel>('unset');
+  const judgeLabelId = useId();
 
   // Reset state when modal opens
   useEffect(() => {
@@ -92,12 +105,29 @@ export function JudgeModal({
   };
 
   return (
-    <Modal open={isOpen} onClose={onClose} title="Judge responses" size="lg">
-      <div className="space-y-4">
-        <div>
-          <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400">
+    <Modal
+      open={isOpen}
+      onClose={onClose}
+      title="Judge responses"
+      size="lg"
+      footer={
+        <>
+          <Button onClick={onClose}>Cancel</Button>
+          <Button
+            variant="primary"
+            onClick={handleConfirm}
+            disabled={!judgeModelId || selectedModelIds.length < 2}
+          >
+            Start judging
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-6">
+        <div role="group" aria-labelledby={judgeLabelId}>
+          <div id={judgeLabelId} className={sectionLabelClasses}>
             Judge model
-          </label>
+          </div>
           <div className="mt-2 flex items-center gap-3">
             <ModelSelector
               value={judgeModelId || modelOptions[0]?.value || ''}
@@ -112,16 +142,14 @@ export function JudgeModal({
               value={reasoningEffort}
               onChange={setReasoningEffort}
               ariaLabel="Judge reasoning effort"
-              icon={<Gauge className="w-3.5 h-3.5" />}
+              icon={<Gauge className="size-4" />}
             />
           </div>
         </div>
 
-        <div>
-          <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400">
-            Models to compare
-          </label>
-          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <fieldset>
+          <legend className={sectionLabelClasses}>Models to compare</legend>
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {availableModels.map((modelId) => {
               const isSelected = selectedModelIds.includes(modelId);
               const displayLabel =
@@ -132,6 +160,7 @@ export function JudgeModal({
                 <button
                   key={modelId}
                   type="button"
+                  aria-pressed={isSelected}
                   onClick={() =>
                     setSelectedModelIds((prev) => {
                       if (prev.includes(modelId)) {
@@ -142,69 +171,45 @@ export function JudgeModal({
                       return [...prev, modelId];
                     })
                   }
-                  className={`px-3 py-2 text-xs rounded-lg border transition-colors text-left ${
-                    isSelected
-                      ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
-                      : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
-                  }`}
+                  className={optionClasses(isSelected)}
                 >
-                  <div className="font-medium">{displayLabel}</div>
-                  <div className="text-[10px] opacity-70">
+                  <div className="text-sm font-medium text-fg">{displayLabel}</div>
+                  <div className="text-xs text-fg-subtle">
                     {isSelected ? 'Selected' : 'Click to include'}
                   </div>
                 </button>
               );
             })}
           </div>
-        </div>
+        </fieldset>
 
-        <div>
-          <label className="text-xs font-semibold text-zinc-600 dark:text-zinc-400">Criteria</label>
-          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+        <fieldset>
+          <legend className={sectionLabelClasses}>Criteria</legend>
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {CRITERIA_OPTIONS.map((option) => (
               <button
                 key={option.id}
                 type="button"
+                aria-pressed={criteria === option.id}
                 onClick={() => setCriteria(option.id as typeof criteria)}
-                className={`px-3 py-2 text-xs rounded-lg border transition-colors text-left ${
-                  criteria === option.id
-                    ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
-                    : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-300 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
-                }`}
+                className={optionClasses(criteria === option.id)}
               >
-                <div className="font-medium">{option.label}</div>
-                <div className="text-[10px] opacity-70">{option.helper}</div>
+                <div className="text-sm font-medium text-fg">{option.label}</div>
+                <div className="text-xs text-fg-subtle">{option.helper}</div>
               </button>
             ))}
           </div>
           {criteria === 'custom' && (
-            <input
+            <Input
               type="text"
               value={customCriteria}
               onChange={(e) => setCustomCriteria(e.target.value)}
               placeholder="Enter custom criteria..."
-              className="mt-2 w-full rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 px-3 py-2 text-sm text-zinc-800 dark:text-zinc-100"
+              aria-label="Custom criteria"
+              className="mt-2"
             />
           )}
-        </div>
-
-        <div className="flex items-center justify-end gap-2 pt-2">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-3 py-2 text-xs rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-600 dark:text-zinc-300 transition-colors"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleConfirm}
-            disabled={!judgeModelId || selectedModelIds.length < 2}
-            className="px-3 py-2 text-xs rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-medium disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            Start judging
-          </button>
-        </div>
+        </fieldset>
       </div>
     </Modal>
   );

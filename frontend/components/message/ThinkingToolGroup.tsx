@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Brain, ChevronDown, Zap } from 'lucide-react';
 import { ReasoningBlock } from './ReasoningBlock';
 import { ToolSegment } from './ToolSegment';
+import { cn } from '../../lib/cn';
 import type { AssistantSegment } from './types';
 
 export type GroupedSegment = Extract<AssistantSegment, { kind: 'reasoning' | 'tool_call' }>;
@@ -70,42 +71,32 @@ export function ThinkingToolGroup({
   }
 
   const lastItemIndex = items[items.length - 1]?.originalIndex ?? -1;
+  const LeadIcon = hasReasoning ? Brain : Zap;
 
   return (
-    <div className="my-3 rounded-xl border border-zinc-200/60 dark:border-zinc-800/60 bg-white dark:bg-zinc-900/40 overflow-hidden shadow-sm">
+    <div className="my-3 overflow-hidden rounded-card border border-line bg-surface">
       <button
+        type="button"
         onClick={() => setIsExpanded((v) => !v)}
         aria-expanded={isExpanded}
-        className="w-full flex items-center gap-2.5 px-4 py-3 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors select-none group/group-btn"
+        className="flex w-full items-center gap-2 px-4 py-3 text-fg-muted transition-colors select-none hover:bg-muted focus-ring-inset"
       >
-        {hasReasoning ? (
-          <Brain
-            size={13}
-            strokeWidth={1.5}
-            className={`shrink-0 transition-colors ${
-              isStreaming
-                ? 'text-amber-500/80 dark:text-amber-400/80 animate-pulse'
-                : 'text-zinc-400 dark:text-zinc-500 group-hover/group-btn:text-zinc-600 dark:group-hover/group-btn:text-zinc-300'
-            }`}
-          />
-        ) : (
-          <Zap
-            size={13}
-            strokeWidth={1.5}
-            className="shrink-0 text-zinc-400 dark:text-zinc-500 group-hover/group-btn:text-zinc-600 dark:group-hover/group-btn:text-zinc-300 transition-colors"
-          />
-        )}
-        <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
-          {summaryParts.join(' · ')}
-        </span>
+        <LeadIcon
+          aria-hidden="true"
+          className={cn(
+            'size-4 shrink-0',
+            hasReasoning && isStreaming ? 'animate-pulse text-fg-muted' : 'text-fg-subtle'
+          )}
+        />
+        <span className="text-xs font-medium text-fg-muted">{summaryParts.join(' · ')}</span>
         <ChevronDown
-          size={13}
-          className={`ml-auto shrink-0 transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} text-zinc-400 dark:text-zinc-500`}
+          aria-hidden="true"
+          className={cn('ml-auto size-4 shrink-0 text-fg-subtle', isExpanded && 'rotate-180')}
         />
       </button>
 
       {isExpanded && (
-        <div className="border-t border-zinc-100 dark:border-zinc-800 divide-y divide-zinc-100 dark:divide-zinc-800/50">
+        <div className="divide-y divide-line border-t border-line">
           {items.map(({ segment, originalIndex }) => {
             if (segment.kind === 'reasoning') {
               return (

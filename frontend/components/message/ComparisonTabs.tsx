@@ -4,7 +4,17 @@
  */
 
 import React from 'react';
+import { Check } from 'lucide-react';
+import { cn } from '../../lib/cn';
 import { MAX_COMPARISON_COLUMNS } from './types';
+
+const chipClasses =
+  'inline-flex h-7 shrink-0 items-center gap-2 rounded-full border px-3 text-xs whitespace-nowrap transition-colors focus-ring touch-target ' +
+  'disabled:cursor-not-allowed disabled:opacity-50';
+const chipStateClasses = (selected: boolean) =>
+  selected
+    ? 'border-line-strong bg-emphasis text-fg'
+    : 'border-line bg-surface text-fg-muted hover:bg-muted hover:text-fg';
 
 interface ComparisonTabsProps {
   allModels: string[];
@@ -34,17 +44,17 @@ export function ComparisonTabs({
     return modelId.includes('::') ? modelId.split('::')[1] : modelId;
   };
 
+  const allSelected = activeModels.length === Math.min(allModels.length, MAX_COMPARISON_COLUMNS);
+
   return (
-    <div className="flex items-center gap-2 mb-2 overflow-x-auto pb-1 no-scrollbar">
+    <div className="mb-2 flex items-center gap-2 overflow-x-auto pb-1">
       {/* All button - hidden on mobile (single model only) */}
       {!isMobile && (
         <button
+          type="button"
+          aria-pressed={allSelected}
           onClick={() => onSelectAll(allModels)}
-          className={`px-2.5 py-1 text-xs rounded-full border transition-colors whitespace-nowrap ${
-            activeModels.length === Math.min(allModels.length, MAX_COMPARISON_COLUMNS)
-              ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
-              : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
-          }`}
+          className={cn(chipClasses, chipStateClasses(allSelected))}
         >
           All
         </button>
@@ -55,40 +65,35 @@ export function ComparisonTabs({
         // On desktop: disable if max columns reached
         const isDisabled =
           !isMobile && !isSelected && activeModels.length >= MAX_COMPARISON_COLUMNS;
-        const displayName = getModelDisplayName(modelId);
 
         return (
           <button
+            type="button"
             key={modelId}
+            aria-pressed={isSelected}
             onClick={(e) => onToggleModel(modelId, e)}
             disabled={isDisabled}
             title={isDisabled ? `Maximum ${MAX_COMPARISON_COLUMNS} models` : undefined}
-            className={`px-3 py-1 text-xs rounded-full border transition-colors whitespace-nowrap flex items-center gap-1.5 ${
-              isSelected
-                ? 'bg-zinc-800 text-white border-zinc-800 dark:bg-zinc-200 dark:text-zinc-900 dark:border-zinc-200'
-                : isDisabled
-                  ? 'bg-zinc-50 dark:bg-zinc-900/50 text-zinc-400 dark:text-zinc-600 border-zinc-200 dark:border-zinc-800 cursor-not-allowed opacity-50'
-                  : 'bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-400 border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800'
-            }`}
+            className={cn(chipClasses, chipStateClasses(isSelected))}
           >
             {/* Checkbox indicator - only on desktop */}
             {!isMobile && (
               <span
-                className={`w-3 h-3 rounded border flex items-center justify-center text-[10px] ${
-                  isSelected
-                    ? 'bg-white dark:bg-zinc-900 border-white dark:border-zinc-900 text-zinc-800 dark:text-zinc-200'
-                    : 'border-zinc-400 dark:border-zinc-500'
-                }`}
+                aria-hidden="true"
+                className={cn(
+                  'flex size-4 items-center justify-center rounded-full border',
+                  isSelected ? 'border-accent bg-accent text-on-accent' : 'border-line-strong'
+                )}
               >
-                {isSelected && '✓'}
+                {isSelected && <Check className="size-3" />}
               </span>
             )}
-            {displayName}
+            {getModelDisplayName(modelId)}
           </button>
         );
       })}
       {/* Hint text - hidden on mobile */}
-      <span className="hidden md:inline ml-auto text-[10px] text-zinc-400 dark:text-zinc-600 whitespace-nowrap">
+      <span className="ml-auto hidden text-xs whitespace-nowrap text-fg-subtle md:inline">
         {navigator.platform.includes('Mac') ? '⌘' : 'Ctrl'}+click for single model
       </span>
     </div>
