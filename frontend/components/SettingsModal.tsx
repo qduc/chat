@@ -2,6 +2,7 @@
 import React from 'react';
 import { Cog, Database, Sliders, Zap } from 'lucide-react';
 import Modal from './ui/Modal';
+import { Tabs, TabsList, TabsTab, TabsPanel } from './ui/Tabs';
 import ProvidersTab from './settings/ProvidersTab';
 import SearchTab from './settings/SearchTab';
 import AdvancedTab from './settings/AdvancedTab';
@@ -27,76 +28,45 @@ export default function SettingsModal({
   const [activeTab, setActiveTab] = React.useState('providers');
 
   return (
-    <>
-      <Modal
-        open={open}
-        onClose={onClose}
-        maxWidthClassName="max-w-4xl"
-        title={
-          (
-            <div className="flex items-center gap-2">
-              <Cog className="w-4 h-4" /> Settings
-            </div>
-          ) as any
-        }
-      >
-        <div className="flex flex-col gap-4 min-h-[400px]">
-          {/* Tab Navigation */}
-          <div className="flex-shrink-0">
-            <nav
-              className="flex items-center gap-2 bg-zinc-100 dark:bg-zinc-800/50 rounded-xl p-1"
-              aria-label="Settings tabs"
-            >
-              <button
-                onClick={() => setActiveTab('providers')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                  activeTab === 'providers'
-                    ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm'
-                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-white/60 dark:hover:bg-zinc-800/60'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <Database className="w-4 h-4" />
-                  Providers
-                </div>
-              </button>
-              <button
-                onClick={() => setActiveTab('search')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                  activeTab === 'search'
-                    ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm'
-                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-white/60 dark:hover:bg-zinc-800/60'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <Zap className="w-4 h-4" />
-                  Search Engines
-                </div>
-              </button>
-              <button
-                onClick={() => setActiveTab('advanced')}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
-                  activeTab === 'advanced'
-                    ? 'bg-white dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 shadow-sm'
-                    : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 hover:bg-white/60 dark:hover:bg-zinc-800/60'
-                }`}
-              >
-                <div className="flex items-center gap-2">
-                  <Sliders className="w-4 h-4" />
-                  Advanced
-                </div>
-              </button>
-            </nav>
-          </div>
+    <Modal
+      open={open}
+      onClose={onClose}
+      size="xl"
+      title={
+        <span className="flex items-center gap-2">
+          <Cog aria-hidden="true" className="size-4" /> Settings
+        </span>
+      }
+    >
+      <div className="flex min-h-100 flex-col gap-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
+          <TabsList ariaLabel="Settings tabs">
+            <TabsTab value="providers">
+              <Database aria-hidden="true" />
+              Providers
+            </TabsTab>
+            <TabsTab value="search">
+              <Zap aria-hidden="true" />
+              Search Engines
+            </TabsTab>
+            <TabsTab value="advanced">
+              <Sliders aria-hidden="true" />
+              Advanced
+            </TabsTab>
+          </TabsList>
 
-          {/* Tab Content Area */}
-          <div className="flex-1 overflow-y-auto min-h-0">
+          {/* Panels stay mounted so each tab keeps its form state while hidden. */}
+          <TabsPanel value="providers" keepMounted>
             <ProvidersTab
               isVisible={activeTab === 'providers'}
               isOpen={open}
               onProvidersChanged={onProvidersChanged}
             />
+          </TabsPanel>
+          <TabsPanel value="search" keepMounted>
             <SearchTab isVisible={activeTab === 'search'} isOpen={open} />
+          </TabsPanel>
+          <TabsPanel value="advanced" keepMounted>
             <AdvancedTab
               isVisible={activeTab === 'advanced'}
               isOpen={open}
@@ -104,16 +74,11 @@ export default function SettingsModal({
               modelOptions={modelOptions}
               onSettingsChanged={onSettingsChanged}
             />
-          </div>
+          </TabsPanel>
+        </Tabs>
 
-          {/* Footer with version */}
-          <div className="flex-shrink-0 pt-4 mt-2 border-t border-zinc-100 dark:border-zinc-800/50">
-            <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-widest text-center">
-              v{version}
-            </p>
-          </div>
-        </div>
-      </Modal>
-    </>
+        <p className="border-t border-line pt-4 text-center text-xs text-fg-subtle">v{version}</p>
+      </div>
+    </Modal>
   );
 }

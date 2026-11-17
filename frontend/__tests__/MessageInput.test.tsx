@@ -190,10 +190,12 @@ describe('MessageInput', () => {
       expect(sendButton).toBeInTheDocument();
     });
 
-    it('renders stream toggle', () => {
+    it('renders stream toggle', async () => {
       render(<MessageInput {...defaultProps} />);
 
-      expect(screen.getByTestId('zap-icon')).toBeInTheDocument();
+      // Streaming lives in the request params popover.
+      await userEvent.click(screen.getByLabelText('Custom request params'));
+      expect(await screen.findByLabelText('Stream responses')).toBeInTheDocument();
     });
 
     it('renders quality slider', () => {
@@ -336,12 +338,10 @@ describe('MessageInput', () => {
         />
       );
 
-      const streamButton = screen.getByTestId('zap-icon').closest('button');
-      expect(streamButton).toBeTruthy();
-      if (streamButton) {
-        await userEvent.click(streamButton);
-        expect(onShouldStreamChange).toHaveBeenCalledWith(false);
-      }
+      // Streaming lives in the request params popover.
+      await userEvent.click(screen.getByLabelText('Custom request params'));
+      await userEvent.click(await screen.findByLabelText('Stream responses'));
+      expect(onShouldStreamChange).toHaveBeenCalledWith(false);
     });
   });
 

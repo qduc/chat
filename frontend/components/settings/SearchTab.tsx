@@ -102,21 +102,14 @@ export default function SearchTab({ isVisible, isOpen }: SearchTabProps) {
   }, [isOpen]);
 
   return (
-    <div className={isVisible ? 'space-y-4 pb-8' : 'hidden'}>
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-            Search Engines API Keys
-          </h3>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-            Store API keys to enable third-party web search tools. Keys are encrypted and scoped to
-            your account.
-          </p>
-        </div>
-      </div>
+    <div className={isVisible ? 'flex flex-col gap-6' : 'hidden'}>
+      <p className="text-sm text-fg-muted">
+        Store API keys to enable third-party web search tools. Keys are encrypted and scoped to your
+        account.
+      </p>
 
-      {/* Search engines list */}
-      <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200/70 dark:border-zinc-800 shadow-sm divide-y divide-zinc-200/70 dark:divide-zinc-800">
+      {/* Equal-priority engine tiles. Only one is expanded at a time. */}
+      <div className="grid items-start gap-4 sm:grid-cols-2">
         <SearchEngineCard
           name="SearXNG"
           description="Self-hosted metasearch engine"
@@ -397,13 +390,11 @@ export default function SearchTab({ isVisible, isOpen }: SearchTabProps) {
         />
       </div>
 
-      <div className="bg-zinc-50/60 dark:bg-zinc-900/30 rounded-lg p-4 border border-zinc-200/30 dark:border-zinc-700/30">
-        <p className="text-xs text-zinc-600 dark:text-zinc-400 leading-relaxed">
-          <strong className="font-semibold text-zinc-700 dark:text-zinc-300">Security:</strong> All
-          API keys are encrypted and stored securely on the server. They are only accessible by your
-          account and never shared or logged.
-        </p>
-      </div>
+      <p className="text-xs text-fg-muted">
+        <strong className="font-medium text-fg">Security:</strong> All API keys are encrypted and
+        stored securely on the server. They are only accessible by your account and never shared or
+        logged.
+      </p>
     </div>
   );
 }

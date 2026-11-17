@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 interface ProtectedRouteProps {
@@ -24,8 +25,9 @@ export function ProtectedRoute({
   // Show loading state while checking authentication
   if (!ready) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+      <div role="status" className="flex h-64 items-center justify-center text-fg-muted">
+        <Loader2 aria-hidden="true" className="size-6 animate-spin" />
+        <span className="sr-only">Loading</span>
       </div>
     );
   }

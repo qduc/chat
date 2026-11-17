@@ -3,9 +3,6 @@ import {
   Send,
   Loader2,
   Gauge,
-  Wrench,
-  Zap,
-  Sliders,
   ImagePlus,
   FileText,
   AudioLines,
@@ -25,6 +22,11 @@ import {
 } from '../lib';
 import { inferAudioFormat, isAudioFile } from '../lib/audioUtils';
 import Toggle from './ui/Toggle';
+import { Button, iconButtonClasses } from './ui/Button';
+import { Input } from './ui/Input';
+import { floatingItemClasses } from './ui/Menu';
+import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from './ui/Popover';
+import { cn } from '../lib/cn';
 import QualitySlider from './ui/QualitySlider';
 import { ImagePreview, ImageUploadZone } from './ui/ImagePreview';
 import { FilePreview } from './ui/FilePreview';
@@ -108,12 +110,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 ) {
   // ===== REFS =====
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const toolsDropdownRef = useRef<HTMLDivElement | null>(null);
-  const customParamsDropdownRef = useRef<HTMLDivElement | null>(null);
   const imageInputRef = useRef<HTMLInputElement | null>(null);
   const audioInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const attachDropdownRef = useRef<HTMLDivElement | null>(null);
 
   // Expose focus method to parent
   useImperativeHandle(ref, () => ({
@@ -222,58 +221,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   useEffect(() => {
     setLocalCustomParamsIds(Array.isArray(customRequestParamsId) ? customRequestParamsId : []);
   }, [customRequestParamsId]);
-
-  // Click outside to close tools dropdown
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (toolsDropdownRef.current && !toolsDropdownRef.current.contains(event.target as Node)) {
-        setToolsOpen(false);
-      }
-    };
-
-    if (toolsOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [toolsOpen]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (
-        customParamsDropdownRef.current &&
-        !customParamsDropdownRef.current.contains(event.target as Node)
-      ) {
-        setCustomParamsOpen(false);
-      }
-    };
-
-    if (customParamsOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [customParamsOpen]);
-
-  // Focus search input when tools open
-  useEffect(() => {
-    if (toolsOpen) {
-      setTimeout(() => searchInputRef.current?.focus(), 50);
-    }
-  }, [toolsOpen]);
-
-  // Click outside to close attach dropdown
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (attachDropdownRef.current && !attachDropdownRef.current.contains(event.target as Node)) {
-        setAttachOpen(false);
-      }
-    };
-
-    if (attachOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [attachOpen]);
 
   useEffect(() => {
     if (!textareaLocked) return;
@@ -528,6 +475,14 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
   };
 
   // ===== RENDER =====
+  const hasAttachments = images.length > 0 || files.length > 0 || audios.length > 0;
+  // One quiet style for every composer setting: text, value inline, hover fill only.
+  const chipTriggerClasses =
+    'inline-flex h-8 shrink-0 items-center gap-1 rounded-control px-2 text-sm whitespace-nowrap text-fg-muted transition-colors touch-target focus-ring hover:bg-muted hover:text-fg data-popup-open:bg-muted data-popup-open:text-fg disabled:pointer-events-none disabled:opacity-50';
+  const panelHeaderClasses = 'flex items-center justify-between gap-3 border-b border-line p-4';
+  const panelRowClasses =
+    'flex w-full items-start gap-3 rounded-control px-3 py-2 text-left transition-colors hover:bg-muted focus-ring-inset disabled:cursor-not-allowed disabled:opacity-50';
+
   return (
     <ImageUploadZone
       onFiles={handleDroppedFiles}
@@ -537,7 +492,6 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
       fileFilter={() => true} // Accept all files, we'll sort them in handleDroppedFiles
     >
       <form
-        className=""
         onSubmit={(e) => {
           e.preventDefault();
           if (pending.streaming) {
@@ -547,106 +501,131 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
           }
         }}
       >
-        <div>
-          <div className="relative rounded-2xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-sm transition-shadow duration-300 focus-within:shadow-md focus-within:border-zinc-300 dark:focus-within:border-zinc-700">
-            {/* ===== IMAGE PREVIEWS ===== */}
-            {images.length > 0 && (
-              <div className="p-4 pb-2 border-b border-zinc-100 dark:border-zinc-800">
-                <ImagePreview
-                  images={images}
-                  uploadProgress={imageUploadProgress}
-                  onRemove={onImagesChange ? handleRemoveImage : undefined}
-                />
-              </div>
-            )}
+        <div className="relative rounded-card border border-line-strong bg-surface transition-colors has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:-outline-offset-1 has-[textarea:focus-visible]:outline-focus">
+          {/* ===== ATTACHMENT PREVIEWS ===== */}
+          {images.length > 0 && (
+            <div className="border-b border-line p-3">
+              <ImagePreview
+                images={images}
+                uploadProgress={imageUploadProgress}
+                onRemove={onImagesChange ? handleRemoveImage : undefined}
+              />
+            </div>
+          )}
+          {files.length > 0 && (
+            <div className="border-b border-line p-3">
+              <FilePreview
+                files={files}
+                uploadProgress={fileUploadProgress}
+                onRemove={onFilesChange ? handleRemoveFile : undefined}
+              />
+            </div>
+          )}
+          {audios.length > 0 && (
+            <div className="border-b border-line p-3">
+              <AudioPreview
+                audios={audios}
+                onRemove={onAudiosChange ? handleRemoveAudio : undefined}
+              />
+            </div>
+          )}
 
-            {/* ===== FILE PREVIEWS ===== */}
-            {files.length > 0 && (
-              <div className="p-4 pb-2 border-b border-zinc-100 dark:border-zinc-800">
-                <FilePreview
-                  files={files}
-                  uploadProgress={fileUploadProgress}
-                  onRemove={onFilesChange ? handleRemoveFile : undefined}
-                />
-              </div>
-            )}
+          {/* ===== TEXT INPUT ===== */}
+          <div className="px-4 pt-3">
+            <textarea
+              ref={inputRef}
+              aria-label="Message"
+              className="block min-h-8 w-full resize-none bg-transparent py-1 text-sm text-fg outline-none placeholder:text-fg-subtle focus-visible:outline-none disabled:cursor-not-allowed"
+              placeholder={
+                textareaLocked
+                  ? disableTextInput
+                    ? 'Change settings below and click Generate Response'
+                    : disabledReason
+                  : 'Type your message...'
+              }
+              value={input}
+              onChange={(e) => onInputChange(e.target.value)}
+              onKeyDown={handleKey}
+              onPaste={handlePaste}
+              rows={1}
+              disabled={textareaLocked}
+              aria-disabled={textareaLocked}
+              title={
+                textareaLocked
+                  ? disableTextInput
+                    ? 'Consecutive user messages are not allowed. Use Generate Response instead.'
+                    : disabledReason
+                  : undefined
+              }
+            />
+          </div>
 
-            {/* ===== AUDIO PREVIEWS ===== */}
-            {audios.length > 0 && (
-              <div className="p-4 pb-2 border-b border-zinc-100 dark:border-zinc-800">
-                <AudioPreview
-                  audios={audios}
-                  onRemove={onAudiosChange ? handleRemoveAudio : undefined}
-                />
-              </div>
-            )}
-
-            {/* ===== TEXT INPUT WITH IMAGE/FILE UPLOAD ===== */}
-            <div className="flex items-start gap-3 p-3 sm:p-4">
-              {/* Attach button */}
+          {/* ===== CONTROLS BAR ===== */}
+          <div className="flex items-center justify-between gap-2 p-2">
+            <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto *:shrink-0">
               {(onImagesChange || onFilesChange || onAudiosChange) && (
-                <div className="relative" ref={attachDropdownRef}>
-                  <Tooltip content="Attach files" disabled={attachOpen}>
-                    <button
-                      type="button"
-                      onClick={() => setAttachOpen(!attachOpen)}
-                      disabled={controlsDisabled}
-                      className={`flex-shrink-0 p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
-                        images.length > 0 || files.length > 0 || audios.length > 0
-                          ? 'text-zinc-900 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-800'
-                          : 'text-zinc-500 dark:text-zinc-400'
-                      }`}
-                      aria-label="Attach Files"
+                <>
+                  <Popover open={attachOpen} onOpenChange={setAttachOpen} modal="trap-focus">
+                    <Tooltip content="Attach files" disabled={attachOpen}>
+                      <PopoverTrigger
+                        aria-label="Attach Files"
+                        disabled={controlsDisabled}
+                        className={iconButtonClasses({
+                          size: 'sm',
+                          className: hasAttachments ? 'bg-emphasis text-fg' : undefined,
+                        })}
+                      >
+                        <Paperclip />
+                      </PopoverTrigger>
+                    </Tooltip>
+                    <PopoverContent
+                      side="top"
+                      align="start"
+                      ariaLabel="Attach"
+                      hiddenCloseLabel="Close"
+                      className="w-56 p-1"
                     >
-                      <Paperclip className="w-4 h-4" />
-                    </button>
-                  </Tooltip>
-                  {attachOpen && (
-                    <div className="absolute bottom-full mb-2 left-0 w-48 sm:w-56 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl rounded-xl p-1.5 z-50">
                       {onImagesChange && (
                         <button
                           type="button"
+                          disabled={textareaLocked}
                           onClick={() => {
-                            if (textareaLocked) return;
                             setAttachOpen(false);
                             handleImageUploadClick();
                           }}
-                          disabled={textareaLocked}
-                          className="w-full text-left p-2.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm flex items-center text-zinc-700 dark:text-zinc-300 transition-colors"
+                          className={floatingItemClasses}
                         >
-                          <ImagePlus className="w-4 h-4 mr-2.5" /> Upload Image
+                          <ImagePlus /> Upload Image
                         </button>
                       )}
                       {onAudiosChange && (
                         <button
                           type="button"
+                          disabled={textareaLocked}
                           onClick={() => {
-                            if (textareaLocked) return;
                             setAttachOpen(false);
                             handleAudioUploadClick();
                           }}
-                          disabled={textareaLocked}
-                          className="w-full text-left p-2.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm flex items-center text-zinc-700 dark:text-zinc-300 transition-colors"
+                          className={floatingItemClasses}
                         >
-                          <AudioLines className="w-4 h-4 mr-2.5" /> Upload Audio
+                          <AudioLines /> Upload Audio
                         </button>
                       )}
                       {onFilesChange && (
                         <button
                           type="button"
+                          disabled={textareaLocked}
                           onClick={() => {
-                            if (textareaLocked) return;
                             setAttachOpen(false);
                             handleFileUploadClick();
                           }}
-                          disabled={textareaLocked}
-                          className="w-full text-left p-2.5 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-sm flex items-center text-zinc-700 dark:text-zinc-300 transition-colors"
+                          className={floatingItemClasses}
                         >
-                          <FileText className="w-4 h-4 mr-2.5" /> Upload File
+                          <FileText /> Upload File
                         </button>
                       )}
-                    </div>
-                  )}
+                    </PopoverContent>
+                  </Popover>
                   {/* Hidden inputs */}
                   {onImagesChange && (
                     <input
@@ -677,508 +656,382 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                       onChange={handleAudioInputChange}
                     />
                   )}
-                </div>
+                </>
               )}
-
-              {/* Text input */}
-              <textarea
-                ref={inputRef}
-                className="flex-1 resize-none bg-transparent border-0 outline-none text-sm placeholder-zinc-400 dark:placeholder-zinc-500 text-zinc-800 dark:text-zinc-200"
-                placeholder={
-                  textareaLocked
-                    ? disableTextInput
-                      ? 'Change settings below and click Generate Response'
-                      : disabledReason
-                    : 'Type your message...'
-                }
-                value={input}
-                onChange={(e) => onInputChange(e.target.value)}
-                onKeyDown={handleKey}
-                onPaste={handlePaste}
-                rows={1}
-                disabled={textareaLocked}
-                aria-disabled={textareaLocked}
-                title={
-                  textareaLocked
-                    ? disableTextInput
-                      ? 'Consecutive user messages are not allowed. Use Generate Response instead.'
-                      : disabledReason
-                    : undefined
-                }
+              <QualitySlider
+                variant="chip"
+                value={reasoningEffort}
+                onChange={onReasoningEffortChange}
+                icon={<Gauge />}
+                label="Reasoning"
+                ariaLabel="Reasoning Effort"
+                disabled={controlsDisabled}
               />
-            </div>
+              {/* Tools selector */}
+              <Popover open={toolsOpen} onOpenChange={setToolsOpen} modal="trap-focus">
+                <PopoverTrigger
+                  aria-label="Tools"
+                  disabled={controlsDisabled}
+                  className={chipTriggerClasses}
+                >
+                  Tools
+                  {localSelected.length > 0 && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span className="text-fg">{localSelected.length}</span>
+                    </>
+                  )}
+                </PopoverTrigger>
+                <PopoverContent
+                  side="top"
+                  align="start"
+                  ariaLabel="Tools"
+                  initialFocus={searchInputRef}
+                  className="flex w-md flex-col"
+                >
+                  <div className={panelHeaderClasses}>
+                    <div className="flex items-baseline gap-3">
+                      <div className="text-sm font-medium text-fg">Tools</div>
+                      <div className="text-xs text-fg-muted">{availableTools.length} available</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Toggle
+                        ariaLabel="Enable tools"
+                        checked={localSelected.length > 0}
+                        disabled={controlsDisabled}
+                        onChange={(v: boolean) => {
+                          if (controlsDisabled) return;
+                          if (!v) {
+                            setLocalSelected([]);
+                            onEnabledToolsChange?.([]);
+                            onUseToolsChange?.(false);
+                          } else if (availableTools.length > 0) {
+                            const all = availableTools
+                              .filter((t) => !isToolDisabled(t.name))
+                              .map((t) => t.name);
+                            setLocalSelected(all);
+                            onEnabledToolsChange?.(all);
+                            onUseToolsChange?.(all.length > 0);
+                          }
+                        }}
+                      />
+                      <PopoverClose
+                        aria-label="Close"
+                        className={iconButtonClasses({ size: 'sm' })}
+                      >
+                        <X />
+                      </PopoverClose>
+                    </div>
+                  </div>
 
-            {/* ===== CONTROLS BAR ===== */}
-            <div className="flex items-center justify-between px-3 sm:px-4 py-3 sm:py-4 gap-2">
-              {/* Left side controls - grouped logically */}
-              <div className="flex items-center gap-3 sm:gap-4 text-xs scrollbar-hide overflow-x-auto flex-1 min-w-0">
-                {/* AI Controls Group */}
-                <div className="flex items-center gap-2 sm:gap-3">
-                  {/* Quality/Reasoning control - always visible */}
-                  <Tooltip content="Reasoning effort level">
-                    <QualitySlider
-                      value={reasoningEffort}
-                      onChange={onReasoningEffortChange}
-                      icon={<Gauge className="w-4 h-4" />}
-                      ariaLabel="Reasoning Effort"
-                      className="flex-shrink-0"
-                      disabled={controlsDisabled}
-                    />
-                  </Tooltip>
+                  <div className="flex shrink-0 flex-col gap-3 border-b border-line p-3">
+                    <div className="flex items-center gap-2">
+                      <Input
+                        ref={searchInputRef}
+                        type="text"
+                        aria-label="Search tools"
+                        value={toolFilter}
+                        onChange={(e) => setToolFilter(e.target.value)}
+                        disabled={controlsDisabled}
+                        placeholder="Search tools..."
+                        className="flex-1"
+                      />
+                      <span className="text-xs whitespace-nowrap text-fg-muted">
+                        {filteredTools.length} visible
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          if (inputLocked) return;
+                          const all = availableTools
+                            .filter((t) => !isToolDisabled(t.name))
+                            .map((t) => t.name);
+                          setLocalSelected(all);
+                          onEnabledToolsChange?.(all);
+                          onUseToolsChange?.(all.length > 0);
+                        }}
+                        disabled={controlsDisabled}
+                      >
+                        Select all
+                      </Button>
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          if (inputLocked) return;
+                          const visibleIds = filteredTools
+                            .filter((t) => !isToolDisabled(t.name))
+                            .map((t) => t.name);
+                          const next = [...new Set([...localSelected, ...visibleIds])];
+                          setLocalSelected(next);
+                          onEnabledToolsChange?.(next);
+                          onUseToolsChange?.(next.length > 0);
+                        }}
+                        disabled={controlsDisabled}
+                      >
+                        Select visible
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          if (inputLocked) return;
+                          setLocalSelected([]);
+                          onEnabledToolsChange?.([]);
+                          onUseToolsChange?.(false);
+                        }}
+                        disabled={controlsDisabled}
+                      >
+                        Clear
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          if (inputLocked) return;
+                          const visibleIds = new Set(filteredTools.map((t) => t.name));
+                          const next = localSelected.filter((x) => !visibleIds.has(x));
+                          setLocalSelected(next);
+                          onEnabledToolsChange?.(next);
+                          onUseToolsChange?.(next.length > 0);
+                        }}
+                        disabled={controlsDisabled}
+                      >
+                        Clear visible
+                      </Button>
+                    </div>
+                  </div>
 
-                  {/* Stream toggle */}
-                  <Tooltip content="Stream responses in real-time">
+                  <div className="scrollbar-thin max-h-80 overflow-y-auto overscroll-contain p-1">
+                    {availableTools.length === 0 && (
+                      <p className="p-4 text-center text-sm text-fg-muted">No tools available</p>
+                    )}
+                    <div className="flex flex-col gap-1">
+                      {filteredTools.map((t) => {
+                        const id = t.name;
+                        const checked = localSelected.includes(id);
+                        const keyStatus = toolApiKeyStatus[id];
+                        const isDisabled = keyStatus?.requiresApiKey && !keyStatus?.hasApiKey;
+                        const disabledTooltip = isDisabled
+                          ? `This tool requires ${
+                              keyStatus?.missingKeyLabel || 'an API key'
+                            }. Please configure it in Settings.`
+                          : undefined;
+
+                        const toolButton = (
+                          <button
+                            key={id}
+                            type="button"
+                            aria-pressed={checked}
+                            onClick={() => {
+                              if (inputLocked) return;
+                              if (isDisabled) return;
+                              const next = checked
+                                ? localSelected.filter((x) => x !== id)
+                                : [...localSelected, id];
+                              setLocalSelected(next);
+                              onEnabledToolsChange?.(next);
+                              onUseToolsChange?.(next.length > 0);
+                            }}
+                            disabled={isDisabled}
+                            className={cn(panelRowClasses, checked && 'bg-muted')}
+                          >
+                            <span
+                              aria-hidden="true"
+                              className="flex size-7 shrink-0 items-center justify-center rounded-control border border-line text-xs font-medium text-fg-muted"
+                            >
+                              {t.name?.charAt(0)?.toUpperCase() || 'T'}
+                            </span>
+                            <span className="flex min-w-0 flex-1 flex-col gap-1">
+                              <span className="text-sm font-medium text-fg">{t.name}</span>
+                              {t.description &&
+                                (isDisabled ? (
+                                  <span className="line-clamp-2 text-xs text-fg-muted">
+                                    {t.description}
+                                  </span>
+                                ) : (
+                                  <Tooltip content={t.description}>
+                                    <span className="line-clamp-2 text-xs text-fg-muted">
+                                      {t.description}
+                                    </span>
+                                  </Tooltip>
+                                ))}
+                            </span>
+                            {checked && (
+                              <Check aria-hidden="true" className="size-4 shrink-0 text-fg-muted" />
+                            )}
+                          </button>
+                        );
+
+                        return isDisabled && disabledTooltip ? (
+                          <Tooltip key={id} content={disabledTooltip}>
+                            {toolButton}
+                          </Tooltip>
+                        ) : (
+                          toolButton
+                        );
+                      })}
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+              {/* Custom params selector */}
+              <Popover
+                open={customParamsOpen}
+                onOpenChange={setCustomParamsOpen}
+                modal="trap-focus"
+              >
+                <PopoverTrigger
+                  aria-label="Custom request params"
+                  disabled={controlsDisabled}
+                  className={chipTriggerClasses}
+                >
+                  Params
+                  {localCustomParamsIds.length > 0 && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span className="max-w-32 truncate text-fg" title={selectedCustomParamsTitle}>
+                        {selectedCustomParamsLabel}
+                      </span>
+                    </>
+                  )}
+                  {!shouldStream && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span className="text-fg">No streaming</span>
+                    </>
+                  )}
+                </PopoverTrigger>
+                <PopoverContent
+                  side="top"
+                  align="start"
+                  ariaLabel="Request options"
+                  className="w-80"
+                >
+                  <div className={panelHeaderClasses}>
+                    <div className="flex items-center gap-3">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium text-fg">Stream responses</span>
+                        <span className="text-xs text-fg-muted">
+                          Show the reply as it is written
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Toggle
+                        ariaLabel="Stream responses"
+                        checked={shouldStream}
+                        disabled={controlsDisabled}
+                        onChange={(v: boolean) => {
+                          if (controlsDisabled) return;
+                          onShouldStreamChange(v);
+                        }}
+                      />
+                      <PopoverClose
+                        aria-label="Close"
+                        className={iconButtonClasses({ size: 'sm' })}
+                      >
+                        <X />
+                      </PopoverClose>
+                    </div>
+                  </div>
+                  <div className="flex items-baseline gap-3 px-4 pt-3 pb-1">
+                    <span className="text-sm font-medium text-fg">Custom Params</span>
+                    <span className="text-xs text-fg-muted">
+                      {customRequestParams.length} presets
+                    </span>
+                  </div>
+                  <div className="flex max-h-72 flex-col gap-1 overflow-y-auto p-1">
                     <button
                       type="button"
+                      aria-pressed={localCustomParamsIds.length === 0}
                       onClick={() => {
-                        if (controlsDisabled) return;
-                        onShouldStreamChange(!shouldStream);
+                        setLocalCustomParamsIds([]);
+                        onCustomRequestParamsIdChange?.(null);
                       }}
                       disabled={controlsDisabled}
-                      className={`flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 rounded-lg border transition-all duration-200 ${
-                        shouldStream
-                          ? 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-900 dark:text-zinc-100'
-                          : 'border-transparent hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400'
-                      }`}
+                      className={cn(panelRowClasses, 'text-sm text-fg')}
                     >
-                      <Zap
-                        className={`w-3 h-3 sm:w-4 sm:h-4 ${shouldStream ? 'fill-current' : ''}`}
-                      />
-                      <span className="text-xs sm:text-sm font-medium hidden sm:inline">
-                        Stream
-                      </span>
+                      <span className="flex-1">None</span>
+                      {localCustomParamsIds.length === 0 && (
+                        <Check className="size-4 text-fg-muted" />
+                      )}
                     </button>
-                  </Tooltip>
-                </div>
-
-                <div className="hidden md:block w-px h-5 bg-zinc-200 dark:bg-zinc-800" />
-
-                {/* Tools Group */}
-                <div className="flex items-center gap-2 sm:gap-3">
-                  {/* Custom params selector */}
-                  <Tooltip content="Select custom request params" disabled={customParamsOpen}>
-                    <div className="relative" ref={customParamsDropdownRef}>
-                      <button
-                        type="button"
-                        aria-label="Custom request params"
-                        onClick={() => {
-                          if (controlsDisabled) return;
-                          setCustomParamsOpen((v) => !v);
-                        }}
-                        disabled={controlsDisabled}
-                        className="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors duration-150"
-                      >
-                        <div className="relative w-4 h-4 flex items-center justify-center">
-                          <Sliders
-                            className={`w-4 h-4 text-zinc-500 dark:text-zinc-400 transition-opacity duration-200 ${localCustomParamsIds.length > 0 ? 'group-hover:opacity-0' : ''}`}
-                          />
-                          {localCustomParamsIds.length > 0 && (
-                            <div
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setLocalCustomParamsIds([]);
-                                onCustomRequestParamsIdChange?.(null);
-                              }}
-                              className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
-                              title="Clear custom params"
-                            >
-                              <X className="w-4 h-4" />
+                    {customRequestParams.length === 0 && (
+                      <p className="px-3 py-2 text-xs text-fg-muted">
+                        No presets configured. Add them in Settings → Advanced.
+                      </p>
+                    )}
+                    {customRequestParams.map((preset) => {
+                      const isActive = localCustomParamsIds.some(
+                        (item) => item === preset.id || item === preset.label
+                      );
+                      return (
+                        <Tooltip
+                          key={preset.id}
+                          placement="right"
+                          delay={300}
+                          className="w-full"
+                          content={
+                            <div className="flex min-w-0 flex-col gap-1">
+                              <div className="font-medium">{preset.label}</div>
+                              <pre className="overflow-x-auto font-mono text-xs whitespace-pre-wrap">
+                                {JSON.stringify(preset.params, null, 2)}
+                              </pre>
                             </div>
-                          )}
-                        </div>
-                        <span
-                          className={`text-xs px-2 py-0.5 rounded-full transition-colors font-medium max-w-[120px] truncate ${
-                            localCustomParamsIds.length > 0
-                              ? 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100'
-                              : 'text-zinc-500 dark:text-zinc-400'
-                          }`}
-                          title={selectedCustomParamsTitle}
+                          }
                         >
-                          {selectedCustomParamsLabel}
-                        </span>
-                      </button>
-
-                      {customParamsOpen && (
-                        <div className="fixed bottom-20 sm:bottom-full left-2 right-2 sm:left-0 sm:right-auto sm:mb-2 w-auto sm:w-[320px] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl rounded-xl z-50 overflow-hidden">
-                          <div className="flex items-center justify-between p-4 border-b border-zinc-100 dark:border-zinc-800">
-                            <div>
-                              <div className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
-                                Custom Params
-                              </div>
-                              <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                                {customRequestParams.length} presets
-                              </div>
-                            </div>
-                          </div>
-                          <div className="max-h-[300px] overflow-y-auto">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setLocalCustomParamsIds([]);
-                                onCustomRequestParamsIdChange?.(null);
-                              }}
-                              disabled={controlsDisabled}
-                              className={`w-full text-left px-4 py-2.5 text-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors ${
-                                localCustomParamsIds.length === 0
-                                  ? 'text-zinc-900 dark:text-zinc-100 font-medium'
-                                  : 'text-zinc-600 dark:text-zinc-300'
-                              }`}
-                            >
-                              None
-                            </button>
-                            {customRequestParams.length === 0 && (
-                              <div className="px-4 py-3 text-xs text-zinc-500 dark:text-zinc-400">
-                                No presets configured. Add them in Settings → Advanced.
-                              </div>
-                            )}
-                            {customRequestParams.map((preset) => {
-                              const isActive = localCustomParamsIds.some(
-                                (item) => item === preset.id || item === preset.label
-                              );
-                              return (
-                                <Tooltip
-                                  key={preset.id}
-                                  placement="right"
-                                  delay={300}
-                                  className="w-full"
-                                  content={
-                                    <div className="space-y-1.5 min-w-0 max-w-[300px]">
-                                      <div className="font-semibold text-[11px] border-b border-white/10 dark:border-zinc-200/10 pb-1 mb-1">
-                                        {preset.label}
-                                      </div>
-                                      <pre className="text-[10px] font-mono leading-relaxed overflow-x-auto whitespace-pre-wrap">
-                                        {JSON.stringify(preset.params, null, 2)}
-                                      </pre>
-                                    </div>
-                                  }
-                                >
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const nextIds = isActive
-                                        ? localCustomParamsIds.filter(
-                                            (item) => item !== preset.id && item !== preset.label
-                                          )
-                                        : Array.from(new Set([...localCustomParamsIds, preset.id]));
-                                      setLocalCustomParamsIds(nextIds);
-                                      onCustomRequestParamsIdChange?.(
-                                        nextIds.length > 0 ? nextIds : null
-                                      );
-                                    }}
-                                    disabled={controlsDisabled}
-                                    className={`w-full flex items-start justify-between px-4 py-2.5 text-left hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors ${
-                                      isActive ? 'bg-zinc-50/50 dark:bg-zinc-800/50' : ''
-                                    }`}
-                                  >
-                                    <div className="flex-1 min-w-0 pr-2">
-                                      <div
-                                        className={`text-sm ${
-                                          isActive
-                                            ? 'text-zinc-900 dark:text-zinc-100 font-semibold'
-                                            : 'text-zinc-700 dark:text-zinc-300'
-                                        }`}
-                                      >
-                                        {preset.label}
-                                      </div>
-                                      <div className="text-[10px] text-zinc-500 dark:text-zinc-400 font-mono truncate mt-0.5">
-                                        {JSON.stringify(preset.params)}
-                                      </div>
-                                    </div>
-                                    {isActive && (
-                                      <div className="flex-shrink-0 pt-0.5">
-                                        <Check className="w-4 h-4 text-zinc-600 dark:text-zinc-400" />
-                                      </div>
-                                    )}
-                                  </button>
-                                </Tooltip>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </Tooltip>
-
-                  {/* Tools selector */}
-                  <Tooltip content="Select tools to enable" disabled={toolsOpen}>
-                    <div className="relative" ref={toolsDropdownRef}>
-                      <button
-                        type="button"
-                        aria-label="Tools"
-                        onClick={() => {
-                          if (controlsDisabled) return;
-                          setToolsOpen((v) => !v);
-                        }}
-                        disabled={controlsDisabled}
-                        className="group flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 cursor-pointer transition-colors duration-150"
-                      >
-                        <div className="relative w-4 h-4 flex items-center justify-center">
-                          <Wrench
-                            className={`w-4 h-4 text-zinc-500 dark:text-zinc-400 transition-opacity duration-200 ${localSelected.length > 0 ? 'group-hover:opacity-0' : ''}`}
-                          />
-                          {localSelected.length > 0 && (
-                            <div
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setLocalSelected([]);
-                                onEnabledToolsChange?.([]);
-                                onUseToolsChange?.(false);
-                              }}
-                              className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 text-zinc-500 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
-                              title="Clear enabled tools"
-                            >
-                              <X className="w-4 h-4" />
-                            </div>
-                          )}
-                        </div>
-                        <span
-                          className={`text-xs px-2 py-0.5 rounded-full transition-colors font-medium ${
-                            localSelected.length > 0
-                              ? 'bg-zinc-100 text-zinc-900 dark:bg-zinc-800 dark:text-zinc-100'
-                              : 'text-zinc-500 dark:text-zinc-400'
-                          }`}
-                        >
-                          {localSelected.length || 'None'}
-                        </span>
-                      </button>
-
-                      {/* Tools dropdown */}
-                      {toolsOpen && (
-                        <div className="fixed bottom-20 sm:bottom-full left-2 right-2 sm:left-0 sm:right-auto sm:mb-2 w-auto sm:w-[420px] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-xl rounded-xl z-50 overflow-hidden max-h-[60vh] sm:max-h-[500px]">
-                          {/* Dropdown header */}
-                          <div className="flex items-center justify-between p-4 border-b border-zinc-100 dark:border-zinc-800">
-                            <div className="flex items-center gap-3">
-                              <div className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">
-                                Tools
-                              </div>
-                              <div className="text-xs text-zinc-500 dark:text-zinc-400">
-                                {availableTools.length} available
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Toggle
-                                ariaLabel="Enable tools"
-                                checked={localSelected.length > 0}
-                                disabled={controlsDisabled}
-                                onChange={(v: boolean) => {
-                                  if (controlsDisabled) return;
-                                  if (!v) {
-                                    setLocalSelected([]);
-                                    onEnabledToolsChange?.([]);
-                                    onUseToolsChange?.(false);
-                                  } else if (availableTools.length > 0) {
-                                    const all = availableTools
-                                      .filter((t) => !isToolDisabled(t.name))
-                                      .map((t) => t.name);
-                                    setLocalSelected(all);
-                                    onEnabledToolsChange?.(all);
-                                    onUseToolsChange?.(all.length > 0);
-                                  }
-                                }}
-                              />
-                            </div>
-                          </div>
-
-                          {/* Search and bulk actions */}
-                          <div className="sticky top-0 bg-white dark:bg-zinc-900 z-20 px-3 pt-3 pb-2 border-b border-zinc-100 dark:border-zinc-800">
-                            <div className="flex items-center gap-2 mb-3">
-                              <input
-                                ref={searchInputRef}
-                                type="text"
-                                value={toolFilter}
-                                onChange={(e) => setToolFilter(e.target.value)}
-                                disabled={controlsDisabled}
-                                placeholder="Search tools..."
-                                className="flex-1 text-sm px-3 py-2 border border-zinc-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800/50 text-zinc-800 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-200 dark:focus:ring-zinc-700"
-                              />
-                              <div className="text-xs text-zinc-500 dark:text-zinc-400 whitespace-nowrap">
-                                {filteredTools.length} visible
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (inputLocked) return;
-                                  const all = availableTools
-                                    .filter((t) => !isToolDisabled(t.name))
-                                    .map((t) => t.name);
-                                  setLocalSelected(all);
-                                  onEnabledToolsChange?.(all);
-                                  onUseToolsChange?.(all.length > 0);
-                                }}
-                                disabled={controlsDisabled}
-                                className="text-xs px-3 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors"
-                              >
-                                Select all
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (inputLocked) return;
-                                  const visibleIds = filteredTools
-                                    .filter((t) => !isToolDisabled(t.name))
-                                    .map((t) => t.name);
-                                  const next = [...new Set([...localSelected, ...visibleIds])];
-                                  setLocalSelected(next);
-                                  onEnabledToolsChange?.(next);
-                                  onUseToolsChange?.(next.length > 0);
-                                }}
-                                disabled={controlsDisabled}
-                                className="text-xs px-3 py-1.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 transition-colors"
-                              >
-                                Select visible
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (inputLocked) return;
-                                  setLocalSelected([]);
-                                  onEnabledToolsChange?.([]);
-                                  onUseToolsChange?.(false);
-                                }}
-                                disabled={controlsDisabled}
-                                className="text-xs px-3 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors"
-                              >
-                                Clear
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (inputLocked) return;
-                                  const visibleIds = new Set(filteredTools.map((t) => t.name));
-                                  const next = localSelected.filter((x) => !visibleIds.has(x));
-                                  setLocalSelected(next);
-                                  onEnabledToolsChange?.(next);
-                                  onUseToolsChange?.(next.length > 0);
-                                }}
-                                disabled={controlsDisabled}
-                                className="text-xs px-3 py-1.5 rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-50 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 transition-colors"
-                              >
-                                Clear visible
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Tools list */}
-                          <div className="max-h-80 overflow-y-auto overscroll-contain scrollbar-thin scrollbar-track-transparent">
-                            {availableTools.length === 0 && (
-                              <div className="text-sm text-zinc-500 dark:text-zinc-400 p-4 text-center">
-                                No tools available
-                              </div>
-                            )}
-
-                            <div className="p-3 space-y-1.5">
-                              {filteredTools.map((t) => {
-                                const id = t.name;
-                                const checked = localSelected.includes(id);
-                                const keyStatus = toolApiKeyStatus[id];
-                                const isDisabled =
-                                  keyStatus?.requiresApiKey && !keyStatus?.hasApiKey;
-                                const disabledTooltip = isDisabled
-                                  ? `This tool requires ${
-                                      keyStatus?.missingKeyLabel || 'an API key'
-                                    }. Please configure it in Settings.`
-                                  : undefined;
-
-                                const toolButton = (
-                                  <button
-                                    key={id}
-                                    type="button"
-                                    onClick={() => {
-                                      if (inputLocked) return;
-                                      if (isDisabled) return;
-                                      const next = checked
-                                        ? localSelected.filter((x) => x !== id)
-                                        : [...localSelected, id];
-                                      setLocalSelected(next);
-                                      onEnabledToolsChange?.(next);
-                                      onUseToolsChange?.(next.length > 0);
-                                    }}
-                                    disabled={isDisabled}
-                                    className={`w-full text-left p-2.5 rounded-lg transition-all duration-150 flex items-start gap-3 group ${
-                                      isDisabled
-                                        ? 'opacity-50 cursor-not-allowed bg-zinc-50 dark:bg-zinc-800/50'
-                                        : checked
-                                          ? 'bg-zinc-100 dark:bg-zinc-800 ring-1 ring-zinc-200 dark:ring-zinc-700'
-                                          : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'
-                                    }`}
-                                  >
-                                    <div className="flex-shrink-0 w-7 h-7 flex items-center justify-center rounded-lg bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 text-xs font-semibold text-zinc-600 dark:text-zinc-400 group-hover:border-zinc-300 dark:group-hover:border-zinc-600 transition-colors">
-                                      {t.name?.charAt(0)?.toUpperCase() || 'T'}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                      <div className="text-sm font-medium text-zinc-800 dark:text-zinc-200 mb-0.5">
-                                        {t.name}
-                                      </div>
-                                      {t.description &&
-                                        (isDisabled ? (
-                                          <div className="text-xs text-zinc-500 dark:text-zinc-400 line-clamp-2 leading-relaxed">
-                                            {t.description}
-                                          </div>
-                                        ) : (
-                                          <Tooltip content={t.description}>
-                                            <div className="text-xs text-zinc-500 dark:text-zinc-400 line-clamp-2 leading-relaxed">
-                                              {t.description}
-                                            </div>
-                                          </Tooltip>
-                                        ))}
-                                    </div>
-                                    <div className="flex-shrink-0 flex items-center pt-0.5">
-                                      <input
-                                        type="checkbox"
-                                        className="w-4 h-4 cursor-pointer accent-zinc-600 dark:accent-zinc-500 disabled:cursor-not-allowed"
-                                        checked={checked}
-                                        disabled={isDisabled}
-                                        readOnly
-                                      />
-                                    </div>
-                                  </button>
-                                );
-
-                                return isDisabled && disabledTooltip ? (
-                                  <Tooltip key={id} content={disabledTooltip}>
-                                    {toolButton}
-                                  </Tooltip>
-                                ) : (
-                                  toolButton
-                                );
-                              })}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </Tooltip>
-                </div>
-              </div>
-
-              {/* ===== SEND BUTTON ===== */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (pending.streaming) {
-                    onStop();
-                  } else if (canSubmit) {
-                    onSend();
-                  }
-                }}
-                disabled={(!canSend || textareaLocked) && !pending.streaming}
-                className="flex items-center gap-1 sm:gap-2 px-3 sm:px-4 py-2 text-xs sm:text-sm rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-200 text-white dark:text-black font-medium disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-200 shadow-sm hover:shadow-md disabled:hover:shadow-none flex-shrink-0"
-              >
-                {pending.streaming ? (
-                  <>
-                    <Loader2 className="w-3 h-3 sm:w-4 sm:h-4 animate-spin" />
-                    <span className="hidden sm:inline">Stop</span>
-                  </>
-                ) : (
-                  <>
-                    <Send className="w-3 h-3 sm:w-4 sm:h-4" />
-                    <span className="hidden sm:inline">Send</span>
-                  </>
-                )}
-              </button>
+                          <button
+                            type="button"
+                            aria-pressed={isActive}
+                            onClick={() => {
+                              const nextIds = isActive
+                                ? localCustomParamsIds.filter(
+                                    (item) => item !== preset.id && item !== preset.label
+                                  )
+                                : Array.from(new Set([...localCustomParamsIds, preset.id]));
+                              setLocalCustomParamsIds(nextIds);
+                              onCustomRequestParamsIdChange?.(nextIds.length > 0 ? nextIds : null);
+                            }}
+                            disabled={controlsDisabled}
+                            className={cn(panelRowClasses, isActive && 'bg-muted')}
+                          >
+                            <span className="flex min-w-0 flex-1 flex-col">
+                              <span className={cn('text-sm text-fg', isActive && 'font-medium')}>
+                                {preset.label}
+                              </span>
+                              <span className="truncate font-mono text-xs text-fg-subtle">
+                                {JSON.stringify(preset.params)}
+                              </span>
+                            </span>
+                            {isActive && <Check className="size-4 shrink-0 text-fg-muted" />}
+                          </button>
+                        </Tooltip>
+                      );
+                    })}
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
+
+            {/* ===== SEND BUTTON ===== */}
+            <Button
+              variant="primary"
+              onClick={() => {
+                if (pending.streaming) {
+                  onStop();
+                } else if (canSubmit) {
+                  onSend();
+                }
+              }}
+              disabled={(!canSend || textareaLocked) && !pending.streaming}
+              aria-label={pending.streaming ? 'Stop' : 'Send'}
+              title={pending.streaming ? 'Stop' : 'Send'}
+              className="size-8 rounded-full p-0 disabled:bg-emphasis disabled:text-fg-subtle disabled:opacity-100"
+            >
+              {pending.streaming ? <Loader2 className="animate-spin" /> : <Send />}
+            </Button>
           </div>
         </div>
       </form>

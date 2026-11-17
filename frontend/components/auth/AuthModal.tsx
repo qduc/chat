@@ -35,7 +35,7 @@ export function AuthModal({ open, onClose, initialMode = 'login', onSuccess }: A
       open={open}
       onClose={onClose}
       title={mode === 'login' ? 'Sign in to ChatForge' : 'Create your account'}
-      maxWidthClassName="max-w-md"
+      size="md"
     >
       {mode === 'login' ? (
         <LoginForm onSuccess={handleSuccess} onSwitchToRegister={switchToRegister} />

@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Brain, ChevronDown } from 'lucide-react';
+import { cn } from '../../lib/cn';
 
 interface ReasoningBlockProps {
   text: string;
@@ -40,66 +41,48 @@ export const ReasoningBlock: React.FC<ReasoningBlockProps> = ({
 
   if (!text) return null;
 
-  const buttonContent = (
-    <>
-      <Brain
-        size={13}
-        strokeWidth={1.5}
-        className={`shrink-0 transition-colors ${
-          isStreaming
-            ? 'text-amber-500/80 dark:text-amber-400/80 animate-pulse'
-            : 'text-zinc-400 dark:text-zinc-500 group-hover/think-btn:text-zinc-600 dark:group-hover/think-btn:text-zinc-300'
-        }`}
-      />
-      <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300">Thought Process</span>
-      <div className="ml-auto flex items-center gap-2">
-        <ChevronDown
-          size={13}
-          className={`transition-transform duration-200 ${isExpanded ? 'rotate-180' : ''} text-zinc-400 dark:text-zinc-500`}
-        />
-      </div>
-    </>
-  );
-
-  const expandedContent = isExpanded ? (
-    <div className="border-t border-zinc-100 dark:border-zinc-800 bg-zinc-50/30 dark:bg-[#0a0a0a]/20">
-      <div
-        ref={contentRef}
-        data-testid="reasoning-block-content"
-        className={`px-3 py-3 text-[13px] leading-relaxed text-zinc-600 dark:text-zinc-400 whitespace-pre-wrap ${
-          isStreaming ? 'max-h-32 overflow-y-auto' : ''
-        }`}
-      >
-        {text}
-      </div>
-    </div>
-  ) : null;
-
-  if (nested) {
-    return (
-      <div>
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          aria-expanded={isExpanded}
-          className="w-full flex items-center gap-2.5 px-4 py-2.5 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors select-none group/think-btn"
-        >
-          {buttonContent}
-        </button>
-        {expandedContent}
-      </div>
-    );
-  }
-
   return (
-    <div className="my-3 rounded-xl border border-zinc-200/60 dark:border-zinc-800/60 bg-white dark:bg-zinc-900/40 overflow-hidden shadow-sm">
+    <div
+      className={cn(!nested && 'my-3 overflow-hidden rounded-card border border-line bg-surface')}
+    >
       <button
+        type="button"
         onClick={() => setIsExpanded(!isExpanded)}
         aria-expanded={isExpanded}
-        className="w-full flex items-center gap-2.5 px-4 py-3 text-zinc-500 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors select-none group/think-btn"
+        className={cn(
+          'flex w-full items-center gap-2 px-4 text-fg-muted transition-colors select-none hover:bg-muted focus-ring-inset',
+          nested ? 'py-2' : 'py-3'
+        )}
       >
-        {buttonContent}
+        <Brain
+          aria-hidden="true"
+          className={cn(
+            'size-4 shrink-0',
+            isStreaming ? 'animate-pulse text-fg-muted' : 'text-fg-subtle'
+          )}
+        />
+        <span className="text-xs font-medium text-fg-muted">Thought Process</span>
+        <ChevronDown
+          aria-hidden="true"
+          className={cn('ml-auto size-4 shrink-0 text-fg-subtle', isExpanded && 'rotate-180')}
+        />
       </button>
-      {expandedContent}
+      {isExpanded && (
+        <div
+          ref={contentRef}
+          data-testid="reasoning-block-content"
+          // While streaming, the content is a scrolling peek: make it keyboard-scrollable.
+          tabIndex={isStreaming ? 0 : undefined}
+          role={isStreaming ? 'region' : undefined}
+          aria-label={isStreaming ? 'Thought process' : undefined}
+          className={cn(
+            'border-t border-line px-3 py-3 text-sm leading-relaxed whitespace-pre-wrap text-fg-muted',
+            isStreaming && 'max-h-32 overflow-y-auto focus-ring-inset'
+          )}
+        >
+          {text}
+        </div>
+      )}
     </div>
   );
 };

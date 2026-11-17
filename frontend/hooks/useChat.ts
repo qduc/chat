@@ -166,7 +166,8 @@ export function useChat() {
   const [rightSidebarOpen, setRightSidebarOpen] = useState(() => {
     if (typeof window === 'undefined') return false;
     const saved = window.localStorage.getItem('rightSidebarCollapsed');
-    return saved !== 'true';
+    // Collapsed until the user opens it; after that their choice is remembered.
+    return saved === 'false';
   });
 
   useEffect(() => {

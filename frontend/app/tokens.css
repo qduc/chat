@@ -1,0 +1,177 @@
+/*
+ * ChatForge design tokens.
+ *
+ * This is the ONLY file that may contain raw color values.
+ *
+ *  1. Primitives (--gray-*, --blue-*, ...) are private to this file. Never
+ *     reference them from components.
+ *  2. Semantic tokens (--canvas, --fg-muted, --accent, ...) describe intent.
+ *     Dark mode redefines this layer only.
+ *  3. `@theme inline` in globals.css maps semantic tokens to Tailwind
+ *     utilities (bg-canvas, text-fg-muted, border-line, outline-focus, ...).
+ *
+ * Contrast (WCAG 2.2 AA, verified for both themes):
+ *  - fg, fg-muted, fg-subtle, accent, danger, success, warning reach >= 4.5:1
+ *    on every background token (canvas, canvas-subtle, surface, muted, emphasis).
+ *  - line-strong (control borders) and focus reach >= 3:1 on every background.
+ *  - line is a decorative hairline (dividers, card edges) and is not relied on
+ *    to identify a control.
+ */
+
+:root {
+  /* ---------- Primitives (private) ---------- */
+  --gray-0: #ffffff;
+  --gray-25: #fafafa;
+  --gray-50: #f4f4f5;
+  --gray-100: #e9e9ec;
+  --gray-150: #e4e4e7;
+  --gray-400: #7f7f89;
+  --gray-500: #62626b;
+  --gray-600: #52525b;
+  --gray-900: #18181b;
+  --gray-950: #111113;
+
+  --gray-d-25: #151517;
+  --gray-d-50: #1a1a1d;
+  --gray-d-100: #232327;
+  --gray-d-150: #2a2a2e;
+  --gray-d-200: #2b2b30;
+  --gray-d-400: #7a7a84;
+  --gray-d-500: #9696a0;
+  --gray-d-600: #a8a8b0;
+  --gray-d-900: #f4f4f5;
+
+  --blue-50: #eff4ff;
+  --blue-600: #1f5ee6;
+  --blue-700: #1a4fc4;
+  --blue-d-subtle: #16233a;
+  --blue-d-400: #6ea8fe;
+  --blue-d-300: #94bfff;
+  --blue-d-ink: #0b1220;
+
+  --red-50: #fef2f2;
+  --red-700: #c81e1e;
+  --red-800: #a51919;
+  --red-d-subtle: #2a1416;
+  --red-d-400: #f87171;
+  --red-d-300: #fca5a5;
+
+  --green-50: #f0fdf4;
+  --green-700: #13753a;
+  --green-d-subtle: #0f2418;
+  --green-d-400: #4ade80;
+
+  --amber-50: #fffbeb;
+  --amber-700: #955200;
+  --amber-d-subtle: #2a2008;
+  --amber-d-400: #fbbf24;
+
+  /* ---------- Semantic: light ---------- */
+  color-scheme: light;
+
+  /* Backgrounds, from lowest to highest emphasis */
+  --canvas: var(--gray-0); /* app background */
+  --canvas-subtle: var(--gray-25); /* sidebars, recessed regions */
+  --surface: var(--gray-0); /* cards, popovers, inputs */
+  --muted: var(--gray-50); /* hover fill, code blocks, chips */
+  --emphasis: var(--gray-100); /* selected / pressed neutral fill */
+
+  /* Text */
+  --fg: var(--gray-900);
+  --fg-muted: var(--gray-600);
+  --fg-subtle: var(--gray-500); /* placeholders, metadata */
+
+  /* Lines */
+  --line: var(--gray-150); /* hairline dividers and card edges */
+  --line-strong: var(--gray-400); /* form-control boundaries (>= 3:1) */
+
+  /* Primary action: neutral fill, never the accent */
+  --primary: var(--gray-900);
+  --primary-hover: var(--gray-600);
+  --on-primary: var(--gray-25);
+
+  /* Accent: links, focus, selection, active states. Use sparingly. */
+  --accent: var(--blue-600);
+  --accent-hover: var(--blue-700);
+  --accent-subtle: var(--blue-50);
+  --on-accent: var(--gray-0);
+  --focus: var(--blue-600);
+
+  /* Status: reserved for status messages and destructive actions */
+  --danger: var(--red-700);
+  --danger-hover: var(--red-800);
+  --danger-subtle: var(--red-50);
+  --on-danger: var(--gray-0);
+  --success: var(--green-700);
+  --success-subtle: var(--green-50);
+  --warning: var(--amber-700);
+  --warning-subtle: var(--amber-50);
+
+  /* Rendered user documents (HTML preview iframes) always sit on white. */
+  --document: var(--gray-0);
+
+  /* Overlays */
+  --overlay: rgb(17 17 19 / 0.4);
+  --shadow-color: rgb(17 17 19 / 0.08);
+
+  /* Code syntax: content colors, tuned for >= 4.5:1 on --muted */
+  --syntax-fg: var(--gray-900);
+  --syntax-comment: #62626b;
+  --syntax-keyword: #8a2bb3;
+  --syntax-string: #1d6b2e;
+  --syntax-number: #9a4a00;
+  --syntax-title: #1f5ee6;
+  --syntax-type: #8a5a00;
+  --syntax-tag: #b3261e;
+  --syntax-attr: #8a5a00;
+}
+
+/* ---------- Semantic: dark ---------- */
+:root.dark {
+  color-scheme: dark;
+
+  --canvas: var(--gray-950);
+  --canvas-subtle: var(--gray-d-25);
+  --surface: var(--gray-d-50);
+  --muted: var(--gray-d-100);
+  --emphasis: var(--gray-d-200);
+
+  --fg: var(--gray-d-900);
+  --fg-muted: var(--gray-d-600);
+  --fg-subtle: var(--gray-d-500);
+
+  --line: var(--gray-d-150);
+  --line-strong: var(--gray-d-400);
+
+  --primary: var(--gray-d-900);
+  --primary-hover: var(--gray-d-600);
+  --on-primary: var(--gray-900);
+
+  --accent: var(--blue-d-400);
+  --accent-hover: var(--blue-d-300);
+  --accent-subtle: var(--blue-d-subtle);
+  --on-accent: var(--blue-d-ink);
+  --focus: var(--blue-d-400);
+
+  --danger: var(--red-d-400);
+  --danger-hover: var(--red-d-300);
+  --danger-subtle: var(--red-d-subtle);
+  --on-danger: var(--gray-950);
+  --success: var(--green-d-400);
+  --success-subtle: var(--green-d-subtle);
+  --warning: var(--amber-d-400);
+  --warning-subtle: var(--amber-d-subtle);
+
+  --overlay: rgb(0 0 0 / 0.6);
+  --shadow-color: rgb(0 0 0 / 0.5);
+
+  --syntax-fg: var(--gray-d-900);
+  --syntax-comment: #9696a0;
+  --syntax-keyword: #d7a6f5;
+  --syntax-string: #9ad7a0;
+  --syntax-number: #f0b27a;
+  --syntax-title: #94bfff;
+  --syntax-type: #e8c77d;
+  --syntax-tag: #f4a3a0;
+  --syntax-attr: #e8c77d;
+}

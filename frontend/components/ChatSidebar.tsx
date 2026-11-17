@@ -10,6 +10,10 @@ import {
 } from 'lucide-react';
 import { version } from '../package.json';
 import type { ConversationMeta } from '../lib';
+import { cn } from '../lib/cn';
+import { Button, IconButton } from './ui/Button';
+import { Input } from './ui/Input';
+import { Logo } from './ui/Logo';
 
 interface ChatSidebarProps {
   conversations: ConversationMeta[];
@@ -47,232 +51,212 @@ export function ChatSidebar({
   return (
     <aside
       aria-label="Conversation history"
-      className={`
-        ${collapsed ? 'w-16' : 'w-72 md:w-72'}
-        h-full z-40 p-4 flex flex-col bg-slate-50 dark:bg-zinc-900 border-r border-zinc-200/50 dark:border-zinc-800/50
-        md:transition-[width] md:duration-300 md:ease-in-out
-        relative
-        ${!collapsed ? 'w-72 sm:w-80' : ''}
-      `}
+      className={cn(
+        'relative z-40 flex h-full flex-col border-r border-line bg-canvas-subtle md:transition-[width]',
+        collapsed ? 'w-16 items-center gap-2 px-2 py-3' : 'w-72 gap-4 p-3 sm:w-80'
+      )}
     >
       {collapsed ? (
         // Collapsed state - minimal UI
-        <div className="flex flex-col items-center space-y-3 pt-2">
-          {/* Logo */}
-          <div className="mb-1">
-            <img src="/logo.png" alt="Logo" className="w-8 h-8 rounded-xl" />
-          </div>
+        <>
+          <Logo label="Logo" className="my-1" />
 
           {/* Expand button - Desktop only */}
-          <button
-            className="hidden md:flex w-10 h-10 rounded-lg hover:bg-zinc-200/50 dark:hover:bg-zinc-800 transition-colors items-center justify-center text-zinc-500 dark:text-zinc-400 cursor-pointer"
-            onClick={onToggleCollapse}
+          <IconButton
+            label="Expand sidebar"
             title="Expand sidebar"
-            aria-label="Expand sidebar"
+            onClick={onToggleCollapse}
+            className="hidden md:inline-flex"
           >
-            <ChevronRight className="w-4 h-4" />
-          </button>
+            <ChevronRight />
+          </IconButton>
 
-          {/* New Chat button */}
-          <button
-            className="w-10 h-10 rounded-lg hover:bg-zinc-200/50 dark:hover:bg-zinc-800 transition-colors flex items-center justify-center text-zinc-500 dark:text-zinc-400 cursor-pointer"
-            onClick={onNewChat}
-            title="New Chat"
-            aria-label="Start new chat"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
+          <IconButton label="Start new chat" title="New Chat" onClick={onNewChat}>
+            <Plus />
+          </IconButton>
 
-          {/* Refresh button */}
-          <button
-            className="w-10 h-10 rounded-lg hover:bg-zinc-200/50 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center text-zinc-500 dark:text-zinc-400 cursor-pointer"
+          <IconButton
+            label="Refresh conversation list"
+            title="Refresh conversations"
             onClick={onRefresh}
             disabled={loadingConversations}
-            title="Refresh conversations"
-            aria-label="Refresh conversation list"
           >
-            <RefreshCw className={`w-4 h-4 ${loadingConversations ? 'animate-spin' : ''}`} />
-          </button>
+            <RefreshCw className={loadingConversations ? 'animate-spin' : undefined} />
+          </IconButton>
 
-          {/* Search button */}
-          <button
-            className="w-10 h-10 rounded-lg hover:bg-zinc-200/50 dark:hover:bg-zinc-800 transition-colors flex items-center justify-center text-zinc-500 dark:text-zinc-400 cursor-pointer"
-            onClick={onToggleCollapse}
+          <IconButton
+            label="Search conversations"
             title="Search conversations"
-            aria-label="Search conversations"
+            onClick={onToggleCollapse}
           >
-            <Search className="w-4 h-4" />
-          </button>
+            <Search />
+          </IconButton>
 
-          {/* Divider */}
           {(conversations.length > 0 || conversationId) && (
-            <div className="w-8 h-px bg-zinc-200 dark:bg-zinc-800 my-1" />
+            <div aria-hidden="true" className="my-1 h-px w-8 bg-line" />
           )}
 
-          {/* Show conversation count when collapsed */}
           {conversations.length > 0 && (
             <div
-              className="text-xs font-medium text-zinc-500 dark:text-zinc-400 bg-zinc-100 dark:bg-zinc-800 rounded-lg w-10 h-8 flex items-center justify-center"
+              className="flex h-8 w-9 items-center justify-center rounded-control bg-muted text-xs text-fg-muted"
               title={`${conversations.length} conversation${conversations.length === 1 ? '' : 's'}`}
             >
               {conversations.length > 99 ? '99+' : conversations.length}
             </div>
           )}
 
-          {/* Show active conversation indicator */}
           {conversationId && (
-            <div
-              className="w-2 h-2 rounded-full bg-zinc-400 dark:bg-zinc-400 animate-pulse"
-              title="Active conversation"
-            ></div>
+            <div className="size-2 rounded-full bg-accent" title="Active conversation"></div>
           )}
-        </div>
+        </>
       ) : (
         // Expanded state - full UI
         <>
-          <div className="flex items-center justify-between mb-6 px-1">
+          <div className="flex items-center justify-between gap-2 pl-1">
             <div className="flex items-center gap-2">
-              <img src="/logo.png" alt="Logo" className="w-8 h-8 rounded-xl" />
-              <span className="font-bold text-lg text-zinc-800 dark:text-zinc-100 tracking-tight">
-                Chat
-              </span>
+              <Logo label="Logo" />
+              <span className="text-base font-medium text-fg">Chat</span>
             </div>
-            <div className="flex items-center gap-1">
-              <button
-                className="p-1.5 rounded-lg hover:bg-zinc-200/50 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
+            <div className="flex items-center">
+              <IconButton
+                label="Refresh history"
+                title="Refresh history"
+                size="sm"
                 onClick={onRefresh}
                 disabled={loadingConversations}
-                title="Refresh history"
               >
-                <RefreshCw
-                  className={`w-3.5 h-3.5 ${loadingConversations ? 'animate-spin' : ''}`}
-                />
-              </button>
-              <button
-                className="p-1.5 rounded-lg hover:bg-zinc-200/50 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
-                onClick={onNewChat}
-                title="New Chat"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
+                <RefreshCw className={loadingConversations ? 'animate-spin' : undefined} />
+              </IconButton>
+              <IconButton label="New Chat" title="New Chat" size="sm" onClick={onNewChat}>
+                <Plus />
+              </IconButton>
               {/* Collapse button - Desktop only */}
-              <button
-                className="hidden md:flex p-1.5 rounded-lg hover:bg-zinc-200/50 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors items-center justify-center"
-                onClick={onToggleCollapse}
+              <IconButton
+                label="Collapse sidebar"
                 title="Collapse sidebar"
+                size="sm"
+                onClick={onToggleCollapse}
+                className="hidden md:inline-flex"
               >
-                <ChevronLeft className="w-4 h-4" />
-              </button>
+                <ChevronLeft />
+              </IconButton>
             </div>
           </div>
-          {/* Search input */}
+
           {onSearch && (
-            <div className="mb-4 px-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 dark:text-zinc-500" />
-                <input
-                  type="text"
-                  placeholder="Search conversations..."
-                  value={searchQuery}
-                  onChange={(e) => onSearch(e.target.value)}
-                  className="w-full pl-9 pr-8 py-2 text-sm rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 placeholder-zinc-400 dark:placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-zinc-300 dark:focus:ring-zinc-600 focus:border-transparent"
-                />
-                {searchQuery && (
-                  <button
-                    className="absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-400 dark:text-zinc-500"
-                    onClick={() => onSearch('')}
-                    title="Clear search"
-                    aria-label="Clear search"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
+            <div className="relative">
+              <Search
+                aria-hidden="true"
+                className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-fg-subtle"
+              />
+              <Input
+                type="text"
+                aria-label="Search conversations"
+                placeholder="Search conversations..."
+                value={searchQuery}
+                onChange={(e) => onSearch(e.target.value)}
+                className="pr-8 pl-8"
+              />
+              {searchQuery && (
+                <IconButton
+                  label="Clear search"
+                  title="Clear search"
+                  size="sm"
+                  onClick={() => onSearch('')}
+                  className="absolute top-1/2 right-1 size-7 -translate-y-1/2"
+                >
+                  <X />
+                </IconButton>
+              )}
             </div>
           )}
-          <div className="flex-1 overflow-y-auto space-y-1 scrollbar-thin scrollbar-track-transparent">
+
+          <nav
+            aria-label="Conversations"
+            className="scrollbar-thin -mx-1 flex flex-1 flex-col gap-1 overflow-y-auto px-1"
+          >
             {unsavedPlaceholder && (
               <div
-                className="group flex items-center gap-2 text-sm p-3 rounded-lg bg-white dark:bg-zinc-800/80 shadow-sm border border-dashed border-zinc-300 dark:border-zinc-700 mb-1 cursor-default opacity-80"
+                className="flex cursor-default items-center gap-2 rounded-control border border-dashed border-line-strong px-3 py-2 text-sm focus-ring"
                 tabIndex={0}
                 role="button"
                 aria-label="Unsaved fork"
               >
-                <div className="w-2 h-2 rounded-full bg-zinc-400 dark:bg-zinc-500 animate-pulse"></div>
-                <div className="flex-1 text-left">
-                  <div className="text-zinc-700 dark:text-zinc-300 font-medium italic">
-                    Unsaved fork
-                  </div>
-                </div>
+                <span aria-hidden="true" className="size-2 shrink-0 rounded-full bg-accent"></span>
+                <span className="flex-1 truncate text-fg-muted italic">Unsaved fork</span>
               </div>
             )}
             {searchQuery && conversations.length === 0 && !loadingConversations && (
-              <div className="text-sm text-zinc-500 dark:text-zinc-400 text-center py-8 px-4">
+              <p className="px-4 py-8 text-center text-sm text-fg-muted">
                 No conversations found for &quot;{searchQuery}&quot;
-              </div>
+              </p>
             )}
-            {conversations.map((c) => (
-              <div
-                key={c.id}
-                className={`group flex items-center gap-2 text-sm p-3 rounded-lg transition-all duration-200 cursor-pointer ${conversationId === c.id ? 'bg-white dark:bg-zinc-800/80 shadow-sm' : 'hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'}`}
-                onClick={() => onSelectConversation(c.id)}
-                tabIndex={0}
-                role="button"
-                aria-label={c.title || 'Untitled conversation'}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    onSelectConversation(c.id);
-                  }
-                }}
-              >
+            {conversations.map((c) => {
+              const isActive = conversationId === c.id && !unsavedPlaceholder;
+              return (
                 <div
-                  className={`w-2 h-2 rounded-full transition-colors duration-200
-                      ${
-                        conversationId === c.id && !unsavedPlaceholder
-                          ? 'bg-zinc-500 dark:bg-zinc-400'
-                          : 'bg-zinc-300 dark:bg-zinc-700'
-                      }`}
-                ></div>
-                <div
-                  className="flex-1 text-left truncate text-zinc-700 dark:text-zinc-300 font-medium"
-                  title={c.title || c.id}
+                  key={c.id}
+                  className={cn(
+                    'group relative flex items-center rounded-control transition-colors',
+                    isActive ? 'bg-emphasis' : 'hover:bg-muted'
+                  )}
                 >
-                  {c.title || 'Untitled conversation'}
+                  <button
+                    type="button"
+                    onClick={() => onSelectConversation(c.id)}
+                    aria-label={c.title || 'Untitled conversation'}
+                    aria-current={isActive ? 'true' : undefined}
+                    className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-control pr-8 pl-3 text-left text-sm touch-target focus-ring-inset"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={cn(
+                        'size-1.5 shrink-0 rounded-full',
+                        isActive ? 'bg-accent' : 'bg-line-strong'
+                      )}
+                    />
+                    <span
+                      className={cn('flex-1 truncate', isActive ? 'text-fg' : 'text-fg-muted')}
+                      title={c.title || c.id}
+                    >
+                      {c.title || 'Untitled conversation'}
+                    </span>
+                  </button>
+                  <IconButton
+                    label="Delete conversation"
+                    title="Delete conversation"
+                    size="sm"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteConversation(c.id);
+                    }}
+                    className="absolute right-1 size-7 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 hover:text-danger pointer-coarse:opacity-100"
+                  >
+                    <Trash2 />
+                  </IconButton>
                 </div>
-                <button
-                  className="opacity-0 group-hover:opacity-100 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300 transition-colors duration-150 p-1 hover:bg-zinc-200 dark:hover:bg-zinc-900 rounded"
-                  title="Delete conversation"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteConversation(c.id);
-                  }}
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-          <div className="mt-4 pt-4 border-t border-zinc-200/60 dark:border-zinc-800/60">
-            {nextCursor && (
-              <button
-                className="w-full text-sm px-4 py-2 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 transition-colors duration-150 disabled:opacity-50"
-                onClick={onLoadMore}
-                disabled={loadingConversations}
-              >
-                {loadingConversations ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    Loading...
-                  </span>
-                ) : (
-                  'Load more conversations'
-                )}
-              </button>
-            )}
-          </div>
-          <p className="mt-2 text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-widest text-center">
-            v{version}
-          </p>
+              );
+            })}
+          </nav>
+
+          {nextCursor && (
+            <Button
+              variant="secondary"
+              className="w-full"
+              onClick={onLoadMore}
+              disabled={loadingConversations}
+            >
+              {loadingConversations ? (
+                <>
+                  <Loader2 className="animate-spin" />
+                  Loading...
+                </>
+              ) : (
+                'Load more conversations'
+              )}
+            </Button>
+          )}
+          <p className="border-t border-line pt-3 text-center text-xs text-fg-subtle">v{version}</p>
         </>
       )}
     </aside>

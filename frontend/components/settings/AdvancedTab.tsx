@@ -11,11 +11,12 @@ import {
   Edit2,
   X,
   Code,
-  AlertCircle,
   Copy,
   CopyPlus,
 } from 'lucide-react';
 import ModelSelector from '../ui/ModelSelector';
+import { Button, IconButton } from '../ui/Button';
+import { Field, Input, Textarea } from '../ui/Input';
 import { httpClient } from '../../lib';
 import { useToast } from '../ui/Toast';
 
@@ -232,405 +233,373 @@ export default function AdvancedTab({
     }
   };
 
+  const saveMaxToolIterations = async () => {
+    setMaxToolIterationsSaving(true);
+    setMaxToolIterationsError(null);
+    try {
+      const trimmed = (maxToolIterations || '').toString().trim();
+      if (!/^[0-9]+$/.test(trimmed)) {
+        throw new Error('Please enter a valid integer between 1 and 50');
+      }
+      const parsed = parseInt(trimmed, 10);
+      if (parsed < 1 || parsed > 50) {
+        throw new Error('Please enter a number between 1 and 50');
+      }
+      await httpClient.put('/v1/user-settings', {
+        max_tool_iterations: parsed,
+      });
+      setInitialMaxToolIterations(String(parsed));
+      setMaxToolIterations(String(parsed));
+      showToast({
+        message: 'Maximum tool iterations saved successfully!',
+        variant: 'success',
+      });
+    } catch (err: any) {
+      setMaxToolIterationsError(err?.message || 'Failed to save maximum tool iterations');
+    } finally {
+      setMaxToolIterationsSaving(false);
+    }
+  };
+
+  const saveChoreModel = async () => {
+    setChoreModelSaving(true);
+    setChoreModelError(null);
+    try {
+      await httpClient.put('/v1/user-settings', {
+        chore_model: choreModel,
+      });
+      setInitialChoreModel(choreModel);
+      showToast({
+        message: 'Chore model saved successfully!',
+        variant: 'success',
+      });
+      onSettingsChanged?.();
+    } catch (err: any) {
+      setChoreModelError(err?.message || 'Failed to save chore model');
+    } finally {
+      setChoreModelSaving(false);
+    }
+  };
+
+  const maxToolIterationsSaved = maxToolIterations === initialMaxToolIterations;
+  const choreModelSaved = choreModel === initialChoreModel;
+
   return (
-    <div className={isVisible ? 'space-y-4 pb-8' : 'hidden'}>
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100">
-            Advanced Settings
-          </h3>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-            Configure advanced behavior and limits
-          </p>
-        </div>
-      </div>
-
-      {/* Max Tool Iterations Card */}
-      <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200/70 dark:border-zinc-800 p-5 shadow-sm space-y-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <label className="block text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-              Maximum Tool Call Iterations
-            </label>
-            {maxToolIterations === initialMaxToolIterations && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium">
-                <Check className="w-3 h-3" />
-                Saved
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-            Maximum number of consecutive tool calling turns before stopping (1-50)
-          </p>
-        </div>
-
-        <div className="space-y-3">
-          <input
-            type="text"
-            className="w-full px-3 py-2.5 border border-zinc-200/70 dark:border-zinc-800 rounded-lg bg-white/80 dark:bg-zinc-900/70 text-sm focus:ring-2 focus:ring-zinc-400 dark:focus:ring-zinc-600 focus:border-zinc-400 transition-colors"
-            value={maxToolIterations}
-            onChange={(e) => {
-              setMaxToolIterations(e.target.value);
-              setMaxToolIterationsError(null);
-            }}
-          />
-
-          {maxToolIterationsError && (
-            <p className="text-xs text-red-600 dark:text-red-400 flex items-start gap-1.5">
-              <XCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-              <span>{maxToolIterationsError}</span>
-            </p>
+    <div className={isVisible ? 'flex flex-col gap-6' : 'hidden'}>
+      {/* Maximum tool call iterations */}
+      <section className="flex flex-col gap-3">
+        <SectionHeading
+          id="max-tool-iterations-heading"
+          title="Maximum Tool Call Iterations"
+          saved={maxToolIterationsSaved}
+          description="Maximum number of consecutive tool calling turns before stopping (1-50)"
+        />
+        <Input
+          type="text"
+          aria-labelledby="max-tool-iterations-heading"
+          aria-describedby="max-tool-iterations-help"
+          aria-invalid={maxToolIterationsError ? true : undefined}
+          value={maxToolIterations}
+          onChange={(e) => {
+            setMaxToolIterations(e.target.value);
+            setMaxToolIterationsError(null);
+          }}
+        />
+        {maxToolIterationsError && <ErrorText>{maxToolIterationsError}</ErrorText>}
+        <p id="max-tool-iterations-help" className="text-xs text-fg-muted">
+          Default is 10. This prevents infinite loops when the AI continuously requests tool calls.
+          Increase for complex tasks requiring many tool iterations, decrease to save on API costs.
+        </p>
+        <Button
+          className="self-end"
+          title="Save maximum tool call iterations"
+          onClick={saveMaxToolIterations}
+          disabled={maxToolIterationsSaving || maxToolIterationsSaved}
+        >
+          {maxToolIterationsSaving ? (
+            <>
+              <RefreshCw className="animate-spin" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Save />
+              {maxToolIterationsSaved ? 'Saved' : 'Save Setting'}
+            </>
           )}
+        </Button>
+      </section>
 
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            Default is 10. This prevents infinite loops when the AI continuously requests tool
-            calls. Increase for complex tasks requiring many tool iterations, decrease to save on
-            API costs.
-          </p>
-
-          <button
-            type="button"
-            title="Save maximum tool call iterations"
-            onClick={async () => {
-              setMaxToolIterationsSaving(true);
-              setMaxToolIterationsError(null);
-              try {
-                const trimmed = (maxToolIterations || '').toString().trim();
-                if (!/^[0-9]+$/.test(trimmed)) {
-                  throw new Error('Please enter a valid integer between 1 and 50');
-                }
-                const parsed = parseInt(trimmed, 10);
-                if (parsed < 1 || parsed > 50) {
-                  throw new Error('Please enter a number between 1 and 50');
-                }
-                await httpClient.put('/v1/user-settings', {
-                  max_tool_iterations: parsed,
-                });
-                setInitialMaxToolIterations(String(parsed));
-                setMaxToolIterations(String(parsed));
-                showToast({
-                  message: 'Maximum tool iterations saved successfully!',
-                  variant: 'success',
-                });
-              } catch (err: any) {
-                setMaxToolIterationsError(err?.message || 'Failed to save maximum tool iterations');
-              } finally {
-                setMaxToolIterationsSaving(false);
-              }
-            }}
-            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 text-white dark:text-zinc-900 disabled:cursor-not-allowed transition-colors shadow-sm"
-            disabled={maxToolIterationsSaving || maxToolIterations === initialMaxToolIterations}
-          >
-            {maxToolIterationsSaving ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4" />
-                {maxToolIterations === initialMaxToolIterations ? 'Saved' : 'Save Setting'}
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Chore Model Card */}
-      <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200/70 dark:border-zinc-800 p-5 shadow-sm space-y-4">
-        <div>
-          <div className="flex items-center gap-2">
-            <label className="block text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-              Chore Model
-            </label>
-            {choreModel === initialChoreModel && initialChoreModel !== '' && (
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-medium">
-                <Check className="w-3 h-3" />
-                Saved
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
-            Select a model for mundane tasks like generating conversation titles
-          </p>
-        </div>
-
-        <div className="space-y-3">
-          <ModelSelector
-            value={choreModel}
-            onChange={(value) => {
-              setChoreModel(value);
-              setChoreModelError(null);
-            }}
-            groups={modelGroups}
-            fallbackOptions={modelOptions}
-            ariaLabel="Select chore model"
-          />
-
-          {choreModelError && (
-            <p className="text-xs text-red-600 dark:text-red-400 flex items-start gap-1.5">
-              <XCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-              <span>{choreModelError}</span>
-            </p>
+      {/* Chore model */}
+      <section className="flex flex-col gap-3 border-t border-line pt-6">
+        <SectionHeading
+          id="chore-model-heading"
+          title="Chore Model"
+          saved={choreModelSaved && initialChoreModel !== ''}
+          description="Select a model for mundane tasks like generating conversation titles"
+        />
+        <ModelSelector
+          value={choreModel}
+          onChange={(value) => {
+            setChoreModel(value);
+            setChoreModelError(null);
+          }}
+          groups={modelGroups}
+          fallbackOptions={modelOptions}
+          ariaLabel="Select chore model"
+        />
+        {choreModelError && <ErrorText>{choreModelError}</ErrorText>}
+        <p className="text-xs text-fg-muted">
+          Use a smaller, faster model for tasks like generating conversation titles to save on API
+          costs. Leave empty to use the main conversation model.
+        </p>
+        <Button
+          className="self-end"
+          title="Save chore model setting"
+          onClick={saveChoreModel}
+          disabled={choreModelSaving || choreModelSaved}
+        >
+          {choreModelSaving ? (
+            <>
+              <RefreshCw className="animate-spin" />
+              Saving...
+            </>
+          ) : (
+            <>
+              <Save />
+              {choreModelSaved ? 'Saved' : 'Save Setting'}
+            </>
           )}
+        </Button>
+      </section>
 
-          <p className="text-xs text-zinc-500 dark:text-zinc-400">
-            Use a smaller, faster model for tasks like generating conversation titles to on API
-            costs. Leave empty to use the main conversation model.
-          </p>
-
-          <button
-            type="button"
-            title="Save chore model setting"
-            onClick={async () => {
-              setChoreModelSaving(true);
-              setChoreModelError(null);
-              try {
-                await httpClient.put('/v1/user-settings', {
-                  chore_model: choreModel,
-                });
-                setInitialChoreModel(choreModel);
-                showToast({
-                  message: 'Chore model saved successfully!',
-                  variant: 'success',
-                });
-                onSettingsChanged?.();
-              } catch (err: any) {
-                setChoreModelError(err?.message || 'Failed to save chore model');
-              } finally {
-                setChoreModelSaving(false);
-              }
-            }}
-            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-sm font-medium rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-zinc-100 dark:hover:bg-zinc-200 disabled:bg-zinc-300 dark:disabled:bg-zinc-700 text-white dark:text-zinc-900 disabled:cursor-not-allowed transition-colors shadow-sm"
-            disabled={choreModelSaving || choreModel === initialChoreModel}
-          >
-            {choreModelSaving ? (
-              <>
-                <RefreshCw className="w-4 h-4 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <Save className="w-4 h-4" />
-                {choreModel === initialChoreModel ? 'Saved' : 'Save Setting'}
-              </>
-            )}
-          </button>
-        </div>
-      </div>
-
-      {/* Custom Request Params Card */}
-      <div className="bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200/70 dark:border-zinc-800 p-5 shadow-sm space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
+      {/* Custom request params */}
+      <section className="flex flex-col gap-3 border-t border-line pt-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
             <div className="flex items-center gap-2">
-              <label className="block text-sm font-semibold text-zinc-900 dark:text-zinc-100">
-                Custom Request Params
-              </label>
-              {customParamsSaving && <RefreshCw className="w-3 h-3 animate-spin text-zinc-500" />}
+              <h4 className="text-sm font-medium text-fg">Custom Request Params</h4>
+              {customParamsSaving && (
+                <RefreshCw aria-label="Saving" className="size-4 animate-spin text-fg-muted" />
+              )}
             </div>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+            <p className="text-sm text-fg-muted">
               Define reusable JSON blocks to append to upstream requests
             </p>
           </div>
           {!editingPreset && (
-            <button
+            <Button
+              size="sm"
               onClick={() => startEditing()}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 rounded-md transition-colors"
-              type="button"
               title="Add a new custom request parameter preset"
             >
-              <Plus className="w-3.5 h-3.5" />
+              <Plus />
               Add Preset
-            </button>
+            </Button>
           )}
         </div>
 
-        {customParamsError && (
-          <p className="text-xs text-red-600 dark:text-red-400 flex items-start gap-1.5">
-            <XCircle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" />
-            <span>{customParamsError}</span>
-          </p>
-        )}
+        {customParamsError && <ErrorText>{customParamsError}</ErrorText>}
 
         {editingPreset ? (
-          <div className="bg-zinc-50/50 dark:bg-zinc-800/50 rounded-lg p-4 border border-zinc-200/70 dark:border-zinc-700/70 space-y-3">
-            <div className="flex items-center justify-between">
-              <h4 className="text-sm font-medium text-zinc-800 dark:text-zinc-200">
+          <div className="flex flex-col gap-4 rounded-card border border-line p-4">
+            <div className="flex items-center justify-between gap-2">
+              <h5 className="text-sm font-medium text-fg">
                 {isEditingNew ? 'Create New Preset' : 'Edit Preset'}
-              </h4>
-              <button
-                onClick={() => setEditingPreset(null)}
-                className="text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200"
-                type="button"
+              </h5>
+              <IconButton
+                label="Cancel editing"
                 title="Cancel editing"
+                size="sm"
+                onClick={() => setEditingPreset(null)}
               >
-                <X className="w-4 h-4" />
-              </button>
+                <X />
+              </IconButton>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                  Label
-                </label>
-                <input
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Label">
+                <Input
                   type="text"
                   placeholder="My Preset"
                   value={editLabel}
                   onChange={(e) => setEditLabel(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900"
                 />
-              </div>
-              <div className="space-y-1">
-                <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300">
-                  ID (Optional)
-                </label>
-                <input
+              </Field>
+              <Field label="ID" hint="(Optional)">
+                <Input
                   type="text"
                   placeholder="Auto-generated"
                   value={editId}
                   onChange={(e) => setEditId(e.target.value)}
-                  className="w-full px-3 py-2 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 font-mono"
+                  className="font-mono"
                 />
-              </div>
+              </Field>
             </div>
 
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-zinc-700 dark:text-zinc-300 flex items-center justify-between gap-1 w-full">
-                <span className="flex items-center gap-1">
-                  <Code className="w-3 h-3" /> API Params (JSON Object)
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    navigator.clipboard.writeText(editParamsJson);
-                    showToast({ message: 'JSON copied to clipboard!', variant: 'success' });
+            <div className="relative">
+              <Field
+                label={
+                  <span className="inline-flex items-center gap-1">
+                    <Code aria-hidden="true" className="size-4" /> API Params (JSON Object)
+                  </span>
+                }
+                description="Provide the JSON object to be merged into the request body."
+                error={editJsonError}
+              >
+                <Textarea
+                  rows={6}
+                  value={editParamsJson}
+                  onChange={(e) => {
+                    setEditParamsJson(e.target.value);
+                    setEditJsonError(null);
                   }}
-                  className="text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors"
-                  title="Copy JSON to clipboard"
-                >
-                  <Copy className="w-3 h-3" />
-                </button>
-              </label>
-              <textarea
-                rows={6}
-                value={editParamsJson}
-                onChange={(e) => {
-                  setEditParamsJson(e.target.value);
-                  setEditJsonError(null);
+                  className="font-mono text-xs"
+                />
+              </Field>
+              <IconButton
+                label="Copy JSON to clipboard"
+                title="Copy JSON to clipboard"
+                size="sm"
+                className="absolute top-0 right-0 size-6"
+                onClick={() => {
+                  navigator.clipboard.writeText(editParamsJson);
+                  showToast({ message: 'JSON copied to clipboard!', variant: 'success' });
                 }}
-                className="w-full px-3 py-2 text-xs font-mono rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900"
-              />
-              {editJsonError ? (
-                <p className="text-xs text-red-600 dark:text-red-400 flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" /> {editJsonError}
-                </p>
-              ) : (
-                <p className="text-[10px] text-zinc-500 dark:text-zinc-400">
-                  Provide the JSON object to be merged into the request body.
-                </p>
-              )}
+              >
+                <Copy />
+              </IconButton>
             </div>
 
-            <div className="flex justify-end gap-2 pt-2">
-              <button
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setEditingPreset(null)}
-                className="px-3 py-1.5 text-xs font-medium text-zinc-600 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-md transition-colors"
-                type="button"
                 title="Cancel editing"
               >
                 Cancel
-              </button>
-              <button
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
                 onClick={saveEditing}
                 disabled={customParamsSaving}
-                className="px-3 py-1.5 text-xs font-medium text-white bg-zinc-900 dark:bg-zinc-100 dark:text-zinc-900 rounded-md hover:opacity-90 transition-opacity flex items-center gap-1.5"
-                type="button"
                 title="Save this preset"
               >
-                {customParamsSaving && <RefreshCw className="w-3 h-3 animate-spin" />}
+                {customParamsSaving && <RefreshCw className="animate-spin" />}
                 Save Preset
-              </button>
+              </Button>
             </div>
           </div>
+        ) : customParams.length === 0 ? (
+          <p className="rounded-card border border-line p-8 text-center text-sm text-fg-muted">
+            No presets defined.
+          </p>
         ) : (
-          <div className="bg-zinc-50/50 dark:bg-zinc-800/30 rounded-lg border border-zinc-200/50 dark:border-zinc-700/50 divide-y divide-zinc-200/50 dark:divide-zinc-700/50 max-h-[300px] overflow-y-auto">
-            {customParams.length === 0 ? (
-              <div className="p-8 text-center text-sm text-zinc-500 dark:text-zinc-400">
-                No presets defined.
-              </div>
-            ) : (
-              customParams.map((preset) => (
-                <div
-                  key={preset.id}
-                  className="p-3 flex items-start justify-between hover:bg-white dark:hover:bg-zinc-800/80 transition-colors"
-                >
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium text-zinc-900 dark:text-zinc-100 flex items-center gap-2">
-                      {preset.label}
-                      <span className="text-[10px] px-1.5 py-0.5 bg-zinc-200 dark:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-300 font-mono">
-                        {preset.id}
-                      </span>
-                    </div>
-                    <div className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 font-mono truncate max-w-[400px]">
-                      {JSON.stringify(preset.params)}
-                    </div>
+          <ul className="max-h-75 divide-y divide-line overflow-y-auto rounded-card border border-line">
+            {customParams.map((preset) => (
+              <li key={preset.id} className="flex items-start justify-between gap-3 p-3">
+                <div className="flex min-w-0 flex-1 flex-col gap-1">
+                  <div className="flex items-center gap-2 text-sm font-medium text-fg">
+                    {preset.label}
+                    <span className="rounded-control bg-muted px-1 font-mono text-xs font-normal text-fg-muted">
+                      {preset.id}
+                    </span>
                   </div>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(JSON.stringify(preset.params, null, 2));
-                        showToast({
-                          message: 'Params copied to clipboard!',
-                          variant: 'success',
-                        });
-                      }}
-                      className="p-1.5 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded transition-colors"
-                      title="Copy JSON to clipboard"
-                      type="button"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => duplicatePreset(preset)}
-                      className="p-1.5 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded transition-colors"
-                      title="Duplicate preset"
-                      type="button"
-                    >
-                      <CopyPlus className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => startEditing(preset)}
-                      className="p-1.5 text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded transition-colors"
-                      title="Edit preset"
-                      type="button"
-                    >
-                      <Edit2 className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => deletePreset(preset.id)}
-                      className="p-1.5 text-zinc-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors"
-                      title="Delete preset"
-                      type="button"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                  <div className="truncate font-mono text-xs text-fg-muted">
+                    {JSON.stringify(preset.params)}
                   </div>
                 </div>
-              ))
-            )}
-          </div>
+                <div className="flex shrink-0 items-center gap-1">
+                  <IconButton
+                    label="Copy JSON to clipboard"
+                    title="Copy JSON to clipboard"
+                    size="sm"
+                    onClick={() => {
+                      navigator.clipboard.writeText(JSON.stringify(preset.params, null, 2));
+                      showToast({
+                        message: 'Params copied to clipboard!',
+                        variant: 'success',
+                      });
+                    }}
+                  >
+                    <Copy />
+                  </IconButton>
+                  <IconButton
+                    label="Duplicate preset"
+                    title="Duplicate preset"
+                    size="sm"
+                    onClick={() => duplicatePreset(preset)}
+                  >
+                    <CopyPlus />
+                  </IconButton>
+                  <IconButton
+                    label="Edit preset"
+                    title="Edit preset"
+                    size="sm"
+                    onClick={() => startEditing(preset)}
+                  >
+                    <Edit2 />
+                  </IconButton>
+                  <IconButton
+                    label="Delete preset"
+                    title="Delete preset"
+                    size="sm"
+                    className="text-danger hover:text-danger"
+                    onClick={() => deletePreset(preset.id)}
+                  >
+                    <Trash2 />
+                  </IconButton>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <p className="border-t border-line pt-6 text-xs text-fg-muted">
+        <strong className="font-medium text-fg">Note:</strong> These settings affect how the AI
+        handles tool execution. Changes take effect immediately for new conversations.
+      </p>
+    </div>
+  );
+}
+
+function SectionHeading({
+  id,
+  title,
+  saved,
+  description,
+}: {
+  id: string;
+  title: string;
+  saved: boolean;
+  description: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-2">
+        <h4 id={id} className="text-sm font-medium text-fg">
+          {title}
+        </h4>
+        {saved && (
+          <span className="inline-flex items-center gap-1 text-xs text-success">
+            <Check aria-hidden="true" className="size-4" />
+            Saved
+          </span>
         )}
       </div>
-
-      <div className="bg-slate-50/60 dark:bg-neutral-800/30 rounded-lg p-4 border border-slate-200/30 dark:border-neutral-700/30">
-        <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-          <strong className="font-semibold text-slate-700 dark:text-slate-300">Note:</strong> These
-          settings affect how the AI handles tool execution. Changes take effect immediately for new
-          conversations.
-        </p>
-      </div>
+      <p className="text-sm text-fg-muted">{description}</p>
     </div>
+  );
+}
+
+function ErrorText({ children }: { children: React.ReactNode }) {
+  return (
+    <p role="alert" className="flex items-start gap-1 text-xs text-danger">
+      <XCircle aria-hidden="true" className="size-4 shrink-0" />
+      <span>{children}</span>
+    </p>
   );
 }

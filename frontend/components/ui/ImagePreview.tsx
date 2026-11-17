@@ -1,6 +1,9 @@
 import React from 'react';
 import ReactDOM from 'react-dom';
 import { X, AlertCircle, Loader2 } from 'lucide-react';
+import { cn } from '../../lib/cn';
+import { IconButton } from './Button';
+import Modal from './Modal';
 import type { ImageAttachment, ImageUploadProgress } from '@/lib/types';
 import { useSecureImageUrl } from '@/hooks/useSecureImageUrl';
 
@@ -16,12 +19,7 @@ interface SelectedPreview {
   src: string;
 }
 
-export function ImagePreview({
-  images,
-  uploadProgress,
-  onRemove,
-  className = '',
-}: ImagePreviewProps) {
+export function ImagePreview({ images, uploadProgress, onRemove, className }: ImagePreviewProps) {
   const [selectedImage, setSelectedImage] = React.useState<SelectedPreview | null>(null);
 
   const handleClosePreview = () => setSelectedImage(null);
@@ -37,7 +35,7 @@ export function ImagePreview({
 
   return (
     <>
-      <div className={`flex flex-wrap gap-2 ${className}`}>
+      <div className={cn('flex flex-wrap gap-2', className)}>
         {images.map((image) => (
           <PreviewItem
             key={image.id}
@@ -48,33 +46,22 @@ export function ImagePreview({
           />
         ))}
       </div>
-      {selectedImage &&
-        typeof document !== 'undefined' &&
-        ReactDOM.createPortal(
-          <div
-            className="fixed inset-0 z-[999] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
-            onClick={handleClosePreview}
-            role="dialog"
-            aria-modal="true"
-          >
-            <div className="relative max-h-full max-w-full" onClick={(e) => e.stopPropagation()}>
-              <button
-                type="button"
-                onClick={handleClosePreview}
-                className="absolute -top-3 -right-3 md:-top-4 md:-right-4 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-zinc-700 shadow-lg hover:bg-white focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
-                aria-label="Close image preview"
-              >
-                <X className="h-4 w-4" />
-              </button>
-              <img
-                src={selectedImage.src}
-                alt={selectedImage.image.alt || selectedImage.image.name}
-                className="max-h-[90vh] max-w-[90vw] object-contain rounded-lg shadow-2xl"
-              />
-            </div>
-          </div>,
-          document.body
+      <Modal
+        open={selectedImage !== null}
+        onClose={handleClosePreview}
+        title={selectedImage?.image.name ?? 'Image preview'}
+        closeLabel="Close image preview"
+        size="full"
+        bodyClassName="flex items-center justify-center p-4"
+      >
+        {selectedImage && (
+          <img
+            src={selectedImage.src}
+            alt={selectedImage.image.alt || selectedImage.image.name}
+            className="max-h-full max-w-full object-contain"
+          />
         )}
+      </Modal>
     </>
   );
 }
@@ -100,58 +87,59 @@ function PreviewItem({ image, progress, onRemove, onPreview }: PreviewItemProps)
   };
 
   return (
-    <div
-      className="relative group rounded-lg overflow-hidden border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800"
-      style={{ width: '80px', height: '80px' }}
-    >
+    <div className="group relative size-20 overflow-hidden rounded-control border border-line bg-muted">
       <button
         type="button"
         onClick={handleClick}
         disabled={!canPreview}
         aria-label={`Preview ${image.name}`}
-        className={`w-full h-full block p-0 m-0 border-0 bg-transparent ${canPreview ? 'cursor-zoom-in' : 'cursor-not-allowed'}`}
+        title={`${image.name} · ${(image.size / 1024).toFixed(0)} KB`}
+        className={cn(
+          'block size-full focus-ring-inset',
+          canPreview ? 'cursor-zoom-in' : 'cursor-not-allowed'
+        )}
       >
         {src && (
           <img
             src={src}
             alt={image.alt || image.name}
-            className={`w-full h-full object-cover transition-opacity ${
-              loading ? 'opacity-50' : 'opacity-100'
-            } ${hasError ? 'opacity-30' : ''}`}
+            className={cn(
+              'size-full object-cover transition-opacity',
+              loading && 'opacity-50',
+              hasError && 'opacity-30'
+            )}
           />
         )}
       </button>
 
       {(loading || isUploading) && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/20">
-          <div className="flex flex-col items-center gap-1">
-            <Loader2 className="w-4 h-4 text-white animate-spin" />
-            {progress && <div className="text-xs text-white font-medium">{progress.progress}%</div>}
-          </div>
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <span className="flex items-center gap-1 rounded-full bg-surface px-2 text-xs text-fg">
+            <Loader2 aria-hidden="true" className="size-3 animate-spin" />
+            {progress ? `${progress.progress}%` : null}
+          </span>
         </div>
       )}
 
       {hasError && (
-        <div className="absolute inset-0 flex items-center justify-center bg-red-500/20">
-          <AlertCircle className="w-4 h-4 text-red-500" />
+        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+          <span className="flex size-6 items-center justify-center rounded-full bg-danger-subtle text-danger">
+            <AlertCircle aria-label="Upload failed" className="size-4" />
+          </span>
         </div>
       )}
 
       {onRemove && !isUploading && (
-        <button
-          type="button"
+        <IconButton
+          label={`Remove ${image.name}`}
+          variant="secondary"
+          size="sm"
           onClick={() => onRemove(image.id)}
-          className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 hover:bg-black/80 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-          aria-label={`Remove ${image.name}`}
+          className="absolute top-1 right-1 size-6 rounded-full opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100"
         >
-          <X className="w-3 h-3" />
-        </button>
+          <X />
+        </IconButton>
       )}
-
-      <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-        <div className="truncate">{image.name}</div>
-        <div>{(image.size / 1024).toFixed(0)} KB</div>
-      </div>
     </div>
   );
 }
@@ -281,14 +269,11 @@ export function ImageUploadZone({
             onDrop={handleDrop}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
-            className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-auto"
-            style={{ backgroundColor: 'rgba(2,6,23,0.35)' }}
+            className="pointer-events-auto fixed inset-0 z-50 flex items-center justify-center bg-overlay p-4"
           >
-            <div className="text-center p-6 rounded-lg bg-white/90 dark:bg-zinc-900/90 border border-zinc-200 dark:border-zinc-700 shadow-lg">
-              <div className="text-lg font-medium text-zinc-900 dark:text-zinc-100">
-                Drop files here
-              </div>
-              <div className="text-sm text-zinc-600 dark:text-zinc-300 mt-1">
+            <div className="flex flex-col gap-1 rounded-card border border-line bg-surface p-6 text-center shadow-popover">
+              <div className="text-base font-medium text-fg">Drop files here</div>
+              <div className="text-sm text-fg-muted">
                 Images and text files will be uploaded and attached to your message
               </div>
             </div>
@@ -302,7 +287,7 @@ export function ImageUploadZone({
         onDragLeave={!fullPage ? handleDragLeave : undefined}
         className={`
           relative
-          ${dragOver && !disabled && !fullPage ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-300 dark:border-blue-600' : ''}
+          ${dragOver && !disabled && !fullPage ? 'bg-accent-subtle' : ''}
           ${disabled ? 'opacity-50 cursor-not-allowed' : clickToUpload ? 'cursor-pointer' : ''}
           ${className}
         `}

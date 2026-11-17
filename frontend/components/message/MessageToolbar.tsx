@@ -5,6 +5,29 @@
 
 import React from 'react';
 import { Code, Copy, Edit2, GitFork, RefreshCw } from 'lucide-react';
+import { IconButton } from '../ui/Button';
+import { cn } from '../../lib/cn';
+
+/** Compact toolbar button: 28px on fine pointers, 44px touch target on coarse ones. */
+const toolbarButtonClasses = 'size-7';
+
+function CopyButton({ isCopied, onClick }: { isCopied: boolean; onClick: () => void }) {
+  return (
+    <div className="relative">
+      <IconButton label="Copy" title="Copy" onClick={onClick} className={toolbarButtonClasses}>
+        <Copy />
+      </IconButton>
+      {isCopied && (
+        <div
+          role="status"
+          className="absolute bottom-full left-1/2 z-10 mb-1 -translate-x-1/2 rounded-control bg-primary px-2 py-1 text-xs whitespace-nowrap text-on-primary"
+        >
+          Copied
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface MessageToolbarProps {
   messageId: string;
@@ -54,131 +77,86 @@ export function MessageToolbar({
 
   if (variant === 'user') {
     return (
-      <div className="mt-1 flex items-center justify-end gap-2 text-xs" ref={toolbarRef}>
-        <div className="flex items-center gap-2">
-          {/* Action buttons are hover-only */}
-          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none group-hover:pointer-events-auto">
-            {hasContent && (
-              <div className="relative">
-                <button
-                  type="button"
-                  onClick={() => onCopy(messageId, contentText)}
-                  title="Copy"
-                  className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors"
-                >
-                  <Copy className="w-3 h-3" aria-hidden="true" />
-                  <span className="sr-only">Copy</span>
-                </button>
-                {isCopied && (
-                  <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-white text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap z-10 animate-fade-in shadow-lg">
-                    Copied
-                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[3px] border-r-[3px] border-t-[4px] border-transparent border-t-slate-800 dark:border-t-slate-700"></div>
-                  </div>
-                )}
-              </div>
-            )}
-            {onFork && (
-              <button
-                type="button"
-                onClick={() => onFork(messageId, 'primary')}
-                title="Fork"
-                disabled={actionsDisabled}
-                className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <GitFork className="w-3 h-3" aria-hidden="true" />
-                <span className="sr-only">Fork</span>
-              </button>
-            )}
-            {onEdit && (
-              <button
-                type="button"
-                onClick={() => onEdit(messageId, contentText)}
-                title="Edit"
-                disabled={actionsDisabled}
-                className="p-2 rounded-md bg-white/20 dark:bg-neutral-800/30 hover:bg-white/60 dark:hover:bg-neutral-700/70 text-slate-700 dark:text-slate-200 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <Edit2 className="w-3 h-3" aria-hidden="true" />
-                <span className="sr-only">Edit</span>
-              </button>
-            )}
-          </div>
-          {revisionNavigation}
+      <div className="mt-1 flex items-center justify-end gap-2" ref={toolbarRef}>
+        {/* Actions appear on hover, on keyboard focus, and always on touch */}
+        <div className="pointer-events-none flex items-center gap-1 opacity-0 transition-opacity group-focus-within:pointer-events-auto group-focus-within:opacity-100 group-hover:pointer-events-auto group-hover:opacity-100 pointer-coarse:pointer-events-auto pointer-coarse:opacity-100">
+          {hasContent && (
+            <CopyButton isCopied={isCopied} onClick={() => onCopy(messageId, contentText)} />
+          )}
+          {onFork && (
+            <IconButton
+              label="Fork"
+              title="Fork"
+              onClick={() => onFork(messageId, 'primary')}
+              disabled={actionsDisabled}
+              className={toolbarButtonClasses}
+            >
+              <GitFork />
+            </IconButton>
+          )}
+          {onEdit && (
+            <IconButton
+              label="Edit"
+              title="Edit"
+              onClick={() => onEdit(messageId, contentText)}
+              disabled={actionsDisabled}
+              className={toolbarButtonClasses}
+            >
+              <Edit2 />
+            </IconButton>
+          )}
         </div>
+        {revisionNavigation}
       </div>
     );
   }
 
   // Assistant toolbar (integrated into stats row)
   return (
-    <div className="flex items-center gap-1.5 flex-shrink-0">
-      {hasContent && (
-        <div className="relative">
-          <button
-            type="button"
-            onClick={() => onCopy(copyId, contentText)}
-            title="Copy"
-            className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
-          >
-            <Copy className="w-3.5 h-3.5" aria-hidden="true" />
-            <span className="sr-only">Copy</span>
-          </button>
-          {isCopied && (
-            <div className="absolute bottom-full mb-1 left-1/2 transform -translate-x-1/2 bg-slate-800 dark:bg-slate-700 text-white text-[10px] px-1.5 py-0.5 rounded whitespace-nowrap z-10 animate-fade-in shadow-lg">
-              Copied
-              <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-[3px] border-r-[3px] border-t-[4px] border-transparent border-t-slate-800 dark:border-t-slate-700"></div>
-            </div>
-          )}
-        </div>
-      )}
+    <div className="flex shrink-0 items-center gap-1">
+      {hasContent && <CopyButton isCopied={isCopied} onClick={() => onCopy(copyId, contentText)} />}
       {hasContent && onToggleRaw && (
-        <button
-          type="button"
-          onClick={onToggleRaw}
+        <IconButton
+          label={isRaw ? 'Show rendered' : 'Show raw text'}
           title={isRaw ? 'Show rendered' : 'Show raw text'}
-          className={`p-1.5 rounded-md transition-colors ${
-            isRaw
-              ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100'
-              : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400'
-          }`}
+          aria-pressed={isRaw}
+          onClick={onToggleRaw}
+          className={cn(toolbarButtonClasses, isRaw && 'bg-emphasis text-fg')}
         >
-          <Code className="w-3.5 h-3.5" aria-hidden="true" />
-          <span className="sr-only">{isRaw ? 'Show rendered' : 'Show raw text'}</span>
-        </button>
+          <Code />
+        </IconButton>
       )}
       {onFork && (
-        <button
-          type="button"
-          onClick={() => onFork(messageId, modelId)}
+        <IconButton
+          label="Fork"
           title="Fork"
-          className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors"
+          onClick={() => onFork(messageId, modelId)}
+          className={toolbarButtonClasses}
         >
-          <GitFork className="w-3.5 h-3.5" aria-hidden="true" />
-          <span className="sr-only">Fork</span>
-        </button>
+          <GitFork />
+        </IconButton>
       )}
       {!isStreaming && hasComparison && !isUser && onRetryModel && (
-        <button
-          type="button"
-          onClick={() => onRetryModel(messageId, modelId)}
+        <IconButton
+          label="Retry this model"
           title="Retry this model"
+          onClick={() => onRetryModel(messageId, modelId)}
           disabled={actionsDisabled}
-          className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className={toolbarButtonClasses}
         >
-          <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
-          <span className="sr-only">Retry this model</span>
-        </button>
+          <RefreshCw />
+        </IconButton>
       )}
       {!isStreaming && !hasComparison && onRetry && (
-        <button
-          type="button"
-          onClick={() => onRetry(messageId)}
+        <IconButton
+          label="Regenerate"
           title="Regenerate"
+          onClick={() => onRetry(messageId)}
           disabled={actionsDisabled}
-          className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className={toolbarButtonClasses}
         >
-          <RefreshCw className="w-3.5 h-3.5" aria-hidden="true" />
-          <span className="sr-only">Regenerate</span>
-        </button>
+          <RefreshCw />
+        </IconButton>
       )}
       {revisionNavigation}
     </div>

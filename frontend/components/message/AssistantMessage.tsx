@@ -8,8 +8,8 @@ import { Scale } from 'lucide-react';
 import { ComparisonTabs } from './ComparisonTabs';
 import { ModelResponseColumn } from './ModelResponseColumn';
 import { EvaluationDisplay } from './EvaluationDisplay';
+import { Button } from '../ui/Button';
 import { buildAssistantSegments } from '../../lib';
-import { MAX_COMPARISON_COLUMNS } from './types';
 import type { ChatMessage } from '../../lib/types';
 import type { PendingState, EvaluationDraft } from '../../hooks/useChat';
 import type { Evaluation } from '../../lib/types';
@@ -186,16 +186,29 @@ export function AssistantMessage({
 
   const isMultiColumn = activeModels.length > 1;
 
-  const getModelDisplayName = (modelId: string) => {
-    if (modelId === 'primary') {
-      return primaryModelLabel
-        ? primaryModelLabel.includes('::')
-          ? primaryModelLabel.split('::')[1]
-          : primaryModelLabel
-        : 'Primary';
-    }
-    return modelId.includes('::') ? modelId.split('::')[1] : modelId;
-  };
+  const columns = modelDisplayData.map((data) => (
+    <ModelResponseColumn
+      key={data.modelId}
+      data={data}
+      messageId={message.id}
+      isMultiColumn={isMultiColumn}
+      isEditing={isEditing}
+      isUser={false}
+      hasComparison={hasComparison}
+      pending={pending}
+      streamingStats={streamingStats}
+      collapsedToolOutputs={collapsedToolOutputs}
+      copiedMessageId={copiedMessageId}
+      actionsDisabled={actionsDisabled}
+      onToggleToolOutput={onToggleToolOutput}
+      onCopy={onCopy}
+      onFork={onFork}
+      onRetryMessage={onRetryMessage}
+      onRetryComparisonModel={onRetryComparisonModel}
+      getModelDisplayName={resolveModelLabel}
+      regenRevision={data.modelId === 'primary' ? regenRevision : undefined}
+    />
+  ));
 
   return (
     <>
@@ -210,71 +223,19 @@ export function AssistantMessage({
         />
       )}
 
-      {isMultiColumn ? (
-        /* Multi-column side-by-side view - stacks on mobile */
-        <div className="flex flex-col md:flex-row gap-4">
-          {modelDisplayData.map((data) => (
-            <ModelResponseColumn
-              key={data.modelId}
-              data={data}
-              messageId={message.id}
-              isMultiColumn={isMultiColumn}
-              isEditing={isEditing}
-              isUser={false}
-              hasComparison={hasComparison}
-              pending={pending}
-              streamingStats={streamingStats}
-              collapsedToolOutputs={collapsedToolOutputs}
-              copiedMessageId={copiedMessageId}
-              actionsDisabled={actionsDisabled}
-              onToggleToolOutput={onToggleToolOutput}
-              onCopy={onCopy}
-              onFork={onFork}
-              onRetryMessage={onRetryMessage}
-              onRetryComparisonModel={onRetryComparisonModel}
-              getModelDisplayName={getModelDisplayName}
-              regenRevision={data.modelId === 'primary' ? regenRevision : undefined}
-            />
-          ))}
-        </div>
-      ) : (
-        /* Single column view */
-        modelDisplayData.map((data) => (
-          <ModelResponseColumn
-            key={data.modelId}
-            data={data}
-            messageId={message.id}
-            isMultiColumn={isMultiColumn}
-            isEditing={isEditing}
-            isUser={false}
-            hasComparison={hasComparison}
-            pending={pending}
-            streamingStats={streamingStats}
-            collapsedToolOutputs={collapsedToolOutputs}
-            copiedMessageId={copiedMessageId}
-            actionsDisabled={actionsDisabled}
-            onToggleToolOutput={onToggleToolOutput}
-            onCopy={onCopy}
-            onFork={onFork}
-            onRetryMessage={onRetryMessage}
-            onRetryComparisonModel={onRetryComparisonModel}
-            getModelDisplayName={getModelDisplayName}
-            regenRevision={data.modelId === 'primary' ? regenRevision : undefined}
-          />
-        ))
-      )}
+      {/* Multi-column side-by-side view stacks on mobile */}
+      {isMultiColumn ? <div className="flex flex-col gap-4 md:flex-row">{columns}</div> : columns}
 
       {hasComparison && onOpenJudgeModal && comparisonModelIds.length > 0 && (
         <div className="mt-3 flex justify-center">
-          <button
-            type="button"
+          <Button
+            size="sm"
             onClick={() => onOpenJudgeModal(message.id, comparisonModelIds)}
             disabled={actionsDisabled}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs rounded-full border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Scale className="w-3.5 h-3.5" aria-hidden="true" />
+            <Scale aria-hidden="true" />
             Judge
-          </button>
+          </Button>
         </div>
       )}
 
@@ -292,15 +253,15 @@ export function AssistantMessage({
 
       {hasComparison && onRetryMessage && !pending.streaming && (
         <div className="mt-2 flex justify-end">
-          <button
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => onRetryMessage(message.id)}
             disabled={actionsDisabled}
-            className="text-xs text-zinc-500 dark:text-zinc-400 hover:text-zinc-800 dark:hover:text-zinc-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             title="Retry all models"
-            type="button"
           >
             Retry all models
-          </button>
+          </Button>
         </div>
       )}
     </>

@@ -2,6 +2,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 import { ArrowUp, ArrowDown, Bot } from 'lucide-react';
+import { Button, IconButton } from './ui/Button';
+import { cn } from '../lib/cn';
 import { useChat } from '../hooks/useChat';
 import { useConversationUrlSync } from '../hooks/useConversationUrlSync';
 import { useResizableRightSidebar } from '../hooks/useResizableRightSidebar';
@@ -292,21 +294,28 @@ export function ChatV2() {
     setShowAuthModal(true);
   }, []);
 
+  // On phones the history drawer covers the chat, so close it once a choice is made.
+  const closeMobileDrawer = useCallback(() => {
+    if (isMobile && !chat.sidebarCollapsed) chat.toggleSidebar();
+  }, [isMobile, chat]);
+
   const handleSelectConversation = useCallback(
     async (id: string) => {
+      closeMobileDrawer();
       urlSync.markLoadingConversation();
       await chat.selectConversation(id);
     },
-    [chat, urlSync]
+    [chat, urlSync, closeMobileDrawer]
   );
 
   const handleNewChat = useCallback(() => {
+    closeMobileDrawer();
     chat.newChat();
     // Focus the message input after a short delay to ensure the component is ready
     setTimeout(() => {
       messageInputRef.current?.focus();
     }, 0);
-  }, [chat]);
+  }, [chat, closeMobileDrawer]);
 
   const handleFocusMessageInput = useCallback(() => {
     messageInputRef.current?.focus();
@@ -621,11 +630,11 @@ export function ChatV2() {
   }, []);
 
   return (
-    <div className="flex h-dvh max-h-dvh bg-white dark:bg-zinc-900 relative overflow-x-hidden">
+    <div className="relative flex h-dvh max-h-dvh overflow-x-hidden bg-canvas">
       {/* Mobile Sidebar Overlay */}
       {isMobile && (!chat.sidebarCollapsed || !chat.rightSidebarCollapsed) && (
         <div
-          className="md:hidden fixed inset-0 bg-black/50 z-40 transition-opacity"
+          className="fixed inset-0 z-40 bg-overlay transition-opacity md:hidden"
           onClick={() => {
             if (!chat.sidebarCollapsed) chat.toggleSidebar();
             if (!chat.rightSidebarCollapsed) chat.toggleRightSidebar();
@@ -640,7 +649,7 @@ export function ChatV2() {
           className={`
             ${chat.sidebarCollapsed ? '-translate-x-full md:translate-x-0' : 'translate-x-0'}
             fixed md:relative inset-y-0 left-0 z-50 md:z-auto
-            transition-transform duration-300 ease-in-out
+            transition-transform duration-200
           `}
         >
           <ChatSidebar
@@ -731,76 +740,63 @@ export function ChatV2() {
             {/* Scroll Buttons - centered but visually minimal */}
             <div
               ref={scrollControlsRef}
-              className="absolute left-1/2 transform -translate-x-1/2 flex flex-col gap-2 z-10 pointer-events-auto transition-[bottom] duration-150"
+              className="pointer-events-auto absolute left-1/2 z-10 flex -translate-x-1/2 flex-col gap-2 transition-[bottom]"
               style={{
                 bottom: `${messageInputHeight + 32}px`, // 32px gap above MessageInput
               }}
             >
               {scrollButtons.showTop && (
-                <button
-                  onClick={scrollToTop}
-                  className={`p-1.5 rounded-full bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-200 border border-zinc-200/70 dark:border-zinc-700/70 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all duration-200 aspect-square ${
-                    showScrollButtons || isHoveringScrollControls
-                      ? 'opacity-100 scale-100 pointer-events-auto'
-                      : 'opacity-0 scale-95 pointer-events-none'
-                  }`}
-                  aria-label="Scroll to top"
+                <IconButton
+                  label="Scroll to top"
                   title="Scroll to top"
+                  variant="secondary"
+                  size="sm"
+                  onClick={scrollToTop}
+                  className={cn(
+                    'rounded-full bg-surface transition-opacity',
+                    showScrollButtons || isHoveringScrollControls
+                      ? 'opacity-100'
+                      : 'pointer-events-none opacity-0'
+                  )}
                 >
-                  <ArrowUp className="w-3 h-3 sm:w-4 sm:h-4" />
-                </button>
+                  <ArrowUp />
+                </IconButton>
               )}
               {scrollButtons.showBottom && (
-                <button
-                  onClick={() => scrollToBottom()}
-                  className={`p-1.5 rounded-full bg-white dark:bg-zinc-900 text-zinc-600 dark:text-zinc-200 border border-zinc-200/70 dark:border-zinc-700/70 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-all duration-200 aspect-square ${
-                    showScrollButtons || isHoveringScrollControls
-                      ? 'opacity-100 scale-100 pointer-events-auto'
-                      : 'opacity-0 scale-95 pointer-events-none'
-                  }`}
-                  aria-label="Scroll to bottom"
+                <IconButton
+                  label="Scroll to bottom"
                   title="Scroll to bottom"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => scrollToBottom()}
+                  className={cn(
+                    'rounded-full bg-surface transition-opacity',
+                    showScrollButtons || isHoveringScrollControls
+                      ? 'opacity-100'
+                      : 'pointer-events-none opacity-0'
+                  )}
                 >
-                  <ArrowDown className="w-3 h-3 sm:w-4 sm:h-4" />
-                </button>
+                  <ArrowDown />
+                </IconButton>
               )}
             </div>
 
-            {/* Gradient fade overlay above message input */}
+            {/* Flat backdrop behind the composer so messages don't show through. */}
             <div
-              className="absolute bottom-0 left-0 right-0 pointer-events-none z-20"
-              style={{ height: `${messageInputHeight + 48}px` }}
-            >
-              {/* Light mode gradient */}
-              <div
-                className="w-full h-full dark:hidden"
-                style={{
-                  background:
-                    'linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.7) 24px, rgb(255,255,255) 48px, rgb(255,255,255) 100%)',
-                }}
-              />
-              {/* Dark mode gradient */}
-              <div
-                className="hidden dark:block w-full h-full"
-                style={{
-                  background:
-                    'linear-gradient(to bottom, transparent 0%, rgba(24,24,27,0.7) 24px, rgb(24,24,27) 48px, rgb(24,24,27) 100%)',
-                }}
-              />
-            </div>
+              aria-hidden="true"
+              className="pointer-events-none absolute right-0 bottom-0 left-0 z-20 bg-canvas"
+              style={{ height: `${messageInputHeight + 16}px` }}
+            />
             <div
               ref={messageInputContainerRef}
-              className="absolute bottom-2 sm:bottom-4 left-1/2 transform -translate-x-1/2 w-full max-w-3xl px-2 sm:px-4 md:px-6 z-30 flex flex-col gap-2"
+              className="absolute bottom-2 left-1/2 z-30 flex w-full max-w-3xl -translate-x-1/2 flex-col gap-2 px-2 sm:bottom-4 sm:px-4 md:px-6"
             >
               {showGenerateButton && (
-                <div className="flex justify-center mb-1">
-                  <button
-                    onClick={handleGenerate}
-                    className="flex items-center gap-2 px-6 py-3 rounded-full bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 font-medium shadow-lg hover:shadow-xl hover:-translate-y-0.5 transition-all active:scale-95"
-                  >
-                    <Bot className="w-5 h-5" />
+                <div className="flex justify-center">
+                  <Button variant="primary" onClick={handleGenerate}>
+                    <Bot />
                     Generate Response
-                  </button>
+                  </Button>
                 </div>
               )}
               <MessageInput
@@ -854,7 +850,10 @@ export function ChatV2() {
               role="separator"
               aria-orientation="vertical"
               aria-label="Resize right sidebar"
-              className={`hidden md:block flex-shrink-0 self-stretch w-1 cursor-col-resize select-none transition-colors duration-150 ${rightSidebar.isResizing ? 'bg-zinc-400/60 dark:bg-zinc-600/60' : 'bg-transparent hover:bg-zinc-400/40 dark:hover:bg-zinc-600/40'}`}
+              className={cn(
+                'hidden w-1 shrink-0 cursor-col-resize self-stretch transition-colors select-none md:block',
+                rightSidebar.isResizing ? 'bg-accent' : 'hover:bg-line-strong'
+              )}
               onPointerDown={rightSidebar.handleResizeStart}
               onDoubleClick={rightSidebar.handleResizeDoubleClick}
             />
@@ -865,7 +864,7 @@ export function ChatV2() {
             className={`
               ${chat.rightSidebarCollapsed ? 'translate-x-full md:translate-x-0' : 'translate-x-0'}
               fixed md:relative inset-y-0 right-0 z-50 md:z-auto
-              transition-transform duration-300 ease-in-out
+              transition-transform duration-200
             `}
           >
             <RightSidebar
