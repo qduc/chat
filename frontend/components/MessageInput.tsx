@@ -3,9 +3,6 @@ import {
   Send,
   Loader2,
   Gauge,
-  Wrench,
-  Zap,
-  Sliders,
   ImagePlus,
   FileText,
   AudioLines,
@@ -25,7 +22,7 @@ import {
 } from '../lib';
 import { inferAudioFormat, isAudioFile } from '../lib/audioUtils';
 import Toggle from './ui/Toggle';
-import { Button, IconButton, buttonClasses, iconButtonClasses } from './ui/Button';
+import { Button, iconButtonClasses } from './ui/Button';
 import { Input } from './ui/Input';
 import { floatingItemClasses } from './ui/Menu';
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger } from './ui/Popover';
@@ -479,8 +476,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
   // ===== RENDER =====
   const hasAttachments = images.length > 0 || files.length > 0 || audios.length > 0;
-  const chipClasses = 'max-w-32 truncate rounded-full bg-emphasis px-2 text-xs text-fg';
-  const controlLabelClasses = 'hidden text-xs sm:inline';
+  // One quiet style for every composer setting: text, value inline, hover fill only.
+  const chipTriggerClasses =
+    'inline-flex h-8 shrink-0 items-center gap-1 rounded-control px-2 text-sm whitespace-nowrap text-fg-muted transition-colors touch-target focus-ring hover:bg-muted hover:text-fg data-popup-open:bg-muted data-popup-open:text-fg disabled:pointer-events-none disabled:opacity-50';
   const panelHeaderClasses = 'flex items-center justify-between gap-3 border-b border-line p-4';
   const panelRowClasses =
     'flex w-full items-start gap-3 rounded-control px-3 py-2 text-left transition-colors hover:bg-muted focus-ring-inset disabled:cursor-not-allowed disabled:opacity-50';
@@ -533,107 +531,11 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
           )}
 
           {/* ===== TEXT INPUT ===== */}
-          <div className="flex items-start gap-2 p-3">
-            {(onImagesChange || onFilesChange || onAudiosChange) && (
-              <>
-                <Popover open={attachOpen} onOpenChange={setAttachOpen} modal="trap-focus">
-                  <Tooltip content="Attach files" disabled={attachOpen}>
-                    <PopoverTrigger
-                      aria-label="Attach Files"
-                      disabled={controlsDisabled}
-                      className={iconButtonClasses({
-                        size: 'sm',
-                        className: hasAttachments ? 'bg-emphasis text-fg' : undefined,
-                      })}
-                    >
-                      <Paperclip />
-                    </PopoverTrigger>
-                  </Tooltip>
-                  <PopoverContent
-                    side="top"
-                    align="start"
-                    ariaLabel="Attach"
-                    hiddenCloseLabel="Close"
-                    className="w-56 p-1"
-                  >
-                    {onImagesChange && (
-                      <button
-                        type="button"
-                        disabled={textareaLocked}
-                        onClick={() => {
-                          setAttachOpen(false);
-                          handleImageUploadClick();
-                        }}
-                        className={floatingItemClasses}
-                      >
-                        <ImagePlus /> Upload Image
-                      </button>
-                    )}
-                    {onAudiosChange && (
-                      <button
-                        type="button"
-                        disabled={textareaLocked}
-                        onClick={() => {
-                          setAttachOpen(false);
-                          handleAudioUploadClick();
-                        }}
-                        className={floatingItemClasses}
-                      >
-                        <AudioLines /> Upload Audio
-                      </button>
-                    )}
-                    {onFilesChange && (
-                      <button
-                        type="button"
-                        disabled={textareaLocked}
-                        onClick={() => {
-                          setAttachOpen(false);
-                          handleFileUploadClick();
-                        }}
-                        className={floatingItemClasses}
-                      >
-                        <FileText /> Upload File
-                      </button>
-                    )}
-                  </PopoverContent>
-                </Popover>
-                {/* Hidden inputs */}
-                {onImagesChange && (
-                  <input
-                    ref={imageInputRef}
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    onChange={handleImageInputChange}
-                  />
-                )}
-                {onFilesChange && (
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    multiple
-                    className="hidden"
-                    onChange={handleFileInputChange}
-                  />
-                )}
-                {onAudiosChange && (
-                  <input
-                    ref={audioInputRef}
-                    type="file"
-                    accept="audio/*"
-                    multiple
-                    className="hidden"
-                    onChange={handleAudioInputChange}
-                  />
-                )}
-              </>
-            )}
-
+          <div className="px-4 pt-3">
             <textarea
               ref={inputRef}
               aria-label="Message"
-              className="min-h-8 flex-1 resize-none bg-transparent py-1 text-sm text-fg outline-none placeholder:text-fg-subtle focus-visible:outline-none disabled:cursor-not-allowed"
+              className="block min-h-8 w-full resize-none bg-transparent py-1 text-sm text-fg outline-none placeholder:text-fg-subtle focus-visible:outline-none disabled:cursor-not-allowed"
               placeholder={
                 textareaLocked
                   ? disableTextInput
@@ -659,173 +561,127 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
           </div>
 
           {/* ===== CONTROLS BAR ===== */}
-          <div className="flex items-center justify-between gap-2 px-3 pb-3">
+          <div className="flex items-center justify-between gap-2 p-2">
             <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto *:shrink-0">
-              <Tooltip content="Reasoning effort level">
-                <QualitySlider
-                  value={reasoningEffort}
-                  onChange={onReasoningEffortChange}
-                  icon={<Gauge />}
-                  label="Reasoning"
-                  ariaLabel="Reasoning Effort"
-                  className="shrink-0"
-                  disabled={controlsDisabled}
-                />
-              </Tooltip>
-
-              <Tooltip content="Stream responses in real-time">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  aria-pressed={shouldStream}
-                  aria-label="Stream"
-                  onClick={() => {
-                    if (controlsDisabled) return;
-                    onShouldStreamChange(!shouldStream);
-                  }}
-                  disabled={controlsDisabled}
-                  className={cn('w-8 px-0', shouldStream && 'bg-emphasis text-fg')}
-                >
-                  <Zap className={shouldStream ? 'fill-current' : undefined} />
-                </Button>
-              </Tooltip>
-
-              <div aria-hidden="true" className="mx-1 hidden h-5 w-px bg-line md:block" />
-
-              {/* Custom params selector */}
-              <Popover
-                open={customParamsOpen}
-                onOpenChange={setCustomParamsOpen}
-                modal="trap-focus"
-              >
-                <Tooltip content="Select custom request params" disabled={customParamsOpen}>
-                  <PopoverTrigger
-                    aria-label="Custom request params"
-                    disabled={controlsDisabled}
-                    className={buttonClasses({ variant: 'ghost', size: 'sm', className: 'px-2' })}
-                  >
-                    <Sliders />
-                    <span className={controlLabelClasses}>Params</span>
-                    {localCustomParamsIds.length > 0 && (
-                      <span className={chipClasses} title={selectedCustomParamsTitle}>
-                        {selectedCustomParamsLabel}
-                      </span>
-                    )}
-                  </PopoverTrigger>
-                </Tooltip>
-                <PopoverContent side="top" align="start" ariaLabel="Custom Params" className="w-80">
-                  <div className={panelHeaderClasses}>
-                    <div>
-                      <div className="text-sm font-medium text-fg">Custom Params</div>
-                      <div className="text-xs text-fg-muted">
-                        {customRequestParams.length} presets
-                      </div>
-                    </div>
-                    <PopoverClose aria-label="Close" className={iconButtonClasses({ size: 'sm' })}>
-                      <X />
-                    </PopoverClose>
-                  </div>
-                  <div className="flex max-h-72 flex-col gap-1 overflow-y-auto p-1">
-                    <button
-                      type="button"
-                      aria-pressed={localCustomParamsIds.length === 0}
-                      onClick={() => {
-                        setLocalCustomParamsIds([]);
-                        onCustomRequestParamsIdChange?.(null);
-                      }}
-                      disabled={controlsDisabled}
-                      className={cn(panelRowClasses, 'text-sm text-fg')}
+              {(onImagesChange || onFilesChange || onAudiosChange) && (
+                <>
+                  <Popover open={attachOpen} onOpenChange={setAttachOpen} modal="trap-focus">
+                    <Tooltip content="Attach files" disabled={attachOpen}>
+                      <PopoverTrigger
+                        aria-label="Attach Files"
+                        disabled={controlsDisabled}
+                        className={iconButtonClasses({
+                          size: 'sm',
+                          className: hasAttachments ? 'bg-emphasis text-fg' : undefined,
+                        })}
+                      >
+                        <Paperclip />
+                      </PopoverTrigger>
+                    </Tooltip>
+                    <PopoverContent
+                      side="top"
+                      align="start"
+                      ariaLabel="Attach"
+                      hiddenCloseLabel="Close"
+                      className="w-56 p-1"
                     >
-                      <span className="flex-1">None</span>
-                      {localCustomParamsIds.length === 0 && (
-                        <Check className="size-4 text-fg-muted" />
-                      )}
-                    </button>
-                    {customRequestParams.length === 0 && (
-                      <p className="px-3 py-2 text-xs text-fg-muted">
-                        No presets configured. Add them in Settings → Advanced.
-                      </p>
-                    )}
-                    {customRequestParams.map((preset) => {
-                      const isActive = localCustomParamsIds.some(
-                        (item) => item === preset.id || item === preset.label
-                      );
-                      return (
-                        <Tooltip
-                          key={preset.id}
-                          placement="right"
-                          delay={300}
-                          className="w-full"
-                          content={
-                            <div className="flex min-w-0 flex-col gap-1">
-                              <div className="font-medium">{preset.label}</div>
-                              <pre className="overflow-x-auto font-mono text-xs whitespace-pre-wrap">
-                                {JSON.stringify(preset.params, null, 2)}
-                              </pre>
-                            </div>
-                          }
+                      {onImagesChange && (
+                        <button
+                          type="button"
+                          disabled={textareaLocked}
+                          onClick={() => {
+                            setAttachOpen(false);
+                            handleImageUploadClick();
+                          }}
+                          className={floatingItemClasses}
                         >
-                          <button
-                            type="button"
-                            aria-pressed={isActive}
-                            onClick={() => {
-                              const nextIds = isActive
-                                ? localCustomParamsIds.filter(
-                                    (item) => item !== preset.id && item !== preset.label
-                                  )
-                                : Array.from(new Set([...localCustomParamsIds, preset.id]));
-                              setLocalCustomParamsIds(nextIds);
-                              onCustomRequestParamsIdChange?.(nextIds.length > 0 ? nextIds : null);
-                            }}
-                            disabled={controlsDisabled}
-                            className={cn(panelRowClasses, isActive && 'bg-muted')}
-                          >
-                            <span className="flex min-w-0 flex-1 flex-col">
-                              <span className={cn('text-sm text-fg', isActive && 'font-medium')}>
-                                {preset.label}
-                              </span>
-                              <span className="truncate font-mono text-xs text-fg-subtle">
-                                {JSON.stringify(preset.params)}
-                              </span>
-                            </span>
-                            {isActive && <Check className="size-4 shrink-0 text-fg-muted" />}
-                          </button>
-                        </Tooltip>
-                      );
-                    })}
-                  </div>
-                </PopoverContent>
-              </Popover>
-              {localCustomParamsIds.length > 0 && (
-                <IconButton
-                  label="Clear custom params"
-                  title="Clear custom params"
-                  size="sm"
-                  className="size-7"
-                  onClick={() => {
-                    setLocalCustomParamsIds([]);
-                    onCustomRequestParamsIdChange?.(null);
-                  }}
-                >
-                  <X />
-                </IconButton>
+                          <ImagePlus /> Upload Image
+                        </button>
+                      )}
+                      {onAudiosChange && (
+                        <button
+                          type="button"
+                          disabled={textareaLocked}
+                          onClick={() => {
+                            setAttachOpen(false);
+                            handleAudioUploadClick();
+                          }}
+                          className={floatingItemClasses}
+                        >
+                          <AudioLines /> Upload Audio
+                        </button>
+                      )}
+                      {onFilesChange && (
+                        <button
+                          type="button"
+                          disabled={textareaLocked}
+                          onClick={() => {
+                            setAttachOpen(false);
+                            handleFileUploadClick();
+                          }}
+                          className={floatingItemClasses}
+                        >
+                          <FileText /> Upload File
+                        </button>
+                      )}
+                    </PopoverContent>
+                  </Popover>
+                  {/* Hidden inputs */}
+                  {onImagesChange && (
+                    <input
+                      ref={imageInputRef}
+                      type="file"
+                      accept="image/*"
+                      multiple
+                      className="hidden"
+                      onChange={handleImageInputChange}
+                    />
+                  )}
+                  {onFilesChange && (
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      className="hidden"
+                      onChange={handleFileInputChange}
+                    />
+                  )}
+                  {onAudiosChange && (
+                    <input
+                      ref={audioInputRef}
+                      type="file"
+                      accept="audio/*"
+                      multiple
+                      className="hidden"
+                      onChange={handleAudioInputChange}
+                    />
+                  )}
+                </>
               )}
-
+              <QualitySlider
+                variant="chip"
+                value={reasoningEffort}
+                onChange={onReasoningEffortChange}
+                icon={<Gauge />}
+                label="Reasoning"
+                ariaLabel="Reasoning Effort"
+                disabled={controlsDisabled}
+              />
               {/* Tools selector */}
               <Popover open={toolsOpen} onOpenChange={setToolsOpen} modal="trap-focus">
-                <Tooltip content="Select tools to enable" disabled={toolsOpen}>
-                  <PopoverTrigger
-                    aria-label="Tools"
-                    disabled={controlsDisabled}
-                    className={buttonClasses({ variant: 'ghost', size: 'sm', className: 'px-2' })}
-                  >
-                    <Wrench />
-                    <span className={controlLabelClasses}>Tools</span>
-                    {localSelected.length > 0 && (
-                      <span className={chipClasses}>{localSelected.length}</span>
-                    )}
-                  </PopoverTrigger>
-                </Tooltip>
+                <PopoverTrigger
+                  aria-label="Tools"
+                  disabled={controlsDisabled}
+                  className={chipTriggerClasses}
+                >
+                  Tools
+                  {localSelected.length > 0 && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span className="text-fg">{localSelected.length}</span>
+                    </>
+                  )}
+                </PopoverTrigger>
                 <PopoverContent
                   side="top"
                   align="start"
@@ -1020,27 +876,148 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   </div>
                 </PopoverContent>
               </Popover>
-              {localSelected.length > 0 && (
-                <IconButton
-                  label="Clear enabled tools"
-                  title="Clear enabled tools"
-                  size="sm"
-                  className="size-7"
-                  onClick={() => {
-                    setLocalSelected([]);
-                    onEnabledToolsChange?.([]);
-                    onUseToolsChange?.(false);
-                  }}
+              {/* Custom params selector */}
+              <Popover
+                open={customParamsOpen}
+                onOpenChange={setCustomParamsOpen}
+                modal="trap-focus"
+              >
+                <PopoverTrigger
+                  aria-label="Custom request params"
+                  disabled={controlsDisabled}
+                  className={chipTriggerClasses}
                 >
-                  <X />
-                </IconButton>
-              )}
+                  Params
+                  {localCustomParamsIds.length > 0 && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span className="max-w-32 truncate text-fg" title={selectedCustomParamsTitle}>
+                        {selectedCustomParamsLabel}
+                      </span>
+                    </>
+                  )}
+                  {!shouldStream && (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span className="text-fg">No streaming</span>
+                    </>
+                  )}
+                </PopoverTrigger>
+                <PopoverContent
+                  side="top"
+                  align="start"
+                  ariaLabel="Request options"
+                  className="w-80"
+                >
+                  <div className={panelHeaderClasses}>
+                    <div className="flex items-center gap-3">
+                      <div className="flex flex-col">
+                        <span className="text-sm font-medium text-fg">Stream responses</span>
+                        <span className="text-xs text-fg-muted">
+                          Show the reply as it is written
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Toggle
+                        ariaLabel="Stream responses"
+                        checked={shouldStream}
+                        disabled={controlsDisabled}
+                        onChange={(v: boolean) => {
+                          if (controlsDisabled) return;
+                          onShouldStreamChange(v);
+                        }}
+                      />
+                      <PopoverClose
+                        aria-label="Close"
+                        className={iconButtonClasses({ size: 'sm' })}
+                      >
+                        <X />
+                      </PopoverClose>
+                    </div>
+                  </div>
+                  <div className="flex items-baseline gap-3 px-4 pt-3 pb-1">
+                    <span className="text-sm font-medium text-fg">Custom Params</span>
+                    <span className="text-xs text-fg-muted">
+                      {customRequestParams.length} presets
+                    </span>
+                  </div>
+                  <div className="flex max-h-72 flex-col gap-1 overflow-y-auto p-1">
+                    <button
+                      type="button"
+                      aria-pressed={localCustomParamsIds.length === 0}
+                      onClick={() => {
+                        setLocalCustomParamsIds([]);
+                        onCustomRequestParamsIdChange?.(null);
+                      }}
+                      disabled={controlsDisabled}
+                      className={cn(panelRowClasses, 'text-sm text-fg')}
+                    >
+                      <span className="flex-1">None</span>
+                      {localCustomParamsIds.length === 0 && (
+                        <Check className="size-4 text-fg-muted" />
+                      )}
+                    </button>
+                    {customRequestParams.length === 0 && (
+                      <p className="px-3 py-2 text-xs text-fg-muted">
+                        No presets configured. Add them in Settings → Advanced.
+                      </p>
+                    )}
+                    {customRequestParams.map((preset) => {
+                      const isActive = localCustomParamsIds.some(
+                        (item) => item === preset.id || item === preset.label
+                      );
+                      return (
+                        <Tooltip
+                          key={preset.id}
+                          placement="right"
+                          delay={300}
+                          className="w-full"
+                          content={
+                            <div className="flex min-w-0 flex-col gap-1">
+                              <div className="font-medium">{preset.label}</div>
+                              <pre className="overflow-x-auto font-mono text-xs whitespace-pre-wrap">
+                                {JSON.stringify(preset.params, null, 2)}
+                              </pre>
+                            </div>
+                          }
+                        >
+                          <button
+                            type="button"
+                            aria-pressed={isActive}
+                            onClick={() => {
+                              const nextIds = isActive
+                                ? localCustomParamsIds.filter(
+                                    (item) => item !== preset.id && item !== preset.label
+                                  )
+                                : Array.from(new Set([...localCustomParamsIds, preset.id]));
+                              setLocalCustomParamsIds(nextIds);
+                              onCustomRequestParamsIdChange?.(nextIds.length > 0 ? nextIds : null);
+                            }}
+                            disabled={controlsDisabled}
+                            className={cn(panelRowClasses, isActive && 'bg-muted')}
+                          >
+                            <span className="flex min-w-0 flex-1 flex-col">
+                              <span className={cn('text-sm text-fg', isActive && 'font-medium')}>
+                                {preset.label}
+                              </span>
+                              <span className="truncate font-mono text-xs text-fg-subtle">
+                                {JSON.stringify(preset.params)}
+                              </span>
+                            </span>
+                            {isActive && <Check className="size-4 shrink-0 text-fg-muted" />}
+                          </button>
+                        </Tooltip>
+                      );
+                    })}
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
 
             {/* ===== SEND BUTTON ===== */}
             <Button
               variant="primary"
-              size="sm"
               onClick={() => {
                 if (pending.streaming) {
                   onStop();
@@ -1050,18 +1027,10 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
               }}
               disabled={(!canSend || textareaLocked) && !pending.streaming}
               aria-label={pending.streaming ? 'Stop' : 'Send'}
+              title={pending.streaming ? 'Stop' : 'Send'}
+              className="size-8 rounded-full p-0 disabled:bg-emphasis disabled:text-fg-subtle disabled:opacity-100"
             >
-              {pending.streaming ? (
-                <>
-                  <Loader2 className="animate-spin" />
-                  <span className="hidden sm:inline">Stop</span>
-                </>
-              ) : (
-                <>
-                  <Send />
-                  <span className="hidden sm:inline">Send</span>
-                </>
-              )}
+              {pending.streaming ? <Loader2 className="animate-spin" /> : <Send />}
             </Button>
           </div>
         </div>

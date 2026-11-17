@@ -93,3 +93,15 @@ These go beyond a pure restyle. They were approved after the migration review.
    - The theme toggle moved into the user menu. It stays in the header when signed out.
 7. **Settings headings:** removed the headings that repeated the tab names. Providers' Refresh is now next to the list it refreshes.
 8. **Provider form actions:** the action bar sticks to the bottom of the Settings dialog, so Test Connection and Create/Update stay visible.
+
+## Round 3: calmer composer
+
+- **One control style:** every setting is the same quiet text chip, with values shown inline ("Reasoning: Default", "Tools · 2", "Params · High temp"). Borders, the divider, and the per-control icons and tooltips are gone.
+- **Attach** moved to the start of the bottom row, so the message text gets the full width and both rows share one left edge.
+- **Stream** moved into the Params popover as a "Stream responses" switch. The Params chip shows "No streaming" when it is off.
+- **Send** is a round icon button: softly tinted when empty, solid when ready, and a spinner while streaming. It keeps the accessible names Send and Stop.
+- **Reasoning:** the "Unset" option is now labelled "Default". The stored value is unchanged.
+- **Removed:** the separate clear (×) buttons next to Tools and Params. Clearing is done inside each popover ("Clear" and "None").
+- **Test changes (the only ones in this migration):**
+  - `QualitySlider.test.tsx` expects the "Default" label.
+  - Two Stream tests in `MessageInput.test.tsx` now open the Params popover before checking or toggling the switch.

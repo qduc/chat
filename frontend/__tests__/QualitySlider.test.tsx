@@ -9,7 +9,7 @@ test('shows exactly the five reasoning effort levels', () => {
   render(<QualitySlider value="unset" onChange={() => {}} />);
 
   const labels = screen.getAllByRole('option').map((option) => option.textContent);
-  expect(labels).toEqual(['Unset', 'None', 'Low', 'Medium', 'High', 'X-High']);
+  expect(labels).toEqual(['Default', 'None', 'Low', 'Medium', 'High', 'X-High']);
 
   const efforts = screen
     .getAllByRole('option')
