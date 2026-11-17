@@ -1,3 +1,5 @@
+import { reportedUsageCost } from '../modelCatalog/modelCost.ts';
+
 function toNumber(value) {
   if (value == null) return undefined;
   const asNumber = Number(value);
@@ -25,16 +27,44 @@ function sumNumbers(...values) {
   return found ? total : undefined;
 }
 
+function asRecord(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : undefined;
+}
+
+/**
+ * Normalize provider usage into ChatForge's usage shape.
+ *
+ * Conventions (the same for every provider):
+ * - `prompt_tokens` is the FULL prompt: uncached input + cache reads + cache
+ *   writes. OpenAI Chat Completions, OpenRouter, the Responses API and Gemini
+ *   already report it that way. Native Anthropic (Messages API) reports
+ *   `input_tokens` EXCLUDING cache reads and writes, so they are added back.
+ * - `cache_read_input_tokens` / `cache_creation_input_tokens` are subsets of
+ *   `prompt_tokens`.
+ * - `provider_cost_usd` is the charge the provider reported (OpenRouter
+ *   `usage.cost`, BYOK-aware), when there is one.
+ *
+ * Idempotent: normalizing an already-normalized object yields the same values.
+ * Several improvements are ported back from qduc/term2's token-usage.ts (which
+ * started as a port of this file).
+ */
 export function normalizeUsage(usage) {
   if (!usage || typeof usage !== 'object') return undefined;
 
-  const promptTokens = coalesceNumber(
+  const promptDetails =
+    asRecord(usage.prompt_tokens_details) ??
+    asRecord(usage.promptTokensDetails) ??
+    asRecord(usage.input_tokens_details) ??
+    asRecord(usage.inputTokensDetails);
+
+  let promptTokens = coalesceNumber(
     usage.prompt_tokens,
     usage.input_tokens,
     usage.input_token_count,
     usage.prompt_token_count,
     usage.promptTokenCount,
     usage.inputTokenCount,
+    typeof usage.inputTokens === 'number' ? usage.inputTokens : undefined,
     usage.prompt_n !== undefined
       ? (toNumber(usage.cache_n) || 0) + toNumber(usage.prompt_n)
       : undefined
@@ -47,32 +77,57 @@ export function normalizeUsage(usage) {
     usage.completion_token_count,
     usage.candidatesTokenCount,
     usage.outputTokenCount,
+    typeof usage.outputTokens === 'number' ? usage.outputTokens : undefined,
     usage.predicted_n,
   );
 
   const cacheCreationTokens = coalesceNumber(
     usage.cache_creation_input_tokens,
     usage.cacheCreationInputTokens,
+    // OpenRouter: prompt_tokens_details.cache_write_tokens (already inside prompt_tokens)
+    promptDetails?.cache_write_tokens,
+    promptDetails?.cacheWriteTokens,
+    promptDetails?.cache_creation_input_tokens,
+    promptDetails?.cache_creation_tokens,
   );
 
   const cacheReadTokens = coalesceNumber(
     usage.cache_read_input_tokens,
     usage.cacheReadInputTokens,
-    // OpenAI-style: prompt_tokens_details.cached_tokens
-    usage?.prompt_tokens_details?.cached_tokens,
-    usage?.promptTokensDetails?.cachedTokens,
+    // OpenAI-style: prompt_tokens_details.cached_tokens (Chat Completions) and
+    // input_tokens_details.cached_tokens (Responses API)
+    promptDetails?.cached_tokens,
+    promptDetails?.cachedTokens,
+    // Gemini: cachedContentTokenCount (already inside promptTokenCount)
+    usage.cachedContentTokenCount,
+    usage.cached_content_token_count,
+    // DeepSeek: prompt_cache_hit_tokens (already inside prompt_tokens)
+    usage.prompt_cache_hit_tokens,
   );
 
+  // Native Anthropic: `input_tokens` excludes cache reads and writes. Only the
+  // raw shape (no `prompt_tokens`) is adjusted, so re-normalizing is a no-op.
+  if (
+    usage.prompt_tokens == null &&
+    usage.input_tokens != null &&
+    promptTokens != null &&
+    (usage.cache_read_input_tokens != null || usage.cache_creation_input_tokens != null)
+  ) {
+    promptTokens += (cacheReadTokens ?? 0) + (cacheCreationTokens ?? 0);
+  }
+
+  // prompt_tokens already includes every cache dimension.
   const totalTokens = coalesceNumber(
     usage.total_tokens,
     usage.total_token_count,
     usage.totalTokenCount,
+    typeof usage.totalTokens === 'number' ? usage.totalTokens : undefined,
   ) ?? sumNumbers(
     promptTokens,
     completionTokens,
-    cacheCreationTokens,
-    cacheReadTokens,
   );
+
+  const providerCostUsd = coalesceNumber(reportedUsageCost(usage), usage.provider_cost_usd);
 
   const reasoningTokens = coalesceNumber(
     usage.reasoning_tokens,
@@ -104,6 +159,7 @@ export function normalizeUsage(usage) {
   if (reasoningTokens != null) mapped.reasoning_tokens = reasoningTokens;
   if (cacheCreationTokens != null) mapped.cache_creation_input_tokens = cacheCreationTokens;
   if (cacheReadTokens != null) mapped.cache_read_input_tokens = cacheReadTokens;
+  if (providerCostUsd != null && providerCostUsd >= 0) mapped.provider_cost_usd = providerCostUsd;
   if (promptMs != null) mapped.prompt_ms = promptMs;
   if (completionMs != null) mapped.completion_ms = completionMs;
   if (usage.model) mapped.model = String(usage.model);

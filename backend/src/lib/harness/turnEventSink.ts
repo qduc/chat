@@ -13,6 +13,9 @@ import { appendToPersistence, recordFinalToPersistence } from '../toolOrchestrat
 import type { Item, ModelError, TurnEvent, TurnResult } from '@qduc/agent-core';
 import { SseTurnOutput } from './turnOutputs.ts';
 import type { SseResponse, TurnOutput } from './turnOutputs.ts';
+import { resolvePricingTarget } from '../modelCatalog/providerTarget.ts';
+import type { PricingTarget } from '../modelCatalog/providerTarget.ts';
+import { toClientUsage } from '../modelCatalog/usageCost.ts';
 
 export const MAX_ITERATIONS_NOTICE = '\n\n[Maximum iterations reached]';
 
@@ -26,6 +29,7 @@ export type SinkPersistence = {
   setReasoningDetails?(details: unknown[]): void;
   setReasoningTokens?(tokens: number): void;
   setUsage?(usage: Record<string, unknown>): void;
+  recordRequestUsage?(usage: Record<string, unknown>): void;
   setResponseId?(responseId: string): void;
   clearResponseId?(): void;
   addToolCalls?(calls: unknown[]): void;
@@ -48,6 +52,10 @@ export type TurnEventSinkOptions = {
   /** Chunk id, as the legacy loop's `bodyIn.id || 'chatcmpl-' + Date.now()`. */
   readonly completionId?: string;
   readonly providerId?: string | null;
+  /** Owner of `providerId`; with it the streamed usage carries `cost`. */
+  readonly userId?: string | null;
+  /** Pricing target override (tests); resolved from providerId/userId otherwise. */
+  readonly pricingTarget?: PricingTarget;
 };
 
 type ChatForgeResponseMetadata = {
@@ -73,6 +81,8 @@ export class TurnEventSink {
   private readonly model: string;
   private readonly completionId: string;
   private readonly providerId: string | null;
+  private readonly userId: string | null;
+  private pricingTarget: PricingTarget | undefined;
 
   private pendingToolCalls: PendingToolCall[] = [];
   /** First-seen text offset per streamed tool call, keyed `${step}:${index}`. */
@@ -90,6 +100,8 @@ export class TurnEventSink {
     this.model = options.model;
     this.completionId = options.completionId ?? `chatcmpl-${Date.now()}`;
     this.providerId = options.providerId ?? null;
+    this.userId = options.userId ?? null;
+    this.pricingTarget = options.pricingTarget;
     if (options.output) this.output = options.output;
     else if (options.res) this.output = new SseTurnOutput(options.res, this.model, this.completionId);
     else throw new Error('TurnEventSink needs a response or an output');
@@ -233,15 +245,27 @@ export class TurnEventSink {
     const usage = meta.usage ?? undefined;
     if (usage) {
       this.persistence?.setUsage?.(usage);
+      this.persistence?.recordRequestUsage?.(usage);
       if (typeof usage.reasoning_tokens === 'number') this.persistence?.setReasoningTokens?.(usage.reasoning_tokens);
     }
     this.output.responseCompleted({
-      usage: usage ?? null,
+      usage: usage ? this.clientUsage(usage, meta.model ?? null) : null,
       model: meta.model ?? null,
       provider: meta.provider ?? null,
       responseId,
       finishReason: meta.finishReason ?? null,
     });
+  }
+
+  /** Usage as the client sees it: `cost` added, internal fields dropped. Never throws. */
+  private clientUsage(usage: Record<string, unknown>, reportedModel: string | null): Record<string, unknown> {
+    try {
+      this.pricingTarget ??= resolvePricingTarget(this.providerId, this.userId);
+      return toClientUsage(usage, [this.model, reportedModel], this.pricingTarget);
+    } catch {
+      const { provider_cost_usd: _internal, ...rest } = usage;
+      return rest;
+    }
   }
 
   private onTurnEnded(result: TurnResult): void {
