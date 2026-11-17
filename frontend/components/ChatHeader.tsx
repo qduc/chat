@@ -4,6 +4,7 @@ import { useTheme } from '../contexts/ThemeContext';
 import ModelSelector from './ui/ModelSelector';
 import { type Group as TabGroup } from './ui/TabbedSelect';
 import { AuthButton } from './auth/AuthButton';
+import { IconButton } from './ui/Button';
 
 interface ChatHeaderProps {
   isStreaming: boolean;
@@ -116,33 +117,31 @@ export function ChatHeader({
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-white dark:bg-zinc-900 border-b border-zinc-200/50 dark:border-zinc-800/50 backdrop-blur-sm bg-white/80 dark:bg-zinc-900/80">
-      <div className="px-2 sm:px-4 md:px-6 py-2 sm:py-3 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1 sm:gap-2 flex-1 min-w-0">
+    <header className="sticky top-0 z-40 border-b border-line bg-canvas">
+      <div className="flex items-center justify-between gap-2 px-2 py-2 sm:px-4 md:px-6">
+        <div className="flex min-w-0 flex-1 items-center gap-2">
           {/* Left Sidebar Toggle - Mobile Only */}
           {showLeftSidebarButton && onToggleLeftSidebar && (
-            <button
-              onClick={onToggleLeftSidebar}
-              className="md:hidden w-8 h-8 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-400 transition-colors flex-shrink-0"
+            <IconButton
+              label="Toggle conversation history"
               title="Toggle conversation history"
-              aria-label="Toggle conversation history"
-              type="button"
+              onClick={onToggleLeftSidebar}
+              className="md:hidden"
             >
-              <PanelLeft className="w-4 h-4" />
-            </button>
+              <PanelLeft />
+            </IconButton>
           )}
 
           {/* New Chat Button - Mobile Only */}
           {onNewChat && (
-            <button
-              onClick={onNewChat}
-              className="md:hidden w-8 h-8 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center justify-center text-zinc-600 dark:text-zinc-400 transition-colors flex-shrink-0"
+            <IconButton
+              label="Start new chat"
               title="New Chat"
-              aria-label="Start new chat"
-              type="button"
+              onClick={onNewChat}
+              className="md:hidden"
             >
-              <Plus className="w-4 h-4" />
-            </button>
+              <Plus />
+            </IconButton>
           )}
 
           <ModelSelector
@@ -150,7 +149,7 @@ export function ChatHeader({
             onChange={onModelChange}
             groups={effectiveGroups}
             fallbackOptions={effectiveFallback}
-            className="flex-1 min-w-0 text-sm sm:text-base md:text-lg sm:flex-none"
+            className="min-w-0 flex-1 sm:flex-none"
             ariaLabel="Model"
             onAfterChange={onFocusMessageInput}
             disabled={modelSelectionLocked}
@@ -163,56 +162,43 @@ export function ChatHeader({
             comparisonDisabledReason={comparisonLockReason}
           />
           {onRefreshModels && (
-            <button
+            <IconButton
+              label="Refresh model list"
+              title="Refresh model list"
               onClick={onRefreshModels}
               disabled={isLoadingModels}
-              className="hidden sm:flex w-8 h-8 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 items-center justify-center text-zinc-500 dark:text-zinc-400 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
-              title="Refresh model list"
-              aria-label="Refresh model list"
-              type="button"
+              className="hidden sm:inline-flex"
             >
-              {isLoadingModels ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <RefreshCw className="w-4 h-4" />
-              )}
-            </button>
+              {isLoadingModels ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+            </IconButton>
           )}
         </div>
 
-        <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-          <button
-            onClick={onOpenSettings}
-            className="w-8 h-8 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center justify-center text-zinc-500 dark:text-zinc-400 transition-colors"
-            title="Open settings"
-            aria-label="Open settings"
-            type="button"
-          >
-            <Settings className="w-4 h-4" />
-          </button>
-          <button
-            onClick={toggleTheme}
-            className="w-8 h-8 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center justify-center text-zinc-500 dark:text-zinc-400 transition-colors"
+        <div className="flex shrink-0 items-center gap-1">
+          <IconButton label="Open settings" title="Open settings" onClick={onOpenSettings}>
+            <Settings />
+          </IconButton>
+          <IconButton
+            label={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} theme`}
             title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} theme`}
-            type="button"
+            onClick={toggleTheme}
           >
-            {resolvedTheme === 'dark' ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-          </button>
+            {resolvedTheme === 'dark' ? <Sun /> : <Moon />}
+          </IconButton>
           <div className="hidden sm:block">
             <AuthButton onShowLogin={onShowLogin} onShowRegister={onShowRegister} />
           </div>
 
           {/* Right Sidebar Toggle - Mobile Only */}
           {showRightSidebarButton && onToggleRightSidebar && (
-            <button
-              onClick={onToggleRightSidebar}
-              className="md:hidden w-8 h-8 rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-800 flex items-center justify-center text-zinc-500 dark:text-zinc-400 transition-colors"
+            <IconButton
+              label="Toggle system prompts"
               title="Toggle system prompts"
-              aria-label="Toggle system prompts"
-              type="button"
+              onClick={onToggleRightSidebar}
+              className="md:hidden"
             >
-              <PanelRight className="w-4 h-4" />
-            </button>
+              <PanelRight />
+            </IconButton>
           )}
         </div>
       </div>

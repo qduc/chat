@@ -30,14 +30,14 @@ export function Toggle({
       disabled={disabled}
       aria-label={label ? undefined : ariaLabel}
       className={cn(
-        'relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-line-strong bg-emphasis p-0.5 transition-colors focus-ring',
+        'relative inline-flex h-6 w-10 shrink-0 cursor-pointer items-center rounded-full border border-line-strong bg-emphasis p-0.5 transition-colors focus-ring',
         'data-checked:border-accent data-checked:bg-accent',
         'data-disabled:cursor-not-allowed data-disabled:opacity-50',
         // Enlarge the hit area to 44px on touch without changing the visual size.
-        'pointer-coarse:after:absolute pointer-coarse:after:-inset-3'
+        'pointer-coarse:after:absolute pointer-coarse:after:-inset-2.5'
       )}
     >
-      <Switch.Thumb className="size-3.5 rounded-full bg-fg-muted transition-[translate,background-color] data-checked:translate-x-4 data-checked:bg-on-accent" />
+      <Switch.Thumb className="size-4 rounded-full bg-fg-muted transition-[translate,background-color] data-checked:translate-x-4.5 data-checked:bg-on-accent" />
     </Switch.Root>
   );
 
