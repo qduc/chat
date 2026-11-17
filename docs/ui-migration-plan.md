@@ -68,7 +68,7 @@ Each step leaves the app building, linting, and passing tests. The legacy styles
 | Design-lint violations (`npm run lint:design`) | 3,658 in 71 files | 0 in 66 files |
 | Hex colors outside `app/tokens.css` | 5 (plus ~60 in the dark syntax theme) | 0 |
 | Token contrast pairs meeting WCAG AA (`npm run check:contrast`) | n/a | 178 / 178 |
-| axe (WCAG 2.2 A/AA), 17 states × light/dark | violations on 10 of 12 audited states | 0 |
+| axe (WCAG 2.2 A/AA), 17 states × light/dark | 30 of 34 with violations (438 failing nodes) | 0 |
 | Keyboard walkthrough (trap, visible focus, restore) | n/a | 0 issues |
 | Frontend tests | 534 pass | 534 pass (no test changes) |
 | Build warnings | 3 (pre-existing `rewrites` + static export) | same 3 |
