@@ -74,3 +74,22 @@ Each step leaves the app building, linting, and passing tests. The legacy styles
 | Build warnings | 3 (pre-existing `rewrites` + static export) | same 3 |
 | JS (gzip) | 759 KB | 850 KB (+90 KB: Base UI) |
 | CSS (gzip) | 21.6 KB | 13.1 KB (−39%) |
+
+## Round 2: layout and usability improvements
+
+These go beyond a pure restyle. They were approved after the migration review.
+
+1. **Sign out on phones:** the user menu is now available at every width. Before, it was hidden below 640px, so there was no way to sign out on a phone.
+2. **Phone history drawer:** the drawer closes after you pick a conversation or start a new chat.
+3. **Typo:** fixed the copy in the Advanced tab ("…to save on API costs").
+4. **System Prompts panel:**
+   - Collapsed by default until the user opens it once; after that, the user's choice is remembered.
+   - The status line moved under the prompt picker, replacing the footer band.
+   - The clear (×) button is disabled when there is nothing to clear.
+5. **Composer controls:** they now show "Reasoning", "Params" and "Tools" labels on wider screens, a value chip appears only when something is selected, and Stream is an icon toggle. The placeholder "None" values are gone.
+6. **Header:**
+   - The model trigger sizes to its content, up to 320px.
+   - "Refresh model list" moved into the model popup footer.
+   - The theme toggle moved into the user menu. It stays in the header when signed out.
+7. **Settings headings:** removed the headings that repeated the tab names. Providers' Refresh is now next to the list it refreshes.
+8. **Provider form actions:** the action bar sticks to the bottom of the Settings dialog, so Test Connection and Create/Update stay visible.

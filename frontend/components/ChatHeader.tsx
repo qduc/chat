@@ -1,6 +1,7 @@
 import React from 'react';
-import { Sun, Moon, Settings, RefreshCw, Loader2, PanelLeft, PanelRight, Plus } from 'lucide-react';
+import { Sun, Moon, Settings, PanelLeft, PanelRight, Plus } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 import ModelSelector, { type Group as TabGroup } from './ui/ModelSelector';
 import { AuthButton } from './auth/AuthButton';
 import { IconButton } from './ui/Button';
@@ -64,6 +65,7 @@ export function ChatHeader({
   modelSelectionLockReason = 'Primary model is locked after comparison starts.',
 }: ChatHeaderProps) {
   const { theme, setTheme, resolvedTheme } = useTheme();
+  const { user } = useAuth();
 
   type Option = { value: string; label: string };
   const defaultOpenAIModels: Option[] = React.useMemo(() => [], []);
@@ -159,34 +161,26 @@ export function ChatHeader({
             onComparisonModelsChange={onComparisonModelsChange}
             comparisonDisabled={comparisonLocked}
             comparisonDisabledReason={comparisonLockReason}
+            onRefresh={onRefreshModels}
+            isRefreshing={isLoadingModels}
           />
-          {onRefreshModels && (
-            <IconButton
-              label="Refresh model list"
-              title="Refresh model list"
-              onClick={onRefreshModels}
-              disabled={isLoadingModels}
-              className="hidden sm:inline-flex"
-            >
-              {isLoadingModels ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-            </IconButton>
-          )}
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
           <IconButton label="Open settings" title="Open settings" onClick={onOpenSettings}>
             <Settings />
           </IconButton>
-          <IconButton
-            label={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} theme`}
-            title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} theme`}
-            onClick={toggleTheme}
-          >
-            {resolvedTheme === 'dark' ? <Sun /> : <Moon />}
-          </IconButton>
-          <div className="hidden sm:block">
-            <AuthButton onShowLogin={onShowLogin} onShowRegister={onShowRegister} />
-          </div>
+          {/* Signed-in users switch theme from the user menu. */}
+          {!user && (
+            <IconButton
+              label={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} theme`}
+              title={`Switch to ${resolvedTheme === 'dark' ? 'light' : 'dark'} theme`}
+              onClick={toggleTheme}
+            >
+              {resolvedTheme === 'dark' ? <Sun /> : <Moon />}
+            </IconButton>
+          )}
+          <AuthButton onShowLogin={onShowLogin} onShowRegister={onShowRegister} />
 
           {/* Right Sidebar Toggle - Mobile Only */}
           {showRightSidebarButton && onToggleRightSidebar && (

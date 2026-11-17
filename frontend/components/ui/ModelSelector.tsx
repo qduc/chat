@@ -3,11 +3,12 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { Combobox } from '@base-ui/react/combobox';
 import { ToggleGroup } from '@base-ui/react/toggle-group';
 import { Toggle as BaseToggle } from '@base-ui/react/toggle';
-import { Star, ChevronDown, Check, Plus, Search } from 'lucide-react';
+import { Star, ChevronDown, Check, Plus, Search, RefreshCw, Loader2 } from 'lucide-react';
 import Tooltip from './Tooltip';
 import { useAuth } from '../../contexts/AuthContext';
 import { cn } from '../../lib/cn';
 import { floatingPanelClasses } from './Menu';
+import { Button } from './Button';
 
 export type Option = { value: string; label: string };
 export type Group = { id: string; label: string; options: Option[] };
@@ -50,6 +51,9 @@ interface ModelSelectorProps {
   onComparisonModelsChange?: (models: string[]) => void;
   comparisonDisabled?: boolean;
   comparisonDisabledReason?: string;
+  // Refresh the model list from providers
+  onRefresh?: () => void;
+  isRefreshing?: boolean;
 }
 
 const FAVORITES_KEY = 'chatforge-favorite-models';
@@ -82,6 +86,8 @@ export default function ModelSelector({
   onComparisonModelsChange,
   comparisonDisabled = false,
   comparisonDisabledReason = 'Model comparison is locked after the first message.',
+  onRefresh,
+  isRefreshing = false,
 }: ModelSelectorProps) {
   const { user } = useAuth();
   const userId = user?.id;
@@ -342,7 +348,7 @@ export default function ModelSelector({
     <Combobox.Trigger
       aria-label={ariaLabel}
       className={cn(
-        'flex h-9 w-full min-w-0 items-center gap-2 rounded-control border border-line bg-surface px-3 text-sm text-fg transition-colors touch-target focus-ring sm:w-56',
+        'flex h-9 w-full min-w-0 items-center gap-2 rounded-control border border-line bg-surface px-3 text-sm text-fg transition-colors touch-target focus-ring sm:w-auto sm:max-w-80 sm:min-w-48',
         'hover:bg-muted data-popup-open:bg-muted',
         'disabled:cursor-not-allowed disabled:opacity-50'
       )}
@@ -498,13 +504,33 @@ export default function ModelSelector({
                   more...
                 </div>
               )}
-              <div className="hidden shrink-0 border-t border-line px-3 py-2 text-xs text-fg-subtle sm:block">
-                <kbd className="font-sans">Alt+F</kbd> favorite
-                {canCompare && (
-                  <>
-                    {' · '}
-                    <kbd className="font-sans">Alt+C</kbd> compare
-                  </>
+              <div
+                className={cn(
+                  'min-h-10 shrink-0 items-center justify-between gap-2 border-t border-line py-1 pr-1 pl-3',
+                  onRefresh ? 'flex' : 'hidden sm:flex'
+                )}
+              >
+                <span className="hidden text-xs text-fg-subtle sm:inline">
+                  <kbd className="font-sans">Alt+F</kbd> favorite
+                  {canCompare && (
+                    <>
+                      {' · '}
+                      <kbd className="font-sans">Alt+C</kbd> compare
+                    </>
+                  )}
+                </span>
+                {onRefresh && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={onRefresh}
+                    disabled={isRefreshing}
+                    title="Refresh model list"
+                    className="ml-auto"
+                  >
+                    {isRefreshing ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                    Refresh
+                  </Button>
                 )}
               </div>
             </Combobox.Popup>

@@ -24,6 +24,8 @@ interface QualitySliderProps {
   ariaLabel?: string;
   disabled?: boolean;
   icon?: React.ReactNode;
+  /** Short visible label shown before the select on wider screens. */
+  label?: string;
   className?: string;
 }
 
@@ -33,6 +35,7 @@ export function QualitySlider({
   ariaLabel,
   disabled,
   icon,
+  label,
   className,
 }: QualitySliderProps) {
   const handleChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -46,6 +49,7 @@ export function QualitySlider({
           {icon}
         </span>
       )}
+      {label && <span className="hidden text-xs text-fg-muted sm:inline">{label}</span>}
       <NativeSelect
         controlSize="sm"
         value={displayedEffort(value)}

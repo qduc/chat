@@ -479,11 +479,8 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
 
   // ===== RENDER =====
   const hasAttachments = images.length > 0 || files.length > 0 || audios.length > 0;
-  const chipClasses = (active: boolean) =>
-    cn(
-      'max-w-32 truncate rounded-full px-2 text-xs',
-      active ? 'bg-emphasis text-fg' : 'text-fg-muted'
-    );
+  const chipClasses = 'max-w-32 truncate rounded-full bg-emphasis px-2 text-xs text-fg';
+  const controlLabelClasses = 'hidden text-xs sm:inline';
   const panelHeaderClasses = 'flex items-center justify-between gap-3 border-b border-line p-4';
   const panelRowClasses =
     'flex w-full items-start gap-3 rounded-control px-3 py-2 text-left transition-colors hover:bg-muted focus-ring-inset disabled:cursor-not-allowed disabled:opacity-50';
@@ -669,6 +666,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                   value={reasoningEffort}
                   onChange={onReasoningEffortChange}
                   icon={<Gauge />}
+                  label="Reasoning"
                   ariaLabel="Reasoning Effort"
                   className="shrink-0"
                   disabled={controlsDisabled}
@@ -686,10 +684,9 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                     onShouldStreamChange(!shouldStream);
                   }}
                   disabled={controlsDisabled}
-                  className={cn('px-2', shouldStream && 'bg-emphasis text-fg')}
+                  className={cn('w-8 px-0', shouldStream && 'bg-emphasis text-fg')}
                 >
                   <Zap className={shouldStream ? 'fill-current' : undefined} />
-                  <span className="hidden sm:inline">Stream</span>
                 </Button>
               </Tooltip>
 
@@ -708,12 +705,12 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                     className={buttonClasses({ variant: 'ghost', size: 'sm', className: 'px-2' })}
                   >
                     <Sliders />
-                    <span
-                      className={chipClasses(localCustomParamsIds.length > 0)}
-                      title={selectedCustomParamsTitle}
-                    >
-                      {selectedCustomParamsLabel}
-                    </span>
+                    <span className={controlLabelClasses}>Params</span>
+                    {localCustomParamsIds.length > 0 && (
+                      <span className={chipClasses} title={selectedCustomParamsTitle}>
+                        {selectedCustomParamsLabel}
+                      </span>
+                    )}
                   </PopoverTrigger>
                 </Tooltip>
                 <PopoverContent side="top" align="start" ariaLabel="Custom Params" className="w-80">
@@ -823,9 +820,10 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
                     className={buttonClasses({ variant: 'ghost', size: 'sm', className: 'px-2' })}
                   >
                     <Wrench />
-                    <span className={chipClasses(localSelected.length > 0)}>
-                      {localSelected.length || 'None'}
-                    </span>
+                    <span className={controlLabelClasses}>Tools</span>
+                    {localSelected.length > 0 && (
+                      <span className={chipClasses}>{localSelected.length}</span>
+                    )}
                   </PopoverTrigger>
                 </Tooltip>
                 <PopoverContent

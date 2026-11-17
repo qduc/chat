@@ -347,34 +347,28 @@ export default function ProvidersTab({ isVisible, isOpen, onProvidersChanged }: 
 
   return (
     <div className={isVisible ? 'flex flex-col gap-6' : 'hidden'}>
-      {/* Header with refresh button */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex flex-col gap-1">
-          <h3 className="text-sm font-medium text-fg">AI Providers</h3>
-          <p className="text-sm text-fg-muted">Manage your AI provider configurations</p>
-        </div>
-        <Button
-          size="sm"
-          onClick={fetchProviders}
-          disabled={loadingProviders}
-          title="Refresh providers list"
-        >
-          <RefreshCw className={loadingProviders ? 'animate-spin' : undefined} />
-          Refresh
-        </Button>
-      </div>
-
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {/* Provider list */}
         <section
           className="flex flex-col gap-3 lg:col-span-1"
           aria-labelledby="providers-list-heading"
         >
-          <div className="flex flex-col gap-1">
-            <h4 id="providers-list-heading" className="text-sm font-medium text-fg">
-              Your Providers
-            </h4>
-            <p className="text-sm text-fg-muted">Manage and toggle existing configurations</p>
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex flex-col gap-1">
+              <h4 id="providers-list-heading" className="text-sm font-medium text-fg">
+                Your Providers
+              </h4>
+              <p className="text-sm text-fg-muted">Manage and toggle existing configurations</p>
+            </div>
+            <IconButton
+              label="Refresh providers list"
+              title="Refresh providers list"
+              size="sm"
+              onClick={fetchProviders}
+              disabled={loadingProviders}
+            >
+              <RefreshCw className={loadingProviders ? 'animate-spin' : undefined} />
+            </IconButton>
           </div>
 
           <div className="overflow-hidden rounded-card border border-line lg:max-h-150 lg:overflow-y-auto">
@@ -614,7 +608,8 @@ export default function ProvidersTab({ isVisible, isOpen, onProvidersChanged }: 
               </div>
             )}
 
-            <div className="flex flex-col gap-2 border-t border-line pt-4">
+            {/* Stays in view at the bottom of the dialog while the form scrolls. */}
+            <div className="sticky bottom-0 z-10 flex flex-col gap-2 border-t border-line bg-surface py-4">
               <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
                 <Button
                   onClick={testProviderConnection}

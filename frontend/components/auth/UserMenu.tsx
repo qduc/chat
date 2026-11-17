@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { User, LogOut } from 'lucide-react';
+import { User, LogOut, Moon, Sun } from 'lucide-react';
+import { useTheme } from '../../contexts/ThemeContext';
 import { iconButtonClasses } from '../ui/Button';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '../ui/Menu';
 
@@ -23,6 +24,8 @@ export function UserMenu({ user, onLogout, className = '' }: UserMenuProps) {
     }
   };
 
+  const { theme, setTheme, resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
   const displayName = user.displayName || user.email.split('@')[0];
 
   return (
@@ -49,6 +52,10 @@ export function UserMenu({ user, onLogout, className = '' }: UserMenuProps) {
             </div>
           </div>
           <MenuSeparator />
+          <MenuItem onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
+            {isDark ? <Sun /> : <Moon />}
+            {isDark ? 'Light theme' : 'Dark theme'}
+          </MenuItem>
           <MenuItem onClick={handleLogout}>
             <LogOut />
             Sign out

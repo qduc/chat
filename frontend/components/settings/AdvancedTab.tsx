@@ -286,13 +286,8 @@ export default function AdvancedTab({
 
   return (
     <div className={isVisible ? 'flex flex-col gap-6' : 'hidden'}>
-      <div className="flex flex-col gap-1">
-        <h3 className="text-sm font-medium text-fg">Advanced Settings</h3>
-        <p className="text-sm text-fg-muted">Configure advanced behavior and limits</p>
-      </div>
-
       {/* Maximum tool call iterations */}
-      <section className="flex flex-col gap-3 border-t border-line pt-6">
+      <section className="flex flex-col gap-3">
         <SectionHeading
           id="max-tool-iterations-heading"
           title="Maximum Tool Call Iterations"
@@ -355,8 +350,8 @@ export default function AdvancedTab({
         />
         {choreModelError && <ErrorText>{choreModelError}</ErrorText>}
         <p className="text-xs text-fg-muted">
-          Use a smaller, faster model for tasks like generating conversation titles to on API costs.
-          Leave empty to use the main conversation model.
+          Use a smaller, faster model for tasks like generating conversation titles to save on API
+          costs. Leave empty to use the main conversation model.
         </p>
         <Button
           className="self-end"

@@ -294,21 +294,28 @@ export function ChatV2() {
     setShowAuthModal(true);
   }, []);
 
+  // On phones the history drawer covers the chat, so close it once a choice is made.
+  const closeMobileDrawer = useCallback(() => {
+    if (isMobile && !chat.sidebarCollapsed) chat.toggleSidebar();
+  }, [isMobile, chat]);
+
   const handleSelectConversation = useCallback(
     async (id: string) => {
+      closeMobileDrawer();
       urlSync.markLoadingConversation();
       await chat.selectConversation(id);
     },
-    [chat, urlSync]
+    [chat, urlSync, closeMobileDrawer]
   );
 
   const handleNewChat = useCallback(() => {
+    closeMobileDrawer();
     chat.newChat();
     // Focus the message input after a short delay to ensure the component is ready
     setTimeout(() => {
       messageInputRef.current?.focus();
     }, 0);
-  }, [chat]);
+  }, [chat, closeMobileDrawer]);
 
   const handleFocusMessageInput = useCallback(() => {
     messageInputRef.current?.focus();

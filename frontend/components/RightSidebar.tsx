@@ -445,24 +445,32 @@ export function RightSidebar({
                   </div>
                 )}
 
-                <div className="flex items-center gap-2">
-                  <div className="min-w-0 flex-1">
-                    <PromptDropdown
-                      builtIns={prompts?.built_ins || []}
-                      customPrompts={prompts?.custom || []}
-                      selectedPromptId={effectiveSelectedPromptId}
-                      hasUnsavedChanges={hasUnsavedChanges}
-                      onSelectPrompt={handleSelectPrompt}
-                      onClearSelection={handleClearSelection}
-                    />
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <PromptDropdown
+                        builtIns={prompts?.built_ins || []}
+                        customPrompts={prompts?.custom || []}
+                        selectedPromptId={effectiveSelectedPromptId}
+                        hasUnsavedChanges={hasUnsavedChanges}
+                        onSelectPrompt={handleSelectPrompt}
+                        onClearSelection={handleClearSelection}
+                      />
+                    </div>
+                    <IconButton
+                      label="Clear prompt selection"
+                      title="Clear selection"
+                      onClick={handleClearSelection}
+                      disabled={!effectiveSelectedPromptId && !currentContent}
+                    >
+                      <X />
+                    </IconButton>
                   </div>
-                  <IconButton
-                    label="Clear prompt selection"
-                    title="Clear selection"
-                    onClick={handleClearSelection}
-                  >
-                    <X />
-                  </IconButton>
+                  <p className="pl-1 text-xs text-fg-subtle">
+                    {effectiveSelectedPromptId
+                      ? 'Active prompt will be used for new messages'
+                      : 'No active prompt selected'}
+                  </p>
                 </div>
 
                 <div className="flex min-h-0 flex-1 flex-col gap-2">
@@ -529,12 +537,6 @@ export function RightSidebar({
                 </div>
               </>
             )}
-
-            <p className="border-t border-line pt-3 text-xs text-fg-subtle">
-              {effectiveSelectedPromptId
-                ? 'Active prompt will be used for new messages'
-                : 'No active prompt selected'}
-            </p>
           </>
         )}
       </aside>

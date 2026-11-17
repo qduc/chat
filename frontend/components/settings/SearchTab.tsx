@@ -103,13 +103,10 @@ export default function SearchTab({ isVisible, isOpen }: SearchTabProps) {
 
   return (
     <div className={isVisible ? 'flex flex-col gap-6' : 'hidden'}>
-      <div className="flex flex-col gap-1">
-        <h3 className="text-sm font-medium text-fg">Search Engines API Keys</h3>
-        <p className="text-sm text-fg-muted">
-          Store API keys to enable third-party web search tools. Keys are encrypted and scoped to
-          your account.
-        </p>
-      </div>
+      <p className="text-sm text-fg-muted">
+        Store API keys to enable third-party web search tools. Keys are encrypted and scoped to your
+        account.
+      </p>
 
       {/* Equal-priority engine tiles. Only one is expanded at a time. */}
       <div className="grid items-start gap-4 sm:grid-cols-2">
