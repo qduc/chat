@@ -2,6 +2,8 @@ import { getDb } from './client.js';
 import { logger } from '../logger.js';
 import { getMessageEventsByMessageIds } from './messageEvents.js';
 import { getBranchHeadMessageId, updateConversationBranchHead } from './branches.js';
+import { computeUsageCost } from '../lib/modelCatalog/usageCost.ts';
+import { createPricingTargetResolver } from '../lib/modelCatalog/providerTarget.ts';
 
 function extractTextFromMixedContent(content) {
   if (!Array.isArray(content)) return '';
@@ -85,6 +87,39 @@ function normalizeTiming(value) {
   return Math.max(0, asNumber);
 }
 
+function normalizeCost(value) {
+  if (value === undefined) return undefined;
+  if (value === null) return null;
+  const asNumber = Number(value);
+  if (!Number.isFinite(asNumber) || asNumber < 0) return null;
+  return asNumber;
+}
+
+const REQUEST_USAGE_KEYS = [
+  'prompt_tokens',
+  'completion_tokens',
+  'cache_read_input_tokens',
+  'cache_creation_input_tokens',
+  'provider_cost_usd',
+];
+
+/** Per-model-request billing entries; only known numeric keys survive. */
+function normalizeRequestUsages(value) {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length === 0) return null;
+  const entries = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== 'object') continue;
+    const entry = {};
+    for (const key of REQUEST_USAGE_KEYS) {
+      const num = key === 'provider_cost_usd' ? normalizeCost(raw[key]) : normalizeTokenCount(raw[key]);
+      if (num != null) entry[key] = num;
+    }
+    if (Object.keys(entry).length > 0) entries.push(entry);
+  }
+  return entries.length > 0 ? entries : null;
+}
+
 function parseJsonField(raw, messageId, fieldName) {
   if (raw == null) return null;
   try {
@@ -127,6 +162,12 @@ function buildMetadataJson({
   totalTokens,
   promptMs,
   completionMs,
+  cacheReadTokens,
+  cacheCreationTokens,
+  providerCostUsd,
+  requestUsages,
+  providerId,
+  requestedModel,
   model,
 }) {
   const metadata = existing && typeof existing === 'object' ? { ...existing } : {};
@@ -136,6 +177,9 @@ function buildMetadataJson({
   setOrDeleteField(metadata, 'response_id', responseId);
   setOrDeleteField(metadata, 'provider', provider);
   setOrDeleteField(metadata, 'model', model);
+  // ChatForge provider id and requested model id: pricing inputs for `usage.cost`.
+  setOrDeleteField(metadata, 'provider_id', providerId);
+  setOrDeleteField(metadata, 'requested_model', requestedModel);
 
   if (reasoningDetails !== undefined) {
     setOrDeleteField(metadata, 'reasoning_details', reasoningDetails);
@@ -147,6 +191,11 @@ function buildMetadataJson({
   setOrDeleteField(usage, 'reasoning_tokens', reasoningTokens);
   setOrDeleteField(usage, 'prompt_ms', promptMs);
   setOrDeleteField(usage, 'completion_ms', completionMs);
+  setOrDeleteField(usage, 'cache_read_input_tokens', cacheReadTokens);
+  setOrDeleteField(usage, 'cache_creation_input_tokens', cacheCreationTokens);
+  setOrDeleteField(usage, 'provider_cost_usd', providerCostUsd);
+  // Internal: one entry per model request behind this message (tool turns).
+  setOrDeleteField(usage, 'requests', requestUsages);
 
   if (Object.keys(usage).length > 0) {
     metadata.usage = usage;
@@ -156,7 +205,11 @@ function buildMetadataJson({
     totalTokens !== undefined ||
     reasoningTokens !== undefined ||
     promptMs !== undefined ||
-    completionMs !== undefined
+    completionMs !== undefined ||
+    cacheReadTokens !== undefined ||
+    cacheCreationTokens !== undefined ||
+    providerCostUsd !== undefined ||
+    requestUsages !== undefined
   ) {
     delete metadata.usage;
   }
@@ -166,6 +219,121 @@ function buildMetadataJson({
     return JSON.stringify(metadata);
   } catch {
     return null;
+  }
+}
+
+function numberOrNull(value) {
+  if (value == null) return null;
+  const asNumber = Number(value);
+  return Number.isFinite(asNumber) ? asNumber : null;
+}
+
+/**
+ * Lazily resolves pricing for one conversation's messages: the conversation's
+ * owner and default provider are read once, each provider row once.
+ */
+function createConversationPricing(conversationId) {
+  let loaded = false;
+  let conversationProviderId = null;
+  let resolveTarget = null;
+  return (providerId) => {
+    if (!loaded) {
+      loaded = true;
+      try {
+        const row = getDb()
+          .prepare('SELECT user_id, provider_id FROM conversations WHERE id = @conversationId')
+          .get({ conversationId });
+        conversationProviderId = row?.provider_id ?? null;
+        resolveTarget = createPricingTargetResolver(row?.user_id ?? null);
+      } catch {
+        resolveTarget = createPricingTargetResolver(null);
+      }
+    }
+    return resolveTarget(providerId || conversationProviderId);
+  };
+}
+
+/**
+ * Attach the client-facing `usage` object (and `provider`/`model`) to a message
+ * read from the DB. `usage.cost` is computed on read from the stored per-request
+ * usage and the static model catalog; it is omitted when unpriced.
+ */
+function applyStoredUsage(message, metadata, pricing) {
+  const usage = metadata.usage && typeof metadata.usage === 'object' ? metadata.usage : null;
+
+  if (metadata.provider != null) {
+    message.provider = metadata.provider;
+  } else if (usage?.provider != null) {
+    message.provider = usage.provider;
+  }
+
+  if (metadata.model != null) {
+    message.model = metadata.model;
+  } else if (usage?.model != null) {
+    message.model = usage.model;
+  }
+
+  if (metadata.response_id != null) {
+    message.response_id = metadata.response_id;
+  }
+
+  const promptTokens = numberOrNull(usage?.prompt_tokens);
+  const completionTokens = numberOrNull(usage?.completion_tokens);
+  const reasoningTokens = numberOrNull(usage?.reasoning_tokens);
+  const totalTokens =
+    usage?.total_tokens != null
+      ? Number(usage.total_tokens)
+      : (promptTokens != null && completionTokens != null ? promptTokens + completionTokens : null);
+  const promptMs = numberOrNull(usage?.prompt_ms);
+  const completionMs = numberOrNull(usage?.completion_ms);
+  const cacheReadTokens = numberOrNull(usage?.cache_read_input_tokens);
+  const cacheCreationTokens = numberOrNull(usage?.cache_creation_input_tokens);
+
+  if (
+    promptTokens != null ||
+    completionTokens != null ||
+    totalTokens != null ||
+    reasoningTokens != null ||
+    promptMs != null ||
+    completionMs != null ||
+    cacheReadTokens != null ||
+    cacheCreationTokens != null
+  ) {
+    let cost;
+    if (pricing && message.role === 'assistant') {
+      const requests = Array.isArray(usage?.requests) && usage.requests.length > 0
+        ? usage.requests
+        : [{
+          prompt_tokens: promptTokens,
+          completion_tokens: completionTokens,
+          cache_read_input_tokens: cacheReadTokens,
+          cache_creation_input_tokens: cacheCreationTokens,
+          provider_cost_usd: numberOrNull(usage?.provider_cost_usd),
+        }];
+      try {
+        cost = computeUsageCost(
+          requests,
+          [metadata.requested_model, message.model],
+          pricing(metadata.provider_id ?? null)
+        );
+      } catch (error) {
+        logger.warn(`Failed to price message ${message.id}`, error);
+      }
+    }
+
+    message.usage = {
+      ...(promptTokens != null ? { prompt_tokens: promptTokens } : {}),
+      ...(completionTokens != null ? { completion_tokens: completionTokens } : {}),
+      ...(totalTokens != null ? { total_tokens: totalTokens } : {}),
+      ...(reasoningTokens != null ? { reasoning_tokens: reasoningTokens } : {}),
+      ...(promptMs != null ? { prompt_ms: promptMs } : {}),
+      ...(completionMs != null ? { completion_ms: completionMs } : {}),
+      ...(cacheReadTokens != null ? { cache_read_input_tokens: cacheReadTokens } : {}),
+      ...(cacheCreationTokens != null ? { cache_creation_input_tokens: cacheCreationTokens } : {}),
+      ...(cost ? { cost } : {}),
+      ...(message.model ? { model: message.model } : {}),
+      ...(message.provider ? { provider: message.provider } : {}),
+    };
   }
 }
 
@@ -405,6 +573,12 @@ export function insertAssistantFinal({
   totalTokens = undefined,
   promptMs = undefined,
   completionMs = undefined,
+  cacheReadTokens = undefined,
+  cacheCreationTokens = undefined,
+  providerCostUsd = undefined,
+  requestUsages = undefined,
+  providerId = undefined,
+  requestedModel = undefined,
 
   provider = undefined,
   model = undefined,
@@ -435,6 +609,12 @@ export function insertAssistantFinal({
     totalTokens: normalizedTotalTokens,
     promptMs: normalizedPromptMs,
     completionMs: normalizedCompletionMs,
+    cacheReadTokens: normalizeTokenCount(cacheReadTokens),
+    cacheCreationTokens: normalizeTokenCount(cacheCreationTokens),
+    providerCostUsd: normalizeCost(providerCostUsd),
+    requestUsages: normalizeRequestUsages(requestUsages),
+    providerId: providerId || undefined,
+    requestedModel: requestedModel || undefined,
     model,
   });
 
@@ -637,6 +817,8 @@ export function getMessagesPage({ conversationId, branchId: requestedBranchId = 
     }
   }
 
+  const pricing = createConversationPricing(conversationId);
+
   // Parse content_json and use it if available, otherwise fall back to content
   for (const message of messages) {
     if (message.content_json) {
@@ -648,7 +830,6 @@ export function getMessagesPage({ conversationId, branchId: requestedBranchId = 
     delete message.content_json;
 
     const metadata = parseMetadataJson(message.metadata_json, message.id) || {};
-    const usage = metadata.usage && typeof metadata.usage === 'object' ? metadata.usage : null;
 
     if (Array.isArray(metadata.reasoning_details)) {
       message.reasoning_details = metadata.reasoning_details;
@@ -656,54 +837,7 @@ export function getMessagesPage({ conversationId, branchId: requestedBranchId = 
       message.reasoning_details = null;
     }
 
-    if (metadata.provider != null) {
-      message.provider = metadata.provider;
-    } else if (usage?.provider != null) {
-      message.provider = usage.provider;
-    }
-
-    if (metadata.model != null) {
-      message.model = metadata.model;
-    } else if (usage?.model != null) {
-      message.model = usage.model;
-    }
-
-    if (metadata.response_id != null) {
-      message.response_id = metadata.response_id;
-    }
-
-    const promptTokens =
-      usage?.prompt_tokens != null ? Number(usage.prompt_tokens) : null;
-    const completionTokens =
-      usage?.completion_tokens != null ? Number(usage.completion_tokens) : null;
-    const reasoningTokens =
-      usage?.reasoning_tokens != null ? Number(usage.reasoning_tokens) : null;
-    const totalTokens =
-      usage?.total_tokens != null
-        ? Number(usage.total_tokens)
-        : (promptTokens != null && completionTokens != null ? promptTokens + completionTokens : null);
-    const promptMs = usage?.prompt_ms != null ? Number(usage.prompt_ms) : null;
-    const completionMs = usage?.completion_ms != null ? Number(usage.completion_ms) : null;
-
-    if (
-      promptTokens != null ||
-      completionTokens != null ||
-      totalTokens != null ||
-      reasoningTokens != null ||
-      promptMs != null ||
-      completionMs != null
-    ) {
-      message.usage = {
-        ...(promptTokens != null ? { prompt_tokens: promptTokens } : {}),
-        ...(completionTokens != null ? { completion_tokens: completionTokens } : {}),
-        ...(totalTokens != null ? { total_tokens: totalTokens } : {}),
-        ...(reasoningTokens != null ? { reasoning_tokens: reasoningTokens } : {}),
-        ...(promptMs != null ? { prompt_ms: promptMs } : {}),
-        ...(completionMs != null ? { completion_ms: completionMs } : {}),
-        ...(message.model ? { model: message.model } : {}),
-        ...(message.provider ? { provider: message.provider } : {}),
-      };
-    }
+    applyStoredUsage(message, metadata, pricing);
 
     delete message.metadata_json;
   }
@@ -857,7 +991,6 @@ export function getLastMessage({ conversationId }) {
   delete message.content_json;
 
   const metadata = parseMetadataJson(message.metadata_json, message.id) || {};
-  const usage = metadata.usage && typeof metadata.usage === 'object' ? metadata.usage : null;
 
   if (Array.isArray(metadata.reasoning_details)) {
     message.reasoning_details = metadata.reasoning_details;
@@ -865,56 +998,9 @@ export function getLastMessage({ conversationId }) {
     message.reasoning_details = null;
   }
 
-  if (metadata.provider != null) {
-    message.provider = metadata.provider;
-  } else if (usage?.provider != null) {
-    message.provider = usage.provider;
-  }
+  applyStoredUsage(message, metadata, null);
 
-  if (metadata.model != null) {
-    message.model = metadata.model;
-  } else if (usage?.model != null) {
-    message.model = usage.model;
-  }
-
-  if (metadata.response_id != null) {
-    message.response_id = metadata.response_id;
-  }
-
-  const promptTokens =
-    usage?.prompt_tokens != null ? Number(usage.prompt_tokens) : null;
-  const completionTokens =
-    usage?.completion_tokens != null ? Number(usage.completion_tokens) : null;
-  const reasoningTokens =
-    usage?.reasoning_tokens != null ? Number(usage.reasoning_tokens) : null;
-  const totalTokens =
-    usage?.total_tokens != null
-      ? Number(usage.total_tokens)
-      : (promptTokens != null && completionTokens != null ? promptTokens + completionTokens : null);
-    const promptMs = usage?.prompt_ms != null ? Number(usage.prompt_ms) : null;
-    const completionMs = usage?.completion_ms != null ? Number(usage.completion_ms) : null;
-
-    if (
-      promptTokens != null ||
-      completionTokens != null ||
-      totalTokens != null ||
-      reasoningTokens != null ||
-      promptMs != null ||
-      completionMs != null
-    ) {
-      message.usage = {
-        ...(promptTokens != null ? { prompt_tokens: promptTokens } : {}),
-        ...(completionTokens != null ? { completion_tokens: completionTokens } : {}),
-        ...(totalTokens != null ? { total_tokens: totalTokens } : {}),
-        ...(reasoningTokens != null ? { reasoning_tokens: reasoningTokens } : {}),
-        ...(promptMs != null ? { prompt_ms: promptMs } : {}),
-        ...(completionMs != null ? { completion_ms: completionMs } : {}),
-        ...(message.model ? { model: message.model } : {}),
-        ...(message.provider ? { provider: message.provider } : {}),
-      };
-    }
-
-    delete message.metadata_json;
+  delete message.metadata_json;
 
   // Fetch tool calls for this message (using integer ID)
   const toolCalls = db
@@ -1105,6 +1191,12 @@ export function updateMessageContent({
   totalTokens,
   promptMs,
   completionMs,
+  cacheReadTokens,
+  cacheCreationTokens,
+  providerCostUsd,
+  requestUsages,
+  providerId,
+  requestedModel,
   finishReason,
   responseId,
   provider,
@@ -1151,6 +1243,12 @@ export function updateMessageContent({
     totalTokens: normalizedTotalTokens,
     promptMs: normalizedPromptMs,
     completionMs: normalizedCompletionMs,
+    cacheReadTokens: normalizeTokenCount(cacheReadTokens),
+    cacheCreationTokens: normalizeTokenCount(cacheCreationTokens),
+    providerCostUsd: normalizeCost(providerCostUsd),
+    requestUsages: normalizeRequestUsages(requestUsages),
+    providerId: providerId || undefined,
+    requestedModel: requestedModel || undefined,
     model,
   });
 

@@ -1,6 +1,8 @@
 import { parseSSEStream } from './sseParser.js';
 import { writeAndFlush } from './streamUtils.js';
 import { normalizeUsage, extractUsage } from './utils/usage.js';
+import { pricingTargetForProvider } from './modelCatalog/providerTarget.ts';
+import { toClientUsage } from './modelCatalog/usageCost.ts';
 import { getConversationMetadata } from './responseUtils.js';
 import { logger } from '../logger.js';
 
@@ -296,6 +298,27 @@ function processPersistenceChunk(obj, persistence, toolCallMap, lastFinishReason
  * Handle regular streaming (non-tool orchestration)
  * @param {Object} params - Streaming parameters
  */
+/**
+ * A translated chunk carries ChatForge-normalized usage; give the client the
+ * same usage shape the tool loop streams (`cost` added, internal fields dropped).
+ * Passthrough (untranslated) chunks are forwarded byte-for-byte and untouched.
+ */
+function withClientUsage(chunk, provider, persistence) {
+  if (!chunk || typeof chunk !== 'object' || !chunk.usage || typeof chunk.usage !== 'object') return chunk;
+  try {
+    const target = pricingTargetForProvider({
+      id: provider?.providerId ?? null,
+      name: provider?.settings?.name ?? null,
+      provider_type: provider?.settings?.providerType ?? null,
+      base_url: provider?.settings?.baseUrl ?? null,
+    });
+    const usage = toClientUsage(chunk.usage, [persistence?.requestedModel, chunk.model], target);
+    return { ...chunk, usage };
+  } catch {
+    return chunk;
+  }
+}
+
 export async function handleRegularStreaming({
   upstream,
   res,
@@ -360,7 +383,7 @@ export async function handleRegularStreaming({
             if (translated === '[DONE]') {
               writeAndFlush(res, 'data: [DONE]\n\n');
             } else if (translated) {
-              writeAndFlush(res, `data: ${JSON.stringify(translated)}\n\n`);
+              writeAndFlush(res, `data: ${JSON.stringify(withClientUsage(translated, provider, persistence))}\n\n`);
 
               // Update persistence with translated chunk
               if (persistence && persistence.persist) {

@@ -55,6 +55,11 @@ export class SimplifiedPersistence {
     this.totalTokens = null; // Total token usage metadata
     this.promptMs = null; // Prompt timing metadata
     this.completionMs = null; // Completion timing metadata
+    this.cacheReadTokens = null; // Cache-read input tokens (subset of tokensIn)
+    this.cacheCreationTokens = null; // Cache-write input tokens (subset of tokensIn)
+    this.providerCostUsd = null; // Provider-reported charge (e.g. OpenRouter usage.cost)
+    this.requestUsages = []; // Per-model-request billing usage (tool turns make several)
+    this.requestedModel = null; // Model id the request asked for (pricing fallback)
     this.userMessageId = null; // Persisted user message ID from latest sync
     this.assistantMessageId = null; // Persisted assistant message ID for the current turn
     this.regenerateAnchorMessageId = null;
@@ -150,6 +155,7 @@ export class SimplifiedPersistence {
     // Initialize model from request settings
     const { model } = this.persistenceConfig.extractRequestSettings(bodyIn);
     this.model = model;
+    this.requestedModel = model || null;
 
     const isNewConversation = result.isNewConversation;
     this.initialActiveBranchId = this.conversationMeta?.active_branch_id || null;
@@ -344,6 +350,10 @@ export class SimplifiedPersistence {
     this.totalTokens = null;
     this.promptMs = null;
     this.completionMs = null;
+    this.cacheReadTokens = null;
+    this.cacheCreationTokens = null;
+    this.providerCostUsd = null;
+    this.requestUsages = [];
     this.assistantMessageId = uuidv4();
     this.messageEventsEnabled = this.persistenceConfig?.isMessageEventsEnabled?.() ?? true;
     this.messageEvents = [];
@@ -626,11 +636,32 @@ export class SimplifiedPersistence {
       this.tokensIn = null;
       this.tokensOut = null;
       this.totalTokens = null;
+      this.cacheReadTokens = null;
+      this.cacheCreationTokens = null;
+      this.providerCostUsd = null;
       return;
     }
 
     const normalized = normalizeUsage(usage);
     if (!normalized) return;
+
+    // Cache counts are subsets of prompt_tokens: a usage record that reports the
+    // prompt replaces them, so a later request never inherits an earlier one's.
+    const toCount = (value) => (value != null ? Math.max(0, Math.trunc(Number(value))) : null);
+    if (normalized.prompt_tokens != null) {
+      this.cacheReadTokens = toCount(normalized.cache_read_input_tokens);
+      this.cacheCreationTokens = toCount(normalized.cache_creation_input_tokens);
+    } else {
+      if (normalized.cache_read_input_tokens != null) {
+        this.cacheReadTokens = toCount(normalized.cache_read_input_tokens);
+      }
+      if (normalized.cache_creation_input_tokens != null) {
+        this.cacheCreationTokens = toCount(normalized.cache_creation_input_tokens);
+      }
+    }
+    if (normalized.provider_cost_usd != null) {
+      this.providerCostUsd = Number(normalized.provider_cost_usd);
+    }
 
     if (normalized.prompt_tokens != null) {
       this.tokensIn = Math.max(0, Math.trunc(Number(normalized.prompt_tokens)));
@@ -656,6 +687,41 @@ export class SimplifiedPersistence {
     if (normalized.provider) {
       this.setProvider(normalized.provider);
     }
+  }
+
+  /**
+   * Record the final usage of one completed model request. A message produced
+   * by a tool turn spans several requests; each is priced separately on read.
+   * (The streaming path without tools makes one request and never calls this;
+   * its single usage comes from setUsage.)
+   */
+  recordRequestUsage(usage) {
+    if (!this.persist || !usage) return;
+    const normalized = normalizeUsage(usage);
+    if (!normalized) return;
+    const entry = {};
+    for (const key of [
+      'prompt_tokens',
+      'completion_tokens',
+      'cache_read_input_tokens',
+      'cache_creation_input_tokens',
+      'provider_cost_usd',
+    ]) {
+      if (normalized[key] != null && Number.isFinite(Number(normalized[key]))) entry[key] = Number(normalized[key]);
+    }
+    if (Object.keys(entry).length > 0) this.requestUsages.push(entry);
+  }
+
+  /** Usage/pricing fields shared by every assistant-message write. */
+  _usageMetadataFields() {
+    return {
+      cacheReadTokens: this.cacheReadTokens,
+      cacheCreationTokens: this.cacheCreationTokens,
+      providerCostUsd: this.providerCostUsd,
+      requestUsages: this.requestUsages.length > 0 ? this.requestUsages : null,
+      providerId: this.providerId || undefined,
+      requestedModel: this.requestedModel || undefined,
+    };
   }
 
   setProvider(provider) {
@@ -889,6 +955,7 @@ export class SimplifiedPersistence {
           totalTokens: this.totalTokens,
           promptMs: this.promptMs,
           completionMs: this.completionMs,
+          ...this._usageMetadataFields(),
           provider: this.upstreamProvider,
           model: this.model,
         });
@@ -922,6 +989,7 @@ export class SimplifiedPersistence {
               totalTokens: this.totalTokens,
               promptMs: this.promptMs,
               completionMs: this.completionMs,
+              ...this._usageMetadataFields(),
               provider: this.upstreamProvider,
               model: this.model,
             });
@@ -943,6 +1011,7 @@ export class SimplifiedPersistence {
               totalTokens: this.totalTokens,
               promptMs: this.promptMs,
               completionMs: this.completionMs,
+              ...this._usageMetadataFields(),
               provider: this.upstreamProvider,
               model: this.model,
               clientMessageId: this.assistantMessageId,
@@ -968,6 +1037,7 @@ export class SimplifiedPersistence {
             totalTokens: this.totalTokens,
             promptMs: this.promptMs,
             completionMs: this.completionMs,
+            ...this._usageMetadataFields(),
             provider: this.upstreamProvider,
             clientMessageId: this.assistantMessageId,
             branchId: this.activeBranchId,
@@ -1268,6 +1338,7 @@ export class SimplifiedPersistence {
             totalTokens: this.totalTokens,
             promptMs: this.promptMs,
             completionMs: this.completionMs,
+            ...this._usageMetadataFields(),
             provider: this.upstreamProvider,
           });
         } catch (err) {
@@ -1411,6 +1482,7 @@ export class SimplifiedPersistence {
         totalTokens: this.totalTokens,
         promptMs: this.promptMs,
         completionMs: this.completionMs,
+        ...this._usageMetadataFields(),
         provider: this.upstreamProvider,
         model: this.model,
       });

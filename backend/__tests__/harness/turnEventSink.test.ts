@@ -307,3 +307,76 @@ describe('SimplifiedPersistence.truncateContent', () => {
     expect(persistence.lastCheckpointLength).toBe('Kept. '.length);
   });
 });
+
+describe('TurnEventSink usage cost', () => {
+  const completed = (usage: Record<string, unknown>): TurnEvent =>
+    ({
+      type: 'model_response_completed',
+      modelStep: 1,
+      providerMetadata: { chatforge: { finishReason: 'stop', responseId: 'r1', usage, model: 'claude-sonnet-4-5-20250929' } },
+    }) as unknown as TurnEvent;
+
+  test('streams usage with a catalog cost and records each request for persistence', () => {
+    const { res, payloads } = fakeResponse();
+    const calls: Array<[string, unknown]> = [];
+    const persistence: SinkPersistence = {
+      persist: true,
+      setUsage: (usage) => calls.push(['setUsage', usage]),
+      recordRequestUsage: (usage) => calls.push(['recordRequestUsage', usage]),
+    };
+    const sink = new TurnEventSink({
+      res,
+      persistence,
+      model: 'claude-sonnet-4-5',
+      pricingTarget: { catalogProvider: 'anthropic', catalogPriced: true },
+    });
+    const usage = { prompt_tokens: 1000, completion_tokens: 100, cache_read_input_tokens: 0 };
+    sink.handle(completed(usage));
+
+    expect(payloads()).toContainEqual({
+      usage: { ...usage, cost: { usd: 0.0045, source: 'catalog' } },
+      model: 'claude-sonnet-4-5-20250929',
+    });
+    expect(calls).toEqual([
+      ['setUsage', usage],
+      ['recordRequestUsage', usage],
+    ]);
+  });
+
+  test('a provider-reported charge is streamed as cost and the internal field is dropped', () => {
+    const { res, payloads } = fakeResponse();
+    const sink = new TurnEventSink({ res, model: 'unknown-model-xyz' });
+    sink.handle(completed({ prompt_tokens: 10, completion_tokens: 1, provider_cost_usd: 0.002 }));
+    const usagePayload = payloads().find((p) => typeof p === 'object' && p.usage) as { usage: Record<string, unknown> };
+    expect(usagePayload.usage).toEqual({ prompt_tokens: 10, completion_tokens: 1, cost: { usd: 0.002, source: 'provider' } });
+  });
+});
+
+describe('SimplifiedPersistence usage capture', () => {
+  test('keeps cache tokens, provider cost and one entry per model request', () => {
+    const persistence = new SimplifiedPersistence(config);
+    persistence.persist = true;
+    persistence.providerId = 'p1';
+    persistence.requestedModel = 'anthropic/claude-sonnet-4.5';
+
+    const first = { prompt_tokens: 100, completion_tokens: 5, prompt_tokens_details: { cached_tokens: 40, cache_write_tokens: 10 }, cost: 0.001 };
+    const second = { prompt_tokens: 120, completion_tokens: 7, prompt_tokens_details: { cached_tokens: 100 }, cost: 0.0004 };
+    for (const usage of [first, second]) {
+      persistence.setUsage(usage);
+      persistence.recordRequestUsage(usage);
+    }
+
+    expect(persistence._usageMetadataFields()).toEqual({
+      // Top-level fields describe the last request, like prompt_tokens.
+      cacheReadTokens: 100,
+      cacheCreationTokens: null,
+      providerCostUsd: 0.0004,
+      requestUsages: [
+        { prompt_tokens: 100, completion_tokens: 5, cache_read_input_tokens: 40, cache_creation_input_tokens: 10, provider_cost_usd: 0.001 },
+        { prompt_tokens: 120, completion_tokens: 7, cache_read_input_tokens: 100, provider_cost_usd: 0.0004 },
+      ],
+      providerId: 'p1',
+      requestedModel: 'anthropic/claude-sonnet-4.5',
+    });
+  });
+});

@@ -526,7 +526,8 @@ describe('AnthropicModel', () => {
     expect(out[2]).toMatchObject({ callId: 'toolu_1', toolName: 'web_search', input: { query: 'weather' } });
     expect(done(events).stopReason).toBe('tool_use');
     const usage = events.find((e) => e.type === 'usage');
-    expect(usage).toMatchObject({ usage: { inputTokens: 30, outputTokens: 15, cachedInputTokens: 25 } });
+    // Native Anthropic input_tokens excludes cache reads; the full prompt adds them back.
+    expect(usage).toMatchObject({ usage: { inputTokens: 55, outputTokens: 15, cachedInputTokens: 25 } });
   });
 });
 
