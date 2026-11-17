@@ -898,6 +898,7 @@ describe('judge API', () => {
       const lines = [
         'data: {"choices":[{"delta":{"content":"Model A"}}]}\n\n',
         'data: {"choices":[{"delta":{"content":" is better"}}]}\n\n',
+        'data: {"type":"evaluation","evaluation":{"id":"eval-1","winner":"model_a","score_a":8,"score_b":6,"reasoning":"Model A is better"}}\n\n',
         'data: [DONE]\n\n',
       ];
 

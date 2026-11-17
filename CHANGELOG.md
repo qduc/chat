@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.20.0] - 2026-11-17
+
+### Added
+- Added model information and journal management API endpoints.
+- Added message cost and cache token tracking with model pricing.
+- Added a chat details panel for conversation settings and system prompts.
+
+### Changed
+- Refreshed the chat interface, composer, model selector, and settings with a consistent design system.
+
+### Fixed
+- Improved new chat onboarding, streaming recovery, and settings behavior.
+- Fixed streamed cost display and improved source titles and lists.
+
 ## [0.19.0] - 2026-11-14
 
 ### Changed

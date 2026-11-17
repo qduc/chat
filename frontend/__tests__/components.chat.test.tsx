@@ -140,6 +140,13 @@ function renderWithProviders(ui: React.ReactElement) {
 
 function setupHttpClient() {
   mockHttpClient.get.mockImplementation((url: string) => {
+    if (url === '/v1/models') {
+      return Promise.resolve({
+        data: {
+          providers: [{ provider: { id: 'openai', name: 'OpenAI' }, models: [{ id: 'gpt-4o' }] }],
+        },
+      });
+    }
     if (url === '/v1/providers') {
       return Promise.resolve({
         data: {
@@ -231,6 +238,8 @@ describe('<Chat />', () => {
 
   test('allows sending messages with Enter key', async () => {
     const user = userEvent.setup();
+
+    mockLocalStorage.getItem.mockReturnValue('openai::gpt-4o');
 
     renderWithProviders(<Chat />);
 
