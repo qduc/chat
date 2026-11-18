@@ -68,8 +68,12 @@ jobs:
           target: runner
           platforms: ${{ matrix.platform }}
           outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: |
+            type=gha,scope=chat-${{ matrix.runner }}
+            type=registry,ref=${{ env.IMAGE_NAME }}:latest
+          cache-to: |
+            type=gha,scope=chat-${{ matrix.runner }},mode=max
+            type=inline
 
       - name: Export digest
         run: |
