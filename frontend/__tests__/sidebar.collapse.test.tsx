@@ -16,7 +16,7 @@ jest.mock('../contexts/AuthContext', () => {
   };
 });
 
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatV2 as Chat } from '../components/ChatV2';
 import { ThemeProvider } from '../contexts/ThemeContext';
@@ -271,7 +271,9 @@ describe('Sidebar Collapse Functionality', () => {
     expect(
       await within(leftSidebar).findByRole('button', { name: 'Test Conversation' })
     ).toBeInTheDocument();
-    expect(within(leftSidebar).getByTitle('Collapse sidebar')).toBeInTheDocument();
+    expect(
+      within(leftSidebar).getByRole('button', { name: 'Collapse sidebar' })
+    ).toBeInTheDocument();
   });
 
   test('sidebar can be collapsed and expanded', async () => {
@@ -279,19 +281,25 @@ describe('Sidebar Collapse Functionality', () => {
     renderWithProviders(<Chat />);
 
     const leftSidebar = await waitForLeftSidebar();
-    const collapseButton = within(leftSidebar).getByTitle('Collapse sidebar');
+    const collapseButton = within(leftSidebar).getByRole('button', { name: 'Collapse sidebar' });
     await user.click(collapseButton);
 
     await waitFor(() => {
-      expect(within(leftSidebar).queryByTitle('Collapse sidebar')).not.toBeInTheDocument();
-      expect(within(leftSidebar).getByTitle('Expand sidebar')).toBeInTheDocument();
+      expect(
+        within(leftSidebar).queryByRole('button', { name: 'Collapse sidebar' })
+      ).not.toBeInTheDocument();
+      expect(
+        within(leftSidebar).getByRole('button', { name: 'Expand sidebar' })
+      ).toBeInTheDocument();
     });
 
-    const expandButton = within(leftSidebar).getByTitle('Expand sidebar');
+    const expandButton = within(leftSidebar).getByRole('button', { name: 'Expand sidebar' });
     await user.click(expandButton);
 
     await waitFor(() => {
-      expect(within(leftSidebar).getByTitle('Collapse sidebar')).toBeInTheDocument();
+      expect(
+        within(leftSidebar).getByRole('button', { name: 'Collapse sidebar' })
+      ).toBeInTheDocument();
     });
   });
 
@@ -300,14 +308,14 @@ describe('Sidebar Collapse Functionality', () => {
     renderWithProviders(<Chat />);
 
     const leftSidebar = await waitForLeftSidebar();
-    const collapseButton = within(leftSidebar).getByTitle('Collapse sidebar');
+    const collapseButton = within(leftSidebar).getByRole('button', { name: 'Collapse sidebar' });
     await user.click(collapseButton);
 
     // Verify localStorage.setItem was called with 'true'
     expect(mockLocalStorage.setItem).toHaveBeenCalledWith('sidebarCollapsed', 'true');
 
     // Click expand button
-    const expandButton = within(leftSidebar).getByTitle('Expand sidebar');
+    const expandButton = within(leftSidebar).getByRole('button', { name: 'Expand sidebar' });
     await user.click(expandButton);
 
     // Verify localStorage.setItem was called with 'false'
@@ -325,7 +333,9 @@ describe('Sidebar Collapse Functionality', () => {
     const leftSidebar = await waitForLeftSidebar();
     await waitFor(() => {
       expect(within(leftSidebar).getByLabelText('Start new chat')).toBeInTheDocument();
-      expect(within(leftSidebar).getAllByTitle('Expand sidebar').length).toBeGreaterThanOrEqual(1);
+      expect(
+        within(leftSidebar).getByRole('button', { name: 'Expand sidebar' })
+      ).toBeInTheDocument();
     });
   });
 
@@ -339,14 +349,18 @@ describe('Sidebar Collapse Functionality', () => {
     await user.keyboard('{Control>}\\{/Control}');
 
     await waitFor(() => {
-      expect(within(leftSidebar).queryByTitle('Collapse sidebar')).not.toBeInTheDocument();
+      expect(
+        within(leftSidebar).queryByRole('button', { name: 'Collapse sidebar' })
+      ).not.toBeInTheDocument();
     });
 
     // Press Ctrl+\ again to expand
     await user.keyboard('{Control>}\\{/Control}');
 
     await waitFor(() => {
-      expect(within(leftSidebar).getByTitle('Collapse sidebar')).toBeInTheDocument();
+      expect(
+        within(leftSidebar).getByRole('button', { name: 'Collapse sidebar' })
+      ).toBeInTheDocument();
     });
   });
 
@@ -355,7 +369,7 @@ describe('Sidebar Collapse Functionality', () => {
     renderWithProviders(<Chat />);
 
     const leftSidebar = await waitForLeftSidebar();
-    const collapseButton = within(leftSidebar).getByTitle('Collapse sidebar');
+    const collapseButton = within(leftSidebar).getByRole('button', { name: 'Collapse sidebar' });
     await user.click(collapseButton);
 
     await waitFor(() => {
@@ -370,13 +384,74 @@ describe('Sidebar Collapse Functionality', () => {
     renderWithProviders(<Chat />);
 
     const leftSidebar = await waitForLeftSidebar();
-    const collapseButton = within(leftSidebar).getByTitle('Collapse sidebar');
+    const collapseButton = within(leftSidebar).getByRole('button', { name: 'Collapse sidebar' });
     await user.click(collapseButton);
 
     await waitFor(() => {
       // Should show conversation count (1 conversation from our mock)
       expect(within(leftSidebar).getByTitle('1 conversation')).toBeInTheDocument();
     });
+  });
+
+  test('clicking the sidebar edge collapses it, and the empty rail expands it', async () => {
+    const user = userEvent.setup();
+    renderWithProviders(<Chat />);
+
+    const leftSidebar = await waitForLeftSidebar();
+    await user.click(within(leftSidebar).getByTestId('panel-edge'));
+    await waitFor(() => {
+      expect(
+        within(leftSidebar).getByRole('button', { name: 'Expand sidebar' })
+      ).toBeInTheDocument();
+    });
+
+    // Any empty part of the collapsed rail expands it again.
+    await user.click(leftSidebar);
+    await waitFor(() => {
+      expect(
+        within(leftSidebar).getByRole('button', { name: 'Collapse sidebar' })
+      ).toBeInTheDocument();
+    });
+
+    // A click on a rail button does its own job, not the expand.
+    await user.click(within(leftSidebar).getByRole('button', { name: 'Collapse sidebar' }));
+    await user.click(await within(leftSidebar).findByLabelText('Refresh conversation list'));
+    expect(within(leftSidebar).getByRole('button', { name: 'Expand sidebar' })).toBeInTheDocument();
+  });
+
+  test('chat details edge closes on click but not after a drag', async () => {
+    // jsdom has no PointerEvent, so fireEvent.pointerDown would drop clientX.
+    if (typeof window.PointerEvent === 'undefined') {
+      // @ts-expect-error: minimal polyfill for jsdom
+      window.PointerEvent = class extends MouseEvent {};
+    }
+    renderWithProviders(<Chat />);
+    const leftSidebar = await waitForLeftSidebar();
+    const toggle = screen.getByRole('button', { name: 'Chat details' });
+    if (toggle.getAttribute('aria-pressed') !== 'true') fireEvent.click(toggle);
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-pressed', 'true'));
+
+    const edge = screen.getAllByTestId('panel-edge').find((el) => !leftSidebar.contains(el))!;
+    // A drag (resize) ends with a click event far from where it started: no toggle.
+    fireEvent.pointerDown(edge, { button: 0, clientX: 900 });
+    fireEvent.click(edge, { clientX: 820 });
+    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+
+    fireEvent.pointerDown(edge, { button: 0, clientX: 900 });
+    fireEvent.click(edge, { clientX: 901 });
+    await waitFor(() => expect(toggle).toHaveAttribute('aria-pressed', 'false'));
+  });
+
+  test('Ctrl+Shift+\\ toggles chat details even though Shift turns the key into |', async () => {
+    renderWithProviders(<Chat />);
+    await waitForLeftSidebar();
+    const toggle = screen.getByRole('button', { name: 'Chat details' });
+    const before = toggle.getAttribute('aria-pressed');
+
+    fireEvent.keyDown(window, { key: '|', code: 'Backslash', ctrlKey: true, shiftKey: true });
+    await waitFor(() =>
+      expect(toggle).toHaveAttribute('aria-pressed', before === 'true' ? 'false' : 'true')
+    );
   });
 });
 
