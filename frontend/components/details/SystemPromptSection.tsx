@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Copy, Ellipsis, Pencil, Plus, Trash2 } from 'lucide-react';
+import { Copy, Ellipsis, Pencil, Trash2 } from 'lucide-react';
 import {
   useSystemPrompts,
   type BuiltInPrompt,
@@ -7,11 +7,11 @@ import {
 } from '../../hooks/useSystemPrompts';
 import SaveAsModal from '../../app/components/promptManager/SaveAsModal';
 import UnsavedChangesModal from '../../app/components/promptManager/UnsavedChangesModal';
-import { Button, iconButtonClasses } from '../ui/Button';
+import { IconButton, iconButtonClasses } from '../ui/Button';
 import { Menu, MenuContent, MenuItem, MenuTrigger } from '../ui/Menu';
 import { DetailsSection } from './DetailsSection';
 import { PromptEditor } from './PromptEditor';
-import { PromptRadioList, type PromptRadioItem } from './PromptRadioList';
+import { PromptPicker, type PromptOption } from './PromptPicker';
 import { ConfirmDialog } from './ConfirmDialog';
 
 export interface SystemPromptSectionProps {
@@ -341,10 +341,12 @@ export function SystemPromptSection({
   const draftHasChanges = conversationId
     ? newPromptContent !== baseInlineContent
     : newPromptContent.length > 0;
-  // None is checked unless a saved prompt is selected or a custom draft is in effect.
-  const checkedId = selectedPrompt ? selectedPrompt.id : showDraft ? undefined : null;
+  // None is selected unless a saved prompt is selected or a custom draft is in effect.
+  const pickerSelectedId = selectedPrompt ? selectedPrompt.id : showDraft ? undefined : null;
+  const editingDraft = editingId === NEW_DRAFT;
+  const editingSelected = Boolean(selectedPrompt && editingId === selectedPrompt.id);
 
-  const items: PromptRadioItem[] = [
+  const options: PromptOption[] = [
     { id: null, name: 'None' },
     ...sortedBuiltIns.map((p) => ({
       id: p.id,
@@ -360,45 +362,58 @@ export function SystemPromptSection({
     ? getEffectivePromptContent(effectiveSelectedPromptId)
     : newPromptContent;
 
-  const renderExpanded = (item: PromptRadioItem) => {
-    if (!item.id || !selectedPrompt) return null;
-    const content = getEffectivePromptContent(item.id);
-    if (editingId === item.id) {
-      return (
-        <PromptEditor
-          id="prompt-content"
-          value={content}
-          onChange={handleInlineChange}
-          note={isBuiltIn ? 'Built-in · edits apply to this chat only' : 'Applies to new messages'}
-          canSave={!isBuiltIn}
-          hasChanges={hasUnsavedChanges(item.id)}
-          onRevert={handleRevert}
-          onSaveAsNew={handleShowSaveAs}
-          onSave={handleSavePrompt}
-          onClose={() => setEditingId(null)}
-          autoFocus
-        />
-      );
+  const selectedContent = selectedPrompt ? getEffectivePromptContent(selectedPrompt.id) : '';
+  const previewText = selectedPrompt ? selectedContent : showDraft ? newPromptContent : '';
+  const isEditing = editingSelected || editingDraft;
+
+  // Leaving the editor (Done, Esc, Save) returns focus to the Edit button it replaced.
+  const editButtonRef = useRef<HTMLButtonElement>(null);
+  const restoreEditFocusRef = useRef(false);
+  const closeEditor = () => {
+    restoreEditFocusRef.current = true;
+    setEditingId(null);
+  };
+  useEffect(() => {
+    if (!isEditing && restoreEditFocusRef.current) {
+      restoreEditFocusRef.current = false;
+      editButtonRef.current?.focus();
     }
-    return (
-      <div className="flex flex-col gap-2 pl-6">
-        {content ? (
-          <p className="line-clamp-3 text-xs whitespace-pre-line text-fg-muted">{content}</p>
-        ) : null}
-        <div className="flex items-center gap-1">
-          <Button variant="secondary" size="sm" onClick={() => setEditingId(item.id)}>
+  }, [isEditing]);
+  const draftLabel =
+    editingDraft && !newPromptContent && !conversationId ? 'New prompt' : 'Custom prompt';
+
+  const body = (
+    <div className="flex flex-col gap-2 pt-1 pb-3">
+      <div className="flex items-center gap-1">
+        <div className="min-w-0 flex-1">
+          <PromptPicker
+            options={options}
+            selectedId={pickerSelectedId}
+            fallbackLabel={draftLabel}
+            onSelect={handleRadioSelect}
+            onNewPrompt={handleStartNewPrompt}
+          />
+        </div>
+        {(selectedPrompt || showDraft) && !isEditing ? (
+          <IconButton
+            ref={editButtonRef}
+            label={`Edit ${selectedPrompt?.name ?? 'custom prompt'}`}
+            title="Edit"
+            size="xs"
+            onClick={() => setEditingId(selectedPrompt ? selectedPrompt.id : NEW_DRAFT)}
+          >
             <Pencil />
-            Edit
-          </Button>
-          <span className="flex-1" />
+          </IconButton>
+        ) : null}
+        {selectedPrompt ? (
           <Menu>
             <MenuTrigger
-              aria-label={`More actions for ${item.name}`}
-              className={iconButtonClasses({ size: 'sm' })}
+              aria-label={`More actions for ${selectedPrompt.name}`}
+              className={iconButtonClasses({ size: 'xs' })}
             >
               <Ellipsis />
             </MenuTrigger>
-            <MenuContent>
+            <MenuContent align="end">
               <MenuItem onClick={() => void duplicatePrompt(selectedPrompt.id)}>
                 <Copy />
                 Duplicate
@@ -414,38 +429,42 @@ export function SystemPromptSection({
               ) : null}
             </MenuContent>
           </Menu>
-        </div>
+        ) : null}
       </div>
-    );
-  };
 
-  const footer = showDraft ? (
-    <div className="flex flex-col gap-2 rounded-control border border-line bg-surface p-2">
-      <span className="px-1 text-sm text-fg">
-        {editingId === NEW_DRAFT || !conversationId ? 'New prompt' : 'Custom prompt'}
-      </span>
-      <PromptEditor
-        id="prompt-content"
-        value={newPromptContent}
-        onChange={handleNewContentChange}
-        note="Applies to new messages"
-        canSave={false}
-        hasChanges={draftHasChanges}
-        onRevert={handleRevert}
-        onSaveAsNew={handleShowSaveAs}
-        onClose={() => setEditingId(null)}
-        autoFocus={editingId === NEW_DRAFT}
-      />
+      {editingSelected && selectedPrompt ? (
+        <PromptEditor
+          id="prompt-content"
+          value={selectedContent}
+          onChange={handleInlineChange}
+          note={isBuiltIn ? 'Built-in · edits apply to this chat only' : 'Applies to new messages'}
+          canSave={!isBuiltIn}
+          hasChanges={hasUnsavedChanges(selectedPrompt.id)}
+          onRevert={handleRevert}
+          onSaveAsNew={handleShowSaveAs}
+          onSave={handleSavePrompt}
+          onClose={closeEditor}
+          autoFocus
+        />
+      ) : editingDraft ? (
+        <PromptEditor
+          id="prompt-content"
+          value={newPromptContent}
+          onChange={handleNewContentChange}
+          note="Applies to new messages"
+          canSave={false}
+          hasChanges={draftHasChanges}
+          onRevert={handleRevert}
+          onSaveAsNew={handleShowSaveAs}
+          onClose={closeEditor}
+          autoFocus
+        />
+      ) : previewText ? (
+        <p className="line-clamp-3 px-1 text-xs whitespace-pre-line text-fg-muted">{previewText}</p>
+      ) : (
+        <p className="px-1 text-xs text-fg-subtle">No system prompt for this chat.</p>
+      )}
     </div>
-  ) : (
-    <button
-      type="button"
-      onClick={handleStartNewPrompt}
-      className="flex items-center gap-3 rounded-control p-2 text-left text-sm text-fg-muted transition-colors hover:bg-muted hover:text-fg focus-ring touch-target"
-    >
-      <Plus aria-hidden="true" className="size-4" />
-      New prompt
-    </button>
   );
 
   return (
@@ -469,13 +488,7 @@ export function SystemPromptSection({
                 {error || prompts?.error}
               </div>
             )}
-            <PromptRadioList
-              items={items}
-              checkedId={checkedId}
-              onSelect={handleRadioSelect}
-              renderExpanded={renderExpanded}
-              footer={footer}
-            />
+            {body}
           </>
         )}
       </DetailsSection>

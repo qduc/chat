@@ -1,4 +1,4 @@
-import React, { useLayoutEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef } from 'react';
 import { Button } from '../ui/Button';
 import { Textarea } from '../ui/Input';
 
@@ -14,13 +14,13 @@ interface PromptEditorProps {
   onRevert: () => void;
   onSaveAsNew: () => void;
   onSave?: () => void;
-  /** Esc leaves edit mode without discarding the text. */
+  /** Done (or Esc) leaves edit mode; unsaved text stays in effect. */
   onClose: () => void;
   autoFocus?: boolean;
 }
 
-/** About six rows of 20px text plus padding. */
-const MIN_HEIGHT_PX = 136;
+/** About five rows of text plus padding. */
+const MIN_HEIGHT_PX = 116;
 
 /** Grow the textarea with its content, up to half the panel, then scroll. */
 function useAutoGrow(ref: React.RefObject<HTMLTextAreaElement | null>, value: string) {
@@ -53,6 +53,18 @@ export function PromptEditor({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   useAutoGrow(textareaRef, value);
 
+  // Focus with the caret at the end, so typing continues the prompt rather than prefixing it.
+  useEffect(() => {
+    const el = textareaRef.current;
+    if (!autoFocus || !el) return;
+    el.focus();
+    const end = el.value.length;
+    el.setSelectionRange(end, end);
+    el.scrollTop = el.scrollHeight;
+    // Only on open.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <div className="flex flex-col gap-2">
       <label htmlFor={id} className="sr-only">
@@ -63,7 +75,6 @@ export function PromptEditor({
         id={id}
         value={value}
         rows={6}
-        autoFocus={autoFocus}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === 'Escape') {
@@ -72,27 +83,29 @@ export function PromptEditor({
           }
         }}
         placeholder="Write a system prompt…"
-        className="scrollbar-thin resize-none"
+        className="scrollbar-thin resize-none px-2"
       />
-      <div className="flex items-center justify-between gap-2 text-xs text-fg-subtle">
-        <span>
-          {value.length} {value.length === 1 ? 'character' : 'characters'}
-        </span>
-        <span>{note}</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <Button variant="ghost" size="sm" onClick={onRevert}>
-          Revert
-        </Button>
+      <p className="text-xs text-fg-subtle">
+        {value.length} {value.length === 1 ? 'character' : 'characters'} · {note}
+      </p>
+      <div className="flex items-center gap-1">
+        {hasChanges ? (
+          <Button variant="ghost" size="xs" onClick={onRevert}>
+            Revert
+          </Button>
+        ) : null}
         <span className="flex-1" />
-        <Button variant="secondary" size="sm" onClick={onSaveAsNew} disabled={!value.trim()}>
+        <Button variant="ghost" size="xs" onClick={onSaveAsNew} disabled={!value.trim()}>
           Save as new
         </Button>
         {canSave && onSave ? (
-          <Button variant="secondary" size="sm" onClick={onSave} disabled={!hasChanges}>
+          <Button variant="secondary" size="xs" onClick={onSave} disabled={!hasChanges}>
             Save
           </Button>
         ) : null}
+        <Button variant="ghost" size="xs" onClick={onClose}>
+          Done
+        </Button>
       </div>
     </div>
   );

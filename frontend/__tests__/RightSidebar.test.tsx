@@ -177,8 +177,24 @@ const startedMessages: ChatMessage[] = [
   },
 ];
 
-function promptRadio(name: RegExp) {
-  return screen.getByRole('radio', { name });
+function pickerTrigger() {
+  return screen.getByLabelText(/^System prompt:/);
+}
+
+async function openPicker() {
+  await userEvent.click(pickerTrigger());
+  return screen.findByRole('listbox');
+}
+
+/** Open the prompt picker and choose an option by name. */
+async function startNewPrompt() {
+  await openPicker();
+  await userEvent.click(screen.getByRole('button', { name: 'New prompt' }));
+}
+
+async function pickPrompt(name: RegExp) {
+  await openPicker();
+  await userEvent.click(await screen.findByRole('option', { name }));
 }
 
 describe('RightSidebar (chat details panel)', () => {
@@ -287,20 +303,43 @@ describe('RightSidebar (chat details panel)', () => {
   });
 
   describe('System prompt', () => {
-    it('lists None, built-ins and custom prompts as one labelled radio group', () => {
+    it('lists None, built-ins and custom prompts in a compact picker', async () => {
       render(<RightSidebar />);
-      const group = screen.getByRole('group', { name: 'System prompt' });
-      const radios = within(group).getAllByRole('radio');
-      expect(radios).toHaveLength(5);
-      expect(radios[0]).toHaveAccessibleName('None');
-      expect(radios[0]).toBeChecked();
-      expect(radios[1]).toHaveAccessibleName(/Default Assistant.*Built-in/);
-      // Custom prompts: most recently used first
-      expect(radios[3]).toHaveAccessibleName('My Custom Prompt');
-      expect(radios[4]).toHaveAccessibleName('Another Prompt');
+      expect(pickerTrigger()).toHaveAccessibleName('System prompt: None');
+      const list = await openPicker();
+      const options = within(list).getAllByRole('option');
+      expect(options.map((o) => o.textContent)).toEqual([
+        'None',
+        'Default Assistant',
+        'Code Helper',
+        // Custom prompts: most recently used first
+        'My Custom Prompt',
+        'Another Prompt',
+      ]);
+      expect(within(list).getByText('Built-in')).toBeInTheDocument();
+      expect(within(list).getByText('Your prompts')).toBeInTheDocument();
+      // Few prompts: no search box.
+      expect(screen.queryByRole('combobox', { name: 'Search prompts' })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'New prompt' })).toBeInTheDocument();
     });
 
-    it('selecting a radio activates the prompt and reports its content', async () => {
+    it('offers search once there are many prompts', async () => {
+      mockUseSystemPrompts.prompts = {
+        ...mockPrompts,
+        custom: Array.from({ length: 8 }, (_, i) => ({
+          ...mockPrompts.custom[0],
+          id: `c-${i}`,
+          name: `Prompt ${i}`,
+        })),
+      };
+      render(<RightSidebar />);
+      await openPicker();
+      await userEvent.type(screen.getByRole('combobox', { name: 'Search prompts' }), 'Prompt 3');
+      const options = within(screen.getByRole('listbox')).getAllByRole('option');
+      expect(options.map((o) => o.textContent)).toEqual(['Prompt 3']);
+    });
+
+    it('choosing a prompt activates it and reports its content', async () => {
       const onEffectivePromptChange = jest.fn();
       const onActivePromptIdChange = jest.fn();
       render(
@@ -310,12 +349,12 @@ describe('RightSidebar (chat details panel)', () => {
         />
       );
 
-      await userEvent.click(promptRadio(/My Custom Prompt/));
+      await pickPrompt(/My Custom Prompt/);
 
       expect(onActivePromptIdChange).toHaveBeenCalledWith('custom-1');
       expect(onEffectivePromptChange).toHaveBeenCalledWith('Custom instructions here.');
-      expect(promptRadio(/My Custom Prompt/)).toBeChecked();
-      // The selected prompt expands with a preview and actions.
+      expect(pickerTrigger()).toHaveAccessibleName('System prompt: My Custom Prompt');
+      // The selected prompt shows a preview and actions.
       expect(screen.getByText('Custom instructions here.')).toBeInTheDocument();
       expect(screen.getByRole('button', { name: /Edit/ })).toBeInTheDocument();
     });
@@ -331,7 +370,7 @@ describe('RightSidebar (chat details panel)', () => {
         />
       );
 
-      await userEvent.click(promptRadio(/None/));
+      await pickPrompt(/None/);
 
       expect(onActivePromptIdChange).toHaveBeenCalledWith(null);
       expect(onEffectivePromptChange).toHaveBeenLastCalledWith('');
@@ -342,16 +381,21 @@ describe('RightSidebar (chat details panel)', () => {
       render(
         <RightSidebar conversationId="conv-1" onActivePromptIdChange={onActivePromptIdChange} />
       );
-      await userEvent.click(promptRadio(/My Custom Prompt/));
+      await pickPrompt(/My Custom Prompt/);
       expect(mockUseSystemPrompts.setActivePromptId).toHaveBeenCalledWith('custom-1');
       expect(onActivePromptIdChange).toHaveBeenCalledWith('custom-1');
     });
 
-    it('shows the "Edited" marker for prompts with unsaved inline edits', () => {
+    it('shows the "Edited" marker for prompts with unsaved inline edits', async () => {
       mockUseSystemPrompts.hasUnsavedChanges.mockImplementation((id) => id === 'custom-1');
       render(<RightSidebar conversationActivePromptId="custom-1" />);
-      expect(promptRadio(/My Custom Prompt/)).toHaveAccessibleName(/Edited/);
-      expect(promptRadio(/Another Prompt/)).not.toHaveAccessibleName(/Edited/);
+      const list = await openPicker();
+      expect(within(list).getByRole('option', { name: /My Custom Prompt/ })).toHaveTextContent(
+        /edited/
+      );
+      expect(within(list).getByRole('option', { name: /Another Prompt/ })).not.toHaveTextContent(
+        /edited/
+      );
     });
 
     it('collapsed summary shows the active prompt name', async () => {
@@ -388,8 +432,7 @@ describe('RightSidebar (chat details panel)', () => {
       await userEvent.click(screen.getByRole('button', { name: /Edit/ }));
       const textarea = screen.getByLabelText('Prompt content');
       expect(textarea).toHaveValue('Custom instructions here.');
-      expect(screen.getByText('25 characters')).toBeInTheDocument();
-      expect(screen.getByText('Applies to new messages')).toBeInTheDocument();
+      expect(screen.getByText('25 characters · Applies to new messages')).toBeInTheDocument();
 
       await userEvent.type(textarea, '!');
 
@@ -403,9 +446,34 @@ describe('RightSidebar (chat details panel)', () => {
     it('built-in prompts say edits apply to this chat only and have no Save', async () => {
       render(<RightSidebar conversationActivePromptId="builtin-1" />);
       await userEvent.click(screen.getByRole('button', { name: /Edit/ }));
-      expect(screen.getByText('Built-in · edits apply to this chat only')).toBeInTheDocument();
+      expect(screen.getByText(/Built-in · edits apply to this chat only/)).toBeInTheDocument();
       expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Save as new' })).toBeInTheDocument();
+    });
+
+    it('Done leaves edit mode and keeps the text in effect', async () => {
+      const onEffectivePromptChange = jest.fn();
+      render(
+        <RightSidebar
+          conversationActivePromptId="custom-1"
+          onEffectivePromptChange={onEffectivePromptChange}
+        />
+      );
+      await userEvent.click(screen.getByRole('button', { name: /Edit/ }));
+      await userEvent.type(screen.getByLabelText('Prompt content'), '!');
+      await userEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+      expect(screen.queryByLabelText('Prompt content')).not.toBeInTheDocument();
+      expect(mockUseSystemPrompts.discardInlineEdit).not.toHaveBeenCalled();
+      expect(onEffectivePromptChange).toHaveBeenLastCalledWith('Custom instructions here.!');
+      // Focus goes back to the Edit button the editor replaced.
+      expect(screen.getByRole('button', { name: /Edit/ })).toHaveFocus();
+    });
+
+    it('only offers Revert when there is something to revert', async () => {
+      render(<RightSidebar conversationActivePromptId="custom-1" />);
+      await userEvent.click(screen.getByRole('button', { name: /Edit/ }));
+      expect(screen.queryByRole('button', { name: 'Revert' })).not.toBeInTheDocument();
     });
 
     it('Save is disabled without changes and saves inline edits', async () => {
@@ -469,7 +537,7 @@ describe('RightSidebar (chat details panel)', () => {
       const onEffectivePromptChange = jest.fn();
       render(<RightSidebar onEffectivePromptChange={onEffectivePromptChange} />);
 
-      await userEvent.click(screen.getByRole('button', { name: 'New prompt' }));
+      await startNewPrompt();
       const textarea = screen.getByLabelText('Prompt content');
       expect(textarea).toHaveValue('');
 
@@ -487,14 +555,14 @@ describe('RightSidebar (chat details panel)', () => {
     it('Revert clears unsaved new-prompt text', async () => {
       const onEffectivePromptChange = jest.fn();
       render(<RightSidebar onEffectivePromptChange={onEffectivePromptChange} />);
-      await userEvent.click(screen.getByRole('button', { name: 'New prompt' }));
+      await startNewPrompt();
       await userEvent.type(screen.getByLabelText('Prompt content'), 'Draft');
 
       await userEvent.click(screen.getByRole('button', { name: 'Revert' }));
 
       expect(onEffectivePromptChange).toHaveBeenLastCalledWith('');
       expect(screen.queryByLabelText('Prompt content')).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: 'New prompt' })).toBeInTheDocument();
+      expect(pickerTrigger()).toHaveAccessibleName('System prompt: None');
     });
 
     it("shows a conversation's inline system prompt when no saved prompt is active", async () => {
@@ -505,10 +573,14 @@ describe('RightSidebar (chat details panel)', () => {
           conversationSystemPrompt="Custom system prompt from conversation"
         />
       );
+      // Shown as a preview under a "Custom prompt" picker; Edit opens it.
       await waitFor(() =>
-        expect(screen.getByLabelText('Prompt content')).toHaveValue(
-          'Custom system prompt from conversation'
-        )
+        expect(screen.getByText('Custom system prompt from conversation')).toBeInTheDocument()
+      );
+      expect(pickerTrigger()).toHaveAccessibleName('System prompt: Custom prompt');
+      await userEvent.click(screen.getByRole('button', { name: 'Edit custom prompt' }));
+      expect(screen.getByLabelText('Prompt content')).toHaveValue(
+        'Custom system prompt from conversation'
       );
     });
   });
@@ -528,7 +600,7 @@ describe('RightSidebar (chat details panel)', () => {
         />
       );
 
-      await userEvent.click(promptRadio(/Another Prompt/));
+      await pickPrompt(/Another Prompt/);
 
       expect(screen.getByTestId('unsaved-modal')).toBeInTheDocument();
       expect(onActivePromptIdChange).not.toHaveBeenCalled();
@@ -549,13 +621,13 @@ describe('RightSidebar (chat details panel)', () => {
         />
       );
 
-      await userEvent.click(promptRadio(/None/));
+      await pickPrompt(/None/);
       expect(screen.getByTestId('unsaved-modal')).toBeInTheDocument();
 
       await userEvent.click(screen.getByTestId('cancel-changes'));
 
       expect(onActivePromptIdChange).not.toHaveBeenCalled();
-      expect(promptRadio(/My Custom Prompt/)).toBeChecked();
+      expect(pickerTrigger()).toHaveAccessibleName('System prompt: My Custom Prompt');
     });
 
     it('Save in the modal saves, then switches', async () => {
@@ -566,7 +638,7 @@ describe('RightSidebar (chat details panel)', () => {
           onActivePromptIdChange={onActivePromptIdChange}
         />
       );
-      await userEvent.click(promptRadio(/Another Prompt/));
+      await pickPrompt(/Another Prompt/);
       await userEvent.click(screen.getByTestId('save-changes'));
 
       expect(mockUseSystemPrompts.saveInlineEdit).toHaveBeenCalledWith('custom-1');
@@ -629,5 +701,28 @@ describe('RightSidebar (chat details panel)', () => {
       await userEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
       expect(mockUseSystemPrompts.deletePrompt).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('PromptEditor caret', () => {
+  it('opens with the caret at the end of the prompt', async () => {
+    const { PromptEditor } = await import('../components/details/PromptEditor');
+    render(
+      <PromptEditor
+        id="p"
+        value="Hello world"
+        onChange={() => {}}
+        note="Applies to new messages"
+        canSave={false}
+        hasChanges={false}
+        onRevert={() => {}}
+        onSaveAsNew={() => {}}
+        onClose={() => {}}
+        autoFocus
+      />
+    );
+    const textarea = screen.getByLabelText('Prompt content') as HTMLTextAreaElement;
+    expect(textarea).toHaveFocus();
+    expect(textarea.selectionStart).toBe('Hello world'.length);
   });
 });
