@@ -69,6 +69,7 @@ export function ModelResponseColumn({
     displayMessage: dm,
     isModelStreaming,
     isModelError,
+    isModelStopped,
     error: modelError,
     assistantSegments: segments,
   } = data;
@@ -161,6 +162,11 @@ export function ModelResponseColumn({
       {isMultiColumn && (
         <div className="border-b border-line pb-1 text-xs font-medium text-fg-muted">
           {getModelDisplayName(modelId)}
+        </div>
+      )}
+      {isModelStopped && (
+        <div role="status" className="text-sm text-fg-muted">
+          Stopped
         </div>
       )}
       {showingRaw ? (

@@ -4,10 +4,15 @@ import { convertContentPartImage } from '../localImageEncoder.js';
 import { logger } from '../../logger.js';
 import { resolveGeminiThinking } from './reasoningEffort.js';
 
+const CUSTOM_REQUEST_PARAMS_BLOCKLIST = new Set(['model', 'messages', 'contents', 'generationConfig', 'tools', 'tool_choice', 'stream']);
+
 /**
  * Adapter for Google Gemini API (Generative Language API)
  */
 export class GeminiAdapter extends BaseAdapter {
+  rejectedCustomRequestParams(params) {
+    return Object.keys(params || {}).filter((key) => CUSTOM_REQUEST_PARAMS_BLOCKLIST.has(key));
+  }
   constructor(options = {}) {
     super(options);
     // Track tool call index per response to ensure unique indices across chunks
@@ -15,9 +20,8 @@ export class GeminiAdapter extends BaseAdapter {
   }
   applyCustomRequestParams(target, customParams) {
     if (!customParams || typeof customParams !== 'object' || Array.isArray(customParams)) return;
-    const blocklist = new Set(['model', 'messages', 'contents', 'generationConfig', 'tools', 'tool_choice', 'stream']);
     for (const [key, value] of Object.entries(customParams)) {
-      if (blocklist.has(key)) continue;
+      if (CUSTOM_REQUEST_PARAMS_BLOCKLIST.has(key)) continue;
       target[key] = value;
     }
   }

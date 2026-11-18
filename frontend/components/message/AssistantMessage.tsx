@@ -130,6 +130,7 @@ export function AssistantMessage({
         displayMessage: message,
         isModelStreaming: isStreaming,
         isModelError: isError,
+        isModelStopped: message.status === 'stopped',
         error: errorMessage,
         assistantSegments: isError ? [] : buildAssistantSegments(message),
       };
@@ -160,6 +161,7 @@ export function AssistantMessage({
         displayMessage,
         isModelStreaming: result.status === 'streaming',
         isModelError: isError,
+        isModelStopped: result.status === 'stopped',
         error: errorMessage,
         assistantSegments: isError ? [] : buildAssistantSegments(displayMessage),
       };

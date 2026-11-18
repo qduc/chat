@@ -38,35 +38,44 @@ export default function SettingsModal({
         </span>
       }
     >
-      <div className="flex min-h-100 flex-col gap-6">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
-          <TabsList ariaLabel="Settings tabs">
-            <TabsTab value="providers">
+      <div className="flex h-[min(70vh,40rem)] flex-col gap-6">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="min-h-0 flex-1">
+          <TabsList ariaLabel="Settings tabs" className="gap-2 sm:gap-4">
+            <TabsTab
+              value="providers"
+              className="flex-1 justify-center text-xs sm:flex-none sm:text-sm"
+            >
               <Database aria-hidden="true" />
               Providers
             </TabsTab>
-            <TabsTab value="search">
+            <TabsTab
+              value="search"
+              className="flex-1 justify-center text-xs sm:flex-none sm:text-sm"
+            >
               <Zap aria-hidden="true" />
               Search Engines
             </TabsTab>
-            <TabsTab value="advanced">
+            <TabsTab
+              value="advanced"
+              className="flex-1 justify-center text-xs sm:flex-none sm:text-sm"
+            >
               <Sliders aria-hidden="true" />
               Advanced
             </TabsTab>
           </TabsList>
 
           {/* Panels stay mounted so each tab keeps its form state while hidden. */}
-          <TabsPanel value="providers" keepMounted>
+          <TabsPanel value="providers" className="min-h-0 flex-1 overflow-y-auto" keepMounted>
             <ProvidersTab
               isVisible={activeTab === 'providers'}
               isOpen={open}
               onProvidersChanged={onProvidersChanged}
             />
           </TabsPanel>
-          <TabsPanel value="search" keepMounted>
+          <TabsPanel value="search" className="min-h-0 flex-1 overflow-y-auto" keepMounted>
             <SearchTab isVisible={activeTab === 'search'} isOpen={open} />
           </TabsPanel>
-          <TabsPanel value="advanced" keepMounted>
+          <TabsPanel value="advanced" className="min-h-0 flex-1 overflow-y-auto" keepMounted>
             <AdvancedTab
               isVisible={activeTab === 'advanced'}
               isOpen={open}

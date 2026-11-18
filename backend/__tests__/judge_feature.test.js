@@ -84,7 +84,29 @@ function seedJudgeConversations() {
 }
 
 describe('POST /v1/chat/judge', () => {
+  const respondWithVerdict = (winner) => upstream.setChatErrorResponder((_req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: JSON.stringify({ winner, scores: { model_a: 8, model_b: 8 }, reasoning: 'Compared' }) } }] })}\n\n`);
+    res.end('data: [DONE]\n\n');
+  });
+
+  test('rejects invalid verdicts without persisting a tie, then accepts a retry', async () => {
+    const app = makeApp({ mockUser });
+    seedJudgeConversations();
+    const payload = {
+      conversation_id: 'conv-primary', comparison_conversation_id: 'conv-compare',
+      message_id: 'assistant-a', comparison_message_id: 'assistant-b', judge_model: 'gpt-3.5-turbo',
+    };
+    const invalid = await request(app).post('/v1/chat/judge').send(payload);
+    assert.match(invalid.text, /invalid verdict/);
+    assert.equal(getDb().prepare('SELECT count(*) AS count FROM evaluations').get().count, 0);
+    respondWithVerdict('tie');
+    const retry = await request(app).post('/v1/chat/judge').send(payload);
+    assert.match(retry.text, /"winner":"tie"/);
+    assert.equal(getDb().prepare('SELECT count(*) AS count FROM evaluations').get().count, 1);
+  });
   test('streams evaluation and persists verdict', async () => {
+    respondWithVerdict('model_a');
     const app = makeApp({ mockUser });
     seedJudgeConversations();
 
@@ -111,6 +133,7 @@ describe('POST /v1/chat/judge', () => {
   });
 
   test('supports multi-model judging', async () => {
+    respondWithVerdict('model_a');
     const app = makeApp({ mockUser });
     seedJudgeConversations();
 

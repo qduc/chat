@@ -111,6 +111,7 @@ export interface ModelDisplayData {
   displayMessage: ChatMessage;
   isModelStreaming: boolean;
   isModelError: boolean;
+  isModelStopped?: boolean;
   error?: string;
   assistantSegments: AssistantSegment[];
 }

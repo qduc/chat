@@ -28,6 +28,7 @@ interface SearchEngineCardProps {
   hasChanges: boolean;
   isExpanded: boolean;
   onToggleExpand: () => void;
+  isConfigured?: boolean;
 }
 
 export default function SearchEngineCard({
@@ -43,9 +44,8 @@ export default function SearchEngineCard({
   hasChanges,
   isExpanded,
   onToggleExpand,
+  isConfigured = !!apiKeyField.value,
 }: SearchEngineCardProps) {
-  const isConfigured = !!apiKeyField.value;
-
   return (
     <div className="overflow-hidden rounded-card border border-line bg-surface">
       <button

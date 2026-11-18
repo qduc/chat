@@ -352,7 +352,7 @@ export interface ChatMessage {
       usage?: any;
       provider?: string;
       model?: string;
-      status: 'streaming' | 'complete' | 'error';
+      status: 'streaming' | 'complete' | 'error' | 'stopped';
       error?: string;
     }
   >;
@@ -522,6 +522,7 @@ export interface ConversationWithMessages {
     seq: number;
     role: Role;
     status: string;
+    finish_reason?: string;
     content: MessageContent | null;
     created_at: string;
     branch_id?: string | null;

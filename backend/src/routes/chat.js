@@ -418,8 +418,16 @@ chatRouter.post('/v1/chat/judge', async (req, res) => {
         return Number.isFinite(Number(raw)) ? Number(raw) : fallback ?? null;
       };
 
-      // map generic labels back to real model IDs
+      // Invalid or incomplete output is not a tie and must not be persisted.
       const winnerRaw = typeof parsed?.winner === 'string' ? parsed.winner : null;
+      if (winnerRaw !== 'tie' && !labeledModels.some(m => m.label === winnerRaw)) {
+        writeAndFlush(res, `data: ${JSON.stringify({ type: 'error', message: 'Judge returned an invalid verdict. Please try again.' })}\n\n`);
+        writeAndFlush(res, 'data: [DONE]\n\n');
+        res.end();
+        return;
+      }
+
+      // map generic labels back to real model IDs
       let winnerLabel = 'tie';
       if (winnerRaw === 'model_a') {
         winnerLabel = labeledModels[0].realName;

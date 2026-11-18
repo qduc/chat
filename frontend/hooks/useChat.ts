@@ -82,7 +82,7 @@ export function useChat() {
     pending,
     setPending,
     abortControllerRef,
-    currentRequestIdRef,
+    activeRequestsRef,
     tokenStatsRef,
     stopStreaming,
     resetStreaming,
@@ -239,7 +239,7 @@ export function useChat() {
     messagesRef,
     setMessages,
     abortControllerRef,
-    currentRequestIdRef,
+    activeRequestsRef,
     tokenStatsRef,
     setStatus,
     setPending,
@@ -371,7 +371,10 @@ export function useChat() {
         content: '',
         status: 'streaming',
       };
-      setEvaluationDrafts((prev) => [...prev, draft]);
+      setEvaluationDrafts((prev) => [
+        ...prev.filter((item) => item.messageId !== messageId || item.status !== 'error'),
+        draft,
+      ]);
 
       try {
         const evaluation = await judge.evaluate({

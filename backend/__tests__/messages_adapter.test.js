@@ -12,6 +12,12 @@ describe('MessagesAdapter', () => {
     });
   });
 
+  test('reports preset fields the selected model cannot accept', () => {
+    const params = { temperature: 0.35, top_p: 0.8, system: 'override' };
+    expect(adapter.rejectedCustomRequestParams(params, 'claude-opus-5-5')).toEqual(['temperature', 'top_p', 'system']);
+    expect(adapter.rejectedCustomRequestParams(params, 'claude-3-5-sonnet-20241022')).toEqual(['system']);
+  });
+
   describe('translateRequest', () => {
     test('keeps prompt-cache breakpoints as system and content blocks', async () => {
       // Shape produced by addPromptCaching: string content becomes text blocks.

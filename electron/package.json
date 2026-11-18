@@ -4,7 +4,7 @@
     "name": "Duc Nguyen",
     "email": "chatforge@qduc.me"
   },
-  "version": "0.19.0",
+  "version": "0.20.0",
   "main": "main.js",
   "type": "module",
   "repository": {

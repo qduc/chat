@@ -11,6 +11,7 @@ import {
   getDb,
   upsertSession,
   createConversation,
+  insertAssistantFinal,
   insertUserMessage,
   softDeleteConversation,
   resetDbCache,
@@ -211,6 +212,37 @@ describe('GET /v1/conversations/:id', () => {
     const app = makeApp();
     const res = await request(app).get('/v1/conversations/missing').set('x-session-id', sessionId);
     assert.equal(res.status, 404);
+  });
+
+  test('returns each assistant finish reason for primary and linked messages', async () => {
+    createConversation({ id: 'parent', sessionId, userId: testUser.id });
+    createConversation({
+      id: 'linked',
+      sessionId,
+      userId: testUser.id,
+      parentConversationId: 'parent',
+    });
+    insertAssistantFinal({
+      conversationId: 'parent',
+      content: 'Partial primary',
+      seq: 1,
+      finishReason: 'cancelled',
+    });
+    insertAssistantFinal({ conversationId: 'linked', content: 'Complete comparison', seq: 1 });
+
+    const res = await request(makeApp())
+      .get('/v1/conversations/parent?include_linked=messages')
+      .set('x-session-id', sessionId);
+
+    assert.equal(res.status, 200);
+    const [primary] = res.body.messages;
+    const [comparison] = res.body.linked_conversations[0].messages;
+    assert.equal(primary.content, 'Partial primary');
+    assert.equal(primary.status, 'final');
+    assert.equal(primary.finish_reason, 'cancelled');
+    assert.equal(comparison.content, 'Complete comparison');
+    assert.equal(comparison.status, 'final');
+    assert.equal(comparison.finish_reason, 'stop');
   });
 
   test('returns metadata and first page of messages with next_after_seq', async () => {

@@ -99,6 +99,8 @@ function providerOptions(body: RequestBody): Record<string, unknown> {
   const options: Record<string, unknown> = {};
   if (body.tool_choice !== undefined) options.tool_choice = body.tool_choice;
   if (body.verbosity !== undefined) options.verbosity = body.verbosity;
+  // Keep presets intact until the provider adapter applies its own merge policy.
+  if (body.custom_request_params !== undefined) options.custom_request_params = body.custom_request_params;
   // An effort outside the portable set (a provider-specific value) still reaches the provider.
   if (body.reasoning_effort && !reasoningEffort(body.reasoning_effort)) options.reasoning_effort = body.reasoning_effort;
   return options;

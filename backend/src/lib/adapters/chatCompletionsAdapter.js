@@ -246,6 +246,9 @@ function omitReservedKeys(payload) {
 }
 
 export class ChatCompletionsAdapter extends BaseAdapter {
+  rejectedCustomRequestParams(params) {
+    return Object.keys(params || {}).filter((key) => CUSTOM_REQUEST_PARAMS_BLOCKLIST.has(key));
+  }
   /**
    * @param {object} options
    * @param {function} [options.supportsReasoningControls] - Function to check if model supports reasoning

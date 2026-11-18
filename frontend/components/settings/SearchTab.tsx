@@ -138,26 +138,13 @@ export default function SearchTab({ isVisible, isOpen }: SearchTabProps) {
             type: 'url',
           }}
           isRevealed={searchReveal.searxng}
+          isConfigured={!!initialSearxBaseUrl.trim()}
           onRevealToggle={() => setSearchReveal((prev) => ({ ...prev, searxng: !prev.searxng }))}
           isSaving={searchSaving.searxng}
           onSave={async () => {
             setSearchSaving((prev) => ({ ...prev, searxng: true }));
             setSearchErrors((prev) => ({ ...prev, searxng: null }));
             try {
-              if (searchApiKeys.searxng && searchApiKeys.searxng.trim() !== '') {
-                await httpClient.put('/v1/user-settings', {
-                  searxng_api_key: searchApiKeys.searxng.trim(),
-                });
-                setInitialSearchApiKeys((prev) => ({
-                  ...prev,
-                  searxng: searchApiKeys.searxng,
-                }));
-              } else {
-                setSearchErrors((prev) => ({
-                  ...prev,
-                  searxng: 'Please enter a valid API key to save',
-                }));
-              }
               const trimmedValue = searxBaseUrl.trim();
               if (trimmedValue && !/^https?:\/\//i.test(trimmedValue)) {
                 throw new Error(
@@ -166,8 +153,11 @@ export default function SearchTab({ isVisible, isOpen }: SearchTabProps) {
               }
               await httpClient.put('/v1/user-settings', {
                 searxng_base_url: trimmedValue || null,
+                searxng_api_key: searchApiKeys.searxng.trim() || null,
               });
               setInitialSearxBaseUrl(trimmedValue);
+              setInitialSearchApiKeys((prev) => ({ ...prev, searxng: searchApiKeys.searxng }));
+              window.dispatchEvent(new Event('tool-settings-changed'));
               showToast({
                 message: 'SearXNG settings saved successfully!',
                 variant: 'success',

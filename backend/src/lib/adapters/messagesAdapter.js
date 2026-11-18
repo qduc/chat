@@ -512,6 +512,12 @@ function omitReservedKeys(payload) {
  * Adapter for Anthropic Messages API
  */
 export class MessagesAdapter extends BaseAdapter {
+  rejectedCustomRequestParams(params, model) {
+    const stripSampling = getAnthropicModelCapabilities(model).stripSamplingParams;
+    return Object.keys(params || {}).filter((key) =>
+      CUSTOM_REQUEST_PARAMS_BLOCKLIST.has(key) || (stripSampling && SAMPLING_PARAM_KEYS.includes(key))
+    );
+  }
   /**
    * @param {object} options
    * @param {function} [options.getDefaultModel] - Returns the default model
