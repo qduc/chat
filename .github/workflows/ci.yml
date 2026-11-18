@@ -2,13 +2,17 @@ name: CI
 
 on:
   workflow_call:
+    inputs:
+      build-electron-frontend:
+        description: 'Export the frontend for the Electron release builds'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 jobs:
   backend:
-    # Playwright 1.60 does not support the Ubuntu 26.04 latest runner.
     runs-on: ubuntu-24.04
     timeout-minutes: 3
 
@@ -24,7 +28,6 @@ jobs:
 
       - name: Run Backend CI
         run: |
-          pushd backend && npx playwright@1.60.0 install chromium --with-deps && popd
           chmod +x ci.sh
           ./ci.sh backend
 
@@ -46,3 +49,19 @@ jobs:
         run: |
           chmod +x ci.sh
           ./ci.sh frontend
+
+      # Both Electron builds use the same static export. Docker builds its own with /api.
+      - name: Build frontend for Electron
+        if: inputs.build-electron-frontend
+        run: npm run build
+        working-directory: frontend
+
+      - name: Upload Electron frontend export
+        if: inputs.build-electron-frontend
+        uses: actions/upload-artifact@v7
+        with:
+          name: electron-frontend
+          path: frontend/out/
+          if-no-files-found: error
+          include-hidden-files: true
+          overwrite: true

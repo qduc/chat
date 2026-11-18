@@ -35,7 +35,11 @@ run_component() {
   pushd "$dir" > /dev/null
 
   log_info "Installing dependencies for $component..."
-  npm install
+  if [[ ${CI:-} == true ]]; then
+    npm ci --prefer-offline --no-audit
+  else
+    npm install
+  fi
 
   log_info "Linting $component..."
   npm run lint

@@ -35,47 +35,13 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-          cache-dependency-path: |
-            frontend/package-lock.json
-            electron/package-lock.json
+          cache-dependency-path: electron/package-lock.json
 
-      # Linux-specific dependencies
-      - name: Install Linux dependencies
-        if: matrix.platform == 'linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            clang-19 \
-            libgtk-3-dev \
-            libnotify-dev \
-            libnss3 \
-            libxss1 \
-            libasound2-dev \
-            libatk-bridge2.0-0 \
-            libatk1.0-0 \
-            libcups2 \
-            libdrm2 \
-            libgbm1 \
-            libxcomposite1 \
-            libxdamage1 \
-            libxrandr2 \
-            xdg-utils \
-            libu2f-udev \
-            libxtst6 \
-            libpci3 \
-            libappindicator3-1 \
-            libsecret-1-0
-          echo 'CC=clang-19' >> "$GITHUB_ENV"
-          echo 'CXX=clang++-19' >> "$GITHUB_ENV"
-
-      # Build frontend
-      - name: Install frontend dependencies
-        run: npm install
-        working-directory: frontend
-
-      - name: Build frontend
-        run: npm run build
-        working-directory: frontend
+      - name: Download Electron frontend export
+        uses: actions/download-artifact@v8
+        with:
+          name: electron-frontend
+          path: frontend/out
 
       # Prepare electron build
       - name: Copy backend to electron
@@ -95,18 +61,47 @@ jobs:
 
       - name: Set app version from tag
         if: inputs.tag != '' || startsWith(github.ref, 'refs/tags/')
+        shell: bash
         env:
           GITHUB_TAG: ${{ inputs.tag != '' && inputs.tag || github.ref_name }}
         run: |
-          echo "Setting package versions from tag: $GITHUB_TAG"
-          node scripts/sync-version.js "$GITHUB_TAG"
+          node scripts/sync-version.js "${GITHUB_TAG:?Release tag is required}"
       # Install electron dependencies and build
       - name: Install electron dependencies
-        run: npm install
+        # electron-builder downloads Electron and rebuilds native dependencies for its ABI.
+        run: npm ci --ignore-scripts --prefer-offline --no-audit
         working-directory: electron
 
-      - name: Build electron app
+      - name: Cache Electron SQLite binary
+        id: sqlite-cache
+        uses: actions/cache@v5
+        with:
+          # Restore after npm ci, which clears node_modules. The rebuild marker
+          # is tied to Electron's ABI; the lockfile pins both Electron and SQLite.
+          path: |
+            electron/node_modules/better-sqlite3/build/Release/better_sqlite3.node
+            electron/node_modules/better-sqlite3/build/Release/.forge-meta
+          key: electron-sqlite-v1-${{ matrix.os }}-${{ runner.arch }}-${{ hashFiles('electron/package-lock.json') }}
+
+      - name: Install compiler for Linux SQLite rebuild
+        if: matrix.platform == 'linux' && steps.sqlite-cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang-19
+          echo 'CC=clang-19' >> "$GITHUB_ENV"
+          echo 'CXX=clang++-19' >> "$GITHUB_ENV"
+
+      - name: Build Windows installers with faster compression
+        if: matrix.platform == 'win'
         run: npm run dist
+        working-directory: electron
+        env:
+          ELECTRON_BUILDER_COMPRESSION_LEVEL: '1'
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Linux installers
+        if: matrix.platform == 'linux'
+        run: npm run dist -- -c.deb.compression=zst
         working-directory: electron
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -165,9 +160,10 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Download all artifacts
+      - name: Download Electron installers
         uses: actions/download-artifact@v8
         with:
+          pattern: '*-artifacts'
           path: artifacts
 
       - name: Display downloaded files
