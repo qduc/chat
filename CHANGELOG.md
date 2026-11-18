@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.21.0] - 2026-11-18
+
+### Added
+- Added a compact, searchable system prompt picker with a Done button and an Esc shortcut for leaving the editor.
+- Added click-to-toggle edges on the history and chat details sidebars, plus a corner hit area for the details toggle.
+
+### Changed
+- Softened resting borders on text fields while keeping focus rings and contrast requirements intact.
+- Smaller `xs` button size for compact side-panel actions.
+
+### Fixed
+- Fixed the `Ctrl+Shift+\` shortcut never toggling the chat details panel.
+
+---
+
 ## [0.20.0] - 2026-11-17
 
 ### Added
