@@ -31,6 +31,7 @@
   --color-fg-subtle: var(--fg-subtle);
 
   --color-line: var(--line);
+  --color-line-control: var(--line-control);
   --color-line-strong: var(--line-strong);
 
   --color-primary: var(--primary);

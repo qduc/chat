@@ -14,6 +14,8 @@ import { cn } from '../lib/cn';
 import { Button, IconButton } from './ui/Button';
 import { Input } from './ui/Input';
 import { Logo } from './ui/Logo';
+import { PanelEdge } from './ui/PanelEdge';
+import { sidebarShortcut, useModKey } from '../lib/shortcuts';
 
 interface ChatSidebarProps {
   conversations: ConversationMeta[];
@@ -48,23 +50,36 @@ export function ChatSidebar({
   onSearch,
   unsavedPlaceholder,
 }: ChatSidebarProps) {
+  const shortcut = sidebarShortcut(useModKey(), 'history');
+  const expandHint = `Expand sidebar (${shortcut})`;
+  const collapseHint = `Collapse sidebar (${shortcut})`;
+
   return (
     <aside
       aria-label="Conversation history"
+      title={collapsed ? expandHint : undefined}
+      // The collapsed rail is one big expand target: a click on any empty part opens it.
+      onClick={collapsed ? (e) => e.target === e.currentTarget && onToggleCollapse() : undefined}
       className={cn(
         'relative z-40 flex h-full flex-col border-r border-line bg-canvas-subtle md:transition-[width]',
-        collapsed ? 'w-16 items-center gap-2 px-2 py-3' : 'w-72 gap-4 p-3 sm:w-80'
+        collapsed ? 'w-16 items-center gap-2 px-2 py-3 md:cursor-pointer' : 'w-72 gap-4 p-3 sm:w-80'
       )}
     >
+      <PanelEdge
+        side="right"
+        direction={collapsed ? 'right' : 'left'}
+        hint={collapsed ? expandHint : collapseHint}
+        onToggle={onToggleCollapse}
+      />
       {collapsed ? (
         // Collapsed state - minimal UI
         <>
-          <Logo label="Logo" className="my-1" />
+          <Logo label="Logo" className="pointer-events-none my-1" />
 
           {/* Expand button - Desktop only */}
           <IconButton
             label="Expand sidebar"
-            title="Expand sidebar"
+            title={expandHint}
             onClick={onToggleCollapse}
             className="hidden md:inline-flex"
           >
@@ -133,7 +148,7 @@ export function ChatSidebar({
               {/* Collapse button - Desktop only */}
               <IconButton
                 label="Collapse sidebar"
-                title="Collapse sidebar"
+                title={collapseHint}
                 size="sm"
                 onClick={onToggleCollapse}
                 className="hidden md:inline-flex"

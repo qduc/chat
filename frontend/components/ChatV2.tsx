@@ -13,6 +13,8 @@ import { ChatHeader } from './ChatHeader';
 import { MessageList } from './MessageList';
 import { MessageInput, type MessageInputRef } from './MessageInput';
 import { RightSidebar } from './RightSidebar';
+import { PanelEdge } from './ui/PanelEdge';
+import { sidebarShortcut, useModKey } from '../lib/shortcuts';
 import SettingsModal from './SettingsModal';
 import { AuthModal, AuthMode } from './auth/AuthModal';
 import type { ChatMessage, MessageContent } from '../lib';
@@ -163,6 +165,7 @@ export function ChatV2() {
   const messageInputContainerRef = useRef<HTMLDivElement>(null);
   const [messageInputHeight, setMessageInputHeight] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
+  const modKey = useModKey();
   const hasCheckedMobileRef = useRef(false);
 
   const modelAvailability = useMemo(() => {
@@ -331,13 +334,15 @@ export function ChatV2() {
   // Keyboard shortcut for toggling sidebar (Ctrl/Cmd + \)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === '\\') {
+      // e.code, not e.key: with Shift held, the key reports '|' on most layouts.
+      const isBackslash = e.code === 'Backslash' || e.key === '\\';
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && isBackslash) {
         e.preventDefault();
         chat.toggleSidebar();
         return;
       }
       // Keyboard shortcut for toggling right sidebar (Ctrl/Cmd + Shift + \)
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === '\\') {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (isBackslash || e.key === '|')) {
         e.preventDefault();
         chat.toggleRightSidebar();
         return;
@@ -900,21 +905,6 @@ export function ChatV2() {
               initialMode={authMode}
             />
           </div>
-          {/* Right Sidebar Resize Handle - Desktop only */}
-          {!chat.rightSidebarCollapsed && (
-            <div
-              role="separator"
-              aria-orientation="vertical"
-              aria-label="Resize chat details"
-              className={cn(
-                'hidden w-1 shrink-0 cursor-col-resize self-stretch transition-colors select-none md:block',
-                rightSidebar.isResizing ? 'bg-accent' : 'hover:bg-line-strong'
-              )}
-              onPointerDown={rightSidebar.handleResizeStart}
-              onDoubleClick={rightSidebar.handleResizeDoubleClick}
-            />
-          )}
-
           {/* Chat details panel - overlay drawer on mobile, static on desktop, gone when closed.
               It stays mounted while closed because it reports the effective system prompt. */}
           <div
@@ -923,6 +913,17 @@ export function ChatV2() {
               chat.rightSidebarCollapsed ? 'invisible translate-x-full md:hidden' : 'translate-x-0'
             )}
           >
+            {/* Whole left border: click to close, drag to resize (desktop). */}
+            {!chat.rightSidebarCollapsed && (
+              <PanelEdge
+                side="left"
+                direction="right"
+                hint={`Drag to resize, click to close (${sidebarShortcut(modKey, 'details')})`}
+                onToggle={chat.toggleRightSidebar}
+                onDragStart={rightSidebar.handleResizeStart}
+                active={rightSidebar.isResizing}
+              />
+            )}
             <RightSidebar
               userId={chat.user?.id}
               conversationId={chat.conversationId || undefined}

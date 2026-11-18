@@ -13,7 +13,11 @@
  * Contrast (WCAG 2.2 AA, verified for both themes):
  *  - fg, fg-muted, fg-subtle, accent, danger, success, warning reach >= 4.5:1
  *    on every background token (canvas, canvas-subtle, surface, muted, emphasis).
- *  - line-strong (control borders) and focus reach >= 3:1 on every background.
+ *  - line-strong and focus reach >= 3:1 on every background. line-strong marks
+ *    controls that nothing else identifies (switch tracks) and hovered fields.
+ *  - line-control is the soft resting border of text fields. It is below 3:1 on
+ *    purpose: every field also has a visible label or placeholder, an icon or
+ *    an adjacent action, a stronger border on hover, and a 3:1 focus ring.
  *  - line is a decorative hairline (dividers, card edges) and is not relied on
  *    to identify a control.
  */
@@ -25,6 +29,7 @@
   --gray-50: #f4f4f5;
   --gray-100: #e9e9ec;
   --gray-150: #e4e4e7;
+  --gray-200: #d4d4d8;
   --gray-400: #7f7f89;
   --gray-500: #62626b;
   --gray-600: #52525b;
@@ -36,6 +41,7 @@
   --gray-d-100: #232327;
   --gray-d-150: #2a2a2e;
   --gray-d-200: #2b2b30;
+  --gray-d-300: #3a3a40;
   --gray-d-400: #7a7a84;
   --gray-d-500: #9696a0;
   --gray-d-600: #a8a8b0;
@@ -83,7 +89,8 @@
 
   /* Lines */
   --line: var(--gray-150); /* hairline dividers and card edges */
-  --line-strong: var(--gray-400); /* form-control boundaries (>= 3:1) */
+  --line-control: var(--gray-200); /* resting border of text fields */
+  --line-strong: var(--gray-400); /* hover borders, switch tracks (>= 3:1) */
 
   /* Primary action: neutral fill, never the accent */
   --primary: var(--gray-900);
@@ -141,6 +148,7 @@
   --fg-subtle: var(--gray-d-500);
 
   --line: var(--gray-d-150);
+  --line-control: var(--gray-d-300);
   --line-strong: var(--gray-d-400);
 
   --primary: var(--gray-d-900);

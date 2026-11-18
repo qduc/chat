@@ -444,7 +444,7 @@ export default function ModelSelector({
                   aria-keyshortcuts={canCompare ? 'Alt+F Alt+C' : 'Alt+F'}
                   placeholder="Search models..."
                   onKeyDown={handleSearchKeyDown}
-                  className="h-9 w-full rounded-control border border-line-strong bg-surface pr-3 pl-8 text-sm text-fg placeholder:text-fg-subtle focus-ring"
+                  className="h-9 w-full rounded-control border border-line-control bg-surface pr-3 pl-8 text-sm text-fg placeholder:text-fg-subtle focus-ring"
                 />
               </div>
 

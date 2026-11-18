@@ -2,7 +2,8 @@ import React from 'react';
 import { cn } from '../../lib/cn';
 
 export type ButtonVariant = 'primary' | 'secondary' | 'ghost' | 'danger';
-export type ButtonSize = 'sm' | 'md';
+/** `xs` is for dense side panels; it still grows to 44px on touch screens. */
+export type ButtonSize = 'xs' | 'sm' | 'md';
 
 const base =
   'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-control text-sm font-medium ' +
@@ -21,6 +22,7 @@ const variants: Record<ButtonVariant, string> = {
 };
 
 const sizes: Record<ButtonSize, string> = {
+  xs: 'h-7 gap-1 px-2 text-xs [&_svg]:size-3.5',
   sm: 'h-8 px-3',
   md: 'h-9 px-4',
 };
@@ -62,6 +64,7 @@ export interface IconButtonProps extends Omit<React.ComponentProps<'button'>, 'a
 }
 
 const iconSizes: Record<ButtonSize, string> = {
+  xs: 'size-7 [&_svg]:size-3.5',
   sm: 'size-8',
   md: 'size-9',
 };

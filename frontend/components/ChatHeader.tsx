@@ -6,6 +6,7 @@ import ModelSelector, { type Group as TabGroup } from './ui/ModelSelector';
 import { AuthButton } from './auth/AuthButton';
 import { IconButton } from './ui/Button';
 import { cn } from '../lib/cn';
+import { sidebarShortcut, useModKey } from '../lib/shortcuts';
 
 interface ChatHeaderProps {
   isStreaming: boolean;
@@ -113,6 +114,10 @@ export function ChatHeader({
     onProviderChange(providerId);
   }, [model, modelToProvider, onProviderChange]);
 
+  const modKey = useModKey();
+  const historyShortcut = sidebarShortcut(modKey, 'history');
+  const detailsShortcut = sidebarShortcut(modKey, 'details');
+
   const toggleTheme = () => {
     if (theme === 'dark') {
       setTheme('light');
@@ -129,7 +134,7 @@ export function ChatHeader({
           {showLeftSidebarButton && onToggleLeftSidebar && (
             <IconButton
               label="Toggle conversation history"
-              title="Toggle conversation history"
+              title={`Toggle conversation history (${historyShortcut})`}
               onClick={onToggleLeftSidebar}
               className="md:hidden"
             >
@@ -190,10 +195,16 @@ export function ChatHeader({
           {showRightSidebarButton && onToggleRightSidebar && (
             <IconButton
               label="Chat details"
-              title={rightSidebarOpen ? 'Hide chat details' : 'Show chat details'}
+              title={`${rightSidebarOpen ? 'Hide' : 'Show'} chat details (${detailsShortcut})`}
               aria-pressed={rightSidebarOpen}
               onClick={onToggleRightSidebar}
-              className={cn(rightSidebarOpen && 'bg-muted text-fg')}
+              className={cn(
+                // The hit area runs out to the header's top and right edges, so
+                // flicking the pointer into the corner lands on it.
+                'relative before:absolute before:-top-2 before:-right-2 before:-bottom-2 before:-left-1',
+                'sm:before:-right-4 md:before:-right-6',
+                rightSidebarOpen && 'bg-muted text-fg'
+              )}
             >
               <PanelRight />
             </IconButton>

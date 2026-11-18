@@ -510,7 +510,7 @@ export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(funct
           }
         }}
       >
-        <div className="relative rounded-card border border-line-strong bg-surface transition-colors has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:-outline-offset-1 has-[textarea:focus-visible]:outline-focus">
+        <div className="relative rounded-card border border-line-control bg-surface transition-colors hover:border-line-strong has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:-outline-offset-1 has-[textarea:focus-visible]:outline-focus">
           {/* ===== ATTACHMENT PREVIEWS ===== */}
           {images.length > 0 && (
             <div className="border-b border-line p-3">
