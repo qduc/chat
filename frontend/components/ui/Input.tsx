@@ -6,7 +6,8 @@ import { cn } from '../../lib/cn';
 
 /** Shared look for text-entry controls. */
 export const controlClasses =
-  'w-full rounded-control border border-line-strong bg-surface text-sm text-fg ' +
+  'w-full rounded-control border border-line-control bg-surface text-sm text-fg ' +
+  'hover:border-line-strong focus-visible:border-line-strong ' +
   'placeholder:text-fg-subtle transition-colors focus-ring ' +
   'disabled:cursor-not-allowed disabled:opacity-50 ' +
   'aria-invalid:border-danger data-invalid:border-danger';

@@ -122,7 +122,7 @@ export function PromptPicker({
                 <Combobox.Input
                   aria-label="Search prompts"
                   placeholder="Search prompts…"
-                  className="h-8 w-full rounded-control border border-line-strong bg-surface pr-2 pl-8 text-sm text-fg placeholder:text-fg-subtle focus-ring"
+                  className="h-8 w-full rounded-control border border-line-control bg-surface pr-2 pl-8 text-sm text-fg placeholder:text-fg-subtle focus-ring"
                 />
               </div>
             ) : null}

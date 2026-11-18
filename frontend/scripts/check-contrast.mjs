@@ -54,6 +54,8 @@ const rules = [
   ['--success', BACKGROUNDS, 4.5, 'success text'],
   ['--warning', BACKGROUNDS, 4.5, 'warning text'],
   ['--line-strong', BACKGROUNDS, 3, 'control boundaries'],
+  // Soft field border: deliberately below 3:1, but must stay visible at rest.
+  ['--line-control', ['--canvas', '--canvas-subtle', '--surface'], 1.4, 'resting field border'],
   ['--focus', BACKGROUNDS, 3, 'focus indicator'],
   ['--on-primary', ['--primary', '--primary-hover'], 4.5, 'primary button label'],
   ['--on-accent', ['--accent', '--accent-hover'], 4.5, 'text on accent fill'],
